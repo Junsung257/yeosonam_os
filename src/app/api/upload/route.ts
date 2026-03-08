@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseDocument, ParsedDocument } from '@/lib/parser';
+import { saveTravelPackage } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,9 +41,33 @@ export async function POST(request: NextRequest) {
     // 문서 파싱
     const parsedDocument = await parseDocument(buffer, file.name);
 
+    // Supabase에 저장 (선택사항)
+    let savedToDb = null;
+    try {
+      savedToDb = await saveTravelPackage({
+        title: parsedDocument.extractedData.title || file.name,
+        destination: parsedDocument.extractedData.destination,
+        duration: parsedDocument.extractedData.duration,
+        price: parsedDocument.extractedData.price,
+        filename: file.name,
+        fileType: parsedDocument.fileType,
+        rawText: parsedDocument.rawText,
+        itinerary: parsedDocument.extractedData.itinerary,
+        inclusions: parsedDocument.extractedData.inclusions,
+        excludes: parsedDocument.extractedData.excludes,
+        accommodations: parsedDocument.extractedData.accommodations,
+        specialNotes: parsedDocument.extractedData.specialNotes,
+        confidence: parsedDocument.confidence,
+      });
+    } catch (dbError) {
+      console.warn('DB 저장 실패 (비취소 오류):', dbError);
+      // DB 저장 실패해도 파싱 결과는 반환
+    }
+
     return NextResponse.json({
       success: true,
       data: parsedDocument,
+      dbId: savedToDb?.id,
       message: '문서가 성공적으로 파싱되었습니다.',
     });
   } catch (error) {
