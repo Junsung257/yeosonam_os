@@ -20,8 +20,16 @@ export async function POST(request: NextRequest) {
 
     if (compare) {
       // 모델 비교
-      const results = await generateContentComparison(packageData, contentType);
-      return NextResponse.json({ results });
+      try {
+        const results = await generateContentComparison(packageData, contentType);
+        return NextResponse.json({ results });
+      } catch (error) {
+        console.error('비교 생성 오류:', error);
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : '비교 생성에 실패했습니다.' },
+          { status: 500 }
+        );
+      }
     } else {
       // 단일 모델 생성
       if (!model) {
@@ -31,16 +39,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const content = await generateContent(packageData, contentType, model);
-      return NextResponse.json({ content });
+      try {
+        const content = await generateContent(packageData, contentType, model);
+        return NextResponse.json({ content });
+      } catch (error) {
+        console.error(`${model} 생성 오류:`, error);
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : '콘텐츠 생성에 실패했습니다.' },
+          { status: 500 }
+        );
+      }
     }
   } catch (error) {
-    console.error('AI 생성 API 오류:', error);
+    console.error('API 파싱 오류:', error);
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : '콘텐츠 생성에 실패했습니다.'
-      },
-      { status: 500 }
+      { error: '요청 처리에 실패했습니다.' },
+      { status: 400 }
     );
   }
 }

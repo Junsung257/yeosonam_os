@@ -28,7 +28,7 @@ export default function GeneratePage() {
   const [packages, setPackages] = useState<TravelPackage[]>([]);
   const [selectedPackage, setSelectedPackage] = useState<TravelPackage | null>(null);
   const [contentType, setContentType] = useState<string>('description');
-  const [selectedModel, setSelectedModel] = useState<AIModel>('openai');
+  const [selectedModel, setSelectedModel] = useState<AIModel>('gemini');
   const [generatedContent, setGeneratedContent] = useState<string>('');
   const [comparisonResults, setComparisonResults] = useState<Record<AIModel, string> | null>(null);
   const [isLoading, setIsLoading] = useState(false);

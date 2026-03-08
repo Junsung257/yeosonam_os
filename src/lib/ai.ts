@@ -37,58 +37,81 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
 // OpenAI로 콘텐츠 생성
 async function generateWithOpenAI(packageData: TravelPackage, contentType: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API 키가 설정되지 않았습니다. .env.local 파일을 확인해주세요.');
+  }
+
   const prompt = createPrompt(packageData, contentType);
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4-turbo-preview',
-    messages: [
-      {
-        role: 'system',
-        content: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-    max_tokens: 2000,
-    temperature: 0.7,
-  });
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4-turbo-preview',
+      messages: [
+        {
+          role: 'system',
+          content: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      max_tokens: 2000,
+      temperature: 0.7,
+    });
 
-  return completion.choices[0]?.message?.content || '';
+    return completion.choices[0]?.message?.content || '';
+  } catch (error) {
+    throw new Error(`OpenAI API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+  }
 }
 
 // Claude로 콘텐츠 생성
 async function generateWithClaude(packageData: TravelPackage, contentType: string): Promise<string> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('Claude API 키가 설정되지 않았습니다. .env.local 파일을 확인해주세요.');
+  }
+
   const prompt = createPrompt(packageData, contentType);
 
-  const message = await anthropic.messages.create({
-    model: 'claude-3-sonnet-20240229',
-    max_tokens: 2000,
-    temperature: 0.7,
-    system: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.',
-    messages: [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-  });
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-3-sonnet-20240229',
+      max_tokens: 2000,
+      temperature: 0.7,
+      system: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.',
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+    });
 
-  return message.content[0]?.type === 'text' ? message.content[0].text : '';
+    return message.content[0]?.type === 'text' ? message.content[0].text : '';
+  } catch (error) {
+    throw new Error(`Claude API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+  }
 }
 
 // Gemini로 콘텐츠 생성
+// Gemini로 콘텐츠 생성
 async function generateWithGemini(packageData: TravelPackage, contentType: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  if (!process.env.GOOGLE_AI_API_KEY) {
+    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 파일을 확인해주세요.');
+  }
 
+  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
   const prompt = createPrompt(packageData, contentType);
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
-
-  return text;
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    return text;
+  } catch (error) {
+    throw new Error(`Gemini API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+  }
 }
 
 // 프롬프트 생성 함수
