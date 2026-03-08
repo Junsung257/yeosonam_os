@@ -12,7 +12,15 @@ export default function Home() {
             여행사 문서 자동 처리 및 AI 콘텐츠 생성 시스템
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <Link href="/admin/upload">
+              <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition cursor-pointer">
+                <div className="text-4xl mb-4">📤</div>
+                <h2 className="text-2xl font-semibold text-gray-900 mb-2">문서 업로드</h2>
+                <p className="text-gray-600">HWP/PDF/JPG 자동 파싱</p>
+              </div>
+            </Link>
+
             <Link href="/admin">
               <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition cursor-pointer">
                 <div className="text-4xl mb-4">📋</div>
