@@ -171,7 +171,7 @@ export async function analyzeRecommendation(
   }
 
   // 패키지 관련성 점수 계산
-  const scoredPackages = packages.map((pkg) => ({
+  const scoredPackages = packages.map((pkg: TravelPackage) => ({
     ...pkg,
     score: calculateRelevanceScore(pkg, question, analysis),
     reasons: [
@@ -182,12 +182,14 @@ export async function analyzeRecommendation(
   }));
 
   // 점수 순으로 정렬
-  const recommendedPackages = scoredPackages.sort((a, b) => b.score - a.score).slice(0, 3);
+  const recommendedPackages = scoredPackages
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, 3);
 
   // AI를 사용한 상세 분석
   const packagesSummary = recommendedPackages
     .map(
-      (pkg) =>
+      (pkg: any) =>
         `${pkg.title} (점수: ${pkg.score}/100) - ${pkg.destination} ${pkg.duration}일 \
       가격: ${pkg.price.toLocaleString()}원`
     )
@@ -209,7 +211,11 @@ ${packagesSummary}
       destination: analysis.destination || '',
       duration: analysis.duration || 0,
       price: 0,
-      parsedData: {},
+      parsedData: {
+        요금: '미정',
+        일정: analysis.duration?.toString() || '0일',
+        써차지: '',
+      },
     },
     'description',
     model
@@ -231,7 +237,11 @@ ${packagesSummary}
       destination: analysis.destination || '',
       duration: analysis.duration || 0,
       price: 0,
-      parsedData: {},
+      parsedData: {
+        요금: '미정',
+        일정: analysis.duration?.toString() || '0일',
+        써차지: '',
+      },
     },
     'description',
     model
@@ -250,14 +260,14 @@ export async function analyzeComparison(
   model: AIModel = 'gemini'
 ): Promise<QAComparison> {
   const packages = await getApprovedPackages();
-  const selectedPackages = packages.filter((pkg) => packageIds.includes(pkg.id)).slice(0, 3);
+  const selectedPackages = (packages as TravelPackage[]).filter((pkg) => packageIds.includes(pkg.id)).slice(0, 3);
 
   if (selectedPackages.length === 0) {
     throw new Error('선택한 패키지를 찾을 수 없습니다.');
   }
 
   // 각 패키지의 장단점 분석
-  const packagesWithAnalysis = selectedPackages.map((pkg) => ({
+  const packagesWithAnalysis = selectedPackages.map((pkg: TravelPackage) => ({
     ...pkg,
     ...analyzPackageProsCons(pkg, ''),
   }));
@@ -286,7 +296,11 @@ ${packagesWithAnalysis
       destination: '',
       duration: 0,
       price: 0,
-      parsedData: {},
+      parsedData: {
+        요금: '미정',
+        일정: '0일',
+        써차지: '',
+      },
     },
     'description',
     model
@@ -306,7 +320,11 @@ ${packagesWithAnalysis
       destination: '',
       duration: 0,
       price: 0,
-      parsedData: {},
+      parsedData: {
+        요금: '미정',
+        일정: '0일',
+        써차지: '',
+      },
     },
     'description',
     model
@@ -324,12 +342,12 @@ export async function getConsultationAdvice(question: string, model: AIModel = '
   const analysis = analyzeQuestionKeywords(question);
 
   // 관련 패키지 정보 포함
-  const packages = await getApprovedPackages(analysis.destination);
+  const packages = (await getApprovedPackages(analysis.destination)) as TravelPackage[];
   const packageInfo =
     packages.length > 0
       ? `참고할 수 있는 유사 패키지들:\n${packages
           .slice(0, 3)
-          .map((p) => `- ${p.title} (${p.price.toLocaleString()}원)`)
+          .map((p: TravelPackage) => `- ${p.title} (${p.price.toLocaleString()}원)`)
           .join('\n')}`
       : '';
 
@@ -351,7 +369,11 @@ ${packageInfo}
       destination: analysis.destination || '',
       duration: analysis.duration || 0,
       price: 0,
-      parsedData: {},
+      parsedData: {
+        요금: '미정',
+        일정: analysis.duration?.toString() || '0일',
+        써차지: '',
+      },
     },
     'description',
     model

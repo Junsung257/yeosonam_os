@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveInquiry, saveAIResponse, getInquiries } from '@/lib/supabase';
+import { saveInquiry, saveAIResponse, getInquiries, isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { analyzeRecommendation, analyzeComparison, getConsultationAdvice } from '@/lib/ai-analyst';
 import { AIModel } from '@/lib/ai';
 
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json(
+      { error: 'Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.' },
+      { status: 500 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -24,6 +31,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json(
+      { error: 'Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.' },
+      { status: 500 }
+    );
+  }
+
   try {
     const body = await request.json();
     const {
@@ -117,6 +131,30 @@ export async function POST(request: NextRequest) {
     console.error('Q&A API 오류:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '처리에 실패했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+  }
+  try {
+    const { inquiryId, status } = await request.json();
+    if (!inquiryId || !status) {
+      return NextResponse.json({ error: 'inquiryId와 status가 필요합니다.' }, { status: 400 });
+    }
+    const { data, error } = await supabase
+      .from('qa_inquiries')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', inquiryId)
+      .select();
+    if (error) throw error;
+    return NextResponse.json({ success: true, inquiry: data?.[0] });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '처리 실패' },
       { status: 500 }
     );
   }

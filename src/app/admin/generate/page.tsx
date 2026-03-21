@@ -35,35 +35,58 @@ export default function GeneratePage() {
   const [isComparing, setIsComparing] = useState(false);
   const [error, setError] = useState<string>('');
 
-  // 샘플 데이터 (실제로는 Supabase에서 가져옴)
+  // DB에서 승인된 패키지 로드 (없으면 샘플 데이터 사용)
   useEffect(() => {
     const samplePackages: TravelPackage[] = [
       {
-        id: '1',
-        title: '제주도 3박 4일 패키지',
+        id: 'sample-1',
+        title: '제주도 3박 4일 패키지 (샘플)',
         destination: '제주도',
         duration: 4,
         price: 450000,
         parsedData: {
           요금: '450,000원',
           일정: '제주공항 도착 → 성산일출봉 → 우도 → 한라산 등반 → 용두암 → 공항 출발',
-          써차지: '항공료, 숙박비, 식사 3회, 가이드비 포함'
-        }
+          써차지: '항공료, 숙박비, 식사 3회, 가이드비 포함',
+        },
       },
       {
-        id: '2',
-        title: '부산 해운대 2박 3일',
+        id: 'sample-2',
+        title: '부산 해운대 2박 3일 (샘플)',
         destination: '부산',
         duration: 3,
         price: 320000,
         parsedData: {
           요금: '320,000원',
           일정: '부산역 도착 → 해운대 해수욕장 → 태종대 → 감천문화마을 → 출발',
-          써차지: '기차표, 호텔 숙박, 조식 포함'
-        }
-      }
+          써차지: '기차표, 호텔 숙박, 조식 포함',
+        },
+      },
     ];
-    setPackages(samplePackages);
+
+    fetch('/api/packages')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.packages && data.packages.length > 0) {
+          setPackages(
+            data.packages.map((p: any) => ({
+              id: p.id,
+              title: p.title,
+              destination: p.destination || '',
+              duration: p.duration || 0,
+              price: p.price || 0,
+              itinerary: p.itinerary,
+              inclusions: p.inclusions,
+              parsedData: p.raw_text
+                ? { 요금: `${(p.price || 0).toLocaleString()}원`, 일정: p.itinerary?.join(' → ') || '', 써차지: '' }
+                : undefined,
+            }))
+          );
+        } else {
+          setPackages(samplePackages);
+        }
+      })
+      .catch(() => setPackages(samplePackages));
   }, []);
 
   const handleGenerate = async () => {

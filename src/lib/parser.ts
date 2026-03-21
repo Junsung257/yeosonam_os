@@ -1,307 +1,976 @@
 import pdfParse from 'pdf-parse';
-import Tesseract from 'tesseract.js';
-import { Buffer } from 'buffer';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as path from 'path';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import type { TravelItinerary } from '@/types/itinerary';
 
-const execAsync = promisify(exec);
+// ─── 타입 정의 ─────────────────────────────────────────────
 
-// 파싱된 문서 데이터 구조
+export interface PriceTier {
+  period_label: string;
+  departure_dates?: string[];           // 특정 날짜 배열 (YYYY-MM-DD)
+  date_range?: { start: string; end: string }; // 기간 범위
+  departure_day_of_week?: string;       // 화 | 금 | 수 | 토
+  adult_price?: number;
+  child_price?: number;
+  infant_price?: number;
+  status: 'available' | 'confirmed' | 'soldout';
+  note?: string;
+}
+
+export interface PriceRule {
+  condition:  string;        // "수요일" | "제외일 3/28(토)" | "전 출발일"
+  price_text: string;        // "799,000원" | "별도문의"
+  price:      number | null; // 799000 or null if 별도문의
+  badge?:     string | null; // "특가♥" | "일반" | "호텔UP" | "별도문의" | "확정" | "마감" | null
+}
+
+export interface PriceListItem {
+  period: string;           // "3/20~3/28" — 원문 그대로
+  rules:  PriceRule[];
+  notes?: string | null;    // "성인/아동 요금 동일, 싱글차지 8만원/인" 등 부가 조건
+}
+
+export interface Surcharge {
+  period: string;
+  amount_usd?: number;
+  amount_krw?: number;
+  note: string;
+}
+
+export interface OptionalTour {
+  name: string;
+  price_usd?: number;
+  price_krw?: number;
+}
+
+export interface CancellationPolicy {
+  period: string;
+  rate: number;
+  note?: string;
+}
+
+export interface ExtractedData {
+  // 기본 정보
+  title?: string;
+  category?: 'package' | 'golf' | 'honeymoon' | 'cruise' | 'theme';
+  product_type?: string;           // 실속 | 품격 | 노팁노옵션 | 일반
+  trip_style?: string;             // 3박5일 | 4박6일
+  destination?: string;
+  duration?: number;
+  departure_days?: string;         // 매주 화요일 | 매주 금요일
+  departure_airport?: string;
+  airline?: string;
+  min_participants?: number;
+  ticketing_deadline?: string;     // YYYY-MM-DD
+
+  // 가격 구조
+  price?: number;                  // 최저가 (하위 호환)
+  price_tiers?: PriceTier[];       // 날짜별 상세 가격 (단일 조건)
+  price_list?: PriceListItem[];    // 다중 조건 구조화 가격표 (price_tiers 보완)
+
+  // 요금 관련
+  guide_tip?: string;
+  single_supplement?: string;
+  small_group_surcharge?: string;
+  surcharges?: Surcharge[];
+  excluded_dates?: string[];
+
+  // 포함/불포함
+  inclusions?: string[];
+  excludes?: string[];
+  optional_tours?: OptionalTour[];
+
+  // 일정/숙박
+  itinerary?: string[];
+  accommodations?: string[];
+  specialNotes?: string;
+
+  // 취소 규정
+  cancellation_policy?: CancellationPolicy[];
+
+  // 카테고리별 고유 속성
+  category_attrs?: Record<string, unknown>;
+
+  // 랜드사 & 자동 분류
+  land_operator?: string;        // 랜드사/현지여행사명
+  product_tags?: string[];       // AI 자동 추출: ['소규모', '노팁', '노옵션']
+  product_highlights?: string[]; // 핵심 특전 3개 이내
+  product_summary?: string;      // AI 자동 생성 2~3줄 요약 (Jarvis 추론용)
+
+  // Phase 2 AI 확장 필드 (products_ai_expansion_v1.sql)
+  theme_tags?: string[];         // 마케팅 테마 태그 배열 (예: ['노옵션', '가족여행', '허니문'])
+  selling_points?: {             // 핵심 세일즈 포인트
+    hotel?: string | null;
+    airline?: string | null;
+    unique?: string[];
+    [key: string]: unknown;
+  } | null;
+  flight_info?: {                // 항공 편명/시간 정보
+    airline?: string | null;
+    flight_no?: string | null;
+    depart?: string | null;      // HH:MM
+    arrive?: string | null;      // HH:MM
+    return_depart?: string | null;
+    return_arrive?: string | null;
+    [key: string]: unknown;
+  } | null;
+
+  rawText: string;
+}
+
 export interface ParsedDocument {
   filename: string;
   fileType: 'pdf' | 'image' | 'hwp';
   rawText: string;
-  extractedData: {
-    title?: string;
-    destination?: string;
-    duration?: number;
-    price?: number;
-    itinerary?: string[];
-    inclusions?: string[];
-    excludes?: string[];
-    accommodations?: string[];
-    specialNotes?: string;
-    rawText: string;
-  };
+  extractedData: ExtractedData;
+  itineraryData?: TravelItinerary | null;  // 고객용 일정표 JSON
   parsedAt: Date;
-  confidence: number; // 0-1 사이 값
+  confidence: number;
+  // 복수 상품 추출 결과 (PDF에 여러 상품이 있을 때)
+  multiProducts?: MultiProductResult[];
 }
 
-// PDF 파싱
+// ─── Gemini API 호출 ────────────────────────────────────────
+
+function getGeminiModel(apiKey: string) {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  return genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: { temperature: 0.1 },
+  });
+}
+
+async function callGeminiVision(apiKey: string, base64Image: string, mimeType: string, prompt: string): Promise<string> {
+  const model = getGeminiModel(apiKey);
+  const result = await model.generateContent([
+    { inlineData: { mimeType, data: base64Image } },
+    prompt,
+  ]);
+  return result.response.text();
+}
+
+async function callGeminiText(apiKey: string, text: string, prompt: string): Promise<string> {
+  const model = getGeminiModel(apiKey);
+  const result = await model.generateContent(`${prompt}\n\n---\n\n${text}`);
+  return result.response.text();
+}
+
+// ─── 구조화 추출 프롬프트 ────────────────────────────────────
+
+const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확히 아래 JSON 형식으로 반환하세요.
+필드가 없으면 null로, 배열이 없으면 []로 반환하세요.
+날짜는 항상 YYYY-MM-DD 형식. 연도가 없으면 2026년으로 가정.
+가격은 원화 숫자만 (쉼표 제거, "만원" 단위면 ×10000).
+
+{
+  "title": "상품명 전체 (예: 서안 실속 3박5일)",
+  "category": "package 또는 golf 또는 honeymoon 또는 cruise 또는 theme",
+  "product_type": "실속 또는 품격 또는 노팁노옵션 또는 일반 (없으면 null)",
+  "trip_style": "3박5일 또는 4박6일 등 (없으면 null)",
+  "destination": "목적지 도시/지역명",
+  "duration": 여행일수 숫자,
+  "departure_days": "매주 화요일 또는 특정날짜 나열 (없으면 null)",
+  "departure_airport": "출발공항명 (없으면 null)",
+  "airline": "항공편명 (예: BX341/BX342, 없으면 null)",
+  "min_participants": 최소출발인원 숫자 (없으면 4),
+  "ticketing_deadline": "YYYY-MM-DD 또는 null",
+  "guide_tip": "기사/가이드경비 원문 그대로 (예: '$50/인', 없으면 null)",
+  "single_supplement": "싱글차지 원문 (예: '$60/인/박', 없으면 null)",
+  "small_group_surcharge": "소규모 할증 원문 (예: '4~7명 $20/인 인상', 없으면 null)",
+  "price_tiers": [
+    {
+      "period_label": "날짜/기간 표시 원문 그대로 (예: '4월 8, 22일' 또는 '4/28~5/15')",
+      "departure_dates": ["YYYY-MM-DD"] 또는 null (특정 날짜 나열인 경우),
+      "date_range": {"start":"YYYY-MM-DD","end":"YYYY-MM-DD"} 또는 null (기간 범위인 경우),
+      "departure_day_of_week": "화 또는 금 또는 수 또는 토 등 (없으면 null)",
+      "adult_price": 성인가격 숫자 또는 null,
+      "child_price": 아동가격 숫자 또는 null,
+      "status": "available 또는 confirmed 또는 soldout",
+      "note": "비고 (예: '품격확정', 없으면 null)"
+    }
+  ],
+  "price_list": [
+    {
+      "period": "기간 원문 그대로 (예: '3/20~3/28', '4/8·4/22', '매주 화')",
+      "rules": [
+        {
+          "condition": "출발조건 원문 (예: '수요일', '제외일 3/28(토)', '전 출발일', '일반')",
+          "price_text": "가격 원문 (예: '799,000원', '별도문의', '899,000원')",
+          "price": 799000,
+          "badge": "특가♥ 또는 일반 또는 호텔UP 또는 별도문의 또는 확정 또는 마감 또는 null"
+        }
+      ],
+      "notes": "해당 기간 부가 조건 원문 (예: '성인/아동 요금 동일, 싱글차지 8만원/인') 또는 null"
+    }
+  ],
+  "surcharges": [
+    {"period": "기간 원문", "amount_usd": 달러금액 또는 null, "amount_krw": 원화금액 또는 null, "note": "나담축제 등"}
+  ],
+  "excluded_dates": ["YYYY-MM-DD"],
+  "inclusions": ["항공료 및 텍스", "숙박", "한국어 가이드"],
+  "excludes": ["기사/가이드 경비", "개인경비", "매너팁"],
+  "optional_tours": [
+    {"name": "발마사지", "price_usd": 30, "price_krw": null}
+  ],
+  "itinerary": ["제1일: 부산출발 → 서안도착", "제2일: 소안탑 → 회족거리"],
+  "accommodations": ["천익호텔 또는 홀리데이인익스프레호텔(4성)"],
+  "specialNotes": "주의사항, 여권유효기간, 취소규정 외 기타 안내 전체",
+  "cancellation_policy": [
+    {"period": "출발일 14일~7일전", "rate": 30, "note": "30% 공제 후 환불"}
+  ],
+  "category_attrs": {},
+  "land_operator": "랜드사/현지여행사명 (문서에 명시된 경우, 없으면 null)",
+  "product_tags": ["아래 목록 중 해당하는 것만: 에어텔, 가족전용, 소규모, 노팁, 노옵션, 럭셔리, 프리미엄, 실속, 자유여행, 단체"],
+  "product_highlights": ["고객에게 어필되는 핵심 특전 3개 이내. 예: '가이드팁 포함', '5성급 호텔', '소규모 12명 진행'"],
+  "product_summary": "이 상품을 2~3줄로 요약. 상품특성+출발정보+주요특이사항 포함. 예: '소규모 노팁노옵션 몽골 3박5일. 매주 화요일 부산출발. 4~7명 소규모 할증 $20~40/인. 발권마감 3/30.'",
+  "fullText": "문서 전체 텍스트를 그대로 복사"
+}
+
+★ price_list 작성 규칙 (price_tiers와 별도로 반드시 채울 것):
+- 동일 기간 내 요일·날짜별 다른 가격 → rules[] 배열 분리 기재.
+- 가격 조건 동일 시 rules 1개 (condition: "전 출발일").
+- price: 숫자(원화), '별도문의'·'문의'·'$별도' 등 확정 불가 시 null.
+- badge: 원문 특가♥/↑/★ → 가장 근접한 표준값 매핑. 원문 없으면 null.
+- notes: 아동요금 동일 여부, 싱글차지, 대욕장UP, 가이드팁 포함 여부 반드시 포함.
+
+반드시 JSON만 반환하세요. 마크다운 코드블록이나 다른 설명 없이 JSON 객체만.`;
+
+// ─── 파싱 결과 처리 ─────────────────────────────────────────
+
+function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
+  const jsonStr = raw
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  const parsed = JSON.parse(jsonStr);
+
+  return {
+    rawText: parsed.fullText || fallbackText,
+    title: parsed.title || undefined,
+    category: parsed.category || 'package',
+    product_type: parsed.product_type || undefined,
+    trip_style: parsed.trip_style || undefined,
+    destination: parsed.destination || undefined,
+    duration: typeof parsed.duration === 'number' ? parsed.duration : (parsed.duration ? parseInt(parsed.duration) : undefined),
+    departure_days: parsed.departure_days || undefined,
+    departure_airport: parsed.departure_airport || undefined,
+    airline: parsed.airline || undefined,
+    min_participants: parsed.min_participants || 4,
+    ticketing_deadline: parsed.ticketing_deadline || undefined,
+    guide_tip: parsed.guide_tip || undefined,
+    single_supplement: parsed.single_supplement || undefined,
+    small_group_surcharge: parsed.small_group_surcharge || undefined,
+    price: Array.isArray(parsed.price_tiers) && parsed.price_tiers.length > 0
+      ? (parsed.price_tiers.find((t: PriceTier) => t.adult_price)?.adult_price ?? parsed.price ?? undefined)
+      : (parsed.price ?? undefined),
+    price_tiers: Array.isArray(parsed.price_tiers) ? parsed.price_tiers : [],
+    price_list: Array.isArray(parsed.price_list) ? parsed.price_list as PriceListItem[] : [],
+    surcharges: Array.isArray(parsed.surcharges) ? parsed.surcharges : [],
+    excluded_dates: Array.isArray(parsed.excluded_dates) ? parsed.excluded_dates : [],
+    inclusions: Array.isArray(parsed.inclusions) ? parsed.inclusions.filter(Boolean) : [],
+    excludes: Array.isArray(parsed.excludes) ? parsed.excludes.filter(Boolean) : [],
+    optional_tours: Array.isArray(parsed.optional_tours) ? parsed.optional_tours : [],
+    itinerary: Array.isArray(parsed.itinerary) ? parsed.itinerary.filter(Boolean) : [],
+    accommodations: Array.isArray(parsed.accommodations) ? parsed.accommodations.filter(Boolean) : [],
+    specialNotes: parsed.specialNotes || undefined,
+    cancellation_policy: Array.isArray(parsed.cancellation_policy) ? parsed.cancellation_policy : [],
+    category_attrs: parsed.category_attrs || {},
+    land_operator: parsed.land_operator || undefined,
+    product_tags: Array.isArray(parsed.product_tags) ? parsed.product_tags.filter(Boolean) : [],
+    product_highlights: Array.isArray(parsed.product_highlights) ? parsed.product_highlights.filter(Boolean) : [],
+    product_summary: parsed.product_summary || undefined,
+  };
+}
+
+// ─── PDF 파싱 ───────────────────────────────────────────────
+
 export async function parsePDF(buffer: Buffer): Promise<string> {
   try {
+    console.log('[Parser] PDF 파싱 시작:', buffer.length, '바이트');
     const data = await pdfParse(buffer);
+    console.log('[Parser] PDF 파싱 완료:', data.text?.length || 0, '글자');
     return data.text || '';
   } catch (error) {
     throw new Error(`PDF 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
 
-// 이미지(JPG/PNG) OCR 파싱
-export async function parseImage(buffer: Buffer): Promise<string> {
+// ─── 이미지 파싱 (Gemini Vision) ────────────────────────────
+
+export async function parseImage(buffer: Buffer, mimeType = 'image/jpeg'): Promise<{ rawText: string; extractedData: ExtractedData }> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY가 설정되지 않았습니다.');
+
+  console.log('[Parser] 이미지 AI 파싱 시작:', buffer.length, '바이트');
+  const base64 = buffer.toString('base64');
+
   try {
-    const result = await Tesseract.recognize(buffer, 'kor', {
-      logger: (m) => console.log('OCR 진행:', Math.round(m.progress * 100) + '%'),
-    });
-    return result.data.text || '';
-  } catch (error) {
-    throw new Error(`OCR 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+    const raw = await callGeminiVision(apiKey, base64, mimeType, EXTRACT_PROMPT);
+    console.log('[Parser] Gemini Vision 응답:', raw.length, '글자');
+    const extractedData = parseGeminiResponse(raw, raw);
+    console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
+    return { rawText: extractedData.rawText, extractedData };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error('[Parser] Gemini Vision 오류:', errMsg);
+    if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('limit: 0')) {
+      throw new Error('Google AI API 쿼터/결제 오류. Google Cloud Console에서 결제를 활성화하세요. (console.cloud.google.com)');
+    }
+    throw new Error(`이미지 파싱 실패: ${errMsg}`);
   }
 }
 
-// HWP를 PDF로 변환 후 파싱
-export async function parseHWP(buffer: Buffer, filename: string): Promise<string> {
+// ─── PDF/텍스트 AI 구조화 추출 ──────────────────────────────
+
+async function parseTextWithAI(text: string): Promise<ExtractedData> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) return extractTravelInfo(text);
+
+  // Gemini 2.5 Flash는 100만 토큰 지원 — 전체 텍스트 사용 (Jarvis 답변 품질 확보)
+  const truncated = text;
+
   try {
-    // 임시 파일 저장
-    const tempDir = path.join(process.cwd(), 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
+    const raw = await callGeminiText(apiKey, truncated, EXTRACT_PROMPT);
+    console.log('[Parser] Gemini Text 응답:', raw.length, '글자');
+    const extractedData = parseGeminiResponse(raw, text);
+    extractedData.rawText = text; // 원본 전체 텍스트 보존
+    console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
+    return extractedData;
+  } catch (err) {
+    console.warn('[Parser] AI 텍스트 추출 실패, regex fallback:', err);
+    return extractTravelInfo(text);
+  }
+}
+
+// ─── HWP 파싱 ───────────────────────────────────────────────
+
+export async function parseHWP(buffer: Buffer, filename: string): Promise<string> {
+  // HWP는 OLE 바이너리 포맷 - 전용 라이브러리 없이 완전 파싱 불가
+  // UTF-16LE로 디코드해 한글/숫자/영문 문자열 최대한 추출
+  try {
+    const utf16Text = buffer.toString('utf16le');
+    // 한글+숫자+영문+공백+특수문자가 3자 이상 연속된 문자열 추출
+    const matches = utf16Text.match(/[\uAC00-\uD7A3\u0020-\u007E]{3,}/g) || [];
+    const extracted = matches
+      .map(s => s.trim())
+      .filter(s => s.length >= 3 && /[\uAC00-\uD7A3]/.test(s)) // 한글 포함된 것만
+      .join('\n');
+
+    if (extracted.length >= 50) {
+      console.log('[Parser] HWP UTF-16LE 추출 성공:', extracted.length, '글자');
+      return extracted;
     }
 
-    const hwpPath = path.join(tempDir, filename);
-    const pdfPath = path.join(tempDir, filename.replace('.hwp', '.pdf'));
+    // UTF-16LE 실패 시 Latin-1로 시도 (일부 HWP 구조)
+    const latin1Text = buffer.toString('latin1');
+    const latin1Matches = latin1Text.match(/[\uAC00-\uD7A3\u0020-\u007E]{3,}/g) || [];
+    const latin1Extracted = latin1Matches
+      .map(s => s.trim())
+      .filter(s => s.length >= 3)
+      .join('\n');
 
-    // HWP 파일 저장
-    fs.writeFileSync(hwpPath, buffer);
-
-    try {
-      // LibreOffice를 사용해 PDF로 변환
-      // Windows의 경우 libreoffice가 설치되어 있어야 함
-      await execAsync(
-        `libreoffice --headless --convert-to pdf --outdir "${tempDir}" "${hwpPath}"`,
-        { timeout: 30000 }
-      );
-
-      if (!fs.existsSync(pdfPath)) {
-        throw new Error('PDF 변환 실패');
-      }
-
-      // 변환된 PDF 읽기
-      const pdfBuffer = fs.readFileSync(pdfPath);
-      const text = await parsePDF(pdfBuffer);
-
-      // 임시 파일 정리
-      fs.unlinkSync(hwpPath);
-      fs.unlinkSync(pdfPath);
-
-      return text;
-    } catch (convertError) {
-      // LibreOffice 없을 경우 간단한 텍스트 추출 시도
-      console.warn('LibreOffice 변환 실패, 대체 방법 사용:', convertError);
-      
-      // HWP 파일에서 한글 텍스트만 추출
-      const hexBuffer = buffer.toString('binary');
-      const koreanMatches = buffer
-        .toString('utf-8', 0, Math.min(100000, buffer.length))
-        .match(/[\uAC00-\uD7A3\u3130-\u318F\u3131-\u3163]+/g) || [];
-      
-      if (koreanMatches.length > 0) {
-        return koreanMatches.join(' ');
-      }
-
-      // 임시 파일 정리
-      try {
-        fs.unlinkSync(hwpPath);
-      } catch {}
-
-      // 최후의 수단: 제목에서 정보 추출
-      const titleMatch = filename.match(/\[([^\]]+)\]/);
-      if (titleMatch) {
-        return titleMatch[1] + ' ' + filename;
-      }
-
-      throw new Error('HWP 파일을 읽을 수 없습니다. LibreOffice 설치가 필요합니다.');
+    if (latin1Extracted.length >= 50) {
+      console.log('[Parser] HWP latin1 추출 성공:', latin1Extracted.length, '글자');
+      return latin1Extracted;
     }
+
+    // 텍스트 추출 실패 - 파일명 기반 최소 정보 + 명확한 안내
+    const titleFromFilename = filename.replace(/\.hwp$/i, '').trim();
+    throw new Error(
+      `HWP 파일에서 텍스트를 추출할 수 없습니다. 파일을 PDF 또는 JPG로 변환 후 업로드해 주세요. (파일명: ${titleFromFilename})`
+    );
   } catch (error) {
+    if (error instanceof Error && error.message.includes('PDF 또는 JPG')) throw error;
     throw new Error(`HWP 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
 
-// 텍스트에서 핵심 정보 추출
-export function extractTravelInfo(text: string, filename?: string): ParsedDocument['extractedData'] {
-  const data: ParsedDocument['extractedData'] = {
+// ─── Regex fallback 파싱 (PDF/HWP AI 실패 시) ───────────────
+
+export function extractTravelInfo(text: string, filename?: string): ExtractedData {
+  const data: ExtractedData = {
     rawText: text,
+    category: 'package',
     itinerary: [],
     inclusions: [],
     excludes: [],
     accommodations: [],
+    price_tiers: [],
+    price_list: [],
+    surcharges: [],
+    excluded_dates: [],
+    optional_tours: [],
+    cancellation_policy: [],
+    category_attrs: {},
+    product_tags: [],
+    product_highlights: [],
   };
 
-  // 파일명에서 정보 추출 (HWP의 경우 매우 유용)
   if (filename) {
-    // 파일명에서 패키지명 추출 (예: "[5월 황금연휴]오사카 나라 고베 교토 OR USJ 3일")
-    let titleFromFilename = filename.replace(/\.hwp$/i, '').trim();
-    if (!data.title) {
-      data.title = titleFromFilename;
+    let titleFromFilename = filename.replace(/\.(hwp|jpg|jpeg|png|pdf)$/i, '').trim();
+    titleFromFilename = titleFromFilename.replace(/^(수정완료|최종|확인|검토|수정|완료|임시|draft)[_\s]*/i, '').trim();
+    if (!data.title) data.title = titleFromFilename;
+
+    const bracketDestMatch = titleFromFilename.match(/\]\s*([가-힣]+(?:\s+[가-힣]+)*)/);
+    if (bracketDestMatch && !data.destination) data.destination = bracketDestMatch[1].trim().slice(0, 50);
+    else if (!data.destination) {
+      const simpleDestMatch = titleFromFilename.match(/^([가-힣]+(?:\s+[가-힣]+)*)/);
+      if (simpleDestMatch) data.destination = simpleDestMatch[1].trim().slice(0, 50);
     }
 
-    // 파일명에서 여행지 추출: 대괄호 사이의 텍스트 제외
-    const destMatch = titleFromFilename.match(/(?:\][^\d]*)?([가-힣\s\.~])+([\d위])?(?:\s|$)/);
-    if (destMatch && !data.destination) {
-      data.destination = destMatch[0].trim().slice(0, 50);
-    }
+    const durationMatch = titleFromFilename.match(/(\d+)\s*박\s*(\d+)\s*일|(\d+)\s*일/i);
+    if (durationMatch && !data.duration) data.duration = parseInt(durationMatch[2] || durationMatch[3]);
 
-    // 파일명에서 기간 추출 (예: "3일")
-    const durationMatch = titleFromFilename.match(/(\d+)\s*박\s*(\d+)\s*일|(\d+)\s*일\s*PKG/i);
-    if (durationMatch && !data.duration) {
-      const days = durationMatch[2] || durationMatch[3];
-      data.duration = parseInt(days);
-    }
+    const tripStyleMatch = titleFromFilename.match(/(\d+박\d+일)/);
+    if (tripStyleMatch) data.trip_style = tripStyleMatch[1];
   }
 
-  // 제목 추출 (첫 번째 줄 또는 큰 텍스트)
   const titleMatch = text.match(/^([^\n]{5,100})/m);
-  if (titleMatch && !data.title) {
-    const extracted = titleMatch[1].trim();
-    // 바이너리 데이터가 아닌지 확인
-    if (extracted.length > 5 && extracted.charCodeAt(0) > 127) {
-      // 바이너리 가능성 높음, 사용 안함
-    } else {
-      data.title = extracted;
-    }
-  }
+  if (titleMatch && !data.title) data.title = titleMatch[1].trim();
 
-  // 여행지 추출
-  const destMatch = text.match(
-    /(목적지|여행지|도시|지역|장소)[\s:]*([^,\n]+)/i
-  );
-  if (destMatch && !data.destination) {
-    data.destination = destMatch[2].trim();
-  }
+  const destMatch = text.match(/(목적지|여행지|도시|지역|장소)[\s:]*([^,\n]+)/i);
+  if (destMatch && !data.destination) data.destination = destMatch[2].trim();
 
-  // 기간 추출 (예: "3박 4일", "4일간")
   const durationMatch = text.match(/(\d+)\s*박\s*(\d+)\s*일|(\d+)\s*일간?/i);
-  if (durationMatch && !data.duration) {
-    const days = durationMatch[2] || durationMatch[3];
-    data.duration = parseInt(days);
-  }
+  if (durationMatch && !data.duration) data.duration = parseInt(durationMatch[2] || durationMatch[3]);
 
-  // 가격 추출 (예: "450,000원", "450000원")
   const priceMatch = text.match(/([0-9,]+)\s*원/);
-  if (priceMatch && !data.price) {
-    const priceStr = priceMatch[1].replace(/,/g, '');
-    data.price = parseInt(priceStr);
-  }
+  if (priceMatch && !data.price) data.price = parseInt(priceMatch[1].replace(/,/g, ''));
 
-  // 일정 추출 (Day/날짜로 시작하는 라인들)
-  const itineraryMatches = text.match(/(?:Day\s*\d+|Day \d+|첫.{0,2}날|둘.{0,2}날|셋.{0,2}날)[\s:]*([^\n]+)/gi);
-  if (itineraryMatches && !data.itinerary?.length) {
-    data.itinerary = itineraryMatches.map(match => match.replace(/^Day\s*\d+[\s:]*|^Day \d+[\s:]*/, '').trim());
-  }
+  const itineraryMatches = text.match(/(?:제?\d+일차?|Day\s*\d+)[\s:]*([^\n]+)/gi);
+  if (itineraryMatches) data.itinerary = itineraryMatches.map(m => m.trim());
 
-  // 포함 사항 추출
-  const inclusionsSection = text.match(/포함.*?(?=불포함|제외|[^\n]*:[\s\n]|$)/is);
+  const inclusionsSection = text.match(/포함.*?(?=불포함|$)/is);
   if (inclusionsSection) {
-    const matches = inclusionsSection[0].match(/[•\-•·★]/g);
-    if (matches) {
-      data.inclusions = inclusionsSection[0]
-        .split(/[•\-•·★]/)
-        .filter(line => line.trim().length > 0)
-        .map(line => line.trim());
-    }
+    data.inclusions = inclusionsSection[0].split(/[,\n]/).map(s => s.trim()).filter(s => s.length > 2 && !s.includes('포함'));
   }
 
-  // 불포함 사항 추출
-  const excludesSection = text.match(/(?:불포함|제외).*?(?=[^•\-•·★\s]|$)/is);
+  const excludesSection = text.match(/불포함.*?(?=선택관광|$)/is);
   if (excludesSection) {
-    data.excludes = excludesSection[0]
-      .split(/[•\-•·★]/)
-      .filter(line => line.trim().length > 0)
-      .map(line => line.trim());
+    data.excludes = excludesSection[0].split(/[,\n]/).map(s => s.trim()).filter(s => s.length > 2 && !s.includes('불포함'));
   }
 
-  // 숙박 정보 추출
-  const accommodationMatch = text.match(/숙박[\s:]*([^\n]+(?:\n(?:^(?![\s]*\n))[^\n]+)*)/is);
-  if (accommodationMatch) {
-    data.accommodations = accommodationMatch[1]
-      .split('\n')
-      .filter(line => line.trim().length > 0)
-      .map(line => line.trim());
-  }
-
-  // 특별 안내 추출
-  const notesMatch = text.match(/(?:특별|안내|주의|유의)[\s:]*([^\n]+)/i);
-  if (notesMatch) {
-    data.specialNotes = notesMatch[1].trim();
-  }
+  const minParticipantsMatch = text.match(/(\d+)\s*명\s*이상/);
+  if (minParticipantsMatch) data.min_participants = parseInt(minParticipantsMatch[1]);
 
   return data;
 }
 
-// 메인 문서 파싱 함수
-export async function parseDocument(
-  buffer: Buffer,
-  filename: string
-): Promise<ParsedDocument> {
+// ─── 일정표 구조화 추출 (itinerary_data) ────────────────────
+
+const ITINERARY_PROMPT = `이 여행상품 문서에서 고객용 일정표 정보를 추출해 정확히 아래 JSON 형식으로 반환하세요.
+포함/불포함/비고(RMK)는 원문 그대로 보존하세요 (절대 편집/요약 금지 — 법적 분쟁 방지).
+없는 필드는 null, 배열은 [].
+
+{
+  "meta": {
+    "title": "상품명 (예: 노팁 노옵션 장가계 3박4일)",
+    "product_type": "실속 또는 품격 또는 노팁노옵션 또는 null",
+    "destination": "목적지 (예: 장가계)",
+    "nights": 박수 숫자,
+    "days": 일수 숫자,
+    "departure_airport": "출발공항 (예: 부산(김해), 없으면 null)",
+    "airline": "항공사명 (예: 에어부산, 없으면 null)",
+    "flight_out": "출발 항공편 코드 (예: BX371, 없으면 null)",
+    "flight_in": "귀국 항공편 코드 (예: BX372, 없으면 null)",
+    "departure_days": "출발 요일 원문 (예: 매주 월/화/수, 없으면 null)",
+    "min_participants": 최소인원 숫자 (없으면 4),
+    "room_type": "2인 1실 등 (없으면 null)",
+    "ticketing_deadline": "발권마감 원문 그대로 (예: 3/27(금)까지, 없으면 null)",
+    "hashtags": ["#질성산", "#리무진차량"],
+    "brand": "여소남"
+  },
+  "highlights": {
+    "inclusions": ["포함내역 각 항목 원문 그대로 (절대 편집 금지)"],
+    "excludes": ["불포함내역 각 항목 원문 그대로 (금액 포함, 절대 편집 금지)"],
+    "shopping": "쇼핑 원문 그대로 (없으면 null)",
+    "remarks": ["RMK/비고 각 항목 원문 그대로 (절대 편집 금지)"]
+  },
+  "days": [
+    {
+      "day": 1,
+      "regions": ["부산", "장가계"],
+      "meals": {
+        "breakfast": false,
+        "lunch": true,
+        "dinner": true,
+        "breakfast_note": null,
+        "lunch_note": "누룽지백숙",
+        "dinner_note": "원탁요리"
+      },
+      "schedule": [
+        {
+          "time": "09:00",
+          "activity": "부산 출발",
+          "transport": "BX371",
+          "note": null,
+          "type": "flight"
+        }
+      ],
+      "hotel": {
+        "name": "장가계 국제호텔",
+        "grade": "4성",
+        "note": "또는 동급"
+      }
+    }
+  ],
+  "optional_tours": [
+    {
+      "name": "발마사지(50분)",
+      "price_usd": 30,
+      "price_krw": null,
+      "note": "팁별도"
+    }
+  ]
+}
+
+type 값: "normal"(일반관광/이동), "optional"(선택관광), "shopping"(쇼핑), "flight"(항공), "train"(기차), "meal"(특별식사), "hotel"(체크인)
+hotel이 null이면 hotel 필드를 null로 설정.
+
+★ 규칙1 — 호텔 일자 귀속 (절대 원칙):
+- 원본 문서의 각 일자 블록에서 'HOTEL', '호텔 :', '숙소' 키워드를 직접 찾아라.
+- 해당 키워드가 있는 일자 블록 → 그 호텔명을 해당 일자 hotel 필드에 그대로 귀속.
+- 해당 키워드가 없는 일자 블록 → hotel = null.
+- 원본에 적힌 그대로만 처리하라. 임의로 추론하거나 다른 일자 데이터를 복사하지 마라.
+
+★ 규칙2 — 선택관광과 메인 일정 완벽 분리:
+- '↓추천선택관광', '선택관광', '옵션' 키워드 하위에 적힌 모든 동선·상세 내용은 해당 일자 schedule[]의 activity에 절대 포함시키지 마라.
+- 선택관광은 이름과 가격($) 정보만 추출해 루트 레벨 optional_tours[] 배열에만 저장하라.
+- 선택관광이 있는 날의 메인 일정은 '전일 자유시간' 또는 공식 일정만 깔끔하게 표기하라.
+- schedule 내 선택관광 항목은 type: "optional"로 마킹하되, activity는 '선택관광명(가격)'으로만 단순 표기하라.
+
+★ 규칙3 — 식사 항목 표준화:
+- '불포함', '자유식', 'X', '-', '없음', '미포함' 등 식사가 제공되지 않음을 뜻하는 모든 표기 → false (boolean), note는 null로 통일하라.
+- 특정 식사명(예: '원탁요리', '누룽지백숙', '기내식')이 있으면 → true, note에 식사명 기입.
+- 혼재 표기(예: '중식 자유식') → false, null로 처리. 불확실하면 false를 기본값으로 사용하라.
+
+★ highlights 항목의 Bold 처리 규칙:
+고객이 반드시 인지해야 할 핵심 정보는 **텍스트** 형식으로 감싸 주세요 (마크다운 bold).
+- 금액·비용: 예) "기사/가이드 경비: **1인 $50** (현지 지불)"
+- 기간·데드라인: 예) "유효기간 **6개월 이상** 필수"
+- 페널티·위약금: 예) "1인 1일 **$100 페널티** 발생"
+- 여권·비자·입국 주의사항 키워드: 예) "**여권:** 출발일 기준..."
+전체 문장이 아닌 핵심 키워드/숫자만 bold 처리하세요.
+
+반드시 JSON만 반환하세요. 마크다운 코드블록 없이 JSON 객체만.`;
+
+/**
+ * 문서에서 itinerary_data (고객용 일정표 JSON) 추출
+ * EXTRACT_PROMPT와 별도 호출 — 더 정교한 일정 구조화에 집중
+ */
+export async function extractItineraryData(
+  rawText: string,
+  base64Image?: string,
+  mimeType?: string,
+): Promise<TravelItinerary | null> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    let raw: string;
+    if (base64Image && mimeType) {
+      raw = await callGeminiVision(apiKey, base64Image, mimeType, ITINERARY_PROMPT);
+    } else {
+      raw = await callGeminiText(apiKey, rawText, ITINERARY_PROMPT);
+    }
+    const jsonStr = raw
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(jsonStr) as TravelItinerary;
+    // brand 고정
+    if (parsed.meta) parsed.meta.brand = '여소남';
+    console.log('[Parser] itinerary_data 추출 완료 — days:', parsed.days?.length);
+    return parsed;
+  } catch (err) {
+    console.warn('[Parser] itinerary_data 추출 실패:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+// ─── 복수 상품 통합 추출 ─────────────────────────────────────
+
+/**
+ * PDF 1장에 여러 상품이 담긴 경우 전체를 배열로 추출.
+ * EXTRACT_PROMPT + ITINERARY_PROMPT를 하나로 합쳐 AI 호출 1회로 처리.
+ */
+const MULTI_PRODUCT_PROMPT = `이 여행상품 문서에는 하나 또는 여러 개의 상품이 포함될 수 있습니다.
+문서에 있는 **모든 상품**을 개별 요소로 분리해 아래 JSON 배열 형식으로 반환하세요.
+상품이 1개여도 반드시 배열([ ])로 감싸세요.
+
+각 항목 구조:
+[
+  {
+    "title": "상품명 전체 (예: 마카오+1일자유 2박4일)",
+    "category": "package 또는 golf 또는 honeymoon 또는 cruise 또는 theme",
+    "product_type": "실속 또는 품격 또는 노팁노옵션 또는 일반 또는 null",
+    "trip_style": "2박4일 등 (없으면 null)",
+    "destination": "목적지 도시/지역명",
+    "duration": 여행일수 숫자,
+    "departure_days": "매주 화요일 등 (없으면 null)",
+    "departure_airport": "출발공항 (없으면 null)",
+    "airline": "항공사명/편명 (없으면 null)",
+    "min_participants": 최소인원 숫자 (없으면 4),
+    "ticketing_deadline": "YYYY-MM-DD 또는 null (연도 없으면 2026년 가정)",
+    "guide_tip": "기사/가이드경비 원문 (없으면 null)",
+    "single_supplement": "싱글차지 원문 (없으면 null)",
+    "small_group_surcharge": "소규모할증 원문 (없으면 null)",
+    "price_tiers": [
+      {
+        "period_label": "날짜/기간 표시 원문 그대로",
+        "departure_dates": ["YYYY-MM-DD"] 또는 null,
+        "date_range": {"start":"YYYY-MM-DD","end":"YYYY-MM-DD"} 또는 null,
+        "departure_day_of_week": "화 등 (없으면 null)",
+        "adult_price": 성인가격 숫자 또는 null,
+        "child_price": 아동가격 숫자 또는 null,
+        "status": "available 또는 confirmed 또는 soldout",
+        "note": "비고 또는 null"
+      }
+    ],
+    "price_list": [
+      {
+        "period": "기간 원문 (예: '3/20~3/28', '매주 화')",
+        "rules": [
+          {
+            "condition": "출발조건 원문 (예: '수요일', '제외일 3/28(토)', '전 출발일')",
+            "price_text": "가격 원문 (예: '799,000원', '별도문의')",
+            "price": 799000,
+            "badge": "특가♥ 또는 일반 또는 호텔UP 또는 별도문의 또는 확정 또는 마감 또는 null"
+          }
+        ],
+        "notes": "아동동일여부·싱글차지·대욕장UP 등 부가조건 또는 null"
+      }
+    ],
+    "surcharges": [{"period":"기간","amount_usd":null,"amount_krw":null,"note":""}],
+    "excluded_dates": ["YYYY-MM-DD"],
+    "inclusions": ["포함항목 원문 그대로"],
+    "excludes": ["불포함항목 원문 그대로"],
+    "optional_tours": [{"name":"","price_usd":null,"price_krw":null}],
+    "itinerary": ["제1일: ...", "제2일: ..."],
+    "accommodations": ["호텔명"],
+    "specialNotes": "주의사항 전체 원문",
+    "cancellation_policy": [{"period":"","rate":0,"note":""}],
+    "land_operator": "랜드사명 또는 null",
+    "product_tags": ["소규모","노팁","노옵션" 등 해당하는 것만],
+    "product_highlights": ["핵심 특전 3개 이내"],
+    "product_summary": "상품 2~3줄 요약",
+    "theme_tags": ["노옵션","가족여행","허니문","소규모","자유시간포함","온천포함","노팁" 등 해당하는 것만],
+    "selling_points": {
+      "hotel": "핵심 호텔명 또는 null",
+      "airline": "항공사명/코드 또는 null",
+      "unique": ["핵심 특전 2~3개 (예: '야경투어포함', '호텔UP')"]
+    },
+    "flight_info": {
+      "airline": "항공사 코드/명 또는 null",
+      "flight_no": "편명 (예: OZ121) 또는 null",
+      "depart": "HH:MM 또는 null",
+      "arrive": "HH:MM 또는 null",
+      "return_depart": "HH:MM 또는 null",
+      "return_arrive": "HH:MM 또는 null"
+    },
+    "itinerary_data": {
+      "meta": {
+        "title": "상품명",
+        "product_type": "실속 등 또는 null",
+        "destination": "목적지",
+        "nights": 박수,
+        "days": 일수,
+        "departure_airport": "출발공항 또는 null",
+        "airline": "항공사 또는 null",
+        "flight_out": "출발편 코드 또는 null",
+        "flight_in": "귀국편 코드 또는 null",
+        "departure_days": "출발요일 원문 또는 null",
+        "min_participants": 최소인원,
+        "room_type": "2인1실 등 또는 null",
+        "ticketing_deadline": "발권마감 원문 또는 null",
+        "hashtags": ["#관광지명"],
+        "brand": "여소남"
+      },
+      "highlights": {
+        "inclusions": ["포함내역 원문 그대로 (절대 편집 금지)"],
+        "excludes": ["불포함내역 원문 그대로 (금액 포함, 절대 편집 금지)"],
+        "shopping": "쇼핑 원문 또는 null",
+        "remarks": ["RMK/비고 원문 그대로 (절대 편집 금지)"]
+      },
+      "days": [
+        {
+          "day": 1,
+          "regions": ["지역명"],
+          "meals": {"breakfast":false,"lunch":true,"dinner":true,"breakfast_note":null,"lunch_note":"식사명","dinner_note":"식사명"},
+          "schedule": [
+            {"time":"09:00","activity":"활동명","transport":"BX371","note":null,"type":"flight"}
+          ],
+          "hotel": {"name":"호텔명","grade":"4성","note":"또는 동급"} 또는 null
+        }
+      ],
+      "optional_tours": [
+        {"name":"선택관광명","price_usd":30,"price_krw":null,"note":null}
+      ]
+    }
+  }
+]
+
+★ 중요 규칙:
+- 일정표(days)는 문서에 있는 그대로 추출. 없으면 []
+- 포함/불포함/RMK는 원문 그대로 (절대 편집/요약 금지 — 법적 분쟁 방지)
+- 핵심 금액/기간/주의사항은 **텍스트** 형식으로 bold 처리
+- 가격은 원화 숫자만 (쉼표 제거, 만원 단위면 ×10000)
+- 날짜는 YYYY-MM-DD, 연도 없으면 2026년 가정
+- type 값: normal, optional, shopping, flight, train, meal, hotel
+- 규칙1 — 호텔 일자 귀속: 각 일자 블록에서 'HOTEL'/'호텔 :'/'숙소' 키워드를 직접 찾아 해당 일자 hotel 필드에 귀속. 키워드 없으면 null. 임의 추론·복사 금지.
+- 규칙2 — 선택관광 분리: '↓추천선택관광'/'선택관광'/'옵션' 하위 동선·상세 내용은 schedule[] activity에 절대 포함 금지. 이름+가격만 optional_tours[]에 저장. 해당 일자 메인 일정은 공식 일정만 표기. schedule 포함 시 type:"optional", activity는 '선택관광명(가격)'으로만 단순 표기.
+- 규칙3 — 식사 표준화: '불포함'/'자유식'/'X'/'-'/'없음'/'미포함' → false, note: null. 특정 식사명 있으면 → true, note에 식사명. 혼재 표기 및 불확실 → false, null.
+- ★ price_list 작성 규칙 (반드시 채울 것):
+- 동일 기간 내 요일·날짜별 다른 가격 → rules[] 배열 분리.
+- price: 숫자(원화). '별도문의'·'문의' 등 확정 불가 시 null.
+- badge: 특가♥/↑/★ 등 원문 기반 표준값 매핑. 없으면 null.
+- notes: 아동요금 동일 여부, 싱글차지, 대욕장UP 등 반드시 포함.
+
+반드시 JSON 배열만 반환. 마크다운 코드블록 없이.`;
+
+export interface MultiProductResult {
+  extractedData: ExtractedData;
+  itineraryData: TravelItinerary | null;
+}
+
+export async function extractMultipleProducts(
+  rawText: string,
+  base64Image?: string,
+  mimeType?: string,
+): Promise<MultiProductResult[]> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    let raw: string;
+    if (base64Image && mimeType) {
+      raw = await callGeminiVision(apiKey, base64Image, mimeType, MULTI_PRODUCT_PROMPT);
+    } else {
+      raw = await callGeminiText(apiKey, rawText, MULTI_PRODUCT_PROMPT);
+    }
+
+    const jsonStr = raw
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(jsonStr) as Record<string, unknown>[];
+
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
+
+    console.log('[Parser] 복수 상품 추출 완료 —', parsed.length, '개');
+
+    return parsed.map((item) => {
+      // extractedData 변환
+      const extractedData: ExtractedData = {
+        rawText,
+        title: (item.title as string) || undefined,
+        category: (item.category as ExtractedData['category']) || 'package',
+        product_type: (item.product_type as string) || undefined,
+        trip_style: (item.trip_style as string) || undefined,
+        destination: (item.destination as string) || undefined,
+        duration: typeof item.duration === 'number' ? item.duration : undefined,
+        departure_days: (item.departure_days as string) || undefined,
+        departure_airport: (item.departure_airport as string) || undefined,
+        airline: (item.airline as string) || undefined,
+        min_participants: typeof item.min_participants === 'number' ? item.min_participants : 4,
+        ticketing_deadline: (item.ticketing_deadline as string) || undefined,
+        guide_tip: (item.guide_tip as string) || undefined,
+        single_supplement: (item.single_supplement as string) || undefined,
+        small_group_surcharge: (item.small_group_surcharge as string) || undefined,
+        price: Array.isArray(item.price_tiers) && (item.price_tiers as PriceTier[]).length > 0
+          ? ((item.price_tiers as PriceTier[]).find(t => t.adult_price)?.adult_price ?? undefined)
+          : undefined,
+        price_tiers: Array.isArray(item.price_tiers) ? (item.price_tiers as PriceTier[]) : [],
+        price_list: Array.isArray(item.price_list) ? (item.price_list as PriceListItem[]) : [],
+        surcharges: Array.isArray(item.surcharges) ? (item.surcharges as Surcharge[]) : [],
+        excluded_dates: Array.isArray(item.excluded_dates) ? (item.excluded_dates as string[]) : [],
+        inclusions: Array.isArray(item.inclusions) ? (item.inclusions as string[]).filter(Boolean) : [],
+        excludes: Array.isArray(item.excludes) ? (item.excludes as string[]).filter(Boolean) : [],
+        optional_tours: Array.isArray(item.optional_tours) ? (item.optional_tours as OptionalTour[]) : [],
+        itinerary: Array.isArray(item.itinerary) ? (item.itinerary as string[]).filter(Boolean) : [],
+        accommodations: Array.isArray(item.accommodations) ? (item.accommodations as string[]).filter(Boolean) : [],
+        specialNotes: (item.specialNotes as string) || undefined,
+        cancellation_policy: Array.isArray(item.cancellation_policy) ? (item.cancellation_policy as CancellationPolicy[]) : [],
+        category_attrs: (item.category_attrs as Record<string, unknown>) || {},
+        land_operator: (item.land_operator as string) || undefined,
+        product_tags: Array.isArray(item.product_tags) ? (item.product_tags as string[]).filter(Boolean) : [],
+        product_highlights: Array.isArray(item.product_highlights) ? (item.product_highlights as string[]).filter(Boolean) : [],
+        product_summary: (item.product_summary as string) || undefined,
+        // Phase 2 확장 필드
+        theme_tags: Array.isArray(item.theme_tags) ? (item.theme_tags as string[]).filter(Boolean) : [],
+        selling_points: (item.selling_points && typeof item.selling_points === 'object')
+          ? (item.selling_points as ExtractedData['selling_points'])
+          : null,
+        flight_info: (item.flight_info && typeof item.flight_info === 'object')
+          ? (item.flight_info as ExtractedData['flight_info'])
+          : null,
+      };
+
+      // itineraryData 변환
+      let itineraryData: TravelItinerary | null = null;
+      if (item.itinerary_data && typeof item.itinerary_data === 'object') {
+        itineraryData = item.itinerary_data as TravelItinerary;
+        if (itineraryData.meta) itineraryData.meta.brand = '여소남';
+      }
+
+      return { extractedData, itineraryData };
+    });
+  } catch (err) {
+    console.warn('[Parser] 복수 상품 추출 실패:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+// ─── 메인 파싱 함수 ─────────────────────────────────────────
+
+export async function parseDocument(buffer: Buffer, filename: string): Promise<ParsedDocument> {
   const ext = filename.split('.').pop()?.toLowerCase();
-  let rawText = '';
   let fileType: 'pdf' | 'image' | 'hwp' = 'pdf';
 
   try {
-    switch (ext) {
-      case 'pdf':
-        fileType = 'pdf';
-        rawText = await parsePDF(buffer);
-        break;
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-        fileType = 'image';
-        rawText = await parseImage(buffer);
-        break;
-      case 'hwp':
-        fileType = 'hwp';
-        rawText = await parseHWP(buffer, filename);
-        break;
-      default:
-        throw new Error(`지원하지 않는 파일 형식: ${ext}`);
+    if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
+      fileType = 'image';
+      const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const base64 = buffer.toString('base64');
+      // 두 추출을 병렬 실행
+      const [imageResult, itineraryData] = await Promise.all([
+        parseImage(buffer, mimeType),
+        extractItineraryData('', base64, mimeType),
+      ]);
+      return {
+        filename, fileType,
+        rawText: imageResult.rawText,
+        extractedData: imageResult.extractedData,
+        itineraryData,
+        parsedAt: new Date(),
+        confidence: calculateConfidence(imageResult.extractedData),
+      };
     }
 
-    if (!rawText) {
-      throw new Error('파일에서 텍스트를 추출할 수 없습니다.');
+    let rawText = '';
+    if (ext === 'pdf') {
+      fileType = 'pdf';
+      rawText = await parsePDF(buffer);
+    } else if (ext === 'hwp') {
+      fileType = 'hwp';
+      rawText = await parseHWP(buffer, filename);
+    } else {
+      throw new Error(`지원하지 않는 파일 형식: ${ext}`);
     }
 
-    const extractedData = extractTravelInfo(rawText, filename);
+    if (!rawText) throw new Error('파일에서 텍스트를 추출할 수 없습니다.');
+
+    // 복수 상품 통합 추출 (1회 AI 호출로 모든 상품 + 일정표 추출)
+    const multiProducts = await extractMultipleProducts(rawText);
+
+    if (multiProducts.length > 1) {
+      // 복수 상품: 첫 번째를 대표 extractedData로, 전체를 multiProducts에 담아 반환
+      console.log('[Parser] 복수 상품 감지:', multiProducts.length, '개');
+      return {
+        filename, fileType, rawText,
+        extractedData: multiProducts[0].extractedData,
+        itineraryData: multiProducts[0].itineraryData,
+        multiProducts,
+        parsedAt: new Date(),
+        confidence: calculateConfidence(multiProducts[0].extractedData),
+      };
+    }
+
+    // 단일 상품: 기존 방식 유지 (multiProducts가 0개면 AI fallback)
+    let extractedData: ExtractedData;
+    let itineraryData: TravelItinerary | null = null;
+    if (multiProducts.length === 1) {
+      extractedData = multiProducts[0].extractedData;
+      itineraryData = multiProducts[0].itineraryData;
+    } else {
+      // AI 실패 시 기존 fallback
+      [extractedData, itineraryData] = await Promise.all([
+        parseTextWithAI(rawText),
+        extractItineraryData(rawText),
+      ]);
+    }
 
     return {
-      filename,
-      fileType,
-      rawText,
+      filename, fileType, rawText,
       extractedData,
+      itineraryData,
       parsedAt: new Date(),
       confidence: calculateConfidence(extractedData),
     };
   } catch (error) {
-    throw new Error(
-      `문서 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`
-    );
+    throw new Error(`문서 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
 
-// 추출 신뢰도 계산 (0-1)
-function calculateConfidence(data: ParsedDocument['extractedData']): number {
+// ─── Step 1: 문서 분류 (저비용 사전 분류) ─────────────────────
+
+export interface ClassificationResult {
+  /** 상품 개수 추정 (1~N) */
+  productCount: number;
+  /** 여행 문서 여부 */
+  isTravel: boolean;
+  /** 문서 유형 */
+  documentType: 'package' | 'flyer' | 'itinerary' | 'unknown';
+  /** 초기 추정 신뢰도 (0~1) */
+  estimatedConfidence: number;
+}
+
+const CLASSIFY_PROMPT = `이 문서의 앞부분을 보고 아래 JSON만 반환하세요. 다른 텍스트 없이 JSON만.
+
+{
+  "productCount": 상품 개수 추정 숫자 (1~10),
+  "isTravel": true 또는 false (여행 관련 문서 여부),
+  "documentType": "package" 또는 "flyer" 또는 "itinerary" 또는 "unknown",
+  "estimatedConfidence": 0~1 사이 숫자 (파싱 가능할 것 같은 신뢰도)
+}
+
+- productCount: "2박3일 실속", "3박4일 품격" 처럼 별개 상품이면 2, 단일 상품이면 1
+- isTravel: 여행사/투어/패키지 문서이면 true, 기타이면 false
+- documentType: 가격표+일정 포함 패키지면 "package", 가격표만 있으면 "flyer", 일정표만이면 "itinerary"`;
+
+/**
+ * 문서 사전 분류 — 첫 2,000자만 사용하여 저비용으로 구조 파악.
+ * API 키 미설정 또는 실패 시 안전한 기본값 반환.
+ */
+export async function classifyDocument(rawText: string): Promise<ClassificationResult> {
+  const DEFAULT: ClassificationResult = {
+    productCount: 1, isTravel: true, documentType: 'package', estimatedConfidence: 0.7,
+  };
+
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) return DEFAULT;
+
+  try {
+    const snippet = rawText.slice(0, 2000);
+    const raw = await callGeminiText(apiKey, snippet, CLASSIFY_PROMPT);
+    const jsonStr = raw
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(jsonStr) as Partial<ClassificationResult>;
+
+    return {
+      productCount:        typeof parsed.productCount === 'number' ? Math.max(1, parsed.productCount) : 1,
+      isTravel:            typeof parsed.isTravel === 'boolean' ? parsed.isTravel : true,
+      documentType:        (['package','flyer','itinerary','unknown'] as const).includes(parsed.documentType as never)
+                             ? (parsed.documentType as ClassificationResult['documentType'])
+                             : 'package',
+      estimatedConfidence: typeof parsed.estimatedConfidence === 'number'
+                             ? Math.min(1, Math.max(0, parsed.estimatedConfidence))
+                             : 0.7,
+    };
+  } catch (err) {
+    console.warn('[Parser] classifyDocument 실패 (기본값 사용):', err instanceof Error ? err.message : err);
+    return DEFAULT;
+  }
+}
+
+// ─── 신뢰도 계산 ────────────────────────────────────────────
+
+export function calculateConfidence(data: ExtractedData): number {
   let score = 0;
-  let totalChecks = 0;
-
   if (data.title) score += 15;
-  totalChecks += 15;
-
-  if (data.destination) score += 20;
-  totalChecks += 20;
-
-  if (data.duration) score += 15;
-  totalChecks += 15;
-
-  if (data.price) score += 25;
-  totalChecks += 25;
-
+  if (data.destination) score += 15;
+  if (data.duration) score += 10;
+  if (data.price_tiers && data.price_tiers.length > 0) score += 30; // price_tiers가 핵심
+  else if (data.price) score += 15;
   if (data.itinerary && data.itinerary.length > 0) score += 15;
-  totalChecks += 15;
-
   if (data.inclusions && data.inclusions.length > 0) score += 10;
-  totalChecks += 10;
-
-  return totalChecks > 0 ? score / totalChecks : 0;
+  if (data.product_type) score += 5;
+  return Math.min(score / 100, 1);
 }

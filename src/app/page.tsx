@@ -12,36 +12,52 @@ export default function Home() {
             여행사 문서 자동 처리 및 AI 콘텐츠 생성 시스템
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-            <Link href="/admin/upload">
-              <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition cursor-pointer">
-                <div className="text-4xl mb-4">📤</div>
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">문서 업로드</h2>
-                <p className="text-gray-600">HWP/PDF/JPG 자동 파싱</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
+            <Link href="/packages">
+              <div className="bg-white p-5 rounded-xl shadow hover:shadow-lg transition cursor-pointer text-center">
+                <div className="text-3xl mb-2">🗺️</div>
+                <h2 className="text-base font-semibold text-gray-900">상품 목록</h2>
+                <p className="text-xs text-gray-500 mt-1">여행 상품 조회</p>
               </div>
             </Link>
 
             <Link href="/admin/qa">
-              <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition cursor-pointer">
-                <div className="text-4xl mb-4">💬</div>
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">Q&A</h2>
-                <p className="text-gray-600">여행 상담 및 추천</p>
+              <div className="bg-white p-5 rounded-xl shadow hover:shadow-lg transition cursor-pointer text-center">
+                <div className="text-3xl mb-2">💬</div>
+                <h2 className="text-base font-semibold text-gray-900">AI 상담</h2>
+                <p className="text-xs text-gray-500 mt-1">실시간 AI 추천</p>
+              </div>
+            </Link>
+
+            <Link href="/admin/bookings">
+              <div className="bg-white p-5 rounded-xl shadow hover:shadow-lg transition cursor-pointer text-center">
+                <div className="text-3xl mb-2">📋</div>
+                <h2 className="text-base font-semibold text-gray-900">예약 관리</h2>
+                <p className="text-xs text-gray-500 mt-1">예약·입금 확인</p>
+              </div>
+            </Link>
+
+            <Link href="/admin/customers">
+              <div className="bg-white p-5 rounded-xl shadow hover:shadow-lg transition cursor-pointer text-center">
+                <div className="text-3xl mb-2">👤</div>
+                <h2 className="text-base font-semibold text-gray-900">고객 관리</h2>
+                <p className="text-xs text-gray-500 mt-1">CRM · 마일리지</p>
               </div>
             </Link>
 
             <Link href="/admin">
-              <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition cursor-pointer">
-                <div className="text-4xl mb-4">📋</div>
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">관리자</h2>
-                <p className="text-gray-600">문서 승인 및 마진 관리</p>
+              <div className="bg-white p-5 rounded-xl shadow hover:shadow-lg transition cursor-pointer text-center">
+                <div className="text-3xl mb-2">⚙️</div>
+                <h2 className="text-base font-semibold text-gray-900">관리자</h2>
+                <p className="text-xs text-gray-500 mt-1">상품 승인</p>
               </div>
             </Link>
 
-            <Link href="/admin/generate">
-              <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition cursor-pointer">
-                <div className="text-4xl mb-4">✨</div>
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">AI 생성</h2>
-                <p className="text-gray-600">콘텐츠 자동 생성</p>
+            <Link href="/admin/upload">
+              <div className="bg-white p-5 rounded-xl shadow hover:shadow-lg transition cursor-pointer text-center">
+                <div className="text-3xl mb-2">📤</div>
+                <h2 className="text-base font-semibold text-gray-900">문서 업로드</h2>
+                <p className="text-xs text-gray-500 mt-1">HWP/PDF/JPG</p>
               </div>
             </Link>
           </div>
