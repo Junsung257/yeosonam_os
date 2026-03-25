@@ -421,10 +421,7 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
                     </td>
                   )}
                   <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
-                    {isMin ? <span className="text-red-600 font-bold text-xs">🔥최저가</span>
-                      : rIdx === 0 && periodNotes.get(group.period.split('\n')[0])
-                        ? <span className="text-blue-600 font-medium text-[10px]">{periodNotes.get(group.period.split('\n')[0])}</span>
-                        : null}
+                    {isMin && <span className="text-red-600 font-bold text-xs">🔥최저가</span>}
                   </td>
                 </tr>
               );
@@ -432,6 +429,14 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
           )}
         </tbody>
       </table>
+      {/* 비고 note 중복 제거 후 하단 표시 */}
+      {periodNotes.size > 0 && (
+        <div className="mt-1 space-y-0.5">
+          {[...new Set(periodNotes.values())].map((note, i) => (
+            <p key={i} className="text-[10px] text-blue-600 leading-snug">• {note}</p>
+          ))}
+        </div>
+      )}
       {excludedDates && excludedDates.length > 0 && (
         <p className="mt-1 text-[10px] text-red-500 leading-snug">• 항공제외일: {excludedDates.join(', ')}</p>
       )}
@@ -779,22 +784,20 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
 
             {/* 우측: 카드 */}
             <div className="flex-1 bg-slate-50/80 rounded-xl p-3 border border-slate-200">
-              {/* 헤더: 동선 */}
+              {/* 헤더: 항공편 있으면 1줄 통합, 없으면 route만 */}
               <div className="mb-1.5 pb-1.5 border-b border-slate-200">
-                <h3 {...E} className={`text-[13px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
-                  📍 {day.regions?.join(' → ') || `${day.day}일차 일정`}
-                </h3>
-                {/* 항공 바: 편명 + 출발→도착 1줄 */}
-                {flightItem && (() => {
+                {flightItem ? (() => {
                   const flights = day.schedule!.filter(s => s.type === 'flight');
                   const dep = flights.find(f => f.activity?.includes('출발'));
                   const arr = flights.find(f => f.activity?.includes('도착'));
                   const airlineName = getAirlineName(flightItem.transport);
+                  const route = day.regions?.join(' → ') || '';
                   return (
-                    <div className="mt-1 bg-blue-600 text-white rounded px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold">
+                    <div className="bg-blue-600 text-white rounded px-2.5 py-1.5 flex items-center justify-between text-[12px] font-semibold">
                       <div className="flex items-center gap-1.5">
                         <span>✈️ {flightItem.transport}</span>
                         {airlineName && <span className="text-blue-200 text-[10px] font-normal">({airlineName})</span>}
+                        <span className="text-blue-100 font-normal">{route}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span>{dep?.time || flightItem.time || ''}</span>
@@ -803,7 +806,11 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                       </div>
                     </div>
                   );
-                })()}
+                })() : (
+                  <h3 {...E} className={`text-[13px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
+                    📍 {day.regions?.join(' → ') || `${day.day}일차 일정`}
+                  </h3>
+                )}
               </div>
 
               {/* 타임라인: 세로선 + 색상 dot */}
