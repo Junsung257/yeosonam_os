@@ -68,6 +68,8 @@ export interface AttractionInfo {
   short_desc?: string;
   category?: string;
   emoji?: string;
+  country?: string;
+  region?: string;
 }
 
 export interface YeosonamA4Props {
@@ -117,17 +119,25 @@ const EC = 'outline-none focus:bg-yellow-50';
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════
 
-// 관광지 매칭: 양방향 포함 매칭 (DB 이름이 activity에 포함되거나, activity가 DB 이름에 포함)
-function matchAttraction(activity: string, attractions?: AttractionInfo[]): AttractionInfo | null {
+// 관광지 매칭: 지역(region) 필터 + 양방향 포함 매칭
+function matchAttraction(activity: string, attractions?: AttractionInfo[], destination?: string): AttractionInfo | null {
   if (!attractions?.length) return null;
+  // 같은 지역 관광지만 필터 (destination이 region/country에 포함되면 매칭)
+  const filtered = destination
+    ? attractions.filter(a =>
+        !a.region || !destination ||
+        destination.includes(a.region) || (a.region && a.region.includes(destination)) ||
+        (a.country && destination.includes(a.country)))
+    : attractions;
+  if (!filtered.length) return null;
   // 1. 정확 매칭
-  const exact = attractions.find(a => activity === a.name);
+  const exact = filtered.find(a => activity === a.name);
   if (exact) return exact;
   // 2. DB 이름이 activity에 포함 (name이 2자 이상)
-  const dbInAct = attractions.find(a => a.name.length >= 2 && activity.includes(a.name));
+  const dbInAct = filtered.find(a => a.name.length >= 2 && activity.includes(a.name));
   if (dbInAct) return dbInAct;
   // 3. activity가 DB 이름에 포함 (activity가 2자 이상)
-  const actInDb = attractions.find(a => activity.length >= 2 && a.name.includes(activity));
+  const actInDb = filtered.find(a => activity.length >= 2 && a.name.includes(activity));
   if (actInDb) return actInDb;
   return null;
 }
@@ -223,7 +233,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             airline={pkg.airline}
           />
           <div className="flex-1 px-10 pb-8">
-            <DailyItinerary days={chunk} attractions={attractions} />
+            <DailyItinerary days={chunk} attractions={attractions} destination={pkg.destination} />
           </div>
           {/* 푸터 삭제 — 40px 확보 */}
         </article>
@@ -800,7 +810,7 @@ function splitPoi(activity: string): { poiName: string; poiDesc: string } {
 }
 
 /** 일정표 — v3: 타임라인 dot + 관광지 하이라이트 배지 */
-function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attractions?: AttractionInfo[] }) {
+function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[]; attractions?: AttractionInfo[]; destination?: string }) {
   return (
     <section className="space-y-3">
       {days.map((day) => {
@@ -852,7 +862,7 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
               {day.schedule && day.schedule.filter(s => s.type !== 'flight').length > 0 && (
                 <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
-                    const attr = matchAttraction(item.activity, attractions);
+                    const attr = matchAttraction(item.activity, attractions, destination);
                     // 배지 결정: type별 배지 우선 → attractions 매칭 시 관광 배지 → 없으면 null
                     const badge = getActivityBadge(item.type) || (attr ? TOUR_BADGE : null);
                     return (
