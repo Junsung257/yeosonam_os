@@ -205,7 +205,7 @@ async function identifySupplierFromText(
 
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const snippet = `${extractedText.slice(0, 400)}\n...\n${extractedText.slice(-300)}`;
     const prompt = `다음 여행 문서의 헤더와 푸터를 보고 랜드사(현지여행사) 이름을 찾으세요.\nJSON만 반환: {"supplier_name": "이름 또는 null"}\n\n${snippet}`;
@@ -748,7 +748,7 @@ export async function POST(request: NextRequest) {
             if (apiKey) {
               const { GoogleGenerativeAI } = await import('@google/generative-ai');
               const genAI = new GoogleGenerativeAI(apiKey);
-              const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', generationConfig: { temperature: 0.3 } });
+              const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { temperature: 0.3 } });
 
               const uniqueNames = [...new Set(newActivities.map(a => a.activity))].slice(0, 30); // 최대 30개
               const dest = newActivities[0]?.destination || '';

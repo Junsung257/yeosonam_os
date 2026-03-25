@@ -196,7 +196,7 @@ async function generateWithGemini(packageData: TravelPackage, contentType: strin
 
   try {
     // 여러 모델 순서대로 시도
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash-001', 'gemini-pro'];
+    const models = ['gemini-2.5-flash', 'gemini-1.5-flash-001', 'gemini-pro'];
     let lastError = null;
 
     for (const modelName of models) {
@@ -391,7 +391,7 @@ export async function generateAdVariants(
         break;
       }
       case 'gemini': {
-        const models = ['gemini-2.0-flash', 'gemini-1.5-flash-001', 'gemini-pro'];
+        const models = ['gemini-2.5-flash', 'gemini-1.5-flash-001', 'gemini-pro'];
         for (const m of models) {
           try {
             const genModel = getGenAI().getGenerativeModel({ model: m });
@@ -521,7 +521,7 @@ export async function generateMarketingCopies(
   }
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
     const prompt = MARKETING_SYSTEM_PROMPT + '\n\n' + buildMarketingUserPrompt(params);
     const result = await model.generateContent(prompt);
     const raw = result.response.text()
