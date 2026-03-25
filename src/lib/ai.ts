@@ -521,7 +521,7 @@ export async function generateMarketingCopies(
   }
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
     const prompt = MARKETING_SYSTEM_PROMPT + '\n\n' + buildMarketingUserPrompt(params);
     const result = await model.generateContent(prompt);
     const raw = result.response.text()

@@ -414,18 +414,16 @@ export async function POST(request: NextRequest) {
     // ── [E] Step 1: 문서 분류 (저비용 사전 분류) ─────────────────────────────
     // 첫 2,000자만 사용하는 경량 Gemini 호출로 상품 개수·문서 유형·여행 여부 파악
 
-    let rawTextForClassify = '';
-    // HWP/PDF 첫 파싱 없이 간단히 buffer 텍스트 디코딩 시도
-    try {
-      rawTextForClassify = buffer.toString('utf-8').slice(0, 2000);
-    } catch { /* 이진 파일은 빈 문자열 — classifyDocument가 기본값 반환 */ }
+    // ── [E-1] PDF/HWP 텍스트 추출 (바이너리 → 텍스트) ──────────────────────
+    // 중요: PDF는 바이너리이므로 buffer.toString('utf-8')은 깨진 문자열을 반환함
+    // 반드시 pdf-parse로 먼저 텍스트를 추출한 후 분류기에 넘겨야 함
+    const parsedDocument = await parseDocument(buffer, file.name);
+    const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
 
     const classification = await classifyDocument(rawTextForClassify);
     console.log('[Upload API] Step1 분류:', classification);
 
-    // ── [F] Step 2: 전체 AI 파싱 (기존 parseDocument) ───────────────────────
-
-    const parsedDocument = await parseDocument(buffer, file.name);
+    // ── [F] Step 2: 파싱 결과 활용 (이미 위에서 완료) ────────────────────────
 
     console.log('[Upload API] Step2 파싱 완료:', {
       title:      parsedDocument.extractedData.title,
@@ -505,7 +503,16 @@ export async function POST(request: NextRequest) {
           console.warn('[Upload API] Zod 검증 실패:', validation.errors.join(' | '));
         }
 
-        const netPrice   = ed.price ?? 0;
+        // net_price CHECK (net_price > 0) 제약조건 방어
+        // AI가 가격을 파싱 못했으면 price_tiers에서 최저가 추출, 그래도 없으면 1
+        let netPrice = ed.price ?? 0;
+        if (netPrice <= 0 && ed.price_tiers?.length) {
+          const prices = ed.price_tiers
+            .map(t => t.adult_price)
+            .filter((p): p is number => typeof p === 'number' && p > 0);
+          if (prices.length > 0) netPrice = Math.min(...prices);
+        }
+        if (netPrice <= 0) netPrice = 1; // 최소 1원 — DB CHECK 통과, 상품관리에서 수동 수정
         const confidence = calculateConfidence(ed);
         const priceRows  = priceTiersToRows(ed);
 
@@ -612,6 +619,7 @@ export async function POST(request: NextRequest) {
               excludes:              ed.excludes         ?? [],
               accommodations:        ed.accommodations   ?? [],
               special_notes:         ed.specialNotes,
+              notices_parsed:        ed.notices_parsed    ?? [],
               confidence,
               category:              ed.category         ?? 'package',
               product_type:          ed.product_type,
@@ -681,6 +689,100 @@ export async function POST(request: NextRequest) {
         const errMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
         console.error('[Upload API] 상품 저장 오류:', { title, error: errMsg });
         saveErrors.push({ title, error: errMsg });
+      }
+    }
+
+    // ── [H-1] 관광지 마스터 DB 자동 구축 (attractions) ──────────────────────
+    if (isSupabaseConfigured) {
+      try {
+        // 모든 상품의 일정에서 관광지명 추출
+        const allActivities: { activity: string; destination?: string }[] = [];
+        for (const p of productsToSave) {
+          const days = p.itineraryData?.days || [];
+          const dest = p.extractedData.destination;
+          for (const day of days) {
+            for (const s of (day.schedule || [])) {
+              if (s.type === 'flight' || s.type === 'hotel' || !s.activity) continue;
+              allActivities.push({ activity: s.activity, destination: dest });
+            }
+          }
+        }
+
+        if (allActivities.length > 0) {
+          // 기존 attractions 이름 조회
+          const { data: existingAttr } = await supabaseAdmin
+            .from('attractions')
+            .select('name');
+          const existingNames = new Set((existingAttr || []).map((a: { name: string }) => a.name));
+
+          // Gemini에 신규 관광지만 한 번에 설명 생성 요청
+          const newActivities = allActivities.filter(a => !existingNames.has(a.activity));
+
+          if (newActivities.length > 0) {
+            const apiKey = process.env.GOOGLE_AI_API_KEY;
+            if (apiKey) {
+              const { GoogleGenerativeAI } = await import('@google/generative-ai');
+              const genAI = new GoogleGenerativeAI(apiKey);
+              const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', generationConfig: { temperature: 0.3 } });
+
+              const uniqueNames = [...new Set(newActivities.map(a => a.activity))].slice(0, 30); // 최대 30개
+              const dest = newActivities[0]?.destination || '';
+
+              const prompt = `아래 관광지/활동 목록에 대해 각각 고객이 설레는 1줄 설명(15~25자)과 카테고리, 이모지를 JSON 배열로 반환하세요.
+설명 규칙:
+- 고객이 "여기 가고 싶다!"고 느낄 수 있는 매력적이고 정확한 한 줄. 과장 금지.
+- 예: "야류 해양 국립공원" → "파도가 빚은 기암괴석 자연 갤러리"
+- 예: "라오허제 야시장" → "현지인이 사랑하는 타이베이 미식 야시장"
+- 예: "고궁박물관" → "세계 4대 박물관, 중국 5000년 보물 컬렉션"
+카테고리: sightseeing|temple|market|museum|nature|palace|shopping|entertainment|park|beach|cultural
+관광 활동이 아닌 항목(이동, 수속, 호텔체크인, 자유시간, 휴식 등)은 skip:true로 표시.
+
+목록:
+${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
+
+반환 형식 (JSON 배열만, 마크다운 없이):
+[{"name":"관광지명","desc":"매력적 1줄 설명","category":"sightseeing","emoji":"🏛️","skip":false}]`;
+
+              try {
+                const result = await model.generateContent(prompt);
+                const raw = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+                const attractions = JSON.parse(raw) as { name: string; desc: string; category: string; emoji: string; skip?: boolean }[];
+
+                // skip이 아닌 항목만 DB에 UPSERT
+                const toInsert = attractions
+                  .filter(a => !a.skip && a.name && a.desc)
+                  .map(a => ({
+                    name: a.name,
+                    short_desc: a.desc,
+                    country: dest,
+                    category: a.category || 'sightseeing',
+                    emoji: a.emoji || '📍',
+                    mention_count: 1,
+                  }));
+
+                if (toInsert.length > 0) {
+                  await supabaseAdmin
+                    .from('attractions')
+                    .upsert(toInsert, { onConflict: 'name', ignoreDuplicates: false })
+                    .then(({ error: upsertErr }: { error: { message: string } | null }) => {
+                      if (upsertErr) console.warn('[Upload API] attractions UPSERT 경고:', upsertErr.message);
+                      else console.log('[Upload API] attractions 등록:', toInsert.length, '개 신규');
+                    });
+                }
+              } catch (attrErr) {
+                console.warn('[Upload API] attractions 생성 실패 (비중단):', attrErr instanceof Error ? attrErr.message : attrErr);
+              }
+            }
+          } else {
+            // 기존 관광지 mention_count 증가
+            const mentionNames = [...new Set(allActivities.map(a => a.activity))];
+            for (const name of mentionNames) {
+              await supabaseAdmin.rpc('increment_mention_count', { attraction_name: name }).catch(() => {});
+            }
+          }
+        }
+      } catch (attrError) {
+        console.warn('[Upload API] attractions 처리 실패 (비중단):', attrError instanceof Error ? attrError.message : attrError);
       }
     }
 

@@ -192,10 +192,17 @@ export async function updatePackage(id: string, data: Record<string, unknown>) {
   }
 }
 
-// 여행 상품 삭제
+// 여행 상품 삭제 (연관 document_hashes도 함께 삭제 → 재업로드 가능)
 export async function deletePackage(id: string) {
   try {
-    const { error } = await supabase.from('travel_packages').delete().eq('id', id);
+    // 1) 해당 상품의 internal_code 조회
+    const { data: pkg } = await supabaseAdmin.from('travel_packages').select('internal_code').eq('id', id).maybeSingle();
+    // 2) document_hashes에서 해당 product_id(internal_code) 삭제
+    if (pkg?.internal_code) {
+      await supabaseAdmin.from('document_hashes').delete().eq('product_id', pkg.internal_code);
+    }
+    // 3) 상품 삭제
+    const { error } = await supabaseAdmin.from('travel_packages').delete().eq('id', id);
     if (error) throw error;
   } catch (error) {
     console.error('상품 삭제 실패:', error);
@@ -739,6 +746,7 @@ export async function createBooking(data: {
   bookingDate?: string; notes?: string; passengerIds?: string[];
   status?: string;
   paidAmount?: number;
+  affiliateId?: string; bookingType?: string;
   companions?: { name: string; phone?: string; passport_no?: string; passport_expiry?: string }[];
 }) {
   try {
@@ -763,6 +771,7 @@ export async function createBooking(data: {
       status: data.status || 'pending',
       paid_amount: data.paidAmount ?? 0,
       is_deleted: false,
+      ...(data.affiliateId ? { affiliate_id: data.affiliateId, booking_type: 'AFFILIATE' } : {}),
     }] as never).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;
@@ -1221,52 +1230,44 @@ export async function getCardNewsList(filters?: {
   packageId?: string;
   limit?: number;
 }): Promise<CardNews[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
+  const admin = getSupabaseAdmin();
+  if (!admin) return [];
 
-  let query = supabase
+  let query = admin
     .from('card_news')
-    .select('*, travel_packages(title, destination)')
+    .select('*')
     .order('created_at', { ascending: false });
 
   if (filters?.status) query = query.eq('status', filters.status);
   if (filters?.packageId) query = query.eq('package_id', filters.packageId);
   if (filters?.limit) query = query.limit(filters.limit);
 
-  const { data } = await query;
-  return (data ?? []).map((row: any) => ({
-    ...row,
-    package_title: row.travel_packages?.title,
-    package_destination: row.travel_packages?.destination,
-  }));
+  const { data, error } = await query;
+  if (error) { console.error('getCardNewsList error:', error.message); return []; }
+  return (data ?? []) as unknown as CardNews[];
 }
 
 export async function getCardNewsById(id: string): Promise<CardNews | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
 
-  const { data } = await supabase
+  const { data, error } = await admin
     .from('card_news')
-    .select('*, travel_packages(title, destination, price, itinerary, inclusions, excludes, product_highlights, product_summary)')
+    .select('*')
     .eq('id', id)
     .single();
 
-  if (!data) return null;
-  const d = data as Record<string, unknown> & { travel_packages?: { title?: string; destination?: string } };
-  return {
-    ...d,
-    package_title: d.travel_packages?.title,
-    package_destination: d.travel_packages?.destination,
-  } as unknown as CardNews;
+  if (error || !data) return null;
+  return data as unknown as CardNews;
 }
 
 export async function upsertCardNews(
   data: Partial<CardNews> & { title: string }
 ): Promise<CardNews | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
 
-  const { data: result, error } = await supabase
+  const { data: result, error } = await admin
     .from('card_news')
     .upsert({ ...data, updated_at: new Date().toISOString() } as never)
     .select()

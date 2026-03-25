@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"c:/Users/admin/Desktop/여소남OS\" && vercel --prod 2>&1",
+            "timeout": 120,
+            "statusMessage": "Vercel 배포 중...",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ]
+  }
+}

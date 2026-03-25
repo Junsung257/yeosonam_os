@@ -177,169 +177,168 @@ export default function GeneratePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">AI 콘텐츠 생성</h1>
-          <p className="text-gray-600">여행 상품을 선택하고 AI로 자동 콘텐츠를 생성하세요</p>
-        </div>
+    <div className="space-y-6">
+      {/* 헤더 */}
+      <div>
+        <h1 className="text-[16px] font-bold text-slate-800">AI 콘텐츠 생성</h1>
+        <p className="text-[13px] text-slate-500 mt-1">여행 상품을 선택하고 AI로 자동 콘텐츠를 생성하세요</p>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* 설정 패널 */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-6">생성 설정</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 설정 패널 */}
+        <div className="bg-white border border-slate-200 rounded-lg p-5">
+          <h2 className="text-[16px] font-semibold text-slate-800 mb-5">생성 설정</h2>
 
-            {/* 여행 상품 선택 */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                여행 상품 선택
-              </label>
-              <select
-                value={selectedPackage?.id || ''}
-                onChange={(e) => {
-                  const pkg = packages.find(p => p.id === e.target.value);
-                  setSelectedPackage(pkg || null);
-                }}
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">상품을 선택하세요</option>
-                {packages.map(pkg => (
-                  <option key={pkg.id} value={pkg.id}>
-                    {pkg.title} - {pkg.price.toLocaleString()}원
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* 콘텐츠 타입 선택 */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                콘텐츠 타입
-              </label>
-              <select
-                value={contentType}
-                onChange={(e) => setContentType(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {contentTypeOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* AI 모델 선택 */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                AI 모델
-              </label>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value as AIModel)}
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {modelOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* 버튼들 */}
-            <div className="flex gap-4">
-              <button
-                onClick={handleGenerate}
-                disabled={isLoading || !selectedPackage}
-                className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
-              >
-                {isLoading ? '생성 중...' : '콘텐츠 생성'}
-              </button>
-
-              <button
-                onClick={handleCompare}
-                disabled={isComparing || !selectedPackage}
-                className="flex-1 bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
-              >
-                {isComparing ? '비교 중...' : '모델 비교'}
-              </button>
-            </div>
-
-            {error && (
-              <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                {error}
-              </div>
-            )}
+          {/* 여행 상품 선택 */}
+          <div className="mb-5">
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+              여행 상품 선택
+            </label>
+            <select
+              value={selectedPackage?.id || ''}
+              onChange={(e) => {
+                const pkg = packages.find(p => p.id === e.target.value);
+                setSelectedPackage(pkg || null);
+              }}
+              className="w-full px-3 py-2 text-[14px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              <option value="">상품을 선택하세요</option>
+              {packages.map(pkg => (
+                <option key={pkg.id} value={pkg.id}>
+                  {pkg.title} - {pkg.price.toLocaleString()}원
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* 결과 패널 */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-6">생성 결과</h2>
+          {/* 콘텐츠 타입 선택 */}
+          <div className="mb-5">
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+              콘텐츠 타입
+            </label>
+            <select
+              value={contentType}
+              onChange={(e) => setContentType(e.target.value)}
+              className="w-full px-3 py-2 text-[14px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              {contentTypeOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {generatedContent && (
-              <div className="mb-6">
-                <h3 className="text-lg font-medium mb-3">생성된 콘텐츠</h3>
-                <div className="p-4 bg-gray-50 rounded-md whitespace-pre-wrap text-gray-800">
-                  {generatedContent}
-                </div>
+          {/* AI 모델 선택 */}
+          <div className="mb-5">
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+              AI 모델
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value as AIModel)}
+              className="w-full px-3 py-2 text-[14px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              {modelOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 버튼들 */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleGenerate}
+              disabled={isLoading || !selectedPackage}
+              className="flex-1 bg-[#001f3f] text-white py-2 px-4 rounded-lg text-[14px] font-medium hover:bg-blue-900 disabled:bg-slate-300 disabled:cursor-not-allowed transition"
+            >
+              {isLoading ? '생성 중...' : '콘텐츠 생성'}
+            </button>
+
+            <button
+              onClick={handleCompare}
+              disabled={isComparing || !selectedPackage}
+              className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 px-4 rounded-lg text-[14px] font-medium hover:bg-slate-50 disabled:bg-slate-100 disabled:cursor-not-allowed transition"
+            >
+              {isComparing ? '비교 중...' : '모델 비교'}
+            </button>
+          </div>
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[13px]">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* 결과 패널 */}
+        <div className="bg-white border border-slate-200 rounded-lg p-5">
+          <h2 className="text-[16px] font-semibold text-slate-800 mb-5">생성 결과</h2>
+
+          {generatedContent && (
+            <div className="mb-5">
+              <h3 className="text-[14px] font-medium text-slate-800 mb-2">생성된 콘텐츠</h3>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg whitespace-pre-wrap text-[13px] text-slate-800">
+                {generatedContent}
               </div>
-            )}
+            </div>
+          )}
 
-            {comparisonResults && (
+          {comparisonResults && (
+            <div>
+              <h3 className="text-[14px] font-medium text-slate-800 mb-2">모델 비교 결과</h3>
+              <div className="space-y-3">
+                {Object.entries(comparisonResults).map(([model, content]) => (
+                  <div key={model} className="border border-slate-200 rounded-lg p-4">
+                    <h4 className="font-medium text-slate-800 text-[13px] mb-2">
+                      {model === 'openai' ? 'OpenAI GPT-4' :
+                       model === 'claude' ? 'Anthropic Claude' :
+                       'Google Gemini'}
+                    </h4>
+                    <div className="text-slate-700 whitespace-pre-wrap text-[13px]">
+                      {content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!generatedContent && !comparisonResults && (
+            <div className="text-center text-slate-500 py-12 text-[14px]">
+              생성된 콘텐츠가 여기에 표시됩니다
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 선택된 상품 정보 */}
+      {selectedPackage && (
+        <div className="bg-white border border-slate-200 rounded-lg p-5">
+          <h2 className="text-[16px] font-semibold text-slate-800 mb-4">선택된 상품 정보</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h3 className="font-medium text-slate-800 text-[14px]">{selectedPackage.title}</h3>
+              <p className="text-slate-500 text-[13px]">{selectedPackage.destination} - {selectedPackage.duration}일</p>
+              <p className="text-[14px] font-semibold text-slate-800 mt-1">{selectedPackage.price.toLocaleString()}원</p>
+            </div>
+            {selectedPackage.parsedData && (
               <div>
-                <h3 className="text-lg font-medium mb-3">모델 비교 결과</h3>
-                <div className="space-y-4">
-                  {Object.entries(comparisonResults).map(([model, content]) => (
-                    <div key={model} className="border rounded-md p-4">
-                      <h4 className="font-medium text-gray-900 mb-2 capitalize">
-                        {model === 'openai' ? 'OpenAI GPT-4' :
-                         model === 'claude' ? 'Anthropic Claude' :
-                         'Google Gemini'}
-                      </h4>
-                      <div className="text-gray-700 whitespace-pre-wrap text-sm">
-                        {content}
-                      </div>
+                <h4 className="font-medium text-slate-800 text-[14px] mb-2">파싱된 데이터</h4>
+                <div className="text-[13px] text-slate-500 space-y-1">
+                  {Object.entries(selectedPackage.parsedData).map(([key, value]) => (
+                    <div key={key}>
+                      <span className="font-medium text-slate-700">{key}:</span> {value}
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
-            {!generatedContent && !comparisonResults && (
-              <div className="text-center text-gray-500 py-12">
-                생성된 콘텐츠가 여기에 표시됩니다
-              </div>
-            )}
           </div>
         </div>
-
-        {/* 선택된 상품 정보 */}
-        {selectedPackage && (
-          <div className="mt-8 bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">선택된 상품 정보</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h3 className="font-medium text-gray-900">{selectedPackage.title}</h3>
-                <p className="text-gray-600">{selectedPackage.destination} - {selectedPackage.duration}일</p>
-                <p className="text-lg font-semibold text-blue-600">{selectedPackage.price.toLocaleString()}원</p>
-              </div>
-              {selectedPackage.parsedData && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">파싱된 데이터</h4>
-                  <div className="text-sm text-gray-600 space-y-1">
-                    {Object.entries(selectedPackage.parsedData).map(([key, value]) => (
-                      <div key={key}>
-                        <span className="font-medium">{key}:</span> {value}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
