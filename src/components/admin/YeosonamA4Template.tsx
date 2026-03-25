@@ -242,17 +242,6 @@ function Page1Header({ title, badges }: { title: string; badges: React.ReactNode
   );
 }
 
-function Page1Footer() {
-  return (
-    <footer className="w-full bg-[#f3f3f4] py-3 px-10 flex justify-between items-center mt-auto">
-      <div className="flex items-baseline gap-2">
-        <span className="text-[#005d90] font-bold text-xs uppercase">YEOSONAM TRAVEL</span>
-        <span className="text-[9px] text-slate-400">WWW.YEOSONAM.CO.KR</span>
-      </div>
-      <span className="text-slate-400 text-[9px]">© 2024 YEOSONAM. ALL RIGHTS RESERVED.</span>
-    </footer>
-  );
-}
 
 
 function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceListItem[]; tiers?: PriceTier[]; excludedDates?: string[] }) {
@@ -326,8 +315,8 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
         {/* 부가 조건 (notes) 표 하단 표시 */}
         {priceList.some(g => g.notes) && (
           <div className="mt-1 space-y-0.5">
-            {priceList.filter(g => g.notes).map((g, i) => (
-              <p key={i} className="text-[10px] text-slate-500 leading-snug">• {g.notes}</p>
+            {[...new Set(priceList.filter(g => g.notes).map(g => g.notes!))].map((note, i) => (
+              <p key={i} className="text-[10px] text-slate-500 leading-snug">• {note}</p>
             ))}
           </div>
         )}
@@ -721,17 +710,6 @@ function ItineraryPageHeader({ title, departureAirport, destination }: { title: 
   );
 }
 
-function ItineraryPageFooter() {
-  return (
-    <footer className="w-full px-10 py-4 border-t border-slate-200 mt-auto flex justify-between items-center bg-white">
-      <div className="flex items-baseline gap-2">
-        <span className="font-bold text-[#005d90] text-xs">YEOSONAM TRAVEL</span>
-        <span className="text-[9px] text-slate-400">WWW.YEOSONAM.CO.KR</span>
-      </div>
-      <span className="text-[9px] text-red-400">* 현지 사정에 따라 일정이 변경될 수 있습니다.</span>
-    </footer>
-  );
-}
 
 // IATA 항공사 코드 → 항공사명
 const AIRLINE_MAP: Record<string, string> = {
