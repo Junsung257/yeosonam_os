@@ -117,14 +117,19 @@ const EC = 'outline-none focus:bg-yellow-50';
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════
 
-// 관광지 매칭: activity 텍스트에서 attraction name을 찾아 매칭
+// 관광지 매칭: 양방향 포함 매칭 (DB 이름이 activity에 포함되거나, activity가 DB 이름에 포함)
 function matchAttraction(activity: string, attractions?: AttractionInfo[]): AttractionInfo | null {
   if (!attractions?.length) return null;
-  // 정확 매칭 우선, 그다음 포함 매칭
-  return attractions.find(a => activity === a.name)
-    || attractions.find(a => activity.includes(a.name))
-    || attractions.find(a => a.name.length >= 3 && activity.includes(a.name))
-    || null;
+  // 1. 정확 매칭
+  const exact = attractions.find(a => activity === a.name);
+  if (exact) return exact;
+  // 2. DB 이름이 activity에 포함 (name이 2자 이상)
+  const dbInAct = attractions.find(a => a.name.length >= 2 && activity.includes(a.name));
+  if (dbInAct) return dbInAct;
+  // 3. activity가 DB 이름에 포함 (activity가 2자 이상)
+  const actInDb = attractions.find(a => activity.length >= 2 && a.name.includes(activity));
+  if (actInDb) return actInDb;
+  return null;
 }
 
 export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props) {
