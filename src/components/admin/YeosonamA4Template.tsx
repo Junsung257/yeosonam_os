@@ -100,7 +100,7 @@ export interface YeosonamA4Props {
 }
 
 // ── 유틸 ─────────────────────────────────────────────────
-const DAYS_PER_PAGE = 3;
+const DEFAULT_DAYS_PER_PAGE = 4;
 const PAGE_STYLE: React.CSSProperties = { width: '800px', aspectRatio: '210/297', background: 'white', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' as const };
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -133,7 +133,9 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   const title = pkg.display_name || pkg.title || '상품명';
   const itinerary = pkg.itinerary_data;
   const days = itinerary?.days || [];
-  const dayChunks = chunkArray(days, DAYS_PER_PAGE);
+  // 동적 DAYS_PER_PAGE: 일수에 따라 조절
+  const daysPerPage = days.length <= 4 ? 4 : days.length <= 6 ? 5 : DEFAULT_DAYS_PER_PAGE;
+  const dayChunks = chunkArray(days, daysPerPage);
 
   // 뱃지 공통
   const badgesContent = <>
@@ -147,12 +149,16 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
     {pkg.departure_days && <span className="text-[11px] text-slate-500">출발: {pkg.departure_days}</span>}
   </>;
 
-  // 유의사항 존재 여부
+  // 유의사항 분리 판단: 요금행 8개 초과이면 별도 페이지, 아니면 Page 1에 포함
+  const priceRowCount = (pkg.price_list?.length ?? 0) > 0
+    ? pkg.price_list!.reduce((sum, g) => sum + g.rules.length, 0)
+    : (pkg.price_tiers?.length ?? 0);
   const hasNotices = (pkg.notices_parsed?.length ?? 0) > 0 || pkg.special_notes;
+  const noticesOnSeparatePage = hasNotices && priceRowCount > 8;
 
   return (
     <div className="flex flex-col items-center gap-10">
-      {/* ═══ PAGE 1: 요금표 + 포함/불포함 (유의사항 항상 분리) ═══ */}
+      {/* ═══ PAGE 1: 요금표 + 포함/불포함 + (공간 여유 시 유의사항) ═══ */}
       <article className="a4-export-page" style={PAGE_STYLE}>
         <Page1Header title={title} badges={badgesContent} />
         <main className="flex-1 px-10 pb-3 text-[#0b1c30]">
@@ -162,12 +168,16 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
             excludes={pkg.excludes || itinerary?.highlights?.excludes}
           />
+          {/* 요금행이 적으면 유의사항도 Page 1에 포함 */}
+          {!noticesOnSeparatePage && hasNotices && (
+            <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
+          )}
         </main>
         <Page1Footer />
       </article>
 
-      {/* ═══ PAGE 1.5: 유의사항 (4-Type 카드만, 상세 없음) ═══ */}
-      {hasNotices && (
+      {/* ═══ PAGE 1.5: 유의사항 별도 페이지 (요금행 8개 초과 시) ═══ */}
+      {noticesOnSeparatePage && (
         <article className="a4-export-page" style={PAGE_STYLE}>
           <Page1Header title={title} badges={<span className="text-[11px] text-slate-500">예약 유의사항</span>} />
           <main className="flex-1 px-10 pb-3 text-[#0b1c30]">
@@ -752,37 +762,37 @@ function getDotColor(type?: string): string {
 /** 일정표 — v3: 타임라인 dot + 관광지 설명 매칭 + JPG 최적화 */
 function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attractions?: AttractionInfo[] }) {
   return (
-    <section className="space-y-5">
+    <section className="space-y-3">
       {days.map((day) => {
         const flightItem = day.schedule?.find(s => s.type === 'flight');
         return (
-          <div key={day.day} className="flex gap-5">
+          <div key={day.day} className="flex gap-3">
             {/* 좌측: 일차 숫자 */}
-            <div className="w-16 shrink-0 text-center pt-1">
-              <span className="text-4xl font-extrabold text-[#005d90] block leading-none">
+            <div className="w-12 shrink-0 text-center pt-0.5">
+              <span className="text-2xl font-extrabold text-[#005d90] block leading-none">
                 {String(day.day).padStart(2, '0')}
               </span>
-              <span className="text-sm font-bold text-[#8e4e14] tracking-tight">
+              <span className="text-[11px] font-bold text-[#8e4e14] tracking-tight">
                 {day.day}일차
               </span>
             </div>
 
             {/* 우측: 카드 */}
-            <div className="flex-1 bg-slate-50/80 rounded-2xl p-4 border border-slate-200 shadow-sm">
+            <div className="flex-1 bg-slate-50/80 rounded-xl p-3 border border-slate-200">
               {/* 헤더: 동선 */}
-              <div className="mb-2 pb-2 border-b border-slate-200">
-                <h3 {...E} className={`text-[15px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
+              <div className="mb-1.5 pb-1.5 border-b border-slate-200">
+                <h3 {...E} className={`text-[13px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
                   📍 {day.regions?.join(' → ') || `${day.day}일차 일정`}
                 </h3>
                 {/* 항공 바: 편명 + 출발→도착 1줄 */}
                 {flightItem && (() => {
                   const flights = day.schedule!.filter(s => s.type === 'flight');
                   const dep = flights.find(f => f.activity?.includes('출발'));
-                  const arr = flights.find(f => f.activity?.includes('도착') || f.activity?.includes('도착'));
+                  const arr = flights.find(f => f.activity?.includes('도착'));
                   const airlineName = getAirlineName(flightItem.transport);
                   return (
-                    <div className="mt-1.5 bg-blue-600 text-white rounded-lg px-3 py-1.5 flex items-center justify-between text-[12px] font-semibold">
-                      <div className="flex items-center gap-2">
+                    <div className="mt-1 bg-blue-600 text-white rounded px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold">
+                      <div className="flex items-center gap-1.5">
                         <span>✈️ {flightItem.transport}</span>
                         {airlineName && <span className="text-blue-200 text-[10px] font-normal">({airlineName})</span>}
                       </div>
@@ -798,26 +808,26 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
 
               {/* 타임라인: 세로선 + 색상 dot */}
               {day.schedule && day.schedule.filter(s => s.type !== 'flight').length > 0 && (
-                <div className="relative border-l-2 border-slate-200 ml-2 space-y-3 pb-1">
+                <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
                     const attr = matchAttraction(item.activity, attractions);
                     return (
-                      <div key={sIdx} className="relative pl-5">
+                      <div key={sIdx} className="relative pl-4">
                         {/* dot */}
                         <div className={`absolute -left-[5px] top-1.5 w-2 h-2 rounded-full ring-2 border-2 border-white ${getDotColor(item.type)}`} />
                         <div className="flex flex-col">
-                          <span {...E} className={`text-[13px] font-bold text-slate-800 break-keep leading-snug ${EC}`}>
+                          <span {...E} className={`text-[12px] font-bold text-slate-800 break-keep leading-snug ${EC}`}>
                             {item.time && <span className="text-blue-600 mr-1">{item.time}</span>}
                             {attr?.emoji && <span className="mr-0.5">{attr.emoji}</span>}
                             {item.activity}
                             {item.badge && (
-                              <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200">
+                              <span className="ml-1 inline-flex items-center px-1 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold rounded border border-emerald-200">
                                 {item.badge}
                               </span>
                             )}
                           </span>
                           {attr?.short_desc && (
-                            <span className="text-[11px] text-slate-500 ml-0.5 leading-snug">{attr.short_desc}</span>
+                            <span className="text-[10px] text-slate-500 ml-0.5 leading-snug">{attr.short_desc}</span>
                           )}
                         </div>
                       </div>
@@ -826,14 +836,14 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                 </div>
               )}
 
-              {/* 하단: 숙박 + 식사 카드 */}
-              <div className="mt-3 bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800 mb-2">
+              {/* 하단: 숙박 + 식사 */}
+              <div className="mt-2 bg-white rounded-lg border border-slate-200 p-2">
+                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
                   🏨 <span {...E} className={EC}>
                     {day.hotel ? `${day.hotel.name}${day.hotel.grade ? ` (${day.hotel.grade})` : ''}${day.hotel.note ? ` ${day.hotel.note}` : ''}` : '일정 종료'}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-[12px] text-slate-600 pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-3 text-[11px] text-slate-600 mt-1 pt-1 border-t border-slate-100">
                   <span {...E} className={EC}>☕ 조: {day.meals?.breakfast_note || (day.meals?.breakfast ? '호텔식' : '불포함')}</span>
                   <span className="text-slate-300">|</span>
                   <span {...E} className={EC}>🍜 중: {day.meals?.lunch_note || (day.meals?.lunch ? '현지식' : '불포함')}</span>
