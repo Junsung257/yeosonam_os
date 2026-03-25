@@ -149,16 +149,26 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
     {pkg.departure_days && <span className="text-[11px] text-slate-500">출발: {pkg.departure_days}</span>}
   </>;
 
-  // 유의사항 분리 판단: 요금행 8개 초과이면 별도 페이지, 아니면 Page 1에 포함
+  // 동적 페이지 분리: 콘텐츠 높이를 추정하여 공간 있으면 합치고 없으면 분리
   const priceRowCount = (pkg.price_list?.length ?? 0) > 0
     ? pkg.price_list!.reduce((sum, g) => sum + g.rules.length, 0)
     : (pkg.price_tiers?.length ?? 0);
+  const inclusionCount = (pkg.inclusions || itinerary?.highlights?.inclusions || []).length;
+  const excludeCount = (pkg.excludes || itinerary?.highlights?.excludes || []).length;
   const hasNotices = (pkg.notices_parsed?.length ?? 0) > 0 || pkg.special_notes;
-  const noticesOnSeparatePage = hasNotices && priceRowCount > 8;
+
+  // Page 1 높이 추정 (px)
+  const page1Height =
+    70 +                                          // 헤더
+    (priceRowCount * 22 + 50) +                   // 요금표
+    (Math.max(inclusionCount, excludeCount) * 16 + 50) + // 포함/불포함
+    (hasNotices ? 480 : 0);                       // 유의사항 4-Type 카드 (4건 × ~120px)
+  const PAGE_MAX = 1050; // A4 높이에서 여유 80px
+  const noticesOnSeparatePage = hasNotices && page1Height > PAGE_MAX;
 
   return (
     <div className="flex flex-col items-center gap-10">
-      {/* ═══ PAGE 1: 요금표 + 포함/불포함 + (공간 여유 시 유의사항) ═══ */}
+      {/* ═══ PAGE 1: 요금표 + 포함/불포함 + (공간 있으면 유의사항) ═══ */}
       <article className="a4-export-page" style={PAGE_STYLE}>
         <Page1Header title={title} badges={badgesContent} />
         <main className="flex-1 px-10 pb-3 text-[#0b1c30]">
@@ -168,25 +178,21 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
             excludes={pkg.excludes || itinerary?.highlights?.excludes}
           />
-          {/* 요금행이 적으면 유의사항도 Page 1에 포함 */}
           {!noticesOnSeparatePage && hasNotices && (
             <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
           )}
         </main>
-        {/* 푸터 삭제 — 40px 확보 */}
       </article>
 
-      {/* ═══ PAGE 1.5: 유의사항 별도 페이지 (요금행 8개 초과 시) ═══ */}
+      {/* ═══ 유의사항 별도 페이지 (Page 1에 공간 부족할 때만) ═══ */}
       {noticesOnSeparatePage && (
         <article className="a4-export-page" style={PAGE_STYLE}>
-          <Page1Header title={title} badges={<span className="text-[11px] text-slate-500">예약 유의사항</span>} />
-          <main className="flex-1 px-10 pb-3 text-[#0b1c30]">
+          <main className="flex-1 px-10 py-6 text-[#0b1c30]">
             <NoticesPage
               noticesParsed={pkg.notices_parsed}
               specialNotes={pkg.special_notes}
             />
           </main>
-          {/* 푸터 삭제 — 40px 확보 */}
         </article>
       )}
 
