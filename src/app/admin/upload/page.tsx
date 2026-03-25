@@ -24,6 +24,8 @@ export default function UploadPage() {
   const [dragActive, setDragActive] = useState(false);
   const [archiveMode, setArchiveMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [textInput, setTextInput] = useState('');
+  const [textUploading, setTextUploading] = useState(false);
 
   const addFiles = (files: FileList | File[]) => {
     const arr = Array.from(files);
@@ -155,6 +157,54 @@ export default function UploadPage() {
               <p className="font-semibold mb-1 text-slate-800">파일명 규칙 (선택)</p>
               <p><span className="font-mono bg-slate-100 px-1 rounded">[모두투어_10%]다낭3박4일.pdf</span> -- 랜드사: 모두투어, 커미션: 10%</p>
               <p className="mt-0.5 text-slate-500">규칙 없는 파일도 정상 처리됩니다.</p>
+            </div>
+          </div>
+
+          {/* 텍스트 직접 붙여넣기 */}
+          <div className="bg-white p-5 rounded-lg border border-slate-200">
+            <p className="text-[13px] font-semibold text-slate-800 mb-2">또는 텍스트 직접 붙여넣기</p>
+            <textarea
+              value={textInput}
+              onChange={e => setTextInput(e.target.value)}
+              placeholder="PDF에서 복사한 여행상품 텍스트를 붙여넣으세요..."
+              className="w-full h-40 p-3 border border-slate-200 rounded-lg text-[12px] text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-[11px] text-slate-400">{textInput.length > 0 ? `${textInput.length}자` : 'PDF 파싱 없이 바로 AI 추출'}</span>
+              <button
+                onClick={async () => {
+                  if (!textInput.trim() || textUploading) return;
+                  setTextUploading(true);
+                  try {
+                    const res = await fetch('/api/upload', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ rawText: textInput.trim() }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || '업로드 실패');
+                    const count = data.productCount || 1;
+                    const titles = data.titles || [data.data?.extractedData?.title || '상품'];
+                    setQueue(prev => [...prev, {
+                      file: new File([], '텍스트 입력'),
+                      status: 'done',
+                      title: count > 1 ? `${count}개 상품 자동 등록` : titles[0],
+                      productCount: count,
+                      titles,
+                    }]);
+                    setTextInput('');
+                    alert(`${count}개 상품이 등록되었습니다:\n${titles.join('\n')}`);
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : '업로드 실패');
+                  } finally {
+                    setTextUploading(false);
+                  }
+                }}
+                disabled={!textInput.trim() || textUploading}
+                className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[12px] font-medium hover:bg-[#003366] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {textUploading ? '처리 중...' : '텍스트 업로드'}
+              </button>
             </div>
           </div>
 

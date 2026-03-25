@@ -199,6 +199,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
     }
 
+    // 일행 추가 (booking_passengers에 연결)
+    if (body.addPassengerId) {
+      const { error } = await supabaseAdmin
+        .from('booking_passengers')
+        .upsert({
+          booking_id: id,
+          customer_id: body.addPassengerId,
+          passenger_type: body.addPassengerType || 'adult',
+        }, { onConflict: 'booking_id,customer_id' });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
+    }
+
     // 소프트 삭제 / 복구 처리 (supabaseAdmin 사용 — RLS 우회)
     if (typeof body.is_deleted === 'boolean') {
       const { data, error } = await supabaseAdmin

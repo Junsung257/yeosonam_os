@@ -151,6 +151,11 @@ export default function BookingJourneyPage({ params }: { params: { id: string } 
   const [savingMemo, setSavingMemo] = useState(false);
   const [toast, setToast]     = useState<string | null>(null);
 
+  // 일행 추가
+  const [showAddPassenger, setShowAddPassenger] = useState(false);
+  const [passengerForm, setPassengerForm] = useState({ name: '', phone: '', passport_no: '', type: 'adult' });
+  const [addingPassenger, setAddingPassenger] = useState(false);
+
   // 취소 모달
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelForm, setCancelForm] = useState({ refund: '', penalty: '', reason: '' });
@@ -460,6 +465,121 @@ export default function BookingJourneyPage({ params }: { params: { id: string } 
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">인원</span>
             <span className="text-gray-700">성인 {booking.adult_count}명 {booking.child_count > 0 ? `+ 소아 ${booking.child_count}명` : ''}</span>
+          </div>
+
+          {/* 일행 목록 */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-gray-500 uppercase">일행 ({(booking.passengers || []).length}명)</span>
+              <button onClick={() => setShowAddPassenger(!showAddPassenger)}
+                className="text-xs text-blue-600 hover:text-blue-800">
+                {showAddPassenger ? '닫기' : '+ 일행 추가'}
+              </button>
+            </div>
+
+            {(booking.passengers || []).length > 0 ? (
+              <div className="space-y-1">
+                {(booking.passengers || []).map((p, i) => (
+                  <div key={p.customer_id || i} className="flex items-center justify-between text-sm bg-gray-50 rounded px-2 py-1.5">
+                    <div>
+                      <span className="font-medium text-gray-800">{p.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">
+                        {p.passenger_type === 'child_n' ? '소아' : p.passenger_type === 'infant' ? '유아' : '성인'}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-400">{p.phone || p.passport_no || ''}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">등록된 일행이 없습니다</p>
+            )}
+
+            {/* 일행 추가 폼 */}
+            {showAddPassenger && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">이름 *</label>
+                    <input value={passengerForm.name} onChange={e => setPassengerForm(f => ({...f, name: e.target.value}))}
+                      placeholder="홍길동" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">전화번호</label>
+                    <input value={passengerForm.phone} onChange={e => setPassengerForm(f => ({...f, phone: e.target.value}))}
+                      placeholder="010-0000-0000" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">여권번호</label>
+                    <input value={passengerForm.passport_no} onChange={e => setPassengerForm(f => ({...f, passport_no: e.target.value}))}
+                      placeholder="M12345678" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">구분</label>
+                    <select value={passengerForm.type} onChange={e => setPassengerForm(f => ({...f, type: e.target.value}))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
+                      <option value="adult">성인</option>
+                      <option value="child_n">소아</option>
+                      <option value="infant">유아</option>
+                    </select>
+                  </div>
+                </div>
+                <button
+                  disabled={!passengerForm.name.trim() || addingPassenger}
+                  onClick={async () => {
+                    if (!passengerForm.name.trim()) return;
+                    setAddingPassenger(true);
+                    try {
+                      // 1. 고객 생성 (이름+전화번호로 upsert)
+                      const custRes = await fetch('/api/customers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          name: passengerForm.name.trim(),
+                          phone: passengerForm.phone || undefined,
+                          passport_no: passengerForm.passport_no || undefined,
+                        }),
+                      });
+                      const custData = await custRes.json();
+                      const customerId = custData.customer?.id;
+                      if (!customerId) throw new Error('고객 생성 실패');
+
+                      // 2. booking_passengers에 연결
+                      const linkRes = await fetch('/api/bookings/' + id + '/timeline', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          content: '일행 추가: ' + passengerForm.name + (passengerForm.phone ? ' (' + passengerForm.phone + ')' : ''),
+                        }),
+                      });
+
+                      // booking_passengers 직접 insert (supabaseAdmin 필요하므로 별도 API 또는 PATCH)
+                      await fetch('/api/bookings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          id: booking.id,
+                          addPassengerId: customerId,
+                          addPassengerType: passengerForm.type,
+                        }),
+                      });
+
+                      setPassengerForm({ name: '', phone: '', passport_no: '', type: 'adult' });
+                      setShowAddPassenger(false);
+                      await fetchBooking();
+                      showToast(passengerForm.name + ' 일행 추가 완료');
+                    } catch (err) {
+                      showToast(err instanceof Error ? err.message : '추가 실패');
+                    } finally { setAddingPassenger(false); }
+                  }}
+                  className="w-full py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:bg-gray-300 transition"
+                >
+                  {addingPassenger ? '처리 중...' : '고객 등록 + 일행 추가'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

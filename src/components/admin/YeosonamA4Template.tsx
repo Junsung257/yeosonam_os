@@ -101,7 +101,7 @@ export interface YeosonamA4Props {
 
 // ── 유틸 ─────────────────────────────────────────────────
 const DAYS_PER_PAGE = 3;
-const PAGE_STYLE: React.CSSProperties = { width: '800px', aspectRatio: '210/297', background: 'white', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' as const };
+const PAGE_STYLE: React.CSSProperties = { width: '800px', aspectRatio: '210/297', background: 'white', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' as const };
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -720,6 +720,19 @@ function ItineraryPageFooter() {
   );
 }
 
+// IATA 항공사 코드 → 항공사명
+const AIRLINE_MAP: Record<string, string> = {
+  'BX': '에어부산', 'LJ': '진에어', 'OZ': '아시아나항공', 'KE': '대한항공',
+  '7C': '제주항공', 'TW': '티웨이항공', 'VJ': '비엣젯항공', 'ZE': '이스타항공',
+  'RS': '에어서울', 'QV': '라오항공', 'JL': '일본항공', 'NH': '전일본공수',
+  'MU': '중국동방항공', 'CA': '중국국제항공', 'CZ': '중국남방항공',
+};
+function getAirlineName(flightCode?: string | null): string | null {
+  if (!flightCode) return null;
+  const code = flightCode.replace(/[0-9]/g, '').toUpperCase();
+  return AIRLINE_MAP[code] || null;
+}
+
 // 활동 타입별 dot 색상
 function getDotColor(type?: string): string {
   switch (type) {
@@ -756,21 +769,31 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
 
             {/* 우측: 카드 */}
             <div className="flex-1 bg-slate-50/80 rounded-2xl p-4 border border-slate-200 shadow-sm">
-              {/* 헤더: 동선 + 항공편 뱃지 */}
-              <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-200">
+              {/* 헤더: 동선 */}
+              <div className="mb-2 pb-2 border-b border-slate-200">
                 <h3 {...E} className={`text-[15px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
                   📍 {day.regions?.join(' → ') || `${day.day}일차 일정`}
                 </h3>
-                {flightItem && (
-                  <div className="flex flex-col items-end shrink-0 gap-0.5">
-                    <span className="bg-blue-600 text-white px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm">
-                      ✈️ {flightItem.transport || '항공편'}
-                    </span>
-                    {flightItem.time && (
-                      <span className="text-[10px] text-blue-600 font-medium">{flightItem.time}</span>
-                    )}
-                  </div>
-                )}
+                {/* 항공 바: 편명 + 출발→도착 1줄 */}
+                {flightItem && (() => {
+                  const flights = day.schedule!.filter(s => s.type === 'flight');
+                  const dep = flights.find(f => f.activity?.includes('출발'));
+                  const arr = flights.find(f => f.activity?.includes('도착') || f.activity?.includes('도착'));
+                  const airlineName = getAirlineName(flightItem.transport);
+                  return (
+                    <div className="mt-1.5 bg-blue-600 text-white rounded-lg px-3 py-1.5 flex items-center justify-between text-[12px] font-semibold">
+                      <div className="flex items-center gap-2">
+                        <span>✈️ {flightItem.transport}</span>
+                        {airlineName && <span className="text-blue-200 text-[10px] font-normal">({airlineName})</span>}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>{dep?.time || flightItem.time || ''}</span>
+                        <span className="text-blue-300">→</span>
+                        <span>{arr?.time || ''}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 타임라인: 세로선 + 색상 dot */}

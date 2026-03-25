@@ -972,7 +972,11 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
     }
 
     let rawText = '';
-    if (ext === 'pdf') {
+    if (ext === 'txt') {
+      // 텍스트 직접 입력 모드: buffer가 이미 텍스트
+      fileType = 'pdf'; // 타입은 pdf로 통일 (내부 분류용)
+      rawText = buffer.toString('utf-8');
+    } else if (ext === 'pdf') {
       fileType = 'pdf';
       rawText = await parsePDF(buffer);
     } else if (ext === 'hwp') {

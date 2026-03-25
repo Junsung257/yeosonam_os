@@ -295,37 +295,62 @@ export async function POST(request: NextRequest) {
       console.warn('[Upload API] Supabase 환경변수 미설정 — DB 저장 비활성화');
     }
 
-    // ── [A] 입력 검증 ────────────────────────────────────────────────────────
+    // ── [A] 입력 검증 (파일 또는 텍스트) ──────────────────────────────────────
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const contentType = request.headers.get('content-type') || '';
+    let file: File | null = null;
+    let directRawText: string | null = null;
 
-    if (!file) {
-      return NextResponse.json({ error: '파일이 업로드되지 않았습니다.' }, { status: 400 });
+    if (contentType.includes('application/json')) {
+      // 텍스트 직접 붙여넣기 모드
+      const body = await request.json();
+      directRawText = body.rawText;
+      if (!directRawText || directRawText.trim().length < 50) {
+        return NextResponse.json({ error: '텍스트가 너무 짧습니다. 최소 50자 이상 입력하세요.' }, { status: 400 });
+      }
+      console.log('[Upload API] 텍스트 모드:', directRawText.length, '자');
+    } else {
+      // 기존 파일 업로드 모드
+      const formData = await request.formData();
+      file = formData.get('file') as File;
+
+      if (!file) {
+        return NextResponse.json({ error: '파일이 업로드되지 않았습니다.' }, { status: 400 });
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        return NextResponse.json({ error: '파일 크기는 10MB 이하여야 합니다.' }, { status: 400 });
+      }
     }
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: '파일 크기는 10MB 이하여야 합니다.' }, { status: 400 });
-    }
 
-    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp'];
-    const ext = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '');
-    if (!allowedExtensions.includes(ext)) {
-      return NextResponse.json(
-        { error: `지원하지 않는 파일 형식입니다. (${allowedExtensions.join(', ')})` },
-        { status: 400 },
-      );
-    }
-
-    // ── 아카이브 모드: AI 스킵 플래그 ─────────────────────────────────────────
-    const archiveMode = new URL(request.url).searchParams.get('mode') === 'archive';
+    // ── 텍스트 모드 분기: 파일 검증/해시 건너뛰고 바로 파싱 ─────────────────
+    const archiveMode = !directRawText && new URL(request.url).searchParams.get('mode') === 'archive';
     if (archiveMode) console.log('[Upload API] 아카이브 모드 — AI 파싱 스킵');
 
-    console.log('[Upload API] 파일 정보:', { name: file.name, size: file.size });
+    let buffer: Buffer;
+    let fileHash: string;
+    const fileName = file?.name || '텍스트입력.txt';
+
+    if (directRawText) {
+      // 텍스트 모드: 텍스트 자체를 buffer/hash로 변환
+      buffer = Buffer.from(directRawText, 'utf-8');
+      fileHash = createHash('sha256').update(buffer).digest('hex');
+      console.log('[Upload API] 텍스트 모드 해시:', fileHash.slice(0, 12));
+    } else {
+      // 파일 모드: 기존 로직
+      const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp'];
+      const ext = '.' + (file!.name.split('.').pop()?.toLowerCase() ?? '');
+      if (!allowedExtensions.includes(ext)) {
+        return NextResponse.json(
+          { error: `지원하지 않는 파일 형식입니다. (${allowedExtensions.join(', ')})` },
+          { status: 400 },
+        );
+      }
+      console.log('[Upload API] 파일 정보:', { name: file!.name, size: file!.size });
+      buffer = Buffer.from(await file!.arrayBuffer());
+      fileHash = createHash('sha256').update(buffer).digest('hex');
+    }
 
     // ── [B] SHA-256 해시 계산 + 중복 파일 차단 ───────────────────────────────
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const fileHash = createHash('sha256').update(buffer).digest('hex');
 
     if (isSupabaseConfigured) {
       const { data: existingHash } = await supabaseAdmin
@@ -355,7 +380,7 @@ export async function POST(request: NextRequest) {
 
     // ── [D] 파일명 파싱 ──────────────────────────────────────────────────────
 
-    const filenameRule = parseFilename(file.name);
+    const filenameRule = parseFilename(fileName);
     const supplierCode = resolveSupplierCode(filenameRule.supplierRaw);
     const marginRate   = filenameRule.marginRate ?? 0.10;
 
@@ -386,9 +411,9 @@ export async function POST(request: NextRequest) {
         // ignoreDuplicates: true — 같은 SKU 2번 올려도 기존 데이터 보존
         await supabaseAdmin.from('products').upsert({
           internal_code:      archiveSku,
-          display_name:       filenameRule.cleanName ?? file.name,
+          display_name:       filenameRule.cleanName ?? fileName,
           status:             archiveStatus,
-          source_filename:    file.name,
+          source_filename:    fileName,
           raw_extracted_text: rawText,
           departure_date:     departureDateStr,
           supplier_code:      archiveSupplierCode,
@@ -417,7 +442,7 @@ export async function POST(request: NextRequest) {
     // ── [E-1] PDF/HWP 텍스트 추출 (바이너리 → 텍스트) ──────────────────────
     // 중요: PDF는 바이너리이므로 buffer.toString('utf-8')은 깨진 문자열을 반환함
     // 반드시 pdf-parse로 먼저 텍스트를 추출한 후 분류기에 넘겨야 함
-    const parsedDocument = await parseDocument(buffer, file.name);
+    const parsedDocument = await parseDocument(buffer, fileName);
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
 
     const classification = await classifyDocument(rawTextForClassify);
@@ -467,7 +492,7 @@ export async function POST(request: NextRequest) {
 
     for (const product of productsToSave) {
       const ed = product.extractedData;
-      const title = ed.title || filenameRule.cleanName || file.name;
+      const title = ed.title || filenameRule.cleanName || fileName;
 
       // 보상 트랜잭션을 위한 상태 추적
       let internalCode: string | null = null;
@@ -547,7 +572,7 @@ export async function POST(request: NextRequest) {
               discount_amount:       0,
               ai_tags:               ed.product_tags ?? [],
               internal_memo:         null,
-              source_filename:       file.name,
+              source_filename:       fileName,
               land_operator_id:      effectiveLandOperatorId,
               departing_location_id: departingLocationId,
               // Phase 2 신규 필드
@@ -611,7 +636,7 @@ export async function POST(request: NextRequest) {
               destination:           ed.destination,
               duration:              ed.duration,
               price:                 ed.price,
-              filename:              file.name,
+              filename:              fileName,
               file_type:             parsedDocument.fileType,
               raw_text:              parsedDocument.rawText,
               itinerary:             ed.itinerary        ?? [],
@@ -793,7 +818,7 @@ ${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
         .from('document_hashes')
         .insert({
           file_hash:  fileHash,
-          file_name:  file.name,
+          file_name:  fileName,
           product_id: savedInternalCodes[0], // 대표 internal_code
         })
         .then(({ error: hashErr }: { error: { message: string } | null }) => {
