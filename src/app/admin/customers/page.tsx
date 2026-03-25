@@ -151,7 +151,7 @@ export default function CustomersPage() {
 
   // ── 신규 등록 모달 ────────────────────────────────────────────────────────
   const [showForm, setShowForm]   = useState(false);
-  const [form, setForm]           = useState({ name: '', phone: '', email: '', passport_no: '', passport_expiry: '', birth_date: '', memo: '' });
+  const [form, setForm]           = useState({ name: '', phone: '', email: '', passport_no: '', passport_expiry: '', birth_date: '', memo: '', gender: '' as '' | 'M' | 'F' });
   const [saving, setSaving]       = useState(false);
   const [phoneDupe, setPhoneDupe] = useState<Customer | null>(null);
   const [checkingPhone, setCheckingPhone] = useState(false);
@@ -440,7 +440,7 @@ export default function CustomersPage() {
     const data = await res.json();
     if (data.customer) {
       setShowForm(false);
-      setForm({ name: '', phone: '', email: '', passport_no: '', passport_expiry: '', birth_date: '', memo: '' });
+      setForm({ name: '', phone: '', email: '', passport_no: '', passport_expiry: '', birth_date: '', memo: '', gender: '' });
       setPhoneDupe(null);
       showToast('고객 등록 완료');
       load({ p: 1 });
@@ -911,6 +911,32 @@ export default function CustomersPage() {
                           />
                         </div>
                       ))}
+                      {/* 주민번호 7자리 → 생년월일 자동입력 */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">주민번호 (앞6+뒤1)</label>
+                        <input maxLength={7} placeholder="6203152"
+                          onChange={e => {
+                            const v = e.target.value.replace(/[^0-9]/g, '');
+                            e.target.value = v;
+                            if (v.length === 7) {
+                              const yy = parseInt(v.slice(0, 2));
+                              const mm = v.slice(2, 4);
+                              const dd = v.slice(4, 6);
+                              const b1 = parseInt(v[6]);
+                              const century = (b1 === 1 || b1 === 2) ? 1900 : (b1 === 3 || b1 === 4) ? 2000 : 1900;
+                              setEditInfo(prev => ({ ...prev, birth_date: (century + yy) + '-' + mm + '-' + dd }));
+                            }
+                          }}
+                          className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                        {editInfo.birth_date && (() => {
+                          const bd = new Date(editInfo.birth_date as string);
+                          if (isNaN(bd.getTime())) return null;
+                          const now = new Date();
+                          let age = now.getFullYear() - bd.getFullYear();
+                          if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
+                          return <p className="text-[12px] text-slate-500 mt-1">{editInfo.birth_date} · 만 {age}세</p>;
+                        })()}
+                      </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-500 mb-1">메모</label>
                         <textarea value={editInfo.memo ?? ''}
@@ -1123,6 +1149,48 @@ export default function CustomersPage() {
                   <input type="date" value={form.passport_expiry} onChange={e => setForm(p => ({ ...p, passport_expiry: e.target.value }))}
                     className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
+              </div>
+
+              {/* 주민번호 7자리 → 성별/나이 자동 파싱 */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">주민등록번호 (앞6 + 뒤1)</label>
+                <input
+                  maxLength={7}
+                  placeholder="6203152"
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, '');
+                    e.target.value = v;
+                    if (v.length === 7) {
+                      const front = v.slice(0, 6);
+                      const back1 = parseInt(v[6]);
+                      const yy = parseInt(front.slice(0, 2));
+                      const mm = front.slice(2, 4);
+                      const dd = front.slice(4, 6);
+                      const century = (back1 === 1 || back1 === 2) ? 1900 : (back1 === 3 || back1 === 4) ? 2000 : 1900;
+                      const fullYear = century + yy;
+                      const birthDate = fullYear + '-' + mm + '-' + dd;
+                      const gender = (back1 === 1 || back1 === 3) ? 'M' as const : 'F' as const;
+                      setForm(p => ({ ...p, birth_date: birthDate, gender }));
+                    }
+                  }}
+                  className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono tracking-wider"
+                />
+                {form.birth_date && (() => {
+                  const bd = new Date(form.birth_date);
+                  if (isNaN(bd.getTime())) return null;
+                  const now = new Date();
+                  let age = now.getFullYear() - bd.getFullYear();
+                  if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
+                  return (
+                    <div className="mt-2 flex gap-3 text-[13px]">
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">{form.birth_date}</span>
+                      <span className={`px-2 py-0.5 rounded font-medium ${form.gender === 'M' ? 'bg-blue-50 text-blue-700' : form.gender === 'F' ? 'bg-pink-50 text-pink-700' : 'bg-slate-100 text-slate-700'}`}>
+                        {form.gender === 'M' ? '남성' : form.gender === 'F' ? '여성' : ''}
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">만 {age}세</span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex gap-3 pt-2">

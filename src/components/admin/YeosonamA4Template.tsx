@@ -746,7 +746,21 @@ function getDotColor(type?: string): string {
   }
 }
 
-/** 일정표 — v3: 타임라인 dot + 관광지 설명 매칭 + JPG 최적화 */
+// 활동 타입별 배지 스타일 (관광지 하이라이트)
+function getActivityBadge(type?: string): { bg: string; text: string; border: string; label: string } | null {
+  switch (type) {
+    case 'normal': return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광' };
+    case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광' };
+    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑' };
+    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프' };
+    case 'cruise': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '크루즈' };
+    case 'spa': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '스파' };
+    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식' };
+    default: return null; // 이동/휴식/체크인 등은 배지 없음
+  }
+}
+
+/** 일정표 — v3: 타임라인 dot + 관광지 하이라이트 배지 */
 function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attractions?: AttractionInfo[] }) {
   return (
     <section className="space-y-3">
@@ -800,6 +814,7 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                 <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
                     const attr = matchAttraction(item.activity, attractions);
+                    const actBadge = getActivityBadge(item.type);
                     return (
                       <div key={sIdx} className="relative pl-4">
                         {/* dot */}
@@ -808,7 +823,11 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                           <span {...E} className={`text-[12px] font-bold text-slate-800 break-keep leading-snug ${EC}`}>
                             {item.time && <span className="text-blue-600 mr-1">{item.time}</span>}
                             {attr?.emoji && <span className="mr-0.5">{attr.emoji}</span>}
-                            {item.activity}
+                            {actBadge ? (
+                              <span className={`${actBadge.bg} ${actBadge.text} border ${actBadge.border} px-1.5 py-0.5 rounded-md text-[11px] font-bold`}>
+                                {item.activity}
+                              </span>
+                            ) : item.activity}
                             {item.badge && (
                               <span className="ml-1 inline-flex items-center px-1 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold rounded border border-emerald-200">
                                 {item.badge}
