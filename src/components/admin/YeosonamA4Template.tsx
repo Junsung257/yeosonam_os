@@ -173,7 +173,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
           )}
         </main>
-        <Page1Footer />
+        {/* 푸터 삭제 — 40px 확보 */}
       </article>
 
       {/* ═══ PAGE 1.5: 유의사항 별도 페이지 (요금행 8개 초과 시) ═══ */}
@@ -186,7 +186,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
               specialNotes={pkg.special_notes}
             />
           </main>
-          <Page1Footer />
+          {/* 푸터 삭제 — 40px 확보 */}
         </article>
       )}
 
@@ -201,7 +201,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
           <div className="flex-1 px-10 pb-8">
             <DailyItinerary days={chunk} attractions={attractions} />
           </div>
-          <ItineraryPageFooter />
+          {/* 푸터 삭제 — 40px 확보 */}
         </article>
       ))}
 
@@ -212,7 +212,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
           <div className="flex-1 px-10 pb-8 flex items-center justify-center">
             <p className="text-slate-400 text-[14px]">상세 일정 데이터가 아직 없습니다</p>
           </div>
-          <ItineraryPageFooter />
+          {/* 푸터 삭제 — 40px 확보 */}
         </article>
       )}
     </div>
@@ -706,19 +706,11 @@ function OptionalTours({ tours }: { tours: { name: string; price_usd?: number }[
 
 function ItineraryPageHeader({ title, departureAirport, destination }: { title: string; departureAirport?: string; destination?: string }) {
   return (
-    <header className="w-full border-b-2 border-[#005d90] flex justify-between items-center px-10 py-6">
-      <div className="flex flex-col">
-        <span className="text-2xl font-bold tracking-tight text-[#005d90]">여행 일정표</span>
-        <span className="text-xs font-semibold tracking-widest text-[#8e4e14] uppercase mt-0.5">TRAVEL ITINERARY</span>
-      </div>
-      <div className="text-right">
-        <h1 {...E} className={`text-lg font-bold text-[#005d90] ${EC}`}>{title}</h1>
-        {departureAirport && destination && (
-          <p className="text-[10px] text-slate-500 font-medium">
-            항공 일정: {departureAirport} ↔ {destination}
-          </p>
-        )}
-      </div>
+    <header className="w-full border-b border-[#005d90] flex justify-between items-center px-10 py-3">
+      <h1 {...E} className={`text-[14px] font-bold text-[#005d90] ${EC}`}>{title}</h1>
+      {departureAirport && destination && (
+        <span className="text-[10px] text-slate-500">항공: {departureAirport} ↔ {destination}</span>
+      )}
     </header>
   );
 }
