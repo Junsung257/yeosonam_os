@@ -31,7 +31,7 @@ interface DaySchedule {
     breakfast?: boolean; lunch?: boolean; dinner?: boolean;
     breakfast_note?: string | null; lunch_note?: string | null; dinner_note?: string | null;
   };
-  schedule?: { time?: string | null; activity: string; transport?: string | null; type?: string; badge?: string | null }[];
+  schedule?: { time?: string | null; activity: string; transport?: string | null; type?: string; badge?: string | null; note?: string | null }[];
   hotel?: { name: string; grade?: string | null; note?: string | null } | null;
 }
 
@@ -811,6 +811,9 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                           </span>
                           {attr?.short_desc && (
                             <span className="text-[10px] text-slate-500 ml-0.5 leading-snug">{attr.short_desc}</span>
+                          )}
+                          {item.note && (
+                            <span className="text-[10px] text-amber-600 ml-0.5 leading-snug italic">{item.note}</span>
                           )}
                         </div>
                       </div>
