@@ -746,19 +746,22 @@ function getDotColor(type?: string): string {
   }
 }
 
-// 활동 타입별 인라인 배지 + wavy 색상
-function getActivityBadge(type?: string): { bg: string; text: string; border: string; label: string; wavyColor: string } | null {
+// 활동 타입별 인라인 배지 (wavy는 관광지만)
+// normal은 배지 대상에서 제외 — attractions DB 매칭된 것만 별도 처리
+function getActivityBadge(type?: string): { bg: string; text: string; border: string; label: string; useWavy: boolean; wavyColor: string } | null {
   switch (type) {
-    case 'normal': return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광', wavyColor: '#60A5FA' };
-    case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광', wavyColor: '#F472B6' };
-    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑', wavyColor: '#A78BFA' };
-    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프', wavyColor: '#34D399' };
-    case 'cruise': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '크루즈', wavyColor: '#22D3EE' };
-    case 'spa': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '스파', wavyColor: '#F472B6' };
-    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식', wavyColor: '#FBBF24' };
+    // normal은 여기서 처리 안 함 → attractions 매칭으로 관광 배지 결정
+    case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광', useWavy: false, wavyColor: '' };
+    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑', useWavy: false, wavyColor: '' };
+    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프', useWavy: true, wavyColor: '#34D399' };
+    case 'cruise': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '크루즈', useWavy: true, wavyColor: '#22D3EE' };
+    case 'spa': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '스파', useWavy: true, wavyColor: '#F472B6' };
+    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식', useWavy: false, wavyColor: '' };
     default: return null;
   }
 }
+// attractions DB 매칭된 관광지 전용 배지 (wavy 포함)
+const TOUR_BADGE = { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광', useWavy: true, wavyColor: '#60A5FA' };
 
 // activity 텍스트에서 관광지명과 괄호 설명 분리
 function splitPoi(activity: string): { poiName: string; poiDesc: string } {
@@ -820,7 +823,8 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                 <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
                     const attr = matchAttraction(item.activity, attractions);
-                    const actBadge = getActivityBadge(item.type);
+                    // 배지 결정: type별 배지 우선 → attractions 매칭 시 관광 배지 → 없으면 null
+                    const badge = getActivityBadge(item.type) || (attr ? TOUR_BADGE : null);
                     return (
                       <div key={sIdx} className="relative pl-4">
                         {/* dot */}
@@ -829,15 +833,19 @@ function DailyItinerary({ days, attractions }: { days: DaySchedule[]; attraction
                           <span className={`text-[12px] break-keep leading-snug flex flex-wrap items-center gap-1 ${EC}`}>
                             {item.time && <span className="text-blue-600 font-bold">{item.time}</span>}
                             {attr?.emoji && <span>{attr.emoji}</span>}
-                            {actBadge ? (() => {
+                            {badge ? (() => {
                               const { poiName, poiDesc } = splitPoi(item.activity);
                               return <>
-                                <span className={`${actBadge.bg} ${actBadge.text} border ${actBadge.border} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
-                                  {actBadge.label}
+                                <span className={`${badge.bg} ${badge.text} border ${badge.border} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
+                                  {badge.label}
                                 </span>
-                                <span {...E} className="font-black text-[12px] text-gray-900" style={{ textDecoration: `underline wavy ${actBadge.wavyColor}`, textUnderlineOffset: '3px' }}>
-                                  {poiName}
-                                </span>
+                                {badge.useWavy ? (
+                                  <span {...E} className="font-black text-[12px] text-gray-900" style={{ textDecoration: `underline wavy ${badge.wavyColor}`, textUnderlineOffset: '3px' }}>
+                                    {poiName}
+                                  </span>
+                                ) : (
+                                  <span {...E} className="font-bold text-[12px] text-gray-900">{poiName}</span>
+                                )}
                                 {poiDesc && <span className="text-[11px] text-gray-500 font-normal">{poiDesc}</span>}
                               </>;
                             })() : <span {...E} className="font-bold text-slate-800">{item.activity}</span>}
