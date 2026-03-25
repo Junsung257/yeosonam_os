@@ -794,7 +794,7 @@ const MULTI_PRODUCT_PHASE2_PROMPT = `이 여행상품 문서에서 아래 상품
 - ★ 항공편(type:"flight"): 출발편과 도착편을 각각 별도 schedule 항목으로 추출. time에 출발/도착 시간 정확히 기입.
   예: "BX1385 09:05/10:00" → [{time:"09:05",activity:"김해 국제공항 출발",transport:"BX1385",type:"flight"}, {time:"10:00",activity:"나가사키 국제공항 도착",transport:"BX1385",type:"flight"}]
 - 호텔: 해당 일자 블록에 HOTEL/호텔/숙소 키워드 있을 때만 귀속. 없으면 null.
-- 선택관광: optional_tours[]에 이름+가격 저장하고, 해당 일자 schedule에도 type:"optional"로 간략 표기 (예: activity:"추천 선택관광: 호핑투어 ($80/인)", type:"optional").
+- ★ 선택관광/프로모션 보존 (절대 누락 금지): optional_tours[]에 이름+가격 저장하고, 해당 일자 schedule에도 type:"optional"로 상세 표기. 할인 금액("선포함시 1인 5만원"), 포함 내역("스노클링 장비, 구명조끼 포함") 등 프로모션 정보는 activity 텍스트에 반드시 포함하라.
 - 식사: 불포함/자유식/X/- → false,null. 식사명 있으면 → true,식사명. "불포함(클럽식)" → false, note:"클럽식(불포함)". 불확실 → false,null.
 - highlights의 inclusions/excludes는 해당 상품 전용 섹션에서만 추출 (다른 상품 데이터 혼합 금지).
 - ★ highlights.remarks: 원문의 "비고" 섹션 전체를 각 항목별 배열로 추출. 골프장 규칙, 추가요금, 주의사항 등 모든 비고 내용을 포함. (Phase 1의 notices_parsed에 통합되지만, 원문 보존용으로 여기도 유지)
