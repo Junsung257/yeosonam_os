@@ -137,15 +137,27 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   const daysPerPage = days.length <= 4 ? 4 : days.length <= 6 ? 5 : DEFAULT_DAYS_PER_PAGE;
   const dayChunks = chunkArray(days, daysPerPage);
 
-  // 뱃지 공통
+  // 출발 도시명 추출
+  const departCity = (() => {
+    const ap = pkg.departure_airport || '';
+    if (ap.includes('김해') || ap.includes('부산')) return '부산';
+    if (ap.includes('인천') || ap.includes('서울')) return '서울/인천';
+    if (ap.includes('김포')) return '서울/김포';
+    if (ap.includes('대구')) return '대구';
+    if (ap.includes('제주')) return '제주';
+    if (ap.includes('청주')) return '청주';
+    return ap.replace(/국제공항|공항/g, '').trim();
+  })();
+
+  // 뱃지 공통 (출발지 맨 앞 + 강조)
+  const TAG = 'px-2 py-0.5 text-xs rounded font-semibold';
   const badgesContent = <>
-    {pkg.destination && <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded font-semibold">{pkg.destination}</span>}
-    {pkg.duration && <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded font-semibold">{pkg.duration}일</span>}
-    {pkg.airline && <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded font-semibold">{pkg.airline}</span>}
-    {pkg.departure_airport && <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded font-semibold">{pkg.departure_airport} 출발</span>}
-    {(pkg.min_participants || itinerary?.meta?.min_participants) && <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded font-semibold">최소 {pkg.min_participants || itinerary?.meta?.min_participants}명</span>}
-    {pkg.product_type && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded font-semibold">{pkg.product_type}</span>}
-    {pkg.ticketing_deadline && <span className="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded font-bold border border-red-200">{pkg.ticketing_deadline}까지 발권</span>}
+    {departCity && <span className={`${TAG} bg-blue-800 text-white`}>{departCity}출발</span>}
+    {pkg.destination && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.destination}</span>}
+    {pkg.airline && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.airline}</span>}
+    {(pkg.min_participants || itinerary?.meta?.min_participants) && <span className={`${TAG} bg-slate-100 text-slate-700`}>최소 {pkg.min_participants || itinerary?.meta?.min_participants}명</span>}
+    {pkg.product_type && <span className={`${TAG} bg-amber-50 text-amber-700`}>{pkg.product_type}</span>}
+    {pkg.ticketing_deadline && <span className={`${TAG} bg-red-50 text-red-600 font-bold border border-red-200`}>{pkg.ticketing_deadline}까지 발권</span>}
     {pkg.departure_days && <span className="text-[11px] text-slate-500">출발: {pkg.departure_days}</span>}
   </>;
 
@@ -203,6 +215,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             title={title}
             departureAirport={pkg.departure_airport}
             destination={pkg.destination}
+            airline={pkg.airline}
           />
           <div className="flex-1 px-10 pb-8">
             <DailyItinerary days={chunk} attractions={attractions} />
@@ -705,12 +718,24 @@ function OptionalTours({ tours }: { tours: { name: string; price_usd?: number }[
 //  Page 2+ 서브 컴포넌트 (Stitch v2 일정표)
 // ══════════════════════════════════════════════════════════
 
-function ItineraryPageHeader({ title, departureAirport, destination }: { title: string; departureAirport?: string; destination?: string }) {
+function ItineraryPageHeader({ title, departureAirport, destination, airline }: { title: string; departureAirport?: string; destination?: string; airline?: string }) {
+  // 출발 도시 추출
+  const depCity = (() => {
+    const ap = departureAirport || '';
+    if (ap.includes('김해') || ap.includes('부산')) return '부산';
+    if (ap.includes('인천') || ap.includes('서울')) return '서울/인천';
+    return ap.replace(/국제공항|공항/g, '').trim();
+  })();
+  // 항공사명 추출 (IATA 코드 → 이름)
+  const airlineName = airline ? (getAirlineName(airline) || airline) : null;
+
   return (
     <header className="w-full border-b border-[#005d90] flex justify-between items-center px-10 py-3">
       <h1 {...E} className={`text-[14px] font-bold text-[#005d90] ${EC}`}>{title}</h1>
-      {departureAirport && destination && (
-        <span className="text-[10px] text-slate-500">항공: {departureAirport} ↔ {destination}</span>
+      {(airlineName || depCity) && destination && (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded-full">
+          ✈️ {airlineName || ''} <span className="text-blue-300">|</span> {depCity}출발 ↔ {destination}
+        </span>
       )}
     </header>
   );
