@@ -591,15 +591,15 @@ export default function PaymentsPage() {
 
   // ── 렌더 ────────────────────────────────────────────────────────────────────
 
-  const matchBtnDisabled = processing || (
-    matchMode === 'single' ? !singleBookingId :
-    multiSelected.size === 0 || Math.abs(multiTotal - (selectedTx?.amount || 0)) > 500
-  );
+  let matchBtnDisabled = processing;
+  if (!matchBtnDisabled) {
+    matchBtnDisabled = matchMode === 'single' ? !singleBookingId : (multiSelected.size === 0);
+  }
 
   return (
-    <div>
+    <>
       {toast && (
-        <div className={'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white ' + (toast.type === 'err' ? 'bg-red-500' : 'bg-slate-800')}>
+        <div className={toast.type === 'err' ? 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-500' : 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-slate-800'}>
           {toast.msg}
         </div>
       )}
@@ -770,7 +770,7 @@ export default function PaymentsPage() {
           {tab === 'unmatched' && <p className="text-[13px] text-slate-400 mt-2">일괄 자동 매칭 버튼을 눌러보세요</p>}
         </div>
       ) : (
-        {/* 일괄 삭제 액션 바 */}
+        <>
         {checkedTxIds.size > 0 && (
           <div className="flex items-center gap-3 bg-slate-800 text-white px-4 py-2 rounded-lg mb-2">
             <span className="text-[13px] font-medium">{checkedTxIds.size}건 선택</span>
@@ -909,6 +909,7 @@ export default function PaymentsPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* ── 휴지통 아코디언 ─────────────────────────────────────────────────── */}
@@ -1335,6 +1336,6 @@ export default function PaymentsPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
