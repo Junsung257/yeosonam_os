@@ -199,6 +199,15 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
       <article className="a4-export-page" style={PAGE_STYLE}>
         <Page1Header title={title} badges={badgesContent} />
         <main className="flex-1 px-10 pb-3 text-[#0b1c30]">
+          {/* 핵심 특전 */}
+          {pkg.product_highlights && pkg.product_highlights.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <span className="text-[11px] font-bold text-amber-700">★ 핵심 특전</span>
+              {pkg.product_highlights.map((h, i) => (
+                <span key={i} className="px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[10px] rounded border border-amber-200 font-medium">{h}</span>
+              ))}
+            </div>
+          )}
           <PriceTable priceList={pkg.price_list} tiers={pkg.price_tiers} excludedDates={pkg.excluded_dates} />
           {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
           <IncludeExcludeInfo
