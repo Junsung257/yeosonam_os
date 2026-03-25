@@ -258,12 +258,18 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
     const allPrices = priceList.flatMap(g => g.rules.map(r => r.price).filter((p): p is number => p !== null && p > 0));
     const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
 
-    // 조건(condition)명 수집 — 모든 그룹에서 동일 조건 컬럼 사용
+    // 조건(condition)명 수집 — 조건이 기간과 다를 때만 조건 열 표시
     const conditionSet = new Set<string>();
-    for (const g of priceList) for (const r of g.rules) conditionSet.add(r.condition);
+    let conditionEqualsePeriod = true;
+    for (const g of priceList) {
+      for (const r of g.rules) {
+        conditionSet.add(r.condition);
+        // 조건이 기간과 동일하면 조건 열 불필요 (날짜 중복 방지)
+        if (r.condition !== g.period && r.condition !== '전 출발일') conditionEqualsePeriod = false;
+      }
+    }
     const conditions = Array.from(conditionSet);
-    // 단일 조건이면 조건 열 없이 단순 테이블
-    const multiCondition = conditions.length > 1;
+    const multiCondition = conditions.length > 1 && !conditionEqualsePeriod;
 
     return (
       <section className="mb-3">
