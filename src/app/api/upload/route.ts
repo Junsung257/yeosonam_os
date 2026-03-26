@@ -323,8 +323,11 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 텍스트 모드 분기: 파일 검증/해시 건너뛰고 바로 파싱 ─────────────────
-    const archiveMode = !directRawText && new URL(request.url).searchParams.get('mode') === 'archive';
+    const urlParams = new URL(request.url).searchParams;
+    const archiveMode = !directRawText && urlParams.get('mode') === 'archive';
+    const bulkMode = urlParams.get('mode') === 'bulk';
     if (archiveMode) console.log('[Upload API] 아카이브 모드 — AI 파싱 스킵');
+    if (bulkMode) console.log('[Upload API] 벌크 모드 — 분류/마케팅/attractions 스킵');
 
     let buffer: Buffer;
     let fileHash: string;
@@ -445,8 +448,10 @@ export async function POST(request: NextRequest) {
     const parsedDocument = await parseDocument(buffer, fileName);
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
 
-    const classification = await classifyDocument(rawTextForClassify);
-    console.log('[Upload API] Step1 분류:', classification);
+    const classification = bulkMode
+      ? { productCount: 1, isTravel: true, documentType: 'package' as const, estimatedConfidence: 0.9 }
+      : await classifyDocument(rawTextForClassify);
+    console.log('[Upload API] Step1 분류:', classification, bulkMode ? '(벌크 스킵)' : '');
 
     // ── [F] Step 2: 파싱 결과 활용 (이미 위에서 완료) ────────────────────────
 
@@ -609,10 +614,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // ── G7. 마케팅 카피 AI 생성 (실패해도 파이프라인 비중단) ─────────────
+        // ── G7. 마케팅 카피 AI 생성 (벌크 모드 시 스킵) ─────────────
 
         let marketingCopies: MarketingCopy[] = [];
-        try {
+        if (bulkMode) {
+          console.log('[Upload API] 벌크 모드 — 마케팅 카피 스킵');
+        } else try {
           marketingCopies = await generateMarketingCopies({
             destination: ed.destination ?? '',
             duration:    ed.duration    ?? 5,
@@ -717,8 +724,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── [H-1] 관광지 마스터 DB 자동 구축 (attractions) ──────────────────────
-    if (isSupabaseConfigured) {
+    // ── [H-1] 관광지 마스터 DB 자동 구축 (벌크 모드 시 스킵) ──────────────────────
+    if (isSupabaseConfigured && !bulkMode) {
       try {
         // 모든 상품의 일정에서 관광지명 추출
         const allActivities: { activity: string; destination?: string }[] = [];

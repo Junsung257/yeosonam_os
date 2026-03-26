@@ -23,6 +23,7 @@ export default function UploadPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [archiveMode, setArchiveMode] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [textInput, setTextInput] = useState('');
   const [textUploading, setTextUploading] = useState(false);
@@ -57,7 +58,8 @@ export default function UploadPage() {
   const uploadSingle = async (file: File): Promise<Partial<QueueItem>> => {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const uploadUrl = bulkMode ? '/api/upload?mode=bulk' : '/api/upload';
+    const res = await fetch(uploadUrl, { method: 'POST', body: formData });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '업로드 실패');
 
@@ -150,6 +152,16 @@ export default function UploadPage() {
                 onChange={e => e.target.files && addFiles(e.target.files)}
                 className="hidden"
               />
+            </div>
+
+            {/* 벌크 모드 토글 */}
+            <div className="mt-3 flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={bulkMode} onChange={e => setBulkMode(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                <span className="text-sm font-medium text-slate-700">⚡ 벌크 모드</span>
+              </label>
+              <span className="text-[11px] text-slate-500">{bulkMode ? '분류/마케팅/관광지 스킵 → 2배 빠름' : '전체 처리 (기본)'}</span>
             </div>
 
             {/* 파일명 규칙 안내 */}
