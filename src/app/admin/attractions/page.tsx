@@ -25,8 +25,6 @@ export default function AttractionsPage() {
   const [attractions, setAttractions] = useState<Attraction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ country: '', region: '', badge: '' });
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<Attraction>>({});
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', short_desc: '', country: '', region: '', badge_type: 'tour', emoji: '' });
@@ -46,27 +44,18 @@ export default function AttractionsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // 인라인 수정
-  const startEdit = (a: Attraction) => {
-    setEditingId(a.id);
-    setEditForm({ name: a.name, short_desc: a.short_desc, country: a.country, region: a.region, badge_type: a.badge_type, emoji: a.emoji });
-  };
-
-  const saveEdit = async () => {
-    if (!editingId) return;
-    setSaving(true);
+  // 인라인 자동 저장: 셀 변경 → 즉시 API 호출 → 로컬 상태 업데이트
+  const inlineSave = async (id: string, field: string, value: string) => {
+    // 로컬 상태 즉시 업데이트 (낙관적 UI)
+    setAttractions(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
     try {
       await fetch('/api/attractions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingId, ...editForm }),
+        body: JSON.stringify({ id, [field]: value }),
       });
-      setEditingId(null);
-      load();
-    } finally { setSaving(false); }
+    } catch { load(); } // 실패 시 리로드
   };
-
-  const cancelEdit = () => { setEditingId(null); setEditForm({}); };
 
   // 신규 등록
   const addAttraction = async () => {
@@ -201,41 +190,36 @@ export default function AttractionsPage() {
           <tbody>
             {attractions.map(a => (
               <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
-                {editingId === a.id ? (
-                  <>
-                    <td className="py-1.5 px-3"><input value={editForm.emoji || ''} onChange={e => setEditForm(f => ({ ...f, emoji: e.target.value }))} className="w-10 text-center border rounded px-1 py-1" /></td>
-                    <td className="py-1.5 px-3"><input value={editForm.name || ''} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className="w-full border rounded px-2 py-1" /></td>
-                    <td className="py-1.5 px-3">
-                      <select value={editForm.badge_type || 'tour'} onChange={e => setEditForm(f => ({ ...f, badge_type: e.target.value }))} className="border rounded px-2 py-1">
-                        {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-                      </select>
-                    </td>
-                    <td className="py-1.5 px-3"><input value={editForm.short_desc || ''} onChange={e => setEditForm(f => ({ ...f, short_desc: e.target.value }))} className="w-full border rounded px-2 py-1" /></td>
-                    <td className="py-1.5 px-3"><input value={editForm.country || ''} onChange={e => setEditForm(f => ({ ...f, country: e.target.value }))} className="w-20 border rounded px-2 py-1" /></td>
-                    <td className="py-1.5 px-3"><input value={editForm.region || ''} onChange={e => setEditForm(f => ({ ...f, region: e.target.value }))} className="w-20 border rounded px-2 py-1" /></td>
-                    <td className="py-1.5 px-3 text-center text-slate-500">{a.mention_count}</td>
-                    <td className="py-1.5 px-3 text-center">
-                      <button onClick={saveEdit} disabled={saving} className="text-blue-600 hover:text-blue-800 mr-2 text-xs font-bold">저장</button>
-                      <button onClick={cancelEdit} className="text-slate-400 hover:text-slate-600 text-xs">취소</button>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="py-1.5 px-3 text-center text-lg">{a.emoji || '📍'}</td>
-                    <td className="py-1.5 px-3 font-medium text-slate-800">{a.name}</td>
-                    <td className="py-1.5 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${badgeStyle(a.badge_type)}`}>{badgeLabel(a.badge_type)}</span>
-                    </td>
-                    <td className="py-1.5 px-3 text-slate-600 text-xs">{a.short_desc || '-'}</td>
-                    <td className="py-1.5 px-3 text-slate-500">{a.country || '-'}</td>
-                    <td className="py-1.5 px-3 text-slate-500">{a.region || '-'}</td>
-                    <td className="py-1.5 px-3 text-center text-slate-500">{a.mention_count}</td>
-                    <td className="py-1.5 px-3 text-center">
-                      <button onClick={() => startEdit(a)} className="text-blue-600 hover:text-blue-800 mr-2 text-xs">수정</button>
-                      <button onClick={() => deleteAttraction(a.id)} className="text-red-400 hover:text-red-600 text-xs">삭제</button>
-                    </td>
-                  </>
-                )}
+                <td className="py-1.5 px-3">
+                  <input defaultValue={a.emoji || ''} onBlur={e => { if (e.target.value !== (a.emoji || '')) inlineSave(a.id, 'emoji', e.target.value); }}
+                    className="w-10 text-center text-lg bg-transparent hover:bg-white focus:bg-white focus:border-blue-300 border border-transparent rounded px-1 py-0.5 outline-none" />
+                </td>
+                <td className="py-1.5 px-3">
+                  <input defaultValue={a.name} onBlur={e => { if (e.target.value !== a.name) inlineSave(a.id, 'name', e.target.value); }}
+                    className="w-full font-medium text-slate-800 bg-transparent hover:bg-white focus:bg-white focus:border-blue-300 border border-transparent rounded px-2 py-0.5 outline-none" />
+                </td>
+                <td className="py-1.5 px-3">
+                  <select value={a.badge_type} onChange={e => inlineSave(a.id, 'badge_type', e.target.value)}
+                    className={`px-2 py-0.5 rounded-full text-xs font-bold border-0 cursor-pointer ${badgeStyle(a.badge_type)}`}>
+                    {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                  </select>
+                </td>
+                <td className="py-1.5 px-3">
+                  <input defaultValue={a.short_desc || ''} onBlur={e => { if (e.target.value !== (a.short_desc || '')) inlineSave(a.id, 'short_desc', e.target.value); }}
+                    className="w-full text-xs text-slate-600 bg-transparent hover:bg-white focus:bg-white focus:border-blue-300 border border-transparent rounded px-2 py-0.5 outline-none" />
+                </td>
+                <td className="py-1.5 px-3">
+                  <input defaultValue={a.country || ''} onBlur={e => { if (e.target.value !== (a.country || '')) inlineSave(a.id, 'country', e.target.value); }}
+                    className="w-20 text-slate-500 bg-transparent hover:bg-white focus:bg-white focus:border-blue-300 border border-transparent rounded px-2 py-0.5 outline-none" />
+                </td>
+                <td className="py-1.5 px-3">
+                  <input defaultValue={a.region || ''} onBlur={e => { if (e.target.value !== (a.region || '')) inlineSave(a.id, 'region', e.target.value); }}
+                    className="w-20 text-slate-500 bg-transparent hover:bg-white focus:bg-white focus:border-blue-300 border border-transparent rounded px-2 py-0.5 outline-none" />
+                </td>
+                <td className="py-1.5 px-3 text-center text-slate-500">{a.mention_count}</td>
+                <td className="py-1.5 px-3 text-center">
+                  <button onClick={() => deleteAttraction(a.id)} className="text-red-400 hover:text-red-600 text-xs">삭제</button>
+                </td>
               </tr>
             ))}
           </tbody>
