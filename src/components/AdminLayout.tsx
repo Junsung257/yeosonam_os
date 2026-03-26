@@ -34,6 +34,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/upload', label: '업로드' },
       { href: '/admin/land-operators', label: '랜드사 관리' },
       { href: '/admin/departing-locations', label: '출발지 관리' },
+      { href: '/admin/attractions', label: '관광지 관리' },
     ],
   },
   {
