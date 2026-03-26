@@ -933,10 +933,10 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                               <span className="text-[11px] text-slate-500 font-normal"> — {attr.short_desc}</span>
                             )}
                             {/* item.badge는 앞에 type 배지가 있으므로 생략 */}
+                            {item.note && (
+                              <span className="text-[11px] text-red-500 font-medium">({item.note})</span>
+                            )}
                           </span>
-                          {item.note && (
-                            <span className="text-[11px] text-red-500 ml-0.5 leading-snug font-medium">{item.note}</span>
-                          )}
                         </div>
                       </div>
                     );
