@@ -822,33 +822,27 @@ function getDotColor(type?: string): string {
 // - 관광: attractions DB 매칭 시에만 (type:normal + DB 매칭)
 // - 특전: 스파/크루즈/마사지/루프탑/체험 등 통합
 // - 나머지: type 기반
-function getActivityBadge(type?: string, activity?: string): { bg: string; text: string; border: string; label: string; useWavy: boolean; wavyColor: string } | null {
-  // type 기반 배지
+function getActivityBadge(type?: string, activity?: string): { bg: string; text: string; border: string; label: string } | null {
   switch (type) {
-    case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광', useWavy: false, wavyColor: '' };
-    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑', useWavy: false, wavyColor: '' };
-    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프', useWavy: false, wavyColor: '' };
-    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식', useWavy: false, wavyColor: '' };
-    // 크루즈/스파/excursion → 전부 [특전]으로 통합
-    case 'cruise':
-    case 'spa':
-    case 'excursion':
-      return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전', useWavy: false, wavyColor: '' };
+    case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광' };
+    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑' };
+    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프' };
+    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식' };
+    case 'cruise': case 'spa': case 'excursion':
+      return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
     default: break;
   }
-  // type이 normal이지만 특전 키워드가 있으면 [특전] 배지
   if (activity && /루프탑|마사지|체험|크루즈|요트|스파|전망대|쇼\s/.test(activity)) {
-    return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전', useWavy: false, wavyColor: '' };
+    return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
   }
   return null;
 }
-// attractions DB badge_type → 배지 스타일 매핑
 function getAttractionBadge(badgeType?: string) {
   switch (badgeType) {
-    case 'special': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전', useWavy: false, wavyColor: '' };
-    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑', useWavy: false, wavyColor: '' };
-    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식', useWavy: false, wavyColor: '' };
-    case 'tour': default: return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광', useWavy: true, wavyColor: '#60A5FA' };
+    case 'special': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
+    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑' };
+    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식' };
+    case 'tour': default: return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광' };
   }
 }
 
@@ -931,13 +925,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                                 <span className={`${badge.bg} ${badge.text} border ${badge.border} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
                                   {badge.label}
                                 </span>
-                                {badge.useWavy ? (
-                                  <span {...E} className="font-black text-[12px] text-gray-900" style={{ textDecoration: `underline wavy ${badge.wavyColor}`, textUnderlineOffset: '3px' }}>
-                                    {displayName}
-                                  </span>
-                                ) : (
-                                  <span {...E} className="font-bold text-[12px] text-gray-900">{displayName}</span>
-                                )}
+                                <span {...E} className="font-black text-[13px] text-blue-900">{displayName}</span>
                                 {displayDesc && <span className="text-[11px] text-gray-500 font-normal">{displayDesc}</span>}
                               </>;
                             })() : <span {...E} className="font-bold text-slate-800">{item.activity}</span>}
