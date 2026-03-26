@@ -165,7 +165,8 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   const avgActivities = days.length > 0
     ? days.reduce((sum, d) => sum + (d.schedule?.length || 0), 0) / days.length
     : 3;
-  const daysPerPage = avgActivities <= 3 ? 4 : 3;
+  // 활동 4개 이하 → 5일/페이지, 5개 이상 → 3일/페이지, 그 외 4일
+  const daysPerPage = avgActivities <= 4 ? 5 : avgActivities <= 5 ? 4 : 3;
   const dayChunks = chunkArray(days, daysPerPage);
 
   // 출발 도시명 추출
