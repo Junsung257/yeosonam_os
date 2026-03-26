@@ -161,13 +161,35 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   const itinerary = pkg.itinerary_data;
   // itinerary_data가 배열로 직접 저장된 경우 대응 (days 래퍼 없이)
   const days = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
-  // 동적 DAYS_PER_PAGE: 일정 내용량 기반
-  const avgActivities = days.length > 0
-    ? days.reduce((sum, d) => sum + (d.schedule?.length || 0), 0) / days.length
-    : 3;
-  // 활동 4개 이하 → 6일/페이지, 5개 → 4일, 6개 이상 → 3일
-  const daysPerPage = avgActivities <= 4 ? 6 : avgActivities <= 5 ? 4 : 3;
-  const dayChunks = chunkArray(days, daysPerPage);
+  // 동적 DAYS_PER_PAGE: 콘텐츠 높이 추정 기반
+  // 각 일차별 높이(px) 추정 후 A4에 맞게 자동 분배
+  const estimateDayHeight = (day: DaySchedule) => {
+    const routeH = 35;
+    const flightBarH = day.schedule?.some(s => s.type === 'flight') ? 45 : 0;
+    const activities = (day.schedule?.filter(s => s.type !== 'flight')?.length || 0);
+    const actH = activities * 28;
+    const noteH = day.schedule?.filter(s => s.note)?.length ? 15 : 0;
+    const hotelMealH = 35;
+    const gapH = 20;
+    return routeH + flightBarH + actH + noteH + hotelMealH + gapH;
+  };
+  const PAGE_CONTENT_HEIGHT = 980; // A4 높이에서 헤더 빼고 사용 가능한 영역
+  // 탐욕법으로 페이지 분배
+  const dayChunks: DaySchedule[][] = [];
+  let currentChunk: DaySchedule[] = [];
+  let currentHeight = 0;
+  for (const day of days) {
+    const h = estimateDayHeight(day);
+    if (currentChunk.length > 0 && currentHeight + h > PAGE_CONTENT_HEIGHT) {
+      dayChunks.push(currentChunk);
+      currentChunk = [day];
+      currentHeight = h;
+    } else {
+      currentChunk.push(day);
+      currentHeight += h;
+    }
+  }
+  if (currentChunk.length > 0) dayChunks.push(currentChunk);
 
   // 출발 도시명 추출
   const departCity = (() => {
