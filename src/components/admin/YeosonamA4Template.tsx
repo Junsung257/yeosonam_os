@@ -921,21 +921,24 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                         <div className="flex flex-col">
                           <span className={`text-[12px] break-keep leading-snug flex flex-wrap items-center gap-1 ${EC}`}>
                             {item.time && <span className="text-blue-600 font-bold">{item.time}</span>}
-                            {attr?.emoji && <span>{attr.emoji}</span>}
                             {badge ? (() => {
-                              const { poiName, poiDesc } = splitPoi(item.activity);
+                              // attractions 매칭 시: DB 관광지명 + DB 설명으로 대체 (원문 제거)
+                              // 매칭 안 됨: 원문 표시
+                              const displayName = attr ? attr.name : splitPoi(item.activity).poiName;
+                              const displayDesc = attr ? null : splitPoi(item.activity).poiDesc;
                               return <>
+                                {attr?.emoji && <span>{attr.emoji}</span>}
                                 <span className={`${badge.bg} ${badge.text} border ${badge.border} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
                                   {badge.label}
                                 </span>
                                 {badge.useWavy ? (
                                   <span {...E} className="font-black text-[12px] text-gray-900" style={{ textDecoration: `underline wavy ${badge.wavyColor}`, textUnderlineOffset: '3px' }}>
-                                    {poiName}
+                                    {displayName}
                                   </span>
                                 ) : (
-                                  <span {...E} className="font-bold text-[12px] text-gray-900">{poiName}</span>
+                                  <span {...E} className="font-bold text-[12px] text-gray-900">{displayName}</span>
                                 )}
-                                {poiDesc && <span className="text-[11px] text-gray-500 font-normal">{poiDesc}</span>}
+                                {displayDesc && <span className="text-[11px] text-gray-500 font-normal">{displayDesc}</span>}
                               </>;
                             })() : <span {...E} className="font-bold text-slate-800">{item.activity}</span>}
                             {item.badge && (
