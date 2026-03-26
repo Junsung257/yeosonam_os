@@ -817,19 +817,29 @@ function getDotColor(type?: string): string {
   }
 }
 
-// 활동 타입별 인라인 배지 (wavy는 관광지만)
-// normal은 배지 대상에서 제외 — attractions DB 매칭된 것만 별도 처리
-function getActivityBadge(type?: string): { bg: string; text: string; border: string; label: string; useWavy: boolean; wavyColor: string } | null {
+// 6종 배지 체계: 관광, 쇼핑, 특전, 선택관광, 골프, 특식
+// - 관광: attractions DB 매칭 시에만 (type:normal + DB 매칭)
+// - 특전: 스파/크루즈/마사지/루프탑/체험 등 통합
+// - 나머지: type 기반
+function getActivityBadge(type?: string, activity?: string): { bg: string; text: string; border: string; label: string; useWavy: boolean; wavyColor: string } | null {
+  // type 기반 배지
   switch (type) {
-    // normal은 여기서 처리 안 함 → attractions 매칭으로 관광 배지 결정
     case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광', useWavy: false, wavyColor: '' };
     case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑', useWavy: false, wavyColor: '' };
-    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프', useWavy: true, wavyColor: '#34D399' };
-    case 'cruise': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '크루즈', useWavy: true, wavyColor: '#22D3EE' };
-    case 'spa': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '스파', useWavy: true, wavyColor: '#F472B6' };
+    case 'golf': return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100', label: '골프', useWavy: false, wavyColor: '' };
     case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식', useWavy: false, wavyColor: '' };
-    default: return null;
+    // 크루즈/스파/excursion → 전부 [특전]으로 통합
+    case 'cruise':
+    case 'spa':
+    case 'excursion':
+      return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전', useWavy: false, wavyColor: '' };
+    default: break;
   }
+  // type이 normal이지만 특전 키워드가 있으면 [특전] 배지
+  if (activity && /루프탑|마사지|체험|크루즈|요트|스파|전망대|쇼\s/.test(activity)) {
+    return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전', useWavy: false, wavyColor: '' };
+  }
+  return null;
 }
 // attractions DB 매칭된 관광지 전용 배지 (wavy 포함)
 const TOUR_BADGE = { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광', useWavy: true, wavyColor: '#60A5FA' };
@@ -895,7 +905,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
                     const attr = matchAttraction(item.activity, attractions, destination);
                     // 배지 결정: type별 배지 우선 → attractions 매칭 시 관광 배지 → 없으면 null
-                    const badge = getActivityBadge(item.type) || (attr ? TOUR_BADGE : null);
+                    const badge = getActivityBadge(item.type, item.activity) || (attr ? TOUR_BADGE : null);
                     return (
                       <div key={sIdx} className="relative pl-4">
                         {/* dot */}
