@@ -281,7 +281,9 @@ function Page1Header({ title, badges }: { title: string; badges: React.ReactNode
       <div className="flex items-center gap-3 mb-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="여소남" className="h-8 object-contain shrink-0" />
-        <h1 {...E} className={`text-[#001f3f] text-2xl font-extrabold leading-tight tracking-tight flex-1 break-keep ${EC}`}>{title}</h1>
+        <h1 {...E} className={`text-[#001f3f] text-2xl font-extrabold leading-tight tracking-tight flex-1 break-keep ${EC}`}>
+          <span className="text-[#005d90]">여소남</span> <span className="text-[16px]">✈️</span> {title}
+        </h1>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">{badges}</div>
     </header>
@@ -764,7 +766,13 @@ function ItineraryPageHeader({ title, departureAirport, destination, airline }: 
 
   return (
     <header className="w-full border-b border-[#005d90] flex justify-between items-center px-10 py-3">
-      <h1 {...E} className={`text-[14px] font-bold text-[#005d90] ${EC}`}>{title}</h1>
+      <div className="flex items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="여소남" className="h-6 object-contain shrink-0" />
+        <h1 {...E} className={`text-[14px] font-bold text-[#005d90] ${EC}`}>
+          <span className="text-[#005d90]">여소남</span> <span className="text-[12px]">✈️</span> {title}
+        </h1>
+      </div>
       {(airlineName || depCity) && destination && (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded-full">
           ✈️ {airlineName || ''} <span className="text-blue-300">|</span> {depCity}출발 ↔ {destination}
