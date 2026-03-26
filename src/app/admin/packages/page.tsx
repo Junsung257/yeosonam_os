@@ -876,7 +876,7 @@ export default function PackagesPage() {
     let list = [...packages];
 
     if (!showExpired) {
-      list = list.filter(p => !isExpired(p));
+      list = list.filter(p => !isExpired(p) && p.status !== 'INACTIVE');
     }
 
     if (statusFilter === 'deadline') {
@@ -972,7 +972,7 @@ export default function PackagesPage() {
     }
   };
 
-  const handleBulk = async (action: 'bulk_approve' | 'bulk_delete') => {
+  const handleBulk = async (action: 'bulk_approve' | 'bulk_delete' | 'bulk_inactive' | 'bulk_active') => {
     if (checkedIds.size === 0) return;
     if (action === 'bulk_delete' && !confirm(`${checkedIds.size}개 상품을 삭제하시겠습니까?`)) return;
     setBulkLoading(true);
@@ -1183,6 +1183,16 @@ export default function PackagesPage() {
             disabled={bulkLoading}
             className="px-2.5 py-1 bg-red-500 text-white rounded-lg text-[11px] font-medium hover:bg-red-600 disabled:opacity-50"
           >일괄 삭제</button>
+          <button
+            onClick={() => handleBulk('bulk_inactive')}
+            disabled={bulkLoading}
+            className="px-2.5 py-1 bg-slate-500 text-white rounded-lg text-[11px] font-medium hover:bg-slate-600 disabled:opacity-50"
+          >비활성화</button>
+          <button
+            onClick={() => handleBulk('bulk_active')}
+            disabled={bulkLoading}
+            className="px-2.5 py-1 bg-blue-500 text-white rounded-lg text-[11px] font-medium hover:bg-blue-600 disabled:opacity-50"
+          >활성화</button>
           <button
             onClick={() => { setCheckedIds(new Set()); lastCheckedIndexRef.current = -1; }}
             className="ml-auto text-[11px] text-blue-500 hover:text-blue-700"

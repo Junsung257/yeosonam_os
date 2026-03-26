@@ -162,6 +162,34 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
+    // 일괄 비활성화
+    if (action === 'bulk_inactive') {
+      const { packageIds } = body;
+      if (!Array.isArray(packageIds) || packageIds.length === 0) {
+        return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from('travel_packages')
+        .update({ status: 'INACTIVE', updated_at: new Date().toISOString() })
+        .in('id', packageIds);
+      if (error) throw error;
+      return NextResponse.json({ success: true, count: packageIds.length });
+    }
+
+    // 일괄 활성화
+    if (action === 'bulk_active') {
+      const { packageIds } = body;
+      if (!Array.isArray(packageIds) || packageIds.length === 0) {
+        return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from('travel_packages')
+        .update({ status: 'DRAFT', updated_at: new Date().toISOString() })
+        .in('id', packageIds);
+      if (error) throw error;
+      return NextResponse.json({ success: true, count: packageIds.length });
+    }
+
     // 일괄 삭제 (연관 document_hashes도 함께 삭제 → 재업로드 가능)
     if (action === 'bulk_delete') {
       const { packageIds } = body;
