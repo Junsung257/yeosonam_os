@@ -949,21 +949,41 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                 </div>
               )}
 
-              {/* 하단: 숙박 + 식사 */}
-              <div className="mt-2 bg-white rounded-lg border border-slate-200 p-2">
-                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
-                  🏨 <span {...E} className={EC}>
-                    {day.hotel ? `${day.hotel.name}${day.hotel.grade ? ` (${day.hotel.grade})` : ''}${day.hotel.note ? ` ${day.hotel.note}` : ''}` : '일정 종료'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-slate-600 mt-1 pt-1 border-t border-slate-100">
-                  <span {...E} className={EC}>☕ 조: {day.meals?.breakfast_note || (day.meals?.breakfast ? '호텔식' : '불포함')}</span>
-                  <span className="text-slate-300">|</span>
-                  <span {...E} className={EC}>🍜 중: {day.meals?.lunch_note || (day.meals?.lunch ? '현지식' : '불포함')}</span>
-                  <span className="text-slate-300">|</span>
-                  <span {...E} className={EC}>🍽️ 석: {day.meals?.dinner_note || (day.meals?.dinner ? '현지식' : '불포함')}</span>
-                </div>
-              </div>
+              {/* 하단: 숙박 + 식사 (1줄 통합, 호텔명 길면 2줄) */}
+              {(() => {
+                const hotelText = day.hotel ? `${day.hotel.name}${day.hotel.grade ? ` (${day.hotel.grade})` : ''}${day.hotel.note ? ` ${day.hotel.note}` : ''}` : '일정 종료';
+                const mealB = day.meals?.breakfast_note || (day.meals?.breakfast ? '호텔식' : '불포함');
+                const mealL = day.meals?.lunch_note || (day.meals?.lunch ? '현지식' : '불포함');
+                const mealD = day.meals?.dinner_note || (day.meals?.dinner ? '현지식' : '불포함');
+                const isLong = hotelText.length > 25;
+                return (
+                  <div className="mt-2 bg-white rounded-lg border border-slate-200 px-2 py-1.5">
+                    {isLong ? (
+                      <>
+                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-800">
+                          🏨 <span {...E} className={EC}>{hotelText}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-600 mt-0.5">
+                          <span>☕{mealB}</span><span className="text-slate-300">|</span>
+                          <span>🍜{mealL}</span><span className="text-slate-300">|</span>
+                          <span>🍽️{mealD}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1 font-semibold text-slate-800">
+                          🏨 <span {...E} className={EC}>{hotelText}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 shrink-0">
+                          <span>☕{mealB}</span><span className="text-slate-300">|</span>
+                          <span>🍜{mealL}</span><span className="text-slate-300">|</span>
+                          <span>🍽️{mealD}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
