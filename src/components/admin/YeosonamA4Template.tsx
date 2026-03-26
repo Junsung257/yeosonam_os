@@ -119,10 +119,10 @@ const EC = 'outline-none focus:bg-yellow-50';
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════
 
-// 관광지 매칭: 지역(region) 필터 + 양방향 포함 매칭
+// 관광지 매칭: 지역 필터 + 키워드 분리 매칭
 function matchAttraction(activity: string, attractions?: AttractionInfo[], destination?: string): AttractionInfo | null {
   if (!attractions?.length) return null;
-  // 같은 지역 관광지만 필터 (destination이 region/country에 포함되면 매칭)
+  // 같은 지역 관광지만 필터
   const filtered = destination
     ? attractions.filter(a =>
         !a.region || !destination ||
@@ -139,6 +139,12 @@ function matchAttraction(activity: string, attractions?: AttractionInfo[], desti
   // 3. activity가 DB 이름에 포함 (activity가 2자 이상)
   const actInDb = filtered.find(a => activity.length >= 2 && a.name.includes(activity));
   if (actInDb) return actInDb;
+  // 4. 키워드 분리 매칭: DB 이름을 &/,/+/공백으로 분리해서 각 키워드가 activity에 포함되는지
+  const keywordMatch = filtered.find(a => {
+    const keywords = a.name.split(/[&,+/\s]+/).map(k => k.trim()).filter(k => k.length >= 2);
+    return keywords.length > 0 && keywords.some(k => activity.includes(k));
+  });
+  if (keywordMatch) return keywordMatch;
   return null;
 }
 
@@ -148,8 +154,11 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   const title = pkg.display_name || pkg.title || '상품명';
   const itinerary = pkg.itinerary_data;
   const days = itinerary?.days || [];
-  // 동적 DAYS_PER_PAGE: 일수에 따라 조절
-  const daysPerPage = days.length <= 4 ? 4 : days.length <= 6 ? 5 : DEFAULT_DAYS_PER_PAGE;
+  // 동적 DAYS_PER_PAGE: 일정 내용량 기반
+  const avgActivities = days.length > 0
+    ? days.reduce((sum, d) => sum + (d.schedule?.length || 0), 0) / days.length
+    : 3;
+  const daysPerPage = avgActivities <= 3 ? 4 : 3;
   const dayChunks = chunkArray(days, daysPerPage);
 
   // 출발 도시명 추출
