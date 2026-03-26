@@ -941,17 +941,13 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                                 {displayDesc && <span className="text-[11px] text-gray-500 font-normal">{displayDesc}</span>}
                               </>;
                             })() : <span {...E} className="font-bold text-slate-800">{item.activity}</span>}
-                            {item.badge && (
-                              <span className="inline-flex items-center px-1 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold rounded border border-emerald-200">
-                                {item.badge}
-                              </span>
+                            {attr?.short_desc && (
+                              <span className="text-[11px] text-slate-500 font-normal"> — {attr.short_desc}</span>
                             )}
+                            {/* item.badge는 앞에 type 배지가 있으므로 생략 */}
                           </span>
-                          {attr?.short_desc && (
-                            <span className="text-[10px] text-slate-500 ml-0.5 leading-snug">{attr.short_desc}</span>
-                          )}
                           {item.note && (
-                            <span className="text-[10px] text-amber-600 ml-0.5 leading-snug italic">{item.note}</span>
+                            <span className="text-[11px] text-red-500 ml-0.5 leading-snug font-medium">{item.note}</span>
                           )}
                         </div>
                       </div>
