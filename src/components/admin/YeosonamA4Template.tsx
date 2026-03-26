@@ -576,7 +576,7 @@ function normalizeNotices(raw: NoticeItemLocal[]): NoticeItemLocal[] {
     const group = merged.get(type)!;
     if (notice.title && !group.titles.includes(notice.title)) group.titles.push(notice.title);
     // text를 불렛 단위로 분해
-    const lines = notice.text.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = (notice.text || notice.title || '').split('\n').map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
       const clean = line.startsWith('•') ? line : `• ${line}`;
       if (!group.bullets.includes(clean)) group.bullets.push(clean);
@@ -669,7 +669,7 @@ function NoticesPage({ noticesParsed, specialNotes }: {
             {typedNotices.map((notice, idx) => {
               const style = NOTICE_STYLES[notice.type] || NOTICE_STYLES.INFO;
               // 불렛 포인트 분리: "• 항목1\n• 항목2" → 개별 라인
-              const lines = notice.text.split('\n').map(l => l.trim()).filter(Boolean);
+              const lines = (notice.text || notice.title || '').split('\n').map(l => l.trim()).filter(Boolean);
               return (
                 <div key={idx} className={`${style.bg} border ${style.border} rounded p-2`}>
                   <div className="flex items-center gap-1 mb-1">
