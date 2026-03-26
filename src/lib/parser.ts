@@ -623,196 +623,63 @@ export async function extractItineraryData(
  * EXTRACT_PROMPT + ITINERARY_PROMPT를 하나로 합쳐 AI 호출 1회로 처리.
  */
 // ── Phase 1: 기본 정보 + 가격 추출 (itinerary_data 제외 → 빠름) ──
-const MULTI_PRODUCT_PHASE1_PROMPT = `이 여행상품 문서에서 **모든 상품**의 기본 정보와 가격을 추출해 JSON 배열로 반환하세요.
-★ 일정표(itinerary_data, days)는 이 단계에서 추출하지 마세요. 기본 정보와 가격만 추출.
-상품이 1개여도 반드시 배열([ ])로 감싸세요.
+const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 기본 정보와 가격을 JSON 배열로 추출하세요.
+일정표(itinerary_data/days)는 추출하지 마세요. 상품이 1개여도 배열로 감싸세요.
 
-★★ UI 렌더링 컨텍스트 ★★
-이 JSON은 A4 규격(800px) 2단 그리드에 렌더링됩니다.
-notices_parsed의 text는 "• 항목\n• 항목" 불렛 포인트 형식으로 작성하세요. 1줄 압축 금지.
-
-★★ 처리 순서 (Chain of Thought) ★★
-다음 4단계를 반드시 순서대로 거쳐라:
-① De-noise: 엑셀용 빈칸, 비고/주의사항 중복 문구, 직원 메모("수배불가","차지나옴") 완벽 제거
-② Translate: 여행사 은어(수배→예약확정, 샌딩→미팅, 차지→추가금, 인폼→안내)를 B2C 용어로 번역
-③ Summarize: notices_parsed text를 "• 항목1\n• 항목2\n• 항목3" 불렛 포인트 2~3줄로 정리 (1줄 압축 금지, 맥락 보존)
-④ Validate: 원본에 없는 데이터는 null 처리 (할루시네이션 원천 차단)
-
-★★★ 최우선 규칙 — 상품 간 데이터 오염 절대 금지 ★★★
-- 각 상품의 inclusions/excludes/guide_tip/optional_tours는 해당 상품 섹션에서만 추출.
-- 상품A의 "기사/가이드 팁 포함"을 상품B에 적용하면 절대 안 된다.
-- 요금표도 해당 상품 열(Column)의 가격만 추출.
-
-★ duration: "3박4일" → duration: 4 (일수 기준). "2박3일" → duration: 3.
-★ 가이드팁: "팁 포함" → inclusions + guide_tip:"포함" / "$40/인" → excludes + guide_tip:"$40/인"
-★ departure_day_of_week: "3/29~4/22 (토 출발)" → departure_day_of_week:"토". 출발 요일이 명시되면 반드시 추출.
+★★★ 절대 규칙 ★★★
+- 상품 간 데이터 오염 금지: 각 상품의 inclusions/excludes/guide_tip은 해당 상품 섹션에서만 추출.
+- [엄격한 경고] inclusions/excludes/specialNotes는 원문 텍스트를 1글자도 변경/요약/삭제/역산하지 말 것. 원본 그대로 복사.
+- 원본에 없는 데이터는 절대 생성하지 말 것 (null 처리).
+- duration: "3박4일" → 4 (일수). departure_day_of_week: "토 출발" → "토".
+- 가격: "849,-" → 849000 (×1000). price_tiers와 price_list 둘 다 반드시 채울 것.
+- 복수 상품이면 각 상품별 해당 열(Column)의 가격만 추출.
+- excluded_dates: 항공제외일을 YYYY-MM-DD 배열로 반드시 추출.
 
 [
   {
-    "title": "상품명 전체",
-    "category": "package|golf|honeymoon|cruise|theme",
-    "product_type": "실속|품격|노팁노옵션|일반|null",
-    "trip_style": "3박4일 등|null",
-    "destination": "목적지",
-    "duration": 여행일수(★N박M일의 M),
-    "departure_days": "매주 화요일 등|null",
-    "departure_airport": "출발공항|null",
-    "airline": "항공사명/편명|null",
-    "min_participants": 최소인원(없으면 4),
-    "ticketing_deadline": "YYYY-MM-DD|null (연도없으면 2026)",
-    "guide_tip": "원문|null",
-    "single_supplement": "원문|null",
-    "small_group_surcharge": "원문|null",
-    "price_tiers": [
-      {
-        "period_label": "날짜/기간 표시 원문 그대로 (예: '4/1~4/30')",
-        "departure_dates": ["YYYY-MM-DD"] 또는 null,
-        "date_range": {"start":"YYYY-MM-DD","end":"YYYY-MM-DD"} 또는 null,
-        "departure_day_of_week": "목 또는 금 또는 화,수,토 또는 일,월 등 (없으면 null)",
-        "adult_price": 성인가격 숫자 (예: 849000. 849,- → 849000으로 변환),
-        "child_price": 아동가격 숫자 또는 null,
-        "status": "available 또는 confirmed 또는 soldout",
-        "note": "비고 원문 그대로 (예: '*2명부터 출발확정', '특가', '마감임박' 등. 없으면 null)"
-      }
-    ],
-    "price_list": [
-      {
-        "period": "기간 원문 (예: '4/1~4/30')",
-        "rules": [
-          {
-            "condition": "출발 조건 (예: '목', '금', '화,수,토', '일,월', '전 출발일')",
-            "price_text": "가격 원문 (예: '849,000원')",
-            "price": 849000,
-            "badge": null
-          }
-        ],
-        "notes": "성인/아동 동일, 싱글차지 등 부가 조건 또는 null"
-      }
-    ],
-    "surcharges": [{"period":"기간","amount_usd":null,"amount_krw":null,"note":""}],
-    "excluded_dates": ["YYYY-MM-DD (항공제외일/운휴일 반드시 추출. 예: 4/30, 5/1~5 → 2026-04-30, 2026-05-01~05)"],
-    "inclusions": ["포함항목 원문 그대로"],
-    "excludes": ["불포함항목 원문 그대로"],
-    "optional_tours": [{"name":"","price_usd":null,"price_krw":null}],
-    "accommodations": ["호텔명"],
-    "specialNotes": "주의사항+비고 전체 원문 (원본 보존용)",
-    "notices_parsed": [
-      {"type":"CRITICAL","title":"취소/환불 규정","text":"• 전세기 특별약관: 예약금 입금 후 취소/환불 절대 불가\n• 출발 14일 전 전체 금액 완납 필수 (미납 시 자동 취소)\n• 여권 유효기간 출발일 기준 6개월 이상 필수"},
-      {"type":"PAYMENT","title":"각종 추가 요금","text":"• 2B 추가: 평일 1100엔, 주말 2200엔\n• 3B 추가: 주말/공휴일 550엔\n• 본관 2000엔/박, 1인실 3000엔/박 추가"},
-      {"type":"POLICY","title":"골프장 이용 규정","text":"• 완전 셀프제 운영 (골프백 상하차 서비스 미제공)\n• 골프장 선택/업그레이드 불가, 중복 플레이 가능\n• 문신 시 골프장 및 목욕탕 입장 불가"},
-      {"type":"INFO","title":"현지 이용 안내","text":"• 호텔→골프장 이동 약 30분 (택시 송영 가능)\n• 출발 시간은 전날 기사님이 안내\n• 석식 불포함, 호텔 1층 식당 이용 가능"}
-    ],
-    "cancellation_policy": [{"period":"","rate":0,"note":""}],
-    "land_operator": "랜드사명|null",
-    "product_tags": ["해당태그만"],
-    "product_highlights": ["핵심특전 3개이내"],
-    "product_summary": "2~3줄 요약",
-    "theme_tags": ["해당태그만"],
-    "selling_points": {"hotel":"호텔명|null","airline":"항공사|null","unique":["특전2~3개"]},
-    "flight_info": {"airline":"null","flight_no":"null","depart":"HH:MM|null","arrive":"HH:MM|null","return_depart":"null","return_arrive":"null"}
+    "title":"상품명","category":"package|golf|honeymoon|cruise|theme","product_type":"실속|품격|노팁노옵션|null",
+    "trip_style":"3박4일|null","destination":"목적지","duration":일수,"departure_days":"출발요일|null",
+    "departure_airport":"출발공항|null","airline":"항공사/편명|null","min_participants":최소인원,
+    "ticketing_deadline":"YYYY-MM-DD|null","guide_tip":"원문|null","single_supplement":"원문|null",
+    "small_group_surcharge":"원문|null",
+    "price_tiers":[{"period_label":"기간원문","departure_dates":["YYYY-MM-DD"],"date_range":{"start":"","end":""},
+      "departure_day_of_week":"목|금|화,수,토|null","adult_price":숫자,"child_price":숫자,"status":"available","note":"비고원문|null"}],
+    "price_list":[{"period":"기간원문","rules":[{"condition":"조건","price_text":"가격원문","price":숫자,"badge":null}],"notes":"부가조건|null"}],
+    "surcharges":[{"period":"","amount_usd":null,"amount_krw":null,"note":""}],
+    "excluded_dates":["YYYY-MM-DD"],
+    "inclusions":["포함항목 원문 그대로"],"excludes":["불포함항목 원문 그대로"],
+    "optional_tours":[{"name":"","price_usd":null,"price_krw":null}],
+    "accommodations":["호텔명"],
+    "specialNotes":"주의사항+비고 전체 원문",
+    "notices_parsed":[{"type":"CRITICAL|PAYMENT|POLICY|INFO","title":"제목","text":"• 항목1\n• 항목2\n• 항목3"}],
+    "cancellation_policy":[{"period":"","rate":0,"note":""}],
+    "land_operator":"랜드사|null","product_tags":["태그"],"product_highlights":["특전3개이내"],"product_summary":"2줄요약"
   }
 ]
 
-★★ price_tiers/price_list 작성 규칙 (가장 중요 — 반드시 채울 것):
-- 요금표가 있으면 price_tiers와 price_list 둘 다 반드시 채워라. 비어있으면 안 된다.
-- 가격 변환: "849,-" → 849000, "1,059,-" → 1059000 (천원 단위 표기 → ×1000)
-- 동일 기간 내 요일별 다른 가격 → price_tiers에는 각 행, price_list에는 rules[] 배열로 분리.
-- 복수 상품(실속/품격/노팁노옵션)이면 각 상품별 해당 열(Column)의 가격만 추출.
-- 예시: "4/1~4/30 목 849,-" → price_tiers: [{period_label:"4/1~4/30", departure_day_of_week:"목", adult_price:849000}]
-- ★ note 필드: "*2명부터 출발확정" 같은 비고는 해당 기간의 price_tiers에만 note로 기재. 다른 기간에 적용하지 마라.
-  예: 3/29~6/5에 "*2명부터 출발확정" → 3/29~6/5 행의 note:"출발확정". 3/19~3/28에는 note:null.
-- ★ excluded_dates: "항공제외일 4/30, 5/1~5, 5/23, 24" 같은 제외일은 반드시 YYYY-MM-DD 배열로 추출. 빈 배열이면 안 된다.
-- ★ 일본공휴일/연휴기간 지상비 추가 정보도 notices_parsed PAYMENT에 포함할 것.
-
-★★★ 포함/불포함 절대 원칙 (할루시네이션 금지):
-- inclusions/excludes는 원문의 "포함내역"/"불포함 내역" 섹션에 적힌 것만 그대로 옮겨라.
-- 일정표에서 역산하여 추가 항목을 생성하지 마라.
-  나쁜 예: 원문 "식사3회포함" → AI가 "식사 6회 (조식 3회, 중식 2회, 석식 1회)"로 변환 ← 금지
-  좋은 예: 원문 "식사3회포함" → "식사3회포함" 그대로
-  나쁜 예: 일정표에 스쿠버다이빙이 있어서 포함사항에 추가 ← 금지 (원문 포함사항에 없으면 넣지 마라)
-  나쁜 예: 원문 "쇼핑 2회, 식사 3회 불포함" → "식사 5회 불포함"으로 역산 변환 ← 금지
-- 원문에 적힌 표현 그대로. 숫자 변환, 항목 추가, 재해석 금지.
-★★★ notices_parsed 절대 규칙 (위 예시를 정확히 따를 것):
-- 반드시 {"type","title","text"} 객체 배열. 문자열 배열 금지.
-- 전체 notices 개수: 정확히 4개 (CRITICAL 1개, PAYMENT 1개, POLICY 1개, INFO 1개).
-- 같은 type의 항목은 절대 2개 이상 만들지 마라. 반드시 1개로 병합.
-- ★ 각 카드의 불렛(•) 개수: 최대 3~4개. 5개 이상 절대 금지. 비슷한 내용은 1줄로 합쳐라.
-- text는 반드시 "• 첫줄\n• 둘째줄\n• 셋째줄" 불렛 포인트 형식. 1줄 압축 금지.
-- 분류 기준 엄수:
-  CRITICAL: 취소/환불/여권/쇼핑횟수 등 여행 성사 여부 및 법적 고지 사항. 쇼핑센터 방문 횟수와 교환/환불 조건은 반드시 CRITICAL에 포함. 좌석확인/수화물 구매 같은 안내 사항은 INFO.
-  PAYMENT: 추가 요금/할증만. 현금영수증 발급 같은 안내는 INFO.
-  POLICY: 골프장/호텔/크루즈 현장 규정만.
-  INFO: 이동/차량/식사 등 일반 안내.
-- 주의사항 + 비고 + 불포함의 제약조건을 모두 통합하여 중복 없이 4개로 분류.
-- 직원 말투("부탁드립니다")는 고객용("~불가", "~필수")으로 수정.
-- 원본에 없는 내용은 생성하지 마라.
-반드시 JSON 배열만 반환. 마크다운 코드블록 없이.`;
+★ notices_parsed: 정확히 4개(CRITICAL/PAYMENT/POLICY/INFO 각 1개). text는 "•" 불렛 포인트 형식.
+  CRITICAL: 취소/환불/여권/쇼핑횟수. PAYMENT: 추가요금/할증. POLICY: 현장규정. INFO: 이동/안내.
+★ note: 비고는 해당 기간 price_tiers에만 기재. 다른 기간에 적용 금지.
+반드시 JSON 배열만 반환.`;
 
 // ── Phase 2: 특정 상품의 일정표만 추출 ──
-const MULTI_PRODUCT_PHASE2_PROMPT = `이 여행상품 문서에서 아래 상품의 **일정표(itinerary_data)**만 추출해 JSON 객체로 반환하세요.
+const MULTI_PRODUCT_PHASE2_PROMPT = `"{{PRODUCT_TITLE}}" 상품의 일정표만 JSON 객체로 추출하세요. 다른 상품 혼합 금지.
 
-★ 대상 상품: "{{PRODUCT_TITLE}}"
+★★★ 절대 규칙: 원본 일정 텍스트를 1글자도 변경/요약/삭제하지 말 것. 선택관광/미팅위치/수하물안내는 해당 일차 schedule에 그대로 넣을 것. ★★★
 
 {
-  "meta": {
-    "title": "상품명",
-    "product_type": "실속 등|null",
-    "destination": "목적지",
-    "nights": 박수(★N박M일의 N),
-    "days": 일수(★N박M일의 M),
-    "departure_airport": "출발공항|null",
-    "airline": "항공사|null",
-    "flight_out": "출발편 코드|null",
-    "flight_in": "귀국편 코드|null",
-    "departure_days": "출발요일 원문|null",
-    "min_participants": 최소인원,
-    "room_type": "2인1실 등|null",
-    "ticketing_deadline": "발권마감 원문|null",
-    "hashtags": ["#관광지명"],
-    "brand": "여소남"
-  },
-  "highlights": {
-    "inclusions": ["포함내역 원문 그대로 (절대 편집 금지)"],
-    "excludes": ["불포함내역 원문 그대로 (절대 편집 금지)"],
-    "shopping": "쇼핑 원문|null",
-    "remarks": ["RMK/비고 원문 그대로"]
-  },
-  "days": [
-    {
-      "day": 1,
-      "regions": ["지역명"],
-      "meals": {"breakfast":false,"lunch":true,"dinner":true,"breakfast_note":null,"lunch_note":"식사명","dinner_note":"식사명"},
-      "schedule": [
-        {"time":"09:05","activity":"김해 국제공항 출발","transport":"BX1385","note":null,"type":"flight","badge":"✈️ BX1385"},
-        {"time":"10:00","activity":"나가사키 국제공항 도착","transport":"BX1385","note":null,"type":"flight","badge":null},
-        {"time":null,"activity":"골프 라운딩 (18홀 / 셀프)","transport":null,"note":null,"type":"golf","badge":"⛳ 18홀 셀프라운딩"},
-        {"time":null,"activity":"호텔 체크인 후 휴식","transport":null,"note":null,"type":"normal","badge":null}
-      ],
-      "hotel": {"name":"호텔명","grade":"4성","note":"또는 동급"}
-    }
-  ],
-  "optional_tours": [{"name":"선택관광명","price_usd":30,"price_krw":null,"note":null}]
+  "meta":{"title":"상품명","destination":"목적지","nights":박수,"days":일수,"departure_airport":"출발공항|null","airline":"항공사|null","flight_out":"출발편|null","flight_in":"귀국편|null","departure_days":"출발요일|null","min_participants":최소인원,"brand":"여소남"},
+  "highlights":{"inclusions":["포함 원문 그대로"],"excludes":["불포함 원문 그대로"],"shopping":"쇼핑원문|null","remarks":["비고 원문 그대로"]},
+  "days":[{"day":1,"regions":["지역"],"meals":{"breakfast":false,"lunch":true,"dinner":true,"breakfast_note":null,"lunch_note":"식사명","dinner_note":"식사명"},
+    "schedule":[{"time":"09:05","activity":"원문 그대로","transport":"BX1385","note":null,"type":"flight|normal|golf|optional|shopping|cruise|spa","badge":"⛳ 18홀|null"}],
+    "hotel":{"name":"호텔명","grade":"4성","note":"또는 동급"}}],
+  "optional_tours":[{"name":"","price_usd":null,"price_krw":null,"note":null}]
 }
 
-★ 규칙:
-- 해당 상품("{{PRODUCT_TITLE}}")의 일정 섹션에서만 추출. 다른 상품 일정 혼합 금지.
-- type: normal|optional|shopping|flight|train|meal|hotel|golf|cruise|spa|excursion
-- ★ badge 필드: 골프라운딩이면 badge:"⛳ 18홀 셀프라운딩", 크루즈 승선이면 badge:"🚢 승선", 스파이면 badge:"💆 커플 스파" 등. 일반 활동이면 badge:null.
-- ★ 항공편(type:"flight"): 출발편과 도착편을 각각 별도 schedule 항목으로 추출. time에 출발/도착 시간 정확히 기입.
-  예: "BX1385 09:05/10:00" → [{time:"09:05",activity:"김해 국제공항 출발",transport:"BX1385",type:"flight"}, {time:"10:00",activity:"나가사키 국제공항 도착",transport:"BX1385",type:"flight"}]
-- 호텔: 해당 일자 블록에 HOTEL/호텔/숙소 키워드 있을 때만 귀속. 없으면 null.
-- ★★★ 일정표 원본 보존의 법칙 (최우선 규칙):
-  원본 일정에 적힌 내용은 해당 일차의 schedule에 반드시 그대로 넣어라. 절대 notices나 유의사항으로 빼지 마라.
-  ① 선택관광/옵션: 해당 일차 schedule에 type:"optional"로 상세 표기. 할인("선포함시 5만원"), 포함("장비 포함") 정보 반드시 activity에 포함.
-     예: activity:"추천 선택관광: 호핑투어 (스노클링+중식BBQ $80/인, 선포함시 5만원)" type:"optional"
-  ② 현장 행동 지침 (수하물표 보관, 가이드 미팅 위치 등): 해당 일차 schedule에 넣어라. 유의사항으로 빼지 마라.
-     예: activity:"필리핀 공항 수하물 대조 검사 — 수하물표 반드시 보관" → 1일차 schedule
-  ③ 일정 변형 조건 ("4박6일 시 하루 자유시간"): 해당 일차 schedule에 note로 표기.
-     예: activity:"자유시간", note:"4박6일 시 하루 자유시간 (중/석식 불포함)"
-- 식사: 불포함/자유식/X/- → false,null. 식사명 있으면 → true,식사명. "불포함(클럽식)" → false, note:"클럽식(불포함)". 불확실 → false,null.
-- highlights의 inclusions/excludes는 해당 상품 전용 섹션에서만 추출 (다른 상품 데이터 혼합 금지).
-- ★ highlights.remarks: 원문의 "비고" 섹션 전체를 각 항목별 배열로 추출.
-- 핵심 금액/기간은 **bold** 처리.
+★ 항공편: 출발/도착 각각 별도 항목. type:"flight", time에 시간 정확히 기입.
+★ 선택관광: type:"optional", 할인/포함 정보 activity에 반드시 포함.
+★ 일정 변형 조건: note에 표기 (예: "4박6일 시 자유시간").
+★ 식사: 불포함/X → false,null. 식사명 → true,식사명. "불포함(클럽식)" → false,"클럽식(불포함)".
 반드시 JSON 객체만 반환.`;
 
 export interface MultiProductResult {
