@@ -159,7 +159,8 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
 
   const title = pkg.display_name || pkg.title || '상품명';
   const itinerary = pkg.itinerary_data;
-  const days = itinerary?.days || [];
+  // itinerary_data가 배열로 직접 저장된 경우 대응 (days 래퍼 없이)
+  const days = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
   // 동적 DAYS_PER_PAGE: 일정 내용량 기반
   const avgActivities = days.length > 0
     ? days.reduce((sum, d) => sum + (d.schedule?.length || 0), 0) / days.length
