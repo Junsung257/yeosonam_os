@@ -563,11 +563,9 @@ const MAX_BULLETS = 6;
 const VALID_TYPES: NoticeItemLocal['type'][] = ['CRITICAL', 'PAYMENT', 'POLICY', 'INFO'];
 
 // 공통 항목 필터 — 예약안내문에 있는 내용은 일정표에서 제거
+// ※ 국가별 규정(담배, 전자담배, 흡연, 대마, TDAC 등)은 제거하지 않음!
 const COMMON_NOTICE_PATTERNS = [
-  /여권.*6개월/,
   /현금영수증/,
-  /파이널.*위약금/,
-  /예약금.*입금.*확정/,
   /개별행동.*불가|개별일정.*불가/,
   /완납.*기준|1주일.*완납|2주.*완납/,
   /취소.*문의.*평일|09시.*18시/,
@@ -577,8 +575,10 @@ const COMMON_NOTICE_PATTERNS = [
 ];
 
 function isCommonNotice(bullet: string): boolean {
-  // 안전장치: 숫자+%가 포함된 환불/수수료 규정은 절대 삭제 금지
-  if (/%|공제.*환불|\d+만원.*공제/.test(bullet)) return false;
+  // 안전장치: 아래 조건에 해당하면 절대 삭제 금지
+  if (/%|공제.*환불|\d+만원/.test(bullet)) return false;  // 수수료율/금액
+  if (/단수여권|훼손/.test(bullet)) return false;          // 특수 여권 규정
+  if (/\d+보루|\d+병|벌금/.test(bullet)) return false;     // 국가별 규정 (숫자 포함)
   // 공통 패턴 매칭
   return COMMON_NOTICE_PATTERNS.some(p => p.test(bullet));
 }
@@ -707,6 +707,8 @@ function NoticesPage({ noticesParsed, specialNotes }: {
                 </div>
               );
             })}
+          {/* 법적 방어 문구 */}
+          <p className="text-[9px] text-slate-400 mt-1.5 italic">※ 여권, 환불, 취소수수료 등 공통 규정은 별도 발송되는 [예약 안내문]을 반드시 확인하시기 바랍니다.</p>
           </div>
         </div>
       )}
