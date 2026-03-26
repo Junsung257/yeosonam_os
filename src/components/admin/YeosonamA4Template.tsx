@@ -562,9 +562,29 @@ interface NoticeItemLocal { type: 'CRITICAL' | 'PAYMENT' | 'POLICY' | 'INFO'; ti
 const MAX_BULLETS = 6;
 const VALID_TYPES: NoticeItemLocal['type'][] = ['CRITICAL', 'PAYMENT', 'POLICY', 'INFO'];
 
+// 공통 항목 필터 — 예약안내문에 있는 내용은 일정표에서 제거
+const COMMON_NOTICE_PATTERNS = [
+  /여권.*6개월/,
+  /현금영수증/,
+  /파이널.*위약금/,
+  /예약금.*입금.*확정/,
+  /개별행동.*불가|개별일정.*불가/,
+  /완납.*기준|1주일.*완납|2주.*완납/,
+  /취소.*문의.*평일|09시.*18시/,
+  /인원.*다를.*경우.*지불/,
+  /확인.*동의.*예약.*진행/,
+  /예약진행.*부탁/,
+];
+
+function isCommonNotice(bullet: string): boolean {
+  // 안전장치: 숫자+%가 포함된 환불/수수료 규정은 절대 삭제 금지
+  if (/%|공제.*환불|\d+만원.*공제/.test(bullet)) return false;
+  // 공통 패턴 매칭
+  return COMMON_NOTICE_PATTERNS.some(p => p.test(bullet));
+}
+
 /**
- * Gemini 출력 후처리 — 항상 정확히 4건 × 최대 4불렛으로 정규화
- * Gemini가 11건을 반환하든 3건을 반환하든 결과는 동일한 포맷
+ * Gemini 출력 후처리 — 공통 항목 제거 + 4건 × 최대 6불렛 정규화
  */
 function normalizeNotices(raw: NoticeItemLocal[]): NoticeItemLocal[] {
   // Step 1: 같은 type끼리 병합
@@ -575,10 +595,11 @@ function normalizeNotices(raw: NoticeItemLocal[]): NoticeItemLocal[] {
     const type = VALID_TYPES.includes(notice.type) ? notice.type : 'INFO';
     const group = merged.get(type)!;
     if (notice.title && !group.titles.includes(notice.title)) group.titles.push(notice.title);
-    // text를 불렛 단위로 분해
     const lines = (notice.text || notice.title || '').split('\n').map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
       const clean = line.startsWith('•') ? line : `• ${line}`;
+      // 공통 항목 필터링 (예약안내문에 있는 내용 제거)
+      if (isCommonNotice(clean)) continue;
       if (!group.bullets.includes(clean)) group.bullets.push(clean);
     }
   }
@@ -590,7 +611,7 @@ function normalizeNotices(raw: NoticeItemLocal[]): NoticeItemLocal[] {
     if (group.bullets.length === 0) continue;
     result.push({
       type,
-      title: group.titles[0] || (type === 'CRITICAL' ? '필수 확인 사항' : type === 'PAYMENT' ? '추가 요금 안내' : type === 'POLICY' ? '이용 규정' : '현지 안내'),
+      title: group.titles[0] || (type === 'CRITICAL' ? '본 상품 필수 안내' : type === 'PAYMENT' ? '추가 요금 안내' : type === 'POLICY' ? '이용 규정' : '현지 안내'),
       text: group.bullets.slice(0, MAX_BULLETS).join('\n'),
     });
   }
