@@ -917,9 +917,9 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                             {item.time && <span className="text-blue-600 font-bold">{item.time}</span>}
                             {badge ? (() => {
                               // attractions 매칭 시: DB 관광지명 + DB 설명으로 대체 (원문 제거)
-                              // 매칭 안 됨: 원문 표시
-                              const displayName = attr ? attr.name : splitPoi(item.activity).poiName;
-                              const displayDesc = attr ? null : splitPoi(item.activity).poiDesc;
+                              // 항상 원문 그대로 표시 (attractions 매칭 시에도 원문 보존)
+                              const displayName = item.activity;
+                              const displayDesc = !attr ? splitPoi(item.activity).poiDesc : null;
                               return <>
                                 {attr?.emoji && <span>{attr.emoji}</span>}
                                 <span className={`${badge.bg} ${badge.text} border ${badge.border} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
