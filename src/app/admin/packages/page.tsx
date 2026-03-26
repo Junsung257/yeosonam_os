@@ -539,22 +539,22 @@ const PackageRow = React.memo(function PackageRow({
           {/* 포스터 버튼 */}
           <button
             onClick={() => onOpenPoster(pkg, 'A4')}
-            className="px-1.5 py-1 border border-slate-300 text-slate-500 rounded text-[10px] hover:bg-slate-50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity"
+            className="px-1.5 py-1 border border-slate-300 text-slate-500 rounded text-[10px] hover:bg-slate-50 whitespace-nowrap"
             title="A4 포스터"
           >A4</button>
           <button
             onClick={() => onOpenPoster(pkg, 'MOBILE')}
-            className="px-1.5 py-1 border border-slate-300 text-slate-500 rounded text-[10px] hover:bg-slate-50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity"
+            className="px-1.5 py-1 border border-slate-300 text-slate-500 rounded text-[10px] hover:bg-slate-50 whitespace-nowrap"
             title="모바일 포스터"
           >모바일</button>
           <button
             onClick={() => onPromptGen(pkg)}
-            className="px-1.5 py-1 border border-blue-300 text-blue-600 rounded text-[10px] hover:bg-blue-50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity"
+            className="px-1.5 py-1 border border-blue-300 text-blue-600 rounded text-[10px] hover:bg-blue-50 whitespace-nowrap"
             title="마케팅 프롬프트 생성"
           >AD</button>
           <button
             onClick={() => onStudioOpen()}
-            className="px-1.5 py-1 border border-emerald-300 text-emerald-600 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity"
+            className="px-1.5 py-1 border border-emerald-300 text-emerald-600 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap"
             title="카드뉴스 스튜디오"
           >Studio</button>
           {/* 플랫폼별 마케팅 복사 드롭다운 */}
