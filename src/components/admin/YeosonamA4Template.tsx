@@ -67,6 +67,7 @@ export interface AttractionInfo {
   name: string;
   short_desc?: string;
   category?: string;
+  badge_type?: string; // 'tour' | 'special' | 'shopping' | 'meal'
   emoji?: string;
   country?: string;
   region?: string;
@@ -841,8 +842,15 @@ function getActivityBadge(type?: string, activity?: string): { bg: string; text:
   }
   return null;
 }
-// attractions DB 매칭된 관광지 전용 배지 (wavy 포함)
-const TOUR_BADGE = { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광', useWavy: true, wavyColor: '#60A5FA' };
+// attractions DB badge_type → 배지 스타일 매핑
+function getAttractionBadge(badgeType?: string) {
+  switch (badgeType) {
+    case 'special': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전', useWavy: false, wavyColor: '' };
+    case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑', useWavy: false, wavyColor: '' };
+    case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식', useWavy: false, wavyColor: '' };
+    case 'tour': default: return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광', useWavy: true, wavyColor: '#60A5FA' };
+  }
+}
 
 // activity 텍스트에서 관광지명과 괄호 설명 분리
 function splitPoi(activity: string): { poiName: string; poiDesc: string } {
@@ -905,7 +913,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
                     const attr = matchAttraction(item.activity, attractions, destination);
                     // 배지 결정: attractions 매칭 시 [관광] 최우선 → type별 배지 → 없으면 null
-                    const badge = attr ? TOUR_BADGE : getActivityBadge(item.type, item.activity);
+                    const badge = attr ? getAttractionBadge(attr.badge_type) : getActivityBadge(item.type, item.activity);
                     return (
                       <div key={sIdx} className="relative pl-4">
                         {/* dot */}
