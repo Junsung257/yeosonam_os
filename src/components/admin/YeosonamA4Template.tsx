@@ -119,9 +119,14 @@ const EC = 'outline-none focus:bg-yellow-50';
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════
 
-// 관광지 매칭: 지역 필터 + 키워드 분리 매칭
+// 매칭 제외 일반 단어 (이 단어로는 매칭하지 않음)
+const MATCH_STOP_WORDS = new Set(['호텔','방콕','파타야','부산','청도','보홀','다낭','하노이','타이페이','후쿠오카','나가사키','조식','중식','석식','이동','출발','도착','귀환','체크인','체크아웃','휴식','투숙','관광','공항','미팅','가이드','수속','탑승']);
+
+// 관광지 매칭: 지역 필터 + 키워드 분리 매칭 (엄격 모드)
 function matchAttraction(activity: string, attractions?: AttractionInfo[], destination?: string): AttractionInfo | null {
   if (!attractions?.length) return null;
+  // 이동/휴식/수속 등 비관광 활동은 매칭 제외
+  if (/^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항)/.test(activity)) return null;
   // 같은 지역 관광지만 필터
   const filtered = destination
     ? attractions.filter(a =>
@@ -133,15 +138,15 @@ function matchAttraction(activity: string, attractions?: AttractionInfo[], desti
   // 1. 정확 매칭
   const exact = filtered.find(a => activity === a.name);
   if (exact) return exact;
-  // 2. DB 이름이 activity에 포함 (name이 2자 이상)
-  const dbInAct = filtered.find(a => a.name.length >= 2 && activity.includes(a.name));
+  // 2. DB 이름이 activity에 포함 (name이 4자 이상 — 짧은 이름 오매칭 방지)
+  const dbInAct = filtered.find(a => a.name.length >= 4 && activity.includes(a.name));
   if (dbInAct) return dbInAct;
-  // 3. activity가 DB 이름에 포함 (activity가 2자 이상)
-  const actInDb = filtered.find(a => activity.length >= 2 && a.name.includes(activity));
+  // 3. activity가 DB 이름에 포함 (activity가 4자 이상)
+  const actInDb = filtered.find(a => activity.length >= 4 && a.name.includes(activity));
   if (actInDb) return actInDb;
-  // 4. 키워드 분리 매칭: DB 이름을 &/,/+/공백으로 분리해서 각 키워드가 activity에 포함되는지
+  // 4. 키워드 분리 매칭: 4자 이상 키워드만, 일반 단어 제외
   const keywordMatch = filtered.find(a => {
-    const keywords = a.name.split(/[&,+/\s]+/).map(k => k.trim()).filter(k => k.length >= 2);
+    const keywords = a.name.split(/[&,+/\s]+/).map(k => k.trim()).filter(k => k.length >= 4 && !MATCH_STOP_WORDS.has(k));
     return keywords.length > 0 && keywords.some(k => activity.includes(k));
   });
   if (keywordMatch) return keywordMatch;
