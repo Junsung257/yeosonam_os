@@ -303,7 +303,7 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
   const useTiers = !usePriceList && tiers && tiers.length > 0;
   if (!usePriceList && !useTiers) return null;
 
-  const TH = 'text-[11px] bg-[#001f3f] font-semibold text-white py-1.5 px-2';
+  const TH = 'text-[12px] bg-[#001f3f] font-semibold text-white py-1.5 px-2';
 
   // ── price_list 모드: 원본 PDF 구조 그대로 (기간 × 조건 그룹핑) ──
   if (usePriceList) {
@@ -347,7 +347,7 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
                     {rIdx === 0 && (
                       <td
                         rowSpan={ruleCount}
-                        className="text-[11px] py-1 px-2 border-b border-slate-200 whitespace-nowrap font-semibold text-slate-800 align-middle"
+                        className="text-[12px] py-1.5 px-2 border-b border-slate-200 whitespace-nowrap font-semibold text-slate-800 align-middle"
                       >
                         {group.period}
                       </td>
@@ -357,7 +357,7 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
                         {rule.condition}
                       </td>
                     )}
-                    <td {...E} className={`text-[11px] py-1 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                       {rule.price ? `₩${rule.price.toLocaleString()}` : rule.price_text || '-'}
                     </td>
                     <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
@@ -466,11 +466,11 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
                       {row.days.length > 0 ? row.days.join(',') : '-'}
                     </td>
                   )}
-                  <td {...E} className={`text-[11px] py-1 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                  <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                     {row.adult_price ? `₩${row.adult_price.toLocaleString()}` : '-'}
                   </td>
                   {hasChild && (
-                    <td {...E} className={`text-[11px] py-1 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
+                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
                       {row.child_price ? `₩${row.child_price.toLocaleString()}` : '-'}
                     </td>
                   )}
@@ -904,8 +904,8 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                 <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
                   {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
                     const attr = matchAttraction(item.activity, attractions, destination);
-                    // 배지 결정: type별 배지 우선 → attractions 매칭 시 관광 배지 → 없으면 null
-                    const badge = getActivityBadge(item.type, item.activity) || (attr ? TOUR_BADGE : null);
+                    // 배지 결정: attractions 매칭 시 [관광] 최우선 → type별 배지 → 없으면 null
+                    const badge = attr ? TOUR_BADGE : getActivityBadge(item.type, item.activity);
                     return (
                       <div key={sIdx} className="relative pl-4">
                         {/* dot */}
