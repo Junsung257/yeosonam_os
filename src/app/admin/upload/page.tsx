@@ -172,40 +172,76 @@ export default function UploadPage() {
             </div>
           </div>
 
-          {/* 텍스트 직접 붙여넣기 */}
+          {/* 텍스트 직접 붙여넣기 (대량 지원) */}
           <div className="bg-white p-5 rounded-lg border border-slate-200">
-            <p className="text-[13px] font-semibold text-slate-800 mb-2">또는 텍스트 직접 붙여넣기</p>
+            <p className="text-[13px] font-semibold text-slate-800 mb-1">또는 텍스트 직접 붙여넣기</p>
+            <p className="text-[11px] text-slate-400 mb-2">여러 상품을 한번에 올리려면 <span className="font-mono bg-slate-100 px-1 rounded">===</span> 로 구분하세요</p>
             <textarea
               value={textInput}
               onChange={e => setTextInput(e.target.value)}
-              placeholder="PDF에서 복사한 여행상품 텍스트를 붙여넣으세요..."
-              className="w-full h-40 p-3 border border-slate-200 rounded-lg text-[12px] text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={"상품1 텍스트...\n\n===\n\n상품2 텍스트...\n\n===\n\n상품3 텍스트..."}
+              className="w-full h-48 p-3 border border-slate-200 rounded-lg text-[12px] text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <div className="flex items-center justify-between mt-2">
-              <span className="text-[11px] text-slate-400">{textInput.length > 0 ? `${textInput.length}자` : 'PDF 파싱 없이 바로 AI 추출'}</span>
+              <span className="text-[11px] text-slate-400">
+                {textInput.length > 0
+                  ? `${textInput.length}자 / ${textInput.split(/={3,}/).filter(s => s.trim()).length}개 상품 감지`
+                  : '=== 구분자로 여러 상품 동시 업로드 가능'}
+              </span>
               <button
                 onClick={async () => {
                   if (!textInput.trim() || textUploading) return;
                   setTextUploading(true);
                   try {
-                    const res = await fetch('/api/upload', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ rawText: textInput.trim() }),
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || '업로드 실패');
-                    const count = data.productCount || 1;
-                    const titles = data.titles || [data.data?.extractedData?.title || '상품'];
-                    setQueue(prev => [...prev, {
-                      file: new File([], '텍스트 입력'),
-                      status: 'done',
-                      title: count > 1 ? `${count}개 상품 자동 등록` : titles[0],
-                      productCount: count,
-                      titles,
-                    }]);
+                    // === 구분자로 분리
+                    const chunks = textInput.split(/={3,}/).map(s => s.trim()).filter(s => s.length > 50);
+                    if (chunks.length === 0) { alert('텍스트가 너무 짧습니다.'); return; }
+
+                    let totalCount = 0;
+                    const allTitles: string[] = [];
+
+                    for (let i = 0; i < chunks.length; i++) {
+                      setQueue(prev => [...prev, {
+                        file: new File([], `텍스트 ${i + 1}/${chunks.length}`),
+                        status: 'uploading' as const,
+                        title: `텍스트 ${i + 1}/${chunks.length} 처리 중...`,
+                      }]);
+
+                      const uploadUrl = bulkMode ? '/api/upload?mode=bulk' : '/api/upload';
+                      const res = await fetch(uploadUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rawText: chunks[i] }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        setQueue(prev => {
+                          const updated = [...prev];
+                          updated[updated.length - 1] = { ...updated[updated.length - 1], status: 'error' as const, title: `텍스트 ${i + 1} 실패: ${data.error || '오류'}` };
+                          return updated;
+                        });
+                        continue;
+                      }
+                      const count = data.productCount || 1;
+                      const titles = data.titles || [data.data?.extractedData?.title || '상품'];
+                      totalCount += count;
+                      allTitles.push(...titles);
+
+                      setQueue(prev => {
+                        const updated = [...prev];
+                        updated[updated.length - 1] = {
+                          ...updated[updated.length - 1],
+                          status: 'done' as const,
+                          title: `${titles.join(', ')} (${count}개)`,
+                          productCount: count,
+                          titles,
+                        };
+                        return updated;
+                      });
+                    }
+
                     setTextInput('');
-                    alert(`${count}개 상품이 등록되었습니다:\n${titles.join('\n')}`);
+                    alert(`총 ${totalCount}개 상품이 등록되었습니다:\n${allTitles.join('\n')}`);
                   } catch (err) {
                     alert(err instanceof Error ? err.message : '업로드 실패');
                   } finally {
@@ -215,7 +251,7 @@ export default function UploadPage() {
                 disabled={!textInput.trim() || textUploading}
                 className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[12px] font-medium hover:bg-[#003366] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {textUploading ? '처리 중...' : '텍스트 업로드'}
+                {textUploading ? '처리 중...' : `텍스트 업로드 (${textInput.split(/={3,}/).filter(s => s.trim()).length}개)`}
               </button>
             </div>
           </div>
