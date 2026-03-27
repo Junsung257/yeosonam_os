@@ -207,10 +207,22 @@ export default function PackageDetailPage() {
       {/* 일정표 */}
       {days.length > 0 && (
         <div className="px-5 py-5 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900 mb-4">🗓 여행 일정</h2>
+          <h2 className="text-base font-bold text-gray-900 mb-2">🗓 여행 일정</h2>
+          {/* 일차별 탭 (상단 고정) */}
+          <div className="flex gap-1.5 overflow-x-auto pb-3 mb-3 sticky top-0 bg-white z-10 -mx-5 px-5">
+            {days.map(day => (
+              <button
+                key={day.day}
+                onClick={() => document.getElementById(`day-${day.day}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="px-3 py-1.5 bg-[#001f3f] text-white rounded-full text-xs font-bold whitespace-nowrap shrink-0 hover:bg-[#003366] transition"
+              >
+                {day.day}일차
+              </button>
+            ))}
+          </div>
           <div className="space-y-4">
             {days.map(day => (
-              <div key={day.day} className="border border-gray-100 rounded-xl overflow-hidden">
+              <div key={day.day} id={`day-${day.day}`} className="border border-gray-100 rounded-xl overflow-hidden scroll-mt-16">
                 {/* 항공바 (항공편이 있는 일차) */}
                 {(() => {
                   const flights = day.schedule?.filter(s => s.type === 'flight') || [];
