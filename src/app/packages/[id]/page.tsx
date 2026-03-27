@@ -39,7 +39,8 @@ interface Package {
   optional_tours?: { name: string; price_usd?: number }[];
   product_highlights?: string[];
   special_notes?: string;
-  itinerary_data?: { days?: DaySchedule[] } | DaySchedule[];
+  notices_parsed?: (string | { type: string; title: string; text: string })[];
+  itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
 }
 
 // IATA → 항공사명
@@ -55,6 +56,7 @@ export default function PackageDetailPage() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [attractions, setAttractions] = useState<{ name: string; short_desc?: string; badge_type?: string; emoji?: string; country?: string; region?: string }[]>([]);
 
   // 어필리에이트 추적
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function PackageDetailPage() {
       .then(data => setPkg(data.package ?? null))
       .catch(console.error)
       .finally(() => setIsLoading(false));
+    fetch('/api/attractions').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
   }, [id]);
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-400">불러오는 중...</div>;
@@ -208,31 +211,61 @@ export default function PackageDetailPage() {
           <div className="space-y-4">
             {days.map(day => (
               <div key={day.day} className="border border-gray-100 rounded-xl overflow-hidden">
-                <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-black text-[#005d90]">{String(day.day).padStart(2, '0')}</span>
-                    <span className="text-xs text-gray-500">{day.day}일차</span>
-                  </div>
-                  {day.regions && <span className="text-xs text-gray-600">{day.regions.join(' → ')}</span>}
-                </div>
-                <div className="px-4 py-3 space-y-2">
-                  {day.schedule?.map((item, sIdx) => (
-                    <div key={sIdx} className="flex items-start gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                        item.type === 'flight' ? 'bg-blue-500' :
-                        item.type === 'golf' ? 'bg-green-500' :
-                        item.type === 'optional' ? 'bg-pink-500' :
-                        item.type === 'shopping' ? 'bg-purple-500' : 'bg-gray-300'
-                      }`} />
-                      <div>
-                        <p className="text-xs text-gray-800 leading-relaxed">
-                          {item.time && <span className="text-blue-600 font-bold mr-1">{item.time}</span>}
-                          {item.activity}
-                        </p>
-                        {item.note && <p className="text-[10px] text-red-500 mt-0.5">{item.note}</p>}
+                {/* 항공바 (항공편이 있는 일차) */}
+                {(() => {
+                  const flights = day.schedule?.filter(s => s.type === 'flight') || [];
+                  const depFlight = flights.find(f => /출발|향발/.test(f.activity));
+                  const arrFlight = flights.find(f => /도착/.test(f.activity));
+                  if (flights.length === 0) return (
+                    <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black text-[#005d90]">{String(day.day).padStart(2, '0')}</span>
+                        <span className="text-xs text-gray-500">{day.day}일차</span>
                       </div>
+                      {day.regions && <span className="text-xs text-gray-600">{day.regions.join(' → ')}</span>}
                     </div>
-                  ))}
+                  );
+                  const flightNo = depFlight?.transport || arrFlight?.transport || '';
+                  const depTime = depFlight?.time || '';
+                  const arrTime = arrFlight?.time || '';
+                  const aName = getAirlineName(flightNo);
+                  return (
+                    <>
+                      <div className="bg-gray-50 px-4 py-1 flex items-center gap-2">
+                        <span className="text-lg font-black text-[#005d90]">{String(day.day).padStart(2, '0')}</span>
+                        <span className="text-xs text-gray-500">{day.day}일차</span>
+                      </div>
+                      <div className="bg-[#005d90] text-white px-4 py-2 flex items-center justify-between text-xs">
+                        <span>✈️ {flightNo} {aName ? `(${aName})` : ''} {day.regions?.join(' → ')}</span>
+                        <span className="font-bold">{depTime}{depTime && arrTime ? ' → ' : ''}{arrTime}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+                <div className="px-4 py-3 space-y-2">
+                  {day.schedule?.filter(s => s.type !== 'flight').map((item, sIdx) => {
+                    // attractions 매칭
+                    const attr = attractions.find(a => a.name.length >= 4 && item.activity.includes(a.name));
+                    return (
+                      <div key={sIdx} className="flex items-start gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                          item.type === 'golf' ? 'bg-green-500' :
+                          item.type === 'optional' ? 'bg-pink-500' :
+                          item.type === 'shopping' ? 'bg-purple-500' :
+                          attr ? 'bg-blue-500' : 'bg-gray-300'
+                        }`} />
+                        <div>
+                          <p className="text-xs text-gray-800 leading-relaxed">
+                            {item.time && <span className="text-blue-600 font-bold mr-1">{item.time}</span>}
+                            {attr?.emoji && <span className="mr-0.5">{attr.emoji}</span>}
+                            <span className={attr ? 'font-bold text-blue-900' : ''}>{item.activity}</span>
+                          </p>
+                          {attr?.short_desc && <p className="text-[10px] text-gray-500 mt-0.5">— {attr.short_desc}</p>}
+                          {item.note && <p className="text-[10px] text-red-500 mt-0.5">{item.note}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 {/* 호텔+식사 */}
                 <div className="bg-gray-50 px-4 py-2 flex items-center justify-between text-[10px] text-gray-500">
@@ -249,12 +282,48 @@ export default function PackageDetailPage() {
         </div>
       )}
 
-      {/* 유의사항 */}
-      {pkg.special_notes && (
-        <div className="px-5 py-5">
-          <h2 className="text-sm font-bold text-gray-900 mb-2">⚠️ 유의사항</h2>
-          <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
-        </div>
+      {/* 유의사항 4-Type */}
+      {(() => {
+        const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string; dot: string }> = {
+          CRITICAL: { bg: 'bg-red-50', border: 'border-red-200', title: 'text-red-800', dot: '🔴' },
+          PAYMENT: { bg: 'bg-orange-50', border: 'border-orange-200', title: 'text-orange-800', dot: '🟠' },
+          POLICY: { bg: 'bg-blue-50', border: 'border-blue-200', title: 'text-blue-800', dot: '🔵' },
+          INFO: { bg: 'bg-slate-50', border: 'border-slate-200', title: 'text-slate-700', dot: '⚪' },
+        };
+        const typedNotices = (pkg.notices_parsed || []).filter(
+          (n): n is { type: string; title: string; text: string } => typeof n === 'object' && n !== null && 'type' in n
+        );
+        if (typedNotices.length === 0 && !pkg.special_notes) return null;
+        return (
+          <div className="px-5 py-5">
+            <h2 className="text-sm font-bold text-gray-900 mb-3">⚠️ 유의사항</h2>
+            {typedNotices.length > 0 ? (
+              <div className="space-y-2">
+                {typedNotices.map((notice, idx) => {
+                  const style = NOTICE_STYLES[notice.type] || NOTICE_STYLES.INFO;
+                  const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
+                  return (
+                    <div key={idx} className={`${style.bg} border ${style.border} rounded-lg p-3`}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-[11px]">{style.dot}</span>
+                        <span className={`text-xs font-bold ${style.title}`}>{notice.title}</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        {lines.map((line, lIdx) => (
+                          <p key={lIdx} className="text-[11px] text-gray-600 leading-relaxed">
+                            {line.startsWith('•') ? line : `• ${line}`}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <p className="text-[9px] text-gray-400 italic mt-2">※ 여권, 환불, 취소수수료 등 공통 규정은 별도 발송되는 [예약 안내문]을 반드시 확인하시기 바랍니다.</p>
+              </div>
+            ) : pkg.special_notes ? (
+              <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
+            ) : null}
+          </div>
       )}
 
       {/* 하단 플로팅 예약 버튼 */}

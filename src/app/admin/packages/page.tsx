@@ -543,15 +543,10 @@ const PackageRow = React.memo(function PackageRow({
             title="A4 포스터"
           >A4</button>
           <button
-            onClick={() => onOpenPoster(pkg, 'MOBILE')}
-            className="px-1.5 py-1 border border-slate-300 text-slate-500 rounded text-[10px] hover:bg-slate-50 whitespace-nowrap"
-            title="모바일 포스터"
-          >모바일</button>
-          <button
             onClick={() => window.open(`/packages/${pkg.id}`, '_blank')}
             className="px-1.5 py-1 border border-orange-300 text-orange-600 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
             title="모바일 랜딩페이지 (고객용)"
-          >랜딩</button>
+          >모바일</button>
           <button
             onClick={() => onPromptGen(pkg)}
             className="px-1.5 py-1 border border-blue-300 text-blue-600 rounded text-[10px] hover:bg-blue-50 whitespace-nowrap"
