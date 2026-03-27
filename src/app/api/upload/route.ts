@@ -448,10 +448,9 @@ export async function POST(request: NextRequest) {
     const parsedDocument = await parseDocument(buffer, fileName);
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
 
-    const classification = bulkMode
-      ? { productCount: 1, isTravel: true, documentType: 'package' as const, estimatedConfidence: 0.9 }
-      : await classifyDocument(rawTextForClassify);
-    console.log('[Upload API] Step1 분류:', classification, bulkMode ? '(벌크 스킵)' : '');
+    // 분류 항상 스킵 (여행상품만 올리므로 불필요 — 토큰 절약)
+    const classification = { productCount: 1, isTravel: true, documentType: 'package' as const, estimatedConfidence: 0.9 };
+    console.log('[Upload API] Step1 분류: 스킵 (토큰 절약)');
 
     // ── [F] Step 2: 파싱 결과 활용 (이미 위에서 완료) ────────────────────────
 
@@ -617,9 +616,9 @@ export async function POST(request: NextRequest) {
         // ── G7. 마케팅 카피 AI 생성 (벌크 모드 시 스킵) ─────────────
 
         let marketingCopies: MarketingCopy[] = [];
-        if (bulkMode) {
-          console.log('[Upload API] 벌크 모드 — 마케팅 카피 스킵');
-        } else try {
+        { // 마케팅카피 항상 스킵 (토큰 절약 — 필요시 별도 생성)
+          console.log('[Upload API] 마케팅 카피 스킵 (토큰 절약)');
+        } if (false) try {
           marketingCopies = await generateMarketingCopies({
             destination: ed.destination ?? '',
             duration:    ed.duration    ?? 5,
