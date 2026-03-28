@@ -62,6 +62,8 @@ export default function PackageDetailPage() {
   const [submitted, setSubmitted] = useState(false);
   const [attractions, setAttractions] = useState<AttractionInfo[]>([]);
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [calMonth, setCalMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [activeSection, setActiveSection] = useState<string>('상품정보');
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([1]));
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -189,37 +191,116 @@ export default function PackageDetailPage() {
         </div>
       </div>
 
-      {/* ═══ 요금표 (날짜 선택) ═══ */}
+      {/* ═══ 요금표 (달력형) ═══ */}
       {tiers.length > 0 && (
         <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-4 border-b border-gray-100 scroll-mt-12">
           <h2 className="text-sm font-bold text-gray-900 mb-3">📋 출발일 선택</h2>
-          <div className="space-y-1.5">
-            {tiers.map((t, i) => {
-              const isSelected = selectedTier === t;
-              const isMin = t.adult_price === minPrice;
+          {(() => {
+            // price_tiers에서 날짜→가격 맵 구축
+            const dateMap = new Map<string, { price: number; tier: PriceTier; note?: string }>();
+            for (const t of tiers) {
+              if (t.departure_dates?.length) {
+                for (const d of t.departure_dates) {
+                  const date = new Date(d);
+                  if (!isNaN(date.getTime())) {
+                    const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+                    dateMap.set(key, { price: t.adult_price || 0, tier: t, note: t.note || undefined });
+                  }
+                }
+              }
+            }
+
+            // 달력에 표시할 날짜가 없으면 나열식 폴백
+            if (dateMap.size === 0) {
               return (
-                <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition ${
-                    isSelected ? 'border-[#001f3f] bg-[#001f3f]/5 ring-1 ring-[#001f3f]' : 'border-gray-200 hover:border-gray-300'
-                  }`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-[#001f3f]' : 'border-gray-300'}`}>
-                      {isSelected && <div className="w-2 h-2 rounded-full bg-[#001f3f]" />}
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-800">{t.period_label}</p>
-                      {t.departure_day_of_week && <p className="text-[10px] text-gray-400">{t.departure_day_of_week}요일</p>}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-bold ${isMin ? 'text-red-600' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
-                    {isMin && <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded">최저가</span>}
-                    {t.note && <p className="text-[9px] text-blue-600">{t.note}</p>}
-                  </div>
-                </button>
+                <div className="space-y-1.5">
+                  {tiers.map((t, i) => {
+                    const isSelected = selectedTier === t;
+                    const isMin = t.adult_price === minPrice;
+                    return (
+                      <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition ${isSelected ? 'border-[#001f3f] bg-[#001f3f]/5 ring-1 ring-[#001f3f]' : 'border-gray-200'}`}>
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">{t.period_label}</p>
+                          {t.departure_day_of_week && <p className="text-[10px] text-gray-400">{t.departure_day_of_week}</p>}
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-bold ${isMin ? 'text-red-600' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
+                          {isMin && <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded">최저가</span>}
+                          {t.note && <p className="text-[9px] text-blue-600">{t.note}</p>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               );
-            })}
-          </div>
+            }
+
+            // 달력 렌더링
+            const year = calMonth.getFullYear();
+            const month = calMonth.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const WEEKDAYS = ['일','월','화','수','목','금','토'];
+            const cells: (number | null)[] = [];
+            for (let i = 0; i < firstDay; i++) cells.push(null);
+            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+            while (cells.length % 7 !== 0) cells.push(null);
+
+            return (
+              <div>
+                {/* 월 네비게이션 */}
+                <div className="flex items-center justify-between mb-3">
+                  <button onClick={() => setCalMonth(new Date(year, month - 1, 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-full">◀</button>
+                  <span className="text-sm font-bold text-gray-800">{year}년 {month + 1}월</span>
+                  <button onClick={() => setCalMonth(new Date(year, month + 1, 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-full">▶</button>
+                </div>
+                {/* 요일 헤더 */}
+                <div className="grid grid-cols-7 mb-1">
+                  {WEEKDAYS.map(w => (
+                    <div key={w} className={`text-center text-[10px] font-medium py-1 ${w === '일' ? 'text-red-400' : w === '토' ? 'text-blue-400' : 'text-gray-400'}`}>{w}</div>
+                  ))}
+                </div>
+                {/* 날짜 그리드 */}
+                <div className="grid grid-cols-7 gap-px">
+                  {cells.map((d, i) => {
+                    if (d === null) return <div key={i} />;
+                    const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const info = dateMap.get(key);
+                    const isSelected = selectedDate === key;
+                    const isMin = info && info.price === minPrice;
+                    const dayOfWeek = new Date(year, month, d).getDay();
+                    return (
+                      <button key={i} disabled={!info}
+                        onClick={() => {
+                          if (!info) return;
+                          setSelectedTier(isSelected ? null : info.tier);
+                          setSelectedDate(isSelected ? '' : key);
+                          setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
+                        }}
+                        className={`flex flex-col items-center py-1.5 rounded-lg transition text-center min-h-[48px] justify-center ${
+                          isSelected ? 'bg-[#001f3f] text-white' :
+                          info ? 'hover:bg-blue-50 cursor-pointer' : 'opacity-30 cursor-default'
+                        }`}>
+                        <span className={`text-xs font-medium ${!isSelected && dayOfWeek === 0 ? 'text-red-500' : !isSelected && dayOfWeek === 6 ? 'text-blue-500' : ''}`}>{d}</span>
+                        {info && (
+                          <span className={`text-[8px] mt-0.5 font-bold ${isSelected ? 'text-white/80' : isMin ? 'text-red-600' : 'text-gray-500'}`}>
+                            {Math.round(info.price / 10000)}만
+                          </span>
+                        )}
+                        {info?.note && <span className={`text-[7px] ${isSelected ? 'text-white/60' : 'text-blue-500'}`}>{info.note.slice(0, 4)}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* 범례 */}
+                <div className="flex items-center gap-3 mt-2 text-[9px] text-gray-400">
+                  <span>● 출발 가능일</span>
+                  {minPrice && <span className="text-red-500">● 최저가 {Math.round((minPrice || 0)/10000)}만</span>}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -239,29 +320,27 @@ export default function PackageDetailPage() {
 
       {/* ═══ 포함/불포함 ═══ */}
       {(pkg.inclusions?.length || pkg.excludes?.length) ? (
-        <div className="px-4 py-4 border-b border-gray-100">
-          <div className="grid grid-cols-2 gap-2">
-            {pkg.inclusions && pkg.inclusions.length > 0 && (
-              <div className="bg-blue-50 rounded-lg p-2.5">
-                <h3 className="text-[10px] font-bold text-blue-900 mb-1.5">포함 사항</h3>
-                <ul className="space-y-0.5">
-                  {pkg.inclusions.map((item, i) => (
-                    <li key={i} className="text-[10px] text-blue-800 flex gap-1"><span className="shrink-0">✅</span>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {pkg.excludes && pkg.excludes.length > 0 && (
-              <div className="bg-red-50 rounded-lg p-2.5">
-                <h3 className="text-[10px] font-bold text-red-900 mb-1.5">불포함 사항</h3>
-                <ul className="space-y-0.5">
-                  {pkg.excludes.map((item, i) => (
-                    <li key={i} className="text-[10px] text-red-800 flex gap-1"><span className="shrink-0">❌</span>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+        <div className="px-4 py-4 border-b border-gray-100 space-y-3">
+          {pkg.inclusions && pkg.inclusions.length > 0 && (
+            <div className="bg-blue-50 rounded-lg p-3">
+              <h3 className="text-xs font-bold text-blue-900 mb-2">포함 사항</h3>
+              <ul className="space-y-1">
+                {pkg.inclusions.map((item, i) => (
+                  <li key={i} className="text-xs text-blue-800 flex gap-1.5"><span className="shrink-0">✅</span>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {pkg.excludes && pkg.excludes.length > 0 && (
+            <div className="bg-red-50 rounded-lg p-3">
+              <h3 className="text-xs font-bold text-red-900 mb-2">불포함 사항</h3>
+              <ul className="space-y-1">
+                {pkg.excludes.map((item, i) => (
+                  <li key={i} className="text-xs text-red-800 flex gap-1.5"><span className="shrink-0">❌</span>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ) : null}
 
