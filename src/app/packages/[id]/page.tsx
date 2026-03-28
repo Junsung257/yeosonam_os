@@ -336,7 +336,8 @@ export default function PackageDetailPage() {
               <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
             ) : null}
           </div>
-      )}
+        );
+      })()}
 
       {/* 하단 플로팅 예약 버튼 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-between z-50 shadow-lg">
