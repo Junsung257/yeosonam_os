@@ -377,6 +377,33 @@ export default function PackageDetailPage() {
                   {/* 일정 상세 (아코디언) */}
                   {isExpanded && (
                     <>
+                      {/* 항공편 카드 (하나투어 스타일) */}
+                      {flights.length > 0 && (
+                        <div className="mx-3 mt-2 mb-3 bg-gray-50 rounded-xl border border-gray-200 p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-sm font-black text-gray-900">{depFlight?.time || ''}</span>
+                              <span className="text-[9px] text-gray-400">{depFlight ? depFlight.activity.match(/\d+\/\d+/)?.[0] || '' : ''}</span>
+                            </div>
+                            <div className="flex-1 flex flex-col items-center gap-0.5 pt-1">
+                              <div className="flex items-center gap-1 w-full">
+                                <div className="h-px flex-1 bg-gray-300" />
+                                <span className="text-gray-400 text-[10px]">✈️</span>
+                                <div className="h-px flex-1 bg-gray-300" />
+                              </div>
+                              <span className="text-[9px] text-blue-600 font-medium">{aName || ''} {flightNo}</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-sm font-black text-gray-900">{arrFlight?.time || ''}</span>
+                              <span className="text-[9px] text-gray-400">{arrFlight ? arrFlight.activity.match(/\d+\/\d+/)?.[0] || '' : ''}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                            <span className="text-[9px] text-gray-500">{depFlight?.activity?.replace(/\d+:\d+\s*/, '').trim() || ''}</span>
+                            <span className="text-[9px] text-gray-500">{arrFlight?.activity?.replace(/\d+:\d+\s*/, '').trim() || ''}</span>
+                          </div>
+                        </div>
+                      )}
                       <div className="px-3 py-2.5 space-y-1.5">
                         {day.schedule?.filter(s => s.type !== 'flight').map((item, sIdx) => {
                           const attr = attractions.find(a => a.name.length >= 4 && item.activity.includes(a.name));
