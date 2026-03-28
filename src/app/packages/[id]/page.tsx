@@ -404,15 +404,24 @@ export default function PackageDetailPage() {
                           </div>
                         </div>
                       )}
-                      <div className="px-3 py-2.5 space-y-1.5">
+                      <div className="px-3 py-2.5 space-y-2 relative">
+                        {/* 타임라인 세로선 */}
+                        <div className="absolute left-[15px] top-0 bottom-0 w-[1.5px] bg-gray-200" />
                         {day.schedule?.filter(s => s.type !== 'flight').map((item, sIdx) => {
                           const attr = attractions.find(a => a.name.length >= 4 && item.activity.includes(a.name));
+                          // 타입별 아이콘 dot
+                          const dotIcon = item.type === 'golf' ? '⛳' : item.type === 'optional' ? '💎' :
+                            item.type === 'shopping' ? '🛍️' : item.type === 'spa' ? '💆' :
+                            item.type === 'cruise' ? '🚢' : /호텔.*체크|투숙|휴식/.test(item.activity) ? '🏨' :
+                            /식사|조식|중식|석식/.test(item.activity) ? '🍽️' : /이동|출발|도착/.test(item.activity) ? '🚌' :
+                            attr ? '📸' : '•';
+                          const dotBg = item.type === 'golf' ? 'bg-green-500' : item.type === 'optional' ? 'bg-pink-500' :
+                            item.type === 'shopping' ? 'bg-purple-500' : attr ? 'bg-[#005d90]' : 'bg-gray-300';
                           return (
-                            <div key={sIdx} className="flex items-start gap-1.5">
-                              <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                                item.type === 'golf' ? 'bg-green-500' : item.type === 'optional' ? 'bg-pink-500' :
-                                item.type === 'shopping' ? 'bg-purple-500' : attr ? 'bg-blue-500' : 'bg-gray-300'
-                              }`} />
+                            <div key={sIdx} className="flex items-start gap-2.5 relative">
+                              <div className={`w-6 h-6 rounded-full ${dotBg} flex items-center justify-center shrink-0 text-[10px] z-10 ring-2 ring-white`}>
+                                {dotIcon === '•' ? <span className="w-2 h-2 rounded-full bg-white" /> : <span>{dotIcon}</span>}
+                              </div>
                               <div className="min-w-0">
                                 <p className="text-[11px] text-gray-800 leading-relaxed break-keep">
                                   {item.time && <span className="text-blue-600 font-bold mr-1">{item.time}</span>}
@@ -491,13 +500,22 @@ export default function PackageDetailPage() {
       </div>
 
       {/* ═══ 하단 플로팅 바 ═══ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 shadow-lg">
-        <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center justify-between">
-          <div>
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 z-50 shadow-lg rounded-t-2xl">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
+          {/* 전화 */}
+          <a href="tel:051-000-0000" className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0" title="전화 문의">
+            <span className="text-sm">📞</span>
+          </a>
+          {/* 카카오톡 */}
+          <a href="https://pf.kakao.com/_여소남" target="_blank" rel="noopener noreferrer" className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0" title="카카오톡 문의">
+            <span className="text-sm">💬</span>
+          </a>
+          {/* 가격 */}
+          <div className="flex-1 ml-1">
             {displayPrice && displayPrice < Infinity && (
               <>
-                <p className="text-[9px] text-gray-400">{selectedTier ? `${selectedTier.period_label} ${selectedTier.departure_day_of_week || ''}` : '1인 기준'}</p>
-                <p className="text-base font-black text-[#001f3f]">₩{displayPrice.toLocaleString()}{selectedTier ? '' : '~'}</p>
+                <p className="text-[8px] text-gray-400">{selectedTier ? `${selectedTier.period_label} ${selectedTier.departure_day_of_week || ''}` : '1인 기준'}</p>
+                <p className="text-sm font-black text-[#001f3f]">₩{displayPrice.toLocaleString()}{selectedTier ? '' : '~'}</p>
               </>
             )}
           </div>
