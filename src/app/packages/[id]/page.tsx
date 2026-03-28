@@ -130,7 +130,10 @@ export default function PackageDetailPage() {
 
       {/* ═══ 히어로 (Voyager Style) ═══ */}
       <div ref={el => { sectionRefs.current['상품정보'] = el; }} data-section="상품정보"
-        className="relative h-[320px] w-full overflow-hidden bg-gradient-to-br from-[#001f3f] via-[#003366] to-[#005d90]">
+        className="relative h-[380px] w-full overflow-hidden">
+        {/* 배경 이미지 (나중에 실제 이미지로 교체) */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1a0533] via-[#2d1b69] to-[#4a3aaa]" />
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIvPjwvc3ZnPg==')] opacity-50" />
         {/* 상단 네비 */}
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 pt-5">
           <Link href="/packages" className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
@@ -163,7 +166,7 @@ export default function PackageDetailPage() {
 
       {/* ═══ 가격 카드 (Voyager -mt-6 플로팅) ═══ */}
       <section className="px-5 -mt-8 relative z-10">
-        <div className="bg-white rounded-2xl p-5 shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
+        <div className="bg-white rounded-3xl p-5 shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-gray-400 text-xs mb-1">Price starts from</p>
@@ -201,7 +204,7 @@ export default function PackageDetailPage() {
           {pkg.product_highlights && pkg.product_highlights.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pt-3 border-t border-gray-100">
               {pkg.product_highlights.map((h, i) => (
-                <span key={i} className="border border-gray-200 px-2.5 py-1 rounded-lg text-[10px] font-medium text-gray-500">{h}</span>
+                <span key={i} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] font-medium text-gray-600">{h}</span>
               ))}
             </div>
           )}
@@ -342,14 +345,14 @@ export default function PackageDetailPage() {
           <div className="flex gap-3 overflow-x-auto pb-4 mb-8 -mx-5 px-5">
             {days.map(day => (
               <button key={day.day} onClick={() => setActiveDay(day.day)}
-                className={`flex-shrink-0 flex flex-col items-center px-5 py-3 rounded-2xl transition-all ${
+                className={`flex-shrink-0 flex flex-col items-center px-6 py-4 rounded-2xl transition-all ${
                   activeDay === day.day
                     ? 'bg-[#001f3f] text-white shadow-lg shadow-[#001f3f]/30'
-                    : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}>
-                <span className="text-[9px] font-bold uppercase tracking-widest opacity-80 mb-0.5">Day {day.day}</span>
-                <span className="font-bold text-base leading-none">{String(day.day).padStart(2, '0')}</span>
-                <span className="text-[10px] mt-1 opacity-70">{day.regions?.[0]?.slice(0, 4) || ''}</span>
+                <span className="text-[9px] font-bold uppercase tracking-widest opacity-80 mb-1">Day {day.day}</span>
+                <span className="font-bold text-lg leading-none">{String(day.day).padStart(2, '0')}</span>
+                <span className="text-[10px] mt-1.5 opacity-70">{day.regions?.[0]?.slice(0, 5) || ''}</span>
               </button>
             ))}
           </div>
@@ -360,7 +363,7 @@ export default function PackageDetailPage() {
               {/* 세로선 */}
               <div className="absolute left-[18px] top-4 bottom-4 w-[2px] bg-gray-200" />
 
-              <div className="space-y-8">
+              <div className="space-y-10">
                 {currentDay.schedule?.map((item, sIdx) => {
                   const { icon, bg } = getTimelineIcon(item.type, item.activity);
                   const attr = attractions.find(a => a.name.length >= 4 && item.activity.includes(a.name));
@@ -451,10 +454,10 @@ export default function PackageDetailPage() {
       <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-5 py-8 scroll-mt-12">
         {(() => {
           const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string; dot: string }> = {
-            CRITICAL: { bg: 'bg-red-50', border: 'border-red-200', title: 'text-red-800', dot: '🔴' },
-            PAYMENT: { bg: 'bg-orange-50', border: 'border-orange-200', title: 'text-orange-800', dot: '🟠' },
-            POLICY: { bg: 'bg-blue-50', border: 'border-blue-200', title: 'text-blue-800', dot: '🔵' },
-            INFO: { bg: 'bg-gray-50', border: 'border-gray-200', title: 'text-gray-700', dot: '⚪' },
+            CRITICAL: { bg: 'bg-gray-100', border: '', title: 'text-red-700', dot: '🔴' },
+            PAYMENT: { bg: 'bg-gray-100', border: '', title: 'text-orange-700', dot: '🟠' },
+            POLICY: { bg: 'bg-gray-100', border: '', title: 'text-blue-700', dot: '🔵' },
+            INFO: { bg: 'bg-gray-100', border: '', title: 'text-gray-600', dot: '⚪' },
           };
           const typedNotices = (pkg.notices_parsed || []).filter(
             (n): n is { type: string; title: string; text: string } => typeof n === 'object' && n !== null && 'type' in n
@@ -469,7 +472,7 @@ export default function PackageDetailPage() {
                     const style = NOTICE_STYLES[notice.type] || NOTICE_STYLES.INFO;
                     const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
                     return (
-                      <div key={idx} className={`${style.bg} border ${style.border} rounded-2xl p-4`}>
+                      <div key={idx} className={`${style.bg} rounded-2xl p-4`}>
                         <div className="flex items-center gap-1.5 mb-2">
                           <span className="text-xs">{style.dot}</span>
                           <span className={`text-xs font-bold ${style.title}`}>{notice.title}</span>
