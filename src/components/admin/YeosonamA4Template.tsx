@@ -412,9 +412,9 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
   }
 
   // ── tiers 폴백 모드: 기간별 → 같은 가격 요일 병합 ──
-  interface TierRow { days: string[]; adult_price: number; child_price?: number; }
+  interface TierRow { days: string[]; adult_price: number; child_price?: number; status?: string; }
   // Step 1: 기간별로 묶기
-  const periodMap = new Map<string, { dow: string; adult: number; child?: number; note?: string }[]>();
+  const periodMap = new Map<string, { dow: string; adult: number; child?: number; note?: string; status?: string }[]>();
   for (const tier of tiers!) {
     const period = tier.period_label.replace(/^\d{4}-\d{2}\s*/, '').trim() || tier.period_label;
     if (!periodMap.has(period)) periodMap.set(period, []);
@@ -423,6 +423,7 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
       adult: tier.adult_price ?? 0,
       child: tier.child_price,
       note: tier.note || undefined,
+      status: (tier as { status?: string }).status || 'available',
     });
   }
   // Step 2: 각 기간 내에서 같은 가격끼리 요일 병합
@@ -431,14 +432,17 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
   for (const [period, entries] of periodMap) {
     const firstNote = entries.find(e => e.note)?.note;
     if (firstNote) periodNotes.set(period, firstNote);
-    const priceMap = new Map<string, { days: Set<string>; adult: number; child?: number }>();
+    const priceMap = new Map<string, { days: Set<string>; adult: number; child?: number; status?: string }>();
     for (const e of entries) {
       const key = `${e.adult}_${e.child ?? 0}`;
-      if (!priceMap.has(key)) priceMap.set(key, { days: new Set(), adult: e.adult, child: e.child });
+      if (!priceMap.has(key)) priceMap.set(key, { days: new Set(), adult: e.adult, child: e.child, status: e.status });
       if (e.dow) priceMap.get(key)!.days.add(e.dow);
+      // confirmed가 하나라도 있으면 confirmed로
+      if (e.status === 'confirmed') { const v = priceMap.get(key)!; v.status = 'confirmed'; }
+      if (e.status === 'soldout') { const v = priceMap.get(key)!; if (v.status !== 'confirmed') v.status = 'soldout'; }
     }
     const rows: TierRow[] = Array.from(priceMap.values())
-      .map(v => ({ days: Array.from(v.days), adult_price: v.adult, child_price: v.child }))
+      .map(v => ({ days: Array.from(v.days), adult_price: v.adult, child_price: v.child, status: v.status }))
       .sort((a, b) => b.adult_price - a.adult_price);
     groups.push({ period, rows });
   }
@@ -515,16 +519,18 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
                       {row.days.length > 0 ? row.days.join(',') : '-'}
                     </td>
                   )}
-                  <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                  <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.status === 'soldout' ? 'text-gray-400 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                     {row.adult_price ? `₩${row.adult_price.toLocaleString()}` : '-'}
                   </td>
                   {hasChild && (
-                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
+                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.status === 'soldout' ? 'text-gray-400 line-through' : ''} ${EC}`}>
                       {row.child_price ? `₩${row.child_price.toLocaleString()}` : '-'}
                     </td>
                   )}
                   <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
-                    {isMin && <span className="text-red-600 font-bold text-xs">🔥최저가</span>}
+                    {row.status === 'confirmed' && <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded font-bold">확정</span>}
+                    {row.status === 'soldout' && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded font-bold">마감</span>}
+                    {isMin && row.status !== 'soldout' && !row.status?.match(/confirmed|soldout/) && <span className="text-red-600 font-bold text-xs">🔥최저가</span>}
                   </td>
                 </tr>
               );
