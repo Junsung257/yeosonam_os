@@ -194,7 +194,7 @@ export default function HomePage() {
           <a href="tel:051-000-0000" className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0">
             <span className="text-lg">📞</span>
           </a>
-          <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener noreferrer"
+          <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade"
             className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
             💬 카카오톡 상담
           </a>

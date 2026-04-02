@@ -61,8 +61,16 @@ export async function openKakaoChannel(params?: KakaoChannelParams): Promise<str
     // 클립보드 API 실패 시 (HTTP 환경 등) fallback 무시
   }
 
-  // 카카오 채널 채팅 열기
-  window.open(`https://pf.kakao.com/${KAKAO_CHANNEL_ID}/chat`, '_blank');
+  // 카카오 채널 채팅 열기 — <a> 태그로 열어야 현재 페이지 URL이 referrer로 전달됨
+  // (window.open은 origin만 전달, 카카오 "이전 페이지"에 상품 URL이 안 보임)
+  const a = document.createElement('a');
+  a.href = `https://pf.kakao.com/${KAKAO_CHANNEL_ID}/chat`;
+  a.target = '_blank';
+  a.rel = 'noopener';  // noreferrer 제거 — referrer 전달 필요
+  a.referrerPolicy = 'no-referrer-when-downgrade'; // full URL 전달
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 
   return hasContent ? finalMessage : null;
 }
