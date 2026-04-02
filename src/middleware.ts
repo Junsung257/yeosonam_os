@@ -131,7 +131,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 제외)
-    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
+    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 제외)
+    '/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
   ],
 };
