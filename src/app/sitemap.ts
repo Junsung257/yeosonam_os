@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // ── 정적 경로 ─────────────────────────────────────────────

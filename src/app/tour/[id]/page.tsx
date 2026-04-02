@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import TourDetailClient from './TourDetailClient';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
 // ── SSR 상품 데이터 fetch ──────────────────────────────────────
 

@@ -133,12 +133,21 @@ export default function HomePage() {
           <h2 className="text-sm font-bold text-gray-800 mb-3">인기 여행지</h2>
 
           {loading ? (
-            <div className="text-center py-12 text-gray-400 text-sm">불러오는 중...</div>
+            <div className="grid grid-cols-2 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
+                  <div className="h-28 bg-gray-200 animate-pulse" />
+                  <div className="px-2.5 py-2">
+                    <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : destinations.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-sm">현재 판매 중인 상품이 없습니다</div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {destinations.map(dest => {
+              {destinations.map((dest, index) => {
                 const emoji = COUNTRY_EMOJI[dest.country] || '🌍';
                 return (
                   <Link key={dest.destination} href={`/packages?destination=${encodeURIComponent(dest.destination)}`}>
@@ -146,7 +155,7 @@ export default function HomePage() {
                       {/* 이미지 */}
                       <div className="relative h-28 bg-gray-100">
                         {dest.image ? (
-                          <Image src={dest.image} alt={dest.destination} fill sizes="(max-width: 512px) 50vw, 256px" className="object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                          <Image src={dest.image} alt={dest.destination} fill sizes="(max-width: 512px) 50vw, 256px" className="object-cover group-hover:scale-105 transition-transform duration-300" {...(index < 2 ? { priority: true } : { loading: 'lazy' as const })} />
                         ) : (
                           <div className="w-full h-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-3xl">{emoji}</div>
                         )}

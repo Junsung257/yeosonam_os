@@ -3,7 +3,7 @@ import './globals.css';
 import MetaPixel from '@/components/MetaPixel';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),

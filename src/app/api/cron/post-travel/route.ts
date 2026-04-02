@@ -16,7 +16,7 @@ import { sendReviewRequestAlimtalk } from '@/lib/kakao';
  *      { "path": "/api/cron/post-travel", "schedule": "0 9 * * *" }  ← 매일 오전 9시
  *
  *   2. 또는 외부 cron 서비스 (GitHub Actions, EasyCron 등):
- *      curl https://yesonam.com/api/cron/post-travel
+ *      curl https://yeosonam.com/api/cron/post-travel
  *      (Authorization: Bearer CRON_SECRET 헤더 검증 권장)
  *
  * 처리 흐름:

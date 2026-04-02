@@ -17,7 +17,7 @@ const UPSELL_ITEMS: UpsellItem[] = [
     cost: 0,           // 원가 없음 — 전액 마진
     selling_price: 15000, // 1인 기준 예시 (실제 운영 시 환경변수 처리)
     unit: '인',
-    link_url: process.env.NEXT_PUBLIC_INSURANCE_URL || 'https://link.yesonam.com/insurance',
+    link_url: process.env.NEXT_PUBLIC_INSURANCE_URL || 'https://link.yeosonam.com/insurance',
     category: 'insurance',
     is_required_upsell: true,
   },
@@ -28,7 +28,7 @@ const UPSELL_ITEMS: UpsellItem[] = [
     cost: 0,           // 원가 없음 — 전액 마진
     selling_price: 12000, // 1인 기준 예시
     unit: '인',
-    link_url: process.env.NEXT_PUBLIC_USIM_URL || 'https://link.yesonam.com/usim',
+    link_url: process.env.NEXT_PUBLIC_USIM_URL || 'https://link.yeosonam.com/usim',
     category: 'usim',
     is_required_upsell: true,
   },

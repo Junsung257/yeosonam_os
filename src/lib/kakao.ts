@@ -163,7 +163,7 @@ export async function sendVoucherIssuedAlimtalk(params: {
   voucherId: string;
 }) {
   const templateId = process.env.KAKAO_TEMPLATE_VOUCHER_ISSUED || '';
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.com';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
   if (!templateId) {
     console.warn('[알림톡] KAKAO_TEMPLATE_VOUCHER_ISSUED 환경변수 미설정 — 수기 발송 필요');
@@ -209,7 +209,7 @@ export async function sendReviewRequestAlimtalk(params: {
   bookingId: string;
 }) {
   const templateId = process.env.KAKAO_TEMPLATE_REVIEW_REQUEST || '';
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.com';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
   if (!templateId) {
     console.warn('[알림톡] KAKAO_TEMPLATE_REVIEW_REQUEST 환경변수 미설정 — 수기 발송 필요');
