@@ -461,8 +461,32 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
   const allPrices = mergedGroups.flatMap(g => g.rows.map(r => r.adult_price)).filter(p => p > 0);
   const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
 
+  // 출발확정일 추출 (status === 'confirmed' tiers)
+  const confirmedDates = (tiers || [])
+    .filter((t: { status?: string }) => t.status === 'confirmed')
+    .flatMap((t: { departure_dates?: string[] }) => t.departure_dates ?? [])
+    .filter(Boolean);
+  const confirmedByMonth: Record<string, number[]> = {};
+  for (const d of confirmedDates) {
+    const dt = new Date(d);
+    const m = `${dt.getMonth() + 1}월`;
+    if (!confirmedByMonth[m]) confirmedByMonth[m] = [];
+    const day = dt.getDate();
+    if (!confirmedByMonth[m].includes(day)) confirmedByMonth[m].push(day);
+  }
+  for (const m of Object.keys(confirmedByMonth)) confirmedByMonth[m].sort((a, b) => a - b);
+
   return (
     <section className="mb-3">
+      {/* 출발확정일 배너 */}
+      {confirmedDates.length > 0 && (
+        <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[11px] text-green-800 font-semibold">
+          🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
+          {Object.entries(confirmedByMonth).map(([m, days], i) => (
+            <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
+          ))}
+        </div>
+      )}
       <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[13px] ${EC}`}>출발일별 요금</h3>
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
