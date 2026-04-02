@@ -1,5 +1,8 @@
 'use client';
 
+import React from 'react';
+import { groupForPoster, type PriceDate, type MonthGroup } from '@/lib/price-dates';
+
 /**
  * ══════════════════════════════════════════════════════════
  * 여소남 OS — YeosonamA4Template (레고 블록 아키텍처)
@@ -96,6 +99,8 @@ export interface YeosonamA4Props {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     notices_parsed?: any[];
     excluded_dates?: string[];
+    confirmed_dates?: string[];
+    price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
     product_type?: string;
     product_highlights?: string[];
   };
@@ -218,6 +223,8 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   // 동적 페이지 분리: 콘텐츠 높이를 추정하여 공간 있으면 합치고 없으면 분리
   const priceRowCount = (pkg.price_list?.length ?? 0) > 0
     ? pkg.price_list!.reduce((sum, g) => sum + g.rules.length, 0)
+    : (pkg.price_dates?.length ?? 0) > 0
+    ? groupForPoster(pkg.price_dates!).reduce((sum, g) => sum + g.rows.length, 0)
     : (pkg.price_tiers?.length ?? 0);
   const inclusionCount = (pkg.inclusions || itinerary?.highlights?.inclusions || []).length;
   const excludeCount = (pkg.excludes || itinerary?.highlights?.excludes || []).length;
@@ -247,7 +254,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
               ))}
             </div>
           )}
-          <PriceTable priceList={pkg.price_list} tiers={pkg.price_tiers} excludedDates={pkg.excluded_dates} />
+          <PriceTable priceList={pkg.price_list} priceDates={pkg.price_dates} tiers={pkg.price_tiers} excludedDates={pkg.excluded_dates} confirmedDates={pkg.confirmed_dates} />
           {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
           <IncludeExcludeInfo
             inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
@@ -322,11 +329,12 @@ function Page1Header({ title, badges }: { title: string; badges: React.ReactNode
 
 
 
-function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceListItem[]; tiers?: PriceTier[]; excludedDates?: string[] }) {
-  // price_list 우선 → 없으면 tiers 폴백 → 둘 다 없으면 렌더링 안 함
+function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDates }: { priceList?: PriceListItem[]; priceDates?: { date: string; price: number; child_price?: number; confirmed: boolean }[]; tiers?: PriceTier[]; excludedDates?: string[]; confirmedDates?: string[] }) {
+  // price_list 우선 → price_dates → tiers 폴백 → 모두 없으면 렌더링 안 함
   const usePriceList = priceList && priceList.length > 0;
-  const useTiers = !usePriceList && tiers && tiers.length > 0;
-  if (!usePriceList && !useTiers) return null;
+  const usePriceDates = !usePriceList && priceDates && priceDates.length > 0;
+  const useTiers = !usePriceList && !usePriceDates && tiers && tiers.length > 0;
+  if (!usePriceList && !usePriceDates && !useTiers) return null;
 
   const TH = 'text-[12px] bg-[#001f3f] font-semibold text-white py-1.5 px-2';
 
@@ -411,67 +419,179 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
     );
   }
 
-  // ── tiers 폴백 모드: 기간별 → 같은 가격 요일 병합 ──
-  interface TierRow { days: string[]; adult_price: number; child_price?: number; status?: string; }
-  // Step 1: 기간별로 묶기
-  const periodMap = new Map<string, { dow: string; adult: number; child?: number; note?: string; status?: string }[]>();
-  for (const tier of tiers!) {
-    const period = tier.period_label.replace(/^\d{4}-\d{2}\s*/, '').trim() || tier.period_label;
-    if (!periodMap.has(period)) periodMap.set(period, []);
-    periodMap.get(period)!.push({
-      dow: tier.departure_day_of_week || '',
-      adult: tier.adult_price ?? 0,
-      child: tier.child_price,
-      note: tier.note || undefined,
-      status: (tier as { status?: string }).status || 'available',
-    });
-  }
-  // Step 2: 각 기간 내에서 같은 가격끼리 요일 병합
-  const periodNotes = new Map<string, string>();
-  const groups: { period: string; rows: TierRow[] }[] = [];
-  for (const [period, entries] of periodMap) {
-    const firstNote = entries.find(e => e.note)?.note;
-    if (firstNote) periodNotes.set(period, firstNote);
-    const priceMap = new Map<string, { days: Set<string>; adult: number; child?: number; status?: string }>();
-    for (const e of entries) {
-      const key = `${e.adult}_${e.child ?? 0}`;
-      if (!priceMap.has(key)) priceMap.set(key, { days: new Set(), adult: e.adult, child: e.child, status: e.status });
-      if (e.dow) priceMap.get(key)!.days.add(e.dow);
-      // confirmed가 하나라도 있으면 confirmed로
-      if (e.status === 'confirmed') { const v = priceMap.get(key)!; v.status = 'confirmed'; }
-      if (e.status === 'soldout') { const v = priceMap.get(key)!; if (v.status !== 'confirmed') v.status = 'soldout'; }
+  // ── price_dates 모드: groupForPoster 기반 월별 그룹 렌더링 ──
+  if (usePriceDates) {
+    const monthGroups: MonthGroup[] = groupForPoster(priceDates as PriceDate[]);
+
+    // 확정일 배너 계산
+    const pdConfirmedDates = priceDates!.filter(d => d.confirmed);
+    const pdConfirmedByMonth: Record<string, number[]> = {};
+    for (const d of pdConfirmedDates) {
+      const m = `${parseInt(d.date.split('-')[1])}월`;
+      const day = parseInt(d.date.split('-')[2]);
+      if (!pdConfirmedByMonth[m]) pdConfirmedByMonth[m] = [];
+      if (!pdConfirmedByMonth[m].includes(day)) pdConfirmedByMonth[m].push(day);
     }
-    const rows: TierRow[] = Array.from(priceMap.values())
-      .map(v => ({ days: Array.from(v.days), adult_price: v.adult, child_price: v.child, status: v.status }))
-      .sort((a, b) => b.adult_price - a.adult_price);
-    groups.push({ period, rows });
+    for (const m of Object.keys(pdConfirmedByMonth)) pdConfirmedByMonth[m].sort((a, b) => a - b);
+
+    const hasChild = priceDates!.some(d => d.child_price && d.child_price > 0);
+
+    // 출발제외일 월별 그룹 + 연속범위 압축
+    const pdExcludedByMonth: Record<string, number[]> = {};
+    for (const d of (excludedDates || [])) {
+      const m = `${parseInt(d.split('-')[1])}월`;
+      if (!pdExcludedByMonth[m]) pdExcludedByMonth[m] = [];
+      const day = parseInt(d.split('-')[2]);
+      if (!pdExcludedByMonth[m].includes(day)) pdExcludedByMonth[m].push(day);
+    }
+    for (const m of Object.keys(pdExcludedByMonth)) pdExcludedByMonth[m].sort((a, b) => a - b);
+    function pdCompactDays(days: number[]): string {
+      if (!days.length) return '';
+      const ranges: string[] = [];
+      let start = days[0], end = days[0];
+      for (let i = 1; i < days.length; i++) {
+        if (days[i] === end + 1) { end = days[i]; }
+        else { ranges.push(start === end ? `${start}` : `${start}~${end}`); start = end = days[i]; }
+      }
+      ranges.push(start === end ? `${start}` : `${start}~${end}`);
+      return ranges.join(', ');
+    }
+
+    return (
+      <section className="mb-3">
+        {/* 출발확정일 배너 */}
+        {Object.keys(pdConfirmedByMonth).length > 0 && (
+          <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[11px] text-green-800 font-semibold">
+            🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
+            {Object.entries(pdConfirmedByMonth).map(([m, days], i) => (
+              <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
+            ))}
+          </div>
+        )}
+        <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[13px] ${EC}`}>출발일별 요금</h3>
+        {pdConfirmedDates.length > 0 && <p className="text-[9px] text-slate-400 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th className={`${TH} text-center`} style={{ width: '48px' }}>요일</th>
+              <th className={`${TH} text-left`}>출발일</th>
+              <th className={`${TH} text-right`}>성인</th>
+              {hasChild && <th className={`${TH} text-right`}>아동</th>}
+              <th className={`${TH} text-center`} style={{ width: '58px' }}>비고</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthGroups.map((mg) => (
+              <React.Fragment key={mg.month}>
+                {/* 월 구분 헤더 */}
+                {monthGroups.length > 1 && (
+                  <tr>
+                    <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[11px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
+                      {mg.month}
+                    </td>
+                  </tr>
+                )}
+                {mg.rows.map((row, rIdx) => {
+                  const bgClass = rIdx % 2 === 1 ? 'bg-slate-50' : '';
+                  return (
+                    <tr key={`${mg.month}-${rIdx}`} className={bgClass}>
+                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
+                        {row.dow || '-'}
+                      </td>
+                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-left leading-snug">
+                        <span className="inline">
+                          {row.dates.map((dn, di) => (
+                            <React.Fragment key={di}>
+                              <span className={dn.confirmed ? 'text-red-600 font-bold' : 'text-slate-700'}>{dn.day}</span>
+                              {di < row.dates.length - 1 && <span className="text-slate-300">, </span>}
+                            </React.Fragment>
+                          ))}
+                        </span>
+                      </td>
+                      <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.isLowest ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                        {row.price ? `₩${row.price.toLocaleString()}` : '-'}
+                      </td>
+                      {hasChild && (
+                        <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
+                          {row.childPrice ? `₩${row.childPrice.toLocaleString()}` : '-'}
+                        </td>
+                      )}
+                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                        {row.isLowest && <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>}
+                        {row.note && !row.isLowest && <span className="text-[10px] text-slate-500">{row.note}</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+        {/* 출발제외일 월별 (연속범위 압축) */}
+        {Object.keys(pdExcludedByMonth).length > 0 && (
+          <div className="mt-1.5 bg-red-50 border border-red-200 rounded px-2 py-1 text-[10px] text-red-600 leading-snug">
+            <span className="font-bold">출발제외일</span>&nbsp;&nbsp;
+            {Object.entries(pdExcludedByMonth).map(([m, days], i) => (
+              <span key={m}>{i > 0 ? ' | ' : ''}{m}: {pdCompactDays(days)}</span>
+            ))}
+          </div>
+        )}
+      </section>
+    );
   }
-  // Step 3: 가격 구조가 동일한 인접 기간 병합 (5/1~6/30 + 9/1~9/25 → "5/1~6/30\n9/1~9/25")
-  const mergedGroups: typeof groups = [];
-  for (const g of groups) {
-    const priceKey = g.rows.map(r => `${r.adult_price}_${r.days.sort().join('')}`).join('|');
-    const prev = mergedGroups[mergedGroups.length - 1];
-    if (prev) {
-      const prevKey = prev.rows.map(r => `${r.adult_price}_${r.days.sort().join('')}`).join('|');
-      if (priceKey === prevKey) {
-        prev.period += `\n${g.period}`;
-        continue;
+
+  // ── tiers 모드: 월별 그룹 + 개별 날짜 표시 (확정일 빨간색) ──
+
+  // 확정일 Set — 패키지 레벨 confirmed_dates 우선, 없으면 tier status 폴백
+  const confirmedSet = new Set<string>();
+  if (confirmedDates && confirmedDates.length > 0) {
+    confirmedDates.forEach(d => confirmedSet.add(d));
+  } else {
+    for (const tier of tiers!) {
+      if (tier.status === 'confirmed' && tier.departure_dates) {
+        tier.departure_dates.forEach(d => confirmedSet.add(d));
       }
     }
-    mergedGroups.push({ ...g });
   }
-  const hasChild = mergedGroups.some(g => g.rows.some(r => r.child_price && r.child_price > 0));
-  const hasDow = mergedGroups.some(g => g.rows.some(r => r.days.length > 0));
-  const allPrices = mergedGroups.flatMap(g => g.rows.map(r => r.adult_price)).filter(p => p > 0);
-  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
 
-  // 출발확정일 추출 (status === 'confirmed' tiers)
-  const confirmedDates = (tiers || [])
-    .filter((t: { status?: string }) => t.status === 'confirmed')
-    .flatMap((t: { departure_dates?: string[] }) => t.departure_dates ?? [])
-    .filter(Boolean);
+  // 월별 그룹핑 (departure_dates 기준)
+  interface TierDisplayRow {
+    dow: string;
+    dates: { day: number; iso: string }[];
+    adult: number;
+    child?: number;
+    note?: string;
+    status?: string;
+  }
+  const monthGroups = new Map<string, TierDisplayRow[]>();
+  for (const tier of tiers!) {
+    const firstDate = tier.departure_dates?.[0];
+    const monthNum = firstDate
+      ? new Date(firstDate).getMonth() + 1
+      : parseInt(tier.period_label.match(/(\d+)/)?.[1] || '0');
+    const monthKey = `${monthNum}월`;
+
+    // 요일 추출: period_label에서 날짜/월 부분 제거
+    const dow = tier.period_label
+      .replace(/^\d+\/[\d~,]+\s*/, '')   // "4/5~19 " → ""
+      .replace(/^\d+월\s*/, '')           // "5월 " → ""
+      .trim() || tier.departure_day_of_week || '';
+
+    const dates = (tier.departure_dates || []).map(d => ({ day: new Date(d).getDate(), iso: d }));
+
+    if (!monthGroups.has(monthKey)) monthGroups.set(monthKey, []);
+    monthGroups.get(monthKey)!.push({ dow, dates, adult: tier.adult_price ?? 0, child: tier.child_price, note: tier.note, status: tier.status });
+  }
+
+  // 전역 최저가
+  const allPrices = tiers!.map(t => t.adult_price ?? 0).filter(p => p > 0);
+  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
+  const hasChild = tiers!.some(t => t.child_price && t.child_price > 0);
+  const hasDepartureDates = tiers!.some(t => t.departure_dates && t.departure_dates.length > 0);
+
+  // 확정일 배너 데이터 (월별)
   const confirmedByMonth: Record<string, number[]> = {};
-  for (const d of confirmedDates) {
+  for (const d of confirmedSet) {
     const dt = new Date(d);
     const m = `${dt.getMonth() + 1}월`;
     if (!confirmedByMonth[m]) confirmedByMonth[m] = [];
@@ -480,10 +600,34 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
   }
   for (const m of Object.keys(confirmedByMonth)) confirmedByMonth[m].sort((a, b) => a - b);
 
+  // 출발제외일 월별 그룹 + 연속범위 압축
+  const excludedByMonth: Record<string, number[]> = {};
+  for (const d of (excludedDates || [])) {
+    const dt = new Date(d);
+    const m = `${dt.getMonth() + 1}월`;
+    if (!excludedByMonth[m]) excludedByMonth[m] = [];
+    excludedByMonth[m].push(dt.getDate());
+  }
+  for (const m of Object.keys(excludedByMonth)) excludedByMonth[m].sort((a, b) => a - b);
+  function compactDays(days: number[]): string {
+    if (!days.length) return '';
+    const ranges: string[] = [];
+    let start = days[0], end = days[0];
+    for (let i = 1; i < days.length; i++) {
+      if (days[i] === end + 1) { end = days[i]; }
+      else { ranges.push(start === end ? `${start}` : `${start}~${end}`); start = end = days[i]; }
+    }
+    ranges.push(start === end ? `${start}` : `${start}~${end}`);
+    return ranges.join(', ');
+  }
+
+  // 비고 notes 수집
+  const tierNotes = [...new Set(tiers!.filter(t => t.note).map(t => t.note!))];
+
   return (
     <section className="mb-3">
       {/* 출발확정일 배너 */}
-      {confirmedDates.length > 0 && (
+      {Object.keys(confirmedByMonth).length > 0 && (
         <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[11px] text-green-800 font-semibold">
           🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
           {Object.entries(confirmedByMonth).map(([m, days], i) => (
@@ -492,62 +636,90 @@ function PriceTable({ priceList, tiers, excludedDates }: { priceList?: PriceList
         </div>
       )}
       <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[13px] ${EC}`}>출발일별 요금</h3>
+      {confirmedSet.size > 0 && <p className="text-[9px] text-slate-400 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>
-            <th className={`${TH} text-left`}>출발 기간</th>
-            {hasDow && <th className={`${TH} text-center`}>요일</th>}
+            <th className={`${TH} text-center`} style={{ width: '48px' }}>요일</th>
+            {hasDepartureDates && <th className={`${TH} text-left`}>출발일</th>}
+            {!hasDepartureDates && <th className={`${TH} text-left`}>출발 기간</th>}
             <th className={`${TH} text-right`}>성인</th>
             {hasChild && <th className={`${TH} text-right`}>아동</th>}
-            <th className={`${TH} text-center`} style={{ width: '55px' }}>비고</th>
+            <th className={`${TH} text-center`} style={{ width: '58px' }}>비고</th>
           </tr>
         </thead>
         <tbody>
-          {mergedGroups.map((group, gIdx) =>
-            group.rows.map((row, rIdx) => {
-              const isMin = minPrice !== null && row.adult_price === minPrice;
-              const bgClass = gIdx % 2 === 1 ? 'bg-slate-50' : '';
-              return (
-                <tr key={`${gIdx}-${rIdx}`} className={bgClass}>
-                  {rIdx === 0 && (
-                    <td rowSpan={group.rows.length} className="text-[11px] py-1 px-2 border-b border-slate-200 font-semibold text-slate-800 align-middle">
-                      {group.period.split('\n').map((p, i) => <span key={i} className="block whitespace-nowrap">{p}</span>)}
-                    </td>
-                  )}
-                  {hasDow && (
-                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-600">
-                      {row.days.length > 0 ? row.days.join(',') : '-'}
-                    </td>
-                  )}
-                  <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.status === 'soldout' ? 'text-gray-400 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
-                    {row.adult_price ? `₩${row.adult_price.toLocaleString()}` : '-'}
-                  </td>
-                  {hasChild && (
-                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.status === 'soldout' ? 'text-gray-400 line-through' : ''} ${EC}`}>
-                      {row.child_price ? `₩${row.child_price.toLocaleString()}` : '-'}
-                    </td>
-                  )}
-                  <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
-                    {row.status === 'confirmed' && <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded font-bold">확정</span>}
-                    {row.status === 'soldout' && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded font-bold">마감</span>}
-                    {isMin && row.status !== 'soldout' && !row.status?.match(/confirmed|soldout/) && <span className="text-red-600 font-bold text-xs">🔥최저가</span>}
+          {[...monthGroups.entries()].map(([month, rows]) => (
+            <React.Fragment key={month}>
+              {/* 월 구분 헤더 */}
+              {monthGroups.size > 1 && (
+                <tr>
+                  <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[11px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
+                    {month}
                   </td>
                 </tr>
-              );
-            })
-          )}
+              )}
+              {rows.map((row, rIdx) => {
+                const isMin = minPrice !== null && row.adult === minPrice;
+                const isSoldout = row.status === 'soldout';
+                const bgClass = rIdx % 2 === 1 ? 'bg-slate-50' : '';
+                return (
+                  <tr key={`${month}-${rIdx}`} className={bgClass}>
+                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
+                      {row.dow || '-'}
+                    </td>
+                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-left leading-snug">
+                      {hasDepartureDates && row.dates.length > 0 ? (
+                        <span className="inline">
+                          {row.dates.map((dn, di) => {
+                            const isConfirmed = confirmedSet.has(dn.iso);
+                            return (
+                              <React.Fragment key={di}>
+                                <span className={isConfirmed ? 'text-red-600 font-bold' : 'text-slate-700'}>{dn.day}</span>
+                                {di < row.dates.length - 1 && <span className="text-slate-300">, </span>}
+                              </React.Fragment>
+                            );
+                          })}
+                        </span>
+                      ) : (
+                        <span className="text-slate-700">{tiers!.find(t => t.adult_price === row.adult && (t.departure_day_of_week || '') === (row.dow || ''))?.period_label || '-'}</span>
+                      )}
+                    </td>
+                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                      {row.adult ? `₩${row.adult.toLocaleString()}` : '-'}
+                    </td>
+                    {hasChild && (
+                      <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : ''} ${EC}`}>
+                        {row.child ? `₩${row.child.toLocaleString()}` : '-'}
+                      </td>
+                    )}
+                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                      {isSoldout && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded font-bold">마감</span>}
+                      {isMin && !isSoldout && <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </React.Fragment>
+          ))}
         </tbody>
       </table>
-      {/* 비고 note 중복 제거 후 하단 표시 */}
-      {periodNotes.size > 0 && (
+      {/* 비고 notes */}
+      {tierNotes.length > 0 && (
         <div className="mt-1 space-y-0.5">
-          {[...new Set(periodNotes.values())].map((note, i) => (
+          {tierNotes.map((note, i) => (
             <p key={i} className="text-[10px] text-blue-600 leading-snug">• {note}</p>
           ))}
         </div>
       )}
-      {excludedDates && excludedDates.length > 0 && (
-        <p className="mt-1 text-[10px] text-red-500 leading-snug">• 항공제외일: {excludedDates.join(', ')}</p>
+      {/* 출발제외일 월별 (연속범위 압축) */}
+      {Object.keys(excludedByMonth).length > 0 && (
+        <div className="mt-1.5 bg-red-50 border border-red-200 rounded px-2 py-1 text-[10px] text-red-600 leading-snug">
+          <span className="font-bold">출발제외일</span>&nbsp;&nbsp;
+          {Object.entries(excludedByMonth).map(([m, days], i) => (
+            <span key={m}>{i > 0 ? ' | ' : ''}{m}: {compactDays(days)}</span>
+          ))}
+        </div>
       )}
     </section>
   );

@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { matchAttraction } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { getMinPriceFromDates } from '@/lib/price-dates';
 
 interface Package {
   id: string;
@@ -14,6 +15,7 @@ interface Package {
   duration?: number;
   price?: number;
   price_tiers?: { period_label?: string; departure_dates?: string[]; adult_price?: number }[];
+  price_dates?: { date: string; price: number; confirmed: boolean }[];
   product_type?: string;
   airline?: string;
   departure_airport?: string;
@@ -134,6 +136,10 @@ export default function PackagesListPage() {
 
   // 최저가 계산
   function getMinPrice(pkg: Package): number {
+    if (pkg.price_dates?.length) {
+      const min = getMinPriceFromDates(pkg.price_dates as any);
+      if (min > 0) return min;
+    }
     const tierPrices = (pkg.price_tiers || []).map(t => t.adult_price).filter(Boolean) as number[];
     const all = [pkg.price, ...tierPrices].filter(Boolean) as number[];
     return all.length > 0 ? Math.min(...all) : 0;

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import ProductCard from '@/components/ProductCard';
 import ProductSearch from '@/components/ProductSearch';
 import { getSessionId, trackSearch } from '@/lib/tracker';
+import { getMinPriceFromDates } from '@/lib/price-dates';
 
 interface Package {
   id: string;
@@ -13,6 +14,7 @@ interface Package {
   nights?: number;
   price?: number;
   price_tiers?: { period_label?: string; departure_dates?: string[]; adult_price?: number }[];
+  price_dates?: { date: string; price: number; confirmed: boolean }[];
   product_type?: string;
   airline?: string;
   product_highlights?: string[];
@@ -132,6 +134,10 @@ export default function ProductsPage() {
 }
 
 function getMinPrice(pkg: Package): number {
+  if (pkg.price_dates?.length) {
+    const min = getMinPriceFromDates(pkg.price_dates as any);
+    if (min > 0) return min;
+  }
   const tierPrices = (pkg.price_tiers || []).map((t) => t.adult_price).filter(Boolean) as number[];
   const all = [pkg.price, ...tierPrices].filter(Boolean) as number[];
   return all.length > 0 ? Math.min(...all) : 0;

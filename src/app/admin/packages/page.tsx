@@ -130,6 +130,8 @@ interface Package {
   product_highlights?: string[];
   product_summary?: string;
   itinerary_data?: unknown;
+  excluded_dates?: string[];
+  confirmed_dates?: string[];
   marketing_copies?: MarketingCopy[];
   internal_code?: string;
   land_operator_id?: string | null;

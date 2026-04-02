@@ -4,6 +4,8 @@
  * ══════════════════════════════════════════════════════════
  */
 
+import { getMinPriceFromDates } from './price-dates';
+
 // ── 타입 ─────────────────────────────────────────────────
 export type KeywordTier = 'core' | 'mid' | 'longtail' | 'negative';
 export type MatchType = 'broad' | 'phrase' | 'exact';
@@ -325,7 +327,11 @@ export function optimizeBids(keywords: SearchAdKeyword[]): BidRecommendation[] {
 }
 
 // ── 유틸 ─────────────────────────────────────────────────
-function getLowestPrice(pkg: { price?: number; price_tiers?: { adult_price?: number }[] }): number {
+function getLowestPrice(pkg: { price?: number; price_tiers?: { adult_price?: number }[]; price_dates?: { date: string; price: number; confirmed: boolean }[] }): number {
+  if (pkg.price_dates?.length) {
+    const min = getMinPriceFromDates(pkg.price_dates as any);
+    if (min > 0) return min;
+  }
   const prices: number[] = [];
   if (pkg.price && pkg.price > 0) prices.push(pkg.price);
   if (pkg.price_tiers) {

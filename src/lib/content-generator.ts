@@ -5,6 +5,7 @@
  */
 
 import { searchPexelsPhotos, isPexelsConfigured } from './pexels';
+import { getMinPriceFromDates } from './price-dates';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export interface ProductData {
   duration?: number;
   price?: number;
   price_tiers?: { adult_price?: number; period_label?: string }[];
+  price_dates?: { date: string; price: number; confirmed: boolean }[];
   inclusions?: string[];
   excludes?: string[];
   product_type?: string;
@@ -90,6 +92,10 @@ export const CHANNEL_PRESETS: Record<Channel, { label: string; description: stri
 
 function uid(): string { return crypto.randomUUID(); }
 function getLowestPrice(p: ProductData): number {
+  if (p.price_dates?.length) {
+    const min = getMinPriceFromDates(p.price_dates as any);
+    if (min > 0) return min;
+  }
   const prices: number[] = [];
   if (p.price && p.price > 0) prices.push(p.price);
   if (p.price_tiers) for (const t of p.price_tiers) if (t.adult_price && t.adult_price > 0) prices.push(t.adult_price);

@@ -53,10 +53,16 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
   // 출발일 필터
   if (args.departureDate) {
     const depDate = args.departureDate as string;
-    const date = new Date(depDate);
+    const [dy, dm, dd] = depDate.split('-').map(Number);
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    const dayOfWeek = dayNames[date.getDay()];
+    const dayOfWeek = dayNames[new Date(dy, dm - 1, dd).getDay()];
     filtered = filtered.filter(p => {
+      // price_dates 우선
+      const priceDates = (p.price_dates || []) as { date: string; price: number }[];
+      if (priceDates.length > 0) {
+        return priceDates.some(pd => pd.date === depDate);
+      }
+      // 기존 price_tiers 폴백
       const excluded = (p.excluded_dates || []) as string[];
       if (excluded.includes(depDate)) return false;
       const tiers = (p.price_tiers || []) as {
@@ -72,6 +78,7 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
         if (tier.date_range) {
           const s = new Date(tier.date_range.start);
           const e = new Date(tier.date_range.end);
+          const date = new Date(dy, dm - 1, dd);
           if (date >= s && date <= e) {
             return !tier.departure_day_of_week || tier.departure_day_of_week === dayOfWeek;
           }
@@ -85,6 +92,12 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
   if (args.month) {
     const targetMonth = String(args.month as number).padStart(2, '0');
     filtered = filtered.filter(p => {
+      // price_dates 우선
+      const priceDates = (p.price_dates || []) as { date: string }[];
+      if (priceDates.length > 0) {
+        return priceDates.some(pd => pd.date.slice(5, 7) === targetMonth);
+      }
+      // 기존 price_tiers 폴백
       const tiers = (p.price_tiers || []) as { date_range?: { start: string }; departure_dates?: string[]; status?: string }[];
       if (tiers.length === 0) return true;
       return tiers.some(t => {
@@ -99,7 +112,17 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
   // 요일 필터
   if (args.dayOfWeek) {
     const dow = (args.dayOfWeek as string).replace('요일', '');
+    const DOW_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
     filtered = filtered.filter(p => {
+      // price_dates 우선
+      const priceDates = (p.price_dates || []) as { date: string }[];
+      if (priceDates.length > 0) {
+        return priceDates.some(pd => {
+          const [y, m, d] = pd.date.split('-').map(Number);
+          return DOW_NAMES[new Date(y, m - 1, d).getDay()] === dow;
+        });
+      }
+      // 기존 price_tiers 폴백
       const tiers = (p.price_tiers || []) as { departure_day_of_week?: string; status?: string }[];
       if (tiers.length === 0) return true;
       return tiers.some(t => t.status !== 'soldout' && (!t.departure_day_of_week || t.departure_day_of_week === dow));
@@ -123,6 +146,12 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
     if (args.month) {
       const targetMonth = String(args.month as number).padStart(2, '0');
       filtered = filtered.filter(p => {
+        // price_dates 우선
+        const priceDates = (p.price_dates || []) as { date: string }[];
+        if (priceDates.length > 0) {
+          return priceDates.some(pd => pd.date.slice(5, 7) === targetMonth);
+        }
+        // 기존 price_tiers 폴백
         const tiers = (p.price_tiers || []) as { date_range?: { start: string }; departure_dates?: string[]; status?: string }[];
         if (tiers.length === 0) return true;
         return tiers.some(t => t.status !== 'soldout' && (

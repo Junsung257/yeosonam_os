@@ -8,6 +8,7 @@ import {
   priceTiersToRows,
   determineProductStatus,
 } from '@/lib/upload-validator';
+import { tiersToDatePrices } from '@/lib/price-dates';
 
 // ─── 코드 매핑 테이블 ─────────────────────────────────────────────────────────
 
@@ -664,6 +665,7 @@ export async function POST(request: NextRequest) {
               single_supplement:     ed.single_supplement,
               small_group_surcharge: ed.small_group_surcharge,
               price_tiers:           ed.price_tiers       ?? [],
+              price_dates:           tiersToDatePrices(ed.price_tiers ?? []),
               price_list:            ed.price_list        ?? [],
               surcharges:            ed.surcharges        ?? [],
               excluded_dates:        ed.excluded_dates    ?? [],

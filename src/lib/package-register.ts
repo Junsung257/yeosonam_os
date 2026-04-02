@@ -23,6 +23,7 @@ import {
   loadExclusionRules,
   buildFullTextForValidation,
 } from './text-sanitizer';
+import { tiersToDatePrices } from './price-dates';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -575,6 +576,7 @@ export async function registerPackageFromText(
       product_tags: meta.tags,
       product_highlights: meta.highlights,
       price_tiers: priceTiers,
+      price_dates: tiersToDatePrices(priceTiers as any[]),
       inclusions: meta.inclusions,
       excludes: meta.excludes,
       accommodations: meta.accommodations,

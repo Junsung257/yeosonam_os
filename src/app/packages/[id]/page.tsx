@@ -9,6 +9,7 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
+import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 
 interface PriceTier {
   period_label: string;
@@ -42,6 +43,7 @@ interface Package {
   ticketing_deadline?: string;
   product_type?: string;
   price_tiers?: PriceTier[];
+  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
   inclusions?: string[];
   excludes?: string[];
   optional_tours?: { name: string; price_usd?: number }[];
@@ -115,14 +117,13 @@ export default function PackageDetailPage() {
 
   // pkg 로드 후 캘린더를 출발월로 자동 이동
   useEffect(() => {
-    if (!pkg?.price_tiers) return;
-    const firstDate = pkg.price_tiers
-      .flatMap((t: PriceTier) => t.departure_dates || [])
-      .filter(Boolean)
-      .sort()[0];
-    if (firstDate) {
-      const d = new Date(firstDate);
-      if (!isNaN(d.getTime())) setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    if (!pkg) return;
+    const priceDates = getEffectivePriceDates(pkg as any);
+    const firstDateStr = priceDates[0]?.date
+      || (pkg.price_tiers || []).flatMap((t: PriceTier) => t.departure_dates || []).filter(Boolean).sort()[0];
+    if (firstDateStr) {
+      const [y, m] = firstDateStr.split('-').map(Number);
+      if (y && m) setCalMonth(new Date(y, m - 1, 1));
     }
   }, [pkg]);
 
@@ -432,15 +433,26 @@ export default function PackageDetailPage() {
         <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-12">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">출발일 선택</h2>
           {(() => {
-            const dateMap = new Map<string, { price: number; tier: PriceTier; note?: string }>();
-            for (const t of tiers) {
-              if (t.departure_dates?.length) {
-                for (const d of t.departure_dates) {
-                  const date = new Date(d);
-                  if (!isNaN(date.getTime())) {
-                    const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-                    if (!dateMap.has(key)) {
-                      dateMap.set(key, { price: t.adult_price || 0, tier: t, note: t.note || undefined });
+            const priceDates = getEffectivePriceDates(pkg as any);
+            const usePriceDates = pkg.price_dates && pkg.price_dates.length > 0;
+
+            const dateMap = new Map<string, { price: number; confirmed: boolean; tier?: PriceTier; note?: string }>();
+            if (usePriceDates) {
+              for (const pd of priceDates) {
+                if (!dateMap.has(pd.date)) {
+                  dateMap.set(pd.date, { price: pd.price, confirmed: pd.confirmed });
+                }
+              }
+            } else {
+              for (const t of tiers) {
+                if (t.departure_dates?.length) {
+                  for (const d of t.departure_dates) {
+                    const date = new Date(d);
+                    if (!isNaN(date.getTime())) {
+                      const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+                      if (!dateMap.has(key)) {
+                        dateMap.set(key, { price: t.adult_price || 0, confirmed: t.status === 'confirmed', tier: t, note: t.note || undefined });
+                      }
                     }
                   }
                 }
@@ -502,13 +514,24 @@ export default function PackageDetailPage() {
                     const isMin = info && info.price === minPrice;
                     return (
                       <button key={i} disabled={!info}
-                        onClick={() => { if (!info) return; setSelectedTier(isSelected ? null : info.tier); setSelectedDate(isSelected ? '' : key); setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` })); }}
+                        onClick={() => {
+                          if (!info) return;
+                          if (usePriceDates) {
+                            setSelectedDate(isSelected ? '' : key);
+                            setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
+                            setSelectedTier(null);
+                          } else {
+                            setSelectedTier(isSelected ? null : info.tier!);
+                            setSelectedDate(isSelected ? '' : key);
+                            setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
+                          }
+                        }}
                         className={`flex flex-col items-center py-2 rounded-xl transition min-h-[52px] justify-center ${
                           isSelected ? 'bg-violet-600 text-white shadow-lg' : info ? 'hover:bg-violet-50' : 'opacity-20'
                         }`}>
                         <span className="text-xs font-medium">{d}</span>
                         {info && <span className={`text-[10px] mt-0.5 font-bold ${isSelected ? 'text-white/80' : isMin ? 'text-violet-600' : 'text-gray-400'}`}>{Math.round(info.price / 10000)}만</span>}
-                        {info?.tier?.status === 'confirmed' && !isSelected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" />}
+                        {info?.confirmed && !isSelected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" />}
                       </button>
                     );
                   })}

@@ -22,7 +22,7 @@ export async function GET() {
     // 판매 중/승인/검토 대기 상품만 조회
     const { data: packages, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, ticketing_deadline, price_tiers')
+      .select('id, ticketing_deadline, price_tiers, price_dates')
       .in('status', ['approved', 'active', 'pending', 'pending_review', 'draft']);
 
     if (error) throw error;
@@ -40,23 +40,33 @@ export async function GET() {
         shouldArchive = true;
       }
 
-      // 조건 2: 모든 출발일이 지남
-      if (!shouldArchive && pkg.price_tiers && Array.isArray(pkg.price_tiers)) {
-        const allDates = (pkg.price_tiers as any[])
-          .flatMap(t => t.departure_dates || [])
-          .filter(Boolean);
-
-        // date_range 기반 출발일도 체크
-        const allEndDates = (pkg.price_tiers as any[])
-          .map(t => t.date_range?.end)
-          .filter(Boolean);
-
-        const allRelevantDates = [...allDates, ...allEndDates];
-
-        if (allRelevantDates.length > 0) {
-          const latestDate = allRelevantDates.sort().pop()!;
+      // 조건 2: 모든 출발일이 지남 — price_dates 우선, price_tiers 폴백
+      if (!shouldArchive) {
+        const priceDates = (pkg.price_dates || []) as { date: string }[];
+        if (priceDates.length > 0) {
+          // price_dates가 있으면 이것만으로 판단
+          const latestDate = priceDates.map(pd => pd.date).sort().pop()!;
           if (latestDate < today) {
             shouldArchive = true;
+          }
+        } else if (pkg.price_tiers && Array.isArray(pkg.price_tiers)) {
+          // 기존 price_tiers 폴백
+          const allDates = (pkg.price_tiers as any[])
+            .flatMap(t => t.departure_dates || [])
+            .filter(Boolean);
+
+          // date_range 기반 출발일도 체크
+          const allEndDates = (pkg.price_tiers as any[])
+            .map(t => t.date_range?.end)
+            .filter(Boolean);
+
+          const allRelevantDates = [...allDates, ...allEndDates];
+
+          if (allRelevantDates.length > 0) {
+            const latestDate = allRelevantDates.sort().pop()!;
+            if (latestDate < today) {
+              shouldArchive = true;
+            }
           }
         }
       }

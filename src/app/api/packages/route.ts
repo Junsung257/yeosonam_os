@@ -12,6 +12,7 @@ import {
   runSanitizePipeline,
   buildFullTextForValidation,
 } from '@/lib/text-sanitizer';
+import { tiersToDatePrices } from '@/lib/price-dates';
 
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
 const DEPARTURE_CODES: Record<string, string> = {
@@ -93,7 +94,7 @@ async function generatePackageCode(
 const PACKAGE_LIST_FIELDS = `
   id, title, destination, category, product_type, trip_style,
   departure_days, departure_airport, airline, min_participants, ticketing_deadline,
-  price, price_tiers, price_list, status, confidence, created_at,
+  price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
   inclusions, excludes, guide_tip, single_supplement, small_group_surcharge,
   optional_tours, itinerary, special_notes, notices_parsed, land_operator, commission_rate,
   product_tags, product_highlights, product_summary, itinerary_data,
@@ -123,7 +124,7 @@ export async function GET(request: NextRequest) {
     if (aggregate === 'destination') {
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
-        .select('destination, price, price_tiers, country')
+        .select('destination, price, price_tiers, price_dates, country')
         .in('status', ['active', 'approved']);
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
@@ -132,9 +133,17 @@ export async function GET(request: NextRequest) {
         if (!dest) return;
         if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
         destMap[dest].count++;
-        const tierPrices = (p.price_tiers || []).map((t: any) => t.adult_price).filter(Boolean);
-        const allPrices = [p.price, ...tierPrices].filter(Boolean);
-        const min = Math.min(...allPrices);
+        // price_dates 우선, 없으면 price_tiers 폴백
+        let min = Infinity;
+        if (p.price_dates?.length) {
+          const pdPrices = (p.price_dates as any[]).map((d: any) => d.price).filter(Boolean);
+          if (pdPrices.length > 0) min = Math.min(...pdPrices);
+        }
+        if (min === Infinity) {
+          const tierPrices = (p.price_tiers || []).map((t: any) => t.adult_price).filter(Boolean);
+          const allPrices = [p.price, ...tierPrices].filter(Boolean);
+          if (allPrices.length > 0) min = Math.min(...allPrices);
+        }
         if (min < destMap[dest].minPrice) destMap[dest].minPrice = min;
       });
 
@@ -414,7 +423,7 @@ export async function PATCH(request: NextRequest) {
       'category', 'product_type', 'trip_style', 'departure_days',
       'departure_airport', 'airline', 'min_participants', 'ticketing_deadline',
       'guide_tip', 'single_supplement', 'small_group_surcharge',
-      'price_tiers', 'price_list', 'surcharges', 'excluded_dates',
+      'price_tiers', 'price_dates', 'price_list', 'surcharges', 'excluded_dates',
       'optional_tours', 'cancellation_policy', 'category_attrs',
       'inclusions', 'excludes', 'special_notes', 'notices_parsed',
       'itinerary', 'itinerary_data', 'raw_text',
@@ -426,6 +435,10 @@ export async function PATCH(request: NextRequest) {
     const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const [key, value] of Object.entries(updateData)) {
       if (ALLOWED_FIELDS.has(key)) sanitized[key] = value;
+    }
+    // price_tiers 수정 시 price_dates 자동 동기화 (직접 price_dates를 보낸 경우 제외)
+    if (sanitized.price_tiers && !sanitized.price_dates) {
+      sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as any[]);
     }
 
     const { data: result, error: updateErr } = await supabaseAdmin
