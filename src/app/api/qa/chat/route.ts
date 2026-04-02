@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getApprovedPackages, saveInquiry, isSupabaseConfigured } from '@/lib/supabase';
+import { getApprovedPackages, saveInquiry, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9);
+
+// ── 목적지 추출 헬퍼 ─────────────────────────────────────
+const KNOWN_DESTINATIONS = [
+  '다낭', '나트랑', '푸꾸옥', '하노이', '호치민',
+  '오사카', '도쿄', '후쿠오카', '훗카이도', '교토', '시즈오카', '나고야',
+  '방콕', '푸켓', '파타야', '치앙마이',
+  '싱가포르', '홍콩', '마카오', '타이베이',
+  '발리', '세부', '보라카이', '괌', '사이판',
+  '파리', '런던', '로마', '바르셀로나', '프라하',
+  '뉴욕', '하와이', '라스베가스', '시안', '장가계',
+];
+
+function extractDestination(text: string): string | null {
+  for (const dest of KNOWN_DESTINATIONS) {
+    if (text.includes(dest)) return dest;
+  }
+  return null;
+}
 
 function applyCommission(price: number) {
   return Math.round(price * (1 + COMMISSION_RATE / 100));
@@ -27,7 +45,8 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, history = [] } = await request.json();
+    const { message, history = [], sessionId, referrer } = await request.json();
+    // referrer는 클라이언트에서 aff_ref 쿠키 값을 보내줌
 
     if (!message?.trim()) {
       return NextResponse.json({ error: '메시지가 필요합니다.' }, { status: 400 });
@@ -124,6 +143,59 @@ ${message}`;
         inquiryType: 'escalation',
         relatedPackages: parsed.recommendedPackageIds ?? [],
       }).catch(err => console.warn('에스컬레이션 저장 실패:', err));
+    }
+
+    // ── conversations + intents DB 저장 (fire-and-forget) ──
+    if (isSupabaseConfigured && sessionId) {
+      (async () => {
+        try {
+          // conversations: upsert (ON CONFLICT → messages 업데이트)
+          const { data: existing } = await supabaseAdmin
+            .from('conversations')
+            .select('id, messages')
+            .eq('id', sessionId)
+            .maybeSingle();
+
+          const prevMessages = (existing?.messages as any[]) || [];
+          const updatedMessages = [
+            ...prevMessages,
+            { role: 'user', content: message, timestamp: new Date().toISOString() },
+            { role: 'assistant', content: parsed.reply, timestamp: new Date().toISOString() },
+          ];
+
+          if (existing) {
+            await supabaseAdmin
+              .from('conversations')
+              .update({ messages: updatedMessages, updated_at: new Date().toISOString() })
+              .eq('id', sessionId);
+          } else {
+            await supabaseAdmin
+              .from('conversations')
+              .insert({
+                id: sessionId,
+                channel: 'web',
+                source: referrer || 'chat_widget',
+                messages: updatedMessages,
+              });
+          }
+
+          // intents: 목적지/날짜/인원 키워드 감지 시 저장
+          const destination = extractDestination(message);
+          const hasDate = /\d+월|\d+일|다음달|이번달|주말|연휴/.test(message);
+          const partyMatch = message.match(/(\d+)\s*명/);
+
+          if (destination || hasDate || partyMatch) {
+            await supabaseAdmin.from('intents').insert({
+              conversation_id: sessionId,
+              destination,
+              party_size: partyMatch ? parseInt(partyMatch[1]) : null,
+              booking_stage: parsed.escalate ? 'escalated' : 'browsing',
+            });
+          }
+        } catch (e) {
+          console.warn('[Chat] 대화 저장 실패 (무시):', e);
+        }
+      })();
     }
 
     return NextResponse.json({

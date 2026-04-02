@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { toJpeg } from 'html-to-image';
-import JSZip from 'jszip';
+// html-to-image, jszip: 다운로드 시점에만 동적 로드
 
 // ── 타입 ─────────────────────────────────────────────────
 export type PosterFormat = 'A4' | 'MOBILE';
@@ -73,6 +72,7 @@ export function usePosterStudio() {
 
       const productName = posterData.destination || posterData.title || '여소남';
 
+      const { toJpeg } = await import('html-to-image');
       if (pages.length === 1) {
         // 단일 페이지 → JPG 직접 다운로드
         const dataUrl = await toJpeg(pages[0], { quality: 0.95, pixelRatio: 3, backgroundColor: '#ffffff' });
@@ -82,6 +82,7 @@ export function usePosterStudio() {
         link.click();
       } else {
         // 다중 페이지 → JSZip으로 묶어 다운로드
+        const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
 
         for (let i = 0; i < pages.length; i++) {

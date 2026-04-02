@@ -52,7 +52,7 @@ export default function AffiliateDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showBankInfo, setShowBankInfo] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', memo: '', payout_type: 'PERSONAL' as 'PERSONAL'|'BUSINESS' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', memo: '', payout_type: 'PERSONAL' as 'PERSONAL'|'BUSINESS', commission_rate: 0.09, business_number: '', is_active: true });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -73,6 +73,9 @@ export default function AffiliateDetailPage() {
           email: aJson.affiliate.email || '',
           memo: aJson.affiliate.memo || '',
           payout_type: aJson.affiliate.payout_type,
+          commission_rate: aJson.affiliate.commission_rate ?? 0.09,
+          business_number: aJson.affiliate.business_number || '',
+          is_active: aJson.affiliate.is_active ?? true,
         });
       }
     } finally {
@@ -176,6 +179,32 @@ export default function AffiliateDetailPage() {
                 <option value="BUSINESS">사업자</option>
               </select>
             </div>
+            <div className="flex items-center gap-3">
+              <label className="w-16 text-xs text-gray-500">커미션율</label>
+              <input type="number" step="0.01" min={0} max={0.5}
+                value={form.commission_rate}
+                onChange={e => setForm(prev => ({ ...prev, commission_rate: +e.target.value }))}
+                className="w-24 border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+              <span className="text-xs text-gray-400">({(form.commission_rate * 100).toFixed(1)}%)</span>
+            </div>
+            {form.payout_type === 'BUSINESS' && (
+              <div className="flex items-center gap-3">
+                <label className="w-16 text-xs text-gray-500">사업자번호</label>
+                <input type="text" value={form.business_number}
+                  onChange={e => setForm(prev => ({ ...prev, business_number: e.target.value }))}
+                  placeholder="000-00-00000"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <label className="w-16 text-xs text-gray-500">활성상태</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.is_active}
+                  onChange={e => setForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                  className="rounded" />
+                <span className="text-sm">{form.is_active ? '활성' : '비활성 (휴면)'}</span>
+              </label>
+            </div>
             <button
               onClick={handleSave}
               disabled={saving}
@@ -189,6 +218,12 @@ export default function AffiliateDetailPage() {
             <div><span className="text-gray-400">이메일 </span>{affiliate.email || '-'}</div>
             <div><span className="text-gray-400">정산유형 </span>
               {affiliate.payout_type === 'PERSONAL' ? '개인 (원천세 3.3%)' : '사업자'}
+            </div>
+            <div><span className="text-gray-400">커미션율 </span>{((affiliate as any).commission_rate * 100 || 9).toFixed(1)}%</div>
+            <div><span className="text-gray-400">상태 </span>
+              {(affiliate as any).is_active !== false
+                ? <span className="text-green-600">활성</span>
+                : <span className="text-red-500">비활성</span>}
             </div>
             <div>
               <span className="text-gray-400">계좌 </span>

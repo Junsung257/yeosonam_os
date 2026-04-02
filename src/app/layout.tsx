@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import MetaPixel from '@/components/MetaPixel';
+import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.com';
 
@@ -69,6 +71,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <head>
+        <link rel="preconnect" href="https://images.pexels.com" />
+        <link rel="dns-prefetch" href="https://images.pexels.com" />
+        <link rel="preconnect" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
+        <link rel="dns-prefetch" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
         {/* 사이트 전역 JSON-LD: TravelAgency */}
         <script
           type="application/ld+json"
@@ -89,7 +95,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="bg-gray-50 antialiased">{children}</body>
+      <body className="bg-gray-50 antialiased">
+        <MetaPixel />
+        {children}
+        <JarvisFloatingWidget />
+      </body>
     </html>
   );
 }

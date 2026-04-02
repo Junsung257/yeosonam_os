@@ -10,15 +10,25 @@ export async function GET(request: NextRequest) {
     const country = searchParams.get('country');
     const region = searchParams.get('region');
     const badge_type = searchParams.get('badge_type');
+    const search = searchParams.get('search'); // 이름 검색 (별칭 연결용)
+    const limit = searchParams.get('limit');
+
+    // photos_only=1: 홈페이지용 경량 쿼리 (사진 매칭에 필요한 최소 필드만)
+    const photosOnly = searchParams.get('photos_only');
+    const fields = photosOnly
+      ? 'id, name, country, region, photos, mention_count'
+      : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, created_at';
 
     let query = supabaseAdmin
       .from('attractions')
-      .select('id, name, short_desc, category, badge_type, emoji, country, region, mention_count, created_at')
+      .select(fields)
       .order('mention_count', { ascending: false });
 
+    if (search) query = query.ilike('name', `%${search}%`);
     if (country) query = query.eq('country', country);
     if (region) query = query.eq('region', region);
     if (badge_type) query = query.eq('badge_type', badge_type);
+    if (limit) query = query.limit(parseInt(limit));
 
     const { data, error } = await query;
     if (error) throw error;
@@ -40,10 +50,13 @@ export async function POST(request: NextRequest) {
       .insert({
         name: body.name,
         short_desc: body.short_desc || null,
+        long_desc: body.long_desc || null,
         country: body.country || null,
         region: body.region || null,
         badge_type: body.badge_type || 'tour',
         emoji: body.emoji || null,
+        aliases: body.aliases || [],
+        photos: body.photos || [],
       })
       .select()
       .single();
@@ -94,10 +107,13 @@ export async function PUT(request: NextRequest) {
         .upsert({
           name: item.name,
           short_desc: item.short_desc || null,
+          long_desc: item.long_desc || null,
           country: item.country || null,
           region: item.region || null,
           badge_type: item.badge_type || 'tour',
           emoji: item.emoji || null,
+          ...(item.aliases ? { aliases: item.aliases } : {}),
+          ...(item.photos ? { photos: item.photos } : {}),
         }, { onConflict: 'name' });
 
       if (!error) upserted++;

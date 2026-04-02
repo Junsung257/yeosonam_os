@@ -1,17 +1,20 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import ApprovalModal from '@/components/admin/ApprovalModal';
-import MarketingLogModal from '@/components/admin/MarketingLogModal';
-import PosterStudio from '@/components/admin/PosterStudio';
-import MarketingPromptGenerator from '@/components/admin/MarketingPromptGenerator';
-import CardNewsStudio from '@/components/admin/CardNewsStudio';
-import AdPerformanceDashboard from '@/components/admin/AdPerformanceDashboard';
-import MetaAutoPublisher from '@/components/admin/MetaAutoPublisher';
+import dynamic from 'next/dynamic';
 import type { MarketingCopy } from '@/lib/ai';
 import { useVendors } from '@/hooks/useVendors';
 import { useMarketingTracker, PLATFORMS, PlatformKey } from '@/hooks/useMarketingTracker';
 import { usePosterStudio } from '@/hooks/usePosterStudio';
+
+// 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
+const ApprovalModal = dynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
+const MarketingLogModal = dynamic(() => import('@/components/admin/MarketingLogModal'), { ssr: false });
+const PosterStudio = dynamic(() => import('@/components/admin/PosterStudio'), { ssr: false });
+const MarketingPromptGenerator = dynamic(() => import('@/components/admin/MarketingPromptGenerator'), { ssr: false });
+const CardNewsStudio = dynamic(() => import('@/components/admin/CardNewsStudio'), { ssr: false });
+const AdPerformanceDashboard = dynamic(() => import('@/components/admin/AdPerformanceDashboard'), { ssr: false });
+const MetaAutoPublisher = dynamic(() => import('@/components/admin/MetaAutoPublisher'), { ssr: false });
 
 // ── PDF 원문 세탁 + 플랫폼 롤 프롬프트 ────────────────────────────────────────
 function sanitizeRawText(text: string): string {
@@ -143,13 +146,9 @@ interface Package {
 
 const STATUS_OPTIONS = [
   { value: 'all',            label: '전체' },
-  { value: 'pending_review', label: '카피 검수 대기' },
+  { value: 'selling',        label: '판매 중' },
   { value: 'pending',        label: '검토 대기' },
-  { value: 'active',         label: '판매 중' },
-  { value: 'approved',       label: '승인됨' },
-  { value: 'rejected',       label: '거부됨' },
-  { value: 'draft',          label: '초안' },
-  { value: 'deadline',       label: '마감 임박' },
+  { value: 'archived',       label: '아카이브' },
 ];
 
 const SORT_OPTIONS = [
@@ -166,20 +165,22 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const STATUS_BADGE: Record<string, string> = {
   pending:        'bg-yellow-50 text-yellow-700',
-  pending_review: 'bg-amber-50 text-amber-700',
-  approved:       'bg-green-50 text-green-700',
+  pending_review: 'bg-yellow-50 text-yellow-700',
+  approved:       'bg-emerald-50 text-emerald-700',
   active:         'bg-emerald-50 text-emerald-700',
   rejected:       'bg-red-50 text-red-700',
-  draft:          'bg-slate-100 text-slate-500',
+  draft:          'bg-yellow-50 text-yellow-700',
+  archived:       'bg-slate-100 text-slate-500',
 };
 
 const STATUS_LABEL: Record<string, string> = {
   pending:        '검토 대기',
-  pending_review: '카피 검수 대기',
-  approved:       '승인됨',
+  pending_review: '검토 대기',
+  approved:       '판매 중',
   active:         '판매 중',
   rejected:       '거부됨',
-  draft:          '초안',
+  draft:          '검토 대기',
+  archived:       '아카이브',
 };
 
 const LAND_OPERATORS = [
@@ -323,6 +324,7 @@ const PackageRow = React.memo(function PackageRow({
   onOpenPoster,
   onPromptGen,
   onStudioOpen,
+  onKakaoCopy,
 }: {
   pkg: Package;
   idx: number;
@@ -350,6 +352,7 @@ const PackageRow = React.memo(function PackageRow({
   onOpenPoster: (pkg: Package, format: 'A4' | 'MOBILE') => void;
   onPromptGen: (pkg: Package) => void;
   onStudioOpen: () => void;
+  onKakaoCopy: (pkg: Package) => void;
 }) {
   const { isActive: isPlatformActive, getAuditInfo, togglePlatform, togglingKey, getCoverage } = marketingTracker;
 
@@ -557,6 +560,11 @@ const PackageRow = React.memo(function PackageRow({
             className="px-1.5 py-1 border border-emerald-300 text-emerald-600 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap"
             title="카드뉴스 스튜디오"
           >Studio</button>
+          <button
+            onClick={() => onKakaoCopy(pkg)}
+            className="px-1.5 py-1 border border-pink-300 text-pink-600 rounded text-[10px] hover:bg-pink-50 whitespace-nowrap"
+            title="카톡 마케팅 문구 생성"
+          >📝문구</button>
           {/* 플랫폼별 마케팅 복사 드롭다운 */}
           <div className="relative">
             <button
@@ -694,6 +702,9 @@ export default function PackagesPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [promptTarget, setPromptTarget] = useState<any>(null);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [kakaoCopyTarget, setKakaoCopyTarget] = useState<Package | null>(null);
+  const [kakaoCopyText, setKakaoCopyText] = useState('');
+  const [kakaoCopyLoading, setKakaoCopyLoading] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
   const [metaLiveOpen, setMetaLiveOpen] = useState(false);
 
@@ -875,14 +886,20 @@ export default function PackagesPage() {
   const filtered = useMemo(() => {
     let list = [...packages];
 
-    if (!showExpired) {
-      list = list.filter(p => !isExpired(p) && p.status !== 'INACTIVE');
+    // 아카이브 탭이 아니면 아카이브/만료 상품 숨김
+    if (statusFilter !== 'archived') {
+      list = list.filter(p => p.status !== 'archived' && p.status !== 'INACTIVE');
+      if (!showExpired) {
+        list = list.filter(p => !isExpired(p));
+      }
     }
 
-    if (statusFilter === 'deadline') {
-      list = list.filter(isDeadlineSoon);
-    } else if (statusFilter !== 'all') {
-      list = list.filter(p => p.status === statusFilter);
+    if (statusFilter === 'selling') {
+      list = list.filter(p => p.status === 'approved' || p.status === 'active');
+    } else if (statusFilter === 'pending') {
+      list = list.filter(p => p.status === 'pending' || p.status === 'pending_review' || p.status === 'draft');
+    } else if (statusFilter === 'archived') {
+      list = list.filter(p => p.status === 'archived');
     }
 
     if (searchQuery.trim()) {
@@ -972,9 +989,9 @@ export default function PackagesPage() {
     }
   };
 
-  const handleBulk = async (action: 'bulk_approve' | 'bulk_delete' | 'bulk_inactive' | 'bulk_active') => {
+  const handleBulk = async (action: 'bulk_approve' | 'bulk_archive' | 'bulk_restore') => {
     if (checkedIds.size === 0) return;
-    if (action === 'bulk_delete' && !confirm(`${checkedIds.size}개 상품을 삭제하시겠습니까?`)) return;
+    if (action === 'bulk_archive' && !confirm(`${checkedIds.size}개 상품을 아카이브하시겠습니까?`)) return;
     setBulkLoading(true);
     try {
       await fetch('/api/packages', {
@@ -1179,20 +1196,17 @@ export default function PackagesPage() {
             className="px-2.5 py-1 bg-green-600 text-white rounded-lg text-[11px] font-medium hover:bg-green-700 disabled:opacity-50"
           >일괄 승인</button>
           <button
-            onClick={() => handleBulk('bulk_delete')}
-            disabled={bulkLoading}
-            className="px-2.5 py-1 bg-red-500 text-white rounded-lg text-[11px] font-medium hover:bg-red-600 disabled:opacity-50"
-          >일괄 삭제</button>
-          <button
-            onClick={() => handleBulk('bulk_inactive')}
+            onClick={() => handleBulk('bulk_archive')}
             disabled={bulkLoading}
             className="px-2.5 py-1 bg-slate-500 text-white rounded-lg text-[11px] font-medium hover:bg-slate-600 disabled:opacity-50"
-          >비활성화</button>
-          <button
-            onClick={() => handleBulk('bulk_active')}
-            disabled={bulkLoading}
-            className="px-2.5 py-1 bg-blue-500 text-white rounded-lg text-[11px] font-medium hover:bg-blue-600 disabled:opacity-50"
-          >활성화</button>
+          >아카이브</button>
+          {statusFilter === 'archived' && (
+            <button
+              onClick={() => handleBulk('bulk_restore')}
+              disabled={bulkLoading}
+              className="px-2.5 py-1 bg-blue-500 text-white rounded-lg text-[11px] font-medium hover:bg-blue-600 disabled:opacity-50"
+            >복원</button>
+          )}
           <button
             onClick={() => { setCheckedIds(new Set()); lastCheckedIndexRef.current = -1; }}
             className="ml-auto text-[11px] text-blue-500 hover:text-blue-700"
@@ -1288,6 +1302,7 @@ export default function PackagesPage() {
                     onOpenPoster={handleOpenPoster}
                     onPromptGen={setPromptTarget}
                     onStudioOpen={() => setStudioOpen(true)}
+                    onKakaoCopy={(pkg) => setKakaoCopyTarget(pkg)}
                   />
                 );
               })}
@@ -1695,6 +1710,101 @@ export default function PackagesPage() {
       {/* ── MarketingPromptGenerator ──────────────────────────────────── */}
       {promptTarget && (
         <MarketingPromptGenerator pkg={promptTarget} onClose={() => setPromptTarget(null)} />
+      )}
+
+      {/* ── 카톡 마케팅 문구 모달 ───────────────────────────────────── */}
+      {kakaoCopyTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }}>
+          <div className="bg-white rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b flex justify-between items-start">
+              <div>
+                <h3 className="font-bold text-lg">📝 카톡 마케팅 문구</h3>
+                <p className="text-xs text-gray-400 mt-1">{kakaoCopyTarget.title}</p>
+              </div>
+              <button onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+
+            {/* 생성 버튼 */}
+            {!kakaoCopyText && !kakaoCopyLoading && (
+              <div className="p-6 text-center">
+                <p className="text-sm text-gray-500 mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
+                <button onClick={async () => {
+                  setKakaoCopyLoading(true);
+                  try {
+                    const pkg = kakaoCopyTarget;
+                    const res = await fetch('/api/packages/kakao-copy', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        title: pkg.title,
+                        destination: pkg.destination || '',
+                        duration: pkg.duration || 0,
+                        price: pkg.products?.selling_price || pkg.price || 0,
+                        priceTiers: pkg.price_tiers || [],
+                        highlights: pkg.product_highlights || [],
+                        inclusions: pkg.inclusions || [],
+                        excludes: pkg.excludes || [],
+                        airline: pkg.airline || '',
+                        departureAirport: pkg.departure_airport || '',
+                        ticketingDeadline: pkg.ticketing_deadline || '',
+                        productType: pkg.product_type || '',
+                        specialNotes: pkg.special_notes || '',
+                      }),
+                    });
+                    const data = await res.json();
+                    setKakaoCopyText(data.copy || '문구 생성 실패');
+                  } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
+                  finally { setKakaoCopyLoading(false); }
+                }} className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-xl hover:opacity-90 text-sm">
+                  🔥 문구 생성하기
+                </button>
+              </div>
+            )}
+
+            {/* 로딩 */}
+            {kakaoCopyLoading && (
+              <div className="p-10 text-center">
+                <div className="animate-spin w-8 h-8 border-4 border-pink-300 border-t-pink-600 rounded-full mx-auto mb-3" />
+                <p className="text-sm text-gray-500">AI가 문구를 생성하고 있습니다...</p>
+              </div>
+            )}
+
+            {/* 결과 */}
+            {kakaoCopyText && !kakaoCopyLoading && (
+              <div className="p-4">
+                <textarea value={kakaoCopyText} onChange={e => setKakaoCopyText(e.target.value)}
+                  rows={18} className="w-full border rounded-xl px-4 py-3 text-sm leading-relaxed resize-none focus:ring-2 focus:ring-pink-300 focus:outline-none" />
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => { navigator.clipboard.writeText(kakaoCopyText); }}
+                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700">
+                    📋 문구 복사
+                  </button>
+                  <button onClick={async () => {
+                    setKakaoCopyLoading(true); setKakaoCopyText('');
+                    try {
+                      const pkg = kakaoCopyTarget;
+                      const res = await fetch('/api/packages/kakao-copy', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          title: pkg.title, destination: pkg.destination || '', duration: pkg.duration || 0,
+                          price: pkg.products?.selling_price || pkg.price || 0, priceTiers: pkg.price_tiers || [],
+                          highlights: pkg.product_highlights || [], inclusions: pkg.inclusions || [],
+                          excludes: pkg.excludes || [], airline: pkg.airline || '',
+                          departureAirport: pkg.departure_airport || '', ticketingDeadline: pkg.ticketing_deadline || '',
+                          productType: pkg.product_type || '', specialNotes: pkg.special_notes || '',
+                        }),
+                      });
+                      const data = await res.json();
+                      setKakaoCopyText(data.copy || '문구 생성 실패');
+                    } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
+                    finally { setKakaoCopyLoading(false); }
+                  }} className="py-2.5 px-4 bg-gray-100 text-gray-700 text-sm rounded-xl hover:bg-gray-200">
+                    🔄 재생성
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── CardNewsStudio ───────────────────────────────────────────── */}

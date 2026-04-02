@@ -1,10 +1,18 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import Link from 'next/link';
-import {
-  ComposedChart, Bar, Line, LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-} from 'recharts';
+import dynamic from 'next/dynamic';
+
+const ComposedChart = dynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
+const Bar = dynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
+const Line = dynamic(() => import('recharts').then(m => ({ default: m.Line })), { ssr: false });
+const LineChart = dynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
+const XAxis = dynamic(() => import('recharts').then(m => ({ default: m.XAxis })), { ssr: false });
+const YAxis = dynamic(() => import('recharts').then(m => ({ default: m.YAxis })), { ssr: false });
+const Tooltip = dynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
+const ResponsiveContainer = dynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
+const Cell = dynamic(() => import('recharts').then(m => ({ default: m.Cell })), { ssr: false });
 
 // ── 타입 ──────────────────────────────────────────────────
 

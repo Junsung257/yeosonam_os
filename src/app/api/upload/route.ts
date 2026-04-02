@@ -698,6 +698,57 @@ export async function POST(request: NextRequest) {
           }
 
           console.log('[Upload API] travel_packages INSERT 완료:', pkgResult?.id, '← FK:', internalCode);
+
+          // ── 미매칭 관광지 자동 수집 ──────────────────────
+          if (product.itineraryData && pkgResult?.id) {
+            try {
+              const itData = product.itineraryData as { days?: { day?: number; schedule?: { activity: string; type?: string }[] }[] } | null;
+              const days = itData?.days || [];
+              const skipPattern = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
+              // 기존 관광지 목록 가져오기
+              const { data: existingAttr } = await supabaseAdmin.from('attractions').select('name');
+              const attrNames = new Set((existingAttr || []).map((a: { name: string }) => a.name));
+
+              const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country: string | null }[] = [];
+              for (const day of days) {
+                (day.schedule || []).forEach((item: { activity: string; type?: string }) => {
+                  if (!item.activity || item.activity.length < 2) return;
+                  if (skipPattern.test(item.activity)) return;
+                  if (item.type === 'flight' || item.type === 'hotel') return;
+                  // 간단 매칭: 이름이 activity에 포함되는지 확인
+                  const matched = [...attrNames].some((name: unknown) => typeof name === 'string' && name.length >= 2 && item.activity.includes(name));
+                  if (!matched) {
+                    unmatchedItems.push({
+                      activity: item.activity,
+                      package_id: pkgResult.id,
+                      package_title: title,
+                      day_number: day.day || 0,
+                      country: ed.destination || null,
+                    });
+                  }
+                });
+              }
+
+              // 미매칭 항목 upsert
+              for (const u of unmatchedItems) {
+                await supabaseAdmin.from('unmatched_activities').upsert({
+                  activity: u.activity,
+                  package_id: u.package_id,
+                  package_title: u.package_title,
+                  day_number: u.day_number,
+                  country: u.country,
+                  occurrence_count: 1,
+                  status: 'pending',
+                }, { onConflict: 'activity' });
+              }
+
+              if (unmatchedItems.length > 0) {
+                console.log(`[Upload API] 미매칭 관광지 ${unmatchedItems.length}개 수집됨`);
+              }
+            } catch (unmatchErr) {
+              console.warn('[Upload API] 미매칭 수집 실패 (무시):', unmatchErr);
+            }
+          }
         }
 
       } catch (saveErr) {

@@ -1,58 +1,41 @@
-// ─── buildAgentConfig: 모드별 도구 + 시스템 프롬프트 조립 ────────────────────
+// ─── 자비스 Agent 통합 export ──────────────────────────────────────────────
+// 새 Claude 기반 Agent 시스템
 
-import type { IntentMode } from '../router';
-import { getBasePrompt } from '../prompts/base';
-import { PRODUCT_PROMPT } from '../prompts/product';
-import { BOOKING_PROMPT } from '../prompts/booking';
-import { FINANCE_PROMPT } from '../prompts/finance';
-import { PRODUCT_TOOL_DECLARATIONS } from './product';
-import { BOOKING_TOOL_DECLARATIONS } from './booking';
-import { FINANCE_TOOL_DECLARATIONS } from './finance';
+export { runOperationsAgent } from './operations'
+export { runProductsAgent } from './products'
+export { runFinanceAgent } from './finance'
+export { runMarketingAgent } from './marketing'
+export { runSalesAgent } from './sales'
+export { runSystemAgent } from './system'
+
+// 기존 Gemini 기반 호환 (buildAgentConfig는 /api/jarvis에서 더 이상 사용 안 함)
+// 옛 booking.ts, product.ts의 Tool 선언은 그대로 유지
+export { BOOKING_TOOL_DECLARATIONS } from './booking'
+export { PRODUCT_TOOL_DECLARATIONS } from './product'
+
+// 옛 finance Tool 선언은 새 파일에서 제거됨 → 빈 배열로 호환
+export const FINANCE_TOOL_DECLARATIONS: unknown[] = []
+
+// 옛 buildAgentConfig (Gemini 호환) — 더 이상 메인 라우트에서 사용 안 함
+import type { IntentMode } from '../router'
+import { BOOKING_TOOL_DECLARATIONS as BOOKING_TOOLS } from './booking'
+import { PRODUCT_TOOL_DECLARATIONS as PRODUCT_TOOLS } from './product'
 
 export interface AgentConfig {
-  tools: unknown[];
-  systemPrompt: string;
+  tools: unknown[]
+  systemPrompt: string
 }
 
 export function buildAgentConfig(mode: IntentMode): AgentConfig {
-  const today = new Date().toLocaleDateString('ko-KR', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  });
-  const base = getBasePrompt(today);
-
   switch (mode) {
     case 'PRODUCT_MODE':
-      return {
-        tools: PRODUCT_TOOL_DECLARATIONS,
-        systemPrompt: base + '\n\n' + PRODUCT_PROMPT,
-      };
-
+      return { tools: PRODUCT_TOOLS, systemPrompt: '' }
     case 'FINANCE_MODE':
-      return {
-        tools: FINANCE_TOOL_DECLARATIONS,
-        systemPrompt: base + '\n\n' + FINANCE_PROMPT,
-      };
-
+      return { tools: [], systemPrompt: '' }
     case 'BOOKING_MODE':
-      return {
-        tools: BOOKING_TOOL_DECLARATIONS,
-        systemPrompt: base + '\n\n' + BOOKING_PROMPT,
-      };
-
+      return { tools: BOOKING_TOOLS, systemPrompt: '' }
     case 'MULTI_MODE':
     default:
-      // 복합 명령: 전체 도구 로드
-      return {
-        tools: [
-          ...PRODUCT_TOOL_DECLARATIONS,
-          ...BOOKING_TOOL_DECLARATIONS.filter(
-            t => !PRODUCT_TOOL_DECLARATIONS.some(pt => pt.name === t.name)
-          ),
-          ...FINANCE_TOOL_DECLARATIONS.filter(
-            t => ![...PRODUCT_TOOL_DECLARATIONS, ...BOOKING_TOOL_DECLARATIONS].some(pt => pt.name === t.name)
-          ),
-        ],
-        systemPrompt: base + '\n\n' + PRODUCT_PROMPT + '\n\n' + BOOKING_PROMPT + '\n\n' + FINANCE_PROMPT,
-      };
+      return { tools: [...PRODUCT_TOOLS, ...BOOKING_TOOLS], systemPrompt: '' }
   }
 }

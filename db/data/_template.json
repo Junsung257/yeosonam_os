@@ -1,0 +1,94 @@
+[
+  {
+    "title": "(필수) 상품명",
+    "destination": "목적지",
+    "country": "국가",
+    "product_type": "실속 | 품격 | 노팁노옵션",
+    "trip_style": "3박5일",
+    "duration": 5,
+    "nights": 3,
+    "departure_airport": "부산(김해)",
+    "airline": "BX(에어부산)",
+    "departure_days": "매주 목요일",
+    "min_participants": 4,
+    "price": 679000,
+    "guide_tip": "$50/인",
+    "single_supplement": "10만원",
+    "small_group_surcharge": null,
+
+    "price_tiers": [
+      {
+        "period_label": "4/1~4/30 목요일",
+        "date_range": { "start": "2026-04-02", "end": "2026-04-30" },
+        "departure_day_of_week": "목",
+        "adult_price": 719000,
+        "status": "available"
+      },
+      {
+        "period_label": "5/1 제외일자",
+        "departure_dates": ["2026-05-01"],
+        "adult_price": 979000,
+        "status": "available",
+        "note": "제외일자 특별요금"
+      }
+    ],
+
+    "inclusions": ["항공료", "호텔", "식사"],
+    "excludes": ["개인경비", "가이드경비 $50/인"],
+    "optional_tours": [
+      { "name": "짚라인", "price_usd": 60, "price_krw": null, "note": null }
+    ],
+    "notices_parsed": ["여권 6개월 이상 필수", "전자담배 반입 불가"],
+    "special_notes": "쇼핑 3회\n싱글차지 10만원",
+
+    "product_highlights": ["핵심 셀링포인트 1", "핵심 셀링포인트 2"],
+    "product_summary": "2~3줄 요약",
+    "product_tags": ["라오스", "방비엥"],
+    "accommodations": ["4성급 호텔명 또는 동급"],
+
+    "itinerary": [
+      "DAY1: 요약 텍스트",
+      "DAY2: 요약 텍스트"
+    ],
+
+    "itinerary_data": {
+      "meta": {
+        "title": "상품명",
+        "product_type": "실속",
+        "destination": "목적지",
+        "nights": 3, "days": 5,
+        "departure_airport": "부산(김해)",
+        "airline": "BX", "flight_out": "BX745", "flight_in": "BX746",
+        "departure_days": "매주 목요일",
+        "min_participants": 4,
+        "room_type": "2인1실",
+        "ticketing_deadline": null,
+        "hashtags": ["#태그1", "#태그2"],
+        "brand": "여소남"
+      },
+      "highlights": {
+        "inclusions": ["포함사항 원문"],
+        "excludes": ["불포함사항 원문"],
+        "shopping": "쇼핑 정보",
+        "remarks": ["주의사항 원문"]
+      },
+      "days": [
+        {
+          "day": 1,
+          "regions": ["부산", "비엔티안"],
+          "meals": {
+            "breakfast": false, "lunch": false, "dinner": false,
+            "breakfast_note": null, "lunch_note": null, "dinner_note": null
+          },
+          "schedule": [
+            { "time": "18:00", "activity": "출발", "type": "flight", "transport": "BX745", "note": null }
+          ],
+          "hotel": { "name": "호텔명", "grade": "4성", "note": null }
+        }
+      ],
+      "optional_tours": []
+    },
+
+    "raw_text": "원문 텍스트 전체 (붙여넣기한 그대로)"
+  }
+]

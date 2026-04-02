@@ -154,9 +154,18 @@ export default function InfluencerDashboard() {
   const STATUS_MAP: Record<string, { label: string; color: string }> = {
     PENDING: { label: '이월', color: 'bg-yellow-100 text-yellow-700' },
     READY: { label: '정산대기', color: 'bg-blue-100 text-blue-700' },
+    HOLD: { label: '보류', color: 'bg-orange-100 text-orange-700' },
     COMPLETED: { label: '지급완료', color: 'bg-green-100 text-green-700' },
     VOID: { label: '무효', color: 'bg-gray-100 text-gray-500' },
   };
+
+  // 누적 이월 잔액 계산
+  const pendingBalance = settlements
+    .filter(s => s.status === 'PENDING')
+    .reduce((sum, s) => sum + (s.gross_amount || 0), 0);
+  const readyBalance = settlements
+    .filter(s => s.status === 'READY')
+    .reduce((sum, s) => sum + (s.net_payout || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -193,7 +202,19 @@ export default function InfluencerDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 정산 */}
         <div className="bg-white rounded-xl p-5 shadow-sm">
-          <h2 className="font-bold text-gray-900 mb-3">정산 내역</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-gray-900">정산 내역</h2>
+            {(pendingBalance > 0 || readyBalance > 0) && (
+              <div className="text-right">
+                {pendingBalance > 0 && (
+                  <p className="text-[11px] text-gray-500">이월 잔액: <span className="font-medium text-amber-600">₩{pendingBalance.toLocaleString()}</span></p>
+                )}
+                {readyBalance > 0 && (
+                  <p className="text-[11px] text-gray-500">지급 대기: <span className="font-medium text-blue-600">₩{readyBalance.toLocaleString()}</span></p>
+                )}
+              </div>
+            )}
+          </div>
           {settlements.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">아직 정산 내역이 없습니다</p>
           ) : (
@@ -205,6 +226,10 @@ export default function InfluencerDashboard() {
                     <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_MAP[s.status]?.color || ''}`}>
                       {STATUS_MAP[s.status]?.label || s.status}
                     </span>
+                    {(s.status === 'COMPLETED' || s.status === 'READY') && (
+                      <a href={`/api/settlements/${s.id}/pdf`} target="_blank" rel="noopener noreferrer"
+                        className="ml-2 text-[10px] text-blue-500 hover:underline">내역서</a>
+                    )}
                   </div>
                   <span className="text-sm font-bold text-gray-900">₩{(s.net_payout || 0).toLocaleString()}</span>
                 </div>

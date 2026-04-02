@@ -53,6 +53,16 @@ function NewBookingForm() {
     notes: '',
   });
 
+  // surcharge 항목별 분리 입력
+  const [surchargeItems, setSurchargeItems] = useState<{ name: string; amount: number }[]>([]);
+
+  const addSurchargeItem = () => setSurchargeItems(prev => [...prev, { name: '', amount: 0 }]);
+  const removeSurchargeItem = (idx: number) => setSurchargeItems(prev => prev.filter((_, i) => i !== idx));
+  const updateSurchargeItem = (idx: number, field: 'name' | 'amount', value: string | number) => {
+    setSurchargeItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
+  };
+  const surchargeTotal = surchargeItems.reduce((s, item) => s + (item.amount || 0), 0);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -119,8 +129,8 @@ function NewBookingForm() {
     finally { setSavingNewCustomer(false); }
   };
 
-  const totalCost = form.adultCount * form.adultCost + form.childCount * form.childCost + form.fuelSurcharge;
-  const totalPrice = form.adultCount * form.adultPrice + form.childCount * form.childPrice + form.fuelSurcharge;
+  const totalCost = form.adultCount * form.adultCost + form.childCount * form.childCost + form.fuelSurcharge + surchargeTotal;
+  const totalPrice = form.adultCount * form.adultPrice + form.childCount * form.childPrice + form.fuelSurcharge + surchargeTotal;
   const margin = totalPrice - totalCost;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -139,6 +149,9 @@ function NewBookingForm() {
           bookingType: selectedAffiliateId ? 'AFFILIATE' : 'DIRECT',
           usdCost: usdCost > 0 ? usdCost : undefined,
           costSnapshotKrw: usdCost > 0 ? Math.round(usdCost * exchangeRate) : form.adultCost * form.adultCount,
+          surchargeBreakdown: surchargeItems.length > 0
+            ? Object.fromEntries(surchargeItems.filter(i => i.name && i.amount).map(i => [i.name, i.amount]))
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -404,6 +417,30 @@ function NewBookingForm() {
                 <input type="date" value={form.departureDate} onChange={e => setForm(f => ({...f, departureDate: e.target.value}))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+            </div>
+
+            {/* 추가 비용 항목 (surcharge_breakdown) */}
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-gray-700">추가 비용 항목 (커미션 제외)</label>
+                <button type="button" onClick={addSurchargeItem}
+                  className="text-xs text-blue-600 hover:text-blue-800">+ 항목 추가</button>
+              </div>
+              {surchargeItems.map((item, idx) => (
+                <div key={idx} className="flex gap-2 mb-2">
+                  <input type="text" placeholder="항목명 (싱글차지, 비자비 등)" value={item.name}
+                    onChange={e => updateSurchargeItem(idx, 'name', e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <input type="number" placeholder="금액" value={item.amount || ''}
+                    onChange={e => updateSurchargeItem(idx, 'amount', +e.target.value)}
+                    className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <button type="button" onClick={() => removeSurchargeItem(idx)}
+                    className="text-red-400 hover:text-red-600 text-sm px-2">✕</button>
+                </div>
+              ))}
+              {surchargeTotal > 0 && (
+                <p className="text-xs text-gray-500 mt-1">추가 비용 합계: {surchargeTotal.toLocaleString()}원</p>
+              )}
             </div>
 
             {/* 합계 미리보기 */}

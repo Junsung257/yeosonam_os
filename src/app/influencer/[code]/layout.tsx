@@ -91,9 +91,23 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
               </nav>
             )}
 
-            {/* 우측: 여소남 브랜딩 */}
-            <div className="text-[10px] text-gray-400 font-medium">
-              Powered by <span className="text-blue-600 font-bold">YEOSONAM</span>
+            {/* 우측: 로그아웃 + 브랜딩 */}
+            <div className="flex items-center gap-3">
+              {authenticated && (
+                <button
+                  onClick={() => {
+                    sessionStorage.removeItem(`inf_auth_${code}`);
+                    setAffiliate(null);
+                    setAuthenticated(false);
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-full px-2.5 py-1 transition-colors"
+                >
+                  로그아웃
+                </button>
+              )}
+              <span className="text-[10px] text-gray-400 font-medium">
+                <span className="text-blue-600 font-bold">YEOSONAM</span>
+              </span>
             </div>
           </div>
         </header>

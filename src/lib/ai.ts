@@ -551,3 +551,113 @@ export async function generateMarketingCopies(
     return fallbackCopies(params.destination);
   }
 }
+
+// ══════════════════════════════════════════════════
+// 카톡방 마케팅 문구 생성 (밴드 스타일)
+// ══════════════════════════════════════════════════
+
+interface KakaoCopyParams {
+  title: string;
+  destination: string;
+  duration: number;
+  price: number;           // 판매가
+  priceTiers?: { period_label: string; adult_price?: number }[];
+  highlights: string[];
+  inclusions: string[];
+  excludes: string[];
+  airline?: string;
+  departureAirport?: string;
+  ticketingDeadline?: string;
+  productType?: string;     // 노팁노옵션, 실속, 품격 등
+  specialNotes?: string;
+}
+
+const KAKAO_COPY_SYSTEM = `당신은 대한민국 여행사 B2C 마케터입니다.
+단체 카카오톡방에 보내는 마케팅 문구를 생성합니다.
+
+[톤앤매너 — 랜드사 밴드 스타일]
+- 이모지를 적극 활용 (🎊✨💟🚨🔥💗🌸✈️📌💰 등)
+- 친근하면서도 긴급감 있는 톤
+- 짧은 문장, 줄바꿈 많이
+- 가격은 판매가만 (원가/마진/수수료 절대 노출 금지)
+- 브랜드: 반드시 '여소남'으로 (랜드사명/공급사명 절대 노출 금지)
+- '문의와 요청 폭발', '비교불가', '마지막 찬스' 같은 강한 훅 사용
+
+[구조]
+1. 🎊 타이틀 훅 (1~2줄 — 시즌+목적지+특가 강조)
+2. ✨ 핵심 특전 3~5개 (이모지 + 불릿)
+3. 💰 가격 정보 (기간별 가격이 있으면 표로)
+4. ✈️ 항공/일정 정보 (있으면)
+5. 🚨 마감 긴급감 (발권 마감일 있으면 강조)
+6. 마무리 CTA (여소남과 함께 특별한 여행 등)
+
+[금지]
+- 원가, 수수료, 커미션율 절대 언급 금지
+- 랜드사명 절대 노출 금지
+- '잊지 못할 추억', '특별한 경험' 같은 클리셰 최소화
+- 너무 길면 안 됨 (15~25줄 이내)
+
+반드시 순수 텍스트만 반환하세요. JSON이나 마크다운 코드블록 금지.`;
+
+function buildKakaoCopyUserPrompt(p: KakaoCopyParams): string {
+  const fmt = (n: number) => n.toLocaleString('ko-KR');
+  const tiers = p.priceTiers?.filter(t => t.adult_price)
+    .map(t => `${t.period_label}: ${fmt(t.adult_price!)}원`).join('\n') || '';
+
+  return `아래 여행 상품으로 카톡방 마케팅 문구를 생성하세요.
+
+[상품 정보]
+- 상품명: ${p.title}
+- 목적지: ${p.destination}
+- 여행기간: ${p.duration}일
+- 판매가: ${fmt(p.price)}원~
+- 상품유형: ${p.productType || '일반'}
+${tiers ? `- 기간별 가격:\n${tiers}` : ''}
+- 항공: ${p.airline || '미정'} ${p.departureAirport || ''}
+${p.ticketingDeadline ? `- 발권마감: ${p.ticketingDeadline}` : ''}
+
+[핵심 특전]
+${p.highlights.length > 0 ? p.highlights.map(h => `- ${h}`).join('\n') : '(없음)'}
+
+[포함사항]
+${p.inclusions.slice(0, 5).map(i => `- ${i}`).join('\n') || '(없음)'}
+
+[불포함사항]
+${p.excludes.slice(0, 3).map(e => `- ${e}`).join('\n') || '(없음)'}
+
+${p.specialNotes ? `[유의사항]\n${p.specialNotes.slice(0, 300)}` : ''}`;
+}
+
+/**
+ * 카톡방용 마케팅 문구 생성 (Gemini)
+ */
+export async function generateKakaoCopy(params: KakaoCopyParams): Promise<string> {
+  if (!process.env.GOOGLE_AI_API_KEY) {
+    return fallbackKakaoCopy(params);
+  }
+
+  try {
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const prompt = KAKAO_COPY_SYSTEM + '\n\n' + buildKakaoCopyUserPrompt(params);
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    // 코드블록 제거
+    return text.replace(/```[\s\S]*?```/g, '').trim();
+  } catch (err) {
+    console.error('[generateKakaoCopy] 생성 실패:', err instanceof Error ? err.message : err);
+    return fallbackKakaoCopy(params);
+  }
+}
+
+function fallbackKakaoCopy(p: KakaoCopyParams): string {
+  const fmt = (n: number) => n.toLocaleString('ko-KR');
+  return `🎊 ${p.destination} ${p.duration}일 특가 🎊
+
+${p.highlights.slice(0, 3).map(h => `✨ ${h}`).join('\n')}
+
+💰 ${fmt(p.price)}원~
+
+${p.ticketingDeadline ? `🚨 ${p.ticketingDeadline} 발권조건` : ''}
+
+여소남과 함께하는 특별한 여행 🤍`;
+}

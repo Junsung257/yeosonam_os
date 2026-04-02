@@ -203,7 +203,7 @@ export default function UploadPage() {
                     for (let i = 0; i < chunks.length; i++) {
                       setQueue(prev => [...prev, {
                         file: new File([], `텍스트 ${i + 1}/${chunks.length}`),
-                        status: 'uploading' as const,
+                        status: 'processing' as const,
                         title: `텍스트 ${i + 1}/${chunks.length} 처리 중...`,
                       }]);
 

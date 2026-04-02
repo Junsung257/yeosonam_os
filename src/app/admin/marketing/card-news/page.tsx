@@ -25,6 +25,10 @@ export default function CardNewsListPage() {
   const [creating, setCreating] = useState(false);
   const [selectedPkg, setSelectedPkg] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [createSlideCount, setCreateSlideCount] = useState(6);
+  const [createRatio, setCreateRatio] = useState('1:1');
+  const [createTone, setCreateTone] = useState('professional');
+  const [createExtra, setCreateExtra] = useState('');
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -64,7 +68,7 @@ export default function CardNewsListPage() {
       const res = await fetch('/api/card-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_id: selectedPkg }),
+        body: JSON.stringify({ package_id: selectedPkg, slide_count: createSlideCount, ratio: createRatio, tone: createTone, extra_prompt: createExtra }),
       });
       const data = await res.json();
       if (res.ok && data.card_news?.id) {
@@ -171,21 +175,27 @@ export default function CardNewsListPage() {
         </div>
       )}
 
-      {/* 신규 생성 모달 */}
+      {/* 신규 생성 슬라이드 패널 */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">새 카드뉴스 생성</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              상품 데이터를 분석해 슬라이드를 자동으로 생성합니다.<br />
-              Pexels 이미지도 자동으로 매칭됩니다.
+        <>
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50" onClick={() => setShowCreate(false)} />
+          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-[16px] font-bold text-slate-800">새 카드뉴스 생성</h2>
+              <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600 text-xl">x</button>
+            </div>
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
+            <p className="text-[12px] text-slate-500">
+              AI가 상품 데이터를 분석해 슬라이드 카피와 배경 이미지를 자동 생성합니다.
             </p>
+
+            {/* 상품 선택 */}
             <div>
-              <label className="text-xs font-medium text-gray-600">상품 선택 *</label>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">상품 선택 *</label>
               <select
                 value={selectedPkg}
                 onChange={e => setSelectedPkg(e.target.value)}
-                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:ring-1 focus:ring-[#005d90]"
               >
                 <option value="">상품 선택...</option>
                 {packages.map(p => (
@@ -195,23 +205,70 @@ export default function CardNewsListPage() {
                 ))}
               </select>
             </div>
-            <div className="flex gap-3 mt-5">
+
+            {/* 슬라이드 개수 */}
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
+                슬라이드 개수: <span className="text-[#001f3f] font-bold">{createSlideCount}장</span>
+              </label>
+              <input type="range" min={3} max={10} value={createSlideCount}
+                onChange={e => setCreateSlideCount(parseInt(e.target.value))}
+                className="w-full accent-[#001f3f]" />
+            </div>
+
+            {/* 이미지 비율 */}
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">이미지 비율</label>
+              <div className="flex gap-2">
+                {(['1:1', '4:5', '9:16'] as const).map(r => (
+                  <button key={r} onClick={() => setCreateRatio(r)}
+                    className={`px-3 py-1.5 rounded text-[12px] transition ${createRatio === r ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    {r === '1:1' ? '1:1 피드' : r === '4:5' ? '4:5 세로' : '9:16 릴스'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 톤 선택 */}
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">톤</label>
+              <select value={createTone} onChange={e => setCreateTone(e.target.value)}
+                className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]">
+                <option value="professional">전문가 (신뢰감)</option>
+                <option value="casual">캐주얼 (친근)</option>
+                <option value="emotional">감성적 (감동)</option>
+                <option value="humorous">유머러스 (재미)</option>
+              </select>
+            </div>
+
+            {/* 추가 지시사항 */}
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">추가 지시사항 (선택)</label>
+              <textarea value={createExtra} onChange={e => setCreateExtra(e.target.value)}
+                placeholder="예: 5성급 호텔 강조, 마감임박 느낌으로, 20대 타겟..."
+                className="w-full border border-slate-200 rounded px-3 py-2 text-[12px] h-20 resize-none focus:ring-1 focus:ring-[#005d90]" />
+            </div>
+
+            </div>
+
+            {/* 하단 버튼 */}
+            <div className="px-6 py-4 border-t border-slate-200 flex gap-3">
               <button
                 onClick={() => setShowCreate(false)}
-                className="flex-1 border border-gray-200 text-sm text-gray-600 py-2 rounded-lg hover:bg-gray-50"
+                className="flex-1 border border-slate-200 text-[13px] text-slate-600 py-2.5 rounded-lg hover:bg-slate-50"
               >
                 취소
               </button>
               <button
                 onClick={handleCreate}
                 disabled={!selectedPkg || creating}
-                className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 bg-[#001f3f] text-white text-[13px] py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50 font-medium"
               >
-                {creating ? '생성 중...' : '자동 생성 시작'}
+                {creating ? 'AI 생성 중...' : `AI 카드뉴스 ${createSlideCount}장 생성`}
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

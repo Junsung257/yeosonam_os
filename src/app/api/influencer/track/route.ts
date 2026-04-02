@@ -4,7 +4,7 @@
  *
  * 1. referral_code로 affiliate 조회
  * 2. influencer_links.click_count 증가
- * 3. 쿠키에 ref 코드 저장 (30일 유효)
+ * 3. 쿠키에 ref 코드 저장 (7일 유효)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3. 응답에 쿠키 설정 (30일 유효 — 이 기간 내 예약 시 자동 귀속)
+    // 3. 응답에 쿠키 설정 (7일 유효 — 이 기간 내 예약 시 자동 귀속)
     const response = NextResponse.json({
       ok: true,
       affiliate_id: affiliate.id,
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     });
 
     response.cookies.set('aff_ref', ref, {
-      maxAge: 30 * 24 * 60 * 60, // 30일
+      maxAge: 7 * 24 * 60 * 60, // 7일
       path: '/',
       httpOnly: false, // 프론트에서 읽어야 하므로
       sameSite: 'lax',

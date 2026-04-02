@@ -168,27 +168,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         attributed_fbclid,
       });
 
-      // ── Postback 뼈대 ──────────────────────────────────────
-      // TODO: Google Ads 전환 Postback
-      // if (attributed_gclid) {
-      //   await fetch(
-      //     `https://www.googleadservices.com/pagead/conversion/CONVERSION_ID/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
-      //   );
-      // }
+      // ── Postback ──────────────────────────────────────
+      // Google Ads 전환 Postback
+      if (attributed_gclid && process.env.GOOGLE_CONVERSION_ID) {
+        try {
+          await fetch(
+            `https://www.googleadservices.com/pagead/conversion/${process.env.GOOGLE_CONVERSION_ID}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
+          );
+          console.log(`[Postback] Google Ads 전환: gclid=${attributed_gclid}, value=${final_sales_price}`);
+        } catch (e) {
+          console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e);
+        }
+      }
 
-      // TODO: Meta Conversions API Postback
-      // if (attributed_fbclid) {
-      //   await fetch('https://graph.facebook.com/v18.0/PIXEL_ID/events', {
-      //     method: 'POST',
-      //     headers: { 'Content-Type': 'application/json' },
-      //     body: JSON.stringify({
-      //       data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
-      //         user_data: { fbclid: attributed_fbclid },
-      //         custom_data: { value: final_sales_price, currency: 'KRW' } }],
-      //       access_token: process.env.META_ACCESS_TOKEN,
-      //     }),
-      //   });
-      // }
+      // Meta Conversions API Postback
+      if (attributed_fbclid && process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
+        try {
+          await fetch(`https://graph.facebook.com/v18.0/${process.env.META_PIXEL_ID}/events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
+                user_data: { fbclid: attributed_fbclid },
+                custom_data: { value: final_sales_price, currency: 'KRW' } }],
+              access_token: process.env.META_ACCESS_TOKEN,
+            }),
+          });
+          console.log(`[Postback] Meta CAPI 전환: fbclid=${attributed_fbclid}, value=${final_sales_price}`);
+        } catch (e) {
+          console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e);
+        }
+      }
 
       const net_profit = final_sales_price - base_cost - allocated_ad_spend;
       return NextResponse.json({ ok: true, net_profit, attributed_source }, { status: 202 });

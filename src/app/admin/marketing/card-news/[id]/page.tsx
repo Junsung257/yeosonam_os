@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { toJpeg } from 'html-to-image';
-import JSZip from 'jszip';
+// html-to-image, jszip: 내보내기 시점에만 동적 로드
 import type { CardNews, CardNewsSlide } from '@/lib/supabase';
 
 type OverlayStyle = 'dark' | 'light' | 'gradient-bottom' | 'gradient-top';
@@ -163,11 +162,13 @@ export default function CardNewsEditorPage() {
       if (nodes.length === 0) { setExporting(false); return; }
       const name = cardNews?.title || '카드뉴스';
 
+      const { toJpeg } = await import('html-to-image');
       if (nodes.length === 1) {
         const url = await toJpeg(nodes[0], { quality: 0.95, pixelRatio: 3, backgroundColor: '#000' });
         const a = document.createElement('a');
         a.download = `${name}_1.jpg`; a.href = url; a.click();
       } else {
+        const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
         for (let i = 0; i < nodes.length; i++) {
           const url = await toJpeg(nodes[i], { quality: 0.95, pixelRatio: 3, backgroundColor: '#000' });
@@ -285,7 +286,7 @@ export default function CardNewsEditorPage() {
               className={`relative group text-left p-1.5 border-b border-slate-100 hover:bg-blue-50/50 transition ${activeIdx === idx ? 'bg-blue-50 border-l-2 border-l-[#005d90]' : ''}`}>
               <div className={`w-full ${ratio.cls} rounded overflow-hidden bg-slate-200`}
                 style={s.bg_image_url ? { backgroundImage: `url(${s.bg_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
-                {!s.bg_image_url && <div className="w-full h-full flex items-center justify-center text-slate-300 text-[10px]">이미지 없음</div>}
+                {!s.bg_image_url && <div className="w-full h-full flex items-center justify-center text-orange-400 text-[10px]">🖼 이미지 필요</div>}
               </div>
               <p className="text-[10px] text-slate-600 truncate mt-1">{s.headline || `슬라이드 ${idx + 1}`}</p>
               <div className="absolute top-0.5 right-0.5 hidden group-hover:flex gap-0.5">
@@ -317,12 +318,26 @@ export default function CardNewsEditorPage() {
                 <div>
                   <h2 contentEditable suppressContentEditableWarning
                     onBlur={e => updateActiveSlide({ headline: e.currentTarget.textContent || '' })}
-                    className="text-white text-2xl font-bold leading-tight outline-none focus:bg-yellow-50/20 rounded mb-2">
+                    style={{
+                      fontFamily: (activeSlide as any).headline_style?.fontFamily || 'Pretendard',
+                      fontSize: ((activeSlide as any).headline_style?.fontSize || 32) + 'px',
+                      color: (activeSlide as any).headline_style?.color || '#ffffff',
+                      fontWeight: (activeSlide as any).headline_style?.fontWeight || 'bold',
+                      textAlign: ((activeSlide as any).headline_style?.textAlign || 'center') as 'left' | 'center' | 'right',
+                    }}
+                    className="leading-tight outline-none focus:bg-yellow-50/20 rounded mb-2">
                     {activeSlide.headline}
                   </h2>
                   <p contentEditable suppressContentEditableWarning
                     onBlur={e => updateActiveSlide({ body: e.currentTarget.textContent || '' })}
-                    className="text-white/85 text-[14px] leading-relaxed outline-none focus:bg-yellow-50/20 rounded whitespace-pre-line">
+                    style={{
+                      fontFamily: (activeSlide as any).body_style?.fontFamily || 'Pretendard',
+                      fontSize: ((activeSlide as any).body_style?.fontSize || 18) + 'px',
+                      color: (activeSlide as any).body_style?.color || '#e0e0e0',
+                      fontWeight: (activeSlide as any).body_style?.fontWeight || 'normal',
+                      textAlign: ((activeSlide as any).body_style?.textAlign || 'center') as 'left' | 'center' | 'right',
+                    }}
+                    className="leading-relaxed outline-none focus:bg-yellow-50/20 rounded whitespace-pre-line">
                     {activeSlide.body}
                   </p>
                 </div>
@@ -366,14 +381,77 @@ export default function CardNewsEditorPage() {
                   rows={4} className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90] resize-none" />
               </div>
 
+              {/* 제목 스타일링 */}
+              <div className="border border-slate-200 rounded-lg p-2.5 space-y-2">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase block">제목 스타일</label>
+                <select value={(activeSlide as any).headline_style?.fontFamily || 'Pretendard'}
+                  onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, fontFamily: e.target.value } } as any)}
+                  className="w-full border border-slate-200 rounded px-2 py-1 text-[11px]">
+                  {['Pretendard', 'Noto Sans KR', 'Gothic A1'].map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-slate-400 w-6">크기</span>
+                  <input type="range" min={16} max={72} value={(activeSlide as any).headline_style?.fontSize || 32}
+                    onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, fontSize: parseInt(e.target.value) } } as any)}
+                    className="flex-1 accent-[#001f3f]" />
+                  <span className="text-[10px] text-slate-500 w-8 text-right">{(activeSlide as any).headline_style?.fontSize || 32}px</span>
+                </div>
+                <div className="flex gap-1">
+                  {['#ffffff','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => (
+                    <button key={c} onClick={() => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, color: c } } as any)}
+                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).headline_style?.color === c ? 'border-[#001f3f] scale-110' : 'border-slate-200'}`}
+                      style={{ backgroundColor: c }} />
+                  ))}
+                  <input type="color" value={(activeSlide as any).headline_style?.color || '#ffffff'}
+                    onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, color: e.target.value } } as any)}
+                    className="w-5 h-5 rounded cursor-pointer" />
+                </div>
+                <div className="flex gap-0.5">
+                  {[
+                    { k: 'fontWeight', v: 'bold', label: 'B', active: (activeSlide as any).headline_style?.fontWeight === 'bold' },
+                    { k: 'textAlign', v: 'left', label: '좌', active: (activeSlide as any).headline_style?.textAlign === 'left' },
+                    { k: 'textAlign', v: 'center', label: '중', active: ((activeSlide as any).headline_style?.textAlign || 'center') === 'center' },
+                    { k: 'textAlign', v: 'right', label: '우', active: (activeSlide as any).headline_style?.textAlign === 'right' },
+                  ].map((btn, i) => (
+                    <button key={i} onClick={() => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, [btn.k]: btn.active && btn.k === 'fontWeight' ? 'normal' : btn.v } } as any)}
+                      className={`flex-1 py-1 rounded text-[10px] font-bold transition ${btn.active ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 본문 스타일링 */}
+              <div className="border border-slate-200 rounded-lg p-2.5 space-y-2">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase block">본문 스타일</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-slate-400 w-6">크기</span>
+                  <input type="range" min={10} max={36} value={(activeSlide as any).body_style?.fontSize || 18}
+                    onChange={e => updateActiveSlide({ body_style: { ...(activeSlide as any).body_style, fontSize: parseInt(e.target.value) } } as any)}
+                    className="flex-1 accent-[#001f3f]" />
+                  <span className="text-[10px] text-slate-500 w-8 text-right">{(activeSlide as any).body_style?.fontSize || 18}px</span>
+                </div>
+                <div className="flex gap-1">
+                  {['#ffffff','#e0e0e0','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6'].map(c => (
+                    <button key={c} onClick={() => updateActiveSlide({ body_style: { ...(activeSlide as any).body_style, color: c } } as any)}
+                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).body_style?.color === c ? 'border-[#001f3f] scale-110' : 'border-slate-200'}`}
+                      style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+              </div>
+
               {/* 배경 이미지 */}
               <div className="border border-slate-200 rounded-lg p-2.5 space-y-2">
                 <label className="text-[10px] font-semibold text-slate-400 uppercase block">배경 이미지</label>
-                {activeSlide.bg_image_url && (
+                {activeSlide.bg_image_url ? (
                   <div className="flex items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={activeSlide.bg_image_url} alt="" className="w-10 h-10 rounded object-cover" />
                     <button onClick={() => updateActiveSlide({ bg_image_url: '' })} className="text-[10px] text-red-500 hover:underline">제거</button>
+                  </div>
+                ) : (
+                  <div className="bg-orange-50 border border-orange-200 rounded p-2 text-[10px] text-orange-600">
+                    배경 이미지가 없습니다. 아래에서 검색하거나 자동 검색을 눌러주세요.
                   </div>
                 )}
                 <div className="flex gap-1">
@@ -385,6 +463,13 @@ export default function CardNewsEditorPage() {
                     {pexelsLoading ? '...' : '검색'}
                   </button>
                 </div>
+                {activeSlide.pexels_keyword && !activeSlide.bg_image_url && (
+                  <button onClick={() => { setPexelsKeyword(activeSlide.pexels_keyword); searchPexels(activeSlide.pexels_keyword); }}
+                    disabled={pexelsLoading}
+                    className="w-full py-1.5 bg-blue-50 text-blue-600 text-[10px] rounded border border-blue-200 hover:bg-blue-100 disabled:opacity-50">
+                    🔍 자동 검색: &quot;{activeSlide.pexels_keyword}&quot;
+                  </button>
+                )}
                 {showPexels && pexelsPhotos.length > 0 && (
                   <div>
                     <div className="grid grid-cols-2 gap-1">

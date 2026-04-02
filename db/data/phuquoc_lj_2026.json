@@ -1,0 +1,368 @@
+[
+  {
+    "title": "[LJ] 푸꾸옥 5성 노옵션 스페셜 3박5일",
+    "destination": "푸꾸옥",
+    "country": "베트남",
+    "product_type": "노팁노옵션",
+    "trip_style": "3박5일",
+    "duration": 5,
+    "nights": 3,
+    "departure_airport": "부산(김해)",
+    "airline": "LJ(진에어)",
+    "departure_days": "매주 목,금요일",
+    "min_participants": 4,
+    "price": 959000,
+    "guide_tip": "$50/인",
+    "single_supplement": "21만원(3박)",
+    "price_tiers": [
+      { "period_label": "★SPOT특가 5/3~6/29 목요일 (5/21,22 제외)", "date_range": { "start": "2026-05-03", "end": "2026-06-29" }, "departure_day_of_week": "목", "adult_price": 999000, "status": "available", "note": "SPOT특가" },
+      { "period_label": "★SPOT특가 5/3~6/29 금요일 (5/21,22 제외)", "date_range": { "start": "2026-05-03", "end": "2026-06-29" }, "departure_day_of_week": "금", "adult_price": 959000, "status": "available", "note": "SPOT특가" },
+      { "period_label": "5/2~6/30 목요일 (5/21,22 제외)", "date_range": { "start": "2026-05-02", "end": "2026-06-30" }, "departure_day_of_week": "목", "adult_price": 1039000, "status": "available" },
+      { "period_label": "5/2~6/30 금요일 (5/21,22 제외)", "date_range": { "start": "2026-05-02", "end": "2026-06-30" }, "departure_day_of_week": "금", "adult_price": 999000, "status": "available" },
+      { "period_label": "7/1~7/22 목금 (7/16 제외)", "date_range": { "start": "2026-07-01", "end": "2026-07-22" }, "adult_price": 1059000, "status": "available" },
+      { "period_label": "7/24~8/1 목금", "date_range": { "start": "2026-07-24", "end": "2026-08-01" }, "adult_price": 1509000, "status": "available" },
+      { "period_label": "8/2~8/15 목금 (8/13,14 제외)", "date_range": { "start": "2026-08-02", "end": "2026-08-15" }, "adult_price": 1109000, "status": "available" },
+      { "period_label": "8/16~8/29 목금", "date_range": { "start": "2026-08-16", "end": "2026-08-29" }, "adult_price": 1059000, "status": "available" },
+      { "period_label": "8/30~9/30 목금 (9/24,25 제외)", "date_range": { "start": "2026-08-30", "end": "2026-09-30" }, "adult_price": 999000, "status": "available" },
+      { "period_label": "10/1~10/24 목금 (10/1,2,8 제외)", "date_range": { "start": "2026-10-01", "end": "2026-10-24" }, "adult_price": 1059000, "status": "available" },
+      { "period_label": "제외일 7/16, 7/23", "departure_dates": ["2026-07-16", "2026-07-23"], "adult_price": 1239000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 5/21,22, 8/13, 9/25", "departure_dates": ["2026-05-21", "2026-05-22", "2026-08-13", "2026-09-25"], "adult_price": 1349000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 4/30", "departure_dates": ["2026-04-30"], "adult_price": 1399000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 8/14, 10/8", "departure_dates": ["2026-08-14", "2026-10-08"], "adult_price": 1469000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 10/1, 10/2", "departure_dates": ["2026-10-01", "2026-10-02"], "adult_price": 1579000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 5/1", "departure_dates": ["2026-05-01"], "adult_price": 1689000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 9/24", "departure_dates": ["2026-09-24"], "adult_price": 1869000, "status": "available", "note": "제외일자" }
+    ],
+    "inclusions": [
+      "국제선 항공요금, 텍스, 현지 행사비 (호텔, 차량, 식사, 가이드, 관광지 입장료), 여행자보험",
+      "진주박물관, 후추농장, 호국사",
+      "전신마사지 90분 (팁별도)",
+      "아시아 최대규모의 사파리 – 빈펄 사파리",
+      "썬월드 해상 케이블카 + 네이쳐 타운 + 키스오브더씨 관람 + 선셋타운 투어 (전동카)",
+      "부이페스트 야시장 + 즈엉동 야시장 + 소나시 야시장"
+    ],
+    "excludes": [
+      "기사/가이드경비 1인 $50",
+      "에티켓팁, 기타 개인경비"
+    ],
+    "optional_tours": [],
+    "notices_parsed": [
+      "4/30 발권조건 (유류할증료 약 24만원 기준)",
+      "싱글차지 5성 – 3박 21만원 / 4박 28만원",
+      "여권 만기 6개월 이상 남아 있어야 입국이 가능합니다.",
+      "부모 동반없이 미성년자(만14세미만)는 영문 부모동의서 공증 필수, 부모동반 시 영문 가족관계증명서 필요",
+      "25.1.1부터 베트남 입국시 전자담배 반입 금지 (소지 및 사용시 압수+벌금)",
+      "일정 미참여시 1인 1일기준 $100 패널티 발생",
+      "패키지 호텔 지정 불가",
+      "써차지/갈라디너 추후안내"
+    ],
+    "special_notes": "쇼핑: 2회 (노니&침향, 커피&잡화)\n싱글차지 3박 21만원\n4/30 발권조건\n목,일 20:05출발 / 월,금 19:55출발",
+    "product_highlights": [
+      "5성 호텔 노옵션 스페셜",
+      "기네스북 등재 혼똔섬 해상 케이블카",
+      "아시아 최대규모 빈펄 사파리",
+      "키스오브더씨 수상음악쇼",
+      "전신마사지 90분 포함",
+      "선셋타운 전동카 투어"
+    ],
+    "product_summary": "진에어 직항 푸꾸옥 5성 노옵션 3박5일. 빈펄사파리, 썬월드 해상케이블카, 키스오브더씨 공연, 선셋타운 전동카 투어, 마사지90분 포함. 야시장 3곳 투어.",
+    "product_tags": ["푸꾸옥", "베트남", "노옵션", "5성급", "빈펄사파리", "케이블카", "진에어", "3박5일"],
+    "accommodations": ["5성 레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급"],
+    "itinerary": [
+      "DAY1: 부산→푸꾸옥 | LJ119 19:55-23:25 | 호텔체크인",
+      "DAY2: 푸꾸옥 | 혼똔섬 해상케이블카+네이쳐타운, 선셋타운(전동카), 뷔이페스트야시장, 키스오브더씨 | 5성호텔",
+      "DAY3: 푸꾸옥 | 빈펄사파리, 빈그랜드월드, 비치바, 전신마사지90분 | 5성호텔",
+      "DAY4: 푸꾸옥 | 호국사, 코코넛수용소, 쇼핑2회, 진주박물관, 후추농장 | 공항이동",
+      "DAY5: LJ120 00:25-07:45 부산도착"
+    ],
+    "itinerary_data": {
+      "meta": {
+        "title": "[LJ] 푸꾸옥 5성 노옵션 스페셜 3박5일",
+        "product_type": "노팁노옵션",
+        "destination": "푸꾸옥",
+        "nights": 3, "days": 5,
+        "departure_airport": "부산(김해)",
+        "airline": "LJ(진에어)", "flight_out": "LJ119", "flight_in": "LJ120",
+        "departure_days": "매주 목,금요일",
+        "min_participants": 4,
+        "room_type": "2인1실",
+        "ticketing_deadline": "2026-04-30",
+        "hashtags": ["#푸꾸옥", "#노옵션", "#5성", "#빈펄사파리", "#케이블카", "#키스오브더씨"],
+        "brand": "여소남"
+      },
+      "highlights": {
+        "inclusions": [
+          "국제선 항공요금, 텍스, 현지 행사비 (호텔, 차량, 식사, 가이드, 관광지 입장료), 여행자보험",
+          "진주박물관, 후추농장, 호국사, 전신마사지90분(팁별도)",
+          "아시아 최대규모의 사파리 – 빈펄 사파리",
+          "썬월드 해상 케이블카 + 네이쳐 타운 + 키스오브더씨 관람 포함 + 선셋타운 투어 (전동카)",
+          "부이페스트 야시장 + 즈엉동 야시장 + 소나시 야시장"
+        ],
+        "excludes": ["기사/가이드경비 1인 $50, 에티켓팁, 기타 개인경비"],
+        "shopping": "2회 (노니&침향, 커피&잡화)",
+        "remarks": [
+          "싱글차지 5성 – 3박 21만원 / 4박 28만원",
+          "여권 만기 6개월 이상 남아 있어야 입국이 가능합니다.",
+          "부모 동반없이 미성년자(만14세미만)는 영문 부모동의서 공증 필수, 부모동반 시 영문 가족관계증명서 필요",
+          "25.1.1부터 베트남 입국시 전자담배 반입 금지 (소지 및 사용시 압수+벌금)",
+          "일정 미참여시 1인 1일기준 $100 패널티 발생",
+          "패키지 호텔 지정 불가",
+          "상기 일정은 항공 및 현지 사정에 의하여 변동될 수 있습니다."
+        ]
+      },
+      "days": [
+        {
+          "day": 1, "regions": ["부산", "푸꾸옥"],
+          "meals": { "breakfast": false, "lunch": false, "dinner": false, "breakfast_note": null, "lunch_note": null, "dinner_note": null },
+          "schedule": [
+            { "time": "19:55", "activity": "부산 김해 국제공항 출발 (목,일 20:05출발 / 월,금 19:55출발)", "type": "flight", "transport": "LJ119", "note": null },
+            { "time": "23:25", "activity": "푸꾸옥 공항 도착 후 가이드미팅", "type": "flight", "transport": "LJ119", "note": null },
+            { "time": null, "activity": "호텔로 이동 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": "패키지 호텔 지정 불가" }
+        },
+        {
+          "day": 2, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "현지식", "dinner_note": "한정식" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "기네스북에 등재된 혼똔섬 해상 케이블카 + 네이쳐타운", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "푸꾸옥의 작은 유럽을 느낄 수 있는 선셋 타운 자유시간", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "선셋 타운 투어 (전동카 포함)", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "뷔이페스트 야시장", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "선셋빌리지 수상음악쇼 키스오브더씨 관람", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "석식 후 호텔 투숙 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": null }
+        },
+        {
+          "day": 3, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "현지식", "dinner_note": "무제한삼겹살" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "아시아 최대규모 빈펄사파리 관광", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "빈그랜드월드 관광 (자유시간)", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "프라이빗한 해변을 가진 비치바 (맥주or음료 제공) or 핫플카페", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "전신마사지 90분 (팁별도)", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "석식 후 호텔 투숙 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": null }
+        },
+        {
+          "day": 4, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "현지식", "dinner_note": "한식" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 CHECK-OUT 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "해수 관음상과 아름다운 바다를 담은 호국사 관광", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "수감자들이 코코넛 껍질로 땅굴을 파 탈출을 시도한 코코넛수용소 방문", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "쇼핑 2회 방문 (잡화&커피, 노니&침향)", "type": "shopping", "transport": null, "note": null },
+            { "time": null, "activity": "푸꾸옥의 명물 진주의 역사를 관람할 수 있는 진주박물관", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "푸꾸옥의 명물인 후추농장 방문", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "석식 후 푸꾸옥 공항으로 이동 / 출국 수속", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": null
+        },
+        {
+          "day": 5, "regions": ["푸꾸옥", "부산"],
+          "meals": { "breakfast": false, "lunch": false, "dinner": false, "breakfast_note": null, "lunch_note": null, "dinner_note": null },
+          "schedule": [
+            { "time": "00:25", "activity": "푸꾸옥 국제공항 출발", "type": "flight", "transport": "LJ120", "note": null },
+            { "time": "07:45", "activity": "부산 도착", "type": "flight", "transport": "LJ120", "note": null }
+          ],
+          "hotel": null
+        }
+      ],
+      "optional_tours": []
+    },
+    "raw_text": "[LJ] 푸꾸옥 3박 5일 ◈ 5성 노옵션 스페셜팩 ◈\n출발일: 목, 금 (3박)\n룸타입: 5성(특급) 레디슨 블루, 베스트웨스턴, 노보텔 또는 동급 *패키지 호텔 지정 불가*\n인원수: 4명부터 출발확정\n포함: 국제선 항공요금, 텍스, 현지 행사비(호텔, 차량, 식사, 가이드, 관광지 입장료), 진주박물관, 후추농장, 호국사, 전신마사지90분(팁별도), 여행자보험\n빈펄 사파리, 썬월드 해상 케이블카 + 네이쳐 타운 + 키스오브더씨 관람 + 선셋타운 투어(전동카)\n부이페스트 야시장 + 즈엉동 야시장 + 소나시 야시장\n불포함: 기사/가이드경비 1인 $50, 에티켓팁, 기타 개인경비\n쇼핑: 2회 (노니&침향, 커피&잡화)\nRMK: 여권만기6개월이상, 미성년자 영문동의서, 전자담배반입금지, 일정미참여시 $100/일 패널티\n\nDAY1: 부산→푸꾸옥 LJ119 19:55-23:25 호텔이동\nDAY2: 혼똔섬 해상케이블카+네이쳐타운, 선셋타운(전동카), 뷔이페스트야시장, 키스오브더씨 | 호텔식/현지식/한정식\nDAY3: 빈펄사파리, 빈그랜드월드, 비치바, 전신마사지90분 | 호텔식/현지식/무제한삼겹살\nDAY4: 호국사, 코코넛수용소, 쇼핑2회, 진주박물관, 후추농장 | 호텔식/현지식/한식\nDAY5: LJ120 00:25-07:45 부산도착\n\n요금표:\n★SPOT특가 5/3~6/29 목 999,000 / 금 959,000\n정규 5/2~6/30 목 1,039,000 / 금 999,000\n7/1~7/22 목금 1,059,000\n7/24~8/1 목금 1,509,000\n8/2~8/15 목금 1,109,000\n8/16~8/29 목금 1,059,000\n8/30~9/30 목금 999,000\n10/1~10/24 목금 1,059,000\n제외일: 7/16,7/23 1,239,000 / 5/21,22,8/13,9/25 1,349,000 / 4/30 1,399,000 / 8/14,10/8 1,469,000 / 10/1,10/2 1,579,000 / 5/1 1,689,000 / 9/24 1,869,000"
+  },
+  {
+    "title": "[LJ] 푸꾸옥 5성 노옵션 스페셜 4박6일",
+    "destination": "푸꾸옥",
+    "country": "베트남",
+    "product_type": "노팁노옵션",
+    "trip_style": "4박6일",
+    "duration": 6,
+    "nights": 4,
+    "departure_airport": "부산(김해)",
+    "airline": "LJ(진에어)",
+    "departure_days": "매주 일,월요일",
+    "min_participants": 4,
+    "price": 989000,
+    "guide_tip": "$60/인",
+    "single_supplement": "28만원(4박)",
+    "price_tiers": [
+      { "period_label": "★SPOT특가 5/4,11,18,31 6/7,14,21,28 일월", "departure_dates": ["2026-05-04", "2026-05-11", "2026-05-18", "2026-05-31", "2026-06-07", "2026-06-14", "2026-06-21", "2026-06-28"], "adult_price": 989000, "status": "available", "note": "SPOT특가" },
+      { "period_label": "★SPOT특가 5/3~6/29 일월 (5/21,22 제외)", "date_range": { "start": "2026-05-03", "end": "2026-06-29" }, "adult_price": 1009000, "status": "available", "note": "SPOT특가" },
+      { "period_label": "5/2~6/30 일월 (5/21,22 제외)", "date_range": { "start": "2026-05-02", "end": "2026-06-30" }, "adult_price": 1049000, "status": "available" },
+      { "period_label": "7/1~7/22 일월 (7/16 제외)", "date_range": { "start": "2026-07-01", "end": "2026-07-22" }, "adult_price": 1119000, "status": "available" },
+      { "period_label": "7/24~8/1 일월", "date_range": { "start": "2026-07-24", "end": "2026-08-01" }, "adult_price": 1589000, "status": "available" },
+      { "period_label": "8/2~8/15 일월 (8/13,14 제외)", "date_range": { "start": "2026-08-02", "end": "2026-08-15" }, "adult_price": 1159000, "status": "available" },
+      { "period_label": "8/16~8/29 일월", "date_range": { "start": "2026-08-16", "end": "2026-08-29" }, "adult_price": 1109000, "status": "available" },
+      { "period_label": "8/30~9/30 일월 (9/24,25 제외)", "date_range": { "start": "2026-08-30", "end": "2026-09-30" }, "adult_price": 1049000, "status": "available" },
+      { "period_label": "10/1~10/24 일월 (10/1,2,8 제외)", "date_range": { "start": "2026-10-01", "end": "2026-10-24" }, "adult_price": 1119000, "status": "available" },
+      { "period_label": "제외일 7/16, 7/23", "departure_dates": ["2026-07-16", "2026-07-23"], "adult_price": 1239000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 5/21,22, 8/13, 9/25", "departure_dates": ["2026-05-21", "2026-05-22", "2026-08-13", "2026-09-25"], "adult_price": 1349000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 4/30", "departure_dates": ["2026-04-30"], "adult_price": 1399000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 8/14, 10/8", "departure_dates": ["2026-08-14", "2026-10-08"], "adult_price": 1469000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 10/1, 10/2", "departure_dates": ["2026-10-01", "2026-10-02"], "adult_price": 1579000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 5/1", "departure_dates": ["2026-05-01"], "adult_price": 1689000, "status": "available", "note": "제외일자" },
+      { "period_label": "제외일 9/24", "departure_dates": ["2026-09-24"], "adult_price": 1869000, "status": "available", "note": "제외일자" }
+    ],
+    "inclusions": [
+      "국제선 항공요금, 텍스, 현지 행사비 (호텔, 차량, 식사, 가이드, 관광지 입장료), 여행자보험",
+      "진주박물관, 후추농장, 호국사",
+      "전신마사지 90분 (팁별도)",
+      "아시아 최대규모의 사파리 – 빈펄 사파리",
+      "썬월드 해상 케이블카 + 네이쳐 타운 + 키스오브더씨 관람 + 선셋타운 투어 (전동카)",
+      "부이페스트 야시장 + 즈엉동 야시장 + 소나시 야시장",
+      "아일랜드 호핑투어"
+    ],
+    "excludes": [
+      "기사/가이드경비 1인 $60",
+      "에티켓팁, 기타 개인경비"
+    ],
+    "optional_tours": [],
+    "notices_parsed": [
+      "4/30 발권조건 (유류할증료 약 24만원 기준)",
+      "싱글차지 5성 – 3박 21만원 / 4박 28만원",
+      "여권 만기 6개월 이상 남아 있어야 입국이 가능합니다.",
+      "부모 동반없이 미성년자(만14세미만)는 영문 부모동의서 공증 필수, 부모동반 시 영문 가족관계증명서 필요",
+      "25.1.1부터 베트남 입국시 전자담배 반입 금지 (소지 및 사용시 압수+벌금)",
+      "일정 미참여시 1인 1일기준 $100 패널티 발생",
+      "패키지 호텔 지정 불가",
+      "써차지/갈라디너 추후안내"
+    ],
+    "special_notes": "쇼핑: 2회 (노니&침향, 커피&잡화)\n싱글차지 4박 28만원\n4/30 발권조건\n4박6일은 아일랜드 호핑투어 포함\n목,일 20:05출발 / 월,금 19:55출발",
+    "product_highlights": [
+      "5성 호텔 노옵션 스페셜 4박6일",
+      "아일랜드 호핑투어 포함 (4박 전용)",
+      "기네스북 등재 혼똔섬 해상 케이블카",
+      "아시아 최대규모 빈펄 사파리",
+      "키스오브더씨 수상음악쇼",
+      "전신마사지 90분 포함"
+    ],
+    "product_summary": "진에어 직항 푸꾸옥 5성 노옵션 4박6일. 3박 일정에 아일랜드 호핑투어(스노클링+선상식)가 추가된 여유로운 코스. 빈펄사파리, 해상케이블카, 키스오브더씨 전부 포함.",
+    "product_tags": ["푸꾸옥", "베트남", "노옵션", "5성급", "빈펄사파리", "호핑투어", "진에어", "4박6일"],
+    "accommodations": ["5성 레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급"],
+    "itinerary": [
+      "DAY1: 부산→푸꾸옥 | LJ119 19:55-23:25 | 호텔체크인",
+      "DAY2: 푸꾸옥 | 혼똔섬 해상케이블카+네이쳐타운, 선셋타운(전동카), 뷔이페스트야시장, 키스오브더씨 | 5성호텔",
+      "DAY3: 푸꾸옥 | 아일랜드 호핑투어(스노클링+선상식), 전신마사지90분 | 5성호텔",
+      "DAY4: 푸꾸옥 | 빈펄사파리, 빈그랜드월드, 비치바 | 5성호텔",
+      "DAY5: 푸꾸옥 | 호국사, 코코넛수용소, 쇼핑2회, 진주박물관, 후추농장 | 공항이동",
+      "DAY6: LJ120 00:25-07:45 부산도착"
+    ],
+    "itinerary_data": {
+      "meta": {
+        "title": "[LJ] 푸꾸옥 5성 노옵션 스페셜 4박6일",
+        "product_type": "노팁노옵션",
+        "destination": "푸꾸옥",
+        "nights": 4, "days": 6,
+        "departure_airport": "부산(김해)",
+        "airline": "LJ(진에어)", "flight_out": "LJ119", "flight_in": "LJ120",
+        "departure_days": "매주 일,월요일",
+        "min_participants": 4,
+        "room_type": "2인1실",
+        "ticketing_deadline": "2026-04-30",
+        "hashtags": ["#푸꾸옥", "#노옵션", "#5성", "#호핑투어", "#빈펄사파리", "#케이블카"],
+        "brand": "여소남"
+      },
+      "highlights": {
+        "inclusions": [
+          "국제선 항공요금, 텍스, 현지 행사비 (호텔, 차량, 식사, 가이드, 관광지 입장료), 여행자보험",
+          "진주박물관, 후추농장, 호국사, 전신마사지90분(팁별도)",
+          "아시아 최대규모의 사파리 – 빈펄 사파리",
+          "썬월드 해상 케이블카 + 네이쳐 타운 + 키스오브더씨 관람 + 선셋타운 투어 (전동카)",
+          "부이페스트 야시장 + 즈엉동 야시장 + 소나시 야시장",
+          "아일랜드 호핑투어"
+        ],
+        "excludes": ["기사/가이드경비 1인 $60, 에티켓팁, 기타 개인경비"],
+        "shopping": "2회 (노니&침향, 커피&잡화)",
+        "remarks": [
+          "싱글차지 5성 – 3박 21만원 / 4박 28만원",
+          "여권 만기 6개월 이상 남아 있어야 입국이 가능합니다.",
+          "부모 동반없이 미성년자(만14세미만)는 영문 부모동의서 공증 필수, 부모동반 시 영문 가족관계증명서 필요",
+          "25.1.1부터 베트남 입국시 전자담배 반입 금지 (소지 및 사용시 압수+벌금)",
+          "일정 미참여시 1인 1일기준 $100 패널티 발생",
+          "패키지 호텔 지정 불가",
+          "상기 일정은 항공 및 현지 사정에 의하여 변동될 수 있습니다."
+        ]
+      },
+      "days": [
+        {
+          "day": 1, "regions": ["부산", "푸꾸옥"],
+          "meals": { "breakfast": false, "lunch": false, "dinner": false, "breakfast_note": null, "lunch_note": null, "dinner_note": null },
+          "schedule": [
+            { "time": "19:55", "activity": "부산 김해 국제공항 출발 (목,일 20:05출발 / 월,금 19:55출발)", "type": "flight", "transport": "LJ119", "note": null },
+            { "time": "23:25", "activity": "푸꾸옥 공항 도착 후 가이드미팅", "type": "flight", "transport": "LJ119", "note": null },
+            { "time": null, "activity": "호텔로 이동 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": "패키지 호텔 지정 불가" }
+        },
+        {
+          "day": 2, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "현지식", "dinner_note": "한정식" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "기네스북에 등재된 혼똔섬 해상 케이블카 + 네이쳐타운", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "푸꾸옥의 작은 유럽을 느낄 수 있는 선셋 타운 자유시간", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "선셋 타운 투어 (전동카 포함)", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "뷔이페스트 야시장", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "선셋빌리지 수상음악쇼 키스오브더씨 관람", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "석식 후 호텔 투숙 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": null }
+        },
+        {
+          "day": 3, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "호핑식(선상식)", "dinner_note": "한식" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "호핑투어 - 목선 아일랜드 호핑투어 (선상식)", "type": "normal", "transport": null, "note": "스노클링장비+구명조끼+미니줄낚시+미끼 / 준비물: 수영복,모자,선크림,여벌옷,아쿠아슈즈" },
+            { "time": null, "activity": "전신마사지 90분 (팁별도)", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "호텔 투숙 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": null }
+        },
+        {
+          "day": 4, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "현지식", "dinner_note": "무제한삼겹살" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "아시아 최대규모 빈펄사파리 관광", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "빈그랜드월드 관광 (자유시간)", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "프라이빗한 해변을 가진 비치바 (맥주or음료 제공) or 핫플카페", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "석식 후 호텔 투숙 및 휴식", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": { "name": "레디슨블루 / 베스트웨스턴 / 노보텔 또는 동급", "grade": "5성", "note": null }
+        },
+        {
+          "day": 5, "regions": ["푸꾸옥"],
+          "meals": { "breakfast": true, "lunch": true, "dinner": true, "breakfast_note": "호텔식", "lunch_note": "현지식", "dinner_note": "한식" },
+          "schedule": [
+            { "time": null, "activity": "호텔 조식 후 CHECK-OUT 가이드 미팅", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "해수 관음상과 아름다운 바다를 담은 호국사 관광", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "수감자들이 코코넛 껍질로 땅굴을 파 탈출을 시도한 코코넛수용소 방문", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "쇼핑 2회 방문 (잡화&커피, 노니&침향)", "type": "shopping", "transport": null, "note": null },
+            { "time": null, "activity": "푸꾸옥의 명물 진주의 역사를 관람할 수 있는 진주박물관", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "푸꾸옥의 명물인 후추농장 방문", "type": "normal", "transport": null, "note": null },
+            { "time": null, "activity": "석식 후 푸꾸옥 공항으로 이동 / 출국 수속", "type": "normal", "transport": null, "note": null }
+          ],
+          "hotel": null
+        },
+        {
+          "day": 6, "regions": ["푸꾸옥", "부산"],
+          "meals": { "breakfast": false, "lunch": false, "dinner": false, "breakfast_note": null, "lunch_note": null, "dinner_note": null },
+          "schedule": [
+            { "time": "00:25", "activity": "푸꾸옥 국제공항 출발", "type": "flight", "transport": "LJ120", "note": null },
+            { "time": "07:45", "activity": "부산 도착", "type": "flight", "transport": "LJ120", "note": null }
+          ],
+          "hotel": null
+        }
+      ],
+      "optional_tours": []
+    },
+    "raw_text": "[LJ] 푸꾸옥 4박 6일 ◈ 5성 노옵션 스페셜팩 ◈\n출발일: 일, 월 (4박)\n룸타입: 5성(특급) 레디슨 블루, 베스트웨스턴, 노보텔 또는 동급 *패키지 호텔 지정 불가*\n인원수: 4명부터 출발확정\n포함: 국제선 항공요금, 텍스, 현지 행사비(호텔, 차량, 식사, 가이드, 관광지 입장료), 진주박물관, 후추농장, 호국사, 전신마사지90분(팁별도), 여행자보험\n빈펄 사파리, 썬월드 해상 케이블카 + 네이쳐 타운 + 키스오브더씨 관람 + 선셋타운 투어(전동카)\n부이페스트 야시장 + 즈엉동 야시장 + 소나시 야시장\n아일랜드 호핑투어\n불포함: 기사/가이드경비 1인 $60, 에티켓팁, 기타 개인경비\n쇼핑: 2회 (노니&침향, 커피&잡화)\nRMK: 여권만기6개월이상, 미성년자 영문동의서, 전자담배반입금지, 일정미참여시 $100/일 패널티\n\nDAY1: 부산→푸꾸옥 LJ119 19:55-23:25 호텔이동\nDAY2: 혼똔섬 해상케이블카+네이쳐타운, 선셋타운(전동카), 뷔이페스트야시장, 키스오브더씨 | 호텔식/현지식/한정식\nDAY3: 아일랜드 호핑투어(선상식), 전신마사지90분 | 호텔식/호핑식/한식\nDAY4: 빈펄사파리, 빈그랜드월드, 비치바 | 호텔식/현지식/무제한삼겹살\nDAY5: 호국사, 코코넛수용소, 쇼핑2회, 진주박물관, 후추농장 | 호텔식/현지식/한식\nDAY6: LJ120 00:25-07:45 부산도착\n\n요금표:\n★SPOT특가 5/4,11,18,31,6/7,14,21,28 일월 4박 989,000\n5/3~6/29 일월 1,009,000 (SPOT) / 정규 5/2~6/30 일월 1,049,000\n7/1~7/22 일월 1,119,000\n7/24~8/1 일월 1,589,000\n8/2~8/15 일월 1,159,000\n8/16~8/29 일월 1,109,000\n8/30~9/30 일월 1,049,000\n10/1~10/24 일월 1,119,000\n제외일: 7/16,7/23 1,239,000 / 5/21,22,8/13,9/25 1,349,000 / 4/30 1,399,000 / 8/14,10/8 1,469,000 / 10/1,10/2 1,579,000 / 5/1 1,689,000 / 9/24 1,869,000"
+  }
+]

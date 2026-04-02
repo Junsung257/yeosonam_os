@@ -1,6 +1,32 @@
 import pdfParse from 'pdf-parse';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { TravelItinerary } from '@/types/itinerary';
+import { expandPriceTiersDateRanges, filterTiersByDepartureDays } from './expand-date-range';
+
+// ─── 항공사 코드 정규화 ────────────────────────────────────
+const AIRLINE_NAME_TO_CODE: Record<string, string> = {
+  '에어부산': 'BX', '진에어': 'LJ', '제주항공': '7C', '티웨이': 'TW', '티웨이항공': 'TW',
+  '비엣젯': 'VJ', '비엣젯항공': 'VJ', '비엣젯 항공': 'VJ', '이스타': 'ZE', '이스타항공': 'ZE',
+  '에어로K': 'RF', '대한항공': 'KE', '아시아나': 'OZ', '중국남방항공': 'CZ', '중국동방항공': 'MU',
+  '산동항공': 'SC', '중국국제항공': 'CA', '라오항공': 'QV', '에어아시아': 'D7',
+  '세부퍼시픽': '5J', '베트남항공': 'VN',
+};
+export function normalizeAirlineCode(raw?: string): string | undefined {
+  if (!raw || raw.trim() === '') return undefined;
+  const s = raw.trim();
+  if (/^[A-Z0-9]{2}$/.test(s)) return s;
+  const flightMatch = s.match(/^([A-Z]{2}|\d[A-Z])\d{2,4}/);
+  if (flightMatch) return flightMatch[1];
+  const parenCode = s.match(/\(([A-Z]{2}|\d[A-Z])\d{0,4}\)/);
+  if (parenCode) return parenCode[1].replace(/\d+/, '');
+  for (const [name, code] of Object.entries(AIRLINE_NAME_TO_CODE)) {
+    if (s.includes(name)) return code;
+  }
+  const codeInText = s.match(/([A-Z]{2}|\d[A-Z])(?:\d{2,4})?/);
+  if (codeInText) return codeInText[1];
+  if (s.includes(',')) return normalizeAirlineCode(s.split(',')[0].trim());
+  return s;
+}
 
 // ─── 타입 정의 ─────────────────────────────────────────────
 
@@ -273,7 +299,7 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     duration: typeof parsed.duration === 'number' ? parsed.duration : (parsed.duration ? parseInt(parsed.duration) : undefined),
     departure_days: parsed.departure_days || undefined,
     departure_airport: parsed.departure_airport || undefined,
-    airline: parsed.airline || undefined,
+    airline: normalizeAirlineCode(parsed.airline) || undefined,
     min_participants: parsed.min_participants || 4,
     ticketing_deadline: parsed.ticketing_deadline || undefined,
     guide_tip: parsed.guide_tip || undefined,
@@ -282,7 +308,12 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     price: Array.isArray(parsed.price_tiers) && parsed.price_tiers.length > 0
       ? (parsed.price_tiers.find((t: PriceTier) => t.adult_price)?.adult_price ?? parsed.price ?? undefined)
       : (parsed.price ?? undefined),
-    price_tiers: Array.isArray(parsed.price_tiers) ? parsed.price_tiers : [],
+    price_tiers: Array.isArray(parsed.price_tiers)
+      ? filterTiersByDepartureDays(
+          expandPriceTiersDateRanges(parsed.price_tiers, parsed.departure_days),
+          parsed.departure_days,
+        )
+      : [],
     price_list: Array.isArray(parsed.price_list) ? parsed.price_list as PriceListItem[] : [],
     surcharges: Array.isArray(parsed.surcharges) ? parsed.surcharges : [],
     excluded_dates: Array.isArray(parsed.excluded_dates) ? parsed.excluded_dates : [],
@@ -605,11 +636,17 @@ export async function extractItineraryData(
     }
     const jsonStr = raw
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-    const parsed = JSON.parse(jsonStr) as TravelItinerary;
+    let parsed = JSON.parse(jsonStr);
+    // 배열로 반환된 경우 객체로 래핑 (정규화)
+    if (Array.isArray(parsed)) {
+      console.warn('[Parser] itinerary_data가 배열로 반환됨 → {days: [...]} 객체로 래핑');
+      parsed = { meta: {}, highlights: {}, days: parsed, optional_tours: [] };
+    }
+    const itinerary = parsed as TravelItinerary;
     // brand 고정
-    if (parsed.meta) parsed.meta.brand = '여소남';
-    console.log('[Parser] itinerary_data 추출 완료 — days:', parsed.days?.length);
-    return parsed;
+    if (itinerary.meta) itinerary.meta.brand = '여소남';
+    console.log('[Parser] itinerary_data 추출 완료 — days:', itinerary.days?.length);
+    return itinerary;
   } catch (err) {
     console.warn('[Parser] itinerary_data 추출 실패:', err instanceof Error ? err.message : err);
     return null;
@@ -627,7 +664,8 @@ const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 
 일정표(itinerary_data/days)는 추출하지 마세요. 상품이 1개여도 배열로 감싸세요.
 
 ★★★ 절대 규칙 ★★★
-- 상품 간 데이터 오염 금지: 각 상품의 inclusions/excludes/guide_tip은 해당 상품 섹션에서만 추출.
+- 상품 간 데이터 오염 금지: 각 상품의 inclusions/excludes/guide_tip/price_tiers는 해당 상품 섹션에서만 추출.
+- price_tiers 요일 정합성: 각 상품의 price_tiers 내 departure_day_of_week는 해당 상품의 departure_days와 반드시 일치해야 한다. 예: departure_days가 "일,월"인 상품에 "목","금" tier 포함 금지. 제외일 tier도 동일 규칙 적용.
 - [엄격한 경고] inclusions/excludes/specialNotes는 원문 텍스트를 1글자도 변경/요약/삭제/역산하지 말 것. 원본 그대로 복사.
 - 원본에 없는 데이터는 절대 생성하지 말 것 (null 처리).
 - duration: "3박4일" → 4 (일수). departure_day_of_week: "토 출발" → "토".
@@ -735,7 +773,12 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
     price: Array.isArray(item.price_tiers) && (item.price_tiers as PriceTier[]).length > 0
       ? ((item.price_tiers as PriceTier[]).find(t => t.adult_price)?.adult_price ?? undefined)
       : undefined,
-    price_tiers: Array.isArray(item.price_tiers) ? (item.price_tiers as PriceTier[]) : [],
+    price_tiers: Array.isArray(item.price_tiers)
+      ? filterTiersByDepartureDays(
+          expandPriceTiersDateRanges(item.price_tiers as PriceTier[], item.departure_days as string | undefined),
+          item.departure_days as string | undefined,
+        )
+      : [],
     price_list: Array.isArray(item.price_list) ? (item.price_list as PriceListItem[]) : [],
     surcharges: Array.isArray(item.surcharges) ? (item.surcharges as Surcharge[]) : [],
     excluded_dates: Array.isArray(item.excluded_dates) ? (item.excluded_dates as string[]) : [],

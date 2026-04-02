@@ -1,39 +1,162 @@
-// ─── FINANCE_MODE: 도구 선언 ──────────────────────────────────────────────────
+import { supabaseAdmin } from '@/lib/supabase'
+import { FINANCE_PROMPT } from '../prompts'
+import { AgentRunParams, AgentRunResult } from '../types'
+import { runGeminiAgentLoop } from '../gemini-agent-loop'
+import { convertTools } from '../gemini-tool-format'
 
-export const FINANCE_TOOL_DECLARATIONS = [
+const FINANCE_TOOLS_RAW = [
   {
-    name: 'get_booking_stats',
-    description:
-      '이번 달 예약 재무 통계를 조회합니다. 총 판매가, 입금 완료액, 미수금(잔금), 진행 중 예약 수 등을 반환합니다.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {},
-    },
-  },
-  {
-    name: 'bulk_process_reservations',
-    description:
-      '2건 이상의 고객 등록 및 예약을 한 번에 일괄 처리합니다. 사용자가 표나 목록 형태로 다수의 예약 데이터를 입력하면 반드시 이 도구를 사용하세요. 개별 find_customer/create_booking 호출 금지.',
-    parameters: {
-      type: 'OBJECT',
+    name: 'get_dashboard_kpi',
+    description: '대시보드 KPI를 조회합니다 (월매출, 예약수, 캐시플로).',
+    input_schema: {
+      type: 'object' as const,
       properties: {
-        items: {
-          type: 'ARRAY',
-          description: '처리할 예약 목록',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              date:        { type: 'STRING', description: '출발일. YYYY-MM-DD 또는 "2026년 3월 14일" 형식 모두 가능.' },
-              name:        { type: 'STRING', description: '고객명 (필수)' },
-              destination: { type: 'STRING', description: '목적지 또는 상품명' },
-              status:      { type: 'STRING', description: '예약 상태 (기본: 상담중)' },
-              agency:      { type: 'STRING', description: '랜드사명' },
-            },
-            required: ['name'],
-          },
-        },
-      },
-      required: ['items'],
-    },
+        month: { type: 'string', description: '조회 월 (YYYY-MM, 기본 이번달)' }
+      }
+    }
   },
-];
+  {
+    name: 'get_cashflow_forecast',
+    description: '6개월 캐시플로 예측을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        months: { type: 'number', description: '예측 기간 (기본 6개월)' }
+      }
+    }
+  },
+  {
+    name: 'list_ledger',
+    description: '통합 장부를 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date_from: { type: 'string', description: '시작일 (YYYY-MM-DD)' },
+        date_to: { type: 'string', description: '종료일 (YYYY-MM-DD)' },
+        category: { type: 'string', description: '카테고리 (수입/지출)' },
+        limit: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'get_tax_summary',
+    description: '세무 현황을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number', description: '조회 연도' },
+        quarter: { type: 'number', description: '분기 (1-4)' }
+      }
+    }
+  },
+  {
+    name: 'list_settlements',
+    description: '정산 목록을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: { type: 'string', description: '정산 상태 (pending/completed)' },
+        target_type: { type: 'string', description: '정산 대상 (land_operator/affiliate)' },
+        date_from: { type: 'string' },
+        date_to: { type: 'string' },
+        limit: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'create_settlement',
+    description: '정산을 실행합니다. (승인 필요, 위험도 높음)',
+    input_schema: {
+      type: 'object' as const,
+      required: ['target_id', 'target_type', 'amount'],
+      properties: {
+        target_id: { type: 'string', description: '정산 대상 ID' },
+        target_type: { type: 'string', description: 'land_operator 또는 affiliate' },
+        amount: { type: 'number', description: '정산 금액' },
+        period_from: { type: 'string' },
+        period_to: { type: 'string' },
+        memo: { type: 'string' }
+      }
+    }
+  },
+]
+
+const FINANCE_TOOLS = convertTools(FINANCE_TOOLS_RAW)
+
+async function executeTool(toolName: string, args: any): Promise<any> {
+  switch (toolName) {
+    case 'get_dashboard_kpi': {
+      const month = args.month || new Date().toISOString().slice(0, 7)
+      const startDate = `${month}-01`
+      const endDate = `${month}-31`
+      const { data: bookings } = await supabaseAdmin
+        .from('bookings')
+        .select('total_price, paid_amount, status')
+        .gte('created_at', startDate)
+        .lte('created_at', endDate)
+      const totalRevenue = bookings?.reduce((sum: number, b: any) => sum + (b.paid_amount || 0), 0) || 0
+      const bookingCount = bookings?.length || 0
+      const fullyPaidCount = bookings?.filter((b: any) => b.status === 'fully_paid').length || 0
+      return { month, totalRevenue, bookingCount, fullyPaidCount }
+    }
+    case 'get_cashflow_forecast': {
+      const { data } = await supabaseAdmin
+        .from('bookings')
+        .select('total_price, paid_amount, departure_date')
+        .gte('departure_date', new Date().toISOString().slice(0, 10))
+        .order('departure_date', { ascending: true })
+        .limit(100)
+      const upcoming = data?.reduce((sum: number, b: any) => sum + ((b.total_price || 0) - (b.paid_amount || 0)), 0) || 0
+      return { upcomingReceivables: upcoming, bookingsCount: data?.length || 0 }
+    }
+    case 'list_ledger': {
+      let query = supabaseAdmin
+        .from('ledger')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(args.limit || 20)
+      if (args.date_from) query = query.gte('date', args.date_from)
+      if (args.date_to) query = query.lte('date', args.date_to)
+      if (args.category) query = query.eq('category', args.category)
+      const { data, error } = await query
+      if (error) throw error
+      return data
+    }
+    case 'get_tax_summary': {
+      const year = args.year || new Date().getFullYear()
+      const { data } = await supabaseAdmin
+        .from('settlements')
+        .select('amount, tax_amount, status, created_at')
+        .gte('created_at', `${year}-01-01`)
+        .lte('created_at', `${year}-12-31`)
+      const totalSettled = data?.reduce((sum: number, s: any) => sum + (s.amount || 0), 0) || 0
+      const totalTax = data?.reduce((sum: number, s: any) => sum + (s.tax_amount || 0), 0) || 0
+      return { year, totalSettled, totalTax, settlementCount: data?.length || 0 }
+    }
+    case 'list_settlements': {
+      let query = supabaseAdmin
+        .from('settlements')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(args.limit || 20)
+      if (args.status) query = query.eq('status', args.status)
+      if (args.target_type) query = query.eq('target_type', args.target_type)
+      if (args.date_from) query = query.gte('created_at', args.date_from)
+      if (args.date_to) query = query.lte('created_at', args.date_to)
+      const { data, error } = await query
+      if (error) throw error
+      return data
+    }
+    default:
+      throw new Error(`Unknown tool: ${toolName}`)
+  }
+}
+
+export async function runFinanceAgent(params: AgentRunParams): Promise<AgentRunResult> {
+  return runGeminiAgentLoop({
+    agentType: 'finance',
+    systemPrompt: FINANCE_PROMPT,
+    tools: FINANCE_TOOLS,
+    executeTool,
+  }, params)
+}

@@ -1,0 +1,4834 @@
+[
+  {
+    "id": "11cc9fd5-eedc-4106-9e4d-a9d6e1e6b32a",
+    "name": "랑비앙전망대",
+    "country": "나트랑/달랏",
+    "region": null,
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b8072af5-5f7b-4643-8ec2-e5e5516f9cad",
+    "name": "나트랑비치",
+    "country": "나트랑/달랏",
+    "region": null,
+    "category": "beach",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1b6bf0ea-9355-4397-9628-0626ff87644b",
+    "name": "위즐커피",
+    "country": "나트랑/달랏",
+    "region": null,
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8b4828b7-e079-447c-ad09-5d01bd42f07c",
+    "name": "도멘드마리",
+    "country": "나트랑/달랏",
+    "region": null,
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0d428f4b-6919-4f77-9f1e-65290acbdeb9",
+    "name": "하이델베르크고성",
+    "country": "독일",
+    "region": "하이델베르크",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8df040f5-8ba3-4293-b453-f6f273a40dc2",
+    "name": "하이델베르크대학가",
+    "country": "독일",
+    "region": "하이델베르크",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e3965466-9716-4351-90f6-ca9c43f2bc9b",
+    "name": "에그타르트(1인1개)",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "740b4dab-182a-4d0a-9ee8-ad07145bbac1",
+    "name": "카사리얼(마카오)",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "3db6339f-7fa7-492a-8a7a-229f85aa514d",
+    "name": "콜로안빌리지",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a46b23da-927f-4109-a088-25573b61a58a",
+    "name": "성프란체스코자비에르성당",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2bf812c4-bde0-4a4c-b39b-4649d5d95573",
+    "name": "타이파빌리지",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3b72435b-0440-41ff-b08e-d7ec0b29679d",
+    "name": "타이파주택박물관",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f2aa2d72-a56a-4db0-ab86-9b52b8391ded",
+    "name": "카르멜성모성당",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "cab2a680-8c0f-4a12-8808-236f4cae1886",
+    "name": "쿤하거리",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b2d94bae-62a9-492e-b48c-80feaaf17987",
+    "name": "베네시안호텔투어",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c8819d87-c523-40ae-8dfa-8baa9c8a5f49",
+    "name": "윈팰리스호텔분수쇼",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "cf7fbb9f-cb94-460a-868f-529fa0345220",
+    "name": "런더너마카오",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8a213ac2-db89-4fa2-9342-c593fc111171",
+    "name": "피셔맨스워프마카오",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2fb4bc6f-9397-4460-baa2-63b004b30155",
+    "name": "마카오MGM실내정원",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7c002ae3-a68e-41a8-81cf-6e11dbe20c56",
+    "name": "마카오오픈탑2층버스나이트투어",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "ee338676-9e17-47d9-9851-265b7fa743b0",
+    "name": "마카오타워360도레스토랑뷔페",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "meal",
+    "badge_type": "restaurant"
+  },
+  {
+    "id": "10a39243-7b55-4dc2-aebe-f17b0101c518",
+    "name": "크라운플라자호텔(마카오)",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "7064682b-08bb-4d5d-9e63-0d5a90ea44bf",
+    "name": "성바울성당유적",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2399188e-aa0e-441f-b246-70cf3a53a497",
+    "name": "마카오타워",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9e9f7599-fe6a-48cf-afbe-6496006bb011",
+    "name": "매캐니즈식",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "894e03ae-3272-4587-abf7-f7af9d8a3a99",
+    "name": "세나도광장",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d66f8342-76c3-4775-9995-cd0d7a726b11",
+    "name": "몬테요새",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b4189669-52e6-48ef-a166-2e7f883ea430",
+    "name": "성도미니크성당",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4fd353c8-6ce2-4169-9022-f97505a68053",
+    "name": "육포및쿠키거리",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "efcbbc75-1f87-4e59-ba6c-0d77e47b8151",
+    "name": "마카오BIG3",
+    "country": "마카오",
+    "region": "마카오",
+    "category": "entertainment",
+    "badge_type": "optional"
+  },
+  {
+    "id": "7bba33ca-e13f-4be7-bf37-2f9ed8515250",
+    "name": "어워(돌무지)",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1a8b5808-290e-4f55-b0ce-21adbc685c21",
+    "name": "마동상내부관람",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "sightseeing",
+    "badge_type": "optional"
+  },
+  {
+    "id": "b2c72f38-8c83-434b-a50b-a395e312c08c",
+    "name": "몽골전통공연",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "entertainment",
+    "badge_type": "optional"
+  },
+  {
+    "id": "7411c9c9-b657-45d1-bbf2-4ab87d4648c7",
+    "name": "몽골마사지",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "wellness",
+    "badge_type": "optional"
+  },
+  {
+    "id": "b5e14eec-bc27-4798-9c6b-3dfd94a3ef63",
+    "name": "허르헉(몽골전통요리)",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "07986705-6750-4cc4-b396-1a861c4d9feb",
+    "name": "울란바토르4성급호텔",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "bbaa44c5-fc1b-4fa9-9d6f-eb3e93583b2b",
+    "name": "징기스칸마동상",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a19f8d66-de48-4480-b5b9-4261e2496db1",
+    "name": "톨강",
+    "country": "몽골",
+    "region": "울란바토르",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e91632ae-7b8e-4526-911b-9e386e1c984a",
+    "name": "몽골별빛프로그램",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "entertainment",
+    "badge_type": "special"
+  },
+  {
+    "id": "3bd24081-c06f-4fb4-84b4-d7efa3132edc",
+    "name": "테를지승마체험",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "activity",
+    "badge_type": "optional"
+  },
+  {
+    "id": "2c0db9b2-abc0-4841-a3d0-0d8f64476e26",
+    "name": "테를지신게르(게르캠프)",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "54023b85-df5c-4da1-b5a2-f2ada8b6507b",
+    "name": "테를지별빛포차",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "entertainment",
+    "badge_type": "special"
+  },
+  {
+    "id": "d53246cc-0c9a-4fdc-82e9-8dd26561b500",
+    "name": "거북바위",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ed21862f-7410-47bc-9972-5a9ef0f83104",
+    "name": "유목민마을",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "bfa21b9e-6c59-418a-ad80-05f612792ee8",
+    "name": "몽골푸르공체험",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "028c411d-c115-4d51-846e-5ef9c4aa4560",
+    "name": "테를지올레길트레킹",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "11d447fe-6697-495e-bf90-e65cebd3c94b",
+    "name": "몽골연날리기",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "2ec7f2fc-0115-4fe8-95de-86a6973942c0",
+    "name": "테를지독수리체험",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "4382734a-8c73-4c70-bbff-19e9b4d5cec2",
+    "name": "야리야발사원",
+    "country": "몽골",
+    "region": "테를지",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "414dba94-4fc1-473a-97d1-d0a0c834dbb9",
+    "name": "새벽사원",
+    "country": "방콕/파타야",
+    "region": null,
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "52666470-38f2-41e9-b116-fcec8d4f3bfd",
+    "name": "수상가옥",
+    "country": "방콕/파타야",
+    "region": null,
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2424d28b-742b-4c46-a87e-4c74ebba1b5e",
+    "name": "쇼핑관광",
+    "country": "방콕/파타야",
+    "region": null,
+    "category": "shopping",
+    "badge_type": "shopping"
+  },
+  {
+    "id": "570346cb-edf9-4554-befd-d66394bf450d",
+    "name": "머드스파",
+    "country": "베트남",
+    "region": "나트랑",
+    "category": "sightseeing",
+    "badge_type": "special"
+  },
+  {
+    "id": "0dd7e229-dcdf-4739-ba72-f1172164de4e",
+    "name": "바오다이 별장",
+    "country": "베트남",
+    "region": "달랏",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5b7f80d2-8346-4288-8c3f-ed0555badf66",
+    "name": "리기산",
+    "country": "스위스",
+    "region": "루체른",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "58a49a6e-86ca-42aa-9302-80fe92cd2bd4",
+    "name": "리기산레스토랑식사(감자전+막걸리)",
+    "country": "스위스",
+    "region": "루체른",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "76c94b48-6d53-46a3-b9e4-65f3d9b828c1",
+    "name": "카펠교(루체른)",
+    "country": "스위스",
+    "region": "루체른",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8924cad1-cffa-4d50-aeb3-742b9482e1b6",
+    "name": "빈사의사자상",
+    "country": "스위스",
+    "region": "루체른",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0cd15952-12af-4d68-aa93-3d0cffcec877",
+    "name": "루체른유람선",
+    "country": "스위스",
+    "region": "루체른",
+    "category": "nature",
+    "badge_type": "optional"
+  },
+  {
+    "id": "4e0af497-6a0b-40c3-8b02-175efa1444e6",
+    "name": "몽트뢰",
+    "country": "스위스",
+    "region": "몽트뢰",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "32d2a93e-2e3e-4e88-b5ff-9c6210f5c725",
+    "name": "시옹성",
+    "country": "스위스",
+    "region": "몽트뢰",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1b9dce93-c163-4911-a21d-593740e0e515",
+    "name": "겜미패스",
+    "country": "스위스",
+    "region": "발레",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f7ceac89-d1ef-4cf2-bb93-d0f838b74e20",
+    "name": "로이커바트온천",
+    "country": "스위스",
+    "region": "발레",
+    "category": "nature",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "85dac830-2c73-49f8-baf4-9bc5c51c2424",
+    "name": "겜미패스레스토랑(뢰스티3코스)",
+    "country": "스위스",
+    "region": "발레",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "dd593c1e-cbad-4fe2-a553-a50060460a96",
+    "name": "곰공원",
+    "country": "스위스",
+    "region": "베른",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "794eec82-e116-4329-9490-39052fe8e8d7",
+    "name": "베른시계탑",
+    "country": "스위스",
+    "region": "베른",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1f5d14b8-7bee-4531-8300-5b6918d31b4c",
+    "name": "라인폭포",
+    "country": "스위스",
+    "region": "샤프하우젠",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9fd0d5ff-2249-479c-8f30-e580762cfa93",
+    "name": "브라트부르스트&뢰스티",
+    "country": "스위스",
+    "region": "스위스",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "b94554a4-4ee8-49b6-bb08-67a3b3b8e818",
+    "name": "치즈퐁듀",
+    "country": "스위스",
+    "region": "스위스",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "eacf3b33-cd01-4da8-a730-5a2275750e49",
+    "name": "아이거익스프레스",
+    "country": "스위스",
+    "region": "인터라켄",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b0efef85-114c-4979-a97c-b175372282ce",
+    "name": "융프라우요흐",
+    "country": "스위스",
+    "region": "인터라켄",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8a192e71-dac8-4d1a-89cb-d8a8f0d6a4f6",
+    "name": "마테호른",
+    "country": "스위스",
+    "region": "체르마트",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "81408b33-af15-4787-b104-ea648efc6ca3",
+    "name": "체르마트시내",
+    "country": "스위스",
+    "region": "체르마트",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e8718058-6ea8-48a9-b161-63d772e1b2ae",
+    "name": "린트초콜렛박물관",
+    "country": "스위스",
+    "region": "취리히",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f2c5634e-b106-4054-a8c2-5a5483992a29",
+    "name": "린덴호프공원",
+    "country": "스위스",
+    "region": "취리히",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2765f760-0747-429b-8263-74a41aac68a9",
+    "name": "그로스뮌스터",
+    "country": "스위스",
+    "region": "취리히",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b5f5fe1e-3a15-4f04-8da6-6242d4c821c0",
+    "name": "세개의다리/프레셰렌광장(류블랴나)",
+    "country": "슬로베니아",
+    "region": "류블랴나",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1ebd5f86-e0ef-427f-bcd0-b023b0fec511",
+    "name": "류블랴나대성당",
+    "country": "슬로베니아",
+    "region": "류블랴나",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5f719168-849e-4e35-b2a4-7cc255b900d1",
+    "name": "사랑의다리(류블랜야)",
+    "country": "슬로베니아",
+    "region": "류블랴나",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "08e3eeb6-dfdc-47dd-bfe2-3628d6de6612",
+    "name": "블레드성",
+    "country": "슬로베니아",
+    "region": "블레드",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "54b104bb-374d-45cb-84be-4fc716db1d19",
+    "name": "블레드섬",
+    "country": "슬로베니아",
+    "region": "블레드",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b00d6b91-0a31-4072-9ab4-42a1a8cbaa57",
+    "name": "슈니첼",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "9cd42202-5f87-48bc-b8cd-c1d488b79fe0",
+    "name": "호이리게",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "b891dc7e-8f1d-48d7-b765-e4da69119823",
+    "name": "게른트너거리",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "78636f3a-588f-4241-ba14-b6c610ef9d2d",
+    "name": "슈테판성당",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "55932ae8-b72c-461e-8c37-826d1fb587b7",
+    "name": "비엔나시청사/국회의사당",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c432b273-5d36-4a20-97c3-4a2d9a916e9b",
+    "name": "국립오페라극장",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a2646e0f-b0e5-4f94-8238-ec0ed45e161c",
+    "name": "쉔부른궁전",
+    "country": "오스트리아",
+    "region": "비엔나",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e044fa01-77fd-4df5-ae27-a6724509081a",
+    "name": "크리스탈월드3코스(다니엘스레스토랑)",
+    "country": "오스트리아",
+    "region": "인스부르크",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "169e3f93-a13a-494a-9d4c-36d3d7f80b04",
+    "name": "스와로브스키크리스탈월드",
+    "country": "오스트리아",
+    "region": "인스부르크",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e8cc541f-3e9c-4d7f-8114-d126d858bca2",
+    "name": "황금지붕(인스부르크)",
+    "country": "오스트리아",
+    "region": "인스부르크",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "33b02dfb-86ba-4571-a1eb-5001ef6c8891",
+    "name": "마리아테레지아거리",
+    "country": "오스트리아",
+    "region": "인스부르크",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "25b6e0f2-065b-421e-ad5c-e180c49fd0bf",
+    "name": "성야콥대성당",
+    "country": "오스트리아",
+    "region": "인스부르크",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b73ca0af-cbdc-4367-8ba4-74f505fae9b3",
+    "name": "호프부르크궁전(인스부르크)",
+    "country": "오스트리아",
+    "region": "인스부르크",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "992938e7-321c-4319-a578-3776a3246c56",
+    "name": "미라벨정원",
+    "country": "오스트리아",
+    "region": "잘츠부르크",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "711f3921-5d2b-47b0-98de-78fc5b6ad5cc",
+    "name": "모차르트생가",
+    "country": "오스트리아",
+    "region": "잘츠부르크",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "709bc279-3db5-4c13-a35e-b8315c0a976e",
+    "name": "잘츠부르크대성당",
+    "country": "오스트리아",
+    "region": "잘츠부르크",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "191fa267-bf56-4dcf-991c-b867b0394c09",
+    "name": "호엔잘츠부르크성",
+    "country": "오스트리아",
+    "region": "잘츠부르크",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9f5737c6-4df2-4e99-83ac-60f4482a400f",
+    "name": "게트라이데거리",
+    "country": "오스트리아",
+    "region": "잘츠부르크",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8cdc76ae-3cfc-470f-8c4f-ca16501682d3",
+    "name": "할슈타트",
+    "country": "오스트리아",
+    "region": "잘츠카머구트",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0f43c53d-4488-4b4f-b295-d26210425e7d",
+    "name": "잘츠카머구트호수",
+    "country": "오스트리아",
+    "region": "잘츠카머구트",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a17ca486-09e8-4723-9837-cdac2a78cc68",
+    "name": "잘츠카머구트유람선",
+    "country": "오스트리아",
+    "region": "잘츠카머구트",
+    "category": "nature",
+    "badge_type": "special"
+  },
+  {
+    "id": "9d2afc58-3276-4dde-ad98-8c4ac1ba1b29",
+    "name": "시르미오네",
+    "country": "이탈리아",
+    "region": "가르다호수",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "18dff585-72c6-4808-bd29-6d31543abf64",
+    "name": "소렌토",
+    "country": "이탈리아",
+    "region": "나폴리",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5a206011-88d6-4ca5-9778-8b585cbd5559",
+    "name": "폼페이",
+    "country": "이탈리아",
+    "region": "나폴리",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "31d64466-4e6e-45b4-8e1d-b6602ac3c9d8",
+    "name": "해물튀김(폼페이)",
+    "country": "이탈리아",
+    "region": "나폴리",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "ebe0c60c-9008-42d9-a3ba-8e6b65dba5fd",
+    "name": "로마벤츠투어",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "sightseeing",
+    "badge_type": "optional"
+  },
+  {
+    "id": "99e29264-1188-41c7-a7fd-e7b6091194b3",
+    "name": "바티칸박물관",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5af0426b-53e4-4710-84bf-febab79c8388",
+    "name": "시스티나예배당",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e2d93fcc-3c7e-4e09-87bb-5ec19b1b5408",
+    "name": "성베드로대성당",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "82fca7f8-04e7-427c-af78-31a40ed0315e",
+    "name": "성베드로광장",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3828f8b4-49e5-4881-af52-ffe4b10b236e",
+    "name": "콜로세움",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "81708d97-8c86-4f13-8622-84c847b3152b",
+    "name": "포로로마노",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0031ec32-d0a1-4267-8e10-739386675a1e",
+    "name": "트레비분수",
+    "country": "이탈리아",
+    "region": "로마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1c0d0c63-19da-4ba8-8030-a42ebda19b94",
+    "name": "산마르코광장",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "523e769a-7f56-443b-8453-830983618d34",
+    "name": "산마르코성당",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "60acda6e-3167-4c8c-8657-6958c83148f6",
+    "name": "탄식의다리",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5878740c-ad99-45b3-ad7c-eb192e624a98",
+    "name": "두칼레궁전",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4d85f737-5e5f-4861-b272-fd28a6a04ca1",
+    "name": "베니스곤돌라",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "cultural",
+    "badge_type": "optional"
+  },
+  {
+    "id": "809fd702-a1d0-4851-bd5c-89a5f1ae89dd",
+    "name": "베니스수상택시",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "cultural",
+    "badge_type": "optional"
+  },
+  {
+    "id": "26094add-55ce-4b72-82af-20681c0cd371",
+    "name": "노벤타아울렛",
+    "country": "이탈리아",
+    "region": "베네치아",
+    "category": "shopping",
+    "badge_type": "shopping"
+  },
+  {
+    "id": "2908c564-38a4-4e6e-b6b9-9c537f2804c8",
+    "name": "줄리엣생가",
+    "country": "이탈리아",
+    "region": "베로나",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fe411ac1-a8b0-4ab0-9818-6762d791e980",
+    "name": "아레나원형경기장(베로나)",
+    "country": "이탈리아",
+    "region": "베로나",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a9539ef8-ca25-477a-9fc9-6e61f230e645",
+    "name": "아말피해안도로",
+    "country": "이탈리아",
+    "region": "아말피",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d863900d-70c1-44e2-a920-c8c460190b1d",
+    "name": "포지타노",
+    "country": "이탈리아",
+    "region": "아말피",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4822eb27-2910-4c75-9310-94039858f4a3",
+    "name": "오르비에또골목",
+    "country": "이탈리아",
+    "region": "움브리아",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "86f52d9b-d99c-4eaf-8b9c-32e1248d7bf3",
+    "name": "아씨시",
+    "country": "이탈리아",
+    "region": "움브리아",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d484c7b9-642a-42ca-8d94-6a9ed4ab1430",
+    "name": "두오모(오르비에또)",
+    "country": "이탈리아",
+    "region": "움브리아",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5b54e2aa-15d8-458b-9884-997a75642e8e",
+    "name": "산지미냐노",
+    "country": "이탈리아",
+    "region": "토스카나",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "278bf0c9-109a-45ac-9e6f-e16b3977b2df",
+    "name": "두오모성당(피렌체)",
+    "country": "이탈리아",
+    "region": "피렌체",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d21454b4-891e-45b0-a6c4-b02a9fce54dd",
+    "name": "베키오다리",
+    "country": "이탈리아",
+    "region": "피렌체",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "910599da-fee5-40a5-8d5a-ab655f684649",
+    "name": "피오렌티나스테이크",
+    "country": "이탈리아",
+    "region": "피렌체",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "a889776b-9267-47ca-98b2-d512c27444d9",
+    "name": "시뇨리아광장",
+    "country": "이탈리아",
+    "region": "피렌체",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f7e7b540-c22c-4c2b-88e0-d2c846033e37",
+    "name": "단테생가",
+    "country": "이탈리아",
+    "region": "피렌체",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b32f74da-c36f-4c79-8a02-10371a1ea5d4",
+    "name": "산조반니세례당",
+    "country": "이탈리아",
+    "region": "피렌체",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8e67b0fc-2426-4f85-bf71-2ba3d04af8be",
+    "name": "킨료노사토(사케자료관)",
+    "country": "일본",
+    "region": "가가와",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6a952a1f-2fdd-40d6-8f54-3b13389a1a9e",
+    "name": "엔젤로드",
+    "country": "일본",
+    "region": "가가와",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fb1c2c82-a76a-425d-a544-64760af598a5",
+    "name": "간카케이(로프웨이)",
+    "country": "일본",
+    "region": "가가와",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2a9b684a-3c37-4ca3-bd00-93f4b1261ec4",
+    "name": "마루킨간장기념관",
+    "country": "일본",
+    "region": "가가와",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "42e530b1-1862-4600-bd84-dba257358527",
+    "name": "올리브공원",
+    "country": "일본",
+    "region": "가가와",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a016182c-9b1b-4da7-9ee8-800725b29562",
+    "name": "세토대교",
+    "country": "일본",
+    "region": "가가와",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7aa130ce-79c6-4119-891b-7b15782a16db",
+    "name": "세토대교기념공원",
+    "country": "일본",
+    "region": "가가와",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2c900f91-b247-41af-bfa6-5df7c9685d36",
+    "name": "나오시마",
+    "country": "일본",
+    "region": "가가와",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f5a9c226-f49e-4284-b635-5b5d67863760",
+    "name": "쿠사마야요이호박",
+    "country": "일본",
+    "region": "가가와",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "684b041e-507b-4855-8495-c3c6857b0ede",
+    "name": "베넷세하우스뮤지엄",
+    "country": "일본",
+    "region": "가가와",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "aba83ae2-7ae4-455d-95ca-d50d21a52990",
+    "name": "몬젠마치",
+    "country": "일본",
+    "region": "가가와",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "eb7d0718-8319-48f4-9137-21375c20af67",
+    "name": "지중미술관",
+    "country": "일본",
+    "region": "가가와",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "eda32e79-c933-4899-a37d-3b7c5728e7f7",
+    "name": "쇼도시마",
+    "country": "일본",
+    "region": "가가와",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8e0489ff-e65f-4dfe-ae08-79192e28f33f",
+    "name": "사누키우동정식",
+    "country": "일본",
+    "region": "가가와",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "a8ea5104-2547-40d7-966f-52ed33791b74",
+    "name": "쇼도시마페리",
+    "country": "일본",
+    "region": "가가와",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "c1fd4b75-7988-414c-9527-f6e8ed7723c3",
+    "name": "간장소프트아이스크림",
+    "country": "일본",
+    "region": "가가와",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "fd8eadfe-f5f1-4539-89c9-14e000546888",
+    "name": "호텔레오마노모리",
+    "country": "일본",
+    "region": "가가와",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "5a06450e-6514-47d1-b7ec-dff201449aba",
+    "name": "간카케이로프웨이",
+    "country": "일본",
+    "region": "가가와",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "3617c664-a4ba-4372-9e08-d6d85bb2e2da",
+    "name": "아이러브유온천",
+    "country": "일본",
+    "region": "가가와",
+    "category": "onsen",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c0571cd3-8125-4401-af97-5d31c31a36dc",
+    "name": "아트하우스프로젝트",
+    "country": "일본",
+    "region": "가가와",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3a31161d-4ab3-44bc-8dfd-0dacc6518d97",
+    "name": "이우환미술관",
+    "country": "일본",
+    "region": "가가와",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c2f3f4c6-7827-4272-adf7-ef89f8651dbf",
+    "name": "리츠린정원",
+    "country": "일본",
+    "region": "가가와",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "40663a77-b719-4ce9-97ec-88c11d2d8d00",
+    "name": "고토히라신사",
+    "country": "일본",
+    "region": "가가와",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "65fac875-ea41-4332-9e94-b36ce4a0c14f",
+    "name": "스키야키정식",
+    "country": "일본",
+    "region": "간사이",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "927e5896-3253-4e1d-8b2f-d0b47febd82a",
+    "name": "고베명물스테이크",
+    "country": "일본",
+    "region": "고베",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "da4dfea8-5279-48d6-b4e9-04e950c2e822",
+    "name": "하버랜드-모자이크",
+    "country": "일본",
+    "region": "고베",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3737de1b-ed02-4a93-ad1f-d62af17677c6",
+    "name": "롯코산",
+    "country": "일본",
+    "region": "고베",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "013ea333-7fbb-479f-b025-1605203952ac",
+    "name": "유두부정식",
+    "country": "일본",
+    "region": "교토",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "7a6ee72f-ac56-4bda-8552-451ed41ecafa",
+    "name": "니넨자카",
+    "country": "일본",
+    "region": "교토",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b5a7607b-0e62-453e-a4a2-62459ec4c51e",
+    "name": "더블트리바이힐튼교토",
+    "country": "일본",
+    "region": "교토",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "2cbeec25-9421-4b08-9483-2503b1256c8b",
+    "name": "노노미야신사",
+    "country": "일본",
+    "region": "교토",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "db84351d-fde7-4c46-b6b3-116858924178",
+    "name": "아라시야마/토게쯔교/치쿠린대숲",
+    "country": "일본",
+    "region": "교토",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "dd42fa9f-0b4f-4163-a446-c2917af667f2",
+    "name": "산넨자카",
+    "country": "일본",
+    "region": "교토",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f434697e-e0de-4936-81e1-666d8d1d083b",
+    "name": "청수사",
+    "country": "일본",
+    "region": "교토",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "472c480b-13bd-45c8-bc5d-5e45b86fcec1",
+    "name": "후시미이나리타이샤(야경)",
+    "country": "일본",
+    "region": "교토",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "da17b07b-8a4f-4d30-b87a-0997ca338cc6",
+    "name": "폰토쵸",
+    "country": "일본",
+    "region": "교토",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ef0aafa7-5fa6-443e-97f5-07668cbedaa2",
+    "name": "사쿠라노바바(조사이엔)",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9cacf6d4-77de-4d3a-a748-c1d62bf7c4d3",
+    "name": "쿠로가와온천거리",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "372b227a-3f82-466c-b065-7447979fac93",
+    "name": "쿠사센리",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b6ff0273-712a-45cd-b450-05be89ab8288",
+    "name": "아소대관봉",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5ce588f6-c607-408e-a807-d56275e91390",
+    "name": "스이젠지코엔",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4f3fe828-84b1-45d3-bbce-b5bc702c82d6",
+    "name": "호텔세키아리조트&스파",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "66021047-c59e-4d1e-8af6-b3665b6fe6ae",
+    "name": "츠에타테온센히젠야",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "27c63ffd-ccb3-4b7c-8ae2-e16ecc4c0ac5",
+    "name": "구마모토성",
+    "country": "일본",
+    "region": "구마모토",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "72c05637-e13d-43a2-bdf7-162cb5b716d1",
+    "name": "오오에도모노가타리에나쿄",
+    "country": "일본",
+    "region": "기후",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "897d7ceb-1fe7-47bb-b53a-75f6f7f82381",
+    "name": "마고메쥬쿠",
+    "country": "일본",
+    "region": "나가노",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f1b40ebe-a596-4ce7-b6df-13424f75a4d9",
+    "name": "가미코지",
+    "country": "일본",
+    "region": "나가노",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "91e88eef-7099-486a-847a-adc3ee4c8957",
+    "name": "오란다자카",
+    "country": "일본",
+    "region": "나가사키",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "15fc7456-f2e2-41dc-a6d1-ec9bcdc2a1c0",
+    "name": "나가사키원폭자료관",
+    "country": "일본",
+    "region": "나가사키",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1c43dba6-3829-46c2-8e94-7f1ff0a3482b",
+    "name": "하나노마치아케이드",
+    "country": "일본",
+    "region": "나가사키",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "397b737a-7666-400d-a831-6bae6edd0f8f",
+    "name": "구라바엔",
+    "country": "일본",
+    "region": "나가사키",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "bc258cfd-8632-41ef-876f-25efdaf8409f",
+    "name": "메가네바시",
+    "country": "일본",
+    "region": "나가사키",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "72ec7bdd-d67e-4d23-8dd5-340da859eace",
+    "name": "나가사키일승관호텔",
+    "country": "일본",
+    "region": "나가사키",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "4a13d928-01c2-46e6-b315-4da5b51cb822",
+    "name": "나고야성",
+    "country": "일본",
+    "region": "나고야",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e4bc7906-84f9-4470-b637-ad042d6b98d5",
+    "name": "사토노유온천",
+    "country": "일본",
+    "region": "나고야",
+    "category": "onsen",
+    "badge_type": "tour"
+  },
+  {
+    "id": "79b1f72a-ca51-4d08-9828-c8cbc23ce68a",
+    "name": "가마메시솥밥",
+    "country": "일본",
+    "region": "나고야",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "87732e2a-6d09-454e-a414-449ce3f1fa52",
+    "name": "록카엔",
+    "country": "일본",
+    "region": "나고야",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f1f017ce-6de0-42d5-acdf-a977cc6419d2",
+    "name": "와규미소야키",
+    "country": "일본",
+    "region": "나고야",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "0ce575b7-b10b-4ec5-90ce-d8cdc303a75f",
+    "name": "나고야힐튼",
+    "country": "일본",
+    "region": "나고야",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "4ce4c285-f5c3-4484-8fc7-4083bc990a7a",
+    "name": "도코나메도자기마을",
+    "country": "일본",
+    "region": "나고야",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6baee5d7-9ecd-4a6c-987c-fbfe4f83af99",
+    "name": "사카에거리",
+    "country": "일본",
+    "region": "나고야",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e6787169-5a35-4af6-b2c4-ede6ef8b621c",
+    "name": "요시키엔정원",
+    "country": "일본",
+    "region": "나라",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ae6a729a-8e4c-476c-8c5c-af19ed34428c",
+    "name": "와카쿠사야마전망대",
+    "country": "일본",
+    "region": "나라",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "389226d0-4193-4a59-a946-692ae71fb28c",
+    "name": "노보텔나라",
+    "country": "일본",
+    "region": "나라",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "89676fdd-b6aa-4897-a246-d8886dcc3852",
+    "name": "동대사(도다이지)",
+    "country": "일본",
+    "region": "나라",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "de364bb9-4261-4b10-91f0-8b07949565cd",
+    "name": "나라코엔",
+    "country": "일본",
+    "region": "나라",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "09a81615-ac5f-4b90-aedc-4369fb5cc361",
+    "name": "가스가타이샤",
+    "country": "일본",
+    "region": "나라",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2910f477-45db-41ec-906f-52ef64dbf70a",
+    "name": "고카야마역사마을",
+    "country": "일본",
+    "region": "도야마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "24dd16fb-111d-44ef-be2f-17c0c46b73be",
+    "name": "무로도(설벽체험)",
+    "country": "일본",
+    "region": "도야마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "53869adb-844e-48b2-adb0-8300b2aafdec",
+    "name": "구로베다이라",
+    "country": "일본",
+    "region": "도야마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3b9bc4eb-c4f3-487f-ad9f-fd67e51d5e56",
+    "name": "알펜루트횡단",
+    "country": "일본",
+    "region": "도야마",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "7a48223e-e2bf-4faf-91b8-9206b416d2bc",
+    "name": "설벽체험",
+    "country": "일본",
+    "region": "도야마",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "5efef7f1-e514-4fb6-a715-290466cb58f7",
+    "name": "머큐어도야마토나미",
+    "country": "일본",
+    "region": "도야마",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "cbf11f4f-956f-4664-bd5b-2aaaeacca1f0",
+    "name": "다이칸보",
+    "country": "일본",
+    "region": "도야마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5c030a9a-30ab-4f4a-b736-f9e52e284caf",
+    "name": "구로베댐",
+    "country": "일본",
+    "region": "도야마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "08b0aacb-5072-4303-ba7f-9e5fa38b2d6f",
+    "name": "유카리노모리호텔",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "52ff94a0-5351-49c3-9203-ecea27251bd9",
+    "name": "스카이트리",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "645740ce-c669-4798-af1d-955364f8a67b",
+    "name": "다이바시티프라자",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "49d202e5-aace-4d35-ba93-4fd7dce199cf",
+    "name": "아사쿠사관음사",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "dc8c3972-4668-4054-870d-7d6153f572a7",
+    "name": "도쿄근교온천호텔",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "onsen",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "8e70fe60-4300-4bf0-bc52-b08fb43b08dd",
+    "name": "덴푸라+우동정식",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "7f93942d-4d77-4dd4-98a6-b96efd6d62bc",
+    "name": "샤브샤브무제한",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "d3526425-5135-4a9d-8bcb-960a5d8d97ab",
+    "name": "오다이바해변공원",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "756ebe0b-8faf-43d0-bbb9-8270242774c1",
+    "name": "신주쿠가부키초",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "35fb0f94-1ae9-44d9-a1ca-9c64c6b72b73",
+    "name": "나카미세거리",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9ddc41bc-64ff-49f1-a8b6-0747e9d511a9",
+    "name": "빌라폰테뉴그랜드하네다",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "8a055388-e25a-40fa-b382-64b63b6b95d4",
+    "name": "호텔뷔페식",
+    "country": "일본",
+    "region": "도쿄",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "450ab334-09da-4141-a39c-14e7dcebf938",
+    "name": "이라부대교",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "faa7f438-4867-45eb-8c50-a3639927e28f",
+    "name": "17엔드",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "90dfc27b-23cf-4e46-a056-8296f3e03408",
+    "name": "토오리이케",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "aaeeb57a-e8ad-4b04-8e72-53c9cb8e7ecc",
+    "name": "히가시헨나곶",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1d91be74-772d-457c-9ea3-57c20cbf618f",
+    "name": "조개박물관(해보관)",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "775b42d2-41f2-4203-a7a3-8c40bb8f2c03",
+    "name": "유키시오뮤지엄",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "496e8aef-f225-405b-b385-13f154eee45b",
+    "name": "미야코지마해중공원",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0e7990be-e448-44d4-9e8e-290b58a53477",
+    "name": "마이파리열대과수원",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "15a279d3-d5d0-4b59-8cfa-0db2ec41189f",
+    "name": "이케마대교&이케마섬",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "20ba7478-3163-482d-8bbe-a3f24c0c0574",
+    "name": "시기라오공온센(황금온천)",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "onsen",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "8dbf60f6-302e-460f-b32e-0884d8310a28",
+    "name": "호텔브리즈베이마리나",
+    "country": "일본",
+    "region": "미야코지마",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "e0774441-019a-4ef4-b394-31373c22c4bd",
+    "name": "나바나노사토",
+    "country": "일본",
+    "region": "미에",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "465b6745-fa2f-46d7-9ef4-f3bb4f55f8cc",
+    "name": "가마도지옥족욕체험",
+    "country": "일본",
+    "region": "벳부",
+    "category": "onsen",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "50a30aa9-467f-4f69-b961-bc04808f1e7f",
+    "name": "그랜드머큐어벳부베이",
+    "country": "일본",
+    "region": "벳부",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "4b0c2013-e903-4f1a-bc42-95f8b5a3cb5e",
+    "name": "가마도지옥",
+    "country": "일본",
+    "region": "벳부",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8d97b92d-74c3-4537-b0c4-41a91a797b5f",
+    "name": "유노하나재배지",
+    "country": "일본",
+    "region": "벳부",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "cc86f176-a3e7-47c8-ac05-a7ea6c7dc9eb",
+    "name": "벳부만 전망대",
+    "country": "일본",
+    "region": "벳부",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "23f18c5f-75d2-4f84-8c93-79e9a0edccd3",
+    "name": "큐다이숲",
+    "country": "일본",
+    "region": "사사구리",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "729b436e-bc5d-4ba0-8d18-dbc186741455",
+    "name": "가와고에전통가옥거리",
+    "country": "일본",
+    "region": "사이타마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a57047cc-97a7-441a-bc8d-34e6be220447",
+    "name": "카시야요코초",
+    "country": "일본",
+    "region": "사이타마",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "dea98dbf-e581-4d6b-82a7-db01cef8d4ee",
+    "name": "토키노카네",
+    "country": "일본",
+    "region": "사이타마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "69e32724-12be-474c-9309-418d6b7586ca",
+    "name": "다이쇼낭만거리",
+    "country": "일본",
+    "region": "사이타마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5d8c5024-e207-4ea5-bc80-5abafe7e00be",
+    "name": "라코리나",
+    "country": "일본",
+    "region": "시가",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c0a36420-2db6-4e34-8929-e235a87bf45a",
+    "name": "시라카와고 합장촌",
+    "country": "일본",
+    "region": "시라카와",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "09c498c3-ddbb-4c94-84b9-efb855e386f4",
+    "name": "미우다해수욕장",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "97c25952-601b-4641-84fa-3e9da5d673a5",
+    "name": "한국전망대",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "95e5e27f-2337-47ef-a5cc-e71014f075b1",
+    "name": "만제키바시(만관교)",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "cbf325aa-1af6-4aaa-8db6-942b045f2fae",
+    "name": "슈시삼나무길",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "713245e3-5070-4651-9558-5849eb85ae7a",
+    "name": "바베큐특식",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "1e7b5243-d13b-442a-8057-b51cebd8d03a",
+    "name": "소아루리조트",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "142b0138-334f-4cf9-8ff7-2bc78c21f410",
+    "name": "토요코인호텔이즈하라",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "ec9e31ae-3615-4928-8bdb-78f6c9de5cf1",
+    "name": "유타리랜드온천",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "onsen",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "79f4b345-7df0-446e-a965-b818e90d5f52",
+    "name": "방화벽",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "375b8930-c218-4e5c-a295-45debfb7fe10",
+    "name": "조선통신사비",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "be495a7e-0d27-450a-a22c-4ed635f7d353",
+    "name": "팔번궁(하치만구)",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "af653f9f-796a-4026-abea-0d0fedd553d6",
+    "name": "나가라이토스이기념관",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a52e477e-eac0-47ea-b286-1df0d5af3508",
+    "name": "덕혜옹주결혼봉축기념비",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ea69d655-2939-4339-8978-a5497e6f2d7e",
+    "name": "금석성",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "03c1f8d4-948c-48fd-8e54-b858efe788be",
+    "name": "와타즈미신사",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "bb87e73a-4ebc-4584-8cc8-e87e670f844e",
+    "name": "에보시다케전망대",
+    "country": "일본",
+    "region": "쓰시마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d3865de3-9b88-4f8e-9bf3-c89b6b5138b4",
+    "name": "대관봉전망대",
+    "country": "일본",
+    "region": "아소",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c1517a87-020d-4d0f-b652-7fdb0e21eccb",
+    "name": "기타구치혼구후지센겐신사",
+    "country": "일본",
+    "region": "야마나시",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2a69fbf6-53ed-43a1-bb5b-a4d9cf6761b7",
+    "name": "오이시공원",
+    "country": "일본",
+    "region": "야마나시",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "717aea0c-3d2f-4d5e-babf-4736a2c42056",
+    "name": "하카타소금공장",
+    "country": "일본",
+    "region": "에히메",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "86c8df16-1055-4a91-b30a-ab3613bdc7ad",
+    "name": "마츠야마성",
+    "country": "일본",
+    "region": "에히메",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d243b22b-0dd8-4606-8b35-b156a0c2fc8d",
+    "name": "도고온천",
+    "country": "일본",
+    "region": "에히메",
+    "category": "onsen",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e97cb78d-28e1-4590-9c7c-e0359304e7f7",
+    "name": "도고온천아스카노유별관",
+    "country": "일본",
+    "region": "에히메",
+    "category": "onsen",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c43c35f4-7432-4189-b74f-dde6163e2773",
+    "name": "봇짱카라쿠리시계탑&아시유",
+    "country": "일본",
+    "region": "에히메",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f711f442-ed79-4f1c-9c19-fe2ac9e853ca",
+    "name": "봇짱열차",
+    "country": "일본",
+    "region": "에히메",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9ec2970c-864c-4040-b5ee-07998dd3b785",
+    "name": "이마바리타올미술관",
+    "country": "일본",
+    "region": "에히메",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "377bb203-d5f2-4dbd-bc46-822bbddb2705",
+    "name": "이시테지",
+    "country": "일본",
+    "region": "에히메",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fcca0913-edec-40dc-b2ba-b823801d5378",
+    "name": "오카이도상점가",
+    "country": "일본",
+    "region": "에히메",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7d512fba-20b2-43d4-b7ae-5252fb9c5b06",
+    "name": "쿠루시마해협전망대",
+    "country": "일본",
+    "region": "에히메",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "111e2193-81bd-473a-bb42-2a63825d7b07",
+    "name": "기로산전망대",
+    "country": "일본",
+    "region": "에히메",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8405e3ac-dfac-462c-bffd-799b9d61ed2a",
+    "name": "시마나미쿠루시마해협유람선",
+    "country": "일본",
+    "region": "에히메",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a7ccd1e1-b54e-41f4-9319-816458c4adfe",
+    "name": "도베야키전통산업회관",
+    "country": "일본",
+    "region": "에히메",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4c720474-c0db-4ee4-a661-44b9c9a338ba",
+    "name": "가미하가저택",
+    "country": "일본",
+    "region": "에히메",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5cefb09f-28e2-4a82-977d-0b19a79d34a8",
+    "name": "혼하가저택",
+    "country": "일본",
+    "region": "에히메",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3743218c-ae40-405e-86d6-bde161a3e308",
+    "name": "오무라가전통가옥",
+    "country": "일본",
+    "region": "에히메",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "66dce8d7-c264-4de2-a532-a3abb18b99fa",
+    "name": "우치코상업과생활박물관",
+    "country": "일본",
+    "region": "에히메",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1703f19b-04ec-45a1-b287-1b899437d28f",
+    "name": "우치코옛거리",
+    "country": "일본",
+    "region": "에히메",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b94604f5-8a80-4dda-acaf-4d87d6b065f5",
+    "name": "쿠루시마해협유람선",
+    "country": "일본",
+    "region": "에히메",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "406819f6-5e8c-4bc5-8c21-15856e283232",
+    "name": "타이메시(도미솥밥)정식",
+    "country": "일본",
+    "region": "에히메",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "b61611ee-7822-41c9-b631-e0db4aaeddd5",
+    "name": "오쿠도고이치유노모리온천호텔",
+    "country": "일본",
+    "region": "에히메",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "a73652ad-9bd2-486a-832c-0c86a4dca6bf",
+    "name": "아주르시오노마루호텔",
+    "country": "일본",
+    "region": "에히메",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "ef3760ce-4706-490e-8385-43933f197c22",
+    "name": "뇨린지",
+    "country": "일본",
+    "region": "오고리",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1cade85c-0299-4e6d-9b8d-44dfcd5f62d4",
+    "name": "신사이바시-도톤보리",
+    "country": "일본",
+    "region": "오사카",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3b3857ba-8e16-417b-a70f-325d0dcaa323",
+    "name": "오사카성",
+    "country": "일본",
+    "region": "오사카",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e67011b3-b823-4f02-854f-df721e5ce773",
+    "name": "유니버셜 스튜디오",
+    "country": "일본",
+    "region": "오사카",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "aed69fcd-1f54-40ea-9949-4de4c63b6c50",
+    "name": "스시우동정식",
+    "country": "일본",
+    "region": "오사카",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "939e7f2e-1fe5-46c4-ae0e-0db3406b2c96",
+    "name": "오카야마성",
+    "country": "일본",
+    "region": "오카야마",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "944b3728-7076-4833-bb93-4a53d46f742a",
+    "name": "고라쿠엔",
+    "country": "일본",
+    "region": "오카야마",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3c4d5c1a-438b-4814-b2a6-88e74d8ccda3",
+    "name": "쿠라시키미관지구",
+    "country": "일본",
+    "region": "오카야마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "011c0910-9a4e-424d-bfae-62ca7e2840f7",
+    "name": "아메리칸빌리지",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7d302388-ff20-457e-b43a-daf05721292b",
+    "name": "철판스테이크",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "54581b84-0071-4cf2-af58-1ae567524bf9",
+    "name": "더블트리바이힐튼슈리캐슬",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "4adf894a-2420-4eb8-93a1-e6d831038f5f",
+    "name": "무제한샤브샤브",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "d2f6e8f8-b89a-431f-abad-5f6da2bed755",
+    "name": "아구샤브샤브",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "cb2e6d93-9f3c-4c47-ad9f-90b83243d229",
+    "name": "아시비나아울렛",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "shopping",
+    "badge_type": "shopping"
+  },
+  {
+    "id": "ec233f83-de38-45d6-a3e2-0fe802ea3a1e",
+    "name": "글라스보트탑승",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "d8796fbc-b11b-4ae6-be22-5cb74c2f2f07",
+    "name": "라구나가든호텔",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "ebecf0fa-ac72-408e-b13b-2a99ecae3318",
+    "name": "만좌모",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "381c2314-ce65-4ecd-94b7-b409b6674215",
+    "name": "츄라유온천",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "onsen",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "f170ea33-52f0-4559-b2d5-97ff0ea707b6",
+    "name": "더비치타워오키나와",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "93a1290f-a66e-4063-87eb-ddf383bb0ec2",
+    "name": "류큐오리온호텔국제거리",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "a89597dd-fc8d-4bf5-8c0a-730cf6981cef",
+    "name": "국제거리",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "afaf8fe2-7f2b-4a55-8e9f-f88c08bd7e02",
+    "name": "슈리성",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ccfaaf6c-8efa-4cb8-bd38-e5335e74b3b9",
+    "name": "츄라우미수족관",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "bdb8b202-ccc3-4be1-8504-5762e7844751",
+    "name": "돌고래쇼",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "eb5ac017-8898-4267-912c-20799576e0a5",
+    "name": "코우리대교",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5c703dd4-c834-4364-8377-b13206f5e170",
+    "name": "우미카지테라스",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e3a15fc6-45d7-4a3a-a027-a125893726c9",
+    "name": "오키나와월드",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7bac8ed2-4dcc-4eae-88df-ee3c2f2475c6",
+    "name": "옥천동굴",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "74f53dc1-02aa-4e78-a3f0-c35cf1bf5739",
+    "name": "치넨미사키공원",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1ac340fa-f92f-4734-b07b-4a77222b3066",
+    "name": "에이사민속공연",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fad8d1bf-8780-4f51-a54b-0bda5d2a14a0",
+    "name": "니라이카나이대교",
+    "country": "일본",
+    "region": "오키나와",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "38b510e7-4c75-45c8-9504-56b66db21717",
+    "name": "유후인상점거리",
+    "country": "일본",
+    "region": "유후인",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "80e90323-a0a0-4eda-a813-a34b3c93dc2a",
+    "name": "긴린코호수",
+    "country": "일본",
+    "region": "유후인",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d9c886b4-0919-4ee0-9f02-183db14069bf",
+    "name": "유후다케",
+    "country": "일본",
+    "region": "유후인",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e51fff10-6b77-4b9f-b1ac-01e7be4d9412",
+    "name": "겐로쿠엔",
+    "country": "일본",
+    "region": "이시카와",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "09445535-3dff-492b-9e5b-83d9eb10bbf9",
+    "name": "히가시차야거리",
+    "country": "일본",
+    "region": "이시카와",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "32db2192-dfbb-46ad-9b8b-98c01e306776",
+    "name": "야키니쿠무제한",
+    "country": "일본",
+    "region": "주부",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "892705a7-726f-4d1f-8fe9-49d179868485",
+    "name": "아나크라운프라자나리타",
+    "country": "일본",
+    "region": "치바",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "899f59e6-5f3f-41fb-86fc-ab58f42f571e",
+    "name": "쿠로가와 온천마을",
+    "country": "일본",
+    "region": "쿠로가와",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "095d3464-018e-48ce-877e-33e504196452",
+    "name": "규스키야키",
+    "country": "일본",
+    "region": "큐슈",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "6cc09083-b7a2-415a-b5bc-b6a937c49d96",
+    "name": "무제한대게뷔페",
+    "country": "일본",
+    "region": "큐슈",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "61d9e950-a291-49be-9d0d-7b923f4ea2bb",
+    "name": "카츠나베정식",
+    "country": "일본",
+    "region": "큐슈",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "d0a84b21-ff04-4ca3-9c57-556cc5ed165a",
+    "name": "토반야끼",
+    "country": "일본",
+    "region": "큐슈",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "e7c37a7c-2650-4548-badb-fcb4fe000b6c",
+    "name": "와규카레",
+    "country": "일본",
+    "region": "큐슈",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "431a8984-0e3c-4116-98b1-0850ca4b9ed6",
+    "name": "타카야마 전통거리",
+    "country": "일본",
+    "region": "타카야마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9b421222-3c5b-4264-97f0-76b54f9babcb",
+    "name": "토야마 시청전망대",
+    "country": "일본",
+    "region": "토야마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2b50b281-03c4-4f9d-af56-cf671aef9482",
+    "name": "도야마 가라스미술관",
+    "country": "일본",
+    "region": "토야마",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "28668058-165e-4845-b492-6135b0aeea36",
+    "name": "다테야마 쿠로베 알펜루트",
+    "country": "일본",
+    "region": "토야마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c2429be3-9330-4a17-965b-444df636b932",
+    "name": "아마하라시 해안",
+    "country": "일본",
+    "region": "토야마",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "aded3f2c-d67b-4529-81f3-db9218698c79",
+    "name": "쿠로베 협곡 열차",
+    "country": "일본",
+    "region": "토야마",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "bb934ffd-b4c1-4489-8a29-7a51a9f202e5",
+    "name": "토야마 환수공원",
+    "country": "일본",
+    "region": "토야마",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "84d3efd8-b288-4b34-810e-6cace7acd6f9",
+    "name": "아시호수해적선",
+    "country": "일본",
+    "region": "하코네",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "96cbf54e-b386-4519-be00-985442c2bae6",
+    "name": "아시호수해적선탑승",
+    "country": "일본",
+    "region": "하코네",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "99455eec-4b1f-4a9b-bbfc-1e6a94903777",
+    "name": "후지산",
+    "country": "일본",
+    "region": "하코네",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "229aa2eb-4fb2-40df-bb12-6dbf09de4b7d",
+    "name": "온시하코네공원",
+    "country": "일본",
+    "region": "하코네",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ca53c3ca-cbed-430f-ac9b-741c09f8e8d2",
+    "name": "하코네신사",
+    "country": "일본",
+    "region": "하코네",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ad7f8fa3-6454-4f63-9e39-a64a480773c2",
+    "name": "토미노코온천호텔",
+    "country": "일본",
+    "region": "하코네",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "6f3e70cb-e64e-4804-b784-6b3f1be5b6b3",
+    "name": "오시노핫카이",
+    "country": "일본",
+    "region": "하코네",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "41f4815e-a3c4-4999-aa92-ad46d9e1abb7",
+    "name": "하코네국립공원",
+    "country": "일본",
+    "region": "하코네",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8ecc74e5-b28f-4eda-8839-419fee5ac4bc",
+    "name": "삿포로맥주박물관",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c2e1baab-5ff2-4edb-81ea-db3fead615aa",
+    "name": "팜도미타",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7024edb8-e4d3-4288-b0f6-6b2f639d08d2",
+    "name": "지다이무라(시대촌)",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "55ba760d-b9d8-4f41-a15a-d09b47ff131b",
+    "name": "지옥계곡(노보리베츠)",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9181573b-c204-4539-8f33-c26615f5e343",
+    "name": "사이로전망대",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6699ece1-b8c2-4e59-a85e-ccf193fbf622",
+    "name": "흰수염폭포",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5dd2278e-b214-4d1d-aeed-615a86ba39a3",
+    "name": "쇼와신잔",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "142a5e54-c2cb-4403-8c58-b79210ba56a8",
+    "name": "시로이코이비토파크",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "279d687e-56c0-4464-9a7e-bba64baa7218",
+    "name": "오도리공원",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "db88ee47-97d5-41a9-b271-937c4c111d72",
+    "name": "스스키노거리",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "542ca7d2-6e75-4327-8e7c-79c901fe51ee",
+    "name": "삿포로시계탑",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e3b3e503-ed42-4b4e-9758-eef6581e04b7",
+    "name": "비에이패치워크로드",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ffdef9cb-c8a4-4062-98ff-d688eb917550",
+    "name": "사계절의언덕",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "54036714-8ea5-4110-94f3-59c0ee18a6e6",
+    "name": "시코츠호수",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ea21d36b-47f6-4ca5-819f-1cfef9751115",
+    "name": "비에이푸른연못(청의호수)",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "563d8b2c-34d9-466d-b809-8bdda8d60068",
+    "name": "오토코야마사케양조장",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7e5c24ee-e05d-43c1-9369-65195636b21e",
+    "name": "오타루운하",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "aaf3659a-8f7d-4515-b77f-0916d65629f0",
+    "name": "오타루오르골당",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9ea00003-9903-4f01-a459-20bf7edf6a94",
+    "name": "도야호수유람선",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e63bd5fa-2584-4191-8a14-059ad1e0bb6d",
+    "name": "유리공방과과자거리",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e9b2d3a2-278c-409a-b393-54c8f94ac97c",
+    "name": "죠잔케이온천",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "onsen",
+    "badge_type": "onsen"
+  },
+  {
+    "id": "23a51aa1-7659-4d96-b70c-31c5629c8688",
+    "name": "삿포로뉴오타니인",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "5f73cd64-bbdb-4510-97f9-bf85d4db54ad",
+    "name": "도야썬팰리스리조트",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "ed83b6c5-35bc-41dd-8057-04a689c0c430",
+    "name": "죠잔케이시카노유호텔",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "6b9e8c79-63fd-43aa-b596-1b5138a00163",
+    "name": "트래블롯지삿포로스스키노",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "e520366c-0d20-4039-be04-2ed99f7a3a66",
+    "name": "아트호텔아사히카와",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "ae9f8f88-db21-4671-8969-c3032b3197ce",
+    "name": "소바+덴푸라정식",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "ffabfcc1-7077-4c5c-9bcc-9fc4c7045262",
+    "name": "무제한대게+전골특식",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "1966dc57-b739-4bf3-a49c-a55cc6186c85",
+    "name": "홋케(임연수)정식",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "aa4573ef-aa17-496b-b4d4-fece30d74e9e",
+    "name": "사계절의언덕트랙터탑승",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "e1ba68d9-982e-40df-96e2-ccc3873d1989",
+    "name": "도야호수유람선탑승",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "7bd3ff28-b10e-4ac6-a12c-74846aa3d0cb",
+    "name": "삿포로구도청사",
+    "country": "일본",
+    "region": "홋카이도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3ef3fa74-8f83-42a5-b361-505733f20742",
+    "name": "코코엔",
+    "country": "일본",
+    "region": "효고",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3b389de0-fee9-4a31-b3ac-f61bfa1746ac",
+    "name": "히메지성",
+    "country": "일본",
+    "region": "효고",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "701aef50-6738-4dcb-b836-fed55153f466",
+    "name": "라라포트",
+    "country": "일본",
+    "region": "후쿠오카",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a6b67bfd-6139-46ad-bb82-f3de8456baeb",
+    "name": "다자이후텐만구",
+    "country": "일본",
+    "region": "후쿠오카",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c08d321d-60ef-46eb-ab73-6408ab0c26f4",
+    "name": "미야지다케 신사",
+    "country": "일본",
+    "region": "후쿠오카",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "07ca2d1f-6e0b-4534-b4ee-bed9f55381e0",
+    "name": "하카타포트타워",
+    "country": "일본",
+    "region": "후쿠오카",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "83245af3-0169-4201-8ebe-b81de7d9fe53",
+    "name": "화산CC",
+    "country": "일본",
+    "region": "후쿠오카",
+    "category": "sightseeing",
+    "badge_type": "golf"
+  },
+  {
+    "id": "e8186af2-96a3-4b39-b9da-ee76915d3d9f",
+    "name": "야나가와뱃놀이",
+    "country": "일본",
+    "region": "후쿠오카",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d5c6c694-01a8-4feb-88e6-b6003af77aaa",
+    "name": "도진보",
+    "country": "일본",
+    "region": "후쿠이",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0d7db2c6-0090-4cf2-9a91-540443a96f03",
+    "name": "코트야드바이메리어트후쿠이",
+    "country": "일본",
+    "region": "후쿠이",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "114c1d8e-5e47-4e6b-b275-59d164ff0511",
+    "name": "윈이리버티호텔",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "24ee1d15-4407-4635-bb81-7da55719d0ba",
+    "name": "초원꼬마열차",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "d16201e1-2380-4a40-8828-d59333b8fcc8",
+    "name": "인컨타라사막캠프파이어",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "eb0221cf-a23f-49c2-803f-25917c754922",
+    "name": "오르도스대초원캠프파이어",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "b428c2c9-9baf-45ea-9af8-e3bb9b7e1c43",
+    "name": "사막낙타체험",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "optional"
+  },
+  {
+    "id": "29165e7b-fbcf-4856-bd70-854f1d7e732d",
+    "name": "사막모터자동차",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "optional"
+  },
+  {
+    "id": "2b82b046-9d37-4b33-b6d3-785eb347f42a",
+    "name": "사막오프로드바이크",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "optional"
+  },
+  {
+    "id": "9876f347-185a-47e1-bbeb-c8d4e1783562",
+    "name": "초원승마체험(내몽골)",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "optional"
+  },
+  {
+    "id": "5db43a84-383e-4f3e-bb10-57053c5a49eb",
+    "name": "대초원마상쇼",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "entertainment",
+    "badge_type": "optional"
+  },
+  {
+    "id": "9585bbc3-c24d-4e35-b100-d33b013ea3bd",
+    "name": "크리스탈오르도스리조트(사막유리호텔)",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "48d40b3f-bcfe-4f60-bb67-7288130d4e2a",
+    "name": "대초원현대식게르",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "4f57ba09-03a0-47a4-83dd-3895c89fef61",
+    "name": "징기스칸릉",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ab1e0282-739e-4cc6-9e6b-353d17fecdae",
+    "name": "인컨타라사막",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a430e6d1-68ae-4031-86b1-f9684c454aaa",
+    "name": "오르도스대초원",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5b5bc26e-5cea-49b8-92a7-1aac8da500a6",
+    "name": "오르도스박물관",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8a4544cf-ab56-4770-99f3-607a0f385e8a",
+    "name": "모래썰매",
+    "country": "중국",
+    "region": "내몽골",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "9f47b8ef-6432-4a3b-adeb-09da8ddb70e3",
+    "name": "무한건국호텔",
+    "country": "중국",
+    "region": "무한",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "f85ed4a0-1369-4a05-bfe0-253e0dbec405",
+    "name": "37호경계비",
+    "country": "중국",
+    "region": "백두산",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "43a11c58-26b8-4e48-9f1e-121ae4604660",
+    "name": "천지",
+    "country": "중국",
+    "region": "백두산",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1e6fb3d2-e9d9-4f4c-8751-9ce5a524c024",
+    "name": "백두산북파",
+    "country": "중국",
+    "region": "백두산",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "956e3265-0471-4cb7-9dfc-a35d561ae89a",
+    "name": "금강대협곡",
+    "country": "중국",
+    "region": "백두산",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "642d194c-4c58-42cd-b27d-11d5a2eb385c",
+    "name": "백두산서파",
+    "country": "중국",
+    "region": "백두산",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f755b352-e690-4e02-9eba-fdd8c84c4ba2",
+    "name": "노천온천지대",
+    "country": "중국",
+    "region": "백두산",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "19eb7fab-b71b-41fb-b182-c4133b8f82bf",
+    "name": "장백폭포",
+    "country": "중국",
+    "region": "백두산",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f9f6544f-bb17-465e-b74e-b84500f1b66f",
+    "name": "이도백하금수학호텔",
+    "country": "중국",
+    "region": "백두산",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "a5ecdc6c-dc10-41e0-8677-49f4d9ce450e",
+    "name": "고북수진",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ca8d983c-6370-4c9c-b671-665c15183499",
+    "name": "천안문광장",
+    "country": "중국",
+    "region": "북경",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6a42a40b-8ed4-4758-abc7-2c755e670db2",
+    "name": "십찰해(스차하이)",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "51d55045-5288-467e-ba9d-31301b7902ca",
+    "name": "이화원",
+    "country": "중국",
+    "region": "북경",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e9730eda-349c-42a4-a7e8-03a6cafce44e",
+    "name": "자금성",
+    "country": "중국",
+    "region": "북경",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c194d3b5-cbaf-445e-affb-7a0a36969dce",
+    "name": "경산공원(자금성조망)",
+    "country": "중국",
+    "region": "북경",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "eef7d53c-536c-4f75-86d8-b4d7cfaee989",
+    "name": "북경개성흥봉호텔",
+    "country": "중국",
+    "region": "북경",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "5c4f74f7-f4ba-4ced-bed4-f1b6897baf4d",
+    "name": "샤브샤브(북경)",
+    "country": "중국",
+    "region": "북경",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "3e3d7b59-6a29-4ff3-b549-a5af9e148f91",
+    "name": "북경오리구이",
+    "country": "중국",
+    "region": "북경",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "e2afd053-259c-4d67-819c-e05e4f519473",
+    "name": "발마사지(북경)",
+    "country": "중국",
+    "region": "북경",
+    "category": "wellness",
+    "badge_type": "optional"
+  },
+  {
+    "id": "2f5f856c-4e13-40eb-a273-168002db0097",
+    "name": "십찰해인력거투어",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "optional"
+  },
+  {
+    "id": "c273442c-1b2b-4754-9cca-33af5ef15821",
+    "name": "금면왕조쇼",
+    "country": "중국",
+    "region": "북경",
+    "category": "entertainment",
+    "badge_type": "optional"
+  },
+  {
+    "id": "aa686ab1-b63f-4d30-9085-112e3dcecbb8",
+    "name": "북경서커스",
+    "country": "중국",
+    "region": "북경",
+    "category": "entertainment",
+    "badge_type": "special"
+  },
+  {
+    "id": "ea6c83a1-6d93-4ba5-b4a8-303fd50fe8de",
+    "name": "사마대장성케이블카",
+    "country": "중국",
+    "region": "북경",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "c1befcfa-5c0c-4cf1-81a6-1c080b6b98bc",
+    "name": "798예술구(북경)",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "92991b36-ff0a-4638-89b6-36e62a7a09e5",
+    "name": "세무천계(북경)",
+    "country": "중국",
+    "region": "북경",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "709fcec6-5780-4885-8c7f-92be6f95bc51",
+    "name": "전문대가",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "129ae681-ea80-4a3b-970e-a463393ed518",
+    "name": "난뤄구샹",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "413e3c15-cd01-403a-a59d-704a42397d19",
+    "name": "고북수진야경",
+    "country": "중국",
+    "region": "북경",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9a1875b8-dde3-44b7-b0eb-f8ace12d7644",
+    "name": "사마대장성(만리장성)",
+    "country": "중국",
+    "region": "북경",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e1ba684e-64c3-4d6c-813b-904a044c217e",
+    "name": "발+전신마사지(산동)",
+    "country": "중국",
+    "region": "산동",
+    "category": "wellness",
+    "badge_type": "meal"
+  },
+  {
+    "id": "4ea9733b-2b12-4974-91a1-f4208f6d5668",
+    "name": "스타벅스리저브",
+    "country": "중국",
+    "region": "상해",
+    "category": "sightseeing",
+    "badge_type": "special"
+  },
+  {
+    "id": "69ec9a1e-80d1-4735-b9d5-fce8458390f3",
+    "name": "타이캉로",
+    "country": "중국",
+    "region": "상해",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b930f2f5-34e4-4019-8d82-00ba9d5902cf",
+    "name": "주가각",
+    "country": "중국",
+    "region": "상해",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "02ffc1b9-2e00-4692-aad8-8293540aa6ad",
+    "name": "장원",
+    "country": "중국",
+    "region": "상해",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d9e2e293-de05-45e8-a16f-574b4a16d654",
+    "name": "병마용",
+    "country": "중국",
+    "region": "서안",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6a387e42-6b7a-4cf6-a87e-971d85a2a66d",
+    "name": "소인국테마파크",
+    "country": "중국",
+    "region": "심천",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "56cea282-65b7-4781-b6b0-ade88d3aa219",
+    "name": "민속쇼(심천)",
+    "country": "중국",
+    "region": "심천",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8748da95-97cb-47e3-a756-e48104c656a9",
+    "name": "금수중화민속촌",
+    "country": "중국",
+    "region": "심천",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "53caa71b-8623-4488-b081-f4f8ee895cbb",
+    "name": "심천발마사지",
+    "country": "중국",
+    "region": "심천",
+    "category": "wellness",
+    "badge_type": "optional"
+  },
+  {
+    "id": "f9d2037e-cb46-490d-b18b-7614a40259d2",
+    "name": "심천햄튼바이힐튼",
+    "country": "중국",
+    "region": "심천",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "b2cfde96-28d9-4b6b-9d1c-4b3e39a2d6f6",
+    "name": "심천코끼리열차",
+    "country": "중국",
+    "region": "심천",
+    "category": "activity",
+    "badge_type": "optional"
+  },
+  {
+    "id": "a64a737f-5ed9-40e2-880b-f5560f79dc41",
+    "name": "일송정",
+    "country": "중국",
+    "region": "연변",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fe691ed2-451d-4880-8b94-b7f413a65177",
+    "name": "진달래광장",
+    "country": "중국",
+    "region": "연변",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b68a511a-0d40-49d4-a70e-fa3109f2edce",
+    "name": "두만강",
+    "country": "중국",
+    "region": "연변",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "14bdf470-7a5d-4397-b6b9-ce4bc5f4e3b5",
+    "name": "두만강강변공원",
+    "country": "중국",
+    "region": "연변",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "48fd2e77-558b-4873-82ae-a29b450e862f",
+    "name": "연변국제호텔",
+    "country": "중국",
+    "region": "연변",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "f9bd8e11-e78e-477d-aab4-4057f1d5dffa",
+    "name": "연길냉면+궈바로우특식",
+    "country": "중국",
+    "region": "연변",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "67e6f4ef-00a8-4f03-8d9b-d8434354ec31",
+    "name": "중조국경지대",
+    "country": "중국",
+    "region": "연변",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "92c43809-de3d-4278-9b1b-2771b731a12e",
+    "name": "해란강",
+    "country": "중국",
+    "region": "연변",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5ec39d72-52e0-49be-843b-7df18db9fb6a",
+    "name": "연태골든비치쉐라톤호텔",
+    "country": "중국",
+    "region": "연태",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "1a24f19e-61e0-4f76-8e3c-d8032ebcb1b9",
+    "name": "남산대불",
+    "country": "중국",
+    "region": "연태",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "55da3781-d5b3-4d40-b276-4a269b01b474",
+    "name": "봉래각공원",
+    "country": "중국",
+    "region": "연태",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d646b9d9-98e0-4281-9f33-1a7668384bdb",
+    "name": "연태천마잔교",
+    "country": "중국",
+    "region": "연태",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "c69dbb24-c827-4757-97a5-c1dada789e9b",
+    "name": "소성리옛거리",
+    "country": "중국",
+    "region": "연태",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a2a3a366-f77e-429b-8e23-3a587e91b863",
+    "name": "피셔맨즈와프(연태)",
+    "country": "중국",
+    "region": "연태",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b52ec0f7-e98c-4d79-9464-f017acb6c515",
+    "name": "장유와인박물관",
+    "country": "중국",
+    "region": "연태",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1025a980-0497-49e5-9b7c-79e5da596bfb",
+    "name": "연태고량주박물관",
+    "country": "중국",
+    "region": "연태",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d34d436d-d95c-4589-bd5b-030acc17479e",
+    "name": "봉래삼선산풍경구",
+    "country": "중국",
+    "region": "연태",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6cb2d923-b2f3-4be6-b57f-fe17a9812f44",
+    "name": "골든비치해변",
+    "country": "중국",
+    "region": "연태",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "937078c2-46a7-4b0a-b211-81a632815d51",
+    "name": "조양가거리",
+    "country": "중국",
+    "region": "연태",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "316da37c-e0af-439b-a516-f200185fd024",
+    "name": "연태산공원",
+    "country": "중국",
+    "region": "연태",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2417fb2f-5bb8-4ccd-b24f-a319a428d631",
+    "name": "연태골드코스트호텔",
+    "country": "중국",
+    "region": "연태",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "83c63997-9cfb-46da-af09-32a2ee3df2f5",
+    "name": "해초마을(위해)",
+    "country": "중국",
+    "region": "위해",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5cf0da6b-7f81-43f9-8a2f-2e100f81e77c",
+    "name": "적산법화원(장보고기념관)",
+    "country": "중국",
+    "region": "위해",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6676fbce-38fb-42f8-9415-a46f8126140b",
+    "name": "도진보(산동)",
+    "country": "중국",
+    "region": "위해",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a2242413-830c-4510-9da4-20f95623053e",
+    "name": "적산법화원전동카트",
+    "country": "중국",
+    "region": "위해",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "1a7d7bdb-cfd4-4b0c-b5ab-fba2bf86c85d",
+    "name": "화샤청쇼(위해)",
+    "country": "중국",
+    "region": "위해",
+    "category": "entertainment",
+    "badge_type": "special"
+  },
+  {
+    "id": "bd116c0c-698d-41dc-bfc1-c83cd47e8340",
+    "name": "천문산(케이블카7455m)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "490c2903-5357-456c-bc28-7b0b344b1738",
+    "name": "하룡공원",
+    "country": "중국",
+    "region": "장가계",
+    "category": "park",
+    "badge_type": "tour"
+  },
+  {
+    "id": "20c5b0f2-8c29-4942-bcb0-3a1892d0510c",
+    "name": "장가계피닉스호텔",
+    "country": "중국",
+    "region": "장가계",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "f3bdfff2-d5dd-4778-aad8-08ea1ac84c60",
+    "name": "장가계썬샤인호텔(양광호텔)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "f49d6174-25ac-4f71-b034-78db80aed320",
+    "name": "전신마사지60분(장가계)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "wellness",
+    "badge_type": "special"
+  },
+  {
+    "id": "1da08aa6-0332-40f6-851d-246011dbd9e0",
+    "name": "장가계공항VIP라운지",
+    "country": "중국",
+    "region": "장가계",
+    "category": "service",
+    "badge_type": "special"
+  },
+  {
+    "id": "4282e0bc-69c8-42a0-bf31-fcd857391260",
+    "name": "천문호선쇼(매력상서쇼)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "entertainment",
+    "badge_type": "special"
+  },
+  {
+    "id": "a4a9e726-afa5-48e9-8304-00222566214e",
+    "name": "보봉호유람선",
+    "country": "중국",
+    "region": "장가계",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "af22ab78-e480-4f38-9d4a-1b4e48f612ae",
+    "name": "십리화랑모노레일",
+    "country": "중국",
+    "region": "장가계",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "c7acfab8-d17b-4925-b5d6-ff3efd6949c5",
+    "name": "백룡엘리베이터탑승",
+    "country": "중국",
+    "region": "장가계",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "7d74ab60-5a14-47ac-b55b-82259b1f0306",
+    "name": "천문산케이블카",
+    "country": "중국",
+    "region": "장가계",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "11cf94c0-b26c-43d8-bd84-0548afecc50b",
+    "name": "군성사석화",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9504281d-98e5-4d5b-a9ac-e51dab143102",
+    "name": "황룡동굴",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "db1f6a46-e2cc-46e7-b3b0-d544205551ec",
+    "name": "백장협",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4f4d0d95-5f94-481b-9568-ee9c9f0cea0c",
+    "name": "대협곡(유람선)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5cc8aec7-e4fb-4e50-96bb-80bd9112a70e",
+    "name": "유리다리(대협곡)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8788f20b-12b9-4ff9-ba54-330e6284d958",
+    "name": "십리화랑",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ead0e66f-d48d-4be8-9276-424b2c14daa4",
+    "name": "군성사석화박물관",
+    "country": "중국",
+    "region": "장가계",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a2f1c1cf-3d5b-490f-9b4b-c0af67ed2c3e",
+    "name": "미혼대",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5df29154-4dcb-4b5a-9de2-eeae59cae1b8",
+    "name": "천하제일교",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5da5a8af-d4b7-4ad3-98ac-a2d8f69cf95d",
+    "name": "원가계(아바타촬영지)",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "40fb2070-28da-4a70-98e1-0a81588fdd6b",
+    "name": "어필봉",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b9c70596-22bf-4c81-abd9-9a217adcb409",
+    "name": "천자산",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2a63826b-a86d-4da9-ab4e-c7458fb3e8ca",
+    "name": "72기루",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6f619b7f-5331-40e4-82a2-14a1eec38c08",
+    "name": "보봉호",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8c8b2ef4-472e-4ec5-ad20-d687c1198552",
+    "name": "칠성산유리잔도",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "de65ecfe-f765-44df-8a7c-f02487d2b5ce",
+    "name": "칠성산",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fee35d95-e876-498d-8515-66767acd4f30",
+    "name": "천문산유리잔도",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "399f8dfb-046b-4b09-83c1-848286078d0a",
+    "name": "백룡엘리베이터",
+    "country": "중국",
+    "region": "장가계",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ead0e66f-d48d-4be8-9276-424b2c14daa4",
+    "name": "군성사석화박물관",
+    "country": "중국",
+    "region": "장가계",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b9a50b4f-7c80-454b-a273-922ee2ecd1b2",
+    "name": "원가계",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d2a1cd01-d0f3-4d2d-a5c5-0e90004f5c59",
+    "name": "장가계대협곡",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "399f8dfb-046b-4b09-83c1-848286078d0a",
+    "name": "백룡엘리베이터",
+    "country": "중국",
+    "region": "장가계",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "161cefe6-ed98-4e54-995e-16b853c3f93f",
+    "name": "금편계곡",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "98d2d741-ba84-444b-8c5c-49af4b3933e9",
+    "name": "매력상서쇼",
+    "country": "중국",
+    "region": "장가계",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "fee35d95-e876-498d-8515-66767acd4f30",
+    "name": "천문산유리잔도",
+    "country": "중국",
+    "region": "장가계",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f58e6248-86d3-46fe-964a-7bd0abf4cf93",
+    "name": "신호산(전망대)",
+    "country": "중국",
+    "region": "청도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "cb4b33c8-7b2e-4e86-a09c-133775cc0e5b",
+    "name": "인터컨티넨탈디너뷔페",
+    "country": "중국",
+    "region": "청도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "7ab1040d-b205-49b7-a4a1-f329086fe7e7",
+    "name": "양꼬치무제한(+칭다오맥주)",
+    "country": "중국",
+    "region": "청도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "d6c42f00-547d-4b0d-992f-28a0a055bc8c",
+    "name": "노산케이블카",
+    "country": "중국",
+    "region": "청도",
+    "category": "activity",
+    "badge_type": "activity"
+  },
+  {
+    "id": "431a3bbf-14da-48ac-ab69-2a3dd2099821",
+    "name": "세무천계(청도)",
+    "country": "중국",
+    "region": "청도",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "682735b5-1a98-4b8e-aa55-79463a78c997",
+    "name": "798예술구(청도)",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3ca40b7a-6039-4163-9dba-6dda8ead8f42",
+    "name": "실버피시스트리트(은어항)",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d051fa39-4b85-4e53-a1ac-e4c4014cec67",
+    "name": "찌모루시장",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d0f4f5ae-1579-42eb-bfc0-c539d6c6afc2",
+    "name": "중산로",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "aeb2da74-98c1-49ce-a3b5-5561bf6287ce",
+    "name": "타이동거리(야시장)",
+    "country": "중국",
+    "region": "청도",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3c09b920-e00b-4b0e-8942-631cb988efb3",
+    "name": "극지대관람차",
+    "country": "중국",
+    "region": "청도",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "71fa485d-9e3a-4b91-8ca6-c42cc38ecae0",
+    "name": "지브리벽화거리",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5153271f-1960-47d7-acfe-071600e5b15e",
+    "name": "영빈관",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "048f74b2-e53a-4806-930c-14768385fe7c",
+    "name": "사천요리",
+    "country": "중국",
+    "region": "청도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "47cba2ec-e333-4e4a-8f9f-e279432dcf5f",
+    "name": "잔교",
+    "country": "중국",
+    "region": "청도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e5b20f5d-2ed6-4120-872d-25b0f77e8263",
+    "name": "천주교당",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d45945a2-0b14-44f8-8633-fc1a9576a254",
+    "name": "명월산해간불야성",
+    "country": "중국",
+    "region": "청도",
+    "category": "entertainment",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e274b9f5-32c2-4d77-af67-18fe2ed03353",
+    "name": "지묵고성",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b315e300-2a1b-48ea-8d87-15e0f84c84cd",
+    "name": "노산거봉풍경구(케이블카)",
+    "country": "중국",
+    "region": "청도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0f18d095-0eec-49c0-b6d4-0c1d9951e6e3",
+    "name": "청도스카이씨뷰(해천뷰타워)",
+    "country": "중국",
+    "region": "청도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "26d93315-93c5-453f-bd00-45ec52b844ee",
+    "name": "팔대관",
+    "country": "중국",
+    "region": "청도",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b4c1f32b-4ae2-4d17-8af7-52c597529597",
+    "name": "청도맥주박물관",
+    "country": "중국",
+    "region": "청도",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d789d262-1ed4-482c-8857-e64a26ac378b",
+    "name": "청도올림픽요트경기장",
+    "country": "중국",
+    "region": "청도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "0265e9c9-ede5-436b-8843-94ca255493e6",
+    "name": "대복도(따빠오따오)",
+    "country": "중국",
+    "region": "청도",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5f17fe5f-2b25-4419-b050-3a2323185fff",
+    "name": "5.4광장",
+    "country": "중국",
+    "region": "청도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5c187327-3e02-472b-90e2-55a0cf113cb2",
+    "name": "소어산공원(전망대)",
+    "country": "중국",
+    "region": "청도",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "cd387dd7-5491-4892-8a7b-32d1022f4e15",
+    "name": "청도야시장투어",
+    "country": "중국",
+    "region": "청도",
+    "category": "entertainment",
+    "badge_type": "special"
+  },
+  {
+    "id": "161b99c7-5431-4e0e-a543-9da4b0dded90",
+    "name": "전신마사지60분(청도)",
+    "country": "중국",
+    "region": "청도",
+    "category": "wellness",
+    "badge_type": "special"
+  },
+  {
+    "id": "1129e254-d14c-4781-98e0-0cc801523e20",
+    "name": "청도MGM호텔",
+    "country": "중국",
+    "region": "청도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "45dafeaf-bf4a-4de4-b420-38529fd81e33",
+    "name": "청도지묵더블트리힐튼",
+    "country": "중국",
+    "region": "청도",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "67aece0a-dd9f-4f0c-9fea-2258e8e4cfea",
+    "name": "무제한삼겹살(청도)",
+    "country": "중국",
+    "region": "청도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "2261a00b-720f-4236-a444-74bcc9ecd375",
+    "name": "산동요리",
+    "country": "중국",
+    "region": "청도",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "f4356768-8c6f-42cc-8f5b-313d9ccec73f",
+    "name": "자유광장(부르노)",
+    "country": "체코",
+    "region": "브르노",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "52ba0a08-9d89-4cad-b5e5-304815dee5b2",
+    "name": "성베드로와바오로대성당(부르노)",
+    "country": "체코",
+    "region": "브르노",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "42bb66bd-dc0f-44ba-b90f-c5e035c5f625",
+    "name": "구시청사(부르노)",
+    "country": "체코",
+    "region": "브르노",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f31928d4-0206-4319-9522-e4fb37b8afa4",
+    "name": "이발사의다리",
+    "country": "체코",
+    "region": "체스키크룸로프",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "993a4b1b-16b7-4b7d-98da-48a2987ca8d2",
+    "name": "체스키크룸로프성",
+    "country": "체코",
+    "region": "체스키크룸로프",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "dbc31b61-84e1-4645-9a7c-684856b56a6f",
+    "name": "망토다리",
+    "country": "체코",
+    "region": "체스키크룸로프",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "45b1868b-d82f-4309-8f27-6c1c1c2b8eff",
+    "name": "프라하트램",
+    "country": "체코",
+    "region": "프라하",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "79b37cd2-8d8e-4ac6-b44d-9f4b1a62583a",
+    "name": "바츨라프광장",
+    "country": "체코",
+    "region": "프라하",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4c8721bc-a4a6-4713-a693-5da45eccf16c",
+    "name": "틴교회",
+    "country": "체코",
+    "region": "프라하",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7200853c-fb67-4714-8b46-2b71b852c5f1",
+    "name": "시청사와천문시계",
+    "country": "체코",
+    "region": "프라하",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3d8fc6d8-2587-4d78-99d1-9ac6965fd83a",
+    "name": "카를교",
+    "country": "체코",
+    "region": "프라하",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "14dc71a6-d731-445b-9cc7-1ffea5a23400",
+    "name": "프라하성",
+    "country": "체코",
+    "region": "프라하",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a994e6be-608b-4fe6-81b8-431ef6664bb2",
+    "name": "프라하야경투어",
+    "country": "체코",
+    "region": "프라하",
+    "category": "sightseeing",
+    "badge_type": "special"
+  },
+  {
+    "id": "bcd7a22f-6105-40b7-a310-df39d91a587a",
+    "name": "스비치코바",
+    "country": "체코",
+    "region": "프라하",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "31924593-0b40-4ac8-8a35-73a05dcd58cc",
+    "name": "스폰자궁",
+    "country": "크로아티아",
+    "region": "두브로브니크",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "a28e5911-c51c-432b-9bb0-0fc24c8021d4",
+    "name": "플라차거리",
+    "country": "크로아티아",
+    "region": "두브로브니크",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e5405596-7ed5-4041-9a98-82e497a99940",
+    "name": "오노플리안분수",
+    "country": "크로아티아",
+    "region": "두브로브니크",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "b6bcc8de-6221-45ee-b292-095d9e960a8f",
+    "name": "두브로브니크구시가지",
+    "country": "크로아티아",
+    "region": "두브로브니크",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "e1ea8430-4f0f-42ca-9e56-0ec53dac9fcc",
+    "name": "프란체스코수도원",
+    "country": "크로아티아",
+    "region": "두브로브니크",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "794e896e-dbc0-4c12-92fc-45b221cb71f6",
+    "name": "리바거리",
+    "country": "크로아티아",
+    "region": "스플리트",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "962cbf5b-3b70-4b7f-a2a3-18b4fad15c21",
+    "name": "디오클레시안궁전",
+    "country": "크로아티아",
+    "region": "스플리트",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "093a2584-d42d-440d-a1bc-a230eaa6db6b",
+    "name": "그레고리우스닌동상",
+    "country": "크로아티아",
+    "region": "스플리트",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4300bc30-98aa-42e6-9242-47dc26c452d1",
+    "name": "자그레브대성당",
+    "country": "크로아티아",
+    "region": "자그레브",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9ce22af3-a4d4-4fe6-9838-8510a47659ce",
+    "name": "성마르코성당",
+    "country": "크로아티아",
+    "region": "자그레브",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "db88cfb6-456c-4908-bb83-51b7bfd64e86",
+    "name": "돌의문",
+    "country": "크로아티아",
+    "region": "자그레브",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9a89abe6-f1c0-45ef-a538-5fcf15d4ca7c",
+    "name": "반젤라치크광장",
+    "country": "크로아티아",
+    "region": "자그레브",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d7b5119a-b79a-44f7-83e0-096909769888",
+    "name": "성아나스타샤성당",
+    "country": "크로아티아",
+    "region": "자다르",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "f79f92cd-2444-441c-a943-3bb4be101929",
+    "name": "바다오르간",
+    "country": "크로아티아",
+    "region": "자다르",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4d663abc-7fee-4560-92f3-80df629dcab4",
+    "name": "자다르구시가지",
+    "country": "크로아티아",
+    "region": "자다르",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "331d85f9-7f84-471e-b304-6720efd309c9",
+    "name": "나로드니광장",
+    "country": "크로아티아",
+    "region": "자다르",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "496a142f-9867-4629-9621-d2c13e92dd1f",
+    "name": "베프조바제브리카",
+    "country": "크로아티아",
+    "region": "크로아티아",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "48403f3f-ef1c-497d-b336-fdd0c9ac5885",
+    "name": "시피코궁전",
+    "country": "크로아티아",
+    "region": "트로기르",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3873ea99-dd78-4317-8859-5889504b5d78",
+    "name": "카메르렝고요새",
+    "country": "크로아티아",
+    "region": "트로기르",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7df7cd85-184b-4eea-a17e-0ce182501471",
+    "name": "성로렌스대성당(트로기르)",
+    "country": "크로아티아",
+    "region": "트로기르",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "5545b585-94b9-439c-844c-8e3c86c73670",
+    "name": "플리트비체호수국립공원",
+    "country": "크로아티아",
+    "region": "플리트비체",
+    "category": "nature",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8e967183-4c58-4452-9f9b-7b975cbcba01",
+    "name": "무제한삼겹살",
+    "country": "태국",
+    "region": "방콕",
+    "category": "sightseeing",
+    "badge_type": "restaurant"
+  },
+  {
+    "id": "94cc31a8-413d-4e35-88a8-c861cbb2fbfc",
+    "name": "스트라스부르",
+    "country": "프랑스",
+    "region": "알자스",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ea79999f-60a9-42e7-a06c-d73acf89622f",
+    "name": "에스까르고+부르기뇽",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "48a9e2e3-ff56-4ceb-a96d-a2ebe0b7b52c",
+    "name": "에펠탑2층전망대+세느강유람선",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "sightseeing",
+    "badge_type": "optional"
+  },
+  {
+    "id": "a4bb6504-26f6-485b-b94c-21dbb9b8d13a",
+    "name": "베르사유궁전",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "43fc5a45-595f-4273-aeaf-64cfed44a3f0",
+    "name": "파리개선문",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "bf0bc926-06a2-4f33-8f7e-6df9a93b38b7",
+    "name": "샹제리제거리",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "shopping",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6e072ba7-e5cb-4e00-a2f7-669224359fdc",
+    "name": "몽마르뜨언덕투어",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "cultural",
+    "badge_type": "optional"
+  },
+  {
+    "id": "9c507ff9-1771-44d3-9eb7-109f59e84eb9",
+    "name": "루브르박물관",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "museum",
+    "badge_type": "tour"
+  },
+  {
+    "id": "2fa59d6b-e580-49cf-a6ba-1598ab70f8fe",
+    "name": "에펠탑",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "6673342b-2ace-4f9d-8b80-93abfec8b408",
+    "name": "콩코드광장",
+    "country": "프랑스",
+    "region": "파리",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "ebbbfed6-2767-4bf7-a032-5b3037095d3b",
+    "name": "TGV초고속열차",
+    "country": "프랑스",
+    "region": "프랑스",
+    "category": "cultural",
+    "badge_type": "special"
+  },
+  {
+    "id": "3c0732e9-613b-4a17-a6b0-b05118d51db6",
+    "name": "부다페스트야경투어",
+    "country": "헝가리",
+    "region": "부다페스트",
+    "category": "sightseeing",
+    "badge_type": "special"
+  },
+  {
+    "id": "a60836ed-38b3-4517-b264-5b7586e08be7",
+    "name": "영웅광장",
+    "country": "헝가리",
+    "region": "부다페스트",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "7b68c567-099f-4889-9929-dc09a4b7bdda",
+    "name": "국회의사당(부다페스트)",
+    "country": "헝가리",
+    "region": "부다페스트",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "d140cb5a-d9f8-4091-8ec2-b628160c05d7",
+    "name": "부다왕궁",
+    "country": "헝가리",
+    "region": "부다페스트",
+    "category": "palace",
+    "badge_type": "tour"
+  },
+  {
+    "id": "238d97aa-186c-4763-8735-5fe2ef6cf1ba",
+    "name": "어부의요새",
+    "country": "헝가리",
+    "region": "부다페스트",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "9a9fade3-767e-4ac3-b9d1-738729cae977",
+    "name": "굴라쉬",
+    "country": "헝가리",
+    "region": "부다페스트",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "cecd52f9-7669-49a2-83f2-daabfb4293b6",
+    "name": "헐리우드로드",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "4b06ad86-c81b-4ef6-b979-76af1e2fed33",
+    "name": "웡타이신사원",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "temple",
+    "badge_type": "tour"
+  },
+  {
+    "id": "967b3a33-cf0f-4c09-a172-442bf6d0df48",
+    "name": "광동식",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "e2bdbf45-82d1-48c4-a935-4da18ea76804",
+    "name": "얌차식(딤섬)",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "meal",
+    "badge_type": "meal"
+  },
+  {
+    "id": "735ed17e-3d43-4c69-ae4d-4fae0543aeac",
+    "name": "빅토리아피크",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "8de8d3d2-b699-4e5a-9379-be8bbbddd409",
+    "name": "미드레벨에스컬레이터",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "sightseeing",
+    "badge_type": "tour"
+  },
+  {
+    "id": "1a32b48f-947d-4294-8e52-070edb527fcf",
+    "name": "코지오아시스호텔(홍콩)",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "hotel",
+    "badge_type": "hotel"
+  },
+  {
+    "id": "2feb3df0-e7fc-4bbd-8e7e-dcc83fa2df5a",
+    "name": "타이쿤",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "be8b4d5d-d958-4f94-b83f-6f9ef7f4454e",
+    "name": "소호거리",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "cultural",
+    "badge_type": "tour"
+  },
+  {
+    "id": "3b19d907-89e0-4e89-ab11-1597121918a3",
+    "name": "홍콩마담투소",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "entertainment",
+    "badge_type": "optional"
+  },
+  {
+    "id": "b2f96893-9aba-4209-a2ce-7c11af674637",
+    "name": "홍콩나이트시티투어",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "entertainment",
+    "badge_type": "optional"
+  },
+  {
+    "id": "bec0fd98-bf35-4364-b9d2-ed486d12fca5",
+    "name": "빅토리아피크트램(편도)",
+    "country": "홍콩",
+    "region": "홍콩",
+    "category": "activity",
+    "badge_type": "activity"
+  }
+]

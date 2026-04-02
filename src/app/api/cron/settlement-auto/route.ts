@@ -8,10 +8,9 @@
  */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
 
-const MIN_AMOUNT = 100_000;
-const MIN_COUNT = 3;
-const PERSONAL_TAX_RATE = 0.033;
+const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

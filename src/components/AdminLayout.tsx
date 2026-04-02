@@ -24,6 +24,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/bookings', label: '예약 관리' },
       { href: '/admin/customers', label: '고객 관리' },
       { href: '/admin/payments', label: '입금 관리' },
+      { href: '/admin/booking-guide', label: '예약 안내문' },
     ],
   },
   {
@@ -35,15 +36,16 @@ const navGroups: NavGroup[] = [
       { href: '/admin/land-operators', label: '랜드사 관리' },
       { href: '/admin/departing-locations', label: '출발지 관리' },
       { href: '/admin/attractions', label: '관광지 관리' },
-      { href: '/admin/booking-guide', label: '예약 안내문' },
     ],
   },
   {
     title: '영업',
     items: [
+      { href: '/admin/affiliates', label: '제휴/인플루언서' },
+      { href: '/admin/affiliate-analytics', label: '제휴 분석' },
+      { href: '/admin/applications', label: '파트너 신청' },
       { href: '/admin/rfqs', label: '단체 RFQ' },
       { href: '/admin/concierge', label: '컨시어지' },
-      { href: '/admin/affiliates', label: '제휴사' },
       { href: '/admin/tenants', label: '테넌트 관리' },
     ],
   },
@@ -56,14 +58,21 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    title: '마케팅',
+    items: [
+      { href: '/admin/marketing', label: '마케팅 대시보드' },
+      { href: '/admin/marketing/creatives', label: '크리에이티브' },
+      { href: '/admin/marketing/card-news', label: '카드뉴스' },
+      { href: '/admin/content-hub', label: '콘텐츠 허브' },
+      { href: '/admin/search-ads', label: '검색광고' },
+    ],
+  },
+  {
     title: 'AI',
     items: [
       { href: '/admin/jarvis', label: '자비스 AI' },
       { href: '/admin/generate', label: 'AI 생성' },
-      { href: '/admin/qa', label: 'Q&A' },
-      { href: '/admin/marketing', label: '마케팅' },
-      { href: '/admin/marketing/card-news', label: '카드뉴스' },
-      { href: '/admin/search-ads', label: '검색광고' },
+      { href: '/admin/qa', label: 'Q&A 챗봇' },
     ],
   },
   {

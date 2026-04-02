@@ -111,6 +111,11 @@ export function validateExtractedProduct(ed: ExtractedData): ValidationResult {
     warnings.push('목적지(destination)가 추출되지 않았습니다.');
   }
 
+  // ── C 파서 정제 레이어 연동 (text-sanitizer.ts) ──
+  // 참고: 실제 텍스트 정제(sanitizeText)와 불포함 가드레일(validateExclusions)은
+  // API 라우트에서 DB 룰 로드 후 실행됨. 여기서는 동기적 검증만 수행.
+  // 비동기 정제 결과는 sanitize_warnings 필드로 travel_packages에 별도 저장.
+
   return {
     isValid:   result.success,
     errors,

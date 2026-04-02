@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { toJpeg } from 'html-to-image';
-import JSZip from 'jszip';
+// html-to-image, jszip: 내보내기 시점에만 동적 로드
 import MetaAutoPublisher from './MetaAutoPublisher';
 
 // ── 타입 ─────────────────────────────────────────────────
@@ -151,6 +150,8 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
       await document.fonts.ready;
       await new Promise(r => setTimeout(r, 500));
 
+      const { toJpeg } = await import('html-to-image');
+      const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
       for (let i = 0; i < slides.length; i++) {
         const node = captureRefs.current[i];

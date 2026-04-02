@@ -8,10 +8,9 @@ function getSupabase() {
   );
 }
 
-// 최소 정산 기준
-const MIN_AMOUNT = 100_000;
-const MIN_COUNT = 3;
-const PERSONAL_TAX_RATE = 0.033;
+import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
+
+const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
 // GET: 정산 목록 조회
 export async function GET(request: NextRequest) {
@@ -66,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     const { data: bookings, error: bErr } = await supabase
       .from('bookings')
-      .select('id, influencer_commission, return_date, status')
+      .select('id, influencer_commission, return_date, status, dispute_flag')
       .eq('affiliate_id', affiliateId)
       .in('status', ['confirmed', 'completed'])
       .gte('departure_date', periodStart)
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest) {
     if (bErr) throw bErr;
 
     const qualifiedBookings = (bookings || []).filter(b =>
-      b.return_date && b.return_date <= today
+      b.return_date && b.return_date <= today && !b.dispute_flag
     );
     const qualifiedCount = qualifiedBookings.length;
     const totalAmount = qualifiedBookings.reduce((s, b) => s + (b.influencer_commission || 0), 0);
@@ -96,8 +95,9 @@ export async function POST(request: NextRequest) {
 
     const prevCarryover = prevSettlement?.carryover_balance ?? 0;
 
-    // ④ 조건 판단: 최소 3건 & 10만 원 이상
-    const qualified = qualifiedCount >= MIN_COUNT && totalAmount >= MIN_AMOUNT;
+    // ④ 조건 판단: 건수 + 금액 AND 조건 (cron과 동일 기준)
+    const pendingTotal = totalAmount + prevCarryover;
+    const qualified = qualifiedCount >= MIN_COUNT && pendingTotal >= MIN_AMOUNT;
 
     let settlement;
     if (!qualified) {
@@ -184,7 +184,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { id, status } = body;
     if (!id) return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
-    if (!['COMPLETED', 'VOID', 'PENDING', 'READY'].includes(status)) {
+    if (!['COMPLETED', 'VOID', 'PENDING', 'READY', 'HOLD'].includes(status)) {
       return NextResponse.json({ error: '유효하지 않은 상태값입니다.' }, { status: 400 });
     }
 
@@ -199,6 +199,17 @@ export async function PATCH(request: NextRequest) {
 
     const payload: Record<string, unknown> = { status };
     if (status === 'COMPLETED') payload.settled_at = new Date().toISOString();
+
+    // HOLD 처리
+    if (status === 'HOLD') {
+      payload.hold_reason = body.hold_reason || null;
+      payload.held_at = new Date().toISOString();
+    }
+    // HOLD → READY 해제
+    if (status === 'READY' && current.status === 'HOLD') {
+      payload.released_at = new Date().toISOString();
+      payload.hold_reason = null;
+    }
 
     // ── VOID 원복 로직 ─────────────────────────────────
     if (status === 'VOID' && ['READY', 'COMPLETED'].includes(current.status)) {

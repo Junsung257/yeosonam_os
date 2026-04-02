@@ -2,13 +2,20 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 import { getRoasGrade } from '@/lib/roas-calculator';
 import type { AdCampaign, MonthlyAdStats } from '@/types/meta-ads';
-import CampaignLinkBuilder from '@/components/admin/CampaignLinkBuilder';
-import AnalyticsDashboard from '@/components/admin/AnalyticsDashboard';
+
+const LineChart = dynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
+const Line = dynamic(() => import('recharts').then(m => ({ default: m.Line })), { ssr: false });
+const XAxis = dynamic(() => import('recharts').then(m => ({ default: m.XAxis })), { ssr: false });
+const YAxis = dynamic(() => import('recharts').then(m => ({ default: m.YAxis })), { ssr: false });
+const Tooltip = dynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
+const Legend = dynamic(() => import('recharts').then(m => ({ default: m.Legend })), { ssr: false });
+const ResponsiveContainer = dynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
+
+const CampaignLinkBuilder = dynamic(() => import('@/components/admin/CampaignLinkBuilder'), { ssr: false });
+const AnalyticsDashboard = dynamic(() => import('@/components/admin/AnalyticsDashboard'), { ssr: false });
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: '초안',

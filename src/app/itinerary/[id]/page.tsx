@@ -6,6 +6,8 @@ import type { TravelItinerary } from '@/types/itinerary';
 import type { PriceListItem } from '@/lib/parser';
 import PriceSectionCard from '@/components/lp/PriceSection';
 import ItineraryTableView from '@/components/itinerary/ItineraryTableView';
+import { matchAttraction } from '@/lib/attraction-matcher';
+import type { AttractionData } from '@/lib/attraction-matcher';
 
 interface PriceTier {
   departure_day: string;
@@ -67,7 +69,17 @@ export default function ItineraryPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [tab, setTab] = useState<'overview' | 'schedule' | 'info'>('overview');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [attractions, setAttractions] = useState<AttractionData[]>([]);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const cardRef = useRef<HTMLDivElement>(null);
+
+  const toggleExpand = (key: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetch(`/api/packages?id=${id}`)
@@ -77,6 +89,10 @@ export default function ItineraryPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    fetch('/api/attractions?detail=1')
+      .then(r => r.json())
+      .then(d => setAttractions(d.attractions || []))
+      .catch(() => {});
   }, [id]);
 
   const handleGenerateImage = async () => {
@@ -224,6 +240,94 @@ export default function ItineraryPage() {
           )}
         </div>
 
+        {/* 항공편 카드 */}
+        {(meta.flight_out || meta.flight_in) && (() => {
+          // flight_out: "BX7315 22:00 - 01:00" or "BX371 09:00 → 11:20" 등
+          const parseFlightStr = (str: string | null) => {
+            if (!str) return null;
+            const match = str.match(/^([A-Z]{2}\d{2,5})\s*(\d{1,2}:\d{2})\s*[-→~]\s*(\d{1,2}:\d{2})/);
+            if (match) return { code: match[1], dep: match[2], arr: match[3] };
+            const codeMatch = str.match(/([A-Z]{2}\d{2,5})/);
+            return codeMatch ? { code: codeMatch[1], dep: '', arr: '' } : null;
+          };
+          const outFlight = parseFlightStr(meta.flight_out);
+          const inFlight = parseFlightStr(meta.flight_in);
+          const airlineName = meta.airline || '';
+          const depAirport = meta.departure_airport || '';
+          const destName = meta.destination || '';
+          // 출발지 코드 추론
+          const depCode = depAirport.includes('김해') || depAirport.includes('부산') ? 'PUS' :
+                          depAirport.includes('인천') ? 'ICN' : depAirport.includes('김포') ? 'GMP' : '';
+          // 도착지 코드 추론
+          const DEST_CODES: Record<string, string> = {
+            '오사카':'KIX','도쿄':'NRT','후쿠오카':'FUK','삿포로':'CTS','다낭':'DAD',
+            '하노이':'HAN','호치민':'SGN','나트랑':'CXR','푸꾸옥':'PQC','방콕':'BKK',
+            '세부':'CEB','마닐라':'MNL','발리':'DPS','싱가포르':'SIN','마카오':'MFM',
+            '홍콩':'HKG','대만':'TPE','장가계':'DYG','청도':'TAO','연길':'YNJ',
+            '괌':'GUM','라오스':'VTE','치앙마이':'CNX',
+          };
+          const destCode = Object.entries(DEST_CODES).find(([k]) => destName.includes(k))?.[1] || '';
+
+          const FlightCard = ({ flight, fromName, fromCode, toName, toCode, label }: {
+            flight: { code: string; dep: string; arr: string } | null;
+            fromName: string; fromCode: string; toName: string; toCode: string; label: string;
+          }) => {
+            if (!flight) return null;
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-medium text-gray-400">{label}</span>
+                  {airlineName && (
+                    <span className="text-xs text-blue-600 font-medium">{airlineName}</span>
+                  )}
+                  <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{flight.code}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* 출발 */}
+                  <div className="text-center flex-shrink-0">
+                    <p className="text-xl font-bold text-gray-900">{flight.dep || '--:--'}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{fromName}</p>
+                    {fromCode && <p className="text-[10px] text-gray-400">({fromCode})</p>}
+                  </div>
+                  {/* 연결선 */}
+                  <div className="flex-1 flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                    <div className="flex-1 border-t-2 border-dashed border-blue-300 relative">
+                      {flight.dep && flight.arr && (() => {
+                        const [dh, dm] = flight.dep.split(':').map(Number);
+                        const [ah, am] = flight.arr.split(':').map(Number);
+                        let diff = (ah * 60 + am) - (dh * 60 + dm);
+                        if (diff < 0) diff += 24 * 60;
+                        const hours = Math.floor(diff / 60);
+                        const mins = diff % 60;
+                        return (
+                          <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] text-emerald-600 font-medium whitespace-nowrap">
+                            {hours > 0 ? `${hours}시간 ` : ''}{mins > 0 ? `${mins}분` : ''} 소요
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="w-0 h-0 border-l-[6px] border-l-blue-500 border-y-[4px] border-y-transparent flex-shrink-0" />
+                  </div>
+                  {/* 도착 */}
+                  <div className="text-center flex-shrink-0">
+                    <p className="text-xl font-bold text-gray-900">{flight.arr || '--:--'}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{toName}</p>
+                    {toCode && <p className="text-[10px] text-gray-400">({toCode})</p>}
+                  </div>
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div className="px-4 pt-4 space-y-3">
+              <FlightCard flight={outFlight} fromName={depAirport || '출발지'} fromCode={depCode} toName={destName} toCode={destCode} label="가는편" />
+              <FlightCard flight={inFlight} fromName={destName} fromCode={destCode} toName={depAirport || '도착지'} toCode={depCode} label="오는편" />
+            </div>
+          );
+        })()}
+
         {/* 탭 */}
         <div className="bg-white border-b border-gray-200 flex">
           {(['overview', 'schedule', 'info'] as const).map(t => (
@@ -329,31 +433,110 @@ export default function ItineraryPage() {
                   </div>
                   {/* 일정 항목 */}
                   <div className="divide-y divide-gray-50">
-                    {day.schedule.map((item, j) => (
-                      <div key={j} className={`px-4 py-2.5 flex gap-3 ${
-                        item.type === 'optional' ? 'bg-orange-50' :
-                        item.type === 'shopping' ? 'bg-purple-50' :
-                        item.type === 'flight' ? 'bg-blue-50' :
-                        item.type === 'hotel' ? 'bg-green-50' : ''
+                    {day.schedule.map((item, j) => {
+                      const attr = matchAttraction(item.activity, attractions as AttractionData[], meta.destination);
+                      const hasPhotos = attr?.photos && attr.photos.length > 0;
+                      const expandKey = `${day.day}-${j}`;
+                      const isExpanded = expandedItems.has(expandKey);
+                      const bulletColor =
+                        attr?.badge_type === 'special' ? 'bg-violet-500' :
+                        attr?.badge_type === 'shopping' ? 'bg-purple-500' :
+                        attr?.badge_type === 'meal' || attr?.badge_type === 'restaurant' ? 'bg-orange-500' :
+                        attr?.badge_type === 'hotel' ? 'bg-indigo-500' :
+                        attr?.badge_type === 'golf' ? 'bg-emerald-500' :
+                        item.type === 'flight' ? 'bg-blue-500' :
+                        item.type === 'hotel' ? 'bg-green-500' :
+                        item.type === 'optional' ? 'bg-pink-500' :
+                        item.type === 'shopping' ? 'bg-purple-400' :
+                        attr ? 'bg-blue-400' : 'bg-gray-300';
+
+                      return (
+                      <div key={j} className={`px-4 py-3 ${
+                        item.type === 'optional' ? 'bg-orange-50/50' :
+                        item.type === 'shopping' ? 'bg-purple-50/50' :
+                        item.type === 'flight' ? 'bg-blue-50/50' :
+                        item.type === 'hotel' ? 'bg-green-50/50' : ''
                       }`}>
-                        {item.time && (
-                          <span className="text-xs text-gray-400 w-12 flex-shrink-0 pt-0.5">{item.time}</span>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm ${
-                            item.type === 'optional' ? 'text-orange-700' :
-                            item.type === 'flight' ? 'text-blue-700 font-medium' :
-                            item.type === 'hotel' ? 'text-green-700' : 'text-gray-800'
-                          }`}>
-                            {item.transport && item.type === 'flight' && (
-                              <span className="text-xs font-mono bg-blue-100 text-blue-700 px-1 rounded mr-1">{item.transport}</span>
+                        {/* 활동명 행 */}
+                        <div className="flex items-start gap-2.5">
+                          <span className={`inline-block w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${bulletColor}`} />
+                          <div className="flex-1 min-w-0">
+                            {item.time && (
+                              <span className="text-[11px] text-gray-400 block mb-0.5">{item.time}</span>
                             )}
-                            {item.activity}
-                          </p>
-                          {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
+                            <p className={`text-sm leading-snug ${
+                              item.type === 'flight' ? 'text-blue-700 font-medium' :
+                              item.type === 'hotel' ? 'text-green-700' : 'text-gray-800'
+                            }`}>
+                              {item.transport && item.type === 'flight' && (
+                                <span className="text-xs font-mono bg-blue-100 text-blue-700 px-1 rounded mr-1">{item.transport}</span>
+                              )}
+                              {item.activity}
+                            </p>
+                            {item.note && <p className="text-[11px] text-gray-400 mt-0.5">{item.note}</p>}
+                          </div>
                         </div>
+
+                        {/* 매칭된 관광지 블록 (하나투어 스타일) */}
+                        {attr && (
+                          <div className="ml-[18px] mt-2">
+                            {/* 1. 관광지명 */}
+                            <p className="font-bold text-[14px] text-blue-900">{attr.name}</p>
+                            {/* 2. 한줄설명 */}
+                            {attr.short_desc && (
+                              <p className="text-[12px] text-gray-500 mt-0.5 leading-relaxed">{attr.short_desc}</p>
+                            )}
+                            {/* 3. 사진 3장 그리드 */}
+                            {hasPhotos && (
+                              <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden mt-2">
+                                {attr.photos!.slice(0, 3).map((photo, pIdx) => (
+                                  <img key={pIdx} src={photo.src_medium} alt={attr.name}
+                                    className="w-full h-24 object-cover" loading="lazy" />
+                                ))}
+                              </div>
+                            )}
+                            {/* 4. 상세보기 버튼 */}
+                            {attr.long_desc && (
+                              <button
+                                onClick={() => toggleExpand(expandKey)}
+                                className="flex items-center gap-1 text-left group mt-1.5"
+                              >
+                                <span className="text-[13px] text-blue-900 group-hover:text-blue-700 font-medium">
+                                  {attr.name}
+                                </span>
+                                <span className={`text-gray-400 text-sm transition-transform ${isExpanded ? 'rotate-90' : ''}`}>›</span>
+                              </button>
+                            )}
+                            {/* 배지 */}
+                            {attr.badge_type && attr.badge_type !== 'tour' && (
+                              <span className={`inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded font-medium border ${
+                                attr.badge_type === 'special' ? 'border-violet-300 text-violet-700 bg-violet-50' :
+                                attr.badge_type === 'shopping' ? 'border-purple-300 text-purple-700 bg-purple-50' :
+                                attr.badge_type === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
+                                attr.badge_type === 'restaurant' ? 'border-orange-300 text-orange-700 bg-orange-50' :
+                                attr.badge_type === 'hotel' ? 'border-indigo-300 text-indigo-700 bg-indigo-50' :
+                                attr.badge_type === 'golf' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+                                'border-gray-300 text-gray-600 bg-gray-50'
+                              }`}>{
+                                attr.badge_type === 'special' ? '스페셜포함' :
+                                attr.badge_type === 'shopping' ? '쇼핑' :
+                                attr.badge_type === 'optional' ? '선택관광' :
+                                attr.badge_type === 'restaurant' ? '특식' :
+                                attr.badge_type === 'hotel' ? '숙소' :
+                                attr.badge_type === 'golf' ? '골프' : attr.badge_type
+                              }</span>
+                            )}
+                            {/* 상세설명 (클릭 시 펼치기) */}
+                            {isExpanded && attr.long_desc && (
+                              <p className="text-[12px] text-gray-600 mt-2 leading-relaxed bg-gray-50 rounded-lg p-3">
+                                {attr.long_desc}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   {/* 호텔 */}
                   {day.hotel && (

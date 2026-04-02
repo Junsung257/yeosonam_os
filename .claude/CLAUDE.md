@@ -50,7 +50,22 @@
   - ✅ 호텔명, 관광지, 항공사 등 구체적 셀링포인트는 반드시 1개 이상 포함
 - **RFQ 무인 인터뷰:** 4단계 엔진 (Interview → ProposalReview → FactBombing → Communication), Gemini 2.5 Flash 사용.
 
-## 9. 🔐 인증 & Public Paths
+## 9. 💰 비용 관리 원칙 (Cost Management)
+- **Claude Max 요금제 우선:** 모든 작업은 Claude Max 구독 범위 내에서 해결한다. 외부 AI API(Gemini, OpenAI 등) 호출이 필요한 경우 반드시 사전 승인을 받는다.
+- **외부 API 사용 시 사전 보고:** Gemini/OpenAI 등 유료 API 호출이 필요한 작업이 발생하면, 실행 전에 다음을 보고한다:
+  - 예상 토큰 수 (입력/출력)
+  - 예상 비용 ($)
+  - 대안 (Claude로 대체 가능한지)
+  - 사용자 승인 후에만 실행
+- **데이터 원문 보존 원칙:** 외부 소스(모두투어 등)에서 가져온 텍스트는 **원문 그대로** DB에 저장한다. AI가 임의로 요약/재구성/창작하여 넣지 않는다. 가공이 필요하면 사용자가 엑셀로 다운받아 직접 가공 후 재업로드한다.
+- **효율적 경로 선택:** 작업이 빙빙 돌아가거나 Claude만으로는 비효율적인 경우, Gemini 사용이 최선책이면 비용 견적과 함께 제안한다. 사용자가 판단한다.
+- **관광지(attractions) 데이터 등록 원칙:**
+  - 신규 관광지 데이터는 `long_desc`에 원문 그대로만 저장한다 (AI 가공 금지)
+  - 원문이 없으면 `long_desc`는 비워둔다 (null)
+  - 추가 등록된 데이터는 별도로 모아놓고, 사용자가 엑셀로 다운받아 직접 가공 후 일괄 반영한다
+  - Claude가 임의로 long_desc를 작성/요약/재구성하지 않는다
+
+## 10. 🔐 인증 & Public Paths
 - **미들웨어 방식:** JWT 로컬 검증 (Base64 디코딩) — 매 요청마다 Supabase 네트워크 콜 없음.
 - **Allowlist 관리:** 인증이 불필요한 경로는 `middleware.ts`의 `PUBLIC_PATHS` 배열에 반드시 명시.
   - 화면: `/`, `/packages`, `/concierge`, `/group-inquiry`, `/rfq`, `/tenant`, `/share`

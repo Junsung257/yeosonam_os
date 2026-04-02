@@ -122,9 +122,11 @@ export async function saveTravelPackage(data: {
   product_summary?: string;
   commission_rate?: number; // 랜드사 커미션율 (예: 10.0 = 10%)
   itinerary_data?: unknown;  // 고객용 일정표 JSON (TravelItinerary)
+  notices_parsed?: unknown[]; // 4카테고리 분류 주의사항
+  price_list?: unknown[];     // 다중 조건 구조화 가격표
 }) {
   try {
-    const { data: result, error } = await supabase
+    const { data: result, error } = await supabaseAdmin
       .from('travel_packages')
       .insert([{
         title: data.title,
@@ -165,6 +167,8 @@ export async function saveTravelPackage(data: {
         product_summary: data.product_summary || null,
         commission_rate: data.commission_rate ?? null,
         itinerary_data: data.itinerary_data ?? null,
+        notices_parsed: data.notices_parsed ?? [],
+        price_list: data.price_list ?? [],
       }])
       .select();
 
@@ -747,6 +751,7 @@ export async function createBooking(data: {
   status?: string;
   paidAmount?: number;
   affiliateId?: string; bookingType?: string;
+  conversationId?: string;
   companions?: { name: string; phone?: string; passport_no?: string; passport_expiry?: string }[];
 }) {
   try {
@@ -772,6 +777,7 @@ export async function createBooking(data: {
       paid_amount: data.paidAmount ?? 0,
       is_deleted: false,
       ...(data.affiliateId ? { affiliate_id: data.affiliateId, booking_type: 'AFFILIATE' } : {}),
+      ...(data.conversationId ? { conversation_id: data.conversationId } : {}),
     }] as never).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;
@@ -1199,6 +1205,14 @@ export async function getMetaCpcThreshold(): Promise<number> {
 // 카드뉴스 헬퍼 함수
 // ─────────────────────────────────────────────────────────────────
 
+export interface TextStyle {
+  fontFamily?: string;
+  fontSize?: number;
+  color?: string;
+  fontWeight?: 'normal' | 'bold';
+  textAlign?: 'left' | 'center' | 'right';
+}
+
 export interface CardNewsSlide {
   id: string;
   position: number;
@@ -1207,6 +1221,8 @@ export interface CardNewsSlide {
   bg_image_url: string;
   pexels_keyword: string;
   overlay_style: 'dark' | 'light' | 'gradient-bottom' | 'gradient-top';
+  headline_style?: TextStyle;
+  body_style?: TextStyle;
 }
 
 export interface CardNews {
@@ -1379,43 +1395,49 @@ export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV
   if (!supabase) return [];
 
   try {
-    const result: MonthlyChartDataV3[] = [];
+    // 전체 기간 계산 (단 2개 쿼리로 통합)
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+    const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const fromStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
+    const toStr = `${endMonth.getFullYear()}-${String(endMonth.getMonth() + 1).padStart(2, '0')}-${endMonth.getDate()}`;
 
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const year = d.getFullYear();
-      const month = d.getMonth() + 1;
-      const monthLabel = `${year}-${String(month).padStart(2, '0')}`;
-      const from = `${year}-${String(month).padStart(2, '0')}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const to = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-
-      // 예약 데이터 (기존 V2와 동일)
-      const { data: bookings } = await supabase
+    // 2개 쿼리 병렬 실행 (기존 12개 → 2개)
+    const [{ data: bookings }, { data: snapshots }] = await Promise.all([
+      supabase
         .from('bookings')
-        .select('total_price, margin, influencer_commission, booking_type')
-        .gte('departure_date', from)
-        .lte('departure_date', to)
+        .select('departure_date, total_price, margin, influencer_commission, booking_type')
+        .gte('departure_date', fromStr)
+        .lte('departure_date', toStr)
         .neq('status', 'cancelled')
-        .eq('is_deleted', false);
+        .eq('is_deleted', false),
+      supabase
+        .from('ad_performance_snapshots')
+        .select('snapshot_date, spend_krw')
+        .gte('snapshot_date', fromStr)
+        .lte('snapshot_date', toStr),
+    ]);
 
-      const list = bookings ?? [];
-      const direct = list.filter((b: any) => b.booking_type !== 'AFFILIATE');
-      const affiliate = list.filter((b: any) => b.booking_type === 'AFFILIATE');
+    // 월별로 그룹핑 (클라이언트 사이드)
+    const bookingList = bookings ?? [];
+    const snapshotList = snapshots ?? [];
+
+    const result: MonthlyChartDataV3[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+      const monthBookings = bookingList.filter((b: any) => (b.departure_date ?? '').slice(0, 7) === monthLabel);
+      const direct = monthBookings.filter((b: any) => b.booking_type !== 'AFFILIATE');
+      const affiliate = monthBookings.filter((b: any) => b.booking_type === 'AFFILIATE');
 
       const directMargin = direct.reduce((s: number, b: any) => s + (b.margin || 0), 0);
       const affiliateMargin = affiliate.reduce((s: number, b: any) => s + (b.margin || 0), 0);
       const totalCommission = affiliate.reduce((s: number, b: any) => s + (b.influencer_commission || 0), 0);
 
-      // 광고비 집계 (ad_performance_snapshots)
-      const { data: snapshots } = await supabase
-        .from('ad_performance_snapshots')
-        .select('spend_krw')
-        .gte('snapshot_date', from)
-        .lte('snapshot_date', to);
-
-      const adSpend = (snapshots ?? []).reduce((s: number, r: any) => s + (r.spend_krw || 0), 0);
+      const adSpend = snapshotList
+        .filter((r: any) => (r.snapshot_date ?? '').slice(0, 7) === monthLabel)
+        .reduce((s: number, r: any) => s + (r.spend_krw || 0), 0);
 
       const netMargin = directMargin + affiliateMargin - totalCommission - adSpend;
 

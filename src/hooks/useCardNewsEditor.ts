@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { toJpeg } from 'html-to-image';
-import JSZip from 'jszip';
+// html-to-image, jszip: 내보내기 시점에만 동적 로드
 
 // ── 타입 ─────────────────────────────────────────────────
 export type AspectRatio = '1:1' | '4:5' | '9:16';
@@ -175,6 +174,7 @@ export function useCardNewsEditor() {
 
       const name = cardNewsTitle || '카드뉴스';
 
+      const { toJpeg } = await import('html-to-image');
       if (nodes.length === 1) {
         const url = await toJpeg(nodes[0], { quality: 0.95, pixelRatio: 3, backgroundColor: '#ffffff' });
         const a = document.createElement('a');
@@ -182,6 +182,7 @@ export function useCardNewsEditor() {
         a.href = url;
         a.click();
       } else {
+        const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
         for (let i = 0; i < nodes.length; i++) {
           const url = await toJpeg(nodes[i], { quality: 0.95, pixelRatio: 3, backgroundColor: '#ffffff' });

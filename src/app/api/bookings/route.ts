@@ -136,14 +136,17 @@ export async function POST(request: NextRequest) {
 
     // 어필리에이트 자동 귀속: 쿠키 또는 body에서 referral_code 확인
     const affRef = body.affiliateRef || request.cookies.get('aff_ref')?.value;
+    let affData: { id: string; commission_rate: number; bonus_rate: number } | null = null;
     if (affRef && !body.affiliateId) {
       try {
         const { data: aff } = await supabaseAdmin
           .from('affiliates')
-          .select('id')
+          .select('id, commission_rate, bonus_rate')
           .eq('referral_code', affRef)
+          .eq('is_active', true)
           .maybeSingle();
         if (aff) {
+          affData = aff;
           body.affiliateId = aff.id;
           body.bookingType = 'AFFILIATE';
           console.log(`[Affiliate] 자동 귀속: ${affRef} → ${aff.id}`);
@@ -151,7 +154,27 @@ export async function POST(request: NextRequest) {
       } catch { /* 귀속 실패해도 예약은 진행 */ }
     }
 
+    // 커미션 자동계산 (surcharge 제외, 순수 상품가 기준)
+    if (body.affiliateId && affData) {
+      const commissionBase = (body.adultCount || 0) * (body.adultPrice || 0)
+                           + (body.childCount || 0) * (body.childPrice || 0);
+      const totalRate = (affData.commission_rate || 0.09) * (1 + (affData.bonus_rate || 0));
+      body.influencerCommission = Math.round(commissionBase * totalRate);
+      body.appliedTotalCommissionRate = Math.round(totalRate * 10000) / 10000;
+      console.log(`[Affiliate] 커미션 자동계산: base=${commissionBase} × rate=${totalRate} = ${body.influencerCommission}`);
+    }
+
     const booking = await createBooking(body);
+
+    // 어필리에이트 last_conversion_at 업데이트
+    if (affData && booking?.id) {
+      supabaseAdmin
+        .from('affiliates')
+        .update({ last_conversion_at: new Date().toISOString() })
+        .eq('id', affData.id)
+        .then(() => {})
+        .catch(() => {});
+    }
 
     // 어필리에이트 링크 conversion_count 증가
     if (affRef && booking?.id) {
@@ -170,6 +193,36 @@ export async function POST(request: NextRequest) {
           }
         })
         .catch(() => {});
+    }
+
+    // lead_time 자동 계산 + 예약 행동 메타데이터
+    if (booking?.id && body.departureDate) {
+      const leadTime = Math.floor(
+        (new Date(body.departureDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+      supabaseAdmin
+        .from('bookings')
+        .update({
+          lead_time: leadTime,
+          metadata: {
+            ...(booking.metadata || {}),
+            booking_hour: new Date().getHours(),
+            booking_day_of_week: new Date().getDay(),
+          },
+        })
+        .eq('id', booking.id)
+        .then(() => {})
+        .catch(() => {});
+    }
+
+    // 비동기 세션 병합: conversation → customer_id 연결
+    if (booking?.conversation_id && body.leadCustomerId) {
+      supabaseAdmin
+        .from('conversations')
+        .update({ customer_id: body.leadCustomerId, updated_at: new Date().toISOString() })
+        .eq('id', booking.conversation_id)
+        .then(() => console.log(`[Session] 세션 병합: conv=${booking.conversation_id} → customer=${body.leadCustomerId}`))
+        .catch((err: unknown) => console.warn('[Session] 세션 병합 실패:', err));
     }
 
     // Rule 5: 소급 매칭 — 기존 unmatched 입금 내역과 자동 연결 시도

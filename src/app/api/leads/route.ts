@@ -15,6 +15,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '필수 항목 누락' }, { status: 400 });
     }
 
+    // 인플루언서/제휴 추천인 코드 (미들웨어가 ?ref= 파라미터에서 쿠키로 저장)
+    const affRef = req.cookies.get('aff_ref')?.value || null;
+
     const { error } = await supabase.from('leads').insert({
       product_id: productId,
       channel,
@@ -25,7 +28,7 @@ export async function POST(req: NextRequest) {
       phone: form.phone,
       privacy_consent: form.privacyConsent,
       session_id: tracking?.sessionId || null,
-      utm_source: tracking?.utmSource || null,
+      utm_source: affRef || tracking?.utmSource || null,
       utm_medium: tracking?.utmMedium || null,
       utm_campaign: tracking?.utmCampaign || null,
       utm_content: tracking?.utmContent || null,

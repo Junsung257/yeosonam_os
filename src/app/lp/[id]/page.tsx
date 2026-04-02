@@ -132,7 +132,7 @@ const MOCK_DATA: LandingProductData = {
   ],
   singleSupplement: '120,000원~150,000원/인 (기간별 상이)',
   guideTrip: '$50/인 (현지 지불)',
-  kakaoChannelUrl: 'https://pf.kakao.com/_placeholder',
+  kakaoChannelUrl: 'https://pf.kakao.com/_xcFxkBG/chat',
   reviewCount: 284,
   reviewScore: 4.9,
   departureGuaranteed: true,

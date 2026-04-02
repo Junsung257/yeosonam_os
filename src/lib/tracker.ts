@@ -31,6 +31,14 @@ interface UtmData {
   saved_at: number; // Date.now()
 }
 
+// ── 제휴/인플루언서 추천 코드 ──────────────────────────────────
+
+export function getReferrer(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)aff_ref=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 // ── 세션 ID ────────────────────────────────────────────────────
 
 export function getSessionId(): string {
@@ -127,11 +135,15 @@ export function initTracker(): void {
     }
   }
 
+  const referrer = getReferrer();
+
   post({
     type: 'traffic',
     session_id: getSessionId(),
     user_id: getSavedUserId(),
     ...utmData,
+    // 인플루언서/제휴 추천이면 source에 반영
+    ...(referrer && !utmData.source ? { source: referrer, medium: 'affiliate' } : {}),
     consent_agreed: consent,
   });
 }

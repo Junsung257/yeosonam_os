@@ -24,6 +24,7 @@ const PUBLIC_PATHS = [
   '/share',
   '/api/share',
   '/api/packages',
+  '/api/attractions',
   // 단체여행 RFQ (고객 인터뷰 → 공고 → 채팅 → 계약)
   '/group-inquiry',
   '/rfq',
@@ -35,9 +36,20 @@ const PUBLIC_PATHS = [
   '/api/cron/post-travel',
   '/api/cron/ad-optimizer',
   '/api/cron/settlement-auto',
+  '/api/cron/sync-creative-performance',
+  '/api/cron/auto-archive',
   // 인플루언서 포털 (자체 PIN 인증)
   '/influencer',
   '/api/influencer',
+  // 파트너 신청 (공개)
+  '/partner-apply',
+  '/api/partner-apply',
+  // 고객용 상품 페이지 (공개)
+  '/products',
+  // 추천 API (비회원도 사용)
+  '/api/recommendations',
+  // 카카오 웹훅 (외부 수신)
+  '/api/webhooks/kakao',
 ];
 
 function isPublicPath(pathname: string) {
@@ -58,16 +70,54 @@ function isTokenValid(token: string): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isSecure = process.env.NODE_ENV === 'production';
 
+  // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
+  // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급
+  let response: NextResponse | null = null;
+  const existingSession = request.cookies.get('ys_session_id')?.value;
+
+  function getResponse() {
+    if (!response) response = NextResponse.next();
+    return response;
+  }
+
+  if (!existingSession) {
+    const res = getResponse();
+    res.cookies.set('ys_session_id', crypto.randomUUID(), {
+      httpOnly: false, // 클라이언트 tracker.ts에서 읽어야 함
+      secure: isSecure,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30일
+      path: '/',
+    });
+  }
+
+  // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
+  // 리다이렉트 없이 쿠키만 설정 (URL 그대로 유지)
+  const ref = request.nextUrl.searchParams.get('ref');
+  if (ref) {
+    const res = getResponse();
+    res.cookies.set('aff_ref', ref, {
+      httpOnly: false,
+      secure: isSecure,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60, // 7일
+      path: '/',
+    });
+  }
+
+  // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(pathname)) {
-    return NextResponse.next();
+    return response || NextResponse.next();
   }
 
   // 디자인 미리보기 바이패스 (?preview=1)
   if (request.nextUrl.searchParams.get('preview') === '1') {
-    return NextResponse.next();
+    return response || NextResponse.next();
   }
 
+  // ── 4. 인증 검사 (비공개 경로만) ───────────────────────────
   const token = request.cookies.get('sb-access-token')?.value;
 
   if (!token || !isTokenValid(token)) {
@@ -76,17 +126,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return response || NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/admin/:path*',
-    '/api/:path*',
-    '/auth/:path*',
-    '/tenant/:path*',
-    '/share/:path*',
-    '/rfq/:path*',
-    '/group-inquiry/:path*',
+    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 제외)
+    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
   ],
 };
