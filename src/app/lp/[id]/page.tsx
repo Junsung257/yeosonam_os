@@ -262,24 +262,24 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed }: {
     <div className="flex justify-around py-5 bg-gray-50 border-y border-gray-100">
       <div className="flex flex-col items-center gap-1">
         <ShieldCheck className="w-6 h-6 text-blue-600" />
-        <span className="text-xs font-semibold text-gray-700 text-center leading-tight">
+        <span className="text-sm font-semibold text-gray-700 text-center leading-tight">
           {guaranteed ? '출발\n100% 보장' : '출발 확정'}
         </span>
       </div>
       <div className="flex flex-col items-center gap-1">
         <Award className="w-6 h-6 text-amber-500" />
-        <span className="text-xs font-semibold text-gray-700 text-center leading-tight">직판\n최저가</span>
+        <span className="text-sm font-semibold text-gray-700 text-center leading-tight">직판\n최저가</span>
       </div>
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-0.5">
           <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
           <span className="text-sm font-bold text-gray-800">{reviewScore}</span>
         </div>
-        <span className="text-xs text-gray-500">{fmt(reviewCount)}개 후기</span>
+        <span className="text-sm text-gray-500">{fmt(reviewCount)}개 후기</span>
       </div>
       <div className="flex flex-col items-center gap-1">
         <Phone className="w-6 h-6 text-green-600" />
-        <span className="text-xs font-semibold text-gray-700 text-center leading-tight">24시간\n현지 지원</span>
+        <span className="text-sm font-semibold text-gray-700 text-center leading-tight">24시간\n현지 지원</span>
       </div>
     </div>
   );
@@ -309,7 +309,7 @@ function PriceSection({ priceFrom, originalPrice, earlyBirdDaysLeft, seats }: {
             {fmt(priceFrom)}<span className="text-lg font-semibold text-gray-600">원~</span>
           </p>
         </div>
-        <p className="text-xs text-gray-400 pb-1">1인 기준 · 유류세 포함</p>
+        <p className="text-sm text-gray-400 pb-1">1인 기준 · 유류세 포함</p>
       </div>
       <div className="mt-3 flex items-center gap-1.5 text-sm text-red-600 font-medium">
         <Users className="w-4 h-4" />
@@ -323,7 +323,7 @@ function PriceSection({ priceFrom, originalPrice, earlyBirdDaysLeft, seats }: {
 function Highlights({ items }: { items: string[] }) {
   return (
     <section className="px-5 py-5 bg-white border-t border-gray-100">
-      <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">여행 하이라이트</h3>
+      <h3 className="text-base font-bold text-gray-500 uppercase tracking-wider mb-3">여행 하이라이트</h3>
       <div className="flex flex-wrap gap-2">
         {items.map(h => (
           <span key={h} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
@@ -339,7 +339,7 @@ function Highlights({ items }: { items: string[] }) {
 function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: string[] }) {
   return (
     <section className="px-5 py-5 bg-white border-t border-gray-100">
-      <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">포함 / 불포함</h3>
+      <h3 className="text-base font-bold text-gray-500 uppercase tracking-wider mb-4">포함 / 불포함</h3>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <div className="space-y-2">
           {includes.map(i => (
@@ -394,10 +394,10 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
             D{dayData.day}
           </div>
           <div>
-            <p className="font-semibold text-gray-900 text-sm leading-snug">{dayData.title}</p>
+            <p className="font-semibold text-gray-900 text-base leading-snug">{dayData.title}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <MapPin className="w-3 h-3 text-gray-400" />
-              <span className="text-xs text-gray-400">{dayData.regions}</span>
+              <span className="text-sm text-gray-400">{dayData.regions}</span>
             </div>
             <MealRow meals={dayData.meals} />
           </div>
@@ -511,8 +511,8 @@ function ReviewSection({ score, count }: { score: number; count: number }) {
               </div>
               <span className="text-xs text-gray-400">{r.date}</span>
             </div>
-            <p className="text-xs text-gray-700 leading-relaxed line-clamp-4">{r.text}</p>
-            <p className="text-xs text-gray-400 mt-2 font-medium">{r.name}</p>
+            <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">{r.text}</p>
+            <p className="text-sm text-gray-400 mt-2 font-medium">{r.name}</p>
           </div>
         ))}
       </div>

@@ -95,7 +95,7 @@ function ChatFab({ tourId, onOpen }: { tourId: string; onOpen: () => void }) {
       aria-label="안심 채팅 상담"
     >
       <span className="text-xl leading-none">💬</span>
-      <span className="text-[10px] mt-0.5 leading-none">상담</span>
+      <span className="text-xs mt-0.5 leading-none">상담</span>
     </button>
   );
 }
@@ -263,7 +263,7 @@ function BookingBottomSheet({
                 <div key={label} className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-gray-800">{label}</p>
-                    <p className="text-xs text-gray-400">{sub}</p>
+                    <p className="text-sm text-gray-400">{sub}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
@@ -320,7 +320,7 @@ function BookingBottomSheet({
                     <span className="text-2xl">{opt.icon}</span>
                     <div className="flex-1">
                       <p className="font-semibold text-gray-900">{opt.name}</p>
-                      <p className="text-xs text-gray-500">{opt.description}</p>
+                      <p className="text-sm text-gray-500">{opt.description}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-indigo-600">+₩{opt.price.toLocaleString('ko-KR')}</p>
@@ -454,16 +454,16 @@ export default function TourDetailClient({
         <div className="relative w-full max-w-5xl mx-auto px-4 pb-6 text-white">
           <div className="flex flex-wrap gap-2 mb-2">
             {tour.destination && (
-              <span className="text-xs bg-white/20 backdrop-blur px-2 py-0.5 rounded-full">
+              <span className="text-sm bg-white/20 backdrop-blur px-2.5 py-1 rounded-full">
                 📍 {tour.destination}
               </span>
             )}
             {tour.duration && (
-              <span className="text-xs bg-white/20 backdrop-blur px-2 py-0.5 rounded-full">
+              <span className="text-sm bg-white/20 backdrop-blur px-2.5 py-1 rounded-full">
                 🗓 {tour.duration}일
               </span>
             )}
-            <span className="text-xs bg-green-400/80 backdrop-blur px-2 py-0.5 rounded-full font-semibold">
+            <span className="text-sm bg-green-400/80 backdrop-blur px-2.5 py-1 rounded-full font-semibold">
               여소남 안심 보장
             </span>
           </div>
@@ -481,7 +481,7 @@ export default function TourDetailClient({
             {/* 평점 + 리뷰 배지 */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <RatingBadge rating={rating} count={reviewCount} />
-              <div className="flex gap-3 mt-3 text-xs text-gray-500">
+              <div className="flex gap-3 mt-3 text-sm text-gray-500">
                 <span className="flex items-center gap-1">✅ 안심 중개 보장</span>
                 <span className="flex items-center gap-1">🔒 개인정보 보호</span>
                 <span className="flex items-center gap-1">💰 숨은 비용 없음</span>
@@ -494,20 +494,20 @@ export default function TourDetailClient({
                 <h2 className="font-bold text-gray-900 mb-3">포함 / 불포함 사항</h2>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs font-semibold text-emerald-600 mb-1.5">✅ 포함</p>
+                    <p className="text-sm font-semibold text-emerald-600 mb-1.5">✅ 포함</p>
                     <ul className="space-y-1">
                       {(tour.inclusions ?? []).map((inc, i) => (
-                        <li key={i} className="text-xs text-gray-600 flex gap-1">
+                        <li key={i} className="text-sm text-gray-600 flex gap-1">
                           <span className="flex-shrink-0">•</span>{inc}
                         </li>
                       ))}
                     </ul>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-red-500 mb-1.5">❌ 불포함</p>
+                    <p className="text-sm font-semibold text-red-500 mb-1.5">❌ 불포함</p>
                     <ul className="space-y-1">
                       {(tour.excludes ?? []).map((ex, i) => (
-                        <li key={i} className="text-xs text-gray-600 flex gap-1">
+                        <li key={i} className="text-sm text-gray-600 flex gap-1">
                           <span className="flex-shrink-0">•</span>{ex}
                         </li>
                       ))}
@@ -537,7 +537,7 @@ export default function TourDetailClient({
             {/* 여소남 안심 중개 안내 */}
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
               <h3 className="font-bold text-indigo-900 text-sm mb-2">🔐 여소남 안심 중개 보장</h3>
-              <ul className="space-y-1.5 text-xs text-indigo-700">
+              <ul className="space-y-1.5 text-sm text-indigo-700">
                 <li>• 랜드사와 직거래 없이 플랫폼을 통해 안전하게 소통</li>
                 <li>• 채팅에서 연락처 자동 마스킹 — 직접 접촉 원천 차단</li>
                 <li>• 결제 완료 후 공식 확정서(Voucher) 자동 발급</li>
@@ -552,14 +552,14 @@ export default function TourDetailClient({
 
             {/* 판매가 카드 */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <p className="text-xs text-gray-400 mb-0.5">1인 기준</p>
+              <p className="text-sm text-gray-400 mb-0.5">1인 기준</p>
               <div className="flex items-end gap-2">
                 <span className="text-3xl font-extrabold text-indigo-600">
                   ₩{price.toLocaleString('ko-KR')}
                 </span>
                 <span className="text-sm text-gray-400 mb-1">부터</span>
               </div>
-              <p className="text-xs text-gray-400 mt-1">* 여행자 보험·유심 미포함 (선택 가능)</p>
+              <p className="text-sm text-gray-400 mt-1">* 여행자 보험·유심 미포함 (선택 가능)</p>
 
               {/* PC 예약 버튼 (모바일에서는 숨김) */}
               <button
@@ -598,7 +598,7 @@ export default function TourDetailClient({
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t shadow-2xl px-4 py-3 safe-area-bottom">
         <div className="max-w-xl mx-auto flex items-center gap-3">
           <div className="flex-1">
-            <p className="text-xs text-gray-400">최저가 보장 · 수수료 없음</p>
+            <p className="text-sm text-gray-400">최저가 보장 · 수수료 없음</p>
             <p className="text-lg font-extrabold text-indigo-700">
               ₩{price.toLocaleString('ko-KR')} <span className="text-xs font-normal text-gray-500">/ 1인</span>
             </p>

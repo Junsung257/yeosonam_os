@@ -155,8 +155,8 @@ export default function PackagesListPage() {
           <span className="text-lg">←</span>
         </Link>
         <div>
-          <h1 className="text-sm font-bold text-gray-900">{destParam || '전체 상품'}</h1>
-          <p className="text-[10px] text-gray-400">{filteredPackages.length}개 상품</p>
+          <h1 className="text-base font-bold text-gray-900">{destParam || '전체 상품'}</h1>
+          <p className="text-xs text-gray-400">{filteredPackages.length}개 상품</p>
         </div>
       </div>
 
@@ -164,7 +164,7 @@ export default function PackagesListPage() {
       <div className="sticky top-[52px] z-20 bg-white border-b border-gray-100 px-4 py-2">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           <select
-            className="flex-shrink-0 text-xs border border-gray-200 rounded-full px-3 py-1.5 bg-white text-gray-600 appearance-none"
+            className="flex-shrink-0 text-sm border border-gray-200 rounded-full px-3 py-1.5 bg-white text-gray-600 appearance-none"
             value={sortBy}
             onChange={e => setSortBy(e.target.value)}
           >
@@ -175,7 +175,7 @@ export default function PackagesListPage() {
           {FILTER_OPTIONS.map(filter => (
             <button
               key={filter}
-              className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full border transition ${
+              className={`flex-shrink-0 text-sm px-3 py-1.5 rounded-full border transition ${
                 activeFilter === filter
                   ? 'bg-[#340897] text-white border-[#340897]'
                   : 'bg-white text-gray-600 border-gray-200'
@@ -190,10 +190,10 @@ export default function PackagesListPage() {
 
       {/* 상품 카드 리스트 */}
       {loading ? (
-        <div className="text-center py-20 text-gray-400 text-sm">불러오는 중...</div>
+        <div className="text-center py-20 text-gray-400 text-base">불러오는 중...</div>
       ) : filteredPackages.length === 0 ? (
         <div className="text-center py-20">
-          <p className="text-gray-400 text-sm mb-2">{activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '상품이 없습니다'}</p>
+          <p className="text-gray-400 text-base mb-2">{activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '상품이 없습니다'}</p>
           {activeFilter !== '전체' ? (
             <button onClick={() => setActiveFilter('전체')} className="text-violet-600 text-sm underline">전체 보기</button>
           ) : (
@@ -218,7 +218,7 @@ export default function PackagesListPage() {
                       <div className="w-full h-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-2xl">🌍</div>
                     )}
                     {airlineName && (
-                      <div className="absolute bottom-1.5 left-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/90 text-[#340897]">
+                      <div className="absolute bottom-1.5 left-1.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-white/90 text-[#340897]">
                         {airlineName}
                       </div>
                     )}
@@ -229,7 +229,7 @@ export default function PackagesListPage() {
                     {/* 배지 행 — 상품 타입 + 에어텔 */}
                     <div className="flex gap-1 mb-1 flex-wrap">
                       {pkg.product_type && (
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
                           pkg.product_type.includes('실속') ? 'bg-orange-50 text-orange-700' :
                           pkg.product_type.includes('프리미엄') || pkg.product_type.includes('고품격') ? 'bg-purple-50 text-purple-700' :
                           pkg.product_type.includes('노팁') ? 'bg-emerald-50 text-emerald-700' :
@@ -239,14 +239,14 @@ export default function PackagesListPage() {
                         </span>
                       )}
                       {pkg.is_airtel && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
                           에어텔
                         </span>
                       )}
                     </div>
 
                     {/* 상품명 — 2줄 클램프 */}
-                    <h3 className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2">
+                    <h3 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
                       {pkg.products?.display_name || pkg.title}
                     </h3>
 
@@ -254,7 +254,7 @@ export default function PackagesListPage() {
                     {pkg.product_highlights && pkg.product_highlights.length > 0 && (
                       <div className="flex gap-1 mt-1.5 flex-wrap">
                         {pkg.product_highlights.slice(0, 3).map((tag, i) => (
-                          <span key={i} className="text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+                          <span key={i} className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
                             {tag}
                           </span>
                         ))}
@@ -265,11 +265,11 @@ export default function PackagesListPage() {
                     <div className="mt-2 flex items-baseline gap-0.5">
                       {minPrice > 0 ? (
                         <>
-                          <span className="text-[15px] font-bold text-gray-900">₩{minPrice.toLocaleString()}</span>
-                          <span className="text-[11px] text-gray-400">~</span>
+                          <span className="text-lg font-bold text-gray-900">₩{minPrice.toLocaleString()}</span>
+                          <span className="text-sm text-gray-400">~</span>
                         </>
                       ) : (
-                        <span className="text-xs text-gray-400">가격 문의</span>
+                        <span className="text-sm text-gray-400">가격 문의</span>
                       )}
                     </div>
                   </div>
@@ -287,7 +287,7 @@ export default function PackagesListPage() {
             <span className="text-lg">📞</span>
           </a>
           <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener noreferrer"
-            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
+            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
             💬 카카오톡 상담
           </a>
         </div>

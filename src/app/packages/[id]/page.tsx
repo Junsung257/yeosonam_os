@@ -277,13 +277,13 @@ export default function PackageDetailPage() {
         {/* 히어로 콘텐츠 */}
         <div className="absolute bottom-0 left-0 right-0 p-5 pb-8">
           {pkg.product_type && (
-            <span className="bg-violet-600 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3 inline-block">{pkg.product_type}</span>
+            <span className="bg-violet-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 inline-block">{pkg.product_type}</span>
           )}
-          <h1 className="text-white text-[22px] font-extrabold leading-tight mb-2">{pkg.products?.display_name || pkg.title}</h1>
+          <h1 className="text-white text-2xl font-extrabold leading-tight mb-2">{pkg.products?.display_name || pkg.title}</h1>
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {pkg.destination && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-[10px] px-2.5 py-1 rounded-full">#{pkg.destination}</span>}
-            {airlineName && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-[10px] px-2.5 py-1 rounded-full">#{airlineName}</span>}
-            {pkg.duration && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-[10px] px-2.5 py-1 rounded-full">#{pkg.duration}일</span>}
+            {pkg.destination && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.destination}</span>}
+            {airlineName && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{airlineName}</span>}
+            {pkg.duration && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.duration}일</span>}
           </div>
         </div>
       </div>
@@ -293,7 +293,7 @@ export default function PackageDetailPage() {
         <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-gray-400 text-[11px] mb-1">판매가</p>
+              <p className="text-gray-400 text-sm mb-1">판매가</p>
               <div className="flex items-baseline gap-1">
                 <span className="text-[28px] font-black text-gray-900">₩{(displayPrice || 0).toLocaleString()}</span>
                 <span className="text-gray-400 text-sm">~</span>
@@ -307,7 +307,7 @@ export default function PackageDetailPage() {
               const dDayText = diffDays <= 0 ? '마감' : diffDays <= 7 ? `D-${diffDays}` : `D-${diffDays}`;
               const urgentColor = diffDays <= 3 ? 'bg-red-500 text-white' : diffDays <= 7 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600';
               return (
-                <span className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg ${urgentColor}`}>
+                <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${urgentColor}`}>
                   ⏰ {dDayText} ({(deadline.getMonth()+1)}/{deadline.getDate()} 마감)
                 </span>
               );
@@ -318,7 +318,7 @@ export default function PackageDetailPage() {
           {pkg.product_highlights && pkg.product_highlights.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
               {pkg.product_highlights.slice(0, 4).map((h, i) => (
-                <span key={i} className="bg-violet-50 text-violet-700 px-2.5 py-1 rounded-lg text-[10px] font-medium">{h}</span>
+                <span key={i} className="bg-violet-50 text-violet-700 px-2.5 py-1 rounded-lg text-xs font-medium">{h}</span>
               ))}
             </div>
           )}
@@ -330,24 +330,24 @@ export default function PackageDetailPage() {
         {pkg.duration && (
           <div className="flex flex-col items-center gap-1">
             <span className="text-xl">📅</span>
-            <span className="text-[11px] font-bold text-gray-700">{pkg.duration}일</span>
+            <span className="text-sm font-bold text-gray-700">{pkg.duration}일</span>
           </div>
         )}
         {airlineName && (
           <div className="flex flex-col items-center gap-1">
             <span className="text-xl">✈️</span>
-            <span className="text-[11px] font-bold text-gray-700">{airlineName}</span>
+            <span className="text-sm font-bold text-gray-700">{airlineName}</span>
           </div>
         )}
         {pkg.min_participants && (
           <div className="flex flex-col items-center gap-1">
             <span className="text-xl">👥</span>
-            <span className="text-[11px] font-bold text-gray-700">최소 {pkg.min_participants}명</span>
+            <span className="text-sm font-bold text-gray-700">최소 {pkg.min_participants}명</span>
           </div>
         )}
         <div className="flex flex-col items-center gap-1">
           <span className="text-xl">🏷️</span>
-          <span className="text-[11px] font-bold text-gray-700">{pkg.product_type || '단체'}</span>
+          <span className="text-sm font-bold text-gray-700">{pkg.product_type || '단체'}</span>
         </div>
       </div>
 
@@ -357,12 +357,12 @@ export default function PackageDetailPage() {
           <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
             {/* 가는편 */}
             <div className="p-4">
-              <p className="text-[10px] font-bold text-violet-600 mb-2">가는편</p>
+              <p className="text-xs font-bold text-violet-600 mb-2">가는편</p>
               <div className="flex items-center justify-between">
                 <div className="text-center">
-                  <p className="text-[10px] text-gray-400 mb-0.5">출발</p>
+                  <p className="text-xs text-gray-400 mb-0.5">출발</p>
                   {flightDep.time && <p className="text-lg font-black text-gray-900">{flightDep.time}</p>}
-                  <p className="text-[10px] text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
+                  <p className="text-xs text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
                 <div className="flex flex-col items-center px-3">
                   <div className="flex items-center gap-1">
@@ -372,12 +372,12 @@ export default function PackageDetailPage() {
                     <div className="w-12 h-[1px] bg-violet-300" />
                     <div className="w-1.5 h-1.5 rounded-full bg-violet-600" />
                   </div>
-                  <span className="text-[9px] text-gray-400 mt-0.5">{getFlightLabel(flightDep.transport)} 직항</span>
+                  <span className="text-xs text-gray-400 mt-0.5">{getFlightLabel(flightDep.transport)} 직항</span>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] text-gray-400 mb-0.5">도착</p>
+                  <p className="text-xs text-gray-400 mb-0.5">도착</p>
                   <p className="text-lg font-black text-gray-900">{flightDepArr?.time || '—'}</p>
-                  <p className="text-[10px] text-gray-500">{parseCityFromActivity(flightDepArr?.activity) || (pkg.destination || '').split('/')[0]}</p>
+                  <p className="text-xs text-gray-500">{parseCityFromActivity(flightDepArr?.activity) || (pkg.destination || '').split('/')[0]}</p>
                 </div>
               </div>
             </div>
@@ -386,12 +386,12 @@ export default function PackageDetailPage() {
             {/* 오는편 */}
             {flightReturn && (
             <div className="p-4">
-              <p className="text-[10px] font-bold text-orange-500 mb-2">오는편</p>
+              <p className="text-xs font-bold text-orange-500 mb-2">오는편</p>
               <div className="flex items-center justify-between">
                 <div className="text-center">
-                  <p className="text-[10px] text-gray-400 mb-0.5">출발</p>
+                  <p className="text-xs text-gray-400 mb-0.5">출발</p>
                   <p className="text-lg font-black text-gray-900">{flightReturn.time || '—'}</p>
-                  <p className="text-[10px] text-gray-500">{parseCityFromActivity(flightReturn.activity) || (pkg.destination || '').split('/')[0]}</p>
+                  <p className="text-xs text-gray-500">{parseCityFromActivity(flightReturn.activity) || (pkg.destination || '').split('/')[0]}</p>
                 </div>
                 <div className="flex flex-col items-center px-3">
                   <div className="flex items-center gap-1">
@@ -401,12 +401,12 @@ export default function PackageDetailPage() {
                     <div className="w-12 h-[1px] bg-orange-200" />
                     <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
                   </div>
-                  <span className="text-[9px] text-gray-400 mt-0.5">{getFlightLabel(flightReturn.transport)} 직항</span>
+                  <span className="text-xs text-gray-400 mt-0.5">{getFlightLabel(flightReturn.transport)} 직항</span>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] text-gray-400 mb-0.5">도착</p>
+                  <p className="text-xs text-gray-400 mb-0.5">도착</p>
                   <p className="text-lg font-black text-gray-900">{flightReturnArr?.time || '—'}</p>
-                  <p className="text-[10px] text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
+                  <p className="text-xs text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
               </div>
             </div>
@@ -458,14 +458,14 @@ export default function PackageDetailPage() {
                         <div>
                           <p className="text-sm font-medium text-gray-800">
                             {t.period_label}
-                            {t.status === 'confirmed' && <span className="ml-1.5 text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
-                            {t.status === 'soldout' && <span className="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">마감</span>}
+                            {t.status === 'confirmed' && <span className="ml-1.5 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
+                            {t.status === 'soldout' && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">마감</span>}
                           </p>
-                          {t.departure_day_of_week && <p className="text-[10px] text-gray-400">{t.departure_day_of_week}</p>}
+                          {t.departure_day_of_week && <p className="text-xs text-gray-400">{t.departure_day_of_week}</p>}
                         </div>
                         <div className="text-right">
                           <p className={`text-sm font-bold ${t.status === 'soldout' ? 'text-gray-400 line-through' : isMin ? 'text-violet-700' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
-                          {isMin && t.status !== 'soldout' && <span className="text-[9px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">최저가</span>}
+                          {isMin && t.status !== 'soldout' && <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">최저가</span>}
                         </div>
                       </button>
                     );
@@ -490,7 +490,7 @@ export default function PackageDetailPage() {
                 </div>
                 <div className="grid grid-cols-7 mb-2">
                   {WEEKDAYS.map(w => (
-                    <div key={w} className={`text-center text-[10px] font-medium py-1 ${w === '일' ? 'text-red-400' : w === '토' ? 'text-blue-400' : 'text-gray-400'}`}>{w}</div>
+                    <div key={w} className={`text-center text-xs font-medium py-1 ${w === '일' ? 'text-red-400' : w === '토' ? 'text-blue-400' : 'text-gray-400'}`}>{w}</div>
                   ))}
                 </div>
                 <div className="grid grid-cols-7 gap-1">
@@ -507,7 +507,7 @@ export default function PackageDetailPage() {
                           isSelected ? 'bg-violet-600 text-white shadow-lg' : info ? 'hover:bg-violet-50' : 'opacity-20'
                         }`}>
                         <span className="text-xs font-medium">{d}</span>
-                        {info && <span className={`text-[8px] mt-0.5 font-bold ${isSelected ? 'text-white/80' : isMin ? 'text-violet-600' : 'text-gray-400'}`}>{Math.round(info.price / 10000)}만</span>}
+                        {info && <span className={`text-[10px] mt-0.5 font-bold ${isSelected ? 'text-white/80' : isMin ? 'text-violet-600' : 'text-gray-400'}`}>{Math.round(info.price / 10000)}만</span>}
                         {info?.tier?.status === 'confirmed' && !isSelected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" />}
                       </button>
                     );
@@ -527,7 +527,7 @@ export default function PackageDetailPage() {
               <h3 className="text-xs font-bold text-violet-900 mb-3">✅ 포함 사항</h3>
               <ul className="space-y-1.5">
                 {pkg.inclusions.map((item, i) => (
-                  <li key={i} className="text-[11px] text-violet-800 flex gap-2 leading-relaxed"><span className="shrink-0 text-violet-400">•</span>{item}</li>
+                  <li key={i} className="text-sm text-violet-800 flex gap-2 leading-relaxed"><span className="shrink-0 text-violet-400">•</span>{item}</li>
                 ))}
               </ul>
             </div>
@@ -537,7 +537,7 @@ export default function PackageDetailPage() {
               <h3 className="text-xs font-bold text-red-800 mb-3">❌ 불포함 사항</h3>
               <ul className="space-y-1.5">
                 {pkg.excludes.map((item, i) => (
-                  <li key={i} className="text-[11px] text-red-700 flex gap-2 leading-relaxed"><span className="shrink-0 text-red-300">•</span>{item}</li>
+                  <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed"><span className="shrink-0 text-red-300">•</span>{item}</li>
                 ))}
               </ul>
             </div>
@@ -553,9 +553,9 @@ export default function PackageDetailPage() {
             <div className="space-y-2">
               {pkg.optional_tours.map((tour, i) => (
                 <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
-                  <span className="text-[12px] font-medium text-gray-800">{tour.name}</span>
+                  <span className="text-sm font-medium text-gray-800">{tour.name}</span>
                   {tour.price_usd && (
-                    <span className="text-[11px] font-bold text-pink-600">${tour.price_usd}</span>
+                    <span className="text-sm font-bold text-pink-600">${tour.price_usd}</span>
                   )}
                 </div>
               ))}
@@ -582,9 +582,9 @@ export default function PackageDetailPage() {
                       ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200'
                       : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300'
                   }`}>
-                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
+                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
                   <span className="font-extrabold text-lg leading-none mt-0.5">{String(day.day).padStart(2, '0')}</span>
-                  <span className="text-[10px] mt-1 opacity-70">{day.regions?.[0]?.slice(0, 6) || ''}</span>
+                  <span className="text-xs mt-1 opacity-70">{day.regions?.[0]?.slice(0, 6) || ''}</span>
                 </button>
               ))}
             </div>
@@ -626,9 +626,9 @@ export default function PackageDetailPage() {
                         <div className="bg-white rounded-xl border border-gray-200 p-3">
                           <div className="flex gap-3">
                             <div className="flex flex-col items-center shrink-0 w-12">
-                              <p className="text-[13px] font-black text-gray-900">{item.time}</p>
+                              <p className="text-sm font-black text-gray-900">{item.time}</p>
                               <div className="w-[2px] flex-1 bg-violet-200 my-1 min-h-[28px]" />
-                              <p className="text-[13px] font-black text-gray-900">{arrivalItem?.time || '—'}</p>
+                              <p className="text-sm font-black text-gray-900">{arrivalItem?.time || '—'}</p>
                             </div>
                             <div className="flex flex-col items-center shrink-0 pt-1">
                               <div className={`w-2.5 h-2.5 rounded-full border-2 ${isOutbound ? 'border-violet-600' : 'border-orange-400'} bg-white`} />
@@ -637,10 +637,10 @@ export default function PackageDetailPage() {
                             </div>
                             <div className="flex-1 flex flex-col justify-between py-0.5">
                               <div>
-                                <p className="font-bold text-[13px] text-gray-900">{depCity} 출발</p>
-                                <p className={`text-[10px] font-medium mt-0.5 ${isOutbound ? 'text-violet-600' : 'text-orange-500'}`}>✈ {getFlightLabel(item.transport)} 직항</p>
+                                <p className="font-bold text-sm text-gray-900">{depCity} 출발</p>
+                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-violet-600' : 'text-orange-500'}`}>✈ {getFlightLabel(item.transport)} 직항</p>
                               </div>
-                              <p className="font-bold text-[13px] text-gray-900">{arrCityParsed} 도착</p>
+                              <p className="font-bold text-sm text-gray-900">{arrCityParsed} 도착</p>
                             </div>
                           </div>
                         </div>
@@ -679,19 +679,19 @@ export default function PackageDetailPage() {
                           <div className="bg-violet-50 border border-violet-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
                             <span className="text-lg shrink-0">🎁</span>
                             <div>
-                              <span className="text-[9px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">스페셜 포함</span>
-                              <p className="font-bold text-[14px] text-violet-900 mt-1">{item.activity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
+                              <span className="text-xs font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">스페셜 포함</span>
+                              <p className="font-bold text-base text-violet-900 mt-1">{item.activity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
                             </div>
                           </div>
                         ) : (
                         /* 일반 활동명 */
-                        <h3 className="font-bold text-[15px] text-gray-900 leading-snug">
+                        <h3 className="font-bold text-base text-gray-900 leading-snug">
                           {item.activity}
                         </h3>
                         )}
 
                         {item.note && (
-                          <p className="text-red-500 text-[11px] mt-1.5 font-medium">{item.note}</p>
+                          <p className="text-red-500 text-sm mt-1.5 font-medium">{item.note}</p>
                         )}
 
                         {/* ═══ 관광지 블록 (하나투어 스타일) ═══ */}
@@ -710,12 +710,12 @@ export default function PackageDetailPage() {
                             {/* 관광지명 (클릭→상세설명 토글) */}
                             <button onClick={() => attr.long_desc && toggleExpand(expandKey)}
                               className="flex items-center gap-1 text-left group">
-                              <span className="font-bold text-[14px] text-blue-900 group-hover:text-blue-700">{attr.name}</span>
+                              <span className="font-bold text-base text-blue-900 group-hover:text-blue-700">{attr.name}</span>
                               {attr.long_desc && <span className={`text-gray-400 text-sm transition-transform ${isExpanded ? 'rotate-90' : ''}`}>›</span>}
                             </button>
                             {/* 한줄설명 */}
                             {attr.short_desc && (
-                              <p className="text-[12px] text-gray-500 mt-0.5 leading-relaxed">{attr.short_desc}</p>
+                              <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">{attr.short_desc}</p>
                             )}
                             {/* 사진 3장 그리드 */}
                             {hasPhotos && (
@@ -729,7 +729,7 @@ export default function PackageDetailPage() {
                             )}
                             {/* 배지 (포함사항이면 스페셜포함, 아니면 원래 badge_type) */}
                             {effectiveBadge && effectiveBadge !== 'tour' && (
-                              <span className={`inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded font-medium border ${
+                              <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded font-medium border ${
                                 effectiveBadge === 'special' ? 'border-violet-300 text-violet-700 bg-violet-50' :
                                 effectiveBadge === 'shopping' ? 'border-purple-300 text-purple-700 bg-purple-50' :
                                 effectiveBadge === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
@@ -748,7 +748,7 @@ export default function PackageDetailPage() {
                             )}
                             {/* 상세설명 (클릭 시 펼치기) */}
                             {isExpanded && attr.long_desc && (
-                              <p className="text-[12px] text-gray-600 mt-2 leading-relaxed bg-gray-50 rounded-lg p-3">
+                              <p className="text-sm text-gray-600 mt-2 leading-relaxed bg-gray-50 rounded-lg p-3">
                                 {attr.long_desc}
                               </p>
                             )}
@@ -767,19 +767,19 @@ export default function PackageDetailPage() {
                   <div className="relative pl-8">
                     <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#340897] ring-2 ring-[#e6deff] z-10" />
                     <div>
-                      <h3 className="font-bold text-[15px] text-gray-900 mb-2">호텔 투숙 및 휴식</h3>
+                      <h3 className="font-bold text-base text-gray-900 mb-2">호텔 투숙 및 휴식</h3>
                       <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
                         <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-200 to-violet-400 flex items-center justify-center text-xl shrink-0">🏨</div>
                         <div>
                           {currentDay.hotel.grade && (
                             <div className="flex gap-0.5 mb-0.5">
                               {Array.from({ length: parseInt(currentDay.hotel.grade) || 4 }).map((_, i) => (
-                                <span key={i} className="text-amber-400 text-[10px]">★</span>
+                                <span key={i} className="text-amber-400 text-xs">★</span>
                               ))}
                             </div>
                           )}
                           <h4 className="font-bold text-xs text-gray-800">{currentDay.hotel.name}</h4>
-                          {currentDay.hotel.note && <p className="text-[10px] text-gray-400 mt-0.5">{currentDay.hotel.note}</p>}
+                          {currentDay.hotel.note && <p className="text-xs text-gray-400 mt-0.5">{currentDay.hotel.note}</p>}
                         </div>
                       </div>
                     </div>
@@ -793,7 +793,7 @@ export default function PackageDetailPage() {
                       <span className="text-xs">🍽️</span>
                     </div>
                     <div>
-                      <h3 className="font-bold text-[15px] text-gray-900 mb-3">식사 안내</h3>
+                      <h3 className="font-bold text-base text-gray-900 mb-3">식사 안내</h3>
                       <div className="flex gap-2">
                         {[
                           { label: '조식', note: currentDay.meals.breakfast_note, has: currentDay.meals.breakfast, fallback: '호텔식' },
@@ -801,8 +801,8 @@ export default function PackageDetailPage() {
                           { label: '석식', note: currentDay.meals.dinner_note, has: currentDay.meals.dinner, fallback: '현지식' },
                         ].map(m => (
                           <div key={m.label} className="bg-gray-50 rounded-xl px-3 py-2.5 flex-1 text-center border border-gray-100">
-                            <p className="text-[9px] text-gray-400 mb-0.5">{m.label}</p>
-                            <p className="text-[11px] font-bold text-gray-700">{m.note || (m.has ? m.fallback : '불포함')}</p>
+                            <p className="text-xs text-gray-400 mb-0.5">{m.label}</p>
+                            <p className="text-sm font-bold text-gray-700">{m.note || (m.has ? m.fallback : '불포함')}</p>
                           </div>
                         ))}
                       </div>
@@ -843,17 +843,17 @@ export default function PackageDetailPage() {
                         {isOpen && (
                           <div className="px-4 pb-3 pt-0">
                             {lines.map((line, lIdx) => (
-                              <p key={lIdx} className="text-[11px] text-gray-500 leading-relaxed">{line.startsWith('•') ? line : `• ${line}`}</p>
+                              <p key={lIdx} className="text-sm text-gray-500 leading-relaxed">{line.startsWith('•') ? line : `• ${line}`}</p>
                             ))}
                           </div>
                         )}
                       </div>
                     );
                   })}
-                  <p className="text-[9px] text-gray-400 italic mt-2">※ 공통 규정은 별도 [예약 안내문]을 확인하시기 바랍니다.</p>
+                  <p className="text-xs text-gray-400 italic mt-2">※ 공통 규정은 별도 [예약 안내문]을 확인하시기 바랍니다.</p>
                 </div>
               ) : pkg.special_notes ? (
-                <p className="text-[11px] text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
+                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
               ) : null}
             </div>
           );
@@ -878,19 +878,19 @@ export default function PackageDetailPage() {
           <div className="flex-1 min-w-0">
             {selectedTier ? (
               <>
-                <p className="text-[10px] text-gray-400 truncate">
+                <p className="text-xs text-gray-400 truncate">
                   {selectedDate
                     ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 출발`
                     : `${selectedTier.period_label} 출발`}
                 </p>
                 <p className="text-sm font-bold text-gray-900">
                   ₩{(selectedTier.adult_price || 0).toLocaleString()}
-                  <span className="text-[10px] font-normal text-gray-400 ml-0.5">/ 1인</span>
+                  <span className="text-xs font-normal text-gray-400 ml-0.5">/ 1인</span>
                 </p>
               </>
             ) : displayPrice && displayPrice < Infinity ? (
               <>
-                <p className="text-[10px] text-gray-400">최저가</p>
+                <p className="text-xs text-gray-400">최저가</p>
                 <p className="text-sm font-bold text-gray-900">₩{displayPrice.toLocaleString()}~</p>
               </>
             ) : null}

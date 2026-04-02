@@ -107,11 +107,11 @@ export default function HomePage() {
       <div className="bg-gradient-to-b from-[#340897] to-[#4b2ead] px-5 pt-10 pb-8 text-center">
         {/* 김해공항 배지 */}
         <div className="inline-flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1 mb-3">
-          <span className="text-white text-xs font-medium">✈ 김해공항 출발 전용</span>
+          <span className="text-white text-sm font-medium">✈ 김해공항 출발 전용</span>
         </div>
 
         <h1 className="text-white text-2xl font-black tracking-tight">여소남</h1>
-        <p className="text-white/70 text-xs mt-1 font-medium">가치있는 여행을 소개합니다</p>
+        <p className="text-white/70 text-sm mt-1 font-medium">가치있는 여행을 소개합니다</p>
 
         {/* 테마 필터 칩 */}
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mt-5 justify-center flex-wrap">
@@ -119,7 +119,7 @@ export default function HomePage() {
             <Link
               key={region}
               href={region === '전체' ? '/packages' : `/packages?filter=${encodeURIComponent(region)}`}
-              className="flex-shrink-0 bg-white/20 text-white text-xs px-3 py-1.5 rounded-full border border-white/30 active:bg-white/30 transition"
+              className="flex-shrink-0 bg-white/20 text-white text-sm px-3.5 py-2 rounded-full border border-white/30 active:bg-white/30 transition"
             >
               {region}
             </Link>
@@ -130,7 +130,7 @@ export default function HomePage() {
       {/* 목적지 카드 그리드 */}
       <div className="px-4 -mt-6">
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4">
-          <h2 className="text-sm font-bold text-gray-800 mb-3">인기 여행지</h2>
+          <h2 className="text-base font-bold text-gray-800 mb-3">인기 여행지</h2>
 
           {loading ? (
             <div className="grid grid-cols-2 gap-3">
@@ -144,7 +144,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : destinations.length === 0 ? (
-            <div className="text-center py-12 text-gray-400 text-sm">현재 판매 중인 상품이 없습니다</div>
+            <div className="text-center py-12 text-gray-400 text-base">현재 판매 중인 상품이 없습니다</div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {destinations.map((dest, index) => {
@@ -161,15 +161,15 @@ export default function HomePage() {
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                         <div className="absolute bottom-2 left-2.5">
-                          <p className="text-white text-[13px] font-bold leading-tight">{emoji} {dest.destination}</p>
+                          <p className="text-white text-base font-bold leading-tight">{emoji} {dest.destination}</p>
                         </div>
                         <div className="absolute top-2 right-2">
-                          <span className="bg-white/90 text-[9px] font-bold text-violet-700 px-1.5 py-0.5 rounded-full">{dest.count}개</span>
+                          <span className="bg-white/90 text-xs font-bold text-violet-700 px-2 py-0.5 rounded-full">{dest.count}개</span>
                         </div>
                       </div>
                       {/* 가격 */}
                       <div className="px-2.5 py-2">
-                        <p className="text-[13px] font-black text-gray-900">
+                        <p className="text-base font-black text-gray-900">
                           {dest.minPrice > 0 ? `₩${dest.minPrice.toLocaleString()}~` : '가격 문의'}
                         </p>
                       </div>
@@ -184,8 +184,8 @@ export default function HomePage() {
 
       {/* 하단 안내 */}
       <div className="px-6 py-8 text-center">
-        <p className="text-xs text-gray-400">부산/김해 출발 단체·패키지 여행 전문</p>
-        <p className="text-[10px] text-gray-300 mt-1">yeosonam.co.kr</p>
+        <p className="text-sm text-gray-400">부산/김해 출발 단체·패키지 여행 전문</p>
+        <p className="text-xs text-gray-300 mt-1">yeosonam.co.kr</p>
       </div>
 
       {/* 플로팅 CTA */}
@@ -195,7 +195,7 @@ export default function HomePage() {
             <span className="text-lg">📞</span>
           </a>
           <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener noreferrer"
-            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
+            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
             💬 카카오톡 상담
           </a>
         </div>

@@ -293,7 +293,7 @@ export default function ConciergePage() {
                   <button
                     key={s}
                     onClick={() => { setQuery(s); setTimeout(() => inputRef.current?.form?.requestSubmit(), 50); }}
-                    className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 transition"
+                    className="text-sm bg-white border border-gray-200 rounded-full px-3 py-1.5 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 transition"
                   >
                     {s}
                   </button>
@@ -328,8 +328,8 @@ export default function ConciergePage() {
                       )}
                       <span className="text-xs text-gray-400 ml-auto">{API_LABELS[item.api_name] ?? item.api_name}</span>
                     </div>
-                    <h3 className="font-semibold text-gray-900 text-sm mb-1">{item.product_name}</h3>
-                    <p className="text-xs text-gray-500 flex-1 mb-3">{item.description}</p>
+                    <h3 className="font-semibold text-gray-900 text-base mb-1">{item.product_name}</h3>
+                    <p className="text-sm text-gray-500 flex-1 mb-3">{item.description}</p>
 
                     {/* 크루즈 상세 attrs */}
                     {item.product_type === 'CRUISE' && item.attrs && (
