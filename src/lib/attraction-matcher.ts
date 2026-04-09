@@ -61,54 +61,56 @@ export function matchAttraction(
     : attractions;
   if (!filtered.length) return null;
 
-  // 공백 제거 버전 (띄어쓰기 차이 대응: "크레이지하우스" vs "크레이지 하우스")
+  // 정규화 버전 (공백 제거 + 소문자: "Art Museum" ↔ "art museum" 매칭)
   const actNoSpace = activity.replace(/\s+/g, '');
+  const actLower = activity.toLowerCase();
+  const actLowerNoSpace = actNoSpace.toLowerCase();
 
-  // 1. Exact name match
-  const exact = filtered.find(a => activity === a.name);
+  // 1. Exact name match (대소문자 무시)
+  const exact = filtered.find(a => actLower === a.name.toLowerCase());
   if (exact) return exact;
 
-  // 2. Aliases exact match
+  // 2. Aliases exact match (대소문자 무시)
   const aliasExact = filtered.find(a =>
-    a.aliases?.some(alias => activity === alias)
+    a.aliases?.some(alias => actLower === alias.toLowerCase())
   );
   if (aliasExact) return aliasExact;
 
-  // 3. DB name ⊂ activity (name >= 2 chars, stop words 제외)
-  const dbInAct = filtered.find(a => a.name.length >= 2 && !MATCH_STOP_WORDS.has(a.name) && activity.includes(a.name));
+  // 3. DB name ⊂ activity (name >= 2 chars, stop words 제외, 대소문자 무시)
+  const dbInAct = filtered.find(a => a.name.length >= 2 && !MATCH_STOP_WORDS.has(a.name) && actLower.includes(a.name.toLowerCase()));
   if (dbInAct) return dbInAct;
 
-  // 3-B. 공백 제거 후 DB name ⊂ activity ("크레이지하우스" in "크레이지 하우스")
+  // 3-B. 공백 제거 후 DB name ⊂ activity
   const dbInActNoSpace = filtered.find(a => {
     const nameNoSpace = a.name.replace(/\s+/g, '');
-    return nameNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(a.name) && actNoSpace.includes(nameNoSpace);
+    return nameNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(a.name) && actLowerNoSpace.includes(nameNoSpace.toLowerCase());
   });
   if (dbInActNoSpace) return dbInActNoSpace;
 
-  // 4. Activity ⊂ DB name (activity >= 2 chars)
-  const actInDb = filtered.find(a => activity.length >= 2 && !MATCH_STOP_WORDS.has(activity) && a.name.includes(activity));
+  // 4. Activity ⊂ DB name (activity >= 2 chars, 대소문자 무시)
+  const actInDb = filtered.find(a => activity.length >= 2 && !MATCH_STOP_WORDS.has(activity) && a.name.toLowerCase().includes(actLower));
   if (actInDb) return actInDb;
 
   // 4-B. 공백 제거 후 activity ⊂ DB name
   const actInDbNoSpace = filtered.find(a => {
     const nameNoSpace = a.name.replace(/\s+/g, '');
-    return actNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameNoSpace.includes(actNoSpace);
+    return actNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameNoSpace.toLowerCase().includes(actLowerNoSpace);
   });
   if (actInDbNoSpace) return actInDbNoSpace;
 
-  // 5. Aliases ⊂ activity (alias >= 2 chars)
+  // 5. Aliases ⊂ activity (alias >= 2 chars, 대소문자 무시)
   const aliasInAct = filtered.find(a =>
     a.aliases?.some(alias => alias.length >= 2 && !MATCH_STOP_WORDS.has(alias) &&
-      (activity.includes(alias) || actNoSpace.includes(alias.replace(/\s+/g, ''))))
+      (actLower.includes(alias.toLowerCase()) || actLowerNoSpace.includes(alias.replace(/\s+/g, '').toLowerCase())))
   );
   if (aliasInAct) return aliasInAct;
 
-  // 6. Keyword split matching (2+ char keywords, excluding stop words)
+  // 6. Keyword split matching (2+ char keywords, 대소문자 무시)
   const keywordMatch = filtered.find(a => {
     const keywords = a.name.split(/[&,+/\s()（）]+/)
       .map(k => k.trim())
       .filter(k => k.length >= 2 && !MATCH_STOP_WORDS.has(k));
-    return keywords.length > 0 && keywords.some(k => activity.includes(k) || actNoSpace.includes(k));
+    return keywords.length > 0 && keywords.some(k => actLower.includes(k.toLowerCase()) || actLowerNoSpace.includes(k.toLowerCase()));
   });
   if (keywordMatch) return keywordMatch;
 
@@ -152,4 +154,16 @@ export function matchAllActivities(
   }
 
   return { matched, unmatched };
+}
+
+/**
+ * itinerary_data 듀얼 포맷 정규화 헬퍼
+ * DB에 { days: [...] } 객체 또는 [...] 배열이 혼재 → 항상 배열 반환
+ */
+export function normalizeDays<T = Record<string, unknown>>(
+  itineraryData: T[] | { days?: T[] } | null | undefined,
+): T[] {
+  if (!itineraryData) return [];
+  if (Array.isArray(itineraryData)) return itineraryData;
+  return (itineraryData as { days?: T[] }).days || [];
 }

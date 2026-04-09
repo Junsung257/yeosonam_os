@@ -64,6 +64,9 @@ const navGroups: NavGroup[] = [
       { href: '/admin/marketing/creatives', label: '크리에이티브' },
       { href: '/admin/marketing/card-news', label: '카드뉴스' },
       { href: '/admin/content-hub', label: '콘텐츠 허브' },
+      { href: '/admin/content-queue', label: '콘텐츠 검수' },
+      { href: '/admin/content-analytics', label: '콘텐츠 성과' },
+      { href: '/admin/content-gaps', label: '콘텐츠 갭' },
       { href: '/admin/search-ads', label: '검색광고' },
     ],
   },
@@ -130,6 +133,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={`flex items-center px-3 py-1.5 rounded text-[13px] transition-colors ${
                     isActive(item)
                       ? 'bg-white/15 text-white font-medium'

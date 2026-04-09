@@ -6,6 +6,7 @@
 
 import { searchPexelsPhotos, isPexelsConfigured } from './pexels';
 import { getMinPriceFromDates } from './price-dates';
+import { matchAttraction as matchAttr } from './attraction-matcher';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -518,25 +519,168 @@ export async function generateCardSlides(
 
 // ── 블로그 생성 (정규식 기반, AI 대체 가능) ──────────────
 
-export function generateBlogPost(product: ProductData, angle: AngleType): string {
+/**
+ * 블로그 본문 생성 (관광지 DB 자동 결합 + H2/H3 구조 + FAQ)
+ * @param attractions - 해당 목적지의 관광지 데이터 (사진/설명 자동 삽입)
+ */
+export function generateBlogPost(
+  product: ProductData,
+  angle: AngleType,
+  attractions?: { name: string; short_desc?: string | null; photos?: { src_medium: string }[]; badge_type?: string | null; aliases?: string[] | null }[],
+): string {
   const dest = product.destination || '여행지';
   const dur = product.duration ? `${product.duration - 1}박${product.duration}일` : '';
   const price = getLowestPrice(product);
   const priceStr = price > 0 ? `${price.toLocaleString()}원` : '';
   const inclusions = product.inclusions || [];
   const itinerary = product.itinerary || [];
-
+  const highlights = product.product_highlights || [];
   const angleLabel = ANGLE_PRESETS[angle].label;
 
-  return `# ${dest} ${dur} ${angleLabel} 여행 추천\n\n` +
-    `안녕하세요, 여소남입니다.\n오늘은 ${dest} ${dur} 여행을 ${angleLabel} 관점에서 소개해드릴게요.\n\n` +
-    `## 여행 개요\n- 목적지: ${dest}\n- 기간: ${dur}\n- 가격: ${priceStr}~\n` +
-    (product.airline ? `- 항공: ${product.airline}\n` : '') +
-    (product.departure_airport ? `- 출발: ${product.departure_airport}\n` : '') +
-    `\n## 포함사항\n${inclusions.map(i => `- ${i}`).join('\n')}\n` +
-    (itinerary.length > 0 ? `\n## 일정\n${itinerary.map(i => `- ${i}`).join('\n')}\n` : '') +
-    `\n## 예약 안내\n여소남에서 ${dest} ${angleLabel} 여행을 만나보세요.\n` +
-    `가치있는 여행을 소개합니다 - yeosonam.com\n`;
+  const sections: string[] = [];
+
+  // ── H1 + 인트로 ─────────────────────────────────────────
+  sections.push(`# ${dest} ${dur} ${angleLabel} 여행 추천`);
+  sections.push(`\n안녕하세요, 여소남입니다.\n오늘은 ${dest} ${dur} 여행을 **${angleLabel}** 관점에서 소개해드릴게요.\n`);
+
+  // ── 여행 개요 ──────────────────────────────────────────
+  const overview = [`## 여행 개요`, `- **목적지:** ${dest}`, `- **기간:** ${dur}`];
+  if (priceStr) overview.push(`- **가격:** ${priceStr}~`);
+  if (product.airline) overview.push(`- **항공:** ${product.airline}`);
+  if (product.departure_airport) overview.push(`- **출발:** ${product.departure_airport}`);
+  sections.push(overview.join('\n'));
+
+  // ── 핵심 하이라이트 ─────────────────────────────────────
+  if (highlights.length > 0) {
+    sections.push(`\n## 이 상품의 핵심 포인트`);
+    sections.push(highlights.slice(0, 5).map(h => `- ${h}`).join('\n'));
+  }
+
+  // ── 일정 하이라이트 (관광지 DB 자동 결합) ──────────────
+  if (itinerary.length > 0 || attractions?.length) {
+    sections.push(`\n## 일정 하이라이트`);
+
+    // 일정에서 관광지를 매칭하여 사진/설명 삽입
+    const matchedSpots: { name: string; desc: string; photo?: string }[] = [];
+    if (attractions?.length && itinerary.length > 0) {
+      for (const item of itinerary) {
+        const attr = matchAttr(item, attractions as any, product.destination);
+        if (attr && !matchedSpots.find(s => s.name === attr.name)) {
+          matchedSpots.push({
+            name: attr.name,
+            desc: attr.short_desc || '',
+            photo: attr.photos?.[0]?.src_medium,
+          });
+        }
+        if (matchedSpots.length >= 5) break;
+      }
+    }
+
+    if (matchedSpots.length > 0) {
+      for (const spot of matchedSpots) {
+        sections.push(`\n### ${spot.name}`);
+        if (spot.photo) sections.push(`![${spot.name}](${spot.photo})`);
+        if (spot.desc) sections.push(spot.desc);
+      }
+    } else {
+      sections.push(itinerary.slice(0, 8).map(i => `- ${i}`).join('\n'));
+    }
+  }
+
+  // ── 포함사항 ──────────────────────────────────────────
+  if (inclusions.length > 0) {
+    sections.push(`\n## 포함사항`);
+    sections.push(inclusions.map(i => `- ${i}`).join('\n'));
+  }
+
+  // ── 선택관광 ──────────────────────────────────────────
+  if (product.optional_tours?.length) {
+    sections.push(`\n## 선택관광`);
+    sections.push(product.optional_tours.slice(0, 5).map(t =>
+      `- **${t.name}**${t.price_usd ? ` (USD ${t.price_usd})` : ''}`
+    ).join('\n'));
+  }
+
+  // ── FAQ (notices_parsed에서 자동 추출) ──────────────────
+  const notices = (product as any).notices_parsed;
+  if (Array.isArray(notices) && notices.length > 0) {
+    const faqItems = notices
+      .filter((n: any) => typeof n === 'object' && n !== null && 'title' in n && 'text' in n)
+      .slice(0, 5);
+
+    if (faqItems.length > 0) {
+      sections.push(`\n## 자주 묻는 질문`);
+      for (const faq of faqItems) {
+        sections.push(`\n**Q. ${faq.title}**\n\nA. ${faq.text}`);
+      }
+    }
+  }
+
+  // ── CTA ────────────────────────────────────────────────
+  sections.push(`\n## 예약 안내`);
+  sections.push(`여소남에서 ${dest} ${angleLabel} 여행을 만나보세요.\n안심하고 비교·예약하세요 — [yeosonam.com](https://yeosonam.com)`);
+
+  return sections.join('\n');
+}
+
+// ── 블로그 SEO 메타 자동 생성 ─────────────────────────────
+
+/** 한글/영문 destination을 slug-safe 문자열로 변환 */
+function toSlugPart(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+const ANGLE_SLUG: Record<AngleType, string> = {
+  value: 'value', emotional: 'healing', filial: 'filial',
+  luxury: 'luxury', urgency: 'deal', activity: 'activity', food: 'food',
+};
+
+export interface BlogSeo {
+  slug: string;
+  seoTitle: string;
+  seoDescription: string;
+}
+
+/**
+ * 블로그 SEO 메타데이터 자동 생성
+ * VA는 이 결과를 수정만 하면 됨 (수동 입력 불필요)
+ */
+export function generateBlogSeo(
+  product: ProductData,
+  angle: AngleType,
+): BlogSeo {
+  const dest = product.destination || '여행';
+  const dur = product.duration ? `${product.duration - 1}박${product.duration}일` : '';
+  const angleLabel = ANGLE_PRESETS[angle].label;
+  const price = getLowestPrice(product);
+  const priceStr = price > 0 ? `${price.toLocaleString()}원` : '';
+  const year = new Date().getFullYear();
+
+  // slug: destination-angle-duration (영문/한글 모두 지원)
+  const slugParts = [toSlugPart(dest), ANGLE_SLUG[angle]];
+  if (dur) slugParts.push(toSlugPart(dur));
+  const slug = slugParts.filter(Boolean).join('-');
+
+  // SEO 제목: 60자 이내
+  const seoTitle = `${dest} ${dur} ${angleLabel} 여행 추천 | ${year} 최신 가이드`.substring(0, 60);
+
+  // SEO 설명: 160자 이내 (highlights + 가격 + inclusions 핵심)
+  const highlights = (product.product_highlights || []).slice(0, 2).join(', ');
+  const inclKey = (product.inclusions || []).slice(0, 2).join(', ');
+  const descParts = [
+    `${dest} ${dur} ${angleLabel} 패키지`,
+    priceStr ? `${priceStr}~` : '',
+    highlights || inclKey,
+    '여소남에서 비교하고 안심 예약하세요.',
+  ].filter(Boolean);
+  const seoDescription = descParts.join('. ').substring(0, 160);
+
+  return { slug, seoTitle, seoDescription };
 }
 
 // ── 검색광고 카피 생성 ───────────────────────────────────

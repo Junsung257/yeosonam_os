@@ -26,6 +26,7 @@ const PUBLIC_PATHS = [
   '/api/packages',
   '/api/attractions',
   // 단체여행 RFQ (고객 인터뷰 → 공고 → 채팅 → 계약)
+  '/group',
   '/group-inquiry',
   '/rfq',
   '/api/rfq',
@@ -50,6 +51,10 @@ const PUBLIC_PATHS = [
   '/api/recommendations',
   // 카카오 웹훅 (외부 수신)
   '/api/webhooks/kakao',
+  // 블로그 (공개 콘텐츠)
+  '/blog',
+  '/blog/destination',
+  '/api/blog',
 ];
 
 function isPublicPath(pathname: string) {

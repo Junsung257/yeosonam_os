@@ -2,6 +2,10 @@
 
 import React from 'react';
 import { groupForPoster, type PriceDate, type MonthGroup } from '@/lib/price-dates';
+import { parseDaysWithTransport, isTransportSegment } from '@/lib/transportParser';
+import { matchAttraction as matchAttractionShared } from '@/lib/attraction-matcher';
+import type { AttractionData } from '@/lib/attraction-matcher';
+import TransportBar from '@/components/itinerary/TransportBar';
 
 /**
  * ══════════════════════════════════════════════════════════
@@ -79,6 +83,7 @@ export interface AttractionInfo {
 export interface YeosonamA4Props {
   pkg: {
     title?: string;
+    display_title?: string;
     display_name?: string;
     destination?: string;
     duration?: number;
@@ -125,45 +130,62 @@ const EC = 'outline-none focus:bg-yellow-50';
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════
 
-// 매칭 제외 일반 단어 (이 단어로는 매칭하지 않음)
-const MATCH_STOP_WORDS = new Set(['호텔','방콕','파타야','부산','청도','보홀','다낭','하노이','타이페이','후쿠오카','나가사키','조식','중식','석식','이동','출발','도착','귀환','체크인','체크아웃','휴식','투숙','관광','공항','미팅','가이드','수속','탑승']);
-
-// 관광지 매칭: 지역 필터 + 키워드 분리 매칭 (엄격 모드)
+// 관광지 매칭: 모바일과 동일한 공통 함수 사용 (length>=2, 대소문자 무시, aliases 지원)
 function matchAttraction(activity: string, attractions?: AttractionInfo[], destination?: string): AttractionInfo | null {
   if (!attractions?.length) return null;
-  // 이동/휴식/수속 등 비관광 활동은 매칭 제외
-  if (/^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항)/.test(activity)) return null;
-  // 같은 지역 관광지만 필터
-  const filtered = destination
-    ? attractions.filter(a =>
-        !a.region || !destination ||
-        destination.includes(a.region) || (a.region && a.region.includes(destination)) ||
-        (a.country && destination.includes(a.country)))
-    : attractions;
-  if (!filtered.length) return null;
-  // 1. 정확 매칭
-  const exact = filtered.find(a => activity === a.name);
-  if (exact) return exact;
-  // 2. DB 이름이 activity에 포함 (name이 4자 이상 — 짧은 이름 오매칭 방지)
-  const dbInAct = filtered.find(a => a.name.length >= 4 && activity.includes(a.name));
-  if (dbInAct) return dbInAct;
-  // 3. activity가 DB 이름에 포함 (activity가 4자 이상)
-  const actInDb = filtered.find(a => activity.length >= 4 && a.name.includes(activity));
-  if (actInDb) return actInDb;
-  // 4. 키워드 분리 매칭: 4자 이상 키워드만, 일반 단어 제외
-  const keywordMatch = filtered.find(a => {
-    const keywords = a.name.split(/[&,+/\s]+/).map(k => k.trim()).filter(k => k.length >= 4 && !MATCH_STOP_WORDS.has(k));
-    return keywords.length > 0 && keywords.some(k => activity.includes(k));
-  });
-  if (keywordMatch) return keywordMatch;
-  return null;
+  const result = matchAttractionShared(activity, attractions as unknown as AttractionData[], destination);
+  return result as unknown as AttractionInfo | null;
 }
 
 export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props) {
   if (!pkg) return <div style={PAGE_STYLE} className="a4-export-page animate-pulse bg-gray-50" />;
 
-  const title = pkg.display_name || pkg.title || '상품명';
+  // 제목 클렌징: 랜드사명/항공사 코드/해시태그/특전나열 제거 (CLAUDE.md 8번 원칙)
+  // display_title이 null인 구상품은 pkg.title 폴백 시 "[BX] ... (투어폰)" 형태 오염 발생.
+  const SUPPLIER_SUFFIX_RE = /\s*\((?:투어폰|투어비|더투어|랜드부산|여소남|모두투어|베스트아시아|투어코코넛|티트레블|하나투어)\)\s*$/;
+  const AIRLINE_PREFIX_RE = /^\s*\[[A-Z0-9]{1,4}\]\s*/;
+  const HASHTAG_TAIL_RE = /\s+#[^\s#]+(?:\s+#[^\s#]+)*\s*$/;
+
+  const rawTitle = pkg.display_title || pkg.display_name || pkg.title || '상품명';
+  const title = rawTitle
+    .replace(AIRLINE_PREFIX_RE, '')     // "[BX] " prefix 제거
+    .replace(SUPPLIER_SUFFIX_RE, '')    // " (투어폰)" suffix 제거
+    .replace(HASHTAG_TAIL_RE, '')       // " #온천1박 #유후인 ..." 꼬리 해시태그 제거
+    .split(/\s*[—–]\s+/)[0]             // " — " 이후 특전 나열 제거
+    .trim();
   const itinerary = pkg.itinerary_data;
+
+  // 핵심 특전: 상위 4개 + 단독 무의미 단어만 제외 (수식어 붙으면 통과)
+  // 예: "마사지" → 제외, "전신 마사지 120분" → 통과 (가치 있는 소구점)
+  const EXCLUDED_EXACT = new Set(['노팁', '노옵션', '노쇼핑']); // 이것들은 무조건 제외
+  const EXCLUDED_IF_SHORT = ['전통공연', '마사지', '유목민', '수테차', '오아시스']; // 5글자 이하일 때만 제외
+  const filteredHighlights = (pkg.product_highlights || [])
+    .filter(h => {
+      if (EXCLUDED_EXACT.has(h.trim())) return false;
+      if (h.length <= 5 && EXCLUDED_IF_SHORT.some(ex => h.includes(ex))) return false;
+      return true;
+    })
+    .slice(0, 4);
+
+  // 직항 도착 도시 추출: 1일차 도착 항공편에서 도시명 파싱
+  const arrivalCityName = (() => {
+    const rawDays = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
+    const firstDay = rawDays[0];
+    if (!firstDay?.schedule) return undefined;
+    const arrivalFlight = firstDay.schedule.find(
+      (s: { type?: string; activity?: string }) => s.type === 'flight' && s.activity && /도착|입국/.test(s.activity)
+    );
+    if (arrivalFlight?.activity) {
+      // "비엔티엔 도착 후 입국수속" → "비엔티엔"
+      const m = arrivalFlight.activity.match(/^(.+?)\s*(국제)?공항?\s*(도착|입국)/);
+      if (m) return m[1].trim();
+      // "장가계 도착" → "장가계"
+      const m2 = arrivalFlight.activity.match(/^(.+?)\s+(도착|입국)/);
+      if (m2) return m2[1].trim();
+    }
+    return undefined;
+  })();
+
   // itinerary_data가 배열로 직접 저장된 경우 대응 (days 래퍼 없이)
   const days = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
   // 동적 DAYS_PER_PAGE: 콘텐츠 높이 추정 기반
@@ -209,7 +231,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   })();
 
   // 뱃지 공통 (출발지 맨 앞 + 강조)
-  const TAG = 'px-2 py-0.5 text-xs rounded font-semibold';
+  const TAG = 'px-2 py-0.5 text-sm rounded font-semibold';
   const badgesContent = <>
     {departCity && <span className={`${TAG} bg-blue-800 text-white`}>{departCity}출발</span>}
     {pkg.destination && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.destination}</span>}
@@ -217,66 +239,35 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
     {(pkg.min_participants || itinerary?.meta?.min_participants) && <span className={`${TAG} bg-slate-100 text-slate-700`}>최소 {pkg.min_participants || itinerary?.meta?.min_participants}명</span>}
     {pkg.product_type && <span className={`${TAG} bg-amber-50 text-amber-700`}>{pkg.product_type}</span>}
     {pkg.ticketing_deadline && <span className={`${TAG} bg-red-50 text-red-600 font-bold border border-red-200`}>{pkg.ticketing_deadline}까지 발권</span>}
-    {pkg.departure_days && <span className="text-[11px] text-slate-500">출발: {pkg.departure_days}</span>}
+    {pkg.departure_days && <span className="text-[13px] text-slate-500">출발: {pkg.departure_days}</span>}
   </>;
 
-  // 동적 페이지 분리: 콘텐츠 높이를 추정하여 공간 있으면 합치고 없으면 분리
-  const priceRowCount = (pkg.price_list?.length ?? 0) > 0
-    ? pkg.price_list!.reduce((sum, g) => sum + g.rules.length, 0)
-    : (pkg.price_dates?.length ?? 0) > 0
-    ? groupForPoster(pkg.price_dates!).reduce((sum, g) => sum + g.rows.length, 0)
-    : (pkg.price_tiers?.length ?? 0);
-  const inclusionCount = (pkg.inclusions || itinerary?.highlights?.inclusions || []).length;
-  const excludeCount = (pkg.excludes || itinerary?.highlights?.excludes || []).length;
-  const hasNotices = (pkg.notices_parsed?.length ?? 0) > 0 || pkg.special_notes;
-
-  // Page 1 높이 추정 (px)
-  const page1Height =
-    70 +                                          // 헤더
-    (priceRowCount * 22 + 50) +                   // 요금표
-    (Math.max(inclusionCount, excludeCount) * 16 + 50) + // 포함/불포함
-    (hasNotices ? 480 : 0);                       // 유의사항 4-Type 카드 (4건 × ~120px)
-  const PAGE_MAX = 1050; // A4 높이에서 여유 80px
-  const noticesOnSeparatePage = hasNotices && page1Height > PAGE_MAX;
+  // 마지막 페이지(포함/불포함/유의사항) 표시 여부 판단
+  const hasNotices = (pkg.notices_parsed?.length ?? 0) > 0 || !!pkg.special_notes;
+  const hasIncludeExclude =
+    ((pkg.inclusions || itinerary?.highlights?.inclusions || []).length > 0) ||
+    ((pkg.excludes || itinerary?.highlights?.excludes || []).length > 0);
+  const hasLastPage = hasNotices || hasIncludeExclude;
 
   return (
     <div className="flex flex-col items-center gap-10">
-      {/* ═══ PAGE 1: 요금표 + 포함/불포함 + (공간 있으면 유의사항) ═══ */}
+      {/* ═══ PAGE 1: 제목 + 메타 + 핵심특전 + 요금표 + 선택관광 ═══ */}
       <article className="a4-export-page" style={PAGE_STYLE}>
         <Page1Header title={title} badges={badgesContent} />
         <main className="flex-1 px-10 pb-3 text-[#0b1c30]">
-          {/* 핵심 특전 */}
-          {pkg.product_highlights && pkg.product_highlights.length > 0 && (
+          {/* 핵심 특전 (최대 4개, 중복/약한 항목 제외) */}
+          {filteredHighlights.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              <span className="text-[11px] font-bold text-amber-700">★ 핵심 특전</span>
-              {pkg.product_highlights.map((h, i) => (
-                <span key={i} className="px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[10px] rounded border border-amber-200 font-medium">{h}</span>
+              <span className="text-[13px] font-bold text-amber-700">★ 핵심 특전</span>
+              {filteredHighlights.map((h, i) => (
+                <span key={i} className="px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[12px] rounded border border-amber-200 font-medium">{h}</span>
               ))}
             </div>
           )}
           <PriceTable priceList={pkg.price_list} priceDates={pkg.price_dates} tiers={pkg.price_tiers} excludedDates={pkg.excluded_dates} confirmedDates={pkg.confirmed_dates} />
           {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
-          <IncludeExcludeInfo
-            inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
-            excludes={pkg.excludes || itinerary?.highlights?.excludes}
-          />
-          {!noticesOnSeparatePage && hasNotices && (
-            <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
-          )}
         </main>
       </article>
-
-      {/* ═══ 유의사항 별도 페이지 (Page 1에 공간 부족할 때만) ═══ */}
-      {noticesOnSeparatePage && (
-        <article className="a4-export-page" style={PAGE_STYLE}>
-          <main className="flex-1 px-10 py-6 text-[#0b1c30]">
-            <NoticesPage
-              noticesParsed={pkg.notices_parsed}
-              specialNotes={pkg.special_notes}
-            />
-          </main>
-        </article>
-      )}
 
       {/* ═══ PAGE 2+: 일정 (Stitch v2 디자인) ═══ */}
       {dayChunks.map((chunk, chunkIdx) => (
@@ -286,6 +277,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             departureAirport={pkg.departure_airport}
             destination={pkg.destination}
             airline={pkg.airline}
+            arrivalCity={arrivalCityName}
           />
           <div className="flex-1 px-10 pb-8">
             <DailyItinerary days={chunk} attractions={attractions} destination={pkg.destination} />
@@ -293,6 +285,32 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
           {/* 푸터 삭제 — 40px 확보 */}
         </article>
       ))}
+
+      {/* ═══ 마지막 페이지: 포함/불포함 + 유의사항 ═══ */}
+      {hasLastPage && (
+        <article className="a4-export-page" style={PAGE_STYLE}>
+          <ItineraryPageHeader
+            title={title}
+            departureAirport={pkg.departure_airport}
+            destination={pkg.destination}
+            airline={pkg.airline}
+            arrivalCity={arrivalCityName}
+          />
+          <main className="flex-1 px-10 py-6 text-[#0b1c30] space-y-4">
+            {hasIncludeExclude && (
+              <IncludeExcludeInfo
+                inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
+                excludes={pkg.excludes || itinerary?.highlights?.excludes}
+                shoppingInfo={pkg.special_notes || itinerary?.highlights?.shopping || undefined}
+              />
+            )}
+            {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
+            {hasNotices && (
+              <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
+            )}
+          </main>
+        </article>
+      )}
 
       {/* 일정 없으면 빈 페이지 */}
       {days.length === 0 && (
@@ -318,8 +336,8 @@ function Page1Header({ title, badges }: { title: string; badges: React.ReactNode
       <div className="flex items-center gap-3 mb-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="여소남" className="h-8 object-contain shrink-0" />
-        <h1 {...E} className={`text-[#001f3f] text-2xl font-extrabold leading-tight tracking-tight flex-1 break-keep ${EC}`}>
-          <span className="text-[#005d90]">여소남</span> <span className="text-[16px]">✈️</span> {title}
+        <h1 {...E} className={`text-[#001f3f] text-3xl font-extrabold leading-tight tracking-tight flex-1 break-keep ${EC}`}>
+          {title}
         </h1>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">{badges}</div>
@@ -336,7 +354,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
   const useTiers = !usePriceList && !usePriceDates && tiers && tiers.length > 0;
   if (!usePriceList && !usePriceDates && !useTiers) return null;
 
-  const TH = 'text-[12px] bg-[#001f3f] font-semibold text-white py-1.5 px-2';
+  const TH = 'text-[14px] bg-[#001f3f] font-semibold text-white py-1.5 px-2';
 
   // ── price_list 모드: 원본 PDF 구조 그대로 (기간 × 조건 그룹핑) ──
   if (usePriceList) {
@@ -359,7 +377,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
 
     return (
       <section className="mb-3">
-        <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[13px] ${EC}`}>출발일별 요금</h3>
+        <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[15px] ${EC}`}>출발일별 요금</h3>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
@@ -370,30 +388,32 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
             </tr>
           </thead>
           <tbody>
-            {priceList.map((group, gIdx) => {
+            {(() => { let minShown = false; return priceList.map((group, gIdx) => {
               const ruleCount = group.rules.length;
               return group.rules.map((rule, rIdx) => {
-                const isMin = minPrice !== null && rule.price === minPrice;
+                const isMinPrice = minPrice !== null && rule.price === minPrice;
+                const isMin = isMinPrice && !minShown;
+                if (isMin) minShown = true;
                 const bgClass = gIdx % 2 === 1 ? 'bg-slate-50' : '';
                 return (
                   <tr key={`${gIdx}-${rIdx}`} className={bgClass}>
                     {rIdx === 0 && (
                       <td
                         rowSpan={ruleCount}
-                        className="text-[12px] py-1.5 px-2 border-b border-slate-200 whitespace-nowrap font-semibold text-slate-800 align-middle"
+                        className="text-[14px] py-1.5 px-2 border-b border-slate-200 whitespace-nowrap font-semibold text-slate-800 align-middle"
                       >
                         {group.period}
                       </td>
                     )}
                     {multiCondition && (
-                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-600">
+                      <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-600">
                         {rule.condition}
                       </td>
                     )}
-                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                    <td {...E} className={`text-[15px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                       {rule.price ? `₩${rule.price.toLocaleString()}` : rule.price_text || '-'}
                     </td>
-                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                    <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
                       {isMin ? <span className="text-red-600 font-bold text-xs">🔥최저가</span>
                         : rule.badge ? <span className="text-[10px] text-slate-500">{rule.badge}</span>
                         : null}
@@ -401,7 +421,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                   </tr>
                 );
               });
-            })}
+            }); })()}
           </tbody>
         </table>
         {/* 부가 조건 (notes) 표 하단 표시 */}
@@ -461,14 +481,14 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
       <section className="mb-3">
         {/* 출발확정일 배너 */}
         {Object.keys(pdConfirmedByMonth).length > 0 && (
-          <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[11px] text-green-800 font-semibold">
+          <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[13px] text-green-800 font-semibold">
             🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
             {Object.entries(pdConfirmedByMonth).map(([m, days], i) => (
               <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
             ))}
           </div>
         )}
-        <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[13px] ${EC}`}>출발일별 요금</h3>
+        <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[15px] ${EC}`}>출발일별 요금</h3>
         {pdConfirmedDates.length > 0 && <p className="text-[9px] text-slate-400 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
@@ -481,12 +501,12 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
             </tr>
           </thead>
           <tbody>
-            {monthGroups.map((mg) => (
+            {(() => { let pdMinShown = false; return monthGroups.map((mg) => (
               <React.Fragment key={mg.month}>
                 {/* 월 구분 헤더 */}
                 {monthGroups.length > 1 && (
                   <tr>
-                    <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[11px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
+                    <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[13px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
                       {mg.month}
                     </td>
                   </tr>
@@ -495,10 +515,10 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                   const bgClass = rIdx % 2 === 1 ? 'bg-slate-50' : '';
                   return (
                     <tr key={`${mg.month}-${rIdx}`} className={bgClass}>
-                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
+                      <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
                         {row.dow || '-'}
                       </td>
-                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-left leading-snug">
+                      <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-left leading-snug">
                         <span className="inline">
                           {row.dates.map((dn, di) => (
                             <React.Fragment key={di}>
@@ -508,23 +528,23 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                           ))}
                         </span>
                       </td>
-                      <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.isLowest ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                      <td {...E} className={`text-[15px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.isLowest ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                         {row.price ? `₩${row.price.toLocaleString()}` : '-'}
                       </td>
                       {hasChild && (
-                        <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
+                        <td {...E} className={`text-[15px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
                           {row.childPrice ? `₩${row.childPrice.toLocaleString()}` : '-'}
                         </td>
                       )}
-                      <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
-                        {row.isLowest && <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>}
-                        {row.note && !row.isLowest && <span className="text-[10px] text-slate-500">{row.note}</span>}
+                      <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                        {row.isLowest && !pdMinShown && (() => { pdMinShown = true; return <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>; })()}
+                        {row.note && !(row.isLowest && pdMinShown) && <span className="text-[10px] text-slate-500">{row.note}</span>}
                       </td>
                     </tr>
                   );
                 })}
               </React.Fragment>
-            ))}
+            )); })()}
           </tbody>
         </table>
         {/* 출발제외일 월별 (연속범위 압축) */}
@@ -628,14 +648,14 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
     <section className="mb-3">
       {/* 출발확정일 배너 */}
       {Object.keys(confirmedByMonth).length > 0 && (
-        <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[11px] text-green-800 font-semibold">
+        <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-[13px] text-green-800 font-semibold">
           🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
           {Object.entries(confirmedByMonth).map(([m, days], i) => (
             <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
           ))}
         </div>
       )}
-      <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[13px] ${EC}`}>출발일별 요금</h3>
+      <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-[15px] ${EC}`}>출발일별 요금</h3>
       {confirmedSet.size > 0 && <p className="text-[9px] text-slate-400 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
@@ -649,26 +669,28 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
           </tr>
         </thead>
         <tbody>
-          {[...monthGroups.entries()].map(([month, rows]) => (
+          {(() => { let tierMinShown = false; return [...monthGroups.entries()].map(([month, rows]) => (
             <React.Fragment key={month}>
               {/* 월 구분 헤더 */}
               {monthGroups.size > 1 && (
                 <tr>
-                  <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[11px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
+                  <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[13px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
                     {month}
                   </td>
                 </tr>
               )}
               {rows.map((row, rIdx) => {
-                const isMin = minPrice !== null && row.adult === minPrice;
+                const isMinPrice = minPrice !== null && row.adult === minPrice;
                 const isSoldout = row.status === 'soldout';
+                const isMin = isMinPrice && !isSoldout && !tierMinShown;
+                if (isMin) tierMinShown = true;
                 const bgClass = rIdx % 2 === 1 ? 'bg-slate-50' : '';
                 return (
                   <tr key={`${month}-${rIdx}`} className={bgClass}>
-                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
+                    <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
                       {row.dow || '-'}
                     </td>
-                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-left leading-snug">
+                    <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-left leading-snug">
                       {hasDepartureDates && row.dates.length > 0 ? (
                         <span className="inline">
                           {row.dates.map((dn, di) => {
@@ -685,15 +707,15 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                         <span className="text-slate-700">{tiers!.find(t => t.adult_price === row.adult && (t.departure_day_of_week || '') === (row.dow || ''))?.period_label || '-'}</span>
                       )}
                     </td>
-                    <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                    <td {...E} className={`text-[15px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                       {row.adult ? `₩${row.adult.toLocaleString()}` : '-'}
                     </td>
                     {hasChild && (
-                      <td {...E} className={`text-[13px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : ''} ${EC}`}>
+                      <td {...E} className={`text-[15px] py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : ''} ${EC}`}>
                         {row.child ? `₩${row.child.toLocaleString()}` : '-'}
                       </td>
                     )}
-                    <td className="text-[11px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                    <td className="text-[13px] py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
                       {isSoldout && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded font-bold">마감</span>}
                       {isMin && !isSoldout && <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>}
                     </td>
@@ -701,7 +723,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                 );
               })}
             </React.Fragment>
-          ))}
+          )); })()}
         </tbody>
       </table>
       {/* 비고 notes */}
@@ -853,27 +875,42 @@ const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string;
   INFO:     { bg: 'bg-slate-50', border: 'border-slate-200', title: 'text-slate-700', dot: '⚪' },
 };
 
-// 포함/불포함만 표시 (Page 1 전용)
-function IncludeExcludeInfo({ inclusions, excludes }: {
-  inclusions?: string[]; excludes?: string[];
+// 포함/불포함만 표시 (마지막 페이지) — 전체 항목 한 줄 노출, 필터/말줄임 없음
+function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo }: {
+  inclusions?: string[]; excludes?: string[]; shoppingInfo?: string;
 }) {
-  if (!inclusions?.length && !excludes?.length) return null;
+  const hasInc = (inclusions?.length ?? 0) > 0;
+  const hasExc = (excludes?.length ?? 0) > 0;
+  // 쇼핑 정보 정리: "쇼핑: 라텍스..." → "라텍스..." (중복 "쇼핑" 제거)
+  const cleanShopping = shoppingInfo?.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null;
+  if (!hasInc && !hasExc && !cleanShopping) return null;
+
   return (
-    <div className="grid grid-cols-2 gap-x-4 mb-1">
-      {inclusions && inclusions.length > 0 && (
-        <section className="bg-blue-50/60 p-2 rounded">
-          <h3 className="font-bold text-blue-900 mb-1 text-[11px]">포함 사항</h3>
-          <ul className="space-y-0 text-[11px] text-slate-700 leading-snug">
-            {inclusions.map((item, idx) => <li key={idx} {...E} className={`flex gap-1 items-start break-keep ${EC}`}><span className="shrink-0 text-[10px]">✅</span> {item}</li>)}
-          </ul>
-        </section>
-      )}
-      {excludes && excludes.length > 0 && (
-        <section className="bg-red-50/60 p-2 rounded">
-          <h3 className="font-bold text-red-900 mb-1 text-[11px]">불포함 사항</h3>
-          <ul className="space-y-0 text-[11px] text-slate-700 leading-snug">
-            {excludes.map((item, idx) => <li key={idx} {...E} className={`flex gap-1 items-start break-keep ${EC}`}><span className="shrink-0 text-[10px]">❌</span> {item}</li>)}
-          </ul>
+    <div className="space-y-1.5 mb-1">
+      <div className="grid grid-cols-2 gap-x-4">
+        {hasInc && (
+          <section className="bg-blue-50/60 p-2 rounded">
+            <h3 className="font-bold text-blue-900 mb-1 text-[11px]">포함 사항</h3>
+            <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>
+              <span className="text-[10px] mr-1">✅</span>
+              {inclusions!.join(', ')}
+            </p>
+          </section>
+        )}
+        {hasExc && (
+          <section className="bg-red-50/60 p-2 rounded">
+            <h3 className="font-bold text-red-900 mb-1 text-[11px]">불포함 사항</h3>
+            <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>
+              <span className="text-[10px] mr-1">❌</span>
+              {excludes!.join(', ')}
+            </p>
+          </section>
+        )}
+      </div>
+      {cleanShopping && cleanShopping !== '노쇼핑' && (
+        <section className="bg-purple-50/60 p-2 rounded">
+          <h3 className="font-bold text-purple-900 mb-0.5 text-[11px]">🛍️ 쇼핑센터</h3>
+          <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>{cleanShopping}</p>
         </section>
       )}
     </div>
@@ -1008,7 +1045,7 @@ function OptionalTours({ tours }: { tours: { name: string; price_usd?: number }[
 //  Page 2+ 서브 컴포넌트 (Stitch v2 일정표)
 // ══════════════════════════════════════════════════════════
 
-function ItineraryPageHeader({ title, departureAirport, destination, airline }: { title: string; departureAirport?: string; destination?: string; airline?: string }) {
+function ItineraryPageHeader({ title, departureAirport, destination, airline, arrivalCity }: { title: string; departureAirport?: string; destination?: string; airline?: string; arrivalCity?: string }) {
   // 출발 도시 추출
   const depCity = (() => {
     const ap = departureAirport || '';
@@ -1018,19 +1055,21 @@ function ItineraryPageHeader({ title, departureAirport, destination, airline }: 
   })();
   // 항공사명 추출 (IATA 코드 → 이름)
   const airlineName = airline ? (getAirlineName(airline) || airline) : null;
+  // 직항 도착 도시 (arrivalCity 우선, 없으면 destination 슬래시 첫 번째)
+  const directCity = arrivalCity || destination?.split(/[\/,]/)[0]?.trim() || destination;
 
   return (
     <header className="w-full border-b border-[#005d90] flex justify-between items-center px-10 py-3">
       <div className="flex items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="여소남" className="h-6 object-contain shrink-0" />
-        <h1 {...E} className={`text-[14px] font-bold text-[#005d90] ${EC}`}>
-          <span className="text-[#005d90]">여소남</span> <span className="text-[12px]">✈️</span> {title}
+        <h1 {...E} className={`text-[16px] font-bold text-[#005d90] ${EC}`}>
+          {title}
         </h1>
       </div>
-      {(airlineName || depCity) && destination && (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded-full">
-          ✈️ {airlineName || ''} <span className="text-blue-300">|</span> {depCity}출발 ↔ {destination}
+      {(airlineName || depCity) && directCity && (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded-full">
+          ✈️ {airlineName || ''} <span className="text-blue-300">|</span> {depCity}출발 ↔ {directCity}
         </span>
       )}
     </header>
@@ -1071,6 +1110,46 @@ function getDotColor(type?: string): string {
 // - 관광: attractions DB 매칭 시에만 (type:normal + DB 매칭)
 // - 특전: 스파/크루즈/마사지/루프탑/체험 등 통합
 // - 나머지: type 기반
+// ── 타임라인 항목 분류 유틸 (비교통 항목 전용) ───────────────
+// 동선 노드 — 📍 포함 or → 2개 이상
+function isRouteNode(item: { time?: string | null; activity: string; note?: string | null }): boolean {
+  const a = item.activity || '';
+  if (a.includes('📍')) return true;
+  const arrowCount = (a.match(/→/g) || []).length;
+  return arrowCount >= 2;
+}
+
+// 단순 지역명 노드 — 시간/설명/note 없이 지역명만 (DayHeader에 중복 표시됨)
+// 주의: "이동"/"관광"/"체크" 등 동사가 포함된 항목은 제거 대상 아님
+function isBareRegionNode(item: { time?: string | null; activity: string; note?: string | null }): boolean {
+  if (item.time) return false;
+  if (item.note) return false;
+  const a = (item.activity || '').trim();
+  if (!a) return false;
+  // 동사/활동 키워드가 있으면 지역명 아님
+  if (/이동|관광|도착|출발|체크|휴식|조식|중식|석식|투숙|방문|참석|체험/.test(a)) return false;
+  return /^[가-힣\s/]{1,10}$/.test(a);
+}
+
+// 특전 키워드 — ★, 증정, 1인 1개, 특전, 이모지+특전 복합
+// 예외: 골프★, 차창 포함 항목은 특전 아님
+function isSpecialBenefit(item: { activity: string }): boolean {
+  const a = item.activity || '';
+  if (/골프★/.test(a)) return false;
+  if (/차창/.test(a)) return false;
+  if (/★/.test(a)) return true;
+  if (/증정/.test(a)) return true;
+  if (/1인\s*1개/.test(a)) return true;
+  if (/^\s*특전/.test(a)) return true;
+  if (/[♨️🎁✨💎]\s*특전/.test(a)) return true;
+  return false;
+}
+
+// 준비/대기 성격 — 집결, 승선, 대기, 선내 휴식
+function isPreparationNode(item: { activity: string }): boolean {
+  return /집결|승선|대기|선내\s*휴식/.test(item.activity || '');
+}
+
 function getActivityBadge(type?: string, activity?: string): { bg: string; text: string; border: string; label: string } | null {
   switch (type) {
     case 'optional': return { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-100', label: '선택관광' };
@@ -1091,7 +1170,7 @@ function getAttractionBadge(badgeType?: string) {
     case 'special': return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
     case 'shopping': return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100', label: '쇼핑' };
     case 'meal': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', label: '특식' };
-    case 'tour': default: return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-100', label: '관광' };
+    case 'tour': default: return null; // 일반 관광지는 배지 없이 텍스트만 표시
   }
 }
 
@@ -1103,87 +1182,126 @@ function splitPoi(activity: string): { poiName: string; poiDesc: string } {
 
 /** 일정표 — v3: 타임라인 dot + 관광지 하이라이트 배지 */
 function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[]; attractions?: AttractionInfo[]; destination?: string }) {
+  // ══ 통합 교통 파서: 전체 days 한 번에 처리 (ship cross-day pair 포함) ══
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsedDays = parseDaysWithTransport(days as any);
+
   return (
     <section className="space-y-3">
-      {days.map((day) => {
-        const flightItem = day.schedule?.find(s => s.type === 'flight');
+      {parsedDays.map((dayRaw) => {
+        const day = dayRaw as unknown as DaySchedule & { parsedSchedule: import('@/lib/transportParser').ParsedScheduleItem[] };
+        const parsedSchedule = day.parsedSchedule;
+
+        // ── 동선 노드 분리 (항상 최상단 배지로 렌더) ──
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const routeNodes = parsedSchedule.filter(s => !isTransportSegment(s)).filter(isRouteNode as any);
+
+        // ── 통합 타임라인 생성: 교통 바 + 일반 항목을 time 기준 오름차순 통합 ──
+        // 동선 노드 / 단순 지역명은 제외
+        const unifiedEntries = parsedSchedule.filter(s => {
+          if (isTransportSegment(s)) return true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (isRouteNode(s as any)) return false;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (isBareRegionNode(s as any)) return false;
+          return true;
+        });
+
+        // 원본 배열 순서 그대로 유지 (parseDaysWithTransport가 이미 올바른 순서 생성)
+        // 절대 전체 재정렬 하지 말 것 — time 없는 항목이 뒤로 밀리는 버그 방지
+        const unifiedTimeline = unifiedEntries;
+
         return (
           <div key={day.day} className="flex gap-3">
             {/* 좌측: 일차 숫자 */}
             <div className="w-12 shrink-0 text-center pt-0.5">
-              <span className="text-2xl font-extrabold text-[#005d90] block leading-none">
+              <span className="text-3xl font-extrabold text-[#005d90] block leading-none">
                 {String(day.day).padStart(2, '0')}
               </span>
-              <span className="text-[11px] font-bold text-[#8e4e14] tracking-tight">
+              <span className="text-[13px] font-bold text-[#8e4e14] tracking-tight">
                 {day.day}일차
               </span>
             </div>
 
             {/* 우측: 카드 */}
             <div className="flex-1 bg-slate-50/80 rounded-xl p-3 border border-slate-200">
-              {/* 헤더: 항공편 있으면 1줄 통합, 없으면 route만 */}
-              <div className="mb-1.5 pb-1.5 border-b border-slate-200">
-                {flightItem ? (() => {
-                  const flights = day.schedule!.filter(s => s.type === 'flight');
-                  const dep = flights.find(f => f.activity?.includes('출발'));
-                  const arr = flights.find(f => f.activity?.includes('도착'));
-                  const airlineName = getAirlineName(flightItem.transport);
-                  const route = day.regions?.join(' → ') || '';
-                  return (
-                    <div className="bg-blue-600 text-white rounded px-2.5 py-1.5 flex items-center justify-between text-[12px] font-semibold">
-                      <div className="flex items-center gap-1.5">
-                        <span>✈️ {flightItem.transport}</span>
-                        {airlineName && <span className="text-blue-200 text-[10px] font-normal">({airlineName})</span>}
-                        <span className="text-blue-100 font-normal">{route}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span>{dep?.time || flightItem.time || ''}</span>
-                        <span className="text-blue-300">→</span>
-                        <span>{arr?.time || ''}</span>
-                      </div>
-                    </div>
-                  );
-                })() : (
-                  <h3 {...E} className={`text-[13px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
+              {/* [1] 동선 배지 — 항상 최상단 고정 */}
+              <div className="mb-2 pb-1.5 border-b border-slate-200">
+                {routeNodes.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {routeNodes.map((n, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[13px] font-semibold px-2 py-1 rounded">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        🗺️ {((n as any).activity || '').replace(/^📍\s*/, '')}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <h3 {...E} className={`text-[15px] font-bold text-[#001f3f] flex items-center gap-1.5 break-keep ${EC}`}>
                     📍 {day.regions?.join(' → ') || `${day.day}일차 일정`}
                   </h3>
                 )}
               </div>
 
-              {/* 타임라인: 세로선 + 색상 dot */}
-              {day.schedule && day.schedule.filter(s => s.type !== 'flight').length > 0 && (
+              {/* [2] 통합 타임라인: 교통 바 + 일반 항목 시간순 */}
+              {unifiedTimeline.length > 0 && (() => {
+                // ── 선택관광/쇼핑 항목을 본 타임라인에서 분리 ──
+                const normalItems: typeof unifiedTimeline = [];
+                const optionalItems: { activity: string }[] = [];
+                for (const entry of unifiedTimeline) {
+                  if (isTransportSegment(entry)) { normalItems.push(entry); continue; }
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const item = entry as any;
+                  if (item.type === 'optional') { optionalItems.push(item); continue; }
+                  if (item.type === 'shopping') continue; // Fix 5: 쇼핑은 일정에서 제거
+                  normalItems.push(entry);
+                }
+
+                return <>
                 <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
-                  {day.schedule.filter(s => s.type !== 'flight').map((item, sIdx) => {
+                  {normalItems.map((entry, sIdx) => {
+                    // TransportBar 렌더
+                    if (isTransportSegment(entry)) {
+                      return (
+                        <div key={sIdx} className="relative pl-4 -ml-0.5">
+                          <TransportBar segment={entry} />
+                        </div>
+                      );
+                    }
+                    // 일반 ScheduleItem 렌더
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const item = entry as any;
                     const attr = matchAttraction(item.activity, attractions, destination);
-                    // 배지 결정: attractions 매칭 시 [관광] 최우선 → type별 배지 → 없으면 null
-                    const badge = attr ? getAttractionBadge(attr.badge_type) : getActivityBadge(item.type, item.activity);
+                    const isSpecial = isSpecialBenefit(item);
+                    const isPrep = isPreparationNode(item);
+                    const badge = isSpecial
+                      ? { bg: 'bg-[#fff0ed]', text: 'text-[#c0392b]', border: 'border-transparent', label: '특전' }
+                      : (attr ? getAttractionBadge(attr.badge_type) : (isPrep ? null : getActivityBadge(item.type, item.activity)));
+                    const dotColor = isPrep ? 'bg-slate-300' : getDotColor(item.type);
                     return (
                       <div key={sIdx} className="relative pl-4">
-                        {/* dot */}
-                        <div className={`absolute -left-[5px] top-1.5 w-2 h-2 rounded-full ring-2 border-2 border-white ${getDotColor(item.type)}`} />
+                        <div className={`absolute -left-[5px] top-1.5 w-2 h-2 rounded-full ring-2 border-2 border-white ${dotColor}`} />
                         <div className="flex flex-col">
-                          <span className={`text-[12px] break-keep leading-snug flex flex-wrap items-center gap-1 ${EC}`}>
+                          <span className={`text-[13px] break-keep leading-snug flex flex-wrap items-center gap-1 ${EC}`}>
                             {item.time && <span className="text-blue-600 font-bold">{item.time}</span>}
                             {badge ? (() => {
-                              // attractions 매칭 시: DB 관광지명 + DB 설명으로 대체 (원문 제거)
-                              // 항상 원문 그대로 표시 (attractions 매칭 시에도 원문 보존)
                               const displayName = item.activity;
-                              const displayDesc = !attr ? splitPoi(item.activity).poiDesc : null;
+                              const displayDesc = !attr && !isSpecial ? splitPoi(item.activity).poiDesc : null;
                               return <>
-                                {attr?.emoji && <span>{attr.emoji}</span>}
-                                <span className={`${badge.bg} ${badge.text} border ${badge.border} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
+                                {isSpecial && <span>🎁</span>}
+                                {!isSpecial && attr?.emoji && <span>{attr.emoji}</span>}
+                                <span className={`${badge.bg} ${badge.text} ${isSpecial ? 'font-semibold rounded-md px-2 py-0.5' : `border ${badge.border} px-1.5 py-0.5 rounded font-bold`} text-[11px]`}>
                                   {badge.label}
                                 </span>
-                                <span {...E} className="font-black text-[13px] text-blue-900">{displayName}</span>
-                                {displayDesc && <span className="text-[11px] text-gray-500 font-normal">{displayDesc}</span>}
+                                <span {...E} className="font-black text-[15px] text-blue-900">{displayName}</span>
+                                {displayDesc && <span className="text-[12px] text-gray-500 font-normal">{displayDesc}</span>}
                               </>;
-                            })() : <span {...E} className="font-bold text-slate-800">{item.activity}</span>}
+                            })() : <span {...E} className={`font-bold ${isPrep ? 'text-slate-500' : 'text-slate-800'}`}>{item.activity}</span>}
                             {attr?.short_desc && (
-                              <span className="text-[11px] text-slate-500 font-normal"> — {attr.short_desc}</span>
+                              <span className="text-[12px] text-slate-500 font-normal"> — {attr.short_desc}</span>
                             )}
-                            {/* item.badge는 앞에 type 배지가 있으므로 생략 */}
                             {item.note && (
-                              <span className="text-[11px] text-red-500 font-medium">({item.note})</span>
+                              <span className="text-[12px] text-red-500 font-medium">({item.note})</span>
                             )}
                           </span>
                         </div>
@@ -1191,11 +1309,53 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                     );
                   })}
                 </div>
-              )}
+                {/* Fix 2: 선택관광 묶음 — 레이블 1번 + 항목 나열 */}
+                {optionalItems.length > 0 && (
+                  <div className="mt-1.5 bg-pink-50/60 rounded-lg border border-pink-100 px-2.5 py-1.5">
+                    <span className="text-[11px] font-bold text-pink-700">💎 선택관광</span>
+                    <div className="mt-1 space-y-0.5">
+                      {optionalItems.map((opt, oIdx) => {
+                        const text = opt.activity.replace(/^\[.*?\]\s*/, '').replace(/^☆\s*/, '');
+                        if (!text || text.startsWith('☆')) return null;
+                        return <p key={oIdx} className="text-[11px] text-slate-700 leading-snug">• {text}</p>;
+                      })}
+                    </div>
+                  </div>
+                )}
+                </>;
+              })()}
 
               {/* 하단: 숙박 + 식사 (1줄 통합, 호텔명 길면 2줄) */}
               {(() => {
-                const hotelText = day.hotel ? `${day.hotel.name}${day.hotel.grade ? ` (${day.hotel.grade})` : ''}${day.hotel.note ? ` ${day.hotel.note}` : ''}` : '일정 종료';
+                // Fix 4: 호텔 null 시 상황별 분기
+                const schedule = day.schedule || [];
+                const hasFlight = schedule.some((s: { type?: string }) => s.type === 'flight');
+                const hasAirportMove = schedule.some((s: { activity?: string }) => /공항.*이동|공항으로/.test(s.activity || ''));
+                const isLastDay = day.day === days[days.length - 1]?.day;
+                const isFirstDay = day.day === days[0]?.day;
+
+                let hotelText: string;
+                let hotelIcon = '🏨';
+                let hideHotel = false;
+
+                if (day.hotel?.name) {
+                  hotelText = `${day.hotel.name}${day.hotel.grade ? ` (${day.hotel.grade})` : ''}${day.hotel.note ? ` ${day.hotel.note}` : ''}`;
+                } else if (isLastDay && hasFlight) {
+                  // 마지막 날 귀국일 → 호텔 행 숨김
+                  hideHotel = true;
+                  hotelText = '';
+                } else if (hasFlight && isFirstDay) {
+                  // 첫날 심야 출발 → 기내 숙박
+                  hotelIcon = '✈️';
+                  hotelText = '기내 숙박';
+                } else if (hasAirportMove) {
+                  // 공항 이동 후 출발 대기
+                  hotelIcon = '🏢';
+                  hotelText = '공항 대기';
+                } else {
+                  hotelText = '숙박 없음';
+                }
+                if (hideHotel) return null;
                 const mealB = day.meals?.breakfast_note || (day.meals?.breakfast ? '호텔식' : '불포함');
                 const mealL = day.meals?.lunch_note || (day.meals?.lunch ? '현지식' : '불포함');
                 const mealD = day.meals?.dinner_note || (day.meals?.dinner ? '현지식' : '불포함');
@@ -1204,21 +1364,21 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                   <div className="mt-2 bg-white rounded-lg border border-slate-200 px-2 py-1.5">
                     {isLong ? (
                       <>
-                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-800">
-                          🏨 <span {...E} className={EC}>{hotelText}</span>
+                        <div className="flex items-center gap-1 text-[13px] font-semibold text-slate-800">
+                          {hotelIcon} <span {...E} className={EC}>{hotelText}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-600 mt-0.5">
+                        <div className="flex items-center gap-2 text-[12px] text-slate-600 mt-0.5">
                           <span>☕{mealB}</span><span className="text-slate-300">|</span>
                           <span>🍜{mealL}</span><span className="text-slate-300">|</span>
                           <span>🍽️{mealD}</span>
                         </div>
                       </>
                     ) : (
-                      <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center justify-between text-[13px]">
                         <div className="flex items-center gap-1 font-semibold text-slate-800">
-                          🏨 <span {...E} className={EC}>{hotelText}</span>
+                          {hotelIcon} <span {...E} className={EC}>{hotelText}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 shrink-0">
+                        <div className="flex items-center gap-2 text-[12px] text-slate-500 shrink-0">
                           <span>☕{mealB}</span><span className="text-slate-300">|</span>
                           <span>🍜{mealL}</span><span className="text-slate-300">|</span>
                           <span>🍽️{mealD}</span>

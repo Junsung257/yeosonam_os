@@ -6,6 +6,7 @@ import {
   insertEngagementLog,
   insertConversionLog,
   getLatestTrafficBySession,
+  getFirstTrafficBySession,
   mergeSessionToUser,
 } from '@/lib/supabase';
 
@@ -25,6 +26,8 @@ type TrackingPayload =
       fbclid?: string;
       n_keyword?: string;
       current_cpc?: number;
+      landing_page?: string;
+      content_creative_id?: string;
     }
   | {
       type: 'search';
@@ -96,6 +99,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         n_keyword: body.n_keyword ?? null,
         current_cpc: body.current_cpc ?? null,
         consent_agreed: consent,
+        landing_page: body.landing_page ?? null,
+        content_creative_id: body.content_creative_id ?? null,
       });
       return NextResponse.json({ ok: true }, { status: 202 });
     }
@@ -128,12 +133,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ok: true }, { status: 202 });
     }
 
-    // ── conversion (순이익 자동 연산) ─────────────────────────
+    // ── conversion (순이익 자동 연산 + dual attribution) ────────
     case 'conversion': {
       const { session_id, user_id, booking_id, final_sales_price, base_cost } = body;
 
-      // TrafficLog 역추적으로 광고 귀속 결정
+      // Last-touch: 가장 최근 트래픽
       const traffic = await getLatestTrafficBySession(session_id);
+      // First-touch: 가장 첫 트래픽
+      const firstTraffic = await getFirstTrafficBySession(session_id);
 
       let allocated_ad_spend = 0;
       let attributed_source = 'organic';
@@ -155,6 +162,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         attributed_source = traffic.source;
       }
 
+      // First-touch 귀속 데이터
+      const first_touch_source = firstTraffic?.source || attributed_source;
+      const first_touch_keyword = firstTraffic?.keyword || firstTraffic?.n_keyword || null;
+      const first_touch_landing_page = firstTraffic?.landing_page || null;
+      const first_touch_creative_id = firstTraffic?.content_creative_id || null;
+      const first_touch_at = firstTraffic?.created_at || null;
+      // Last-touch 콘텐츠 귀속
+      const content_creative_id = traffic?.content_creative_id || null;
+
       // net_profit는 DB GENERATED ALWAYS 컬럼 — insertConversionLog에서 제외됨
       void insertConversionLog({
         session_id,
@@ -166,6 +182,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         attributed_source,
         attributed_gclid,
         attributed_fbclid,
+        first_touch_source,
+        first_touch_keyword,
+        first_touch_landing_page,
+        first_touch_creative_id,
+        first_touch_at,
+        content_creative_id,
       });
 
       // ── Postback ──────────────────────────────────────

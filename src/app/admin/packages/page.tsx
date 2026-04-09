@@ -16,65 +16,133 @@ const CardNewsStudio = dynamic(() => import('@/components/admin/CardNewsStudio')
 const AdPerformanceDashboard = dynamic(() => import('@/components/admin/AdPerformanceDashboard'), { ssr: false });
 const MetaAutoPublisher = dynamic(() => import('@/components/admin/MetaAutoPublisher'), { ssr: false });
 
-// ── PDF 원문 세탁 + 플랫폼 롤 프롬프트 ────────────────────────────────────────
-function sanitizeRawText(text: string): string {
-  return text
-    // 수수료/커미션 % 포함 라인 → 치환
-    .replace(/.*[수수료커미션].{0,20}\d+\.?\d*\s*%.*|.*\d+\.?\d*\s*%.*[수수료커미션].*/gim, '[여소남 공식 채널]')
-    // 입금가/원가/랜드가 금액 포함 라인 → 치환
-    .replace(/.*(?:입금가|원가|랜드가|net\s*price|기본가).{0,50}\d[\d,]+원?.*/gim, '[여소남 공식 채널]')
-    // 전화번호 (지역번호 포함)
-    .replace(/0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4]|70)\s*[-.]?\s*\d{3,4}\s*[-.]?\s*\d{4}/g, '[여소남 공식 채널]')
-    // 이메일
-    .replace(/[\w.+-]+@[\w-]+\.[a-z]{2,}/gi, '[여소남 공식 채널]');
+// ── DB 구조화 필드 → 고객용 상품 원문 생성 (민감정보 0) ──
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function generateProductText(pkg: any): string {
+  if (!pkg) return '[상품 데이터를 불러올 수 없습니다]';
+  const lines: string[] = [];
+  const title = pkg.display_title || pkg.title || '상품명';
+  const dest = pkg.destination || '';
+  const style = pkg.trip_style || `${pkg.nights || '?'}박${pkg.duration || '?'}일`;
+  const airport = pkg.departure_airport || '';
+  const airline = (pkg.airline || '').replace(/\(.*?\)/, '').trim();
+
+  // ── 상품 기본 ──
+  lines.push(`[상품명] ${title}`);
+  lines.push(`[목적지] ${dest}`);
+  lines.push(`[일정] ${style}`);
+  if (airport) lines.push(`[출발] ${airport} | ${airline || ''}`);
+  if (pkg.min_participants) lines.push(`[최소출발] ${pkg.min_participants}명`);
+  lines.push('');
+
+  // ── 핵심 특전 ──
+  const highlights: string[] = pkg.product_highlights || [];
+  if (highlights.length) {
+    lines.push('[핵심 특전]');
+    highlights.forEach((h: string) => lines.push(`• ${h}`));
+    lines.push('');
+  }
+
+  // ── 요금표 ──
+  const tiers: PriceTier[] = pkg.price_tiers || [];
+  if (tiers.length) {
+    lines.push('[요금표]');
+    const sorted = [...tiers].sort((a, b) => (a.adult_price || 0) - (b.adult_price || 0));
+    for (const t of sorted) {
+      const price = t.adult_price ? `${t.adult_price.toLocaleString()}원` : '-';
+      const dates = t.departure_dates?.length
+        ? t.departure_dates.map((d: string) => { const [,m,day] = d.split('-'); return `${+m}/${+day}`; }).join(', ')
+        : t.period_label || '';
+      lines.push(`${dates}: ${price}`);
+    }
+    lines.push('');
+  }
+
+  // ── 일정 ──
+  const days = pkg.itinerary_data?.days || [];
+  if (days.length) {
+    lines.push('[일정 안내]');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const day of days as any[]) {
+      const regions = (day.regions || []).join(' → ');
+      lines.push(`${day.day}일차: ${regions}`);
+      const schedule = day.schedule || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const s of schedule as any[]) {
+        if (s.type === 'optional') continue; // 옵션은 별도 섹션
+        const time = s.time && s.time !== '전일' ? `${s.time} ` : '';
+        lines.push(`  ${time}${s.activity}`);
+      }
+      // 식사
+      const meals = day.meals || {};
+      const mealParts: string[] = [];
+      if (meals.breakfast) mealParts.push(`조: ${meals.breakfast_note || '호텔식'}`);
+      if (meals.lunch) mealParts.push(`중: ${meals.lunch_note || '현지식'}`);
+      if (meals.dinner) mealParts.push(`석: ${meals.dinner_note || '현지식'}`);
+      if (mealParts.length) lines.push(`  [식사] ${mealParts.join(' / ')}`);
+      // 호텔
+      if (day.hotel?.name) lines.push(`  [숙소] ${day.hotel.name} (${day.hotel.grade || ''})`);
+      lines.push('');
+    }
+  }
+
+  // ── 포함 사항 ──
+  const inc: string[] = pkg.inclusions || [];
+  if (inc.length) {
+    lines.push('[포함 사항]');
+    inc.forEach((i: string) => lines.push(`✅ ${i}`));
+    lines.push('');
+  }
+
+  // ── 불포함 사항 ──
+  const exc: string[] = pkg.excludes || [];
+  if (exc.length) {
+    lines.push('[불포함 사항]');
+    exc.forEach((x: string) => lines.push(`❌ ${x}`));
+    lines.push('');
+  }
+
+  // ── 숙소 ──
+  const accom: string[] = pkg.accommodations || [];
+  if (accom.length) {
+    lines.push('[숙소]');
+    accom.forEach((a: string) => lines.push(`🏨 ${a}`));
+    lines.push('');
+  }
+
+  // ── 선택관광 ──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const opts: any[] = pkg.optional_tours || [];
+  if (opts.length) {
+    lines.push('[선택관광]');
+    for (const o of opts) {
+      const price = o.price_usd ? `$${o.price_usd}` : o.price_krw ? `${o.price_krw.toLocaleString()}원` : '';
+      const note = o.note ? ` (${o.note})` : '';
+      lines.push(`• ${o.name} ${price}${note}`);
+    }
+    lines.push('');
+  }
+
+  // ── 유의사항 ──
+  const notices: string[] = pkg.notices_parsed || [];
+  if (notices.length) {
+    lines.push('[유의사항]');
+    notices.forEach((n: string) => lines.push(n.startsWith('-') || n.startsWith('▪') || n.startsWith('※') ? n : `• ${n}`));
+    lines.push('');
+  }
+
+  // ── 가이드팁 (불포함에 없을 경우 별도 표기) ──
+  if (pkg.guide_tip && pkg.guide_tip > 0) {
+    lines.push(`[가이드/기사 팁] $${pkg.guide_tip}/인`);
+  }
+  if (pkg.single_supplement) {
+    const sup = typeof pkg.single_supplement === 'number' && pkg.single_supplement > 1000
+      ? `${pkg.single_supplement.toLocaleString()}원` : `$${pkg.single_supplement}`;
+    lines.push(`[싱글차지] ${sup}/인`);
+  }
+
+  return lines.join('\n').trim();
 }
-
-const THREADS_ROLE = `# 쓰레드 Role
-너는 여행사 자동화 시스템 '여소남'의 퍼스널 브랜딩 마케터야. 복잡한 여행 상품 공지글을 분석해서, 스레드(Threads) 유저들이 혹할 만한 '친근한 반말 체'의 1페이지 포스트를 작성해줘.
-# 시스템 규칙 (여소남 OS 마케팅 원칙)
-1. 말투: 옆집 형이나 오빠처럼 친근한 [반말] 사용. (예: "떴어!", "가보자!", "진짜 대박이야")
-2. 용어 통일: '성인 요금'은 반드시 [판매가]라는 용어로만 표현할 것.
-3. 정보 필터링: 카드결제 불가, 취소 수수료, 예약금 규정 등 '문의를 주저하게 만드는 딱딱한 조건'은 과감히 생략하고 혜택 위주로 작성할 것.
-4. 가공 방식:
-   - 1단계: 감탄사나 여행지의 매력으로 시작 (Hook)
-   - 2단계: 이 여행이 왜 좋은지 핵심 혜택 3~4가지만 요약
-   - 3단계: [판매가] 정보와 일정 선택폭 제시
-   - 4단계: 댓글 유도 (CTA)로 마무리
-# 출력 양식 (고정 규격)
-제목: [출발지] 목적지 관련 매력적인 제목
-본문:
-- 여행지의 풍경 묘사와 직항/전세기 강조
-- 혜택 요약 (이모지 활용)
-- [판매가] 최저가 기준 노출
-- 마무리: 상세 일정 궁금하면 '여소남(지역명)' 댓글 달아달라는 문구 필수
----
-`;
-
-const INSTAGRAM_ROLE = `# 인스타그램 Role
-너는 여행사 자동화 시스템 '여소남 OS'의 전문 여행 큐레이터야. 긴 상품 공지글을 분석해서 인스타그램 모바일 환경에 최적화된 '정보 요약형' 포스트를 작성해줘.
-# 시스템 규칙 (여소남 OS 마케팅 원칙)
-1. 말투: 정중하고 신뢰감 있는 [경어체]를 사용하되, 딱딱하지 않고 친근한 느낌을 줄 것. (~입니다, ~하세요, ~해 보세요)
-2. 용어 통일: '성인 요금'은 반드시 [판매가]라는 용어로만 표현할 것.
-3. 시각적 최적화:
-   - 줄바꿈을 자주 사용하여 모바일 화면에서 가독성을 극대화할 것.
-   - 각 문단 앞에 핵심 키워드를 배치하고 관련 이모지를 적절히 섞어줄 것.
-4. 정보 구성:
-   - [제목]: 지역명과 전세기/직항 등 핵심 가치를 담은 한 줄.
-   - [특징]: 이 여행을 가야 하는 이유 3가지 요약.
-   - [특전]: 포함 사항 및 여소남만의 특별 혜택 리스트.
-   - [판매가]: 요일별/코스별 가격을 명확하게 구분.
-5. 유도 문구(CTA): 상세 일정 문의를 위해 댓글(여소남+지역명) 또는 프로필 링크를 안내할 것.
-# 출력 양식 (고정 규격)
-[제목]
-본문 내용:
-- 상품 요약 및 지역 매력
-- 핵심 특징 (• 활용)
-- 포함 특전 (✅ 활용)
-- [판매가] 정보 (요일별 구분)
-- 예약 및 상세 문의 방법 안내
-해시태그: (관련 키워드 15개)
----
-`;
 
 interface PriceTier {
   period_label: string;
@@ -134,6 +202,7 @@ interface Package {
   confirmed_dates?: string[];
   marketing_copies?: MarketingCopy[];
   internal_code?: string;
+  short_code?: string;
   land_operator_id?: string | null;
   // JOIN된 ERP 데이터
   products?: ProductErp | null;
@@ -327,6 +396,8 @@ const PackageRow = React.memo(function PackageRow({
   onPromptGen,
   onStudioOpen,
   onKakaoCopy,
+  onBulkContentGen,
+  contentStatus,
 }: {
   pkg: Package;
   idx: number;
@@ -355,6 +426,8 @@ const PackageRow = React.memo(function PackageRow({
   onPromptGen: (pkg: Package) => void;
   onStudioOpen: () => void;
   onKakaoCopy: (pkg: Package) => void;
+  onBulkContentGen: (pkg: Package) => void;
+  contentStatus: Map<string, Set<string>>;
 }) {
   const { isActive: isPlatformActive, getAuditInfo, togglePlatform, togglingKey, getCoverage } = marketingTracker;
 
@@ -403,21 +476,21 @@ const PackageRow = React.memo(function PackageRow({
         {pkg.product_type && (
           <div className="text-[11px] text-slate-400 mt-0.5">{pkg.product_type} · {pkg.trip_style}</div>
         )}
-        {/* internal_code — 클릭 복사 + Toast */}
-        {(pkg.products?.internal_code ?? pkg.internal_code) ? (
+        {/* internal_code / short_code — 클릭 복사 + Toast */}
+        {(pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code) ? (
           <button
             type="button"
             className="mt-0.5 text-[11px] text-slate-400 hover:text-blue-500 font-mono transition-colors group/code"
             onClick={e => {
               e.stopPropagation();
-              const code = pkg.products?.internal_code ?? pkg.internal_code ?? '';
+              const code = pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code ?? '';
               navigator.clipboard.writeText(code).then(() => {
                 onShowToast('success', `상품코드가 복사되었습니다: ${code}`);
               });
             }}
             title="클릭하여 상품코드 복사"
           >
-            {pkg.products?.internal_code ?? pkg.internal_code}
+            {pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code}
             <span className="opacity-0 group-hover/code:opacity-100 ml-0.5 transition-opacity">📋</span>
           </button>
         ) : (
@@ -567,6 +640,21 @@ const PackageRow = React.memo(function PackageRow({
             className="px-1.5 py-1 border border-pink-300 text-pink-600 rounded text-[10px] hover:bg-pink-50 whitespace-nowrap"
             title="카톡 마케팅 문구 생성"
           >📝문구</button>
+          <button
+            onClick={() => onBulkContentGen(pkg)}
+            className="px-1.5 py-1 border border-violet-400 text-violet-700 rounded text-[10px] hover:bg-violet-50 whitespace-nowrap font-semibold"
+            title="블로그+카드뉴스+광고카피 일괄 생성"
+          >📦전체</button>
+          {/* 콘텐츠 현황 미니 배지 */}
+          {(() => {
+            const ch = contentStatus.get(pkg.id);
+            if (!ch || ch.size === 0) return <span className="text-[9px] text-red-400" title="콘텐츠 없음">0/3</span>;
+            return (
+              <span className="text-[9px] text-slate-400" title={`${[...ch].join(', ')}`}>
+                {ch.has('naver_blog') ? '📝' : '·'}{ch.has('instagram_card') ? '🖼' : '·'}{ch.has('google_search') ? '📢' : '·'}
+              </span>
+            );
+          })()}
           {/* 플랫폼별 마케팅 복사 드롭다운 */}
           <div className="relative">
             <button
@@ -585,17 +673,13 @@ const PackageRow = React.memo(function PackageRow({
                       try {
                         const res = await fetch(`/api/packages?id=${pkg.id}`);
                         const json = await res.json();
-                        const rawText: string = (json.package as Record<string, unknown>)?.raw_text as string || '';
-                        const sanitized = rawText
-                          ? sanitizeRawText(rawText)
-                          : `[상품명] ${pkg.title}\n[목적지] ${pkg.destination || '-'}`;
-                        let content = sanitized;
-                        if (p.key === 'threads')   content = THREADS_ROLE   + sanitized;
-                        if (p.key === 'instagram') content = INSTAGRAM_ROLE + sanitized;
+                        const fullPkg = json.package;
+                        const content = generateProductText(fullPkg);
                         await navigator.clipboard.writeText(content);
                         onShowToast('success', `${p.label} 텍스트 복사됨!`);
-                      } catch {
-                        onShowToast('error', '복사 실패 — 다시 시도해주세요.');
+                      } catch (err) {
+                        console.error('복사 실패:', err);
+                        onShowToast('error', `복사 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
                       }
                     }}>
                     <span className="w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center bg-[#001f3f] text-white">{p.icon}</span>
@@ -710,6 +794,29 @@ export default function PackagesPage() {
   const [brainOpen, setBrainOpen] = useState(false);
   const [metaLiveOpen, setMetaLiveOpen] = useState(false);
 
+  // 콘텐츠 현황 맵 (상품ID → 발행된 채널 Set)
+  const [contentStatusMap, setContentStatusMap] = useState<Map<string, Set<string>>>(new Map());
+
+  // 콘텐츠 현황 로드
+  useEffect(() => {
+    if (!packages.length) return;
+    const ids = packages.slice(0, 50).map((p: Package) => p.id);
+    fetch(`/api/content-hub?status=published&limit=500`)
+      .then(r => r.json())
+      .then(d => {
+        const m = new Map<string, Set<string>>();
+        (d.creatives || []).forEach((c: { product_id: string; channel: string }) => {
+          if (!ids.includes(c.product_id)) return;
+          if (!m.has(c.product_id)) m.set(c.product_id, new Set());
+          m.get(c.product_id)!.add(c.channel);
+        });
+        setContentStatusMap(m);
+      })
+      .catch(() => {});
+  }, [packages]);
+
+  // handleBulkContentGen은 showToast 선언 뒤에 정의 (아래 참조)
+
   // openPoster 래퍼: pkgId도 함께 저장
   const handleOpenPoster = useCallback((pkg: Package, format: 'A4' | 'MOBILE') => {
     setPosterPkgId(pkg.id);
@@ -742,6 +849,28 @@ export default function PackagesPage() {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3500);
   }, []);
+
+  // 전체 콘텐츠 일괄 생성 (블로그 + 카드뉴스 + 광고카피)
+  const handleBulkContentGen = useCallback(async (pkg: Package) => {
+    showToast('success', `${pkg.title} 전 채널 콘텐츠 생성 시작...`);
+    const channels = ['naver_blog', 'instagram_card', 'google_search'] as const;
+    for (const channel of channels) {
+      try {
+        await fetch('/api/content-hub/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: pkg.id, angle: 'value', channel }),
+        });
+      } catch { /* 부분 실패 허용 */ }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    showToast('success', '블로그+카드뉴스+광고카피 생성 완료 → 검수 큐 확인');
+    setContentStatusMap(prev => {
+      const next = new Map(prev);
+      next.set(pkg.id, new Set(['naver_blog', 'instagram_card', 'google_search']));
+      return next;
+    });
+  }, [showToast]);
 
   // 랜드사 전역 캐시 훅 (중복 fetch 방지)
   const { vendors: activeVendors, all: allVendors } = useVendors();
@@ -841,7 +970,7 @@ export default function PackagesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/packages?limit=100');
+      const res = await fetch('/api/packages?limit=500&status=all');
       const json = await res.json();
       setPackages(json.data || []);
     } catch (e) {
@@ -1305,6 +1434,8 @@ export default function PackagesPage() {
                     onPromptGen={setPromptTarget}
                     onStudioOpen={() => setStudioOpen(true)}
                     onKakaoCopy={(pkg) => setKakaoCopyTarget(pkg)}
+                    onBulkContentGen={handleBulkContentGen}
+                    contentStatus={contentStatusMap}
                   />
                 );
               })}

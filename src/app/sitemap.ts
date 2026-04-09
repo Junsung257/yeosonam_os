@@ -52,5 +52,42 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // 무시
   }
 
-  return [...staticRoutes, ...tourRoutes, ...rfqRoutes];
+  // ── 동적 경로: 블로그 글 ──────────────────────────────────
+  let blogRoutes: MetadataRoute.Sitemap = [];
+  try {
+    const res = await fetch(`${BASE_URL}/api/blog?limit=50`, {
+      next: { revalidate: 600 }, // 10분 (블로그 페이지 ISR과 동일)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const posts: { slug: string; published_at?: string }[] = data.posts ?? [];
+      // 목적지 목록 추출 (카테고리 랜딩 페이지용)
+      const destinations = new Set<string>();
+      const postsTyped: { slug: string; published_at?: string; travel_packages?: { destination?: string } }[] = data.posts ?? [];
+      postsTyped.forEach(p => { if (p.travel_packages?.destination) destinations.add(p.travel_packages.destination); });
+
+      blogRoutes = [
+        // 블로그 목록 페이지
+        { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
+        // 목적지 카테고리 랜딩 페이지
+        ...[...destinations].map(dest => ({
+          url: `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`,
+          lastModified: new Date(),
+          changeFrequency: 'weekly' as const,
+          priority: 0.75,
+        })),
+        // 개별 글
+        ...postsTyped.map((post) => ({
+          url: `${BASE_URL}/blog/${post.slug}`,
+          lastModified: post.published_at ? new Date(post.published_at) : new Date(),
+          changeFrequency: 'weekly' as const,
+          priority: 0.7,
+        })),
+      ];
+    }
+  } catch {
+    // 빌드 시점에 API 미가용 → 블로그 경로 제외
+  }
+
+  return [...staticRoutes, ...tourRoutes, ...rfqRoutes, ...blogRoutes];
 }

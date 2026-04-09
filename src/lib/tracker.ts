@@ -145,6 +145,25 @@ export function initTracker(): void {
     // 인플루언서/제휴 추천이면 source에 반영
     ...(referrer && !utmData.source ? { source: referrer, medium: 'affiliate' } : {}),
     consent_agreed: consent,
+    landing_page: window.location.pathname + window.location.search,
+  });
+}
+
+/**
+ * 콘텐츠 페이지(블로그 등) 진입 시 호출.
+ * content_creative_id를 포함한 traffic 이벤트를 전송한다.
+ */
+export function trackContentView(contentCreativeId: string): void {
+  if (typeof window === 'undefined') return;
+  post({
+    type: 'traffic',
+    session_id: getSessionId(),
+    user_id: getSavedUserId(),
+    consent_agreed: isConsentAgreed(),
+    landing_page: window.location.pathname + window.location.search,
+    content_creative_id: contentCreativeId,
+    source: document.referrer ? new URL(document.referrer).hostname : undefined,
+    medium: 'content',
   });
 }
 

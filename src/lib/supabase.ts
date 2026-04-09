@@ -124,6 +124,7 @@ export async function saveTravelPackage(data: {
   itinerary_data?: unknown;  // 고객용 일정표 JSON (TravelItinerary)
   notices_parsed?: unknown[]; // 4카테고리 분류 주의사항
   price_list?: unknown[];     // 다중 조건 구조화 가격표
+  price_dates?: unknown[];    // 날짜별 개별 가격 (tiersToDatePrices 결과)
 }) {
   try {
     const { data: result, error } = await supabaseAdmin
@@ -169,6 +170,7 @@ export async function saveTravelPackage(data: {
         itinerary_data: data.itinerary_data ?? null,
         notices_parsed: data.notices_parsed ?? [],
         price_list: data.price_list ?? [],
+        price_dates: data.price_dates ?? [],
       }])
       .select();
 
@@ -2658,6 +2660,8 @@ export interface AdTrafficLog {
   n_keyword?: string | null;
   current_cpc?: number | null;
   consent_agreed: boolean;
+  landing_page?: string | null;
+  content_creative_id?: string | null;
   created_at: string;
 }
 
@@ -2697,6 +2701,13 @@ export interface AdConversionLog {
   attributed_source?: string | null;
   attributed_gclid?: string | null;
   attributed_fbclid?: string | null;
+  // First-touch 어트리뷰션
+  first_touch_source?: string | null;
+  first_touch_keyword?: string | null;
+  first_touch_landing_page?: string | null;
+  first_touch_creative_id?: string | null;
+  first_touch_at?: string | null;
+  content_creative_id?: string | null;
   created_at: string;
 }
 
@@ -2739,9 +2750,21 @@ export async function getLatestTrafficBySession(session_id: string): Promise<AdT
     .select('*')
     .eq('session_id', session_id)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-  return data ? (data as unknown as AdTrafficLog) : null;
+    .limit(1);
+  return (data && data.length > 0) ? (data[0] as unknown as AdTrafficLog) : null;
+}
+
+/** First-touch: 해당 세션의 가장 첫 번째 유입 기록 */
+export async function getFirstTrafficBySession(session_id: string): Promise<AdTrafficLog | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb
+    .from('ad_traffic_logs')
+    .select('*')
+    .eq('session_id', session_id)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  return (data && data.length > 0) ? (data[0] as unknown as AdTrafficLog) : null;
 }
 
 export async function mergeSessionToUser(session_id: string, user_id: string): Promise<void> {

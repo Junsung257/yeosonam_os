@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import {
   getPackageById,
   saveTravelPackage,
@@ -32,6 +33,8 @@ const DEST_CODES: Record<string, string> = {
   '시모노세키': 'SMN', '시모노세키/후쿠오카/벳부': 'SMN', '마카오': 'MAC',
   '코타키나발루': 'BKI', '푸꾸옥': 'PQC', '연길': 'YNJ', '청도': 'TAO',
   '서안': 'SIA', '상해': 'SHA', '북경': 'PEK',
+  '라오스': 'LAO', '비엔티엔': 'LAO', '비엔티안': 'LAO', '비엔티엔/루앙프라방/방비엥': 'LAO',
+  '비엔티안/루앙프라방/방비엥': 'LAO', '비엔티엔/방비엥': 'LAO', '비엔티안/방비엥': 'LAO',
 };
 
 // ── short_code 자동생성 (TP-NHA-05-01 형식) ──────────────────
@@ -98,7 +101,8 @@ const PACKAGE_LIST_FIELDS = `
   inclusions, excludes, guide_tip, single_supplement, small_group_surcharge,
   optional_tours, itinerary, special_notes, notices_parsed, land_operator, commission_rate,
   product_tags, product_highlights, product_summary, itinerary_data,
-  marketing_copies, internal_code, land_operator_id, is_airtel,
+  marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title,
+  seats_held, seats_confirmed,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
@@ -115,7 +119,7 @@ export async function GET(request: NextRequest) {
   const q        = (searchParams.get('q') || '').trim();
   const destFilter = searchParams.get('destination') || '';
   const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit    = Math.min(200, parseInt(searchParams.get('limit') || '100'));
+  const limit    = Math.min(500, parseInt(searchParams.get('limit') || '100'));
   const from     = (page - 1) * limit;
 
   try {
@@ -187,7 +191,9 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const totalPages = Math.ceil((count ?? 0) / limit);
-    return NextResponse.json({ data: data ?? [], count: count ?? 0, totalPages });
+    return NextResponse.json({ data: data ?? [], count: count ?? 0, totalPages }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+    });
   } catch (error) {
     console.error('패키지 조회 오류:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '조회 실패' }, { status: 500 });
@@ -261,6 +267,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── price_tiers → price_dates 자동 변환 (없으면 생성) ──
+    const priceDates = body.price_dates?.length
+      ? body.price_dates
+      : body.price_tiers?.length
+        ? tiersToDatePrices(body.price_tiers)
+        : [];
+
     const result = await saveTravelPackage({
       title: body.title,
       destination: body.destination,
@@ -287,6 +300,7 @@ export async function POST(request: NextRequest) {
       single_supplement: body.single_supplement,
       small_group_surcharge: body.small_group_surcharge,
       price_tiers: body.price_tiers,
+      price_dates: priceDates,
       surcharges: body.surcharges,
       excluded_dates: body.excluded_dates,
       optional_tours: body.optional_tours,
@@ -403,6 +417,8 @@ export async function PATCH(request: NextRequest) {
     // 단건 상태 변경
     if (action === 'approve') {
       const result = await approvePackage(packageId);
+      revalidatePath(`/packages/${packageId}`);
+      revalidatePath('/packages');
       return NextResponse.json({ success: true, package: result });
     }
 
@@ -413,6 +429,8 @@ export async function PATCH(request: NextRequest) {
         .eq('id', packageId)
         .select();
       if (error) throw error;
+      revalidatePath(`/packages/${packageId}`);
+      revalidatePath('/packages');
       return NextResponse.json({ success: true, package: data?.[0] });
     }
 
@@ -452,8 +470,8 @@ export async function PATCH(request: NextRequest) {
     // 품절/기간만료 상태 변경 시 연결된 Meta 광고 자동 일시정지
     const newStatus = updateData.status as string | undefined;
     if (newStatus === '품절' || newStatus === '기간만료') {
-      // fire-and-forget: Meta API 실패가 패키지 업데이트를 롤백하지 않도록 Promise.allSettled 사용
-      (async () => {
+      // await 처리하여 서버리스 환경에서 프로세스가 조기 종료되지 않도록 안전 장치 적용
+      await (async () => {
         try {
           const { getAdCampaigns, upsertCampaign } = await import('@/lib/supabase');
           const { pauseAd, isMetaConfigured } = await import('@/lib/meta-api');
@@ -498,6 +516,8 @@ export async function PATCH(request: NextRequest) {
       })();
     }
 
+    revalidatePath(`/packages/${packageId}`);
+    revalidatePath('/packages');
     return NextResponse.json({ success: true, package: result });
   } catch (error) {
     console.error('패키지 수정 오류:', error);

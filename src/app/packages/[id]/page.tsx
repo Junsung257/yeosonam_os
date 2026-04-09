@@ -1,996 +1,115 @@
-'use client';
-
-import { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { useParams, useSearchParams } from 'next/navigation';
-import { matchAttraction } from '@/lib/attraction-matcher';
+import { createClient } from '@supabase/supabase-js';
+import DetailClient from './DetailClient';
+import type { Metadata } from 'next';
+import { matchAttraction, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { trackViewContent, trackLead } from '@/components/MetaPixel';
-import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
-import { openKakaoChannel } from '@/lib/kakaoChannel';
-import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 
-interface PriceTier {
-  period_label: string;
-  departure_dates?: string[];
-  departure_day_of_week?: string;
-  date_range?: { start: string; end: string };
-  adult_price?: number;
-  child_price?: number;
-  status?: string;
-  note?: string;
+export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음)
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 }
 
-interface DaySchedule {
-  day: number;
-  regions?: string[];
-  meals?: { breakfast?: boolean; lunch?: boolean; dinner?: boolean; breakfast_note?: string; lunch_note?: string; dinner_note?: string };
-  schedule?: { time?: string; activity: string; type?: string; transport?: string; note?: string; badge?: string }[];
-  hotel?: { name: string; grade?: string; note?: string } | null;
-}
+// SEO: 동적 메타데이터
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const sb = getSupabase();
+  const { data } = await sb
+    .from('travel_packages')
+    .select('title, destination, price, product_summary')
+    .eq('id', id)
+    .single();
 
-interface Package {
-  id: string;
-  title: string;
-  destination?: string;
-  duration?: number;
-  price?: number;
-  airline?: string;
-  departure_airport?: string;
-  departure_days?: string;
-  min_participants?: number;
-  ticketing_deadline?: string;
-  product_type?: string;
-  price_tiers?: PriceTier[];
-  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
-  inclusions?: string[];
-  excludes?: string[];
-  optional_tours?: { name: string; price_usd?: number }[];
-  product_highlights?: string[];
-  special_notes?: string;
-  notices_parsed?: (string | { type: string; title: string; text: string })[];
-  itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
-  products?: { display_name?: string; internal_code?: string };
-}
+  if (!data) return { title: '상품 상세 | 여소남' };
 
-interface AttractionInfo {
-  name: string; short_desc?: string; long_desc?: string; badge_type?: string; emoji?: string;
-  aliases?: string[]; photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
-  country?: string; region?: string;
-}
-
-const AIRLINES: Record<string, string> = { BX: '에어부산', LJ: '진에어', OZ: '아시아나', KE: '대한항공', '7C': '제주항공', TW: '티웨이', VJ: '비엣젯', ZE: '이스타항공', QV: '라오항공', D7: '에어아시아', OD: '바틱에어', '5J': '세부퍼시픽', VN: '베트남항공', MU: '중국동방항공', SC: '산동항공' };
-function getAirlineName(code?: string) { if (!code) return null; const m = code.match(/^([A-Z]{2}|\d[A-Z])/); return m ? AIRLINES[m[1]] || code : code; }
-function getFlightLabel(transport?: string) { if (!transport) return ''; const name = getAirlineName(transport); return name && name !== transport ? `${name} ${transport}` : transport; }
-function parseCityFromActivity(activity?: string) { if (!activity) return null; const m = activity.match(/^(.+?)[\s·]*(국제)?공항/); return m ? m[1].trim() : null; }
-
-const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '유의사항'] as const;
-
-// 보라색 테마 아이콘
-function getTimelineIcon(type?: string, activity?: string) {
-  if (type === 'flight' && activity && /출발|향발/.test(activity)) return { icon: '✈️', bg: 'bg-violet-600' };
-  if (type === 'flight') return { icon: '🛬', bg: 'bg-violet-400' };
-  if (type === 'golf') return { icon: '⛳', bg: 'bg-emerald-500' };
-  if (type === 'optional') return { icon: '💎', bg: 'bg-pink-500' };
-  if (type === 'shopping') return { icon: '🛍️', bg: 'bg-purple-400' };
-  if (type === 'cruise' || type === 'spa') return { icon: '✨', bg: 'bg-cyan-500' };
-  if (activity && /호텔.*체크|투숙|휴식/.test(activity)) return { icon: '🏨', bg: 'bg-indigo-400' };
-  if (activity && /식사|중식|석식|조식/.test(activity)) return { icon: '🍽️', bg: 'bg-orange-400' };
-  if (activity && /이동|출발|공항/.test(activity)) return { icon: '🚌', bg: 'bg-gray-400' };
-  return { icon: '📍', bg: 'bg-violet-500' };
-}
-
-export default function PackageDetailPage() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const id = params.id as string;
-  const [pkg, setPkg] = useState<Package | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', phone: '', message: '', date: '' });
-  const [submitted, setSubmitted] = useState(false);
-  const [attractions, setAttractions] = useState<AttractionInfo[]>([]);
-  const [clipboardToast, setClipboardToast] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
-
-  const toggleExpand = (key: string) => {
-    setExpandedItems(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+  return {
+    title: `${data.title} | 여소남`,
+    description: data.product_summary || `${data.destination} ${data.title} - 여소남 패키지 여행`,
+    openGraph: {
+      title: data.title,
+      description: data.product_summary || `${data.destination} 여행`,
+    },
   };
-  const [selectedDate, setSelectedDate] = useState('');
-  const [calMonth, setCalMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [activeSection, setActiveSection] = useState('상품정보');
-  const [activeDay, setActiveDay] = useState(1);
-  const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const [expandedNotice, setExpandedNotice] = useState<number | null>(null);
-  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+}
 
-  useEffect(() => {
-    const ref = searchParams.get('ref');
-    if (ref) fetch(`/api/influencer/track?ref=${ref}&pkg=${id}`).catch(() => {});
-  }, [id, searchParams]);
+export default async function PackageDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const sb = getSupabase();
 
-  // pkg 로드 후 캘린더를 출발월로 자동 이동
-  useEffect(() => {
-    if (!pkg) return;
-    const priceDates = getEffectivePriceDates(pkg as any);
-    const firstDateStr = priceDates[0]?.date
-      || (pkg.price_tiers || []).flatMap((t: PriceTier) => t.departure_dates || []).filter(Boolean).sort()[0];
-    if (firstDateStr) {
-      const [y, m] = firstDateStr.split('-').map(Number);
-      if (y && m) setCalMonth(new Date(y, m - 1, 1));
-    }
-  }, [pkg]);
+  const pkgResult = await sb.from('travel_packages')
+    .select('*, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)')
+    .eq('id', id)
+    .single();
 
-  useEffect(() => {
-    fetch(`/api/packages?id=${id}`).then(r => r.json()).then(data => {
-      const p = data.package ?? null;
-      setPkg(p);
-      // Meta Pixel: ViewContent 이벤트
-      if (p) {
-        trackViewContent({
-          content_name: p.title || '',
-          content_category: p.destination || '',
-          value: p.price || 0,
-        });
-      }
-    }).catch(console.error).finally(() => setIsLoading(false));
-    // 관광지: 비동기 로드 (상품 정보 표시를 블로킹하지 않음)
-    fetch('/api/attractions').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
-  }, [id]);
+  const pkg = pkgResult.data;
 
-  const observerCallback = useCallback((entries: IntersectionObserverEntry[]) => {
-    for (const entry of entries) { if (entry.isIntersecting) setActiveSection(entry.target.getAttribute('data-section') || '상품정보'); }
-  }, []);
+  // 관련 관광지만 필터링 (최소한의 트래픽)
+  let attrQuery = sb.from('attractions')
+    .select('name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category');
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(observerCallback, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
-    Object.values(sectionRefs.current).forEach(el => { if (el) observer.observe(el); });
-    return () => observer.disconnect();
-  }, [pkg, observerCallback]);
+  if (pkg && pkg.destination) {
+    attrQuery = attrQuery.or(`region.ilike.%${pkg.destination}%,country.ilike.%${pkg.destination}%,country.eq.중국,country.eq.베트남,country.eq.일본,country.eq.필리핀,country.eq.태국`);
+  }
 
-  // Day 스크롤 추적: 스크롤하면 현재 보이는 day에 맞춰 탭 자동 활성화
-  useEffect(() => {
-    const dayObserver = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const dayNum = Number(entry.target.getAttribute('data-day'));
-          if (dayNum) setActiveDay(dayNum);
-        }
-      }
-    }, { rootMargin: '-120px 0px -60% 0px', threshold: 0 });
-    Object.values(dayRefs.current).forEach(el => { if (el) dayObserver.observe(el); });
-    return () => dayObserver.disconnect();
-  }, [pkg, attractions]);
+  const attrResult = await attrQuery.limit(3000);
 
-  // 미매칭 관광지 자동 수집
-  useEffect(() => {
-    if (!pkg || !attractions.length) return;
-    const daysData: DaySchedule[] = Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : (pkg.itinerary_data?.days || []);
+  const normalizedPkg = pkg ? {
+    ...pkg,
+    products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
+  } : null;
+
+  // 관련 블로그 글 조회
+  let relatedBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string }[] = [];
+  if (pkg?.destination) {
+    const blogResult = await sb
+      .from('content_creatives')
+      .select('slug, seo_title, og_image_url, angle_type')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .eq('product_id', id)
+      .order('published_at', { ascending: false })
+      .limit(3);
+
+    relatedBlogPosts = (blogResult.data ?? []) as typeof relatedBlogPosts;
+  }
+
+  // 미매칭 관광지 수집 (서버사이드: ISR 빌드 시 1회만 실행, 고객 트래픽 무관)
+  if (pkg?.itinerary_data && attrResult.data?.length) {
     const skipPattern = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
+    const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
     const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country?: string }[] = [];
     for (const day of daysData) {
-      day.schedule?.forEach(item => {
+      (day.schedule || []).forEach((item) => {
         if (skipPattern.test(item.activity)) return;
         if (item.type === 'flight' || item.type === 'hotel') return;
-        const attr = matchAttraction(item.activity, attractions as AttractionData[], pkg.destination);
+        const attr = matchAttraction(item.activity, attrResult.data as unknown as AttractionData[], pkg.destination);
         if (!attr) unmatchedItems.push({ activity: item.activity, package_id: id, package_title: pkg.title, day_number: day.day, country: pkg.destination });
       });
     }
     if (unmatchedItems.length > 0) {
-      fetch('/api/unmatched', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: unmatchedItems }) }).catch(() => {});
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      fetch(`${baseUrl}/api/unmatched`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: unmatchedItems }) }).catch(() => {});
     }
-  }, [pkg, attractions, id]);
-
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-400">불러오는 중...</div>;
-  if (!pkg) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
-
-  const days: DaySchedule[] = Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : (pkg.itinerary_data?.days || []);
-  const tiers = filterTiersByDepartureDays(pkg.price_tiers || [] as any, pkg.departure_days) as PriceTier[];
-  const minPrice = tiers.length > 0 ? Math.min(...tiers.map(t => t.adult_price || Infinity)) : pkg.price;
-  const displayPrice = selectedTier?.adult_price || minPrice;
-  const airlineName = getAirlineName(pkg.airline);
-
-  // 히어로 사진: destination 관광지 중 사진 있는 첫 번째 항목
-  const heroPhoto = attractions.find(a => a.photos && a.photos.length > 0 && a.country && pkg.destination?.includes(a.country))?.photos?.[0];
-
-  // 항공편 추출 (첫 날 출발편 + 마지막 날 귀국편)
-  const flightDep = days[0]?.schedule?.find(s => s.type === 'flight' && /출발|향발/.test(s.activity));
-  const flightDepArr = days[0]?.schedule?.find(s => s.type !== 'flight' && /도착/.test(s.activity || ''));
-  // 귀국편: 마지막 날 또는 마지막 전날의 flight 타입 스케줄
-  const flightReturn = days[days.length - 1]?.schedule?.find(s => s.type === 'flight')
-    || days[days.length - 2]?.schedule?.find(s => s.type === 'flight');
-  const flightReturnArr = days[days.length - 1]?.schedule?.find(s => /도착/.test(s.activity || '') && s.type !== 'flight');
-
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.phone) return;
-    try {
-      await fetch('/api/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: id,
-          channel: 'landing_page',
-          form: {
-            name: formData.name,
-            phone: formData.phone,
-            desiredDate: formData.date || selectedTier?.period_label || null,
-            adults: 1,
-            children: 0,
-            privacyConsent: true,
-          },
-          tracking: {
-            landingUrl: window.location.href,
-            utmSource: new URLSearchParams(window.location.search).get('utm_source') || null,
-            utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || null,
-            utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || null,
-          },
-          submittedAt: new Date().toISOString(),
-        }),
-      });
-    } catch { /* 전송 실패해도 UI는 정상 표시 */ }
-    setSubmitted(true);
-    setTimeout(() => { setShowForm(false); setSubmitted(false); setFormData({ name: '', phone: '', message: '', date: '' }); }, 3000);
-  };
-
-  const handleShare = async () => {
-    const url = window.location.href;
-    if (navigator.share) { try { await navigator.share({ title: pkg.title, url }); } catch {} }
-    else { await navigator.clipboard.writeText(url); alert('링크가 복사되었습니다!'); }
-  };
-
-  const scrollToSection = (section: string) => sectionRefs.current[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  // currentDay는 일정표 days.map 루프 내에서 정의됨
+  }
 
   return (
-    <div className="min-h-screen bg-white pb-24 max-w-lg mx-auto">
-
-      {/* ═══ 히어로 (사진 배경) ═══ */}
-      <div ref={el => { sectionRefs.current['상품정보'] = el; }} data-section="상품정보"
-        className="relative h-[420px] w-full overflow-hidden">
-        {heroPhoto ? (
-          <Image src={heroPhoto.src_large || heroPhoto.src_medium} alt={pkg.destination || ''} fill className="object-cover" sizes="100vw" priority />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-900 via-violet-700 to-purple-500" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-        {/* 상단 네비 */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-12">
-          <Link href="/packages" className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
-            <span className="text-white text-lg">←</span>
-          </Link>
-          <div className="flex gap-2">
-            <button onClick={handleShare} className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
-              <span className="text-white">↗</span>
-            </button>
-            <button className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
-              <span className="text-white">♡</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 히어로 콘텐츠 */}
-        <div className="absolute bottom-0 left-0 right-0 p-5 pb-8">
-          {pkg.product_type && (
-            <span className="bg-violet-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 inline-block">{pkg.product_type}</span>
-          )}
-          <h1 className="text-white text-2xl font-extrabold leading-tight mb-2">{pkg.products?.display_name || pkg.title}</h1>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {pkg.destination && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.destination}</span>}
-            {airlineName && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{airlineName}</span>}
-            {pkg.duration && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.duration}일</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ 가격 카드 (플로팅) ═══ */}
-      <section className="px-4 -mt-6 relative z-10">
-        <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-gray-400 text-sm mb-1">판매가</p>
-              <div className="flex items-baseline gap-1">
-                <span className="text-[28px] font-black text-gray-900">₩{(displayPrice || 0).toLocaleString()}</span>
-                <span className="text-gray-400 text-sm">~</span>
-              </div>
-            </div>
-            {pkg.ticketing_deadline && (() => {
-              const deadline = new Date(pkg.ticketing_deadline);
-              const today = new Date();
-              today.setHours(0,0,0,0); deadline.setHours(0,0,0,0);
-              const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              const dDayText = diffDays <= 0 ? '마감' : diffDays <= 7 ? `D-${diffDays}` : `D-${diffDays}`;
-              const urgentColor = diffDays <= 3 ? 'bg-red-500 text-white' : diffDays <= 7 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600';
-              return (
-                <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${urgentColor}`}>
-                  ⏰ {dDayText} ({(deadline.getMonth()+1)}/{deadline.getDate()} 마감)
-                </span>
-              );
-            })()}
-          </div>
-
-          {/* 핵심 특전 */}
-          {pkg.product_highlights && pkg.product_highlights.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
-              {pkg.product_highlights.slice(0, 4).map((h, i) => (
-                <span key={i} className="bg-violet-50 text-violet-700 px-2.5 py-1 rounded-lg text-xs font-medium">{h}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ═══ 아이콘 정보바 (모두투어 스타일) ═══ */}
-      <div className="flex justify-around py-5 px-4 mt-4 border-b border-gray-100">
-        {pkg.duration && (
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xl">📅</span>
-            <span className="text-sm font-bold text-gray-700">{pkg.duration}일</span>
-          </div>
-        )}
-        {airlineName && (
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xl">✈️</span>
-            <span className="text-sm font-bold text-gray-700">{airlineName}</span>
-          </div>
-        )}
-        {pkg.min_participants && (
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xl">👥</span>
-            <span className="text-sm font-bold text-gray-700">최소 {pkg.min_participants}명</span>
-          </div>
-        )}
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-xl">🏷️</span>
-          <span className="text-sm font-bold text-gray-700">{pkg.product_type || '단체'}</span>
-        </div>
-      </div>
-
-      {/* ═══ 항공편 카드 (가는편 + 오는편) ═══ */}
-      {flightDep && (
-        <div className="px-4 py-5">
-          <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
-            {/* 가는편 */}
-            <div className="p-4">
-              <p className="text-xs font-bold text-violet-600 mb-2">가는편</p>
-              <div className="flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">출발</p>
-                  {flightDep.time && <p className="text-lg font-black text-gray-900">{flightDep.time}</p>}
-                  <p className="text-xs text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
-                </div>
-                <div className="flex flex-col items-center px-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-violet-600" />
-                    <div className="w-12 h-[1px] bg-violet-300" />
-                    <span className="text-violet-500 text-xs">✈</span>
-                    <div className="w-12 h-[1px] bg-violet-300" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-violet-600" />
-                  </div>
-                  <span className="text-xs text-gray-400 mt-0.5">{getFlightLabel(flightDep.transport)} 직항</span>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">도착</p>
-                  <p className="text-lg font-black text-gray-900">{flightDepArr?.time || '—'}</p>
-                  <p className="text-xs text-gray-500">{parseCityFromActivity(flightDepArr?.activity) || (pkg.destination || '').split('/')[0]}</p>
-                </div>
-              </div>
-            </div>
-            {/* 구분선 */}
-            <div className="border-t border-dashed border-gray-200 mx-4" />
-            {/* 오는편 */}
-            {flightReturn && (
-            <div className="p-4">
-              <p className="text-xs font-bold text-orange-500 mb-2">오는편</p>
-              <div className="flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">출발</p>
-                  <p className="text-lg font-black text-gray-900">{flightReturn.time || '—'}</p>
-                  <p className="text-xs text-gray-500">{parseCityFromActivity(flightReturn.activity) || (pkg.destination || '').split('/')[0]}</p>
-                </div>
-                <div className="flex flex-col items-center px-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-                    <div className="w-12 h-[1px] bg-orange-200" />
-                    <span className="text-orange-400 text-xs">✈</span>
-                    <div className="w-12 h-[1px] bg-orange-200" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-                  </div>
-                  <span className="text-xs text-gray-400 mt-0.5">{getFlightLabel(flightReturn.transport)} 직항</span>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">도착</p>
-                  <p className="text-lg font-black text-gray-900">{flightReturnArr?.time || '—'}</p>
-                  <p className="text-xs text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
-                </div>
-              </div>
-            </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ═══ 스티키 탭 ═══ */}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-gray-100">
-        <div className="flex gap-0 px-4">
-          {NAV_SECTIONS.map(section => (
-            <button key={section} onClick={() => scrollToSection(section)}
-              className={`flex-1 py-3.5 text-xs font-semibold text-center transition-colors border-b-2 ${
-                activeSection === section ? 'text-violet-700 border-violet-600' : 'text-gray-400 border-transparent'
-              }`}>{section}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* ═══ 요금표 ═══ */}
-      {tiers.length > 0 && (
-        <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-12">
-          <h2 className="text-lg font-extrabold text-gray-900 mb-5">출발일 선택</h2>
-          {(() => {
-            const priceDates = getEffectivePriceDates(pkg as any);
-            const usePriceDates = pkg.price_dates && pkg.price_dates.length > 0;
-
-            const dateMap = new Map<string, { price: number; confirmed: boolean; tier?: PriceTier; note?: string }>();
-            if (usePriceDates) {
-              for (const pd of priceDates) {
-                if (!dateMap.has(pd.date)) {
-                  dateMap.set(pd.date, { price: pd.price, confirmed: pd.confirmed });
-                }
-              }
-            } else {
-              for (const t of tiers) {
-                if (t.departure_dates?.length) {
-                  for (const d of t.departure_dates) {
-                    const date = new Date(d);
-                    if (!isNaN(date.getTime())) {
-                      const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-                      if (!dateMap.has(key)) {
-                        dateMap.set(key, { price: t.adult_price || 0, confirmed: t.status === 'confirmed', tier: t, note: t.note || undefined });
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            if (dateMap.size === 0) {
-              return (
-                <div className="space-y-2">
-                  {tiers.map((t, i) => {
-                    const isSelected = selectedTier === t;
-                    const isMin = t.adult_price === minPrice;
-                    return (
-                      <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white'}`}>
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">
-                            {t.period_label}
-                            {t.status === 'confirmed' && <span className="ml-1.5 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
-                            {t.status === 'soldout' && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">마감</span>}
-                          </p>
-                          {t.departure_day_of_week && <p className="text-xs text-gray-400">{t.departure_day_of_week}</p>}
-                        </div>
-                        <div className="text-right">
-                          <p className={`text-sm font-bold ${t.status === 'soldout' ? 'text-gray-400 line-through' : isMin ? 'text-violet-700' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
-                          {isMin && t.status !== 'soldout' && <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">최저가</span>}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            }
-            const year = calMonth.getFullYear(); const month = calMonth.getMonth();
-            const firstDay = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const WEEKDAYS = ['일','월','화','수','목','금','토'];
-            const cells: (number | null)[] = [];
-            for (let i = 0; i < firstDay; i++) cells.push(null);
-            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-            while (cells.length % 7 !== 0) cells.push(null);
-            return (
-              <div className="bg-white rounded-2xl p-4 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <button onClick={() => setCalMonth(new Date(year, month - 1, 1))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">◀</button>
-                  <span className="text-sm font-bold text-gray-900">{year}년 {month + 1}월</span>
-                  <button onClick={() => setCalMonth(new Date(year, month + 1, 1))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">▶</button>
-                </div>
-                <div className="grid grid-cols-7 mb-2">
-                  {WEEKDAYS.map(w => (
-                    <div key={w} className={`text-center text-xs font-medium py-1 ${w === '일' ? 'text-red-400' : w === '토' ? 'text-blue-400' : 'text-gray-400'}`}>{w}</div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {cells.map((d, i) => {
-                    if (d === null) return <div key={i} />;
-                    const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                    const info = dateMap.get(key);
-                    const isSelected = selectedDate === key;
-                    const isMin = info && info.price === minPrice;
-                    return (
-                      <button key={i} disabled={!info}
-                        onClick={() => {
-                          if (!info) return;
-                          if (usePriceDates) {
-                            setSelectedDate(isSelected ? '' : key);
-                            setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
-                            setSelectedTier(null);
-                          } else {
-                            setSelectedTier(isSelected ? null : info.tier!);
-                            setSelectedDate(isSelected ? '' : key);
-                            setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
-                          }
-                        }}
-                        className={`flex flex-col items-center py-2 rounded-xl transition min-h-[52px] justify-center ${
-                          isSelected ? 'bg-violet-600 text-white shadow-lg' : info ? 'hover:bg-violet-50' : 'opacity-20'
-                        }`}>
-                        <span className="text-xs font-medium">{d}</span>
-                        {info && <span className={`text-[10px] mt-0.5 font-bold ${isSelected ? 'text-white/80' : isMin ? 'text-violet-600' : 'text-gray-400'}`}>{Math.round(info.price / 10000)}만</span>}
-                        {info?.confirmed && !isSelected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* ═══ 포함/불포함 ═══ */}
-      {(pkg.inclusions?.length || pkg.excludes?.length) ? (
-        <div className="px-4 py-6 space-y-3">
-          {pkg.inclusions && pkg.inclusions.length > 0 && (
-            <div className="bg-violet-50/50 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-violet-900 mb-3">✅ 포함 사항</h3>
-              <ul className="space-y-1.5">
-                {pkg.inclusions.map((item, i) => (
-                  <li key={i} className="text-sm text-violet-800 flex gap-2 leading-relaxed"><span className="shrink-0 text-violet-400">•</span>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {pkg.excludes && pkg.excludes.length > 0 && (
-            <div className="bg-red-50/30 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-red-800 mb-3">❌ 불포함 사항</h3>
-              <ul className="space-y-1.5">
-                {pkg.excludes.map((item, i) => (
-                  <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed"><span className="shrink-0 text-red-300">•</span>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {/* ═══ 선택관광 ═══ */}
-      {pkg.optional_tours && pkg.optional_tours.length > 0 && (
-        <div className="px-4 py-4">
-          <div className="bg-pink-50/50 rounded-2xl p-4">
-            <h3 className="text-xs font-bold text-pink-900 mb-3">💎 선택관광 (별도 비용)</h3>
-            <div className="space-y-2">
-              {pkg.optional_tours.map((tour, i) => (
-                <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
-                  <span className="text-sm font-medium text-gray-800">{tour.name}</span>
-                  {tour.price_usd && (
-                    <span className="text-sm font-bold text-pink-600">${tour.price_usd}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ 일정표 ═══ */}
-      {days.length > 0 && (
-        <div ref={el => { sectionRefs.current['일정표'] = el; }} data-section="일정표" className="px-4 py-8 scroll-mt-12">
-          <h2 className="text-lg font-extrabold text-gray-900 mb-5">여행 일정</h2>
-
-          {/* Day 탭 (Voyager 스타일 pill) — 클릭 시 해당 day로 스크롤 */}
-          <div className="sticky top-[44px] z-20 bg-white/95 backdrop-blur-md -mx-4 px-4 pb-3 pt-1">
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-              {days.map(day => (
-                <button key={day.day} onClick={() => {
-                    setActiveDay(day.day);
-                    dayRefs.current[day.day]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                  className={`flex-shrink-0 flex flex-col items-center px-5 py-3 rounded-2xl transition-all border ${
-                    activeDay === day.day
-                      ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200'
-                      : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300'
-                  }`}>
-                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
-                  <span className="font-extrabold text-lg leading-none mt-0.5">{String(day.day).padStart(2, '0')}</span>
-                  <span className="text-xs mt-1 opacity-70">{day.regions?.[0]?.slice(0, 6) || ''}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 타임라인 — 모든 day를 연속 렌더링 */}
-          {days.map(currentDay => (
-            <div key={currentDay.day} ref={el => { dayRefs.current[currentDay.day] = el; }} data-day={currentDay.day} className="scroll-mt-[160px] mb-10">
-              {/* Day 헤더 */}
-              <div className="flex items-center gap-2 mb-4">
-                <span className="bg-[#340897] text-white text-xs font-bold px-2.5 py-1 rounded-lg">DAY {currentDay.day}</span>
-                {currentDay.regions?.[0] && <span className="text-sm text-gray-500">{currentDay.regions.join(' → ')}</span>}
-              </div>
-
-            <div className="relative">
-              <div className="absolute left-[5px] top-4 bottom-4 w-[2px] bg-slate-200" />
-
-              <div className="space-y-8">
-                {currentDay.schedule?.map((item, sIdx) => {
-                  const { icon, bg } = getTimelineIcon(item.type, item.activity);
-                  // 항공/이동/공항 관련 스케줄은 관광지 매칭 스킵
-                  const skipMatch = item.type === 'flight' || item.type === 'hotel' || /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃/.test(item.activity);
-                  const attr = skipMatch ? null : matchAttraction(item.activity, attractions as AttractionData[], pkg.destination);
-                  const hasPhotos = attr?.photos && attr.photos.length > 0;
-
-                  // 항공편은 하나투어 스타일 카드로 렌더링 (첫날/마지막날만, 중간DAY는 일반 표시)
-                  const isFirstOrLastDay = currentDay.day === 1 || currentDay.day === days[days.length - 1]?.day || currentDay.day === days[days.length - 2]?.day;
-                  if (item.type === 'flight' && isFirstOrLastDay) {
-                    // 같은 DAY의 다음 스케줄에서 도착 아이템 찾기
-                    const nextItems = currentDay.schedule?.slice(sIdx + 1) || [];
-                    const arrivalItem = nextItems.find(n => /도착/.test(n.activity));
-                    const depCity = parseCityFromActivity(item.activity) || (pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '');
-                    const arrCityParsed = parseCityFromActivity(arrivalItem?.activity || '') || (pkg.destination || '').split('/')[0];
-                    const isOutbound = /출발|향발/.test(item.activity);
-
-                    return (
-                      <div key={sIdx} className="relative pl-8">
-                        <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#340897] ring-2 ring-[#e6deff] z-10" />
-                        <div className="bg-white rounded-xl border border-gray-200 p-3">
-                          <div className="flex gap-3">
-                            <div className="flex flex-col items-center shrink-0 w-12">
-                              <p className="text-sm font-black text-gray-900">{item.time}</p>
-                              <div className="w-[2px] flex-1 bg-violet-200 my-1 min-h-[28px]" />
-                              <p className="text-sm font-black text-gray-900">{arrivalItem?.time || '—'}</p>
-                            </div>
-                            <div className="flex flex-col items-center shrink-0 pt-1">
-                              <div className={`w-2.5 h-2.5 rounded-full border-2 ${isOutbound ? 'border-violet-600' : 'border-orange-400'} bg-white`} />
-                              <div className={`w-[2px] flex-1 ${isOutbound ? 'bg-violet-200' : 'bg-orange-200'} min-h-[28px]`} />
-                              <div className={`w-2.5 h-2.5 rounded-full ${isOutbound ? 'bg-violet-600' : 'bg-orange-400'}`} />
-                            </div>
-                            <div className="flex-1 flex flex-col justify-between py-0.5">
-                              <div>
-                                <p className="font-bold text-sm text-gray-900">{depCity} 출발</p>
-                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-violet-600' : 'text-orange-500'}`}>✈ {getFlightLabel(item.transport)} 직항</p>
-                              </div>
-                              <p className="font-bold text-sm text-gray-900">{arrCityParsed} 도착</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // 도착 아이템은 flight 카드에 이미 포함되므로 스킵
-                  if (item.type !== 'flight' && /국제공항 도착|공항 도착/.test(item.activity)) {
-                    return null;
-                  }
-
-                  // 호텔 투숙/휴식 텍스트 → 하단 호텔 카드에서 통합 표시하므로 스킵
-                  // 단, "*과일 도시락" 같은 추가 정보는 보존
-                  if (/호텔.*투숙|호텔.*휴식|투숙.*휴식/.test(item.activity) && currentDay.hotel?.name) {
-                    const extraNote = item.activity.match(/\*(.+)$/);
-                    if (extraNote && currentDay.hotel) {
-                      currentDay.hotel.note = [currentDay.hotel.note, extraNote[1].trim()].filter(Boolean).join(' · ');
-                    }
-                    return null;
-                  }
-
-                  return (
-                    <div key={sIdx} className="relative pl-8">
-                      {/* 보라 dot */}
-                      <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#340897] ring-2 ring-[#e6deff] z-10" />
-
-                      <div>
-                        {/* 시간 */}
-                        {item.time && (
-                          <p className="text-violet-600 text-xs font-bold mb-0.5">{item.time}</p>
-                        )}
-
-                        {/* [특전] 하이라이트 카드 */}
-                        {/\[특전\]|특전\)/.test(item.activity) ? (
-                          <div className="bg-violet-50 border border-violet-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
-                            <span className="text-lg shrink-0">🎁</span>
-                            <div>
-                              <span className="text-xs font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">스페셜 포함</span>
-                              <p className="font-bold text-base text-violet-900 mt-1">{item.activity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
-                            </div>
-                          </div>
-                        ) : (
-                        /* 일반 활동명 */
-                        <h3 className="font-bold text-base text-gray-900 leading-snug">
-                          {item.activity}
-                        </h3>
-                        )}
-
-                        {item.note && (
-                          <p className="text-red-500 text-sm mt-1.5 font-medium">{item.note}</p>
-                        )}
-
-                        {/* ═══ 관광지 블록 (하나투어 스타일) ═══ */}
-                        {attr && (() => {
-                          const expandKey = `${currentDay.day}-${sIdx}`;
-                          const isExpanded = expandedItems.has(expandKey);
-                          // 포함사항에 해당 관광지/활동이 있으면 "스페셜포함"
-                          const inclusions = pkg.inclusions || [];
-                          const isIncluded = inclusions.some(inc =>
-                            item.activity.includes(inc) || inc.includes(attr.name) || attr.name.includes(inc)
-                            || /마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i))
-                          );
-                          const effectiveBadge = isIncluded ? 'special' : attr.badge_type;
-                          return (
-                          <div className="mt-2">
-                            {/* 관광지명 (클릭→상세설명 토글) */}
-                            <button onClick={() => attr.long_desc && toggleExpand(expandKey)}
-                              className="flex items-center gap-1 text-left group">
-                              <span className="font-bold text-base text-blue-900 group-hover:text-blue-700">{attr.name}</span>
-                              {attr.long_desc && <span className={`text-gray-400 text-sm transition-transform ${isExpanded ? 'rotate-90' : ''}`}>›</span>}
-                            </button>
-                            {/* 한줄설명 */}
-                            {attr.short_desc && (
-                              <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">{attr.short_desc}</p>
-                            )}
-                            {/* 사진 3장 그리드 */}
-                            {hasPhotos && (
-                              <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden mt-2">
-                                {attr.photos!.slice(0, 3).map((photo, pIdx) => (
-                                  <div key={pIdx} className="relative h-24">
-                                    <Image src={photo.src_medium} alt={attr.name} fill className="object-cover" sizes="33vw" loading="lazy" />
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {/* 배지 (포함사항이면 스페셜포함, 아니면 원래 badge_type) */}
-                            {effectiveBadge && effectiveBadge !== 'tour' && (
-                              <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded font-medium border ${
-                                effectiveBadge === 'special' ? 'border-violet-300 text-violet-700 bg-violet-50' :
-                                effectiveBadge === 'shopping' ? 'border-purple-300 text-purple-700 bg-purple-50' :
-                                effectiveBadge === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
-                                effectiveBadge === 'restaurant' ? 'border-orange-300 text-orange-700 bg-orange-50' :
-                                effectiveBadge === 'hotel' ? 'border-indigo-300 text-indigo-700 bg-indigo-50' :
-                                effectiveBadge === 'golf' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
-                                'border-gray-300 text-gray-600 bg-gray-50'
-                              }`}>{
-                                effectiveBadge === 'special' ? '스페셜포함' :
-                                effectiveBadge === 'shopping' ? '쇼핑' :
-                                effectiveBadge === 'optional' ? '선택관광' :
-                                effectiveBadge === 'restaurant' ? '특식' :
-                                effectiveBadge === 'hotel' ? '숙소' :
-                                effectiveBadge === 'golf' ? '골프' : effectiveBadge
-                              }</span>
-                            )}
-                            {/* 상세설명 (클릭 시 펼치기) */}
-                            {isExpanded && attr.long_desc && (
-                              <p className="text-sm text-gray-600 mt-2 leading-relaxed bg-gray-50 rounded-lg p-3">
-                                {attr.long_desc}
-                              </p>
-                            )}
-                          </div>
-                          );
-                        })()}
-
-                        {/* 호텔 카드는 타임라인 하단에 통합 표시 — 여기서는 스킵 */}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* 호텔 숙소 (호텔명이 있고, 마지막 날이 아닐 때만 표시) */}
-                {currentDay.hotel?.name && currentDay.day !== days[days.length - 1]?.day && (
-                  <div className="relative pl-8">
-                    <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#340897] ring-2 ring-[#e6deff] z-10" />
-                    <div>
-                      <h3 className="font-bold text-base text-gray-900 mb-2">호텔 투숙 및 휴식</h3>
-                      <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-200 to-violet-400 flex items-center justify-center text-xl shrink-0">🏨</div>
-                        <div>
-                          {currentDay.hotel.grade && (
-                            <div className="flex gap-0.5 mb-0.5">
-                              {Array.from({ length: parseInt(currentDay.hotel.grade) || 4 }).map((_, i) => (
-                                <span key={i} className="text-amber-400 text-xs">★</span>
-                              ))}
-                            </div>
-                          )}
-                          <h4 className="font-bold text-xs text-gray-800">{currentDay.hotel.name}</h4>
-                          {currentDay.hotel.note && <p className="text-xs text-gray-400 mt-0.5">{currentDay.hotel.note}</p>}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 식사 */}
-                {currentDay.meals && (
-                  <div className="relative pl-10">
-                    <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full bg-orange-400 flex items-center justify-center ring-4 ring-white z-10">
-                      <span className="text-xs">🍽️</span>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-base text-gray-900 mb-3">식사 안내</h3>
-                      <div className="flex gap-2">
-                        {[
-                          { label: '조식', note: currentDay.meals.breakfast_note, has: currentDay.meals.breakfast, fallback: '호텔식' },
-                          { label: '중식', note: currentDay.meals.lunch_note, has: currentDay.meals.lunch, fallback: '현지식' },
-                          { label: '석식', note: currentDay.meals.dinner_note, has: currentDay.meals.dinner, fallback: '현지식' },
-                        ].map(m => (
-                          <div key={m.label} className="bg-gray-50 rounded-xl px-3 py-2.5 flex-1 text-center border border-gray-100">
-                            <p className="text-xs text-gray-400 mb-0.5">{m.label}</p>
-                            <p className="text-sm font-bold text-gray-700">{m.note || (m.has ? m.fallback : '불포함')}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ═══ 유의사항 (아코디언) ═══ */}
-      <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-12">
-        {(() => {
-          const typedNotices = (pkg.notices_parsed || []).filter(
-            (n): n is { type: string; title: string; text: string } => typeof n === 'object' && n !== null && 'type' in n
-          );
-          if (typedNotices.length === 0 && !pkg.special_notes) return null;
-          const dotColor: Record<string, string> = { CRITICAL: 'bg-red-500', PAYMENT: 'bg-orange-500', POLICY: 'bg-blue-500', INFO: 'bg-gray-400' };
-          return (
-            <div>
-              <h2 className="text-lg font-extrabold text-gray-900 mb-4">유의사항</h2>
-              {typedNotices.length > 0 ? (
-                <div className="space-y-2">
-                  {typedNotices.map((notice, idx) => {
-                    const isOpen = expandedNotice === idx;
-                    const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
-                    return (
-                      <div key={idx} className="border border-gray-100 rounded-xl overflow-hidden">
-                        <button onClick={() => setExpandedNotice(isOpen ? null : idx)}
-                          className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-gray-50 transition">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor[notice.type] || dotColor.INFO}`} />
-                          <span className="text-xs font-bold text-gray-700 flex-1">{notice.title}</span>
-                          <span className="text-gray-300 text-sm">{isOpen ? '▲' : '▼'}</span>
-                        </button>
-                        {isOpen && (
-                          <div className="px-4 pb-3 pt-0">
-                            {lines.map((line, lIdx) => (
-                              <p key={lIdx} className="text-sm text-gray-500 leading-relaxed">{line.startsWith('•') ? line : `• ${line}`}</p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <p className="text-xs text-gray-400 italic mt-2">※ 공통 규정은 별도 [예약 안내문]을 확인하시기 바랍니다.</p>
-                </div>
-              ) : pkg.special_notes ? (
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
-              ) : null}
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* 클립보드 복사 토스트 */}
-      {clipboardToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
-          📋 문의 메시지가 복사됐어요 — 채팅창에 붙여넣기 하세요
-        </div>
-      )}
-
-      {/* ═══ 플로팅 하단바 ═══ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
-        <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
-          <button onClick={handleShare} className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0">
-            <span className="text-base">↗</span>
-          </button>
-
-          {/* 가격/날짜 정보 */}
-          <div className="flex-1 min-w-0">
-            {selectedTier ? (
-              <>
-                <p className="text-xs text-gray-400 truncate">
-                  {selectedDate
-                    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 출발`
-                    : `${selectedTier.period_label} 출발`}
-                </p>
-                <p className="text-sm font-bold text-gray-900">
-                  ₩{(selectedTier.adult_price || 0).toLocaleString()}
-                  <span className="text-xs font-normal text-gray-400 ml-0.5">/ 1인</span>
-                </p>
-              </>
-            ) : displayPrice && displayPrice < Infinity ? (
-              <>
-                <p className="text-xs text-gray-400">최저가</p>
-                <p className="text-sm font-bold text-gray-900">₩{displayPrice.toLocaleString()}~</p>
-              </>
-            ) : null}
-          </div>
-
-          {/* 카카오 문의 버튼 — 리드 저장 + 클립보드 복사 + 카카오 채널 오픈 */}
-          <button onClick={async () => {
-              trackLead({ content_name: pkg.title || '', value: displayPrice || 0 });
-              // 리드 저장 (fire-and-forget)
-              fetch('/api/leads', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  productId: id,
-                  channel: 'kakao_channel',
-                  form: { name: '카카오문의', phone: '-', desiredDate: selectedTier?.departure_dates?.[0] || null, adults: 1, children: 0, privacyConsent: true },
-                  tracking: { landingUrl: window.location.href, utmSource: new URLSearchParams(window.location.search).get('utm_source'), utmMedium: new URLSearchParams(window.location.search).get('utm_medium'), utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') },
-                  submittedAt: new Date().toISOString(),
-                }),
-              }).catch(() => {});
-              const copied = await openKakaoChannel({
-                internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
-                productTitle: pkg.products?.display_name || pkg.title,
-                departureDate: selectedDate || selectedTier?.departure_dates?.[0],
-              });
-              if (copied) {
-                setClipboardToast(true);
-                setTimeout(() => setClipboardToast(false), 4000);
-              }
-            }}
-            className="bg-[#340897] h-11 px-5 rounded-full text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0">
-            카카오로 문의
-          </button>
-        </div>
-      </div>
-
-      {/* ═══ 예약 폼 바텀시트 ═══ */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setShowForm(false)}>
-          <div className="bg-white w-full max-w-lg mx-auto rounded-t-3xl p-6" onClick={e => e.stopPropagation()}>
-            {submitted ? (
-              <div className="text-center py-8">
-                <p className="text-3xl mb-2">✅</p>
-                <p className="font-bold text-gray-900 text-lg">문의가 접수되었습니다!</p>
-                <p className="text-sm text-gray-500 mt-1">빠른 시간 내에 연락드리겠습니다.</p>
-              </div>
-            ) : (
-              <>
-                <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-gray-900 mb-3">예약 문의</h3>
-                <div className="bg-violet-50 rounded-xl p-3 mb-4 text-xs text-violet-800">
-                  <p className="font-bold">{pkg.title}</p>
-                  {selectedTier ? (
-                    <p className="mt-1">📅 {selectedTier.period_label} — ₩{selectedTier.adult_price?.toLocaleString()}</p>
-                  ) : displayPrice && displayPrice < Infinity ? (
-                    <p className="mt-1">₩{displayPrice.toLocaleString()}~ / 1인</p>
-                  ) : null}
-                </div>
-                <div className="space-y-3">
-                  <input placeholder="이름 *" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                  <input placeholder="연락처 *" value={formData.phone} onChange={e => setFormData(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                  {!selectedTier && <input placeholder="희망 출발일" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />}
-                  <textarea placeholder="요청사항 (선택)" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
-                    rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
-                  <button onClick={handleSubmit} disabled={!formData.name || !formData.phone}
-                    className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold rounded-xl text-sm disabled:opacity-50 shadow-lg">
-                    문의 접수하기
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <DetailClient
+      initialPackage={normalizedPkg}
+      initialAttractions={attrResult.data ?? []}
+      packageId={id}
+      relatedBlogPosts={relatedBlogPosts}
+    />
   );
 }

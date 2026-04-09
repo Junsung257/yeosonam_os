@@ -25,6 +25,11 @@ interface CreativeSet {
   blogHtml?: string;
   adCopy?: { headlines: string[]; descriptions: string[] };
   trackingId: string;
+  // 블로그 SEO 필드
+  slug?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  ogImageUrl?: string;
 }
 
 const FONTS = ['Pretendard', 'Noto Sans KR', 'NanumSquare', 'Gothic A1'];
@@ -205,6 +210,57 @@ export default function ContentHubPage() {
     navigator.clipboard.writeText(activeSet.blogHtml);
     showToast('블로그 텍스트 복사됨');
   }, [activeSet]);
+
+  // ── 블로그 공개 발행 ──────────────────────────────────
+  const [blogPublishing, setBlogPublishing] = useState(false);
+  const handlePublishBlog = useCallback(async (setIdx: number) => {
+    const set = creativeSets[setIdx];
+    if (!set || set.channel !== 'naver_blog') return;
+    if (!set.slug || !set.seoTitle) {
+      showToast('슬러그와 SEO 제목은 필수입니다');
+      return;
+    }
+    setBlogPublishing(true);
+    try {
+      // 1. content_creatives에 저장 (upsert)
+      const res = await fetch('/api/content-hub/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: selectedPkgId,
+          angle: set.angle,
+          channel: 'naver_blog',
+          ratio: '16:9',
+          slideCount: 0,
+          tone,
+          blog_html: set.blogHtml,
+          slug: set.slug,
+          seo_title: set.seoTitle,
+          seo_description: set.seoDescription,
+          og_image_url: set.ogImageUrl,
+          tracking_id: set.trackingId,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const creativeId = data.creative?.id;
+      if (!creativeId) throw new Error('저장 실패');
+
+      // 2. published 상태로 변경
+      const pubRes = await fetch('/api/content-hub/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creative_id: creativeId, action: 'publish' }),
+      });
+      if (!pubRes.ok) throw new Error('발행 상태 변경 실패');
+
+      showToast(`블로그 발행 완료! /blog/${set.slug}`);
+    } catch (err) {
+      showToast('발행 실패: ' + (err instanceof Error ? err.message : '오류'));
+    } finally {
+      setBlogPublishing(false);
+    }
+  }, [creativeSets, selectedPkgId, tone]);
 
   // ── 렌더링 ─────────────────────────────────────────────
 
@@ -603,13 +659,66 @@ export default function ContentHubPage() {
 
           {/* 블로그 편집 */}
           {activeSet.channel === 'naver_blog' && (
-            <div className="bg-white border border-slate-200 rounded-lg p-5">
-              <p className="text-[12px] font-semibold text-slate-700 mb-2">네이버 블로그 포스팅</p>
-              <textarea
-                value={activeSet.blogHtml || ''}
-                onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, blogHtml: e.target.value } : s))}
-                className="w-full h-96 border border-slate-200 rounded p-3 text-[13px] font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#005d90]"
-              />
+            <div className="space-y-4">
+              <div className="bg-white border border-slate-200 rounded-lg p-5">
+                <p className="text-[12px] font-semibold text-slate-700 mb-2">네이버 블로그 포스팅</p>
+                <textarea
+                  value={activeSet.blogHtml || ''}
+                  onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, blogHtml: e.target.value } : s))}
+                  className="w-full h-96 border border-slate-200 rounded p-3 text-[13px] font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#005d90]"
+                />
+              </div>
+
+              {/* SEO 설정 (블로그 발행용) */}
+              <div className="bg-white border border-indigo-200 rounded-lg p-5 space-y-3">
+                <p className="text-[12px] font-semibold text-indigo-700 mb-1">블로그 SEO 설정 (공개 발행 시 필수)</p>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">URL 슬러그 (영문/숫자/-)</label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] text-slate-400">/blog/</span>
+                    <input
+                      value={activeSet.slug || ''}
+                      onChange={e => {
+                        const slug = e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-');
+                        setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, slug } : s));
+                      }}
+                      placeholder="bangkok-5days-value-trip"
+                      className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-indigo-400"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">SEO 제목 (검색 결과에 표시)</label>
+                  <input
+                    value={activeSet.seoTitle || ''}
+                    onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, seoTitle: e.target.value } : s))}
+                    placeholder="방콕 5일 가성비 여행 추천 | 2026 최신 가이드"
+                    maxLength={60}
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-indigo-400"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">{(activeSet.seoTitle || '').length}/60자</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">SEO 설명</label>
+                  <textarea
+                    value={activeSet.seoDescription || ''}
+                    onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, seoDescription: e.target.value } : s))}
+                    placeholder="방콕 5일 패키지 여행의 모든 것. 항공+호텔+관광 포함, 가성비 추천 일정..."
+                    maxLength={160}
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] h-16 resize-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">{(activeSet.seoDescription || '').length}/160자</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">OG 이미지 URL (선택)</label>
+                  <input
+                    value={activeSet.ogImageUrl || ''}
+                    onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, ogImageUrl: e.target.value } : s))}
+                    placeholder="https://images.pexels.com/..."
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
@@ -671,10 +780,17 @@ export default function ContentHubPage() {
                       </button>
                     )}
                     {set.blogHtml && (
-                      <button onClick={() => { setActiveSetIdx(i); handleCopyBlog(); }}
-                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
-                        복사
-                      </button>
+                      <>
+                        <button onClick={() => { setActiveSetIdx(i); handleCopyBlog(); }}
+                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
+                          복사
+                        </button>
+                        <button onClick={() => handlePublishBlog(i)} disabled={blogPublishing || !set.slug}
+                          className="px-3 py-1.5 bg-indigo-600 text-white text-[11px] rounded hover:bg-indigo-700 disabled:bg-slate-300 transition"
+                          title={!set.slug ? '편집 단계에서 SEO 설정을 입력하세요' : ''}>
+                          {blogPublishing ? '발행 중...' : '블로그 발행'}
+                        </button>
+                      </>
                     )}
                     {set.adCopy && (
                       <button onClick={() => {
