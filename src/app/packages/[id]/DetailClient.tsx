@@ -52,6 +52,7 @@ interface Package {
   notices_parsed?: (string | { type: string; title: string; text: string })[];
   itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
   display_title?: string;
+  product_summary?: string;
   products?: { display_name?: string; internal_code?: string };
 }
 
@@ -343,6 +344,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           )}
         </div>
       </section>
+
+      {/* ═══ 상품 감성 스토리 (product_summary 인젝션) ═══ */}
+      {pkg.product_summary && (
+        <div className="px-5 mt-8 border-b border-gray-100 pb-6 relative">
+          <div className="absolute top-0 right-5 text-4xl opacity-5">❞</div>
+          <h2 className="text-lg font-extrabold text-gray-900 mb-2">여행 매니저의 추천 코멘트 ✍️</h2>
+          <p className="text-sm text-gray-600 leading-loose break-keep">
+            {pkg.product_summary}
+          </p>
+        </div>
+      )}
 
       {/* ═══ 아이콘 정보바 (모두투어 스타일) ═══ */}
       <div className="flex justify-around py-5 px-4 mt-4 border-b border-gray-100">
@@ -731,30 +743,30 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                           );
                           const effectiveBadge = isIncluded ? 'special' : attr.badge_type;
                           return (
-                          <div className="mt-2">
-                            {/* 관광지명 (클릭→상세설명 토글) */}
-                            <button onClick={() => attr.long_desc && toggleExpand(expandKey)}
-                              className="flex items-center gap-1 text-left group">
-                              <span className="font-bold text-base text-blue-900 group-hover:text-blue-700">{attr.name}</span>
-                              {attr.long_desc && <span className={`text-gray-500 text-sm transition-transform ${isExpanded ? 'rotate-90' : ''}`}>›</span>}
-                            </button>
+                          <div className="mt-2 text-left">
+                            {/* 관광지명 */}
+                            <div className="flex items-center gap-1">
+                              <span className="font-bold text-base text-blue-900">{attr.name}</span>
+                            </div>
                             {/* 한줄설명 */}
                             {attr.short_desc && (
-                              <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">{attr.short_desc}</p>
+                              <p className="text-sm font-medium text-gray-700 mt-0.5 leading-relaxed">{attr.short_desc}</p>
                             )}
-                            {/* 사진 3장 그리드 */}
+                            
+                            {/* 사진 슬라이더 (모바일 스와이프 캐러셀) */}
                             {hasPhotos && (
-                              <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden mt-2">
-                                {attr.photos!.slice(0, 3).map((photo, pIdx) => (
-                                  <div key={pIdx} className="relative h-24">
-                                    <Image src={photo.src_medium} alt={attr.name} fill className="object-cover" sizes="33vw" loading="lazy" />
+                              <div className="flex gap-2 overflow-x-auto scrollbar-hide snap-x mt-3 pb-2 -mx-1 px-1">
+                                {attr.photos!.slice(0, 5).map((photo, pIdx) => (
+                                  <div key={pIdx} className="relative shrink-0 w-4/5 h-44 rounded-2xl overflow-hidden snap-center shadow-sm">
+                                    <Image src={photo.src_large || photo.src_medium} alt={attr.name} fill className="object-cover" sizes="80vw" loading="lazy" />
                                   </div>
                                 ))}
                               </div>
                             )}
-                            {/* 배지 (포함사항이면 스페셜포함, 아니면 원래 badge_type) */}
+
+                            {/* 배지 */}
                             {effectiveBadge && effectiveBadge !== 'tour' && (
-                              <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded font-medium border ${
+                              <span className={`inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full font-bold border ${
                                 effectiveBadge === 'special' ? 'border-violet-300 text-violet-700 bg-violet-50' :
                                 effectiveBadge === 'shopping' ? 'border-purple-300 text-purple-700 bg-purple-50' :
                                 effectiveBadge === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
@@ -771,11 +783,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                                 effectiveBadge === 'golf' ? '골프' : effectiveBadge
                               }</span>
                             )}
-                            {/* 상세설명 (클릭 시 펼치기) */}
-                            {isExpanded && attr.long_desc && (
-                              <p className="text-sm text-gray-600 mt-2 leading-relaxed bg-gray-50 rounded-lg p-3">
-                                {attr.long_desc}
-                              </p>
+                            
+                            {/* 지역 스토리 매거진 뷰 (long_desc 상시 노출) */}
+                            {attr.long_desc && (
+                              <div className="mt-2 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 rounded-xl p-3 border border-indigo-100/50">
+                                <p className="text-sm text-gray-700 leading-loose break-keep">
+                                  {attr.long_desc}
+                                </p>
+                              </div>
                             )}
                           </div>
                           );

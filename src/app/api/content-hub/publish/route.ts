@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
@@ -20,6 +21,9 @@ export async function POST(request: NextRequest) {
       .eq('id', creative_id);
 
     if (error) throw error;
+
+    // 발행/보관 시 블로그 캐시 즉시 갱신
+    if (status === 'published') revalidatePath('/blog');
 
     return NextResponse.json({ ok: true, status });
   } catch (err) {
