@@ -28,6 +28,10 @@ interface Booking {
   total_paid_out?: number;
   payment_status?: string;
   status: string;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  refund_settled_at?: string | null;
+  net_cashflow?: number | null;
   departure_date?: string;
   departure_region?: string;
   booking_date?: string;
@@ -719,7 +723,7 @@ export default function BookingsPage() {
   // ── 필터/탭 ────────────────────────────────────────────────────────────────
   const [lifecycleTab, setLifecycleTab] = useState<'active' | 'done' | 'cancelled' | 'trash'>('active');
   const [activeTab, setActiveTab] = useState<
-    '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid'
+    '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'ghost_cancel' | 'over_cost' | 'refund_pending'
   >('');
   const [rawSearch, setRawSearch]       = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
@@ -1109,6 +1113,12 @@ export default function BookingsPage() {
 
   const unpaidRiskCnt    = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return ['pending','confirmed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && (b.total_price||0)-(b.paid_amount||0) > 0; }).length, [bookings, today]); // eslint-disable-line
   const missingCnt       = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (!b.customers?.phone || !b.departure_date || !b.departure_region)).length, [bookings]);
+  // 유령취소: status != cancelled 인데 입출금 순현금 ±5,000 이내 (송금수수료 오차)
+  const ghostCancelCnt   = useMemo(() => bookings.filter(b => b.status !== 'cancelled' && (b.paid_amount||0) > 0 && (b.total_paid_out||0) > 0 && Math.abs((b.paid_amount||0) - (b.total_paid_out||0)) <= 5000).length, [bookings]);
+  // 원가초과: 진짜 손실 (출금이 입금보다 -10k 이상)
+  const overCostCnt      = useMemo(() => bookings.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000).length, [bookings]);
+  // 환불대기: 취소인데 아직 환불 남음
+  const refundPendingCnt = useMemo(() => bookings.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000).length, [bookings]);
   const prepDocsCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; }).length, [bookings, today]); // eslint-disable-line
   const depositUnpaidCnt = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0)).length, [bookings]);
   const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, today]); // eslint-disable-line
@@ -1142,6 +1152,9 @@ export default function BookingsPage() {
     else if (activeTab === 'land_bomb')  list = list.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; });
     else if (activeTab === 'prep_docs')  list = list.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; });
     else if (activeTab === 'deposit_unpaid') list = list.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0));
+    else if (activeTab === 'ghost_cancel')   list = list.filter(b => b.status !== 'cancelled' && (b.paid_amount||0) > 0 && (b.total_paid_out||0) > 0 && Math.abs((b.paid_amount||0) - (b.total_paid_out||0)) <= 5000);
+    else if (activeTab === 'over_cost')       list = list.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000);
+    else if (activeTab === 'refund_pending')  list = list.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000);
 
     if (searchQuery.trim()) {
       if (parsedDateRange) {
@@ -1357,6 +1370,9 @@ export default function BookingsPage() {
             ['prep_docs',      '준비물/확정서',       prepDocsCnt,      'rose'],
             ['deposit_unpaid', '계약금 미결제',       depositUnpaidCnt, 'orange'],
             ['land_bomb',      '랜드사 미결제 폭탄',  landBombCnt,      'red'],
+            ['ghost_cancel',   '💸 유령취소 의심',    ghostCancelCnt,   'purple'],
+            ['over_cost',      '🩸 원가초과',          overCostCnt,      'red'],
+            ['refund_pending', '⚠️ 환불대기',         refundPendingCnt, 'amber'],
           ] as [string, string, number, string][]).map(([tab, label, cnt, color]) => (
             <button key={tab} onClick={() => setActiveTab(prev => prev === tab ? '' : tab as typeof activeTab)}
               className={`px-3 py-1 rounded-full text-[11px] font-medium transition flex items-center gap-1 whitespace-nowrap
@@ -1442,6 +1458,16 @@ export default function BookingsPage() {
                 const isLandBomb      = dDiff !== null && dDiff >= 0 && dDiff <= 7 && agencyUnpaid > 0 && b.status !== 'cancelled';
                 const isMissing       = !b.customers?.phone || !b.departure_date || !b.departure_region;
                 const isDepositUnpaid = !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0);
+
+                // ── 취소/환불 가시성 배지 (2026-04-15 추가) ──────────────────────
+                const netCashflow     = (b.paid_amount || 0) - (b.total_paid_out || 0);
+                const isCancelled     = b.status === 'cancelled';
+                const isRefundSettled = isCancelled && (!!b.refund_settled_at || Math.abs(netCashflow) <= 5000) && (b.paid_amount || 0) > 0;
+                const isRefundPending = isCancelled && netCashflow > 5000;
+                // 유령 취소: status가 취소 아닌데 입출금 상쇄되어 순현금 거의 0
+                const isGhostCancel   = !isCancelled && (b.paid_amount || 0) > 0 && (b.total_paid_out || 0) > 0 && Math.abs(netCashflow) <= 5000;
+                // 원가 초과: 실제 손실 (송금 초과)
+                const isOverCost      = !isCancelled && netCashflow < -10000;
                 const isSel           = selected.has(b.id);
                 const hasBusanRec     = busanRec.has(b.id);
                 const isEditing       = (field: string) => editingCell?.id === b.id && editingCell.field === field;
@@ -1484,7 +1510,11 @@ export default function BookingsPage() {
                         {isRisk        && <span className="text-[11px] text-red-500 font-bold" title="출발 7일내 미수금">위험</span>}
                         {isLandBomb    && <span className="text-[11px] text-red-600 font-bold animate-pulse" title="랜드사 미송금 위험">미송금</span>}
                         {isMissing     && <span className="text-[11px] text-amber-500 font-bold" title="정보 누락">누락</span>}
-                        {isDepositUnpaid && <span className="text-[11px] text-orange-500 font-bold" title="계약금 미결제">미납</span>}
+                        {isDepositUnpaid && !isCancelled && <span className="text-[11px] text-orange-500 font-bold" title="계약금 미결제">미납</span>}
+                        {isCancelled    && isRefundSettled && <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full" title={`환불완료 (순현금 ${netCashflow.toLocaleString()}원)`}>♻️ 환불완료</span>}
+                        {isCancelled    && isRefundPending && <span className="text-[11px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold" title={`환불대기 — ${netCashflow.toLocaleString()}원 남음`}>⚠️ 환불대기</span>}
+                        {isGhostCancel  && <span className="text-[11px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold animate-pulse" title={`유령취소 의심 — 입금 ${(b.paid_amount||0).toLocaleString()} / 출금 ${(b.total_paid_out||0).toLocaleString()} / 순 ${netCashflow.toLocaleString()}`}>💸 유령취소</span>}
+                        {isOverCost     && <span className="text-[11px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold" title={`원가초과 ${Math.abs(netCashflow).toLocaleString()}원 — 출금이 입금보다 큼`}>🩸 원가초과</span>}
                       </div>
                     </td>
 
@@ -1705,10 +1735,23 @@ export default function BookingsPage() {
                       {fmt(b.paid_amount)}
                     </td>
 
-                    {/* 잔금 */}
+                    {/* 잔금 / 취소건은 순현금 */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 13)} onFocus={() => setFocusedCell({ row: ri, col: 13 })}
                       className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(13)}`}>
-                      {isPaid ? (
+                      {isCancelled ? (
+                        <div>
+                          <span className={`font-bold text-[13px] ${
+                            netCashflow < -5000 ? 'text-red-600' :
+                            netCashflow > 5000  ? 'text-amber-600' :
+                            'text-slate-500'
+                          }`}>
+                            순 {netCashflow.toLocaleString()}원
+                          </span>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            입 {(b.paid_amount ?? 0).toLocaleString()} / 출 {(b.total_paid_out ?? 0).toLocaleString()}
+                          </div>
+                        </div>
+                      ) : isPaid ? (
                         <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full font-bold text-[13px]">완납</span>
                       ) : (
                         <div>
@@ -1726,12 +1769,29 @@ export default function BookingsPage() {
                           )}
                         </div>
                       )}
-                      <div className="hidden group-hover/bal:block absolute bottom-full right-0 z-50 bg-slate-800 text-white text-[13px] rounded-lg px-3.5 py-2.5 whitespace-nowrap mb-1.5 pointer-events-none min-w-[210px]">
-                        <p className="text-blue-300 font-semibold mb-1">고객 미수금</p>
-                        <p>{fmt(Math.max(0, balance))}</p>
-                        <p className="text-orange-300 font-semibold mt-2 mb-1">랜드사 미지급금</p>
-                        <p>{fmt(Math.max(0, agencyUnpaid))}</p>
-                        {isLandBomb && <p className="text-red-400 font-bold mt-1.5 animate-pulse">출발 {dDiff}일 전 미송금</p>}
+                      <div className="hidden group-hover/bal:block absolute bottom-full right-0 z-50 bg-slate-800 text-white text-[13px] rounded-lg px-3.5 py-2.5 whitespace-nowrap mb-1.5 pointer-events-none min-w-[220px]">
+                        {isCancelled ? (
+                          <>
+                            <p className="text-slate-300 font-semibold mb-1">취소/환불 정산</p>
+                            <p>입금 {(b.paid_amount ?? 0).toLocaleString()}원</p>
+                            <p>출금 {(b.total_paid_out ?? 0).toLocaleString()}원</p>
+                            <p className={`font-bold mt-1 ${netCashflow < -5000 ? 'text-red-400' : netCashflow > 5000 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                              순현금 {netCashflow.toLocaleString()}원
+                            </p>
+                            {isRefundSettled && <p className="text-emerald-400 text-[11px] mt-1">♻️ 환불 정산 완료</p>}
+                            {isRefundPending && <p className="text-amber-400 text-[11px] mt-1">⚠️ 환불 대기 {netCashflow.toLocaleString()}원</p>}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-blue-300 font-semibold mb-1">고객 미수금</p>
+                            <p>{fmt(Math.max(0, balance))}</p>
+                            <p className="text-orange-300 font-semibold mt-2 mb-1">랜드사 미지급금</p>
+                            <p>{fmt(Math.max(0, agencyUnpaid))}</p>
+                            {isLandBomb && <p className="text-red-400 font-bold mt-1.5 animate-pulse">출발 {dDiff}일 전 미송금</p>}
+                            {isGhostCancel && <p className="text-purple-400 font-bold mt-1.5">💸 유령취소 의심 — 상태 확인 필요</p>}
+                            {isOverCost && <p className="text-red-400 font-bold mt-1.5">🩸 원가초과 {Math.abs(netCashflow).toLocaleString()}원</p>}
+                          </>
+                        )}
                         <div className="absolute bottom-[-5px] right-5 w-2.5 h-2.5 bg-slate-800 rotate-45" />
                       </div>
                     </td>
