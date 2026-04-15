@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, Users, Calendar, Check } from 'lucide-react';
 import type { LeadFormData } from '@/lib/submitPipeline';
+import type { PriceDate } from '@/lib/price-dates';
+import DepartureCalendar from '@/components/customer/DepartureCalendar';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSubmit: (form: LeadFormData) => Promise<void>;
   defaultDate?: string;
+  priceDates?: PriceDate[];
 }
 
 const TOTAL_STEPS = 3;
@@ -20,7 +23,7 @@ function formatPhone(raw: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
-export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate = '' }: Props) {
+export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate = '', priceDates }: Props) {
   const [step, setStep] = useState(0);          // 0-indexed
   const [desiredDate, setDesiredDate] = useState(defaultDate);
   const [adults, setAdults] = useState(2);
@@ -150,14 +153,24 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
               <StepWrapper>
                 <StepIcon icon={<Calendar size={28} className="text-yellow-500" />} />
                 <h2 className="text-lg font-bold text-gray-900 text-center">희망 출발일을 선택해주세요</h2>
-                <p className="text-sm text-gray-500 text-center">일정 조율을 위해 필요해요</p>
-                <input
-                  type="date"
-                  value={desiredDate}
-                  onChange={e => setDesiredDate(e.target.value)}
-                  min={new Date().toISOString().slice(0, 10)}
-                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-yellow-400 transition text-center"
-                />
+                <p className="text-sm text-gray-500 text-center">
+                  {priceDates && priceDates.length > 0 ? '확정/가능 출발일에서 선택하세요' : '일정 조율을 위해 필요해요'}
+                </p>
+                {priceDates && priceDates.length > 0 ? (
+                  <DepartureCalendar
+                    priceDates={priceDates}
+                    selectedDate={desiredDate}
+                    onSelect={setDesiredDate}
+                  />
+                ) : (
+                  <input
+                    type="date"
+                    value={desiredDate}
+                    onChange={e => setDesiredDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-yellow-400 transition text-center"
+                  />
+                )}
               </StepWrapper>
 
               {/* Step 2: 인원 선택 */}

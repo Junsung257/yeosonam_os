@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { findOrCreateCustomerByPhone } from '@/lib/supabase';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,7 +10,7 @@ const supabase = createClient(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { productId, channel, form, tracking, submittedAt } = body;
+    const { productId, channel, form, tracking, submittedAt, chatSessionId } = body;
 
     if (!productId || !form?.name || !form?.phone || !form?.privacyConsent) {
       return NextResponse.json({ error: '필수 항목 누락' }, { status: 400 });
@@ -43,6 +44,27 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error('[leads] supabase error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // ── P4.5: 고객 식별 + 채팅 세션 역참조 ──
+    // 실패해도 lead 저장은 이미 성공 — 사용자 흐름에 영향 주지 않기 위해 try로 감싸고 skip
+    try {
+      const customerId = await findOrCreateCustomerByPhone(form.phone, form.name);
+      if (customerId && chatSessionId) {
+        await supabase
+          .from('conversations')
+          .update({ customer_id: customerId })
+          .eq('id', chatSessionId)
+          .is('customer_id', null);
+
+        await supabase
+          .from('customer_facts')
+          .update({ customer_id: customerId })
+          .eq('conversation_id', chatSessionId)
+          .is('customer_id', null);
+      }
+    } catch (e) {
+      console.warn('[leads] customer backlink 실패 (무시):', e);
     }
 
     return NextResponse.json({ ok: true });

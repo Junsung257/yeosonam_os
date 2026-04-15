@@ -7,6 +7,7 @@ export { runFinanceAgent } from './finance'
 export { runMarketingAgent } from './marketing'
 export { runSalesAgent } from './sales'
 export { runSystemAgent } from './system'
+export { runAffiliateAgent } from './affiliate'
 
 // 기존 Gemini 기반 호환 (buildAgentConfig는 /api/jarvis에서 더 이상 사용 안 함)
 // 옛 booking.ts, product.ts의 Tool 선언은 그대로 유지

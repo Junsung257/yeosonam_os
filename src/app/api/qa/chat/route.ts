@@ -1,7 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getApprovedPackages, saveInquiry, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor';
+import { critiqueReply, applyCritique } from '@/lib/jarvis/response-critic';
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9);
+
+// ── 스트림 청크 크기/딜레이 (타자기 효과) ─────────────
+const CHUNK_SIZE = 6;        // 한글 ~6자 단위
+const CHUNK_DELAY_MS = 18;   // 프레임 지연
 
 // ── 목적지 추출 헬퍼 ─────────────────────────────────────
 const KNOWN_DESTINATIONS = [
@@ -43,30 +49,52 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
   return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
+// ── JSON-lines 스트림 프로토콜 ───────────────────────────
+// 각 라인 = { type: 'text'|'meta'|'error'|'done', ... } + '\n'
+type StreamEvent =
+  | { type: 'text'; content: string }
+  | { type: 'meta'; packages: unknown[]; escalate: boolean; critiqueSeverity: string }
+  | { type: 'error'; message: string }
+  | { type: 'done' };
+
+function encodeEvent(ev: StreamEvent, encoder: TextEncoder) {
+  return encoder.encode(JSON.stringify(ev) + '\n');
+}
+
 export async function POST(request: NextRequest) {
-  try {
-    const { message, history = [], sessionId, referrer } = await request.json();
-    // referrer는 클라이언트에서 aff_ref 쿠키 값을 보내줌
+  const { message, history = [], sessionId, referrer } = await request.json();
 
-    if (!message?.trim()) {
-      return NextResponse.json({ error: '메시지가 필요합니다.' }, { status: 400 });
-    }
+  if (!message?.trim()) {
+    return new Response(JSON.stringify({ error: '메시지가 필요합니다.' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'AI API 키가 설정되지 않았습니다.' }, { status: 500 });
-    }
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: 'AI API 키가 설정되지 않았습니다.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
-    // DB에서 승인된 패키지 로드
-    let packages: any[] = [];
-    if (isSupabaseConfigured) {
-      packages = await getApprovedPackages();
-    }
+  const encoder = new TextEncoder();
 
-    // 패키지 컨텍스트 구성 (rawText 포함)
-    const packageContext = packages.length > 0
-      ? packages.map((p, i) =>
-          `[상품${i + 1}] ID:${p.id}
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (ev: StreamEvent) => controller.enqueue(encodeEvent(ev, encoder));
+
+      try {
+        // DB에서 승인된 패키지 로드
+        let packages: any[] = [];
+        if (isSupabaseConfigured) {
+          packages = await getApprovedPackages();
+        }
+
+        const packageContext = packages.length > 0
+          ? packages.map((p, i) =>
+              `[상품${i + 1}] ID:${p.id}
 상품명: ${p.title}
 목적지: ${p.destination ?? '미지정'}
 기간: ${p.duration ? p.duration + '일' : '미지정'}
@@ -75,17 +103,39 @@ export async function POST(request: NextRequest) {
 불포함: ${(p.excludes ?? []).join(', ') || '없음'}
 일정: ${(p.itinerary ?? []).join(' | ') || '없음'}
 상세내용: ${(p.raw_text ?? '').slice(0, 800)}`
-        ).join('\n\n---\n\n')
-      : '현재 등록된 상품이 없습니다.';
+            ).join('\n\n---\n\n')
+          : '현재 등록된 상품이 없습니다.';
 
-    // 대화 이력 구성
-    const historyText = (history as {role: string; content: string}[])
-      .slice(-6)
-      .map(h => `${h.role === 'user' ? '고객' : '상담원'}: ${h.content}`)
-      .join('\n');
+        const historyText = (history as { role: string; content: string }[])
+          .slice(-6)
+          .map((h) => `${h.role === 'user' ? '고객' : '상담원'}: ${h.content}`)
+          .join('\n');
 
-    const systemPrompt = `당신은 여행사 AI 상담원입니다. 아래 상품 목록을 바탕으로 고객 문의에 답변하세요.
+        // ── 대화에 연결된 고객 식별 (P4.5 — 리드 제출 후 백필된 customer_id) ──
+        let conversationCustomerId: string | null = null;
+        if (sessionId && isSupabaseConfigured) {
+          const { data: conv } = await supabaseAdmin
+            .from('conversations')
+            .select('customer_id')
+            .eq('id', sessionId)
+            .maybeSingle();
+          conversationCustomerId = (conv?.customer_id as string | null) ?? null;
+        }
 
+        // ── 고객 팩트 메모리 회수 — customer_id 있으면 크로스 세션 회수, 없으면 세션 스코프 ──
+        const memoryFacts = sessionId && isSupabaseConfigured
+          ? await loadActiveFacts(
+              conversationCustomerId
+                ? { customerId: conversationCustomerId, limit: 15 }
+                : { conversationId: sessionId, limit: 15 },
+            )
+          : [];
+        const memoryContext = memoryFacts.length > 0
+          ? `\n## 이 고객에 대해 기억하는 정보\n${memoryFacts.join('\n')}\n`
+          : '';
+
+        const systemPrompt = `당신은 여행사 AI 상담원입니다. 아래 상품 목록을 바탕으로 고객 문의에 답변하세요.
+${memoryContext}
 ## 상품 목록
 ${packageContext}
 
@@ -111,103 +161,156 @@ ${historyText || '(첫 메시지)'}
 ## 고객 문의
 ${message}`;
 
-    const raw = await callGemini(apiKey, systemPrompt);
+        // Phase 1: 전체 생성 (블로킹)
+        const raw = await callGemini(apiKey, systemPrompt);
 
-    // JSON 파싱
-    let parsed: { reply: string; recommendedPackageIds: string[]; escalate: boolean };
-    try {
-      const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      // JSON 파싱 실패 시 raw 텍스트를 reply로
-      parsed = { reply: raw, recommendedPackageIds: [], escalate: false };
-    }
-
-    // 추천 패키지 상세 정보
-    const recommendedPackages = packages
-      .filter(p => parsed.recommendedPackageIds?.includes(p.id))
-      .map(p => ({
-        id: p.id,
-        title: p.title,
-        destination: p.destination,
-        duration: p.duration,
-        price: p.price,
-        sellingPrice: p.price ? applyCommission(p.price) : null,
-        commissionRate: COMMISSION_RATE,
-      }));
-
-    // 에스컬레이션 시 DB에 저장
-    if (parsed.escalate && isSupabaseConfigured) {
-      await saveInquiry({
-        question: message,
-        inquiryType: 'escalation',
-        relatedPackages: parsed.recommendedPackageIds ?? [],
-      }).catch(err => console.warn('에스컬레이션 저장 실패:', err));
-    }
-
-    // ── conversations + intents DB 저장 (fire-and-forget) ──
-    if (isSupabaseConfigured && sessionId) {
-      (async () => {
+        let parsed: { reply: string; recommendedPackageIds: string[]; escalate: boolean };
         try {
-          // conversations: upsert (ON CONFLICT → messages 업데이트)
-          const { data: existing } = await supabaseAdmin
-            .from('conversations')
-            .select('id, messages')
-            .eq('id', sessionId)
-            .maybeSingle();
-
-          const prevMessages = (existing?.messages as any[]) || [];
-          const updatedMessages = [
-            ...prevMessages,
-            { role: 'user', content: message, timestamp: new Date().toISOString() },
-            { role: 'assistant', content: parsed.reply, timestamp: new Date().toISOString() },
-          ];
-
-          if (existing) {
-            await supabaseAdmin
-              .from('conversations')
-              .update({ messages: updatedMessages, updated_at: new Date().toISOString() })
-              .eq('id', sessionId);
-          } else {
-            await supabaseAdmin
-              .from('conversations')
-              .insert({
-                id: sessionId,
-                channel: 'web',
-                source: referrer || 'chat_widget',
-                messages: updatedMessages,
-              });
-          }
-
-          // intents: 목적지/날짜/인원 키워드 감지 시 저장
-          const destination = extractDestination(message);
-          const hasDate = /\d+월|\d+일|다음달|이번달|주말|연휴/.test(message);
-          const partyMatch = message.match(/(\d+)\s*명/);
-
-          if (destination || hasDate || partyMatch) {
-            await supabaseAdmin.from('intents').insert({
-              conversation_id: sessionId,
-              destination,
-              party_size: partyMatch ? parseInt(partyMatch[1]) : null,
-              booking_stage: parsed.escalate ? 'escalated' : 'browsing',
-            });
-          }
-        } catch (e) {
-          console.warn('[Chat] 대화 저장 실패 (무시):', e);
+          const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+          parsed = JSON.parse(jsonStr);
+        } catch {
+          parsed = { reply: raw, recommendedPackageIds: [], escalate: false };
         }
-      })();
-    }
 
-    return NextResponse.json({
-      reply: parsed.reply,
-      packages: recommendedPackages,
-      escalate: parsed.escalate ?? false,
-    });
-  } catch (error) {
-    console.error('[Chat API] 오류:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'AI 처리 실패' },
-      { status: 500 }
-    );
-  }
+        // Phase 2: Self-RAG 검증 (블로킹 — 환각 차단)
+        const critique = await critiqueReply({
+          userQuestion: message,
+          packageContext,
+          reply: parsed.reply,
+          recommendedPackageIds: parsed.recommendedPackageIds ?? [],
+          validPackageIds: packages.map((p) => p.id),
+          apiKey,
+        });
+        const gated = applyCritique(parsed.reply, parsed.escalate ?? false, critique);
+        if (gated.wasGated) {
+          console.warn(`[Critic] ${critique.severity}: ${critique.issues.join(' | ')}`);
+        }
+        const finalReply = gated.reply;
+        const finalEscalate = gated.escalate;
+
+        const recommendedPackages = critique.severity === 'block'
+          ? []
+          : packages
+              .filter((p) => parsed.recommendedPackageIds?.includes(p.id))
+              .map((p) => ({
+                id: p.id,
+                title: p.title,
+                destination: p.destination,
+                duration: p.duration,
+                price: p.price,
+                sellingPrice: p.price ? applyCommission(p.price) : null,
+                commissionRate: COMMISSION_RATE,
+              }));
+
+        // Phase 3: 승인된 텍스트를 타자기 효과로 스트림
+        for (let i = 0; i < finalReply.length; i += CHUNK_SIZE) {
+          const chunk = finalReply.slice(i, i + CHUNK_SIZE);
+          emit({ type: 'text', content: chunk });
+          if (i + CHUNK_SIZE < finalReply.length) {
+            await new Promise((r) => setTimeout(r, CHUNK_DELAY_MS));
+          }
+        }
+
+        // Phase 4: 메타데이터 (packages + escalate)
+        emit({
+          type: 'meta',
+          packages: recommendedPackages,
+          escalate: finalEscalate,
+          critiqueSeverity: critique.severity,
+        });
+        emit({ type: 'done' });
+        controller.close();
+
+        // ── Fire-and-forget: 에스컬레이션/대화/팩트 저장 ──
+        if (finalEscalate && isSupabaseConfigured) {
+          saveInquiry({
+            question: message,
+            inquiryType: critique.severity === 'block' ? 'critic_blocked' : 'escalation',
+            relatedPackages: parsed.recommendedPackageIds ?? [],
+          }).catch((err) => console.warn('에스컬레이션 저장 실패:', err));
+        }
+
+        if (isSupabaseConfigured && sessionId) {
+          (async () => {
+            try {
+              const { data: existing } = await supabaseAdmin
+                .from('conversations')
+                .select('id, messages')
+                .eq('id', sessionId)
+                .maybeSingle();
+
+              const prevMessages = (existing?.messages as any[]) || [];
+              const updatedMessages = [
+                ...prevMessages,
+                { role: 'user', content: message, timestamp: new Date().toISOString() },
+                { role: 'assistant', content: finalReply, timestamp: new Date().toISOString(), critiqueSeverity: critique.severity },
+              ];
+
+              if (existing) {
+                await supabaseAdmin
+                  .from('conversations')
+                  .update({ messages: updatedMessages, updated_at: new Date().toISOString() })
+                  .eq('id', sessionId);
+              } else {
+                await supabaseAdmin
+                  .from('conversations')
+                  .insert({
+                    id: sessionId,
+                    channel: 'web',
+                    source: referrer || 'chat_widget',
+                    messages: updatedMessages,
+                  });
+              }
+
+              const destination = extractDestination(message);
+              const hasDate = /\d+월|\d+일|다음달|이번달|주말|연휴/.test(message);
+              const partyMatch = message.match(/(\d+)\s*명/);
+
+              if (destination || hasDate || partyMatch) {
+                await supabaseAdmin.from('intents').insert({
+                  conversation_id: sessionId,
+                  destination,
+                  party_size: partyMatch ? parseInt(partyMatch[1]) : null,
+                  booking_stage: finalEscalate ? 'escalated' : 'browsing',
+                });
+              }
+
+              const recentForExtraction = updatedMessages.slice(-4).map((m: any) => ({
+                role: m.role,
+                content: m.content,
+              }));
+              const result = await extractAndStoreFacts({
+                conversationId: sessionId,
+                customerId: conversationCustomerId,
+                tenantId: null,
+                recentMessages: recentForExtraction,
+                apiKey,
+                sourceMessageIdx: updatedMessages.length - 1,
+              });
+              if (result.added + result.updated > 0) {
+                console.log(`[FactExtractor] 세션 ${sessionId.slice(0, 8)}: +${result.added} /u ${result.updated} /noop ${result.noop}`);
+              }
+            } catch (e) {
+              console.warn('[Chat] 대화 저장 실패 (무시):', e);
+            }
+          })();
+        }
+      } catch (error) {
+        console.error('[Chat API] 오류:', error);
+        try {
+          emit({ type: 'error', message: error instanceof Error ? error.message : 'AI 처리 실패' });
+          emit({ type: 'done' });
+        } catch {}
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }

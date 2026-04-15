@@ -10,6 +10,7 @@ export interface ChatMessage {
   products?: { id: string; title: string; destination?: string; duration?: number; nights?: number; price?: number }[];
   buttons?: string[];
   timestamp: Date;
+  isStreaming?: boolean;
 }
 
 interface ChatStore {
@@ -21,7 +22,9 @@ interface ChatStore {
   toggleChat: () => void;
   openChat: () => void;
   closeChat: () => void;
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
+  updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
+  appendToMessage: (id: string, chunk: string) => void;
   setTyping: (isTyping: boolean) => void;
   clearMessages: () => void;
 }
@@ -46,16 +49,27 @@ export const useChatStore = create<ChatStore>((set) => ({
   openChat: () => set({ isOpen: true }),
   closeChat: () => set({ isOpen: false }),
 
-  addMessage: (message) =>
+  addMessage: (message) => {
+    const id = crypto.randomUUID();
     set((state) => ({
       messages: [
         ...state.messages,
-        {
-          ...message,
-          id: crypto.randomUUID(),
-          timestamp: new Date(),
-        },
+        { ...message, id, timestamp: new Date() },
       ],
+    }));
+    return id;
+  },
+
+  updateMessage: (id, patch) =>
+    set((state) => ({
+      messages: state.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    })),
+
+  appendToMessage: (id, chunk) =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === id ? { ...m, content: m.content + chunk } : m,
+      ),
     })),
 
   setTyping: (isTyping) => set({ isTyping }),

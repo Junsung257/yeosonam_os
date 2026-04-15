@@ -1,5 +1,10 @@
 import type { TrackingData } from '@/hooks/useTracking';
 
+export interface KakaoLeadContext {
+  productTitle?: string;
+  internalCode?: string;
+}
+
 export interface LeadFormData {
   desiredDate: string;       // "YYYY-MM-DD"
   adults: number;
@@ -15,12 +20,14 @@ export interface LeadPayload {
   form: LeadFormData;
   tracking: TrackingData;
   submittedAt: string;       // ISO
+  chatSessionId?: string;    // 채팅 세션 — 백엔드가 conversations/customer_facts 역참조에 사용
 }
 
 export function buildPayload(
   productId: string,
   form: LeadFormData,
-  tracking: TrackingData
+  tracking: TrackingData,
+  chatSessionId?: string,
 ): LeadPayload {
   return {
     productId,
@@ -28,6 +35,7 @@ export function buildPayload(
     form,
     tracking,
     submittedAt: new Date().toISOString(),
+    chatSessionId,
   };
 }
 
@@ -59,6 +67,21 @@ export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Pro
   throw lastError;
 }
 
+function buildKakaoMessage(form: LeadFormData, ctx?: KakaoLeadContext): string {
+  const lines = ['안녕하세요! 아래 상품 문의드립니다.', ''];
+  if (ctx?.internalCode) lines.push(`상품코드: ${ctx.internalCode}`);
+  if (ctx?.productTitle) lines.push(`상품명: ${ctx.productTitle}`);
+  if (form.desiredDate) lines.push(`출발일: ${form.desiredDate}`);
+  const paxParts: string[] = [];
+  if (form.adults) paxParts.push(`성인 ${form.adults}`);
+  if (form.children) paxParts.push(`소아 ${form.children}`);
+  if (paxParts.length) lines.push(`인원: ${paxParts.join(', ')}`);
+  if (form.name) lines.push(`이름: ${form.name}`);
+  if (form.phone) lines.push(`연락처: ${form.phone}`);
+  if (typeof window !== 'undefined') lines.push(`페이지: ${window.location.href}`);
+  return lines.join('\n').trim();
+}
+
 export function redirectToKakao(kakaoChannelUrl: string): void {
   const isMobile = /Android|iPhone|iPad|iPod/i.test(
     typeof navigator !== 'undefined' ? navigator.userAgent : ''
@@ -80,12 +103,21 @@ export async function submitLeadPipeline(
   productId: string,
   form: LeadFormData,
   tracking: TrackingData,
-  kakaoChannelUrl: string
+  kakaoChannelUrl: string,
+  kakaoContext?: KakaoLeadContext,
+  chatSessionId?: string,
 ): Promise<void> {
-  const payload = buildPayload(productId, form, tracking);
+  const payload = buildPayload(productId, form, tracking, chatSessionId);
   // 실패해도 카카오 이동은 막지 않음 (UX 우선)
   await submitWithRetry(payload).catch(err =>
     console.error('[LeadPipeline] submit failed:', err)
   );
+  // 카카오 채팅창에 붙여넣기 좋은 메시지를 클립보드에 복사
+  try {
+    const message = buildKakaoMessage(form, kakaoContext);
+    await navigator.clipboard.writeText(message);
+  } catch {
+    // 클립보드 API 실패 (HTTP 환경 등) 시 무시 — 카카오 이동은 진행
+  }
   redirectToKakao(kakaoChannelUrl);
 }

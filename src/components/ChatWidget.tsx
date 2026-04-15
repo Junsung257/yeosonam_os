@@ -30,54 +30,15 @@ export default function ChatWidget() {
     const text = inputValue.trim();
     if (!text) return;
     setInputValue('');
-
-    // 사용자 메시지 추가
-    useChatStore.getState().addMessage({
-      role: 'user',
-      content: text,
-      type: 'text',
-    });
-
-    // AI 응답 (Phase 5에서 /api/qa/chat 연동 예정)
-    useChatStore.getState().setTyping(true);
-
-    try {
-      const { sessionId } = useChatStore.getState();
-      const data = await sendToChat(text, sessionId);
-      addChatResponse(data);
-    } catch {
-      useChatStore.getState().addMessage({
-        role: 'assistant',
-        content: '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
-        type: 'text',
-      });
-    } finally {
-      useChatStore.getState().setTyping(false);
-    }
+    useChatStore.getState().addMessage({ role: 'user', content: text, type: 'text' });
+    await streamChat(text);
   };
 
-  const handleQuickButton = (text: string) => {
+  const handleQuickButton = async (text: string) => {
     setInputValue('');
     useChatStore.getState().addMessage({ role: 'user', content: text, type: 'text' });
-    callChat(text);
+    await streamChat(text);
   };
-
-  async function callChat(text: string) {
-    useChatStore.getState().setTyping(true);
-    try {
-      const { sessionId } = useChatStore.getState();
-      const data = await sendToChat(text, sessionId);
-      addChatResponse(data);
-    } catch {
-      useChatStore.getState().addMessage({
-        role: 'assistant',
-        content: '네트워크 오류가 발생했습니다.',
-        type: 'text',
-      });
-    } finally {
-      useChatStore.getState().setTyping(false);
-    }
-  }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -187,59 +148,133 @@ export default function ChatWidget() {
   );
 }
 
-// ── API 호출 + 응답 처리 헬퍼 ──────────────────────────
+// ── 스트리밍 API 호출 ──────────────────────────────────
+// 프로토콜: NDJSON (application/x-ndjson). 각 라인 = {type:'text'|'meta'|'error'|'done', ...}
 
-async function sendToChat(text: string, sessionId: string) {
-  const res = await fetch('/api/qa/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: text,
-      sessionId,
-      referrer: getReferrer(),
-      history: useChatStore.getState().messages.slice(-10).map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-    }),
-  });
-  if (!res.ok) throw new Error('Chat API failed');
-  return res.json();
-}
+type StreamEvent =
+  | { type: 'text'; content: string }
+  | { type: 'meta'; packages: any[]; escalate: boolean; critiqueSeverity: string }
+  | { type: 'error'; message: string }
+  | { type: 'done' };
 
-function addChatResponse(data: { reply?: string; packages?: any[]; escalate?: boolean; error?: string }) {
-  const { addMessage } = useChatStore.getState();
+async function streamChat(text: string) {
+  const { sessionId, addMessage, appendToMessage, updateMessage, setTyping } = useChatStore.getState();
+  setTyping(true);
 
-  // 추천 상품이 있으면 product_cards 타입으로 렌더링
-  if (data.packages && data.packages.length > 0) {
-    addMessage({
-      role: 'assistant',
-      content: data.reply || '추천 상품입니다.',
-      type: 'product_cards',
-      products: data.packages.map((p: any) => ({
-        id: p.id,
-        title: p.title,
-        destination: p.destination,
-        duration: p.duration,
-        price: p.sellingPrice || p.price,
-      })),
+  // 스트림이 시작되면 표시될 빈 assistant 메시지
+  let assistantId: string | null = null;
+  let firstChunkReceived = false;
+
+  const ensureMessage = () => {
+    if (!assistantId) {
+      assistantId = addMessage({ role: 'assistant', content: '', type: 'text', isStreaming: true });
+    }
+    if (!firstChunkReceived) {
+      firstChunkReceived = true;
+      setTyping(false);
+    }
+  };
+
+  try {
+    const res = await fetch('/api/qa/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        sessionId,
+        referrer: getReferrer(),
+        history: useChatStore.getState().messages.slice(-10).map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      }),
     });
-  } else {
-    addMessage({
-      role: 'assistant',
-      content: data.reply || data.error || '죄송합니다. 다시 시도해주세요.',
-      type: 'text',
-    });
-  }
 
-  // 에스컬레이션 안내
-  if (data.escalate) {
-    addMessage({
-      role: 'assistant',
-      content: '더 정확한 안내를 위해 전문 상담사와 연결해드릴까요?',
-      type: 'buttons',
-      buttons: ['전화 상담 요청', '카카오톡 상담'],
-    });
+    if (!res.ok || !res.body) {
+      throw new Error(`Chat API ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let metaPackages: any[] = [];
+    let metaEscalate = false;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newlineIdx: number;
+      while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newlineIdx).trim();
+        buffer = buffer.slice(newlineIdx + 1);
+        if (!line) continue;
+
+        let ev: StreamEvent;
+        try {
+          ev = JSON.parse(line) as StreamEvent;
+        } catch {
+          continue;
+        }
+
+        if (ev.type === 'text') {
+          ensureMessage();
+          appendToMessage(assistantId!, ev.content);
+        } else if (ev.type === 'meta') {
+          metaPackages = ev.packages || [];
+          metaEscalate = !!ev.escalate;
+        } else if (ev.type === 'error') {
+          ensureMessage();
+          updateMessage(assistantId!, {
+            content: ev.message || '죄송합니다. 다시 시도해주세요.',
+            isStreaming: false,
+          });
+        } else if (ev.type === 'done') {
+          // 스트림 종료 — 메타 반영
+          if (assistantId) {
+            if (metaPackages.length > 0) {
+              updateMessage(assistantId, {
+                type: 'product_cards',
+                products: metaPackages.map((p: any) => ({
+                  id: p.id,
+                  title: p.title,
+                  destination: p.destination,
+                  duration: p.duration,
+                  price: p.sellingPrice || p.price,
+                })),
+                isStreaming: false,
+              });
+            } else {
+              updateMessage(assistantId, { isStreaming: false });
+            }
+          }
+          if (metaEscalate) {
+            addMessage({
+              role: 'assistant',
+              content: '더 정확한 안내를 위해 전문 상담사와 연결해드릴까요?',
+              type: 'buttons',
+              buttons: ['전화 상담 요청', '카카오톡 상담'],
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (assistantId) {
+      updateMessage(assistantId, {
+        content: '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        isStreaming: false,
+      });
+    } else {
+      addMessage({
+        role: 'assistant',
+        content: '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        type: 'text',
+      });
+    }
+  } finally {
+    setTyping(false);
   }
 }
 
@@ -267,7 +302,7 @@ function MessageBubble({ message, onButtonClick }: { message: ChatMessage; onBut
             {message.products.map((product) => (
               <a
                 key={product.id}
-                href={`/products/${product.id}`}
+                href={`/packages/${product.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow"

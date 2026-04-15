@@ -10,6 +10,7 @@ import {
 import { useTracking } from '@/hooks/useTracking';
 import LeadBottomSheet from '@/components/lp/LeadBottomSheet';
 import { submitLeadPipeline } from '@/lib/submitPipeline';
+import { useChatStore } from '@/lib/chat-store';
 import type { PriceListItem } from '@/lib/parser';
 import PriceSectionCard from '@/components/lp/PriceSection';
 
@@ -58,6 +59,8 @@ interface LandingProductData {
   originalPrice: number;
   // 상세 요금표 (날짜/조건별 카드형 가격표)
   price_list?:       PriceListItem[];
+  // 출발 캘린더용 (날짜/가격/확정여부 단일 진실 소스)
+  price_dates?:      { date: string; price: number; child_price?: number; confirmed: boolean }[];
   singleSupplement?: string;
   guideTrip?:        string;
   // 카카오 CTA
@@ -524,12 +527,89 @@ function ReviewSection({ score, count }: { score: number; count: number }) {
 // 메인 페이지
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function LandingPage() {
+export default function LandingPage({ params }: { params: { id: string } }) {
   const searchParams = useSearchParams();
   const source = (searchParams.get('source') ?? 'default') as ChannelSource;
   const validSource: ChannelSource = ['insta', 'kakao'].includes(source) ? source : 'default';
 
-  const data = MOCK_DATA;
+  const [data, setData] = useState<LandingProductData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const res = await fetch(`/api/packages?id=${params.id}`);
+        const json = await res.json();
+        const pkg = json.package;
+        if (!pkg) throw new Error('Package not found');
+
+        // Mapping Supabase Package -> LandingProductData
+        const duration = pkg.duration ? `${pkg.duration - 1}박 ${pkg.duration}일` : '기간 미정';
+        const mappedData: LandingProductData = {
+          id: pkg.id,
+          destination: pkg.destination || '여행지',
+          duration,
+          heroImageA: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80',
+          heroImageB: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&q=80',
+          availableSeats: 4, // 기본값
+          departureDateLabel: pkg.price_dates?.[0]?.date.slice(5).replace('-', '/') || '미정',
+          departureFullDate: pkg.price_dates?.[0]?.date || '2026-05-01',
+          earlyBirdDaysLeft: 7,
+          customMessage: {
+            insta: {
+              headline: `${pkg.destination}의\n아름다운 순간`,
+              subline: pkg.title,
+            },
+            kakao: {
+              headline: `${pkg.title}\n상담문의가 많습니다`,
+              subline: '전 일정 정품 호텔 · 직항 · 직판 최저가 보장',
+            },
+            default: {
+              headline: pkg.title,
+              subline: pkg.product_summary || '',
+            },
+          },
+          priceFrom: pkg.price || 0,
+          originalPrice: (pkg.price || 0) * 1.2,
+          price_list: pkg.price_list || [],
+          price_dates: pkg.price_dates || [],
+          singleSupplement: pkg.single_supplement ? `${pkg.single_supplement.toLocaleString()}원` : '별도문의',
+          guideTrip: pkg.guide_tip ? `$${pkg.guide_tip}/인` : '별도문의',
+          kakaoChannelUrl: 'https://pf.kakao.com/_xcFxkBG/chat',
+          reviewCount: 150,
+          reviewScore: 4.8,
+          departureGuaranteed: true,
+          itinerary: {
+            highlights: pkg.product_highlights || [],
+            includes: pkg.inclusions || [],
+            excludes: pkg.excludes || [],
+            days: (Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : pkg.itinerary_data?.days || []).map((d: any) => ({
+              day: d.day,
+              title: d.regions?.join(' · ') || '상세 일정',
+              regions: d.regions?.join(' · ') || '',
+              meals: d.meals || { breakfast: false, lunch: false, dinner: false },
+              activities: (d.schedule || []).map((s: any) => ({
+                type: s.type || 'sightseeing',
+                label: s.activity,
+                detail: s.note
+              })),
+              hotel: d.hotel?.name
+            }))
+          },
+        };
+        setData(mappedData);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [params.id]);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">불러오는 중...</div>;
+  if (!data) return <div className="min-h-screen flex items-center justify-center">상품 정보를 찾을 수 없습니다.</div>;
+
   const msg = data.customMessage[validSource];
 
   // Intersection Observer → FAB 활성화
@@ -682,12 +762,15 @@ export default function LandingPage() {
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         defaultDate={data.departureFullDate}
+        priceDates={data.price_dates}
         onSubmit={async (form) => {
           await submitLeadPipeline(
             data.id,
             form,
             getSnapshot(),
-            data.kakaoChannelUrl
+            data.kakaoChannelUrl,
+            { productTitle: data.customMessage?.default?.headline },
+            useChatStore.getState().sessionId,
           );
           setSheetOpen(false);
         }}
