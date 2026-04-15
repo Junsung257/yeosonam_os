@@ -31,3 +31,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .mcp.json
+
+# 임시 테스트 파일 (어셈블러/파싱 결과)
+temp_*
+temp_out.json
+temp_pkg.json
+temp_qingdao*.json
+temp_qingdao.txt
+
+# 로컬 백업 폴더
+백업/
+
+# Supabase CLI 자동생성
+supabase/.temp/
