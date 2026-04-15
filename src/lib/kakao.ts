@@ -49,6 +49,36 @@ async function sendAlimtalk(params: {
   return { skipped: true, mode: 'manual' };
 }
 
+/** 어필리에이터 예약 전환 축하 알림
+ * 템플릿 예시:
+ * 축하합니다 #{인플루언서명}님!
+ * 회원님의 추천으로 [#{상품명}] 예약이 발생했습니다.
+ * 예약 금액: #{매출액}원 / 예상 수수료: #{수수료}원
+ */
+export async function sendAffiliateBookingCelebration(params: {
+  phone: string;
+  affiliateName: string;
+  packageTitle: string;
+  totalPrice: number;
+  commission: number;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_AFFILIATE_CELEBRATION || '';
+  if (!templateId) {
+    console.log('[축하 알림] 템플릿 미설정 (수기모드)', params);
+    return { skipped: true };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '인플루언서명': params.affiliateName,
+      '상품명': params.packageTitle,
+      '매출액': params.totalPrice.toLocaleString(),
+      '수수료': params.commission.toLocaleString(),
+    },
+  });
+}
+
 /** 잔금 안내 알림톡
  * 템플릿 예시:
  * 안녕하세요 #{고객명}님, 여소남 여행사입니다.

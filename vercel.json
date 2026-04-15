@@ -23,6 +23,22 @@
     {
       "path": "/api/cron/auto-archive",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/agent-executor",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/embed-products",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-settlement-draft",
+      "schedule": "0 2 1 * *"
+    },
+    {
+      "path": "/api/cron/affiliate-anomaly-detect",
+      "schedule": "0 9 * * *"
     }
   ]
 }

@@ -16,6 +16,12 @@ interface KakaoChannelParams {
   internalCode?: string;    // 예: PUS-ETC-FUK-03-0007
   productTitle?: string;
   departureDate?: string;   // 예: 2026-05-13
+  leadForm?: {
+    name?: string;
+    phone?: string;
+    adults?: number;
+    children?: number;
+  };
 }
 
 /**
@@ -38,6 +44,32 @@ export async function openKakaoChannel(params?: KakaoChannelParams): Promise<str
 
   if (params?.departureDate) {
     message += `출발일: ${params.departureDate}\n`;
+    hasContent = true;
+  }
+
+  if (params?.leadForm) {
+    const f = params.leadForm;
+    if (f.adults || f.children) {
+      const parts: string[] = [];
+      if (f.adults) parts.push(`성인 ${f.adults}`);
+      if (f.children) parts.push(`소아 ${f.children}`);
+      message += `인원: ${parts.join(', ')}\n`;
+      hasContent = true;
+    }
+    if (f.name) {
+      message += `이름: ${f.name}\n`;
+      hasContent = true;
+    }
+    if (f.phone) {
+      message += `연락처: ${f.phone}\n`;
+      hasContent = true;
+    }
+  }
+
+  // CSR 네비게이션 시 referrer가 홈으로 고정되는 문제 대응 — sessionStorage에서 실제 페이지 URL 읽기
+  const pageUrl = sessionStorage.getItem('kakao_referrer') ?? window.location.href;
+  if (pageUrl) {
+    message += `페이지: ${pageUrl}\n`;
     hasContent = true;
   }
 
@@ -67,7 +99,7 @@ export async function openKakaoChannel(params?: KakaoChannelParams): Promise<str
   a.href = `https://pf.kakao.com/${KAKAO_CHANNEL_ID}/chat`;
   a.target = '_blank';
   a.rel = 'noopener';  // noreferrer 제거 — referrer 전달 필요
-  a.referrerPolicy = 'no-referrer-when-downgrade'; // full URL 전달
+  a.referrerPolicy = 'unsafe-url'; // cross-origin에서도 full URL 전달 (CSR 환경 대응)
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

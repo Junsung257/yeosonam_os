@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   verification: {
     google: process.env.GOOGLE_SITE_VERIFICATION || '',
     other: {
-      'naver-site-verification': process.env.NAVER_SITE_VERIFICATION || '',
+      'naver-site-verification': 'af1da2c30b83023aa5c6f290ba2fc2460ef25edf',
     },
   },
 };
@@ -71,7 +71,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <head>
-        <link rel="preconnect" href="https://images.pexels.com" />
+        <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
+        <link rel="preconnect" href="https://images.pexels.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
         <link rel="dns-prefetch" href="https://ixaxnvbmhzjvupissmly.supabase.co" />

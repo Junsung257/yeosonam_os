@@ -107,3 +107,5 @@ export function buildPexelsKeyword(destination: string, slideType: string): stri
 export function isPexelsConfigured(): boolean {
   return !!process.env.PEXELS_API_KEY;
 }
+
+export { getBrandPlaceholder, BRAND_PLACEHOLDERS } from '@/lib/card-news/placeholders';

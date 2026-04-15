@@ -15,7 +15,8 @@
       "WebFetch(domain:www.mirra.my)",
       "Bash(find /c/Users/admin/Desktop/여소남OS/src/app/api/customers -type f -name *.ts)",
       "Bash(grep -h 'CREATE TABLE' c:UsersadminDesktop여소남OSdb/*.sql)",
-      "Bash(grep 'CREATE TABLE' c:/Users/admin/Desktop/여소남OS/db/*.sql)"
+      "Bash(grep 'CREATE TABLE' c:/Users/admin/Desktop/여소남OS/db/*.sql)",
+      "Bash(grep -n \"embedding\\\\|vector\\\\|conversation\\\\|message\\\\|chat\\\\|customer_fact\\\\|customer_memory\\\\|agent\" \"c:\\\\Users\\\\admin\\\\Desktop\\\\여소남OS\\\\supabase\\\\migrations\"/*.sql)"
     ],
     "additionalDirectories": [
       "c:\\Users\\admin\\Desktop\\여소남OS\\src\\app\\admin\\marketing\\card-news\\[id]"

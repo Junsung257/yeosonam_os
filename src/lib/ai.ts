@@ -81,7 +81,14 @@ async function generateWithClaude(packageData: TravelPackage, contentType: strin
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 2000,
       temperature: 0.7,
-      system: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.',
+      // cache_control: 동일 시스템 프롬프트 반복 호출 시 read=write의 10% 비용
+      system: [
+        {
+          type: 'text',
+          text: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.',
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages: [
         {
           role: 'user',
@@ -90,6 +97,13 @@ async function generateWithClaude(packageData: TravelPackage, contentType: strin
       ],
     });
 
+    if (message.usage) {
+      console.log('[Claude cache]', {
+        cache_read: message.usage.cache_read_input_tokens,
+        cache_write: message.usage.cache_creation_input_tokens,
+        input: message.usage.input_tokens,
+      });
+    }
     return message.content[0]?.type === 'text' ? message.content[0].text : '';
   } catch (error) {
     throw new Error(`Claude API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
@@ -384,9 +398,19 @@ export async function generateAdVariants(
           model: 'claude-3-5-sonnet-20241022',
           max_tokens: 3000,
           temperature: 0.7,
-          system: systemPrompt,
+          // 플랫폼별 systemPrompt 반복 재사용 → caching 실효
+          system: [
+            { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+          ],
           messages: [{ role: 'user', content: userPrompt }],
         });
+        if (msg.usage) {
+          console.log('[Claude cache ad-variants]', {
+            cache_read: msg.usage.cache_read_input_tokens,
+            cache_write: msg.usage.cache_creation_input_tokens,
+            input: msg.usage.input_tokens,
+          });
+        }
         rawText = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
         break;
       }

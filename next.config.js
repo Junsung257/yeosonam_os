@@ -10,6 +10,14 @@ const nextConfig = {
       },
     ],
   },
+  // 상품 상세 라우트 통일 — /packages/[id] 를 단일 진실 소스로
+  // /tour/[id] 와 /products/[id] 는 영구 리다이렉트(308)
+  async redirects() {
+    return [
+      { source: '/tour/:id', destination: '/packages/:id', permanent: true },
+      { source: '/products/:id', destination: '/packages/:id', permanent: true },
+    ];
+  },
 };
 
 module.exports = nextConfig;

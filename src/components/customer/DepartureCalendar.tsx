@@ -1,0 +1,196 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { PriceDate } from '@/lib/price-dates';
+
+interface Props {
+  priceDates?: PriceDate[];
+  selectedDate?: string;
+  onSelect: (date: string) => void;
+  /** "YYYY-MM" 초기 표시 월 (생략 시 가장 빠른 출발월 또는 이번 달) */
+  initialMonth?: string;
+}
+
+const DOW_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function ymToFirstDate(ym: string): Date {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1);
+}
+
+function dateToYM(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function dateToYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function todayYMD(): string {
+  return dateToYMD(new Date());
+}
+
+export default function DepartureCalendar({ priceDates, selectedDate, onSelect, initialMonth }: Props) {
+  const dateMap = useMemo(() => {
+    const m = new Map<string, PriceDate>();
+    (priceDates || []).forEach(d => { if (d?.date) m.set(d.date, d); });
+    return m;
+  }, [priceDates]);
+
+  const minPrice = useMemo(() => {
+    const prices = (priceDates || []).map(d => d.price).filter(p => p > 0);
+    return prices.length > 0 ? Math.min(...prices) : 0;
+  }, [priceDates]);
+
+  // 초기 월 결정: 인자 > 가장 빠른 출발월 > 이번 달
+  const startMonth = useMemo(() => {
+    if (initialMonth) return initialMonth;
+    const upcoming = [...dateMap.keys()].filter(d => d >= todayYMD()).sort();
+    if (upcoming.length > 0) return upcoming[0].slice(0, 7);
+    return dateToYM(new Date());
+  }, [initialMonth, dateMap]);
+
+  const [viewMonth, setViewMonth] = useState(startMonth);
+
+  const grid = useMemo(() => buildGrid(viewMonth), [viewMonth]);
+  const today = todayYMD();
+
+  function shiftMonth(delta: number) {
+    const d = ymToFirstDate(viewMonth);
+    d.setMonth(d.getMonth() + delta);
+    setViewMonth(dateToYM(d));
+  }
+
+  const [y, m] = viewMonth.split('-').map(Number);
+
+  return (
+    <div className="w-full">
+      {/* 월 네비 */}
+      <div className="flex items-center justify-between mb-3">
+        <button
+          type="button"
+          onClick={() => shiftMonth(-1)}
+          className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+          aria-label="이전 달"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <div className="text-base font-bold text-gray-900">{y}년 {m}월</div>
+        <button
+          type="button"
+          onClick={() => shiftMonth(1)}
+          className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+          aria-label="다음 달"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      {/* 요일 헤더 */}
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {DOW_LABELS.map((d, i) => (
+          <div
+            key={d}
+            className={`text-xs font-medium text-center py-1 ${
+              i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'
+            }`}
+          >
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* 날짜 그리드 */}
+      <div className="grid grid-cols-7 gap-1">
+        {grid.map((cell, i) => {
+          if (!cell) return <div key={i} className="aspect-square" />;
+          const ymd = cell.ymd;
+          const pd = dateMap.get(ymd);
+          const isAvailable = !!pd;
+          const isPast = ymd < today;
+          const isSelected = ymd === selectedDate;
+          const isLowest = pd && minPrice > 0 && pd.price === minPrice;
+          const isConfirmed = pd?.confirmed;
+          const dow = cell.dow;
+
+          const baseTextColor = isPast
+            ? 'text-gray-300'
+            : dow === 0
+              ? 'text-red-500'
+              : dow === 6
+                ? 'text-blue-500'
+                : 'text-gray-800';
+
+          let bg = '';
+          let border = 'border border-transparent';
+          if (isSelected) {
+            bg = 'bg-[#340897] text-white';
+            border = 'border border-[#340897]';
+          } else if (isAvailable && !isPast) {
+            if (isConfirmed) {
+              bg = 'bg-emerald-50 hover:bg-emerald-100';
+              border = 'border border-emerald-300';
+            } else {
+              bg = 'bg-violet-50 hover:bg-violet-100';
+              border = 'border border-violet-200';
+            }
+          }
+
+          return (
+            <button
+              key={i}
+              type="button"
+              disabled={!isAvailable || isPast}
+              onClick={() => onSelect(ymd)}
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs transition relative ${bg} ${border} ${!isAvailable || isPast ? 'cursor-default' : 'cursor-pointer'}`}
+            >
+              <span className={`text-sm font-semibold ${isSelected ? 'text-white' : baseTextColor}`}>
+                {cell.day}
+              </span>
+              {pd && !isPast && (
+                <span className={`text-[9px] leading-tight font-medium ${isSelected ? 'text-white/90' : 'text-gray-600'}`}>
+                  {pd.price > 0 ? `${Math.round(pd.price / 10000)}만` : ''}
+                </span>
+              )}
+              {isLowest && !isSelected && !isPast && (
+                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-[8px] font-bold px-1 py-px rounded-full leading-none">
+                  최저가
+                </span>
+              )}
+              {isConfirmed && !isSelected && !isPast && (
+                <span className="absolute -top-1 -left-1 bg-emerald-500 text-white text-[8px] font-bold px-1 py-px rounded-full leading-none">
+                  확정
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 범례 */}
+      <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-gray-500">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 border border-emerald-300 inline-block" /> 출발확정</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-violet-50 border border-violet-200 inline-block" /> 선택가능</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" /> 최저가</span>
+      </div>
+    </div>
+  );
+}
+
+function buildGrid(ym: string): ({ ymd: string; day: number; dow: number } | null)[] {
+  const [y, m] = ym.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+
+  const cells: ({ ymd: string; day: number; dow: number } | null)[] = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ymd = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    cells.push({ ymd, day: d, dow: new Date(y, m - 1, d).getDay() });
+  }
+  // 마지막 주 끝까지 패딩 (선택사항: 깔끔한 그리드)
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}

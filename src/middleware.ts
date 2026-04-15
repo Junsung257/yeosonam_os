@@ -39,6 +39,7 @@ const PUBLIC_PATHS = [
   '/api/cron/settlement-auto',
   '/api/cron/sync-creative-performance',
   '/api/cron/auto-archive',
+  '/api/cron/embed-products',
   // 인플루언서 포털 (자체 PIN 인증)
   '/influencer',
   '/api/influencer',
@@ -55,6 +56,8 @@ const PUBLIC_PATHS = [
   '/blog',
   '/blog/destination',
   '/api/blog',
+  '/api/rss',
+  '/api/blog-engagement',
 ];
 
 function isPublicPath(pathname: string) {

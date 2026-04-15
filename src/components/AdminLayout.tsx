@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // ── 카테고리 그룹핑 사이드바 메뉴 ─────────────────────────────
 interface NavItem {
@@ -68,6 +68,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/content-analytics', label: '콘텐츠 성과' },
       { href: '/admin/content-gaps', label: '콘텐츠 갭' },
       { href: '/admin/search-ads', label: '검색광고' },
+      { href: '/admin/blog', label: '블로그' },
     ],
   },
   {
@@ -92,6 +93,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCount = () => {
+      fetch('/api/agent-actions?status=pending&limit=1')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.total != null) setPendingActionsCount(d.total); })
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = async () => {
     await fetch('/api/auth/session', { method: 'DELETE' });
@@ -141,6 +155,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   }`}
                 >
                   {item.label}
+                  {item.href === '/admin/jarvis' && pendingActionsCount > 0 && (
+                    <span className="ml-auto bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                      {pendingActionsCount}
+                    </span>
+                  )}
                 </Link>
               ))}
             </div>

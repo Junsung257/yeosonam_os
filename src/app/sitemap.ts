@@ -12,20 +12,31 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // /login은 robots.txt에서 Disallow → sitemap에서도 제외
   ];
 
-  // ── 동적 경로: 패키지 상품 ─────────────────────────────────
+  // ── 동적 경로: 패키지 상품 + 인기 목적지 필터 랜딩 ─────────
   let tourRoutes: MetadataRoute.Sitemap = [];
+  let destinationFilterRoutes: MetadataRoute.Sitemap = [];
   try {
     const res = await fetch(`${BASE_URL}/api/packages?sitemap=true`, {
       next: { revalidate: 3600 }, // 1시간 캐시
     });
     if (res.ok) {
       const data = await res.json();
-      const packages: { id: string; updated_at?: string }[] = data.packages ?? [];
+      const packages: { id: string; updated_at?: string; destination?: string }[] = data.packages ?? [];
       tourRoutes = packages.map((pkg) => ({
-        url: `${BASE_URL}/tour/${pkg.id}`,
+        url: `${BASE_URL}/packages/${pkg.id}`,
         lastModified: pkg.updated_at ? new Date(pkg.updated_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.85,
+      }));
+
+      // 목적지별 필터 랜딩 페이지 (롱테일 SEO)
+      const destinations = new Set<string>();
+      packages.forEach(p => { if (p.destination) destinations.add(p.destination); });
+      destinationFilterRoutes = [...destinations].map(dest => ({
+        url: `${BASE_URL}/packages?destination=${encodeURIComponent(dest)}`,
+        lastModified: new Date(),
+        changeFrequency: 'weekly' as const,
+        priority: 0.7,
       }));
     }
   } catch {
@@ -66,12 +77,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       const postsTyped: { slug: string; published_at?: string; travel_packages?: { destination?: string } }[] = data.posts ?? [];
       postsTyped.forEach(p => { if (p.travel_packages?.destination) destinations.add(p.travel_packages.destination); });
 
+      const ANGLES = ['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food'];
       blogRoutes = [
         // 블로그 목록 페이지
         { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
         // 목적지 카테고리 랜딩 페이지
         ...[...destinations].map(dest => ({
           url: `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`,
+          lastModified: new Date(),
+          changeFrequency: 'weekly' as const,
+          priority: 0.75,
+        })),
+        // 앵글별 카테고리 랜딩 페이지 (롱테일 SEO)
+        ...ANGLES.map(angle => ({
+          url: `${BASE_URL}/blog/angle/${angle}`,
           lastModified: new Date(),
           changeFrequency: 'weekly' as const,
           priority: 0.75,
@@ -89,5 +108,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // 빌드 시점에 API 미가용 → 블로그 경로 제외
   }
 
-  return [...staticRoutes, ...tourRoutes, ...rfqRoutes, ...blogRoutes];
+  return [...staticRoutes, ...tourRoutes, ...destinationFilterRoutes, ...rfqRoutes, ...blogRoutes];
 }
