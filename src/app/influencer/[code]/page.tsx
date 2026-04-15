@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { useInfluencerAuth } from './auth-context';
+import { Leaderboard } from '@/components/affiliate/Leaderboard';
 
 // ── 타입 ──
 interface Settlement {
@@ -197,6 +198,9 @@ export default function InfluencerDashboard() {
         </div>
         <p className="text-xs text-gray-400 mt-1 text-right">{progress}%</p>
       </div>
+
+      {/* ── 월간 리더보드 (익명화) ── */}
+      <Leaderboard anonymized title="이번달 TOP 인플루언서" />
 
       {/* ── 정산 내역 + 최근 예약 ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

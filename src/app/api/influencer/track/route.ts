@@ -2,12 +2,24 @@
  * 어필리에이트 클릭 추적 API
  * GET /api/influencer/track?ref=CODE&pkg=PACKAGE_ID&sub=YOUTUBE
  *
- * 1. referral_code로 affiliate 조회
- * 2. influencer_links.click_count 증가
- * 3. 쿠키에 ref 코드 저장 (7일 유효)
+ * P0 개편 (2026-04-15):
+ *  - aff_ref 쿠키 수명 7일 → 30일 (여행업 리드타임 고려)
+ *  - User-Agent 봇 필터: 봇이면 쿠키 미설정, touchpoint에만 is_bot=true 기록
+ *  - aff_sid 세션 쿠키 + is_duplicate_click RPC: 같은 세션+ref+pkg 10분 내 재클릭은 click_count 증가 안 함
+ *  - unique_visitor_count: 해당 세션이 ref+pkg 조합에 처음 유입된 경우에만 증가
+ *  - affiliate_touchpoints: 모든 요청(봇/중복 포함) 플래그 달아 기록 → 멀티터치 분석 기반
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isBot } from '@/lib/affiliate/bot-filter';
+import {
+  getOrCreateAffiliateSid,
+  hashIp,
+  hashUserAgent,
+  getClientIp,
+} from '@/lib/affiliate/session';
+
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
@@ -19,59 +31,104 @@ export async function GET(request: NextRequest) {
 
   if (!ref) return NextResponse.json({ error: 'ref 필요' }, { status: 400 });
 
+  const response = NextResponse.json({ ok: true });
+  const { sid } = getOrCreateAffiliateSid(request, response);
+  const userAgent = request.headers.get('user-agent');
+  const botDetected = isBot(userAgent);
+
   try {
-    // 1. affiliate 존재 확인
     const { data: affiliate } = await supabaseAdmin
       .from('affiliates')
       .select('id, name, referral_code')
       .eq('referral_code', ref)
       .maybeSingle();
 
-    if (!affiliate) return NextResponse.json({ error: '유효하지 않은 추천 코드' }, { status: 404 });
+    if (!affiliate) {
+      return NextResponse.json({ error: '유효하지 않은 추천 코드' }, { status: 404 });
+    }
 
-    // 2. influencer_links click_count 증가 (해당 패키지 링크가 있으면)
-    if (pkg) {
+    const ipHash = hashIp(getClientIp(request));
+    const uaHash = hashUserAgent(userAgent);
+
+    let isDuplicate = false;
+    if (!botDetected) {
+      const { data: dupCheck } = await supabaseAdmin.rpc('is_duplicate_click', {
+        p_session: sid,
+        p_ref: ref,
+        p_pkg: pkg,
+      });
+      isDuplicate = !!dupCheck;
+    }
+
+    await supabaseAdmin.from('affiliate_touchpoints').insert({
+      session_id: sid,
+      referral_code: ref,
+      package_id: pkg,
+      sub_id: sub || null,
+      ip_hash: ipHash,
+      user_agent_hash: uaHash,
+      is_bot: botDetected,
+      is_duplicate: isDuplicate,
+    });
+
+    if (botDetected) {
+      return NextResponse.json({ ok: true, affiliate_id: affiliate.id, filtered: 'bot' });
+    }
+
+    if (pkg && !isDuplicate) {
       const { data: link } = await supabaseAdmin
         .from('influencer_links')
-        .select('id, click_count')
+        .select('id, click_count, unique_visitor_count')
         .eq('referral_code', ref)
         .eq('package_id', pkg)
         .maybeSingle();
 
       if (link) {
+        const { data: priorSessionHit } = await supabaseAdmin
+          .from('affiliate_touchpoints')
+          .select('id')
+          .eq('session_id', sid)
+          .eq('referral_code', ref)
+          .eq('package_id', pkg)
+          .eq('is_duplicate', false)
+          .eq('is_bot', false)
+          .lt('clicked_at', new Date().toISOString())
+          .limit(2);
+
+        const isFirstVisit = !priorSessionHit || priorSessionHit.length <= 1;
+
         await supabaseAdmin
           .from('influencer_links')
-          .update({ click_count: (link.click_count || 0) + 1 })
+          .update({
+            click_count: (link.click_count || 0) + 1,
+            unique_visitor_count: (link.unique_visitor_count || 0) + (isFirstVisit ? 1 : 0),
+          })
           .eq('id', link.id);
       }
     }
 
-    // 3. 응답에 쿠키 설정 (7일 유효 — 이 기간 내 예약 시 자동 귀속)
-    const response = NextResponse.json({
-      ok: true,
-      affiliate_id: affiliate.id,
-      affiliate_name: affiliate.name,
-    });
-
     response.cookies.set('aff_ref', ref, {
-      maxAge: 7 * 24 * 60 * 60, // 7일
+      maxAge: COOKIE_MAX_AGE,
       path: '/',
-      httpOnly: false, // 프론트에서 읽어야 하므로
+      httpOnly: false,
       sameSite: 'lax',
     });
 
     if (sub) {
       response.cookies.set('aff_sub', sub, {
-        maxAge: 30 * 24 * 60 * 60,
+        maxAge: COOKIE_MAX_AGE,
         path: '/',
         httpOnly: false,
         sameSite: 'lax',
       });
     }
 
-    return response;
+    return NextResponse.json(
+      { ok: true, affiliate_id: affiliate.id, affiliate_name: affiliate.name, duplicate: isDuplicate },
+      { headers: response.headers },
+    );
   } catch (err) {
     console.error('[Affiliate Track]', err);
-    return NextResponse.json({ ok: true }); // 추적 실패해도 사용자 경험 방해 안 함
+    return NextResponse.json({ ok: true });
   }
 }

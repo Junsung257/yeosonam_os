@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { Leaderboard } from '@/components/affiliate/Leaderboard';
 
 interface Affiliate {
   id: string;
@@ -101,6 +102,9 @@ export default function AffiliatesPage() {
           + 파트너 등록
         </button>
       </div>
+
+      {/* 월간 리더보드 (실명) */}
+      <Leaderboard />
 
       {/* KPI 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

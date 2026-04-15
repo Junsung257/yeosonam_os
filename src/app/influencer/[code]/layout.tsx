@@ -77,6 +77,7 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
                     <Link
                       key={item.href}
                       href={item.href}
+                      prefetch={true}
                       className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                         isActive
                           ? 'bg-blue-50 text-blue-700'
