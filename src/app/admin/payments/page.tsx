@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { extractPrimaryName } from '@/lib/customer-name';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -1073,20 +1074,26 @@ export default function PaymentsPage() {
                       if (!selectedTx) return;
                       setQuickCreating(true);
                       try {
-                        // 1. 고객 생성 (입금자명으로)
+                        // 대표자명만 추출 ("손지연,양동기" → "손지연")
+                        const cleanName = extractPrimaryName(selectedTx.counterparty_name) || '미확인 고객';
+
+                        // 1. 고객 생성 — 서버 dedup 결과 활용 (reused:true 시 기존 고객 재사용)
                         const custRes = await fetch('/api/customers', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            name: selectedTx.counterparty_name || '미확인 고객',
+                            name: cleanName,
                             phone: quickForm.phone || undefined,
+                            quick_created: true,
+                            quick_created_tx_id: selectedTx.id,
                           }),
                         });
                         const custData = await custRes.json();
                         const customerId = custData.customer?.id;
                         if (!customerId) throw new Error(custData.error || '고객 생성 실패');
+                        const customerReused = custData.reused === true;
 
-                        // 2. 예약 생성
+                        // 2. 예약 생성 — quick_created 마킹 (undo 시 자동 청소)
                         const bookRes = await fetch('/api/bookings', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -1100,6 +1107,8 @@ export default function PaymentsPage() {
                             childCost: 0,
                             childPrice: 0,
                             departureDate: quickForm.departureDate || undefined,
+                            quickCreated: true,
+                            quickCreatedTxId: selectedTx.id,
                           }),
                         });
                         const bookData = await bookRes.json();
@@ -1124,7 +1133,8 @@ export default function PaymentsPage() {
 
                         setSelectedTx(null);
                         setShowQuickCreate(false);
-                        showToast(`${selectedTx.counterparty_name} — 고객 생성 + 예약 생성 + 매칭 완료`);
+                        const prefix = customerReused ? '기존 고객 재사용' : '신규 고객 생성';
+                        showToast(`${cleanName} — ${prefix} + 예약 생성 + 매칭 완료`);
                         load();
                       } catch (err) {
                         showToast(err instanceof Error ? err.message : '처리 실패');

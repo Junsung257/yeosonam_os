@@ -25,6 +25,8 @@ interface Message {
   content: string
   agent?: string
   pendingAction?: any
+  isError?: boolean
+  errorDetails?: Record<string, unknown>
 }
 
 interface PendingAction {
@@ -82,18 +84,23 @@ export default function JarvisFloatingWidget() {
       const data = await res.json()
       if (data.sessionId) setSessionId(data.sessionId)
 
+      const hasError = !res.ok || data.error
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.response || data.error || '응답을 받지 못했습니다.',
         agent: data.agent,
         pendingAction: data.pendingAction,
+        isError: hasError,
+        errorDetails: data.errorDetails,
       }])
-    } catch {
+    } catch (err) {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: '오류가 발생했습니다. 다시 시도해주세요.',
+        content: err instanceof Error ? err.message : '네트워크 오류',
+        isError: true,
+        errorDetails: { stage: 'fetch_failed' },
       }])
     } finally {
       setLoading(false)
@@ -101,16 +108,35 @@ export default function JarvisFloatingWidget() {
   }
 
   const handleApprove = async (actionId: string) => {
-    const res = await fetch('/api/jarvis/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pendingActionId: actionId, approved: true }),
-    })
-    const data = await res.json()
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(), role: 'assistant',
-      content: data.message || '실행 완료',
-    }])
+    try {
+      const res = await fetch('/api/jarvis/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingActionId: actionId, approved: true }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || data.error) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(), role: 'assistant',
+          content: data.error || '실행 실패',
+          isError: true,
+          errorDetails: data.errorDetails,
+        }])
+        return
+      }
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(), role: 'assistant',
+        content: data.message || '실행 완료',
+      }])
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(), role: 'assistant',
+        content: err instanceof Error ? err.message : '네트워크 오류',
+        isError: true,
+        errorDetails: { stage: 'approve_fetch_failed' },
+      }])
+    }
   }
 
   const handleReject = async (actionId: string) => {
@@ -168,9 +194,22 @@ export default function JarvisFloatingWidget() {
                     <div className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${
                       msg.role === 'user'
                         ? 'bg-purple-700 text-white rounded-br-sm'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+                        : msg.isError
+                          ? 'bg-red-50 text-red-800 border border-red-200 rounded-bl-sm'
+                          : 'bg-gray-100 text-gray-800 rounded-bl-sm'
                     }`}>
+                      {msg.isError && <span className="mr-1">⚠️</span>}
                       {msg.content}
+                      {msg.isError && msg.errorDetails && (
+                        <details className="mt-2 text-[11px]">
+                          <summary className="cursor-pointer text-red-600 hover:text-red-800 select-none">
+                            상세 정보 (복사해서 개발자에게 전달)
+                          </summary>
+                          <pre className="mt-1.5 p-2 bg-red-100 rounded text-[10px] text-red-900 overflow-x-auto whitespace-pre-wrap break-all">
+{JSON.stringify(msg.errorDetails, null, 2)}
+                          </pre>
+                        </details>
+                      )}
                     </div>
                   </div>
                 </div>

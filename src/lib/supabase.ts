@@ -681,6 +681,90 @@ export async function upsertCustomer(data: Record<string, unknown>) {
   } catch (error) { console.error('고객 저장 실패:', error); throw error; }
 }
 
+// 전화번호로 고객 조회/생성 — P4.5 리드 제출 시점에 customer_facts/conversations 역참조 용도
+export async function findOrCreateCustomerByPhone(
+  rawPhone: string,
+  name?: string,
+): Promise<string | null> {
+  const digits = (rawPhone ?? '').replace(/\D/g, '');
+  if (digits.length !== 11) return null;
+
+  // 1차 조회 (phone은 UNIQUE NULLABLE — 빈 문자열은 null로 정규화되어 저장됨)
+  const existing = await supabaseAdmin
+    .from('customers')
+    .select('id')
+    .eq('phone', digits)
+    .limit(1);
+
+  if (existing.data?.[0]?.id) return existing.data[0].id as string;
+
+  // 신규 생성 (UNIQUE race 발생 시 재조회)
+  const { data: inserted, error } = await supabaseAdmin
+    .from('customers')
+    .insert([{ phone: digits, name: name?.trim() || null }])
+    .select('id')
+    .limit(1);
+
+  if (!error && inserted?.[0]?.id) return inserted[0].id as string;
+
+  // 23505 = unique_violation (Postgres)
+  if ((error as { code?: string } | null)?.code === '23505') {
+    const retry = await supabaseAdmin
+      .from('customers')
+      .select('id')
+      .eq('phone', digits)
+      .limit(1);
+    if (retry.data?.[0]?.id) return retry.data[0].id as string;
+  }
+
+  console.warn('[findOrCreateCustomerByPhone] 실패:', error);
+  return null;
+}
+
+// 고객 중복 검색 (전화 우선, 없으면 이름 유사도)
+// - phone: 정규화 11자리 일치 시 해당 고객 즉시 반환
+// - name: 정규화된 이름 유사도 ≥ NAME_MATCH_THRESHOLD → 후보 배열
+// 반환: { exact: 전화일치, candidates: 이름후보[] }
+export async function findDuplicateCustomers(input: { name?: string; phone?: string }): Promise<{
+  exact: { id: string; name: string; phone: string | null } | null;
+  candidates: Array<{ id: string; name: string; phone: string | null; similarity: number }>;
+}> {
+  const { normalizePhone, normalizeName, nameSimilarity, NAME_MATCH_THRESHOLD } = await import('./customer-name');
+  const phone = normalizePhone(input.phone);
+  const name = input.name?.trim() ?? '';
+
+  // 1) 전화번호 정확 일치 우선
+  if (phone) {
+    const { data } = await supabaseAdmin
+      .from('customers')
+      .select('id, name, phone')
+      .eq('phone', phone)
+      .is('deleted_at', null)
+      .limit(1);
+    const row = data?.[0] as { id: string; name: string; phone: string | null } | undefined;
+    if (row) return { exact: row, candidates: [] };
+  }
+
+  // 2) 이름 후보 — DB 전체 로드는 비효율이므로 접두 2자 LIKE 로 1차 필터
+  if (!name) return { exact: null, candidates: [] };
+  const key = normalizeName(name).slice(0, 2);
+  if (!key) return { exact: null, candidates: [] };
+
+  const { data } = await supabaseAdmin
+    .from('customers')
+    .select('id, name, phone')
+    .ilike('name', `${key}%`)
+    .is('deleted_at', null)
+    .limit(50);
+
+  const candidates = ((data ?? []) as Array<{ id: string; name: string; phone: string | null }>)
+    .map(c => ({ ...c, similarity: nameSimilarity(name, c.name ?? '') }))
+    .filter(c => c.similarity >= NAME_MATCH_THRESHOLD)
+    .sort((a, b) => b.similarity - a.similarity);
+
+  return { exact: null, candidates };
+}
+
 // 고객 소프트 딜리트
 export async function deleteCustomer(id: string) {
   const { error } = await supabaseAdmin.from('customers').update({ deleted_at: new Date().toISOString() }).eq('id', id);
@@ -755,8 +839,27 @@ export async function createBooking(data: {
   affiliateId?: string; bookingType?: string;
   conversationId?: string;
   companions?: { name: string; phone?: string; passport_no?: string; passport_expiry?: string }[];
+  quickCreated?: boolean; quickCreatedTxId?: string;
 }) {
   try {
+    let selfReferralFlag = false;
+    let selfReferralReason: string | null = null;
+    if (data.affiliateId) {
+      const { checkSelfReferral } = await import('./affiliate/self-referral');
+      const [{ data: aff }, { data: lead }] = await Promise.all([
+        supabaseAdmin.from('affiliates').select('phone, email').eq('id', data.affiliateId).maybeSingle(),
+        supabaseAdmin.from('customers').select('phone, email').eq('id', data.leadCustomerId).maybeSingle(),
+      ]);
+      const result = checkSelfReferral({
+        bookingPhone: (lead as any)?.phone,
+        bookingEmail: (lead as any)?.email,
+        affiliatePhone: (aff as any)?.phone,
+        affiliateEmail: (aff as any)?.email,
+      });
+      selfReferralFlag = result.flagged;
+      selfReferralReason = result.reason;
+    }
+
     const { data: booking, error } = await supabaseAdmin.from('bookings').insert([{
       package_id: data.packageId || null,
       package_title: data.packageTitle || '미정',
@@ -779,7 +882,10 @@ export async function createBooking(data: {
       paid_amount: data.paidAmount ?? 0,
       is_deleted: false,
       ...(data.affiliateId ? { affiliate_id: data.affiliateId, booking_type: 'AFFILIATE' } : {}),
+      ...(selfReferralFlag ? { self_referral_flag: true, self_referral_reason: selfReferralReason, influencer_commission: 0 } : {}),
       ...(data.conversationId ? { conversation_id: data.conversationId } : {}),
+      ...(data.quickCreated ? { quick_created: true } : {}),
+      ...(data.quickCreatedTxId ? { quick_created_tx_id: data.quickCreatedTxId } : {}),
     }] as never).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;
@@ -812,6 +918,12 @@ export async function createBooking(data: {
       }));
       await supabaseAdmin.from('booking_passengers').insert(passengers as never);
     }
+
+    if (booking?.[0]) {
+      void import('./affiliate/celebrate').then(({ notifyAffiliateOnBooking }) =>
+        notifyAffiliateOnBooking(booking[0] as any),
+      );
+    }
     return booking?.[0];
   } catch (error) { console.error('예약 생성 실패:', error); throw error; }
 }
@@ -821,8 +933,17 @@ export async function updateBookingStatus(id: string, status: string) {
   try {
     const payload: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
     if (status === 'completed') payload.payment_date = new Date().toISOString();
-    const { data, error } = await supabaseAdmin.from('bookings').update(payload).eq('id', id).select();
+    const { data, error } = await supabaseAdmin
+      .from('bookings')
+      .update(payload)
+      .eq('id', id)
+      .select('*, affiliates!affiliate_id(name, phone)');
     if (error) throw error;
+    if (data?.[0]) {
+      void import('./affiliate/celebrate').then(({ notifyAffiliateOnBooking }) =>
+        notifyAffiliateOnBooking(data[0] as any),
+      );
+    }
     return data?.[0];
   } catch (error) { console.error('예약 상태 변경 실패:', error); throw error; }
 }
@@ -1241,6 +1362,17 @@ export interface CardNews {
   // 조인 필드
   package_title?: string;
   package_destination?: string;
+  // 블로그 생성 시 업로드된 슬라이드 PNG URL (from-card-news 라우트가 저장)
+  slide_image_urls?: string[] | null;
+  linked_blog_id?: string | null;
+  // 인스타그램 자동 발행 (20260414130000 migration)
+  ig_post_id?: string | null;
+  ig_published_at?: string | null;
+  ig_scheduled_for?: string | null;
+  ig_publish_status?: 'queued' | 'publishing' | 'published' | 'failed' | null;
+  ig_caption?: string | null;
+  ig_error?: string | null;
+  ig_slide_urls?: string[] | null;
 }
 
 export async function getCardNewsList(filters?: {

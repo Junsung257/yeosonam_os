@@ -347,6 +347,82 @@ function AIInsights({ packages }: { packages: TravelPackage[] }) {
 
 // ── 메인 대시보드 ─────────────────────────────────────────
 
+// ── 자비스 실패 위젯 ────────────────────────────────────────
+// agent_actions 에서 24시간 내 status='rejected'/'failed' 건을 모음
+interface FailureRow {
+  id: string;
+  action_type: string;
+  summary: string;
+  status: string;
+  reject_reason?: string | null;
+  result_log?: { error?: string } | null;
+  created_at: string;
+}
+
+function RecentFailuresWidget() {
+  const [items, setItems] = useState<FailureRow[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/agent-actions?status=rejected,failed&limit=30')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.actions) return;
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        const recent = (d.actions as FailureRow[]).filter(a =>
+          new Date(a.created_at).getTime() >= cutoff,
+        );
+        setItems(recent);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (items.length === 0) return null; // 노이즈 방지
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[14px]">⚠️</span>
+          <span className="text-[13px] font-semibold text-red-800">
+            최근 24시간 자비스 실패 {items.length}건
+          </span>
+        </div>
+        <span className="text-[11px] text-red-600">{expanded ? '접기' : '펼치기'}</span>
+      </button>
+      {expanded && (
+        <ul className="mt-3 space-y-2">
+          {items.slice(0, 5).map(item => {
+            const errMsg = item.reject_reason || item.result_log?.error || '(원문 없음)';
+            return (
+              <li key={item.id} className="bg-white border border-red-100 rounded p-2 text-[12px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[10px] text-red-500">{item.action_type}</span>
+                  <span className="text-[10px] text-slate-400">
+                    {new Date(item.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="mt-1 text-slate-700">{item.summary}</div>
+                <div className="mt-1 text-[11px] text-red-700 break-all">
+                  {errMsg.length > 200 ? errMsg.slice(0, 200) + '…' : errMsg}
+                </div>
+              </li>
+            );
+          })}
+          {items.length > 5 && (
+            <li className="text-center text-[11px] text-slate-500">
+              +{items.length - 5}건 더 — <a href="/admin/jarvis" className="text-red-600 hover:underline">전체 보기</a>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [chartData, setChartData] = useState<MonthlyChartData[]>([]);
@@ -354,6 +430,8 @@ export default function AdminPage() {
   const [pendingPackages, setPendingPackages] = useState<TravelPackage[]>([]);
   const [capitalTotal, setCapitalTotal] = useState<number | null>(null);
   const [unmatchedCount, setUnmatchedCount] = useState<number | null>(null);
+  const [pendingActions, setPendingActions] = useState<any[]>([]);
+  const [actionProcessingId, setActionProcessingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // 상세 패널
@@ -377,6 +455,10 @@ export default function AdminPage() {
 
       fetch('/api/dashboard/chart').then(r => r.ok ? r.json() : null).then(d => {
         if (d?.data) setChartData(d.data);
+      }).catch(() => {});
+
+      fetch('/api/agent-actions?status=pending&limit=6').then(r => r.ok ? r.json() : null).then(d => {
+        if (d?.actions) setPendingActions(d.actions);
       }).catch(() => {});
 
       Promise.all([
@@ -436,6 +518,9 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-4">
+      {/* 0. 자비스 실패 위젯 (실패 0건이면 자동 숨김) */}
+      <RecentFailuresWidget />
+
       {/* A. 예약 vs 출발 KPI */}
       <TwoTrackKPI stats={stats} prevMonthGrowth={prevMonthGrowth} />
 
@@ -465,6 +550,73 @@ export default function AdminPage() {
 
       {/* E. AI 인사이트 */}
       <AIInsights packages={packages} />
+
+      {/* 자비스 결재 대기 */}
+      {pendingActions.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[14px] font-semibold text-slate-800 flex items-center gap-2">
+              자비스 결재 대기
+              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingActions.length}</span>
+            </h2>
+            <Link href="/admin/jarvis?tab=actions" className="text-[12px] text-blue-600 hover:underline">전체 보기</Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {pendingActions.slice(0, 6).map((act: any) => (
+              <div key={act.id} className="border border-slate-200 rounded-lg p-3 hover:border-slate-300 transition">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
+                    { operations: 'bg-blue-50 text-blue-600', sales: 'bg-purple-50 text-purple-600',
+                      marketing: 'bg-pink-50 text-pink-600', finance: 'bg-emerald-50 text-emerald-600',
+                      products: 'bg-cyan-50 text-cyan-600', system: 'bg-slate-100 text-slate-600',
+                    }[act.agent_type as string] || 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {{ operations: '운영', sales: '영업', marketing: '마케팅', finance: '재무', products: '상품', system: '시스템' }[act.agent_type as string] || act.agent_type}
+                  </span>
+                  {act.priority !== 'normal' && (
+                    <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
+                      act.priority === 'critical' ? 'bg-red-50 text-red-600' :
+                      act.priority === 'high' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-500'
+                    }`}>
+                      {{ low: '낮음', high: '높음', critical: '긴급' }[act.priority as string] || act.priority}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[13px] font-medium text-slate-800 truncate">{act.summary}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{act.action_type}</p>
+                <div className="mt-2 flex gap-1">
+                  <button
+                    onClick={async () => {
+                      setActionProcessingId(act.id);
+                      try {
+                        await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'approve' }) });
+                        setPendingActions(prev => prev.filter(a => a.id !== act.id));
+                      } catch {} finally { setActionProcessingId(null); }
+                    }}
+                    disabled={actionProcessingId === act.id}
+                    className="flex-1 bg-[#001f3f] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition"
+                  >
+                    승인
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setActionProcessingId(act.id);
+                      try {
+                        await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'reject' }) });
+                        setPendingActions(prev => prev.filter(a => a.id !== act.id));
+                      } catch {} finally { setActionProcessingId(null); }
+                    }}
+                    disabled={actionProcessingId === act.id}
+                    className="flex-1 bg-white border border-slate-300 text-slate-600 py-1 rounded text-[11px] hover:bg-slate-50 transition"
+                  >
+                    반려
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 승인 대기 상품 */}
       {pendingPackages.length > 0 && (
@@ -539,6 +691,44 @@ export default function AdminPage() {
                   className="block text-[12px] px-2 py-1 text-slate-500 rounded hover:bg-slate-50 hover:text-slate-700 truncate">
                   {l.label}
                 </Link>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 고객 페이지 바로가기 */}
+      <div className="bg-white border border-dashed border-blue-200 rounded-lg p-4">
+        <h2 className="text-[11px] font-semibold text-blue-400 uppercase tracking-wide mb-3">고객 페이지 (프론트)</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { title: '메인/상품', links: [
+              { href: '/', label: '메인 랜딩' },
+              { href: '/packages', label: '상품 목록' },
+              { href: '/blog', label: '블로그' },
+              { href: '/concierge', label: 'AI 컨시어지' },
+            ]},
+            { title: '단체/견적', links: [
+              { href: '/group', label: '단체여행 랜딩' },
+              { href: '/group-inquiry', label: '단체 견적 (AI)' },
+              { href: '/partner-apply', label: '파트너 신청' },
+            ]},
+            { title: '인플루언서', links: [
+              { href: '/influencer', label: '인플루언서 포털' },
+              { href: '/admin/affiliates', label: '제휴 관리 (어드민)' },
+            ]},
+            { title: '기타', links: [
+              { href: '/lp', label: '마케팅 랜딩(LP)' },
+              { href: '/login', label: '로그인' },
+            ]},
+          ].map(group => (
+            <div key={group.title} className="space-y-1">
+              <p className="text-[11px] font-semibold text-blue-400 uppercase">{group.title}</p>
+              {group.links.map(l => (
+                <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
+                  className="block text-[12px] px-2 py-1 text-blue-600 rounded hover:bg-blue-50 hover:text-blue-800 truncate">
+                  ↗ {l.label}
+                </a>
               ))}
             </div>
           ))}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { normalizePhone } from '@/lib/customer-name';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -71,6 +72,37 @@ export async function POST(request: NextRequest) {
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '고객 이름이 필요합니다.' }, { status: 400 });
     }
+
+    // ── 중복 감지 (신규 생성 시에만 — body.id 없을 때) ──────────────────────
+    // skipDedup: true 시 스킵 (병합 승인 후 강제 신규 생성 등 예외 경로)
+    if (!body.id && !body.skipDedup) {
+      const phone = normalizePhone(body.phone);
+      const dup = await findDuplicateCustomers({ name: body.name, phone: phone ?? undefined });
+
+      // 전화번호 정확 일치 → 기존 고객 재사용 (자동 병합)
+      if (dup.exact) {
+        return NextResponse.json({
+          customer: dup.exact,
+          reused: true,
+          reason: 'phone_exact_match',
+        });
+      }
+
+      // 이름 후보 존재 + dryRun 요청 → 후보만 반환 (사용자 결정 대기)
+      if (dup.candidates.length > 0 && body.dryRun) {
+        return NextResponse.json({
+          customer: null,
+          duplicates: dup.candidates,
+          reason: 'name_candidates',
+        });
+      }
+    }
+
+    // 전화번호 정규화 (11자리만 저장, 아니면 null)
+    if (body.phone !== undefined) {
+      body.phone = normalizePhone(body.phone);
+    }
+
     const customer = await upsertCustomer(body);
     return NextResponse.json({ customer });
   } catch (error) {

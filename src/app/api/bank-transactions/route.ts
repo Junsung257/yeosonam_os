@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
       .from('bank_transactions')
       .select(`
         *,
-        bookings (
+        bookings!booking_id (
           id, booking_no, package_title,
           total_price, paid_amount, total_paid_out, departure_date,
           customers!lead_customer_id(name)
@@ -253,7 +253,7 @@ export async function GET(request: NextRequest) {
     .from('bank_transactions')
     .select(`
       *,
-      bookings (
+      bookings!booking_id (
         id, booking_no, package_title,
         total_price, paid_amount, total_paid_out, departure_date,
         customers!lead_customer_id(name)
@@ -421,7 +421,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // ── undo: 롤백 ────────────────────────────────────────────────────────
+    // ── undo: 롤백 + quick-create 고아 레코드 청소 ───────────────────────
     if (action === 'undo') {
       const { data: tx } = await supabaseAdmin
         .from('bank_transactions')
@@ -429,11 +429,66 @@ export async function PATCH(request: NextRequest) {
         .eq('id', transactionId)
         .single();
 
+      const quickCleanup: { bookings: number; customers: number } = { bookings: 0, customers: 0 };
+
       if (tx) {
         const t = tx as any;
         if (t.booking_id) {
           await applyToBooking(t.booking_id, t.transaction_type, t.amount, t.is_refund, -1);
         }
+      }
+
+      // 이 거래로 quick-create된 booking들 soft-delete (다른 매칭 없을 때만)
+      const { data: quickBookings } = await supabaseAdmin
+        .from('bookings')
+        .select('id, lead_customer_id')
+        .eq('quick_created_tx_id', transactionId)
+        .eq('quick_created', true)
+        .or('is_deleted.is.null,is_deleted.eq.false');
+
+      const affectedCustomerIds = new Set<string>();
+      for (const b of (quickBookings ?? []) as Array<{ id: string; lead_customer_id: string | null }>) {
+        // 이 booking이 다른 입금에도 매칭돼 있으면 보존
+        const { count: otherMatchCount } = await supabaseAdmin
+          .from('bank_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('booking_id', b.id)
+          .neq('id', transactionId)
+          .neq('match_status', 'unmatched');
+
+        if ((otherMatchCount ?? 0) > 0) continue;
+
+        await supabaseAdmin
+          .from('bookings')
+          .update({ is_deleted: true, updated_at: new Date().toISOString() })
+          .eq('id', b.id);
+        quickCleanup.bookings += 1;
+        if (b.lead_customer_id) affectedCustomerIds.add(b.lead_customer_id);
+      }
+
+      // 이 거래로 quick-create된 customers soft-delete (자기 예약 외에 다른 예약 없을 때만)
+      const { data: quickCustomers } = await supabaseAdmin
+        .from('customers')
+        .select('id')
+        .eq('quick_created_tx_id', transactionId)
+        .eq('quick_created', true)
+        .is('deleted_at', null);
+
+      for (const c of (quickCustomers ?? []) as Array<{ id: string }>) {
+        // 이 고객이 다른 (살아있는) 예약에 연결돼 있으면 보존
+        const { count: liveBookingCount } = await supabaseAdmin
+          .from('bookings')
+          .select('id', { count: 'exact', head: true })
+          .eq('lead_customer_id', c.id)
+          .or('is_deleted.is.null,is_deleted.eq.false');
+
+        if ((liveBookingCount ?? 0) > 0) continue;
+
+        await supabaseAdmin
+          .from('customers')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', c.id);
+        quickCleanup.customers += 1;
       }
 
       await supabaseAdmin
@@ -448,7 +503,7 @@ export async function PATCH(request: NextRequest) {
         })
         .eq('id', transactionId);
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, quickCleanup });
     }
 
     // ── multi: 다중 예약 분배 ─────────────────────────────────────────────
