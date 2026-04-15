@@ -100,10 +100,15 @@ export interface ExtractedData {
   price_list?: PriceListItem[];    // 다중 조건 구조화 가격표 (price_tiers 보완)
 
   // 요금 관련
+  // @deprecated — 하위호환용. 신규 경로는 normalized_surcharges 사용
   guide_tip?: string;
+  // @deprecated
   single_supplement?: string;
+  // @deprecated
   small_group_surcharge?: string;
   surcharges?: Surcharge[];
+  /** 정규화된 추가요금 (kind별 분류, string/number 통일) — Phase 2 신규 */
+  normalized_surcharges?: import('@/types/pricing').Surcharge[];
   excluded_dates?: string[];
 
   // 포함/불포함
@@ -188,6 +193,10 @@ async function callGeminiText(apiKey: string, text: string, prompt: string): Pro
 }
 
 // ─── 구조화 추출 프롬프트 ────────────────────────────────────
+// Gemini implicit caching 활성화를 위한 버전 고정.
+// 프롬프트 prefix가 호출마다 동일해야 자동 캐싱됨. 변경 시 버전 bump.
+const EXTRACT_PROMPT_VERSION = 'v1.2.0';
+void EXTRACT_PROMPT_VERSION;
 
 const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확히 아래 JSON 형식으로 반환하세요.
 필드가 없으면 null로, 배열이 없으면 []로 반환하세요.
@@ -280,6 +289,61 @@ const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확
 
 // ─── 파싱 결과 처리 ─────────────────────────────────────────
 
+import { toSurcharge, type Surcharge as NormalizedSurcharge } from '@/types/pricing';
+
+/**
+ * string/number 혼재 추가요금 필드를 Surcharge[] 배열로 통합 정규화
+ * - guide_tip, single_supplement, small_group_surcharge 문자열 → Surcharge
+ * - 기존 surcharges[] (amount_krw/amount_usd) → kind 추가하여 재구성
+ */
+function normalizeSurcharges(parsed: {
+  guide_tip?: string;
+  single_supplement?: string;
+  small_group_surcharge?: string;
+  surcharges?: Array<{ period?: string; amount_usd?: number | null; amount_krw?: number | null; note?: string }>;
+}): NormalizedSurcharge[] {
+  const result: NormalizedSurcharge[] = [];
+  const seen = new Set<string>(); // 중복 제거 (note+kind 키)
+
+  const push = (s: NormalizedSurcharge | null) => {
+    if (!s) return;
+    const key = `${s.kind}:${s.note}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(s);
+  };
+
+  // 1) 기존 문자열 필드 → Surcharge
+  if (parsed.guide_tip) push(toSurcharge(parsed.guide_tip, 'guide'));
+  if (parsed.single_supplement) push(toSurcharge(parsed.single_supplement, 'single'));
+  if (parsed.small_group_surcharge) push(toSurcharge(parsed.small_group_surcharge, 'small_group'));
+
+  // 2) 기존 surcharges[] → kind 추정하여 재구성
+  if (Array.isArray(parsed.surcharges)) {
+    for (const s of parsed.surcharges) {
+      if (!s || !s.note) continue;
+      const note = String(s.note);
+      let kind: NormalizedSurcharge['kind'] = 'other';
+      if (/축제|나담|공휴일|성수기/.test(note)) kind = 'festival';
+      else if (/싱글/.test(note)) kind = 'single';
+      else if (/호텔|리조트|라사피네트|호라이즌/.test(note)) kind = 'hotel';
+      else if (/디너|식사|의무/.test(note)) kind = 'meal';
+      else if (/가이드|기사|tip|팁/i.test(note)) kind = 'guide';
+      else if (/소규모|인원/.test(note)) kind = 'small_group';
+      push({
+        amount_krw: typeof s.amount_krw === 'number' ? s.amount_krw : null,
+        amount_usd: typeof s.amount_usd === 'number' ? s.amount_usd : null,
+        period: s.period ?? null,
+        note,
+        kind,
+        unit: null,
+      });
+    }
+  }
+
+  return result;
+}
+
 function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
   const jsonStr = raw
     .replace(/^```json\s*/i, '')
@@ -305,6 +369,7 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     guide_tip: parsed.guide_tip || undefined,
     single_supplement: parsed.single_supplement || undefined,
     small_group_surcharge: parsed.small_group_surcharge || undefined,
+    normalized_surcharges: normalizeSurcharges(parsed),
     price: Array.isArray(parsed.price_tiers) && parsed.price_tiers.length > 0
       ? (parsed.price_tiers.find((t: PriceTier) => t.adult_price)?.adult_price ?? parsed.price ?? undefined)
       : (parsed.price ?? undefined),
@@ -376,6 +441,13 @@ export async function parseImage(buffer: Buffer, mimeType = 'image/jpeg'): Promi
 async function parseTextWithAI(text: string): Promise<ExtractedData> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) return extractTravelInfo(text);
+
+  // 너무 짧은 텍스트는 AI 호출 무의미 → regex fallback으로 토큰 절약
+  // (실제 여행상품 문서는 보통 500자 이상)
+  if (text.trim().length < 300) {
+    console.log('[Parser] 짧은 텍스트(<300자) → regex fallback');
+    return extractTravelInfo(text);
+  }
 
   // Gemini 2.5 Flash는 100만 토큰 지원 — 전체 텍스트 사용 (Jarvis 답변 품질 확보)
   const truncated = text;

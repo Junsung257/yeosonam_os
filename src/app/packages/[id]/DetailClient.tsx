@@ -10,6 +10,7 @@ import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
+import DepartureCalendar from '@/components/customer/DepartureCalendar';
 
 interface PriceTier {
   period_label: string;
@@ -90,16 +91,21 @@ interface RelatedBlogPost {
   angle_type: string;
 }
 
+interface DestinationBlogPost extends RelatedBlogPost {
+  seo_description: string | null;
+}
+
 interface DetailClientProps {
   initialPackage: Package | null;
   initialAttractions: AttractionInfo[];
   packageId: string;
   relatedBlogPosts?: RelatedBlogPost[];
+  destinationBlogPosts?: DestinationBlogPost[];
 }
 
 const ANGLE_LABELS: Record<string, string> = { value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리', urgency: '긴급특가', activity: '액티비티', food: '미식' };
 
-export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [] }: DetailClientProps) {
+export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [] }: DetailClientProps) {
   const searchParams = useSearchParams();
   const id = packageId;
   const [pkg, setPkg] = useState<Package | null>(initialPackage);
@@ -125,7 +131,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     });
   };
   const [selectedDate, setSelectedDate] = useState('');
-  const [calMonth, setCalMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [activeSection, setActiveSection] = useState('상품정보');
   const [activeDay, setActiveDay] = useState(1);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -137,17 +142,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     if (ref) fetch(`/api/influencer/track?ref=${ref}&pkg=${id}`).catch(() => {});
   }, [id, searchParams]);
 
-  // pkg 로드 후 캘린더를 출발월로 자동 이동
-  useEffect(() => {
-    if (!pkg) return;
-    const priceDates = getEffectivePriceDates(pkg as any);
-    const firstDateStr = priceDates[0]?.date
-      || (pkg.price_tiers || []).flatMap((t: PriceTier) => t.departure_dates || []).filter(Boolean).sort()[0];
-    if (firstDateStr) {
-      const [y, m] = firstDateStr.split('-').map(Number);
-      if (y && m) setCalMonth(new Date(y, m - 1, 1));
-    }
-  }, [pkg]);
+  // 캘린더 초기 월 자동 이동은 DepartureCalendar 컴포넌트가 priceDates로부터 처리
 
   useEffect(() => {
     // 서버에서 초기 데이터를 받은 경우 fetch 스킵
@@ -212,7 +207,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     ? Math.min(...pkg.price_dates.map(d => d.price || Infinity)) 
     : Infinity;
   const minPrice = Math.min(minTierPrice, minDatePrice, pkg.price || Infinity);
-  const displayPrice = selectedTier?.adult_price || minPrice;
+  const allPriceDates = getEffectivePriceDates(pkg as any);
+  const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
+  const displayPrice = selectedTier?.adult_price || selectedDateInfo?.price || minPrice;
   const airlineName = getAirlineName(pkg.airline);
 
   // 히어로 사진: destination 관광지 중 사진 있는 첫 번째 항목
@@ -267,11 +264,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
-    <div className="min-h-screen bg-white pb-24 max-w-lg mx-auto">
+    <div className="min-h-screen bg-white pb-24 md:pb-12 max-w-lg md:max-w-3xl mx-auto">
 
       {/* ═══ 히어로 (사진 배경) ═══ */}
       <div ref={el => { sectionRefs.current['상품정보'] = el; }} data-section="상품정보"
-        className="relative h-[420px] w-full overflow-hidden">
+        className="relative h-[420px] md:h-[560px] w-full overflow-hidden md:rounded-b-3xl">
         {heroPhoto ? (
           <Image src={heroPhoto.src_large || heroPhoto.src_medium} alt={pkg.destination || ''} fill className="object-cover" sizes="100vw" priority />
         ) : (
@@ -349,7 +346,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {pkg.product_summary && (
         <div className="px-5 mt-8 border-b border-gray-100 pb-6 relative">
           <div className="absolute top-0 right-5 text-4xl opacity-5">❞</div>
-          <h2 className="text-lg font-extrabold text-gray-900 mb-2">여행 매니저의 추천 코멘트 ✍️</h2>
+          <h2 className="text-lg font-extrabold text-gray-900 mb-2">여소남의 추천 코멘트 ✍️</h2>
           <p className="text-sm text-gray-600 leading-loose break-keep">
             {pkg.product_summary}
           </p>
@@ -459,116 +456,67 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       </div>
 
       {/* ═══ 요금표 ═══ */}
-      {(tiers.length > 0 || (pkg.price_dates && pkg.price_dates.length > 0)) && (
+      {(tiers.length > 0 || allPriceDates.length > 0) && (
         <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-12">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">출발일 선택</h2>
-          {(() => {
-            const priceDates = getEffectivePriceDates(pkg as any);
-            const usePriceDates = pkg.price_dates && pkg.price_dates.length > 0;
-
-            const dateMap = new Map<string, { price: number; confirmed: boolean; tier?: PriceTier; note?: string }>();
-            if (usePriceDates) {
-              for (const pd of priceDates) {
-                if (!dateMap.has(pd.date)) {
-                  dateMap.set(pd.date, { price: pd.price, confirmed: pd.confirmed });
-                }
-              }
-            } else {
-              for (const t of tiers) {
-                if (t.departure_dates?.length) {
-                  for (const d of t.departure_dates) {
-                    const date = new Date(d);
-                    if (!isNaN(date.getTime())) {
-                      const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-                      if (!dateMap.has(key)) {
-                        dateMap.set(key, { price: t.adult_price || 0, confirmed: t.status === 'confirmed', tier: t, note: t.note || undefined });
-                      }
-                    }
+          {allPriceDates.length === 0 ? (
+            // price_dates / departure_dates 둘 다 없는 경우 → tier 카드 폴백
+            <div className="space-y-2">
+              {tiers.map((t, i) => {
+                const isSelected = selectedTier === t;
+                const isMin = t.adult_price === minPrice;
+                return (
+                  <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
+                    className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white'}`}>
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {t.period_label}
+                        {t.status === 'confirmed' && <span className="ml-1.5 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
+                        {t.status === 'soldout' && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">마감</span>}
+                      </p>
+                      {t.departure_day_of_week && <p className="text-xs text-gray-500">{t.departure_day_of_week}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-bold ${t.status === 'soldout' ? 'text-gray-500 line-through' : isMin ? 'text-violet-700' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
+                      {isMin && t.status !== 'soldout' && <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">최저가</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl p-4 border border-gray-100">
+              <DepartureCalendar
+                priceDates={allPriceDates as PriceDate[]}
+                selectedDate={selectedDate}
+                onSelect={(date) => {
+                  if (selectedDate === date) {
+                    setSelectedDate('');
+                    setFormData(f => ({ ...f, date: '' }));
+                    setSelectedTier(null);
+                    return;
                   }
-                }
-              }
-            }
-            if (dateMap.size === 0) {
-              return (
-                <div className="space-y-2">
-                  {tiers.map((t, i) => {
-                    const isSelected = selectedTier === t;
-                    const isMin = t.adult_price === minPrice;
-                    return (
-                      <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white'}`}>
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">
-                            {t.period_label}
-                            {t.status === 'confirmed' && <span className="ml-1.5 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
-                            {t.status === 'soldout' && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">마감</span>}
-                          </p>
-                          {t.departure_day_of_week && <p className="text-xs text-gray-500">{t.departure_day_of_week}</p>}
-                        </div>
-                        <div className="text-right">
-                          <p className={`text-sm font-bold ${t.status === 'soldout' ? 'text-gray-500 line-through' : isMin ? 'text-violet-700' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
-                          {isMin && t.status !== 'soldout' && <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">최저가</span>}
-                        </div>
-                      </button>
-                    );
-                  })}
+                  setSelectedDate(date);
+                  setSelectedTier(null);
+                  const m = parseInt(date.split('-')[1]);
+                  const d = parseInt(date.split('-')[2]);
+                  setFormData(f => ({ ...f, date: `${m}/${d}` }));
+                }}
+              />
+              {selectedDateInfo && (
+                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500">선택한 출발일</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {parseInt(selectedDate.split('-')[1])}월 {parseInt(selectedDate.split('-')[2])}일
+                      {selectedDateInfo.confirmed && <span className="ml-1.5 text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
+                    </p>
+                  </div>
+                  <p className="text-base font-extrabold text-violet-700">₩{selectedDateInfo.price.toLocaleString()}</p>
                 </div>
-              );
-            }
-            const year = calMonth.getFullYear(); const month = calMonth.getMonth();
-            const firstDay = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const WEEKDAYS = ['일','월','화','수','목','금','토'];
-            const cells: (number | null)[] = [];
-            for (let i = 0; i < firstDay; i++) cells.push(null);
-            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-            while (cells.length % 7 !== 0) cells.push(null);
-            return (
-              <div className="bg-white rounded-2xl p-4 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <button onClick={() => setCalMonth(new Date(year, month - 1, 1))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">◀</button>
-                  <span className="text-sm font-bold text-gray-900">{year}년 {month + 1}월</span>
-                  <button onClick={() => setCalMonth(new Date(year, month + 1, 1))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">▶</button>
-                </div>
-                <div className="grid grid-cols-7 mb-2">
-                  {WEEKDAYS.map(w => (
-                    <div key={w} className={`text-center text-xs font-medium py-1 ${w === '일' ? 'text-red-400' : w === '토' ? 'text-blue-400' : 'text-gray-500'}`}>{w}</div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {cells.map((d, i) => {
-                    if (d === null) return <div key={i} />;
-                    const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                    const info = dateMap.get(key);
-                    const isSelected = selectedDate === key;
-                    const isMin = info && info.price === minPrice;
-                    return (
-                      <button key={i} disabled={!info}
-                        onClick={() => {
-                          if (!info) return;
-                          if (usePriceDates) {
-                            setSelectedDate(isSelected ? '' : key);
-                            setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
-                            setSelectedTier(null);
-                          } else {
-                            setSelectedTier(isSelected ? null : info.tier!);
-                            setSelectedDate(isSelected ? '' : key);
-                            setFormData(f => ({ ...f, date: isSelected ? '' : `${month+1}/${d}` }));
-                          }
-                        }}
-                        className={`flex flex-col items-center py-2 rounded-xl transition min-h-[52px] justify-center ${
-                          isSelected ? 'bg-violet-600 text-white shadow-lg' : info ? 'hover:bg-violet-50' : 'opacity-20'
-                        }`}>
-                        <span className="text-xs font-medium">{d}</span>
-                        {info && <span className={`text-[10px] mt-0.5 font-bold ${isSelected ? 'text-white/80' : isMin ? 'text-violet-600' : 'text-gray-500'}`}>{Math.round(info.price / 10000)}만</span>}
-                        {info?.confirmed && !isSelected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -948,6 +896,43 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         })()}
       </div>
 
+      {/* ═══ 여소남 에디터의 {destination} 가이드 (정보성 글) ═══ */}
+      {destinationBlogPosts.length > 0 && (
+        <div className="px-4 py-8 border-t border-gray-100">
+          <h2 className="text-lg font-extrabold text-gray-900 mb-1">
+            여소남 에디터의 {pkg.destination} 가이드
+          </h2>
+          <p className="text-xs text-gray-500 mb-4">출국 전 꼭 확인하세요</p>
+          <div className="grid grid-cols-2 gap-3">
+            {destinationBlogPosts.map(bp => (
+              <Link
+                key={bp.slug}
+                href={`/blog/${bp.slug}`}
+                className="block rounded-xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-md hover:border-violet-200 transition"
+              >
+                {bp.og_image_url ? (
+                  <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+                    <img src={bp.og_image_url} alt={bp.seo_title || ''} className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                ) : (
+                  <div className="aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-violet-50 to-indigo-50">
+                    <span className="text-2xl">📖</span>
+                  </div>
+                )}
+                <div className="p-2.5">
+                  <span className="inline-block rounded bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-500 mb-1">
+                    {ANGLE_LABELS[bp.angle_type] || bp.angle_type}
+                  </span>
+                  <p className="line-clamp-2 text-xs font-semibold text-gray-800 leading-snug">
+                    {bp.seo_title || '여행 가이드'}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 클립보드 복사 토스트 */}
       {clipboardToast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
@@ -957,7 +942,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 플로팅 하단바 ═══ */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
-        <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
+        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-5 pt-3 flex items-center gap-3">
           <button onClick={handleShare} className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0">
             <span className="text-base">↗</span>
           </button>
@@ -1018,7 +1003,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 예약 폼 바텀시트 ═══ */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setShowForm(false)}>
-          <div className="bg-white w-full max-w-lg mx-auto rounded-t-3xl p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl p-6" onClick={e => e.stopPropagation()}>
             {submitted ? (
               <div className="text-center py-8">
                 <p className="text-3xl mb-2">✅</p>

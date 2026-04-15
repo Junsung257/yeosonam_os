@@ -38,7 +38,9 @@ export async function GET() {
     ...DEFAULT_OPERATORS.filter(d => !dbNames.has(d.name)),
   ];
 
-  return NextResponse.json({ operators: merged });
+  return NextResponse.json({ operators: merged }, {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+  });
 }
 
 // POST /api/land-operators — 신규 랜드사 DB Insert + ID 반환

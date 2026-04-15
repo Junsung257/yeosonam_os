@@ -28,7 +28,9 @@ export async function GET() {
 
   const dbNames = new Set((data ?? []).map((l: { name: string }) => l.name));
   const merged = [...(data ?? []), ...DEFAULT_LOCATIONS.filter(d => !dbNames.has(d.name))];
-  return NextResponse.json({ locations: merged });
+  return NextResponse.json({ locations: merged }, {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+  });
 }
 
 // POST /api/departing-locations — 신규 추가

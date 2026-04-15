@@ -26,17 +26,32 @@ const DateStringSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD 형식이어야 합니다');
 
+// 가격 범위 상수: 1만원 ~ 5천만원 (여행상품 현실적 범위)
+const PRICE_MIN = 10_000;
+const PRICE_MAX = 50_000_000;
+// 마진율 허용 범위: -100% ~ +500% (판매가/원가 기준)
+const MARGIN_MIN = -1.0;
+const MARGIN_MAX = 5.0;
+
 /** product_prices 단일 행 검증 스키마 */
 export const ProductPriceRowSchema = z.object({
   target_date:          DateStringSchema.nullable(),
   day_of_week:          z.enum(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']).nullable(),
-  net_price:            z.number().int().min(0),
-  adult_selling_price:  z.number().int().min(0).nullable(),
-  child_price:          z.number().int().min(0).nullable(),
+  net_price:            z.number().int().min(PRICE_MIN).max(PRICE_MAX),
+  adult_selling_price:  z.number().int().min(PRICE_MIN).max(PRICE_MAX).nullable(),
+  child_price:          z.number().int().min(0).max(PRICE_MAX).nullable(),
   note:                 z.string().max(500).nullable(),
 }).refine(
   (row) => row.target_date !== null || row.day_of_week !== null,
   { message: 'target_date 또는 day_of_week 중 하나는 반드시 존재해야 합니다.' }
+).refine(
+  (row) => {
+    // 마진율 검증: (판매가 - 원가) / 원가
+    if (row.adult_selling_price == null || row.net_price === 0) return true;
+    const margin = (row.adult_selling_price - row.net_price) / row.net_price;
+    return margin >= MARGIN_MIN && margin <= MARGIN_MAX;
+  },
+  { message: '마진율이 비현실적 범위입니다 (-100% ~ +500% 내여야 함).' }
 );
 
 export type ProductPriceRowInput = z.infer<typeof ProductPriceRowSchema>;
@@ -46,7 +61,9 @@ export const ExtractedProductSchema = z.object({
   title:       z.string().min(1).max(200),
   destination: z.string().max(100).optional(),
   duration:    z.number().int().min(1).max(60).optional(),
-  net_price:   z.number().int().min(0),
+  // 최저가는 0 허용(파싱 실패 케이스) — REVIEW_NEEDED로 강등됨
+  // 단, 상한은 현실적 범위로 차단 (100억 원 상품 방지)
+  net_price:   z.number().int().min(0).max(PRICE_MAX),
   theme_tags:  z.array(z.string().max(30)).max(20).default([]),
   selling_points: z.object({
     hotel:   z.string().nullable().optional(),
@@ -268,10 +285,13 @@ export function determineProductStatus(opts: {
     }
   }
 
-  if (!isTravel)           return 'REVIEW_NEEDED';
-  if (netPrice === 0)      return 'REVIEW_NEEDED';
-  if (confidence < 0.60)   return 'REVIEW_NEEDED';
-  if (priceRowCount === 0) return 'REVIEW_NEEDED';
+  if (!isTravel)                 return 'REVIEW_NEEDED';
+  if (netPrice === 0)            return 'REVIEW_NEEDED';
+  // 가격 범위 강제: 1만원 미만 또는 5천만원 초과는 오파싱 가능성 높음
+  if (netPrice > 0 && netPrice < PRICE_MIN) return 'REVIEW_NEEDED';
+  if (netPrice > PRICE_MAX)      return 'REVIEW_NEEDED';
+  if (confidence < 0.60)         return 'REVIEW_NEEDED';
+  if (priceRowCount === 0)       return 'REVIEW_NEEDED';
 
   return 'DRAFT';
 }

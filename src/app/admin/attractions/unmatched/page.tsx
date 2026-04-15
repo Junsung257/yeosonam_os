@@ -50,19 +50,22 @@ export default function UnmatchedPage() {
     }
   };
 
-  // CSV 다운로드
+  // CSV 다운로드 — attractions 업로드 형식 (name,short_desc,long_desc,country,region,badge_type,emoji)
   const downloadCSV = () => {
     const targetItems = selectedIds.size > 0 ? items.filter(i => selectedIds.has(i.id)) : items;
-    const header = 'activity,package_title,day_number,country,region,occurrence_count,status\n';
-    const rows = targetItems.map(i =>
-      `"${(i.activity || '').replace(/"/g, '""')}","${i.package_title || ''}",${i.day_number || ''},"${i.country || ''}","${i.region || ''}",${i.occurrence_count},"${i.status}"`
-    ).join('\n');
+    // activity에서 관광지명 정리: ▶ 제거, 앞뒤 공백, 괄호 설명 유지
+    const cleanName = (activity: string) => activity.replace(/^.*▶/, '').replace(/^☆\s*/, '').trim();
+    const header = 'name,short_desc,long_desc,country,region,badge_type,emoji\n';
+    const rows = targetItems.map(i => {
+      const name = cleanName(i.activity || '');
+      return `"${name.replace(/"/g, '""')}","","","${i.country || ''}","${i.region || ''}","tour",""`;
+    }).join('\n');
     const bom = '\uFEFF';
     const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `미매칭_관광지_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `관광지_업로드용_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

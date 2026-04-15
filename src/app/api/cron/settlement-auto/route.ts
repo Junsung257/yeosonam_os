@@ -12,8 +12,20 @@ import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
 
 const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
+/**
+ * 2026-04-15 변경: 자비스 기안 전용 모드 기본값.
+ * ENABLE_DIRECT_SETTLEMENT=true 환경변수가 있을 때만 기존 방식으로 직접 READY 마감.
+ * 기본은 /api/cron/affiliate-settlement-draft가 agent_actions 기안 → 사장님 결재함 승인.
+ */
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+
+  if (process.env.ENABLE_DIRECT_SETTLEMENT !== 'true') {
+    return NextResponse.json({
+      skipped: true,
+      message: '자비스 기안 모드 활성. /api/cron/affiliate-settlement-draft를 사용하세요.',
+    });
+  }
 
   try {
     // 전월 period 계산

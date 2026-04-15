@@ -14,6 +14,7 @@ import {
   buildFullTextForValidation,
 } from '@/lib/text-sanitizer';
 import { tiersToDatePrices } from '@/lib/price-dates';
+import { embedText } from '@/lib/embeddings';
 
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
 const DEPARTURE_CODES: Record<string, string> = {
@@ -211,6 +212,41 @@ export async function POST(request: NextRequest) {
 
     if (!body.title) {
       return NextResponse.json({ error: '상품명(title)이 필요합니다.' }, { status: 400 });
+    }
+
+    // ── Phase 3-D: 임베딩 기반 중복 감지 ──
+    // ?force=true 쿼리로 우회 가능 (VA가 "새 상품으로 등록" 선택 시)
+    const { searchParams: postParams } = new URL(request.url);
+    const forceDuplicate = postParams.get('force') === 'true';
+    if (!forceDuplicate && supabaseAdmin && process.env.GOOGLE_AI_API_KEY) {
+      try {
+        const embedSource = [
+          body.title,
+          body.destination ?? '',
+          typeof body.duration === 'number' ? `${body.duration}일` : '',
+          body.land_operator ?? '',
+          (body.rawText ?? body.raw_text ?? '').slice(0, 1000),
+        ].filter(Boolean).join(' ');
+
+        const vec = await embedText(embedSource, process.env.GOOGLE_AI_API_KEY, 'SEMANTIC_SIMILARITY');
+        if (vec && vec.length > 0) {
+          const { data: similar, error: simErr } = await supabaseAdmin.rpc('match_travel_packages_duplicate', {
+            query_embedding: vec,
+            match_threshold: 0.95,
+            match_count: 3,
+            exclude_id: null,
+          });
+          if (!simErr && Array.isArray(similar) && similar.length > 0) {
+            return NextResponse.json({
+              warning: 'duplicate_suspected',
+              message: `유사한 상품이 ${similar.length}건 감지됨. 새 상품으로 등록하려면 ?force=true 추가`,
+              similar_products: similar,
+            }, { status: 409 });
+          }
+        }
+      } catch (e) {
+        console.warn('[packages] 중복 감지 실패 (무시하고 진행):', e);
+      }
     }
 
     // ── short_code 자동생성 (URL용 짧은 코드) ──

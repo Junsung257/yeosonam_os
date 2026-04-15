@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { groupForPoster, type PriceDate, type MonthGroup } from '@/lib/price-dates';
+import { groupForPoster, getEffectivePriceDates, type PriceDate, type MonthGroup } from '@/lib/price-dates';
 import { parseDaysWithTransport, isTransportSegment } from '@/lib/transportParser';
 import { matchAttraction as matchAttractionShared } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
@@ -264,7 +264,18 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
               ))}
             </div>
           )}
-          <PriceTable priceList={pkg.price_list} priceDates={pkg.price_dates} tiers={pkg.price_tiers} excludedDates={pkg.excluded_dates} confirmedDates={pkg.confirmed_dates} />
+          {/* Phase 3: price_tiers 직접 전달 제거 — getEffectivePriceDates로 단일 경로 통합 (폴백 유지) */}
+          <PriceTable
+            priceList={pkg.price_list}
+            priceDates={getEffectivePriceDates({
+              price_dates: pkg.price_dates,
+              // 로컬 PriceTier와 lib/price-dates.PriceTier 간 status 타입 차이만 있어 안전한 단언
+              price_tiers: pkg.price_tiers as unknown as Parameters<typeof getEffectivePriceDates>[0]['price_tiers'],
+            })}
+            tiers={undefined}
+            excludedDates={pkg.excluded_dates}
+            confirmedDates={pkg.confirmed_dates}
+          />
           {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
         </main>
       </article>
@@ -875,38 +886,150 @@ const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string;
   INFO:     { bg: 'bg-slate-50', border: 'border-slate-200', title: 'text-slate-700', dot: '⚪' },
 };
 
-// 포함/불포함만 표시 (마지막 페이지) — 전체 항목 한 줄 노출, 필터/말줄임 없음
+// ══════════════════════════════════════════════════════════
+//  포함/불포함 자동 분류 시스템 (Auto-Classifier)
+//  — 어떤 지역/상품이든 동일한 출력 포맷 보장
+// ══════════════════════════════════════════════════════════
+
+// 기본 포함 키워드: 항공·호텔·식사·차량·가이드·보험·입장료 등 표준 항목
+const BASIC_INC_RE = /항공|TAX|텍스|유류|호텔|숙박|리조트|식사|조식|중식|석식|차량|버스|리무진|가이드|인솔|보험|입장료|입장권|생수|노팁|노옵션|경비|고속열차|비자|VISA/i;
+
+// 추가요금 키워드: 금액이 포함된 excludes 항목 → 별도 "추가 요금" 섹션으로 분리
+const SURCHARGE_RE = /\d+만원|\$\d+|써차지|싱글차지|싱글비용|싱글발생|추가요금|룸당|박당|의무디너|필수식사/;
+
+// 포함사항 아이콘 자동 매핑 (키워드 기반, 지역 무관)
+function getInclusionIcon(text: string): string {
+  if (/항공|TAX|유류/.test(text)) return '✈️';
+  if (/호텔|숙박|리조트|게르/.test(text)) return '🏨';
+  if (/식사|조식|중식|석식/.test(text)) return '🍽️';
+  if (/차량|버스|생수|리무진/.test(text)) return '🚌';
+  if (/가이드|인솔자/.test(text)) return '👤';
+  if (/보험/.test(text)) return '🛡️';
+  if (/팁|노팁|노옵션|경비/.test(text)) return '💰';
+  if (/입장료|입장권/.test(text)) return '🎫';
+  if (/비자|VISA/i.test(text)) return '🛂';
+  if (/고속열차|KTX|열차/.test(text)) return '🚄';
+  return '✅';
+}
+
+/** 배열 항목 평탄화: 쉼표로 이어붙인 단일 문자열도 개별 항목으로 분리 */
+function flattenItems(items: string[]): string[] {
+  const result: string[] = [];
+  for (const item of items) {
+    // 괄호 안의 쉼표는 보존, 바깥 쉼표만 분리
+    // "호텔(2인1실), 차량, 생수" → ["호텔(2인1실)", "차량", "생수"]
+    // "달랏 써차지 (4/24~26, 4/30~5/2): 8만원" → 분리 안 함 (금액/날짜 포함)
+    if (SURCHARGE_RE.test(item)) {
+      // 추가요금 항목은 통째로 보존
+      result.push(item.trim());
+    } else {
+      // 일반 항목은 쉼표 분리 시도
+      const parts = item.split(/,\s*/).map(s => s.trim()).filter(Boolean);
+      result.push(...parts);
+    }
+  }
+  return result;
+}
+
+/** inclusions 자동 분류: 기본 포함 vs 프로그램/특전 */
+function classifyInclusions(items: string[]): { basic: string[]; program: string[] } {
+  const flat = flattenItems(items);
+  const basic: string[] = [];
+  const program: string[] = [];
+  for (const item of flat) {
+    if (BASIC_INC_RE.test(item)) {
+      basic.push(item);
+    } else {
+      program.push(item);
+    }
+  }
+  return { basic, program };
+}
+
+/** excludes 자동 분류: 기본 불포함 vs 추가요금 */
+function classifyExcludes(items: string[]): { basic: string[]; surcharges: string[] } {
+  const flat = flattenItems(items);
+  const basic: string[] = [];
+  const surcharges: string[] = [];
+  for (const item of flat) {
+    if (SURCHARGE_RE.test(item)) {
+      surcharges.push(item);
+    } else {
+      basic.push(item);
+    }
+  }
+  return { basic, surcharges };
+}
+
+// 포함/불포함 + 추가요금 + 쇼핑 (마지막 페이지)
+// 입력 형식에 관계없이 항상 동일한 4-섹션 출력 포맷 보장
 function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo }: {
   inclusions?: string[]; excludes?: string[]; shoppingInfo?: string;
 }) {
   const hasInc = (inclusions?.length ?? 0) > 0;
   const hasExc = (excludes?.length ?? 0) > 0;
-  // 쇼핑 정보 정리: "쇼핑: 라텍스..." → "라텍스..." (중복 "쇼핑" 제거)
   const cleanShopping = shoppingInfo?.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null;
   if (!hasInc && !hasExc && !cleanShopping) return null;
 
+  // 자동 분류
+  const { basic: basicInc, program: programInc } = hasInc
+    ? classifyInclusions(inclusions!) : { basic: [], program: [] };
+  const { basic: basicExc, surcharges } = hasExc
+    ? classifyExcludes(excludes!) : { basic: [], surcharges: [] };
+
   return (
     <div className="space-y-1.5 mb-1">
-      <div className="grid grid-cols-2 gap-x-4">
-        {hasInc && (
-          <section className="bg-blue-50/60 p-2 rounded">
-            <h3 className="font-bold text-blue-900 mb-1 text-[11px]">포함 사항</h3>
-            <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>
-              <span className="text-[10px] mr-1">✅</span>
-              {inclusions!.join(', ')}
+      {/* ── 섹션 1: 기본 포함 (아이콘 그리드) ── */}
+      {basicInc.length > 0 && (
+        <section className="bg-blue-50/60 p-2 rounded">
+          <h3 className="font-bold text-blue-900 mb-1.5 text-[11px]">포함 사항</h3>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            {basicInc.map((item, idx) => (
+              <span key={idx} className="text-[11px] text-slate-700 leading-snug break-keep">
+                <span className="text-[10px] mr-0.5">{getInclusionIcon(item)}</span>
+                {item}
+              </span>
+            ))}
+          </div>
+          {/* 프로그램/특전 항목이 있으면 구분선 아래 컴팩트 표시 */}
+          {programInc.length > 0 && (
+            <p className="mt-1.5 pt-1.5 border-t border-blue-100 text-[10px] text-slate-500 leading-snug break-keep">
+              ✅ {programInc.join(', ')}
             </p>
-          </section>
-        )}
-        {hasExc && (
-          <section className="bg-red-50/60 p-2 rounded">
-            <h3 className="font-bold text-red-900 mb-1 text-[11px]">불포함 사항</h3>
-            <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>
-              <span className="text-[10px] mr-1">❌</span>
-              {excludes!.join(', ')}
-            </p>
-          </section>
-        )}
-      </div>
+          )}
+        </section>
+      )}
+
+      {/* ── 섹션 2: 기본 불포함 (인라인) ── */}
+      {basicExc.length > 0 && (
+        <section className="bg-red-50/60 p-2 rounded">
+          <h3 className="font-bold text-red-900 mb-1 text-[11px]">불포함 사항</h3>
+          <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>
+            {basicExc.map((item, idx) => (
+              <span key={idx}>
+                {idx > 0 && <span className="mx-1 text-slate-300">|</span>}
+                {item}
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
+
+      {/* ── 섹션 3: 추가 요금 (써차지/싱글 등 — excludes에서 자동 분리) ── */}
+      {surcharges.length > 0 && (
+        <section className="bg-orange-50/60 p-2 rounded">
+          <h3 className="font-bold text-orange-900 mb-1 text-[11px]">💲 추가 요금 안내</h3>
+          <div className="space-y-0.5">
+            {surcharges.map((item, idx) => (
+              <p key={idx} className="text-[10px] text-slate-600 leading-snug break-keep">
+                • {item}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── 섹션 4: 쇼핑센터 ── */}
       {cleanShopping && cleanShopping !== '노쇼핑' && (
         <section className="bg-purple-50/60 p-2 rounded">
           <h3 className="font-bold text-purple-900 mb-0.5 text-[11px]">🛍️ 쇼핑센터</h3>

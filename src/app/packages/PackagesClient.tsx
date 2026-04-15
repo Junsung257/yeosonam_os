@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { matchAttraction, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { getMinPriceFromDates } from '@/lib/price-dates';
+import SearchBar from '@/components/customer/SearchBar';
 
 interface Package {
   id: string;
@@ -62,14 +63,18 @@ interface ClientProps {
   initialAttractions: AttractionInfo[];
   destination: string;
   filter: string;
+  q?: string;
+  month?: string;
+  priceMax?: string;
 }
 
-export default function PackagesClient({ initialPackages, initialAttractions, destination, filter }: ClientProps) {
-  const destParam = destination;
+export default function PackagesClient({ initialPackages, initialAttractions, destination, filter, q = '', month = '', priceMax = '' }: ClientProps) {
+  const destParam = destination || q;
   const packages = initialPackages;
   const attractions = initialAttractions;
   const [activeFilter, setActiveFilter] = useState(filter || '전체');
   const [sortBy, setSortBy] = useState('recommended');
+  const priceMaxNum = priceMax ? Number(priceMax) : 0;
 
   // 상품의 대표 이미지 찾기 (상품별로 다른 사진 사용)
   const usedImageUrls = new Set<string>();
@@ -123,18 +128,57 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     return all.length > 0 ? Math.min(...all) : 0;
   }
 
+  // 출발월 매칭: price_dates 또는 price_tiers.departure_dates에 해당 YYYY-MM 시작 날짜가 있는지
+  function matchesMonth(pkg: Package, ym: string): boolean {
+    if (!ym) return true;
+    if (pkg.price_dates?.length) {
+      if (pkg.price_dates.some(d => typeof d.date === 'string' && d.date.startsWith(ym))) return true;
+    }
+    if (pkg.price_tiers?.length) {
+      for (const t of pkg.price_tiers) {
+        if (t.departure_dates?.some(d => typeof d === 'string' && d.startsWith(ym))) return true;
+      }
+    }
+    return false;
+  }
+
   // 필터 + 정렬 (클라이언트 사이드)
   const filteredPackages = useMemo(() => {
     let result = packages.filter(pkg => matchesFilter(pkg, activeFilter));
+    if (month) result = result.filter(pkg => matchesMonth(pkg, month));
+    if (priceMaxNum > 0) result = result.filter(pkg => {
+      const mp = getMinPrice(pkg);
+      return mp > 0 && mp <= priceMaxNum;
+    });
     if (sortBy === 'price_asc') result = [...result].sort((a, b) => getMinPrice(a) - getMinPrice(b));
     if (sortBy === 'price_desc') result = [...result].sort((a, b) => getMinPrice(b) - getMinPrice(a));
     return result;
-  }, [packages, activeFilter, sortBy]);
+  }, [packages, activeFilter, sortBy, month, priceMaxNum]);
 
   return (
-    <div className="min-h-screen bg-white max-w-lg mx-auto pb-24">
-      {/* 헤더 */}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-gray-100 px-4 py-3 flex items-center gap-3">
+    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
+      {/* 데스크톱 전용 상단 네비 */}
+      <nav className="hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-gray-100 px-8 py-4 items-center justify-between">
+        <Link href="/" className="text-xl font-black tracking-tight text-[#340897]">여소남</Link>
+        <div className="flex items-center gap-6 text-sm font-medium text-gray-700">
+          <Link href="/packages" className="text-[#340897]">전체 상품</Link>
+          <Link href="/blog" className="hover:text-[#340897] transition">여행 정보</Link>
+          <Link href="/group-inquiry" className="hover:text-[#340897] transition">단체 문의</Link>
+          <a href="tel:051-000-0000" className="text-gray-500 hover:text-gray-900 transition">📞 051-000-0000</a>
+          <a
+            href="https://pf.kakao.com/_xcFxkBG/chat"
+            target="_blank"
+            rel="noopener"
+            referrerPolicy="no-referrer-when-downgrade"
+            className="bg-[#FEE500] text-[#3C1E1E] font-bold text-sm px-4 py-2 rounded-full hover:shadow-md transition"
+          >
+            💬 카카오톡 상담
+          </a>
+        </div>
+      </nav>
+
+      {/* 모바일 헤더 */}
+      <div className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-gray-100 px-4 py-3 flex items-center gap-3">
         <Link href="/" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
           <span className="text-lg">←</span>
         </Link>
@@ -144,12 +188,23 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
         </div>
       </div>
 
+      {/* 데스크톱 페이지 타이틀 */}
+      <div className="hidden md:block md:max-w-7xl md:mx-auto md:px-8 md:pt-10 md:pb-2">
+        <h1 className="text-3xl font-black text-gray-900">{destParam || '전체 상품'}</h1>
+        <p className="text-sm text-gray-500 mt-1">{filteredPackages.length}개 상품</p>
+      </div>
+
+      {/* 검색바 */}
+      <div className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8 md:pt-6">
+        <SearchBar initialQ={q} initialMonth={month} initialPriceMax={priceMax} initialDestination={destination} />
+      </div>
+
       {/* 필터 + 정렬 */}
-      <div className="sticky top-[52px] z-20 bg-white border-b border-gray-100 px-4 py-2">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+      <div className="sticky top-[52px] md:top-[65px] z-20 bg-white border-b border-gray-100 px-4 py-2 md:max-w-7xl md:mx-auto md:px-8 md:py-4 md:bg-transparent md:border-b-0">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide md:flex-wrap md:gap-3">
           <select
             aria-label="정렬 순서"
-            className="flex-shrink-0 text-sm border border-gray-200 rounded-full px-3 py-1.5 bg-white text-gray-600 appearance-none"
+            className="flex-shrink-0 text-sm border border-gray-200 rounded-full px-3 py-1.5 md:px-4 md:py-2 bg-white text-gray-600 appearance-none"
             value={sortBy}
             onChange={e => setSortBy(e.target.value)}
           >
@@ -160,10 +215,10 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
           {FILTER_OPTIONS.map(filter => (
             <button
               key={filter}
-              className={`flex-shrink-0 text-sm px-3 py-1.5 rounded-full border transition ${
+              className={`flex-shrink-0 text-sm md:px-4 md:py-2 px-3 py-1.5 rounded-full border transition ${
                 activeFilter === filter
                   ? 'bg-[#340897] text-white border-[#340897]'
-                  : 'bg-white text-gray-600 border-gray-200'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'
               }`}
               onClick={() => setActiveFilter(filter)}
             >
@@ -184,31 +239,31 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
           )}
         </div>
       ) : (
-        <div className="px-4 py-4 space-y-3">
+        <div className="px-4 py-4 space-y-3 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
           {filteredPackages.map(pkg => {
             const minPrice = getMinPrice(pkg);
             const image = getProductImage(pkg);
             const airlineName = AIRLINES[pkg.airline || ''] || pkg.airline;
 
             return (
-              <Link key={pkg.id} href={`/packages/${pkg.id}`} prefetch={true}>
-                <div className="flex gap-3 py-4 border-b border-gray-100 last:border-b-0">
+              <Link key={pkg.id} href={`/packages/${pkg.id}`} prefetch={true} className="md:block md:rounded-2xl md:overflow-hidden md:border md:border-gray-100 md:hover:border-violet-300 md:hover:shadow-lg md:transition-all">
+                <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-gray-100 last:border-b-0">
                   {/* 이미지 — 항공사 배지 포함 */}
-                  <div className="relative flex-shrink-0 w-[110px] h-[88px] rounded-xl overflow-hidden bg-gray-100">
+                  <div className="relative flex-shrink-0 w-[110px] h-[88px] md:w-full md:h-52 lg:h-56 rounded-xl md:rounded-none overflow-hidden bg-gray-100">
                     {image ? (
-                      <Image src={image} alt={pkg.title} fill className="object-cover" sizes="110px" />
+                      <Image src={image} alt={pkg.title} fill className="object-cover md:hover:scale-105 md:transition-transform md:duration-300" sizes="(max-width: 768px) 110px, (max-width: 1024px) 50vw, 33vw" />
                     ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-2xl">🌍</div>
+                      <div className="w-full h-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-2xl md:text-5xl">🌍</div>
                     )}
                     {airlineName && (
-                      <div className="absolute bottom-1.5 left-1.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-white/90 text-[#340897]">
+                      <div className="absolute bottom-1.5 left-1.5 md:bottom-2.5 md:left-2.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-white/90 text-[#340897]">
                         {airlineName}
                       </div>
                     )}
                   </div>
 
                   {/* 텍스트 영역 */}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 md:p-4">
                     {/* 배지 행 — 상품 타입 + 에어텔 */}
                     <div className="flex gap-1 mb-1 flex-wrap">
                       {pkg.product_type && (
@@ -279,8 +334,8 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
         </div>
       )}
 
-      {/* 플로팅 CTA */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
+      {/* 플로팅 CTA — 모바일 전용 */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
         <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
           <a href="tel:051-000-0000" className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0">
             <span className="text-lg">📞</span>

@@ -219,9 +219,17 @@ export default function AttractionsPage() {
       badge_type: (cols[5] || 'tour').trim(),
       emoji: (cols[6] || '').trim(),
     })).filter(i => i.name);
+    if (items.length === 0) { alert('유효한 행이 없습니다. CSV 형식을 확인해주세요.\n헤더: name,short_desc,long_desc,country,region,badge_type,emoji'); return; }
     setSaving(true);
-    try { await fetch('/api/attractions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) }); load(); }
-    finally { setSaving(false); e.target.value = ''; }
+    try {
+      const res = await fetch('/api/attractions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '서버 오류');
+      alert(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (총 ${items.length}건)`);
+      load();
+    } catch (err) {
+      alert(`CSV 업로드 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+    } finally { setSaving(false); e.target.value = ''; }
   };
 
   const countries = [...new Set(attractions.map(a => a.country).filter(Boolean))] as string[];
@@ -249,8 +257,8 @@ export default function AttractionsPage() {
           <a href="/admin/attractions/unmatched" className="px-3 py-1.5 bg-amber-100 text-amber-800 text-xs font-bold rounded-lg hover:bg-amber-200">🔍 미매칭</a>
           <button onClick={() => setShowAdd(true)} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">+ 신규</button>
           <button onClick={downloadCsv} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200">CSV↓</button>
-          <label className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200 cursor-pointer">
-            CSV↑<input type="file" accept=".csv" onChange={uploadCsv} className="hidden" />
+          <label className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer ${saving ? 'bg-amber-100 text-amber-700 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            {saving ? '업로드 중...' : 'CSV↑'}<input type="file" accept=".csv" onChange={uploadCsv} className="hidden" disabled={saving} />
           </label>
         </div>
       </div>

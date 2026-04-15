@@ -113,6 +113,9 @@ export async function POST(request: NextRequest) {
       customer_name,
       customer_phone,
       destination,
+      departure_date_from,
+      departure_date_to,
+      duration_nights,
       adult_count,
       child_count,
       budget_per_person,
@@ -136,6 +139,9 @@ export async function POST(request: NextRequest) {
       customer_name,
       customer_phone,
       destination,
+      departure_date_from,
+      departure_date_to,
+      duration_nights,
       adult_count,
       child_count: child_count ?? 0,
       budget_per_person,
@@ -152,6 +158,37 @@ export async function POST(request: NextRequest) {
 
     if (!rfq) {
       return NextResponse.json({ error: 'RFQ 생성에 실패했습니다.' }, { status: 500 });
+    }
+
+    // 🔔 단체여행 랜딩(/group) 문의 → 내부 Slack 알림 (best-effort, 실패해도 응답엔 영향 없음)
+    const cr = (custom_requirements ?? {}) as Record<string, unknown>;
+    if (cr.source === 'group_landing') {
+      try {
+        const slackUrl = process.env.SLACK_GROUP_RFQ_WEBHOOK_URL;
+        if (slackUrl) {
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';
+          const lines = [
+            '🎯 *단체여행 신규 문의*',
+            `• 신청자: ${customer_name} (${customer_phone ?? '-'})`,
+            `• 단체: ${cr.group_name ?? '-'} / ${cr.purpose ?? '-'}`,
+            `• 목적지: ${destination} / ${adult_count}명 / ${cr.budget_range_label ?? '-'}`,
+            `• 희망 출발: ${departure_date_from ?? '-'}`,
+            `• 호텔: ${hotel_grade ?? '-'} / 쇼핑: ${cr.shopping_preference ?? '-'}`,
+            `• RFQ: ${baseUrl}/rfq/${rfq.id}`,
+          ];
+          const utm = cr.utm as Record<string, string | null> | undefined;
+          if (utm && (utm.source || utm.n_keyword)) {
+            lines.push(`• 유입: ${utm.source ?? '-'} / kw: ${utm.n_keyword ?? '-'}`);
+          }
+          await fetch(slackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: lines.join('\n') }),
+          });
+        }
+      } catch (e) {
+        console.error('[단체여행 Slack 알림 실패, 무시]:', e);
+      }
     }
 
     return NextResponse.json({ rfq }, { status: 201 });

@@ -69,20 +69,38 @@ export default async function PackageDetailPage({
     products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
   } : null;
 
-  // 관련 블로그 글 조회
+  // 관련 블로그 글 조회 (1) — 이 상품을 홍보하는 글 (product_id 직접 매칭)
   let relatedBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string }[] = [];
+  // 관련 블로그 글 조회 (2) — 같은 destination의 정보성 글 (여행 준비물/날씨/가이드 등)
+  let destinationBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string; seo_description: string | null }[] = [];
   if (pkg?.destination) {
-    const blogResult = await sb
-      .from('content_creatives')
-      .select('slug, seo_title, og_image_url, angle_type')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .eq('product_id', id)
-      .order('published_at', { ascending: false })
-      .limit(3);
+    const [productScoped, destinationScoped] = await Promise.all([
+      sb.from('content_creatives')
+        .select('slug, seo_title, og_image_url, angle_type')
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .not('slug', 'is', null)
+        .eq('product_id', id)
+        .order('published_at', { ascending: false })
+        .limit(3),
+      sb.from('content_creatives')
+        .select('slug, seo_title, og_image_url, angle_type, seo_description, travel_packages!inner(destination)')
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .not('slug', 'is', null)
+        .eq('travel_packages.destination', pkg.destination)
+        .neq('product_id', id)
+        .order('published_at', { ascending: false })
+        .limit(8),
+    ]);
 
-    relatedBlogPosts = (blogResult.data ?? []) as typeof relatedBlogPosts;
+    relatedBlogPosts = (productScoped.data ?? []) as typeof relatedBlogPosts;
+
+    // 중복 slug 제거 + 상위 4개
+    const seenSlugs = new Set(relatedBlogPosts.map(p => p.slug));
+    destinationBlogPosts = ((destinationScoped.data ?? []) as typeof destinationBlogPosts)
+      .filter(p => !seenSlugs.has(p.slug))
+      .slice(0, 4);
   }
 
   // 미매칭 관광지 수집 (서버사이드: ISR 빌드 시 1회만 실행, 고객 트래픽 무관)
@@ -110,6 +128,7 @@ export default async function PackageDetailPage({
       initialAttractions={attrResult.data ?? []}
       packageId={id}
       relatedBlogPosts={relatedBlogPosts}
+      destinationBlogPosts={destinationBlogPosts}
     />
   );
 }

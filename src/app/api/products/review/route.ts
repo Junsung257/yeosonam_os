@@ -11,8 +11,62 @@ import { createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase';
 import { searchPexelsPhotos } from '@/lib/pexels';
 import { generateAdVariants } from '@/lib/ai';
+import { checkAiCopyConsistency } from '@/lib/ai-consistency-checker';
 
-// ─── GET: 검수 대기 상품 목록 ────────────────────────────────────────────────
+// ─── VA 검수 체크리스트 계산 ──────────────────────────────────────────────
+// 각 상품이 ACTIVE 진입해도 안전한지 자동 검증
+
+interface VAChecklist {
+  price_range_ok: boolean;         // 1만원 ~ 5천만원
+  raw_text_attached: boolean;      // 원문 200자 이상
+  ai_copy_consistent: boolean;     // 원문 vs highlights 모순 없음
+  highlights_present: boolean;     // 핵심 특전 1개 이상
+  has_prices: boolean;             // product_prices 1건 이상
+  all_passed: boolean;
+  failures: string[];
+}
+
+function computeVAChecklist(p: {
+  net_price?: number | null;
+  raw_extracted_text?: string | null;
+  highlights?: string[] | null;
+  product_prices?: Array<unknown> | null;
+}): VAChecklist {
+  const failures: string[] = [];
+
+  const price_range_ok = typeof p.net_price === 'number' && p.net_price >= 10_000 && p.net_price <= 50_000_000;
+  if (!price_range_ok) failures.push('가격이 1만원~5천만원 범위 밖');
+
+  const raw_text_attached = typeof p.raw_extracted_text === 'string' && p.raw_extracted_text.length >= 200;
+  if (!raw_text_attached) failures.push('원문 텍스트 200자 미만');
+
+  const highlightsArr = Array.isArray(p.highlights) ? p.highlights : [];
+  const highlights_present = highlightsArr.length > 0;
+  if (!highlights_present) failures.push('highlights(특전) 누락');
+
+  const has_prices = Array.isArray(p.product_prices) && p.product_prices.length > 0;
+  if (!has_prices) failures.push('product_prices 행 0건');
+
+  // AI 카피 일관성: highlights 합성 문자열 vs raw_extracted_text
+  let ai_copy_consistent = true;
+  if (highlights_present && raw_text_attached) {
+    const result = checkAiCopyConsistency({
+      generatedCopy: highlightsArr.join('\n'),
+      rawText: p.raw_extracted_text ?? '',
+      minPrice: p.net_price ?? null,
+    });
+    if (result.severity === 'high') {
+      ai_copy_consistent = false;
+      failures.push(`AI 카피 모순: ${result.conflicts[0]?.rule ?? 'unknown'}`);
+    }
+  }
+
+  const all_passed = price_range_ok && raw_text_attached && highlights_present && has_prices && ai_copy_consistent;
+
+  return { price_range_ok, raw_text_attached, ai_copy_consistent, highlights_present, has_prices, all_passed, failures };
+}
+
+// ─── GET: 검수 대기 상품 목록 (체크리스트 포함) ────────────────────────────
 
 export async function GET() {
   try {
@@ -38,7 +92,15 @@ export async function GET() {
       .limit(100);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ products: data ?? [] });
+
+    // 각 상품마다 VA 체크리스트 계산
+    type ReviewProductRow = Parameters<typeof computeVAChecklist>[0] & Record<string, unknown>;
+    const products = (data ?? []).map((p: ReviewProductRow) => ({
+      ...p,
+      va_checklist: computeVAChecklist(p),
+    }));
+
+    return NextResponse.json({ products });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
@@ -77,12 +139,35 @@ async function handleApprove(body: {
   resolved_supplier_id?: string | null;
   resolved_supplier_name?: string | null;
   resolved_supplier_code?: string | null;
+  /** 체크리스트 실패 시에도 관리자 권한으로 강제 승인 */
+  force_approve?: boolean;
 }) {
   const {
     product_id, selected_image_url, faq, confidence_before,
     resolved_supplier_id, resolved_supplier_name, resolved_supplier_code,
+    force_approve = false,
   } = body;
   if (!product_id) return NextResponse.json({ error: 'product_id 필수' }, { status: 400 });
+
+  // ── VA 체크리스트 게이트 ──
+  if (!force_approve) {
+    const { data: prodCheck } = await supabaseAdmin
+      .from('products')
+      .select('net_price, raw_extracted_text, highlights, product_prices(id)')
+      .eq('internal_code', product_id)
+      .maybeSingle();
+
+    if (prodCheck) {
+      const checklist = computeVAChecklist(prodCheck as Parameters<typeof computeVAChecklist>[0]);
+      if (!checklist.all_passed) {
+        return NextResponse.json({
+          error: 'VA 체크리스트 실패',
+          failures: checklist.failures,
+          hint: '강제 승인하려면 force_approve:true 로 재요청',
+        }, { status: 422 });
+      }
+    }
+  }
 
   // 1. products: status → ACTIVE + thumbnail + (optional) supplier 업데이트
   const updatePayload: Record<string, unknown> = {

@@ -28,11 +28,13 @@ export async function GET(request: NextRequest) {
     if (country) query = query.eq('country', country);
     if (region) query = query.eq('region', region);
     if (badge_type) query = query.eq('badge_type', badge_type);
-    if (limit) query = query.limit(parseInt(limit));
+    query = query.limit(limit ? parseInt(limit) : 5000);
 
     const { data, error } = await query;
     if (error) throw error;
-    return NextResponse.json({ attractions: data || [] });
+    return NextResponse.json({ attractions: data || [] }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+    });
   } catch (error) {
     console.error('[Attractions API] 조회 오류:', error);
     return NextResponse.json({ attractions: [] });
@@ -99,27 +101,34 @@ export async function PUT(request: NextRequest) {
     const { items } = await request.json();
     if (!Array.isArray(items)) return NextResponse.json({ error: 'items 배열 필요' }, { status: 400 });
 
+    // 유효 행만 필터 + 정규화
+    const cleaned = items
+      .filter((i: Record<string, unknown>) => typeof i.name === 'string' && (i.name as string).trim())
+      .map((i: Record<string, unknown>) => ({
+        name: (i.name as string).trim(),
+        short_desc: (i.short_desc as string) || null,
+        long_desc: (i.long_desc as string) || null,
+        country: (i.country as string) || null,
+        region: (i.region as string) || null,
+        badge_type: (i.badge_type as string) || 'tour',
+        emoji: (i.emoji as string) || null,
+        ...(i.aliases ? { aliases: i.aliases } : {}),
+        ...(i.photos ? { photos: i.photos } : {}),
+      }));
+
+    // 500건씩 배치 upsert (순차 1건씩 → 배치로 성능 개선)
     let upserted = 0;
-    for (const item of items) {
-      if (!item.name) continue;
+    const BATCH = 500;
+    for (let i = 0; i < cleaned.length; i += BATCH) {
+      const chunk = cleaned.slice(i, i + BATCH);
       const { error } = await supabaseAdmin
         .from('attractions')
-        .upsert({
-          name: item.name,
-          short_desc: item.short_desc || null,
-          long_desc: item.long_desc || null,
-          country: item.country || null,
-          region: item.region || null,
-          badge_type: item.badge_type || 'tour',
-          emoji: item.emoji || null,
-          ...(item.aliases ? { aliases: item.aliases } : {}),
-          ...(item.photos ? { photos: item.photos } : {}),
-        }, { onConflict: 'name' });
-
-      if (!error) upserted++;
+        .upsert(chunk as never[], { onConflict: 'name' });
+      if (!error) upserted += chunk.length;
+      else console.error('[Attractions CSV] 배치 upsert 오류:', error.message);
     }
 
-    return NextResponse.json({ success: true, upserted });
+    return NextResponse.json({ success: true, upserted, total: cleaned.length });
   } catch (error) {
     console.error('[Attractions API] 일괄 업로드 오류:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '업로드 실패' }, { status: 500 });

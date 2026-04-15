@@ -50,14 +50,44 @@ function safeDay(dateStr: string): number {
 export function tiersToDatePrices(tiers: PriceTier[]): PriceDate[] {
   const seen = new Set<string>();
   const result: PriceDate[] = [];
+  const DOW_MAP: Record<string, number> = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
 
   for (const tier of tiers) {
     // soldout tier는 제외 (price_dates에 없는 날짜 = 출발제외일)
     if (tier.status === 'soldout') continue;
 
-    const dates = tier.departure_dates || [];
+    const dates: string[] = [];
+
+    // 1) date_range + departure_day_of_week → 개별 날짜 확장
+    const range = (tier as any).date_range as { start: string; end: string } | undefined;
+    const dow = (tier as any).departure_day_of_week as string | undefined;
+    if (range?.start && range?.end && dow && DOW_MAP[dow] !== undefined) {
+      const targetDow = DOW_MAP[dow];
+      const [sy, sm, sd] = range.start.split('-').map(Number);
+      const [ey, em, ed] = range.end.split('-').map(Number);
+      const cursor = new Date(sy, sm - 1, sd);
+      const endDate = new Date(ey, em - 1, ed);
+      while (cursor <= endDate) {
+        if (cursor.getDay() === targetDow) {
+          const y = cursor.getFullYear();
+          const m = String(cursor.getMonth() + 1).padStart(2, '0');
+          const d = String(cursor.getDate()).padStart(2, '0');
+          dates.push(`${y}-${m}-${d}`);
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    // 2) departure_dates (명시적 날짜 배열)
+    if (tier.departure_dates) {
+      dates.push(...tier.departure_dates);
+    }
+
+    // 3) excluded_dates 필터 (tier 레벨)
+    const excluded = new Set((tier as any).excluded_dates || []);
+
     for (const date of dates) {
-      if (!date || seen.has(date)) continue;
+      if (!date || seen.has(date) || excluded.has(date)) continue;
       seen.add(date);
       result.push({
         date,
@@ -74,6 +104,7 @@ export function tiersToDatePrices(tiers: PriceTier[]): PriceDate[] {
 }
 
 // ── 2. getEffectivePriceDates: 읽기 진입점 (폴백 포함) ──
+// @deprecated Phase 4 목표: Phase 3 마이그레이션 완료 후 getStrictPriceDates로 교체
 
 export function getEffectivePriceDates(pkg: {
   price_dates?: PriceDate[];
@@ -83,6 +114,22 @@ export function getEffectivePriceDates(pkg: {
     return pkg.price_dates;
   }
   return tiersToDatePrices(pkg.price_tiers || []);
+}
+
+// ── 2-b. getStrictPriceDates: price_dates만 사용, 없으면 에러 로그 + 빈 배열 ──
+// Phase 3 이후 신규 경로는 이 함수 사용. 폴백 없음으로 데이터 불일치 원천 차단.
+
+export function getStrictPriceDates(pkg: {
+  id?: string;
+  price_dates?: PriceDate[];
+}): PriceDate[] {
+  if (pkg.price_dates && Array.isArray(pkg.price_dates) && pkg.price_dates.length > 0) {
+    return pkg.price_dates;
+  }
+  if (typeof console !== 'undefined') {
+    console.warn(`[price-dates] getStrictPriceDates: price_dates 비어있음 (pkg.id=${pkg.id ?? 'unknown'}). migrate_tiers_to_dates.js 실행 필요.`);
+  }
+  return [];
 }
 
 // ── 3. groupForPoster: 포스터용 자동 그룹핑 알고리즘 ──

@@ -22,7 +22,7 @@ export async function GET() {
     // 판매 중/승인/검토 대기 상품만 조회
     const { data: packages, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, ticketing_deadline, price_tiers, price_dates')
+      .select('id, ticketing_deadline, price_tiers, price_dates, created_at')
       .in('status', ['approved', 'active', 'pending', 'pending_review', 'draft']);
 
     if (error) throw error;
@@ -43,19 +43,19 @@ export async function GET() {
       // 조건 2: 모든 출발일이 지남 — price_dates 우선, price_tiers 폴백
       if (!shouldArchive) {
         const priceDates = (pkg.price_dates || []) as { date: string }[];
+        let hasDateData = false;
+
         if (priceDates.length > 0) {
-          // price_dates가 있으면 이것만으로 판단
+          hasDateData = true;
           const latestDate = priceDates.map(pd => pd.date).sort().pop()!;
           if (latestDate < today) {
             shouldArchive = true;
           }
         } else if (pkg.price_tiers && Array.isArray(pkg.price_tiers)) {
-          // 기존 price_tiers 폴백
           const allDates = (pkg.price_tiers as any[])
             .flatMap(t => t.departure_dates || [])
             .filter(Boolean);
 
-          // date_range 기반 출발일도 체크
           const allEndDates = (pkg.price_tiers as any[])
             .map(t => t.date_range?.end)
             .filter(Boolean);
@@ -63,10 +63,20 @@ export async function GET() {
           const allRelevantDates = [...allDates, ...allEndDates];
 
           if (allRelevantDates.length > 0) {
+            hasDateData = true;
             const latestDate = allRelevantDates.sort().pop()!;
             if (latestDate < today) {
               shouldArchive = true;
             }
+          }
+        }
+
+        // 조건 3: 발권기한 없고 + 출발일 데이터도 없고 + 등록 후 30일 경과
+        if (!shouldArchive && !pkg.ticketing_deadline && !hasDateData && pkg.created_at) {
+          const created = new Date(pkg.created_at);
+          const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
+          if (expiry.toISOString().split('T')[0] < today) {
+            shouldArchive = true;
           }
         }
       }
