@@ -134,6 +134,14 @@ export interface CardNewsV2 {
   // 조인 필드
   package_title?: string;
   package_destination?: string;
+  // 인스타그램 자동 발행 (20260414130000 migration)
+  ig_post_id?: string | null;
+  ig_published_at?: string | null;
+  ig_scheduled_for?: string | null;
+  ig_publish_status?: 'queued' | 'publishing' | 'published' | 'failed' | null;
+  ig_caption?: string | null;
+  ig_error?: string | null;
+  ig_slide_urls?: string[] | null;
 }
 
 // ── 템플릿 정의 타입 ───────────────────────────────────────

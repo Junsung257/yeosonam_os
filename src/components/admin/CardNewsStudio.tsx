@@ -94,25 +94,28 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
         return;
       }
 
-      // Pexels 이미지 자동 매핑 (병렬, 타임아웃 방어)
-      const withImages = await Promise.all(
-        allSlides.map(async (slide) => {
-          if (!slide.image_hint) return slide;
-          try {
-            const res = await Promise.race([
-              fetch(`/api/card-news/pexels?keyword=${encodeURIComponent(slide.image_hint)}&per_page=5&orientation=square`),
-              new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-            ]);
-            if (res.ok) {
-              const data = await res.json();
-              const photos = data.photos || [];
-              const urls = photos.map((p: { src_large2x?: string; src_medium?: string }) => p.src_large2x || p.src_medium || '');
-              return { ...slide, bgUrl: urls[0] || '', pexelsResults: urls, pexelsIndex: 0 };
-            }
-          } catch { /* 타임아웃 또는 실패 → 이미지 없이 진행 */ }
-          return slide;
-        })
-      );
+      // Pexels 이미지 자동 매핑 (순차 처리하여 Rate Limit 429 방지)
+      const withImages: RenderedSlide[] = [];
+      for (const slide of allSlides) {
+        if (!slide.image_hint) {
+          withImages.push(slide);
+          continue;
+        }
+        try {
+          const res = await Promise.race([
+            fetch(`/api/card-news/pexels?keyword=${encodeURIComponent(slide.image_hint)}&per_page=5&orientation=square`),
+            new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+          ]);
+          if (res.ok) {
+            const data = await res.json();
+            const photos = data.photos || [];
+            const urls = photos.map((p: { src_large2x?: string; src_medium?: string }) => p.src_large2x || p.src_medium || '');
+            withImages.push({ ...slide, bgUrl: urls[0] || '', pexelsResults: urls, pexelsIndex: 0 });
+            continue;
+          }
+        } catch { /* 타임아웃 또는 실패 → 이미지 없이 진행 */ }
+        withImages.push(slide);
+      }
 
       setSlides(withImages);
       setActiveIdx(0);
@@ -409,7 +412,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
             <p
               contentEditable
               suppressContentEditableWarning
-              onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.textContent || '')}
+              onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.innerText || '')}
               style={{ fontSize: '64px', fontWeight: 800, lineHeight: 1.15, marginBottom: '24px', outline: 'none' }}
             >
               {slide.hook_copy || '제목'}
@@ -417,7 +420,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
             <p
               contentEditable
               suppressContentEditableWarning
-              onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.textContent || '')}
+              onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.innerText || '')}
               style={{ fontSize: '28px', fontWeight: 400, opacity: 0.85, lineHeight: 1.5, maxWidth: '800px', outline: 'none' }}
             >
               {slide.main_text || '본문'}
@@ -430,7 +433,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
             <p
               contentEditable
               suppressContentEditableWarning
-              onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.textContent || '')}
+              onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.innerText || '')}
               style={{ fontSize: '48px', fontWeight: 800, lineHeight: 1.2, marginBottom: '16px', outline: 'none' }}
             >
               {slide.hook_copy || '제목'}
@@ -438,7 +441,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
             <p
               contentEditable
               suppressContentEditableWarning
-              onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.textContent || '')}
+              onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.innerText || '')}
               style={{ fontSize: '26px', fontWeight: 400, opacity: 0.85, lineHeight: 1.6, outline: 'none' }}
             >
               {slide.main_text || '본문'}
@@ -453,7 +456,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
             <p
               contentEditable
               suppressContentEditableWarning
-              onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.textContent || '')}
+              onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.innerText || '')}
               style={{ fontSize: '40px', fontWeight: 700, lineHeight: 1.3, marginBottom: '16px', outline: 'none' }}
             >
               {slide.hook_copy || '지금 예약하기'}
@@ -461,7 +464,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
             <p
               contentEditable
               suppressContentEditableWarning
-              onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.textContent || '')}
+              onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.innerText || '')}
               style={{ fontSize: '24px', opacity: 0.8, outline: 'none' }}
             >
               {slide.main_text || '문의: yeosonam.co.kr'}

@@ -1,11 +1,13 @@
 'use client';
 
 import type { Slide, AspectRatio, ASPECT_RATIOS } from '@/hooks/useCardNewsEditor';
+import { getTemplateComponent } from '@/components/card-news/templates';
 
 interface SlideCanvasProps {
   slide: Slide;
   ratio: (typeof ASPECT_RATIOS)[AspectRatio];
   isPreview?: boolean;
+  totalSlides?: number;
   onUpdateHeadline?: (text: string) => void;
   onUpdateBody?: (text: string) => void;
 }
@@ -14,9 +16,36 @@ export default function SlideCanvas({
   slide,
   ratio,
   isPreview = false,
+  totalSlides,
   onUpdateHeadline,
   onUpdateBody,
 }: SlideCanvasProps) {
+  // ── 신규 템플릿 시스템: slide.template_id가 있으면 해당 템플릿으로 라우팅 ─────
+  const TemplateComponent = getTemplateComponent(slide.template_id);
+  if (TemplateComponent) {
+    const variant: 'cover' | 'content' | 'cta' =
+      slide.role === 'hook' || slide.position === 1 ? 'cover'
+      : slide.role === 'cta' ? 'cta'
+      : 'content';
+
+    return (
+      <TemplateComponent
+        headline={slide.headline}
+        body={slide.body}
+        bgImageUrl={slide.bg_image_url}
+        badge={slide.badge}
+        variant={variant}
+        pageIndex={slide.position}
+        totalPages={totalSlides}
+        ratio={ratio}
+        isPreview={isPreview}
+        onUpdateHeadline={onUpdateHeadline}
+        onUpdateBody={onUpdateBody}
+      />
+    );
+  }
+
+  // ── V1 단일 패턴 (하위 호환) ─────────────────────────────
   const scale = isPreview ? 0.25 : 1;
   const w = ratio.w * scale;
   const h = ratio.h * scale;
@@ -64,7 +93,7 @@ export default function SlideCanvas({
               <h2
                 contentEditable
                 suppressContentEditableWarning
-                onBlur={e => onUpdateHeadline?.(e.currentTarget.textContent || '')}
+                onBlur={e => onUpdateHeadline?.(e.currentTarget.innerText || '')}
                 className={`font-bold leading-tight outline-none focus:bg-yellow-50/20 rounded ${
                   slide.overlay_style === 'light' ? 'text-[#001f3f]' : 'text-white'
                 } text-2xl mb-3`}
@@ -74,7 +103,7 @@ export default function SlideCanvas({
               <p
                 contentEditable
                 suppressContentEditableWarning
-                onBlur={e => onUpdateBody?.(e.currentTarget.textContent || '')}
+                onBlur={e => onUpdateBody?.(e.currentTarget.innerText || '')}
                 className={`leading-relaxed outline-none focus:bg-yellow-50/20 rounded ${
                   slide.overlay_style === 'light' ? 'text-slate-700' : 'text-white/90'
                 } text-[14px]`}

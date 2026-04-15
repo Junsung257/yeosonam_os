@@ -29,6 +29,11 @@ export interface Slide {
   pexels_keyword: string;
   overlay_style: 'dark' | 'light' | 'none';
   elements: SlideElement[];
+  // ── 디자인 템플릿 시스템 (옵셔널 — V1 슬라이드는 없을 수 있음) ─────
+  template_id?: string;          // 'dark_cinematic' | 'clean_white' | 'bold_gradient' | 'magazine' | 'luxury_gold'
+  role?: string;                 // 'hook' | 'benefit' | 'detail' | 'tourist_spot' | 'inclusion' | 'cta'
+  badge?: string | null;         // 옵셔널 배지 ("핵심", "TIP" 등)
+  brief_section_position?: number;
 }
 
 export const ASPECT_RATIOS: Record<AspectRatio, { w: number; h: number; label: string }> = {
@@ -69,7 +74,7 @@ export function useCardNewsEditor() {
       const res = await fetch(`/api/card-news/${id}`);
       if (!res.ok) return;
       const data = await res.json();
-      const cn = data.cardNews;
+      const cn = data.card_news || data.cardNews; // Fallback 지원
       if (!cn) return;
 
       setCardNewsId(cn.id);
@@ -150,7 +155,7 @@ export function useCardNewsEditor() {
       const res = await fetch(`/api/card-news/${cardNewsId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slides }),
+        body: JSON.stringify({ title: cardNewsTitle, slides }),
       });
       if (!res.ok) throw new Error('저장 실패');
       return true;
@@ -160,7 +165,7 @@ export function useCardNewsEditor() {
     } finally {
       setSaving(false);
     }
-  }, [cardNewsId, slides]);
+  }, [cardNewsId, slides, cardNewsTitle]);
 
   // 전체 슬라이드 내보내기 (JPG/ZIP)
   const exportAll = useCallback(async () => {

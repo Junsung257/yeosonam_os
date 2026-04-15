@@ -16,6 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 interface Package { id: string; title: string; destination: string; }
+interface Category { id: string; key: string; label: string; scope: string; }
 
 export default function CardNewsListPage() {
   const router = useRouter();
@@ -29,6 +30,11 @@ export default function CardNewsListPage() {
   const [createRatio, setCreateRatio] = useState('1:1');
   const [createTone, setCreateTone] = useState('professional');
   const [createExtra, setCreateExtra] = useState('');
+  // 정보성 모드
+  const [createMode, setCreateMode] = useState<'product' | 'info'>('product');
+  const [createTopic, setCreateTopic] = useState('');
+  const [createCategoryId, setCreateCategoryId] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -56,19 +62,43 @@ export default function CardNewsListPage() {
       .then(d => {
         const all = d.data ?? d.packages ?? [];
         setPackages(all.filter((p: { status: string }) =>
-          ['approved', 'active', 'pending_review', 'REVIEW_NEEDED'].includes(p.status)
+          ['approved', 'active', 'pending', 'pending_review', 'draft'].includes(p.status)
         ));
       });
+    // 정보성 카테고리 로드
+    fetch('/api/blog-categories?scope=info')
+      .then(r => r.json())
+      .then(d => {
+        const cats = d.categories || [];
+        setCategories(cats);
+        if (cats.length > 0 && !createCategoryId) setCreateCategoryId(cats[0].id);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchList]);
 
   const handleCreate = async () => {
-    if (!selectedPkg) return;
+    if (createMode === 'product' && !selectedPkg) return;
+    if (createMode === 'info' && !createTopic.trim()) return;
     setCreating(true);
     try {
+      const body: Record<string, unknown> = {
+        slide_count: createSlideCount,
+        ratio: createRatio,
+        tone: createTone,
+        extra_prompt: createExtra,
+        mode: createMode,
+      };
+      if (createMode === 'product') {
+        body.package_id = selectedPkg;
+      } else {
+        body.topic = createTopic.trim();
+        body.category_id = createCategoryId || null;
+      }
       const res = await fetch('/api/card-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_id: selectedPkg, slide_count: createSlideCount, ratio: createRatio, tone: createTone, extra_prompt: createExtra }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok && data.card_news?.id) {
@@ -104,7 +134,7 @@ export default function CardNewsListPage() {
             ← 대시보드
           </button>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => router.push('/admin/marketing/card-news/new')}
             className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
           >
             + 새 카드뉴스
@@ -138,10 +168,26 @@ export default function CardNewsListPage() {
                   <div className="absolute bottom-2 left-3 right-3">
                     <p className="text-white text-sm font-bold truncate drop-shadow">{cover?.headline}</p>
                   </div>
-                  <div className="absolute top-2 right-2">
+                  <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
                     <span className={`text-xs font-medium px-2 py-1 rounded-full ${STATUS_BADGE[cn.status]}`}>
                       {STATUS_LABELS[cn.status]}
                     </span>
+                    {cn.ig_publish_status && (
+                      <span
+                        className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          cn.ig_publish_status === 'published' ? 'bg-green-100 text-green-700'
+                          : cn.ig_publish_status === 'queued' ? 'bg-amber-100 text-amber-700'
+                          : cn.ig_publish_status === 'publishing' ? 'bg-blue-100 text-blue-700'
+                          : 'bg-red-100 text-red-700'
+                        }`}
+                        title={cn.ig_error ?? undefined}
+                      >
+                        {cn.ig_publish_status === 'published' ? '🟢 IG 게시됨'
+                          : cn.ig_publish_status === 'queued' ? `🟡 IG 예약${cn.ig_scheduled_for ? ` · ${cn.ig_scheduled_for.slice(5, 10)}` : ''}`
+                          : cn.ig_publish_status === 'publishing' ? '🔵 IG 발행 중'
+                          : '🔴 IG 실패'}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -186,25 +232,75 @@ export default function CardNewsListPage() {
             </div>
             <div className="p-6 space-y-5 flex-1 overflow-y-auto">
             <p className="text-[12px] text-slate-500">
-              AI가 상품 데이터를 분석해 슬라이드 카피와 배경 이미지를 자동 생성합니다.
+              AI가 상품 또는 주제를 분석해 슬라이드 카피와 배경 이미지를 자동 생성합니다.
             </p>
 
-            {/* 상품 선택 */}
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">상품 선택 *</label>
-              <select
-                value={selectedPkg}
-                onChange={e => setSelectedPkg(e.target.value)}
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+            {/* 모드 탭 */}
+            <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+              <button
+                onClick={() => setCreateMode('product')}
+                className={`flex-1 px-3 py-1.5 text-[12px] font-medium rounded-md transition ${createMode === 'product' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                <option value="">상품 선택...</option>
-                {packages.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} ({p.destination})
-                  </option>
-                ))}
-              </select>
+                상품 카드뉴스
+              </button>
+              <button
+                onClick={() => setCreateMode('info')}
+                className={`flex-1 px-3 py-1.5 text-[12px] font-medium rounded-md transition ${createMode === 'info' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                정보성 카드뉴스
+              </button>
             </div>
+
+            {createMode === 'product' ? (
+              /* 상품 선택 */
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">상품 선택 *</label>
+                <select
+                  value={selectedPkg}
+                  onChange={e => setSelectedPkg(e.target.value)}
+                  className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                >
+                  <option value="">상품 선택...</option>
+                  {packages.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.title} ({p.destination})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              /* 정보성: 주제 + 카테고리 */
+              <>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">주제 *</label>
+                  <input
+                    value={createTopic}
+                    onChange={e => setCreateTopic(e.target.value)}
+                    placeholder="예: 베트남 비자 신청 방법, 다낭 여행 준비물"
+                    className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">카테고리</label>
+                  <select
+                    value={createCategoryId}
+                    onChange={e => setCreateCategoryId(e.target.value)}
+                    className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]"
+                  >
+                    {categories.length === 0 ? (
+                      <option value="">(카테고리 없음)</option>
+                    ) : (
+                      categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    카테고리는 <Link href="/admin/blog/categories" className="text-blue-600 hover:underline">/admin/blog/categories</Link>에서 관리합니다.
+                  </p>
+                </div>
+              </>
+            )}
 
             {/* 슬라이드 개수 */}
             <div>
@@ -261,7 +357,7 @@ export default function CardNewsListPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!selectedPkg || creating}
+                disabled={creating || (createMode === 'product' ? !selectedPkg : !createTopic.trim())}
                 className="flex-1 bg-[#001f3f] text-white text-[13px] py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50 font-medium"
               >
                 {creating ? 'AI 생성 중...' : `AI 카드뉴스 ${createSlideCount}장 생성`}

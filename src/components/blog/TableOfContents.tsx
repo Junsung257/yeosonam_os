@@ -1,0 +1,105 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+
+export interface TocItem {
+  level: 2 | 3;
+  text: string;
+  id: string;
+}
+
+interface Props {
+  items: TocItem[];
+  variant?: 'mobile' | 'desktop' | 'both';
+}
+
+export default function TableOfContents({ items, variant = 'both' }: Props) {
+  const showMobile = variant === 'mobile' || variant === 'both';
+  const showDesktop = variant === 'desktop' || variant === 'both';
+  const [activeId, setActiveId] = useState<string>('');
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || items.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter(e => e.isIntersecting);
+        if (visible.length > 0) {
+          // 가장 위쪽에 있는 visible heading
+          const topMost = visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+          setActiveId(topMost.target.id);
+        }
+      },
+      { rootMargin: '-80px 0px -70% 0px', threshold: 0 },
+    );
+    items.forEach(item => {
+      const el = document.getElementById(item.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [items]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <>
+      {/* 모바일 — 아코디언 */}
+      {showMobile && (
+      <div className="md:hidden mb-6 rounded-xl border border-gray-200 bg-gray-50">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700"
+          aria-expanded={mobileOpen}
+        >
+          <span>📑 목차 ({items.length})</span>
+          <ChevronDown size={16} className={`transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {mobileOpen && (
+          <ul className="px-4 pb-3 space-y-2">
+            {items.map(item => (
+              <li key={item.id} className={item.level === 3 ? 'pl-3' : ''}>
+                <a
+                  href={`#${item.id}`}
+                  onClick={() => setMobileOpen(false)}
+                  className="block text-sm text-gray-600 hover:text-indigo-600 transition leading-snug"
+                >
+                  {item.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      )}
+
+      {/* 데스크톱 — sticky 사이드바 */}
+      {showDesktop && (
+      <nav className="hidden md:block sticky top-24 self-start text-sm" aria-label="목차">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">목차</p>
+        <ul className="space-y-2 border-l border-gray-200 pl-4">
+          {items.map(item => {
+            const isActive = item.id === activeId;
+            return (
+              <li key={item.id} className={item.level === 3 ? 'pl-3' : ''}>
+                <a
+                  href={`#${item.id}`}
+                  className={`block leading-snug transition ${
+                    isActive
+                      ? 'text-indigo-600 font-semibold'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  {item.text}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      )}
+    </>
+  );
+}

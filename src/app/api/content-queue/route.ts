@@ -91,9 +91,26 @@ export async function POST(request: NextRequest) {
         .eq('id', creative_id);
 
       if (error) throw error;
-      // 캐시 즉시 갱신: 블로그 목록 + 해당 글 페이지
+
+      // 캐시 즉시 갱신: 블로그 목록 + 해당 글 + 목적지 카테고리
       revalidatePath('/blog');
       if (slug) revalidatePath(`/blog/${slug}`);
+
+      // 목적지 카테고리 페이지도 재검증
+      const { data: creative } = await supabaseAdmin
+        .from('content_creatives')
+        .select('product_id, travel_packages(destination)')
+        .eq('id', creative_id)
+        .limit(1);
+      const dest = (creative?.[0] as any)?.travel_packages?.destination;
+      if (dest) revalidatePath(`/blog/destination/${encodeURIComponent(dest)}`);
+
+      // 통합 색인 알림 (Google Indexing API + IndexNow + Bing sitemap)
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      const { notifyIndexing } = await import('@/lib/indexing');
+      notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
+        .then(r => console.log(`[content-queue approve] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
+        .catch(() => {});
 
       return NextResponse.json({ ok: true, status: 'published' });
     }

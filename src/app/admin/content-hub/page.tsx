@@ -1,17 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 // html-to-image: 내보내기 시점에만 동적 로드
 import {
   ANGLE_PRESETS, CHANNEL_PRESETS, TEMPLATE_PRESETS,
-  generateCardSlides, generateBlogPost, generateAdCopy, generateTrackingId,
+  generateCardSlides, generateBlogPost, generateAdCopy, generateTrackingId, generateBlogSeo,
   type AngleType, type Channel, type ImageRatio, type TemplateId, type Slide, type SlideElement, type ProductData,
 } from '@/lib/content-generator';
 
 // ── 타입 ─────────────────────────────────────────────────
 
 interface Package {
-  id: string; title: string; destination?: string; duration?: number; price?: number;
+  id: string; title: string; destination?: string; duration?: number; price?: number; status: string;
   price_tiers?: { adult_price?: number; period_label?: string }[];
   inclusions?: string[]; excludes?: string[]; product_type?: string;
   airline?: string; departure_airport?: string; product_highlights?: string[];
@@ -43,6 +44,7 @@ const RATIO_SIZE: Record<ImageRatio, { w: number; h: number; label: string }> = 
 };
 
 export default function ContentHubPage() {
+  const router = useRouter();
   // ── Step 관리 ──────────────────────────────────────────
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
@@ -78,7 +80,9 @@ export default function ContentHubPage() {
   useEffect(() => {
     fetch('/api/packages?limit=200')
       .then(r => r.json())
-      .then(d => setPackages((d.data ?? d.packages ?? []).filter((p: Package) => p.destination)))
+      .then(d => setPackages((d.data ?? d.packages ?? []).filter((p: Package) =>
+        p.destination && ['approved', 'active', 'pending', 'pending_review', 'draft'].includes(p.status)
+      )))
       .catch(() => {});
   }, []);
 
@@ -110,12 +114,38 @@ export default function ContentHubPage() {
         for (const channel of selectedChannels) {
           const trackingId = generateTrackingId(product.destination || '');
 
-          if (channel === 'instagram_card' || channel === 'instagram_reel') {
+          if (channel === 'instagram_card') {
+            // AI 엔진(Gemini)으로 카드뉴스 생성 후 전용 에디터로 이동
+            try {
+              const res = await fetch('/api/card-news', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ package_id: selectedPkg.id, slide_count: slideCount, ratio }),
+              });
+              const cardData = await res.json();
+              if (cardData.card_news?.id) {
+                showToast('카드뉴스 생성 완료! 에디터로 이동합니다.');
+                router.push(`/admin/marketing/card-news/${cardData.card_news.id}`);
+                return;
+              }
+            } catch (e) {
+              console.warn('[Content Hub] 카드뉴스 AI 생성 실패, 로컬 생성으로 대체:', e);
+            }
+            // AI 실패 시 기존 로컬 생성으로 fallback
+            const slides = await generateCardSlides(product, { angle, channel, ratio, slideCount, tone, extraPrompt, templateId });
+            sets.push({ angle, channel, slides, trackingId });
+          } else if (channel === 'instagram_reel') {
             const slides = await generateCardSlides(product, { angle, channel, ratio, slideCount, tone, extraPrompt, templateId });
             sets.push({ angle, channel, slides, trackingId });
           } else if (channel === 'naver_blog') {
             const blogHtml = generateBlogPost(product, angle);
-            sets.push({ angle, channel, slides: [], blogHtml, trackingId });
+            const seo = generateBlogSeo(product, angle);
+            sets.push({
+              angle, channel, slides: [], blogHtml, trackingId,
+              slug: seo.slug,
+              seoTitle: seo.seoTitle,
+              seoDescription: seo.seoDescription,
+            });
           } else if (channel === 'google_search') {
             const adCopy = generateAdCopy(product, angle);
             sets.push({ angle, channel, slides: [], adCopy, trackingId });
@@ -222,7 +252,7 @@ export default function ContentHubPage() {
     }
     setBlogPublishing(true);
     try {
-      // 1. content_creatives에 저장 (upsert)
+      // 1. content_creatives에 저장
       const res = await fetch('/api/content-hub/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,10 +271,10 @@ export default function ContentHubPage() {
           tracking_id: set.trackingId,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      const creativeId = data.creative?.id;
-      if (!creativeId) throw new Error('저장 실패');
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || '저장 실패');
+      const creativeId = resData.creative?.id;
+      if (!creativeId) throw new Error('creative ID를 받지 못했습니다');
 
       // 2. published 상태로 변경
       const pubRes = await fetch('/api/content-hub/publish', {
@@ -252,7 +282,8 @@ export default function ContentHubPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ creative_id: creativeId, action: 'publish' }),
       });
-      if (!pubRes.ok) throw new Error('발행 상태 변경 실패');
+      const pubData = await pubRes.json();
+      if (!pubRes.ok) throw new Error(pubData.error || '발행 상태 변경 실패');
 
       showToast(`블로그 발행 완료! /blog/${set.slug}`);
     } catch (err) {
@@ -785,9 +816,13 @@ export default function ContentHubPage() {
                           className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
                           복사
                         </button>
+                        <button onClick={() => { setActiveSetIdx(i); setStep(2); }}
+                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
+                          편집으로
+                        </button>
                         <button onClick={() => handlePublishBlog(i)} disabled={blogPublishing || !set.slug}
                           className="px-3 py-1.5 bg-indigo-600 text-white text-[11px] rounded hover:bg-indigo-700 disabled:bg-slate-300 transition"
-                          title={!set.slug ? '편집 단계에서 SEO 설정을 입력하세요' : ''}>
+                          title={!set.slug ? 'SEO 설정이 필요합니다' : ''}>
                           {blogPublishing ? '발행 중...' : '블로그 발행'}
                         </button>
                       </>

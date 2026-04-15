@@ -1,0 +1,130 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ContentBrief } from '@/lib/validators/content-brief';
+import { TEMPLATE_IDS, truncateHeadline, truncateBody } from '@/lib/card-news/tokens';
+import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+
+/**
+ * Call 2: 카드뉴스 카피라이터
+ *
+ * 역할: Brief.sections 각각의 card_slide를 정제 (글자 수 엄격 준수)
+ * 출력: 최종 슬라이드 배열 (headline ≤15자, body ≤40자 강제)
+ */
+
+export interface CardSlideCopy {
+  position: number;
+  headline: string;
+  body: string;
+  pexels_keyword: string;
+  template_id: string;
+  role: string;
+  badge?: string | null;
+}
+
+/**
+ * Brief를 받아 카드뉴스 슬라이드 카피를 정제
+ *
+ * 전략:
+ * 1. Brief의 card_slide를 기본값으로 사용
+ * 2. 글자 수 초과 항목이 있으면 Gemini에게 해당 항목만 다시 짧게 써달라고 요청
+ * 3. 그래도 초과 시 강제 truncate (…) + 로그 경고
+ */
+export async function generateCardCopy(brief: ContentBrief): Promise<CardSlideCopy[]> {
+  const rawSlides: CardSlideCopy[] = [
+    // sections
+    ...brief.sections.map((s) => ({
+      position: s.position,
+      headline: s.card_slide.headline,
+      body: s.card_slide.body,
+      pexels_keyword: s.card_slide.pexels_keyword,
+      template_id: s.card_slide.template_suggestion,
+      role: s.role,
+      badge: s.card_slide.badge ?? null,
+    })),
+    // cta slide (마지막)
+    {
+      position: brief.sections.length + 1,
+      headline: brief.cta_slide.headline,
+      body: brief.cta_slide.body,
+      pexels_keyword: brief.cta_slide.pexels_keyword,
+      template_id: brief.cta_slide.template_suggestion,
+      role: 'cta',
+      badge: null,
+    },
+  ];
+
+  // 글자 수 초과 항목 찾기
+  const overflowItems = rawSlides.filter(
+    s => s.headline.length > 15 || s.body.length > 40
+  );
+
+  // 초과 있으면 Gemini에게 재작성 요청 (해당 항목만)
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (overflowItems.length > 0 && apiKey) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: BLOG_AI_MODEL,
+        generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+      });
+
+      const prompt = `다음 카드뉴스 슬라이드들의 headline과 body가 글자 수 제한을 초과한다. 의미를 유지하면서 더 짧게 다시 써라.
+
+## 엄격 규칙
+- headline: **정확히 15자 이하** (한글/숫자/공백 모두 카운트)
+- body: **정확히 40자 이하**
+- 브랜드 여소남, 타겟 "${brief.target_audience}" 톤 유지
+- JSON만 출력
+
+## 재작성 대상
+${JSON.stringify(overflowItems.map(s => ({
+  position: s.position,
+  current_headline: s.headline,
+  current_body: s.body,
+  role: s.role,
+})), null, 2)}
+
+## 출력 형식 (JSON 배열)
+[
+  { "position": 1, "headline": "짧은 제목", "body": "짧은 본문" },
+  ...
+]
+
+반드시 입력된 position만 포함하고, headline/body만 반환하라.`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text()
+        .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+      let fixes: Array<{ position: number; headline: string; body: string }> = [];
+      try {
+        fixes = JSON.parse(text);
+      } catch {
+        const arrMatch = text.match(/\[[\s\S]*\]/);
+        if (arrMatch) {
+          try { fixes = JSON.parse(arrMatch[0]); } catch { /* noop */ }
+        }
+      }
+
+      // 적용
+      if (Array.isArray(fixes)) {
+        for (const fix of fixes) {
+          const slide = rawSlides.find(s => s.position === fix.position);
+          if (slide && fix.headline && fix.body) {
+            slide.headline = fix.headline;
+            slide.body = fix.body;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[card-copy] 재작성 실패, 강제 truncate 사용:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 최종 안전망: 여전히 초과면 강제 truncate
+  return rawSlides.map(s => ({
+    ...s,
+    headline: truncateHeadline(s.headline, 20),  // 20자 넘으면 …로 잘라냄
+    body: truncateBody(s.body, 50),
+    template_id: TEMPLATE_IDS.includes(s.template_id as any) ? s.template_id : TEMPLATE_IDS[0],
+  }));
+}

@@ -46,6 +46,7 @@ export interface ProductData {
   title: string;
   destination?: string;
   duration?: number;
+  nights?: number;
   price?: number;
   price_tiers?: { adult_price?: number; period_label?: string }[];
   price_dates?: { date: string; price: number; confirmed: boolean }[];
@@ -78,6 +79,59 @@ export const ANGLE_PRESETS: Record<AngleType, { label: string; description: stri
   urgency:   { label: '긴급',      description: '마감임박, 잔여석 강조',      color: '#ef4444', emoji: '' },
   activity:  { label: '액티비티',  description: '관광지, 체험 강조',          color: '#f59e0b', emoji: '' },
   food:      { label: '미식',      description: '특식, 맛집 강조',            color: '#ec4899', emoji: '' },
+};
+
+// 각 앵글의 서브 키워드: 긴꼬리 SEO용 (1개 상품 → 여러 검색어 타겟)
+export const ANGLE_SUB_KEYWORDS: Record<AngleType, { keyword: string; focus: string }[]> = {
+  value: [
+    { keyword: '가성비',      focus: '가격 대비 만족도, 전체 패키지 가치' },
+    { keyword: '노팁 노옵션', focus: '숨은 비용 제로, 투명한 가격' },
+    { keyword: '실속 패키지',  focus: '합리적 선택, 필수만 담은 구성' },
+    { keyword: '특가 여행',    focus: '같은 일정 경쟁사 대비 가격 강점' },
+    { keyword: '저렴한 여행',  focus: '절약 팁, 여행 예산 관리' },
+  ],
+  emotional: [
+    { keyword: '힐링 여행',    focus: '휴식, 마음의 여유, 스트레스 해소' },
+    { keyword: '감성 여행',    focus: '분위기, 풍경, 사진 포인트' },
+    { keyword: '낭만 여행',    focus: '야경, 커플/친구 추억' },
+    { keyword: '가족 여행',    focus: '함께하는 시간, 세대 공감' },
+    { keyword: '자연 힐링',    focus: '자연 경관, 청정 환경' },
+  ],
+  filial: [
+    { keyword: '효도여행',     focus: '부모님 만족, 편안한 동선' },
+    { keyword: '어르신 여행',  focus: '시니어 맞춤, 무릎/체력 부담 없는 코스' },
+    { keyword: '부모님 여행',  focus: '첫 해외, 안심 패키지' },
+    { keyword: '노팁 안심',    focus: '추가 비용 없이 편안한 여행' },
+    { keyword: '가족 효도',    focus: '가족 모두 만족, 세심한 케어' },
+  ],
+  luxury: [
+    { keyword: '5성급 호텔',   focus: '숙박 품격, 서비스 수준' },
+    { keyword: '럭셔리 패키지', focus: '프리미엄 구성, VIP 케어' },
+    { keyword: '프리미엄 여행', focus: '고급 레스토랑, 특식' },
+    { keyword: '신혼여행',     focus: '허니문 특화, 로맨틱 포인트' },
+    { keyword: '고급 패키지',   focus: '전 구성 고급화, 가치 중심' },
+  ],
+  urgency: [
+    { keyword: '마감임박',     focus: '잔여석 한정, 기회 놓치면 끝' },
+    { keyword: '특가 땡처리',  focus: '시즌 오프 할인, 한정 특가' },
+    { keyword: '잔여석 할인',  focus: '출발 확정, 남은 자리 공략' },
+    { keyword: '초특가',       focus: '역대급 가격, 한정 수량' },
+    { keyword: '한정 특가',    focus: '기간 한정, 오늘만 이 가격' },
+  ],
+  activity: [
+    { keyword: '액티비티 여행', focus: '체험 중심, 스릴 포인트' },
+    { keyword: '투어 패키지',  focus: '관광지 종합, 알찬 일정' },
+    { keyword: '체험 여행',    focus: '현지 문화 체험, 참여형' },
+    { keyword: '모험 여행',    focus: '새로운 경험, 도전' },
+    { keyword: '관광 일정',    focus: '명소 루트, 동선 효율' },
+  ],
+  food: [
+    { keyword: '미식 여행',    focus: '현지 특식, 맛집 투어' },
+    { keyword: '맛집 투어',    focus: '로컬 레스토랑, 숨은 맛집' },
+    { keyword: '현지 음식',    focus: '정통 요리, 길거리 음식' },
+    { keyword: '특식 패키지',  focus: '씨푸드/뷔페 등 고급 식사' },
+    { keyword: '먹방 여행',    focus: '음식 중심 일정, SNS 인증' },
+  ],
 };
 
 export const CHANNEL_PRESETS: Record<Channel, { label: string; description: string }> = {
@@ -124,7 +178,8 @@ function getAngleTexts(product: ProductData, angle: AngleType, slideCount: numbe
   const dest = product.destination || '여행지';
   const price = getLowestPrice(product);
   const priceStr = price > 0 ? `${price.toLocaleString()}원` : '';
-  const dur = product.duration ? `${product.duration - 1}박${product.duration}일` : '';
+  const nights = product.nights ?? (product.duration ? product.duration - 1 : 0);
+  const dur = product.duration ? `${nights}박${product.duration}일` : '';
   const type = product.product_type || '';
   const inclusions = product.inclusions || [];
   const highlights = product.product_highlights || [];
@@ -529,7 +584,8 @@ export function generateBlogPost(
   attractions?: { name: string; short_desc?: string | null; photos?: { src_medium: string }[]; badge_type?: string | null; aliases?: string[] | null }[],
 ): string {
   const dest = product.destination || '여행지';
-  const dur = product.duration ? `${product.duration - 1}박${product.duration}일` : '';
+  const nights = product.nights ?? (product.duration ? product.duration - 1 : 0);
+  const dur = product.duration ? `${nights}박${product.duration}일` : '';
   const price = getLowestPrice(product);
   const priceStr = price > 0 ? `${price.toLocaleString()}원` : '';
   const inclusions = product.inclusions || [];
@@ -561,14 +617,38 @@ export function generateBlogPost(
     sections.push(`\n## 일정 하이라이트`);
 
     // 일정에서 관광지를 매칭하여 사진/설명 삽입
+    // 팩트 보호: 관광지 이름 or 별칭이 일정에 완전히 포함된 경우만 인정 (지역명만 일치하는 유사매칭 제외)
     const matchedSpots: { name: string; desc: string; photo?: string }[] = [];
     if (attractions?.length && itinerary.length > 0) {
       for (const item of itinerary) {
         const attr = matchAttr(item, attractions as any, product.destination);
-        if (attr && !matchedSpots.find(s => s.name === attr.name)) {
+        if (!attr) continue;
+
+        const itemNoSpace = item.replace(/\s+/g, '').toLowerCase();
+        const nameNoSpace = attr.name.replace(/\s+/g, '').toLowerCase();
+        const hasFullMatch =
+          itemNoSpace.includes(nameNoSpace) ||
+          (attr.aliases?.some(al =>
+            al.length >= 2 && itemNoSpace.includes(al.replace(/\s+/g, '').toLowerCase())
+          ) ?? false);
+        if (!hasFullMatch) continue;
+
+        if (!matchedSpots.find(s => s.name === attr.name)) {
+          // short_desc에서 가격 정보 제거 ("$30 | 야경 유람선" → "야경 유람선")
+          const cleanDesc = (attr.short_desc || '')
+            .replace(/\$\s*\d+[^\s|]*/g, '')      // $30, $30~ 등
+            .replace(/USD\s*\d+/gi, '')            // USD 30
+            .replace(/\d+,?\d*\s*원/g, '')         // 30,000원, 3만원
+            .replace(/\d+만\s*원?/g, '')           // 3만, 3만원
+            .replace(/^\s*[|\-–—]\s*/, '')         // 앞의 구분자 제거
+            .replace(/\s*[|]\s*$/, '')             // 뒤의 구분자
+            .replace(/\s*[|]\s*/g, ' ')            // 중간 파이프 → 공백
+            .replace(/\s+/g, ' ')                  // 연속 공백 정리
+            .trim();
+
           matchedSpots.push({
             name: attr.name,
-            desc: attr.short_desc || '',
+            desc: cleanDesc,
             photo: attr.photos?.[0]?.src_medium,
           });
         }
@@ -616,23 +696,40 @@ export function generateBlogPost(
     }
   }
 
-  // ── CTA ────────────────────────────────────────────────
+  // ── CTA (실제 상품 상세 페이지로 바로 연결) ────────────────
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+  const productUrl = product.id ? `${baseUrl}/packages/${product.id}` : baseUrl;
   sections.push(`\n## 예약 안내`);
-  sections.push(`여소남에서 ${dest} ${angleLabel} 여행을 만나보세요.\n안심하고 비교·예약하세요 — [yeosonam.com](https://yeosonam.com)`);
+  sections.push(
+    `여소남에서 ${dest} ${angleLabel} 여행을 만나보세요.\n` +
+    `아래 버튼을 눌러 상품 상세 정보와 일정을 확인하고 바로 예약하세요.\n\n` +
+    `**[👉 ${dest} ${dur} ${angleLabel} 상품 예약하기](${productUrl})**`
+  );
 
   return sections.join('\n');
 }
 
 // ── 블로그 SEO 메타 자동 생성 ─────────────────────────────
 
-/** 한글/영문 destination을 slug-safe 문자열로 변환 */
-function toSlugPart(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9가-힣\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+// 주요 목적지 한글 → 영문 로마자 매핑 (SEO 친화적 slug용)
+const DEST_ROMAN: Record<string, string> = {
+  '다낭': 'danang', '호이안': 'hoian', '나트랑': 'nhatrang', '달랏': 'dalat',
+  '판랑': 'phanrang', '하노이': 'hanoi', '호치민': 'hcmc', '푸꾸옥': 'phuquoc',
+  '방콕': 'bangkok', '푸켓': 'phuket', '치앙마이': 'chiangmai', '파타야': 'pattaya',
+  '발리': 'bali', '자카르타': 'jakarta',
+  '마닐라': 'manila', '세부': 'cebu', '보라카이': 'boracay',
+  '비엔티엔': 'vientiane', '루앙프라방': 'luangprabang', '방비엥': 'vangvieng',
+  '장가계': 'zhangjiajie', '상해': 'shanghai', '북경': 'beijing', '서안': 'xian', '청도': 'qingdao', '석가장': 'shijiazhuang',
+  '울란바토르': 'ulaanbaatar', '테를지': 'terelj', '엘승타사르하이': 'elsentasarhai',
+  '시모노세키': 'shimonoseki', '후쿠오카': 'fukuoka', '벳부': 'beppu', '유후인': 'yufuin',
+};
+
+function romanizeDestination(dest: string): string {
+  const parts = dest.split(/[\/\s]+/).filter(Boolean);
+  const romanParts = parts.map(p => DEST_ROMAN[p] || null).filter(Boolean);
+  if (romanParts.length > 0) return romanParts.join('-');
+  // 매핑 실패 시 알파벳/숫자만 유지 (한글 제거)
+  return dest.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
 const ANGLE_SLUG: Record<AngleType, string> = {
@@ -655,27 +752,55 @@ export function generateBlogSeo(
   angle: AngleType,
 ): BlogSeo {
   const dest = product.destination || '여행';
-  const dur = product.duration ? `${product.duration - 1}박${product.duration}일` : '';
+  const nights = product.nights ?? (product.duration ? product.duration - 1 : 0);
+  const dur = product.duration ? `${nights}박${product.duration}일` : '';
   const angleLabel = ANGLE_PRESETS[angle].label;
   const price = getLowestPrice(product);
   const priceStr = price > 0 ? `${price.toLocaleString()}원` : '';
   const year = new Date().getFullYear();
 
-  // slug: destination-angle-duration (영문/한글 모두 지원)
-  const slugParts = [toSlugPart(dest), ANGLE_SLUG[angle]];
-  if (dur) slugParts.push(toSlugPart(dur));
+  // slug: destination(영문)-박수일수-angle (SEO 친화적: URL 공유 안전)
+  const destRoman = romanizeDestination(dest);
+  const durPart = product.duration ? `${nights}n${product.duration}d` : '';
+  const slugParts = [destRoman, durPart, ANGLE_SLUG[angle]];
   const slug = slugParts.filter(Boolean).join('-');
 
-  // SEO 제목: 60자 이내
-  const seoTitle = `${dest} ${dur} ${angleLabel} 여행 추천 | ${year} 최신 가이드`.substring(0, 60);
+  // SEO 제목 최적화 (구글 SEO 베스트: 키워드 앞쪽 + 숫자 + 50자 내외 + 브랜드 뒤)
+  // 패턴: [출발지] [목적지] [기간] [앵글+강조어] [가격] | 여소남 [년도]
+  const departure = (product as any).departure_airport as string | undefined;
+  const depPrefix = departure ? `${departure.replace(/\(.*?\)/g, '').trim()}출발 ` : '';
+  const priceShort = price > 0 ? ` ${Math.round(price / 10000)}만원~` : '';
+  const destClean = dest.replace(/\s+/g, ' ').trim();
+  // 60자 제한을 벗어나지 않도록 우선순위로 빌드
+  let title = `${depPrefix}${destClean} ${dur} ${angleLabel} 패키지${priceShort} | 여소남 ${year}`;
+  if (title.length > 60) {
+    // 출발지 생략
+    title = `${destClean} ${dur} ${angleLabel} 패키지${priceShort} | 여소남 ${year}`;
+  }
+  if (title.length > 60) {
+    // 가격 생략
+    title = `${destClean} ${dur} ${angleLabel} 패키지 추천 | 여소남 ${year}`;
+  }
+  const seoTitle = title.substring(0, 60);
 
   // SEO 설명: 160자 이내 (highlights + 가격 + inclusions 핵심)
-  const highlights = (product.product_highlights || []).slice(0, 2).join(', ');
+  // 목적지+기간 중복 제거 (이미 앞 descParts에 들어감)
+  const stripDupKeywords = (text: string) => text
+    .replace(new RegExp(dest.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'), 'g'), '')
+    .replace(new RegExp(dur.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'), 'g'), '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,·.]+|[\s,·.]+$/g, '')
+    .trim();
+
+  const highlightsRaw = (product.product_highlights || []).slice(0, 2)
+    .map(stripDupKeywords)
+    .filter(h => h.length > 2)
+    .join(', ');
   const inclKey = (product.inclusions || []).slice(0, 2).join(', ');
   const descParts = [
     `${dest} ${dur} ${angleLabel} 패키지`,
     priceStr ? `${priceStr}~` : '',
-    highlights || inclKey,
+    highlightsRaw || inclKey,
     '여소남에서 비교하고 안심 예약하세요.',
   ].filter(Boolean);
   const seoDescription = descParts.join('. ').substring(0, 160);

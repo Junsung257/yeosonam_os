@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, getCardNewsList, upsertCardNews } from '@/lib/supabase';
-import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured } from '@/lib/pexels';
+import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured, getBrandPlaceholder } from '@/lib/pexels';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function GET(request: NextRequest) {
@@ -27,13 +27,106 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { package_id, title: customTitle, slide_count, ratio, tone, extra_prompt } = await request.json();
+    const body = await request.json();
+    const { package_id, title: customTitle, slide_count, ratio, tone, extra_prompt,
+      mode, topic, category_id, brief } = body as {
+      package_id?: string;
+      title?: string;
+      slide_count?: number;
+      ratio?: string;
+      tone?: string;
+      extra_prompt?: string;
+      mode?: 'product' | 'info';
+      topic?: string;
+      category_id?: string;
+      brief?: unknown;  // ContentBrief (Wizard Step 2에서 전달)
+    };
 
-    if (!package_id) {
-      return NextResponse.json({ error: 'package_id 필수' }, { status: 400 });
+    const resolvedMode = mode || (package_id ? 'product' : 'info');
+
+    // ── Brief 기반 생성 (신규 파이프라인) ────────────────────────
+    if (brief) {
+      const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
+      const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
+      const { supabaseAdmin } = await import('@/lib/supabase');
+
+      const copySlides = await generateCardCopy(brief as any);
+
+      // Pexels 이미지 병렬 로드
+      const pexelsEnabled = isPexelsConfigured();
+      const images: string[] = await Promise.all(
+        copySlides.map(async (s) => {
+          if (!pexelsEnabled) return '';
+          try {
+            const photos = await searchPexelsPhotos(s.pexels_keyword, 3);
+            return photos[0]?.src?.large2x || photos[0]?.src?.large || '';
+          } catch {
+            return '';
+          }
+        })
+      );
+
+      const slides = copySlides.map((s, i) => ({
+        id: crypto.randomUUID(),
+        position: s.position,
+        headline: s.headline,
+        body: s.body,
+        bg_image_url: images[i] ?? '',
+        pexels_keyword: s.pexels_keyword,
+        overlay_style: s.role === 'hook' || s.role === 'cta' ? 'gradient-bottom' : 'dark',
+        headline_style: { fontFamily: 'Pretendard', fontSize: s.role === 'hook' ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
+        body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
+        // 신규 필드 (SlideCanvas V2 분기용)
+        template_id: s.template_id,
+        role: s.role,
+        badge: s.badge,
+        brief_section_position: s.position,
+      }));
+
+      const briefAny = brief as any;
+      const title = customTitle ?? briefAny.h1 ?? (briefAny.mode === 'info' ? `${briefAny.h1} — 카드뉴스` : `카드뉴스`);
+
+      const insertData: Record<string, unknown> = {
+        title,
+        status: 'DRAFT',
+        slides,
+        card_news_type: resolvedMode,
+        generation_config: { brief },  // Phase 6에서 블로그 생성 시 재사용
+      };
+      if (resolvedMode === 'product' && package_id) insertData.package_id = package_id;
+      if (resolvedMode === 'info' && topic) insertData.topic = topic;
+      if (category_id) insertData.category_id = category_id;
+
+      const cardNews = await upsertCardNews(insertData as any);
+      return NextResponse.json({ card_news: cardNews }, { status: 201 });
     }
 
-    // 상품 정보 조회 (supabaseAdmin으로 RLS 우회)
+    // ── 정보성 모드 ──────────────────────────────────────────────
+    if (resolvedMode === 'info') {
+      if (!topic || !topic.trim()) {
+        return NextResponse.json({ error: '정보성 모드에서는 topic이 필수입니다.' }, { status: 400 });
+      }
+      const slideNum = slide_count ?? 6;
+      const slides = await buildInfoSlides(topic, { slideCount: slideNum, tone, extraPrompt: extra_prompt }) as import('@/lib/supabase').CardNewsSlide[];
+      const title = customTitle ?? `${topic} — 카드뉴스`;
+
+      const cardNews = await upsertCardNews({
+        title,
+        status: 'DRAFT',
+        slides,
+        card_news_type: 'info',
+        topic,
+        category_id: category_id || null,
+      } as any);
+
+      return NextResponse.json({ card_news: cardNews }, { status: 201 });
+    }
+
+    // ── 상품 모드 (기존 로직) ────────────────────────────────────
+    if (!package_id) {
+      return NextResponse.json({ error: 'package_id 필수 (또는 mode=info + topic)' }, { status: 400 });
+    }
+
     const { supabaseAdmin } = await import('@/lib/supabase');
     const { data: pkg } = await supabaseAdmin
       .from('travel_packages')
@@ -47,11 +140,8 @@ export async function POST(request: NextRequest) {
 
     const title = customTitle ?? `${pkg.title} — 카드뉴스`;
     const destination = pkg.destination ?? '여행지';
-
-    // 슬라이드 자동 생성 (Gemini AI + Pexels 이미지)
     const slideNum = slide_count ?? 6;
 
-    // 상품 요약(product_summary)도 함께 전달
     const { data: pkgFull } = await supabaseAdmin
       .from('travel_packages')
       .select('product_summary, special_notes, product_type, airline, departure_airport')
@@ -69,7 +159,8 @@ export async function POST(request: NextRequest) {
       title,
       status: 'DRAFT',
       slides,
-    });
+      card_news_type: 'product',
+    } as any);
 
     return NextResponse.json({ card_news: cardNews }, { status: 201 });
   } catch (error) {
@@ -168,10 +259,26 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
 [{"headline":"...","body":"...","pexels_keyword":"..."}]`;
 
       const result = await model.generateContent(prompt);
-      const text = result.response.text()
+      const rawText = result.response.text()
         .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
-      const parsed = JSON.parse(text);
+      // 1차 시도: 직접 파싱
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        // 2차 시도: trailing comma 제거 + JSON 배열 추출
+        try {
+          const cleaned = rawText.replace(/,\s*([}\]])/g, '$1');
+          const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+          if (arrMatch) {
+            parsed = JSON.parse(arrMatch[0]);
+          }
+        } catch {
+          console.warn('[Card News] JSON 복구 실패, fallback 사용');
+        }
+      }
+
       if (Array.isArray(parsed) && parsed.length > 0) {
         aiSlides = parsed.slice(0, slideCount);
         console.log('[Card News] Gemini AI 카피 생성 성공:', aiSlides.length, '장');
@@ -243,6 +350,119 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
     body: s.body,
     bg_image_url: images[i] ?? '',
     pexels_keyword: s.pexels_keyword || buildPexelsKeyword(destination, 'cover'),
+    overlay_style: i === 0 ? 'gradient-bottom' : i === aiSlides.length - 1 ? 'gradient-bottom' : 'dark',
+    headline_style: { fontFamily: 'Pretendard', fontSize: i === 0 ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
+    body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
+  }));
+}
+
+// ── 정보성 카드뉴스 슬라이드 생성 ─────────────────────────────
+async function buildInfoSlides(
+  topic: string,
+  options?: { slideCount?: number; tone?: string; extraPrompt?: string },
+) {
+  const slideCount = options?.slideCount ?? 6;
+  const tone = options?.tone ?? 'professional';
+  const extraPrompt = options?.extraPrompt ?? '';
+
+  let aiSlides: { headline: string; body: string; pexels_keyword: string }[] = [];
+
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (apiKey) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: { temperature: 0.8 },
+      });
+
+      const toneMap: Record<string, string> = {
+        professional: '신뢰감 있고 전문적인',
+        casual: '친근하고 캐주얼한',
+        emotional: '감성적이고 따뜻한',
+      };
+      const toneDesc = toneMap[tone] || toneMap.professional;
+
+      const prompt = `너는 10년차 여행 정보 콘텐츠 전문 마케터이자 카피라이터다.
+아래 주제로 인스타그램 카드뉴스 ${slideCount}장의 카피를 작성해라.
+
+## 주제
+${topic}
+
+## 톤앤매너
+${toneDesc} 톤. 브랜드: 여소남. ${extraPrompt}
+
+## 슬라이드 역할
+- 1장(후킹): 스크롤 멈추는 질문형/숫자형. 예: "${topic} 이거 모르면 손해" / "5분만에 정복"
+- 2장~${Math.max(2, slideCount - 1)}장(본론): 구체적 정보 3~5가지. 실용 팁, 체크리스트
+- 마지막장(CTA): "여소남에서 여행 준비 시작" 같은 행동 유도
+
+## 규칙
+- headline: 최대 20자, 임팩트 있는 한 줄 (마침표 없이)
+- body: 최대 40자, 핵심 정보만
+- pexels_keyword: 영문, 주제와 관련된 구체적 검색어 3-4단어
+- '여소남' 브랜드로만 표기
+- 각 슬라이드의 pexels_keyword는 서로 다르게
+
+반드시 아래 JSON 배열만 출력. 마크다운 코드블록 없이:
+[{"headline":"...","body":"...","pexels_keyword":"..."}]`;
+
+      const result = await model.generateContent(prompt);
+      const rawText = result.response.text()
+        .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+      let parsed: any = null;
+      try { parsed = JSON.parse(rawText); }
+      catch {
+        try {
+          const cleaned = rawText.replace(/,\s*([}\]])/g, '$1');
+          const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+          if (arrMatch) parsed = JSON.parse(arrMatch[0]);
+        } catch { /* noop */ }
+      }
+
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        aiSlides = parsed.slice(0, slideCount);
+      }
+    } catch (err) {
+      console.warn('[Info Card News] Gemini 실패:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // Fallback
+  if (aiSlides.length === 0) {
+    aiSlides = [
+      { headline: topic.slice(0, 20), body: '여소남과 함께 알아보세요', pexels_keyword: 'travel information guide' },
+      { headline: '핵심 정보', body: '꼭 알아야 할 내용', pexels_keyword: 'travel checklist' },
+      { headline: '준비하기', body: '체크리스트', pexels_keyword: 'travel preparation' },
+      { headline: '여소남 확인하기', body: '안심하고 여행 준비하세요', pexels_keyword: 'travel booking' },
+    ].slice(0, slideCount);
+  }
+
+  // Pexels 이미지 로드 (실패 시 여소남 브랜드 Placeholder로 Fallback)
+  const pexelsEnabled = isPexelsConfigured();
+  async function getImage(keyword: string, idx: number, total: number): Promise<string> {
+    if (pexelsEnabled) {
+      try {
+        const photos = await searchPexelsPhotos(keyword, 5);
+        if (photos[0]?.src?.large2x) return photos[0].src.large2x;
+      } catch { /* noop */ }
+    }
+    const purpose: 'cover' | 'content' | 'cta' =
+      idx === 0 ? 'cover' : idx === total - 1 ? 'cta' : 'content';
+    return getBrandPlaceholder(purpose, keyword);
+  }
+  const images = await Promise.all(
+    aiSlides.map((s, i) => getImage(s.pexels_keyword, i, aiSlides.length))
+  );
+
+  return aiSlides.map((s, i) => ({
+    id: crypto.randomUUID(),
+    position: i,
+    headline: s.headline,
+    body: s.body,
+    bg_image_url: images[i] ?? '',
+    pexels_keyword: s.pexels_keyword,
     overlay_style: i === 0 ? 'gradient-bottom' : i === aiSlides.length - 1 ? 'gradient-bottom' : 'dark',
     headline_style: { fontFamily: 'Pretendard', fontSize: i === 0 ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
     body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },

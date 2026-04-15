@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 // html-to-image, jszip: 내보내기 시점에만 동적 로드
 import type { CardNews, CardNewsSlide } from '@/lib/supabase';
+import InstagramPublishModal from '@/components/admin/InstagramPublishModal';
 
 type OverlayStyle = 'dark' | 'light' | 'gradient-bottom' | 'gradient-top';
 type AspectRatio = '1:1' | '4:5' | '9:16';
@@ -51,6 +52,8 @@ export default function CardNewsEditorPage() {
   const [exporting, setExporting] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [launchResult, setLaunchResult] = useState<string | null>(null);
+  const [blogGenerating, setBlogGenerating] = useState(false);
+  const [igModalOpen, setIgModalOpen] = useState(false);
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsSimple[]>([]);
   const [pexelsKeyword, setPexelsKeyword] = useState('');
   const [pexelsLoading, setPexelsLoading] = useState(false);
@@ -185,6 +188,126 @@ export default function CardNewsEditorPage() {
     finally { setExporting(false); }
   };
 
+  // 카드뉴스 슬라이드를 PNG로 캡처 → Supabase Storage 업로드 → URL 반환
+  // 경로 1: Satori 서버 렌더 (지원 템플릿만, 실패 시 해당 슬라이드 null 반환)
+  // 경로 2: 클라이언트 html-to-image 캡처 (Satori가 null 반환했거나 미지원 템플릿)
+  const captureAndUploadSlides = async (): Promise<string[]> => {
+    await document.fonts.ready;
+    await new Promise(r => setTimeout(r, 300));
+
+    // ── Step A: Satori 서버 렌더 시도 (실패해도 계속 진행) ──
+    let satoriUrls: (string | null)[] = [];
+    try {
+      const res = await fetch('/api/card-news/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_news_id: id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        satoriUrls = Array.isArray(data.urls) ? data.urls : [];
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          console.warn('[captureAndUploadSlides] Satori 부분 실패:', data.errors);
+        }
+      } else {
+        console.warn('[captureAndUploadSlides] /api/card-news/render 응답 실패:', res.status);
+      }
+    } catch (err) {
+      console.warn('[captureAndUploadSlides] Satori 호출 실패, 전체 DOM 캡처로 진행:', err);
+    }
+
+    // ── Step B: DOM 캡처 fallback (Satori가 null인 슬라이드만) ──
+    const nodes = document.querySelectorAll<HTMLElement>('.card-news-export-slide');
+    if (nodes.length === 0) throw new Error('슬라이드 캡처 대상 없음');
+
+    const needsDomCapture = nodes.length !== satoriUrls.length
+      || satoriUrls.some(u => !u);
+
+    let supabase: any = null;
+    let toPng: ((node: HTMLElement, options?: Record<string, unknown>) => Promise<string>) | null = null;
+    if (needsDomCapture) {
+      const htmlToImage = await import('html-to-image');
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseAnon) throw new Error('Supabase 환경변수 미설정');
+      supabase = createClient(supabaseUrl, supabaseAnon);
+      toPng = htmlToImage.toPng;
+    }
+
+    const uploadedUrls: string[] = [];
+    const sources: ('satori' | 'dom')[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const satoriUrl = satoriUrls[i];
+      if (satoriUrl) {
+        uploadedUrls.push(satoriUrl);
+        sources.push('satori');
+        continue;
+      }
+
+      // DOM 캡처 폴백
+      if (!supabase || !toPng) throw new Error('DOM 캡처 준비 실패');
+      try {
+        const dataUrl = await toPng(nodes[i], { quality: 0.95, pixelRatio: 2, backgroundColor: '#000' });
+        const base64 = dataUrl.split(',')[1];
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: 'image/png' });
+
+        const path = `${id}/slide-${i + 1}-${Date.now()}.png`;
+        const { error: uploadError } = await supabase.storage
+          .from('blog-assets')
+          .upload(path, blob, { contentType: 'image/png', upsert: true });
+        if (uploadError) throw new Error(`슬라이드 ${i + 1} 업로드 실패: ${uploadError.message}`);
+
+        const { data: { publicUrl } } = supabase.storage.from('blog-assets').getPublicUrl(path);
+        uploadedUrls.push(publicUrl);
+        sources.push('dom');
+      } catch (err) {
+        console.error(`[captureAndUploadSlides] slide ${i + 1} DOM 캡처 실패:`, err);
+        throw err;
+      }
+    }
+
+    console.log(`[captureAndUploadSlides] 총 ${uploadedUrls.length}장 — satori: ${sources.filter(s => s === 'satori').length}, dom: ${sources.filter(s => s === 'dom').length}`);
+    return uploadedUrls;
+  };
+
+  const handleConfirmAndGenerateBlog = async () => {
+    if (!confirm('이 카드뉴스를 확정하고 블로그까지 자동 생성하시겠습니까?\n\n1. 슬라이드를 이미지로 캡처하여 저장\n2. 블로그 초안 자동 생성 (하이브리드 이미지)\n3. 블로그 편집 페이지로 이동')) return;
+    setBlogGenerating(true);
+    setLaunchResult(null);
+    try {
+      // 1. 현재 상태 저장
+      await fetch(`/api/card-news/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slides, title: cardNews?.title, status: 'CONFIRMED' }),
+      });
+
+      // 2. 슬라이드 PNG 캡처 + Storage 업로드
+      showToast(`슬라이드 ${slides.length}장 캡처 중...`);
+      const slideImageUrls = await captureAndUploadSlides();
+
+      // 3. 블로그 생성 API 호출
+      showToast('블로그 AI 생성 중... (10~20초 소요)');
+      const res = await fetch('/api/blog/from-card-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_news_id: id, slide_image_urls: slideImageUrls }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '블로그 생성 실패');
+
+      showToast('블로그 생성 완료! 편집 페이지로 이동합니다.');
+      setTimeout(() => router.push(`/admin/blog/${data.blog.id}`), 1500);
+    } catch (err: any) {
+      setLaunchResult(`오류: ${err.message}`);
+      showToast(err.message || '실패');
+    } finally {
+      setBlogGenerating(false);
+    }
+  };
+
   const handleLaunch = async () => {
     if (!confirm(`Meta Ads에 배포하시겠습니까?\n일일 예산: ${budgetKrw.toLocaleString()}원`)) return;
     setLaunching(true);
@@ -260,6 +383,25 @@ export default function CardNewsEditorPage() {
           <button onClick={handleExport} disabled={exporting}
             className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[12px] rounded hover:bg-slate-50 disabled:opacity-50 transition">
             {exporting ? '생성 중...' : 'JPG 내보내기'}
+          </button>
+          <button onClick={handleConfirmAndGenerateBlog} disabled={blogGenerating}
+            className="px-3 py-1.5 bg-indigo-600 text-white text-[12px] rounded hover:bg-indigo-700 disabled:opacity-50 transition font-medium"
+            title="카드뉴스를 이미지로 저장하고 블로그를 자동 생성합니다">
+            {blogGenerating ? '블로그 생성 중...' : '✨ 확정 + 블로그 생성'}
+          </button>
+          <button
+            onClick={() => setIgModalOpen(true)}
+            disabled={!cardNews.slide_image_urls || cardNews.slide_image_urls.length < 2}
+            className="px-3 py-1.5 bg-pink-600 text-white text-[12px] rounded hover:bg-pink-700 disabled:opacity-50 transition font-medium"
+            title={cardNews.slide_image_urls?.length ? '인스타 캐러셀 발행' : '"확정+블로그" 먼저 실행 (슬라이드 PNG 업로드 필요)'}
+          >
+            {cardNews.ig_publish_status === 'published'
+              ? '🟢 인스타 재발행'
+              : cardNews.ig_publish_status === 'queued'
+                ? '🟡 예약됨'
+                : cardNews.ig_publish_status === 'failed'
+                  ? '🔴 인스타 재시도'
+                  : '📷 인스타 발행'}
           </button>
           <button onClick={handleLaunch} disabled={launching || cardNews.status === 'LAUNCHED'}
             className="px-3 py-1.5 bg-[#001f3f] text-white text-[12px] rounded hover:bg-blue-900 disabled:opacity-50 transition font-medium">
@@ -357,12 +499,58 @@ export default function CardNewsEditorPage() {
         <div className="w-60 bg-white border-l border-slate-200 overflow-y-auto p-3 space-y-4 flex-shrink-0">
           {activeSlide ? (
             <>
-              {/* 오버레이 */}
+              {/* 디자인 템플릿 선택 (전체 슬라이드 일괄 적용 옵션) */}
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2.5">
+                <label className="text-[10px] font-semibold text-indigo-700 uppercase block mb-1.5">디자인 템플릿</label>
+                <select
+                  value={(activeSlide as any).template_id || ''}
+                  onChange={e => {
+                    const tplId = e.target.value || undefined;
+                    updateActiveSlide({ template_id: tplId } as any);
+                  }}
+                  className="w-full border border-indigo-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-indigo-400 bg-white"
+                >
+                  <option value="">기본 (V1 스타일)</option>
+                  <option value="dark_cinematic">🌃 다크 시네마틱</option>
+                  <option value="clean_white">📄 클린 화이트</option>
+                  <option value="bold_gradient">💎 볼드 그라디언트</option>
+                  <option value="magazine">📰 매거진</option>
+                  <option value="luxury_gold">✨ 럭셔리 골드</option>
+                </select>
+                <button
+                  onClick={() => {
+                    const tplId = (activeSlide as any).template_id;
+                    if (!tplId) { showToast('템플릿을 먼저 선택하세요'); return; }
+                    if (!confirm(`모든 슬라이드(${slides.length}장)에 "${tplId}" 템플릿을 적용하시겠습니까?`)) return;
+                    setSlides(prev => prev.map(s => ({ ...s, template_id: tplId } as any)));
+                    showToast('전체 슬라이드 적용 완료');
+                  }}
+                  className="w-full mt-1.5 px-2 py-1 bg-indigo-600 text-white text-[10px] rounded hover:bg-indigo-700"
+                >
+                  전체 슬라이드에 적용
+                </button>
+              </div>
+
+              {/* 배지 (옵셔널) */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">오버레이</label>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">배지 (옵션)</label>
+                <input
+                  value={(activeSlide as any).badge || ''}
+                  onChange={e => updateActiveSlide({ badge: e.target.value || null } as any)}
+                  placeholder="예: 핵심 / TIP / 01"
+                  maxLength={10}
+                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90]"
+                />
+              </div>
+
+              {/* 오버레이 (V1 호환용 — 템플릿 미선택 시 적용) */}
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">오버레이 (V1 전용)</label>
                 <select value={activeSlide.overlay_style}
                   onChange={e => updateActiveSlide({ overlay_style: e.target.value as OverlayStyle })}
-                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90]">
+                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90]"
+                  disabled={!!(activeSlide as any).template_id}
+                  title={(activeSlide as any).template_id ? '템플릿 사용 시 무효' : ''}>
                   {(Object.keys(OVERLAY_LABELS) as OverlayStyle[]).map(k => (
                     <option key={k} value={k}>{OVERLAY_LABELS[k]}</option>
                   ))}
@@ -516,6 +704,41 @@ export default function CardNewsEditorPage() {
           {toast}
         </div>
       )}
+
+      {/* Instagram 발행 모달 */}
+      {igModalOpen && cardNews && (
+        <InstagramPublishModal
+          cardNewsId={id!}
+          slideImageUrls={cardNews.slide_image_urls ?? []}
+          defaultCaption={buildDefaultCaption(cardNews, slides)}
+          onClose={() => setIgModalOpen(false)}
+          onSuccess={(result) => {
+            setIgModalOpen(false);
+            if (result.mode === 'now') {
+              showToast(`🟢 인스타 발행 완료 (post_id: ${result.post_id?.slice(0, 12)}...)`);
+            } else {
+              showToast(`🟡 ${result.scheduled_for?.slice(0, 10)} 예약 저장됨`);
+            }
+            // 상태 갱신 위해 카드뉴스 재조회
+            fetch(`/api/card-news/${id}`)
+              .then(r => r.json())
+              .then(d => d?.card_news && setCardNews(d.card_news))
+              .catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/** 캡션 초기값: 첫 슬라이드 + 지역 해시태그 */
+function buildDefaultCaption(cn: CardNews, slides: CardNewsSlide[]): string {
+  const headline = slides[0]?.headline ?? cn.title;
+  const body = slides[0]?.body ?? '';
+  const dest = (cn as any).package_destination as string | undefined;
+  const destTags = dest
+    ? dest.split(/[\/,·\s]+/).filter(Boolean).slice(0, 3).map(t => `#${t.replace(/[^가-힣a-zA-Z0-9]/g, '')}`).join(' ')
+    : '';
+  const commonTags = '#여소남 #여행스타그램 #해외여행 #패키지여행';
+  return [headline, '', body, '', destTags, commonTags].filter(Boolean).join('\n').slice(0, 2200);
 }

@@ -82,9 +82,14 @@ export default function CreativesPage() {
 
   // 상품 목록 로드
   useEffect(() => {
-    fetch('/api/packages?status=approved&limit=100')
+    fetch('/api/packages?limit=200')
       .then(r => r.json())
-      .then(d => setPackages(d.packages ?? []))
+      .then(d => {
+        const all = d.data ?? d.packages ?? [];
+        setPackages(all.filter((p: { status: string }) =>
+          ['approved', 'active', 'pending', 'pending_review', 'draft'].includes(p.status)
+        ));
+      })
       .catch(() => {});
   }, []);
 

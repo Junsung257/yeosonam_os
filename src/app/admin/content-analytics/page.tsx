@@ -35,11 +35,21 @@ interface KPI {
   avg_conversion_rate: string;
 }
 
+interface LearningStatus {
+  ready: boolean;
+  stats: { published_blogs: number; total_engagement: number };
+  thresholds: { min_posts: number; min_engagement: number };
+  progress: { posts_pct: number; engagement_pct: number };
+}
+
 export default function ContentAnalyticsPage() {
   const [rows, setRows] = useState<ContentRow[]>([]);
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'traffic' | 'conversion' | 'revenue' | 'profit'>('traffic');
+  const [learningStatus, setLearningStatus] = useState<LearningStatus | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeResult, setOptimizeResult] = useState<string>('');
 
   useEffect(() => {
     setLoading(true);
@@ -51,7 +61,33 @@ export default function ContentAnalyticsPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    // 학습 엔진 상태 조회
+    fetch('/api/agent/prompt-optimizer')
+      .then(r => r.json())
+      .then(d => setLearningStatus(d))
+      .catch(() => {});
   }, []);
+
+  const runOptimizer = async () => {
+    setOptimizing(true);
+    setOptimizeResult('');
+    try {
+      const res = await fetch('/api/agent/prompt-optimizer', { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'suggestion_created') {
+        setOptimizeResult(`✓ 제안이 결재함에 등록되었습니다. (/admin/jarvis?tab=actions)`);
+      } else if (data.status === 'insufficient_data' || data.status === 'insufficient_engagement') {
+        setOptimizeResult(`⚠ ${data.message}`);
+      } else {
+        setOptimizeResult(`에러: ${data.error || '알 수 없음'}`);
+      }
+    } catch (err: any) {
+      setOptimizeResult(`에러: ${err.message}`);
+    } finally {
+      setOptimizing(false);
+    }
+  };
 
   const sorted = [...rows].sort((a, b) => {
     if (sortBy === 'traffic') return b.traffic_count - a.traffic_count;
@@ -85,6 +121,62 @@ export default function ContentAnalyticsPage() {
         <h1 className="text-[16px] font-semibold text-slate-800">콘텐츠 성과</h1>
         <p className="text-[11px] text-slate-500 mt-0.5">블로그 글별 유입 → 전환 → 매출 어트리뷰션 (First-touch + Last-touch)</p>
       </div>
+
+      {/* 자가학습 엔진 상태 */}
+      {learningStatus && (
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-[13px] font-semibold text-indigo-900 flex items-center gap-1.5">
+                🧠 자비스 블로그 학습 엔진
+                {learningStatus.ready ? (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">학습 가능</span>
+                ) : (
+                  <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">데이터 수집 중</span>
+                )}
+              </h2>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                상위 vs 하위 성과 글 비교 분석 → 프롬프트 개선안 자동 제안 (결재함에 등록)
+              </p>
+            </div>
+            <button
+              onClick={runOptimizer}
+              disabled={!learningStatus.ready || optimizing}
+              className="px-3 py-1.5 bg-indigo-600 text-white text-[12px] font-medium rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title={learningStatus.ready ? '학습 실행' : '데이터가 더 필요합니다'}
+            >
+              {optimizing ? '분석 중...' : '학습 실행'}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-slate-500">발행된 블로그</span>
+                <span className="text-[11px] font-semibold tabular-nums">{learningStatus.stats.published_blogs} / {learningStatus.thresholds.min_posts}</span>
+              </div>
+              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500 rounded-full transition-all"
+                  style={{ width: `${learningStatus.progress.posts_pct}%` }} />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-slate-500">Engagement 로그</span>
+                <span className="text-[11px] font-semibold tabular-nums">{learningStatus.stats.total_engagement} / {learningStatus.thresholds.min_engagement}</span>
+              </div>
+              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-full bg-purple-500 rounded-full transition-all"
+                  style={{ width: `${learningStatus.progress.engagement_pct}%` }} />
+              </div>
+            </div>
+          </div>
+          {optimizeResult && (
+            <div className="mt-3 px-2.5 py-2 bg-white/80 rounded text-[11px] text-slate-700 border border-slate-200">
+              {optimizeResult}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI 카드 */}
       {kpi && (

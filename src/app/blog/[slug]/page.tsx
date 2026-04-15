@@ -5,6 +5,8 @@ import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import BlogTracker from '@/components/BlogTracker';
+import TableOfContents from '@/components/blog/TableOfContents';
+import { extractTocAndInjectIds, shouldShowToc } from '@/lib/blog-toc';
 
 export const revalidate = 3600; // 1시간 ISR
 
@@ -100,7 +102,8 @@ export async function generateMetadata({
   const description =
     post.seo_description ||
     `${post.travel_packages?.destination || ''} 여행 가이드 — 여소남이 추천하는 알찬 여행 정보`;
-  const ogImage = post.og_image_url || `${BASE_URL}/og-image.png`;
+  // DB에 og_image_url이 있으면 우선, 없으면 opengraph-image.tsx가 자동 생성
+  const dbOgImage = post.og_image_url;
 
   return {
     title,
@@ -112,13 +115,13 @@ export async function generateMetadata({
       description,
       url: `${BASE_URL}/blog/${slug}`,
       publishedTime: post.published_at,
-      images: [{ url: ogImage, width: 1200, height: 630 }],
+      ...(dbOgImage ? { images: [{ url: dbOgImage, width: 1200, height: 630 }] } : {}),
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: [ogImage],
+      ...(dbOgImage ? { images: [dbOgImage] } : {}),
     },
   };
 }
@@ -147,6 +150,23 @@ export default async function BlogDetailPage({
   const pkg = post.travel_packages;
   const title = post.seo_title || pkg?.title || '여행 가이드';
   const relatedPosts = await getRelatedPosts(slug, pkg?.destination);
+
+  // 본문 sanitize + TOC 추출
+  let bodyHtml = '';
+  let toc: ReturnType<typeof extractTocAndInjectIds>['toc'] = [];
+  let showToc = false;
+  if (post.blog_html) {
+    const rawHtml = /<[a-z][\s\S]*>/i.test(post.blog_html)
+      ? post.blog_html
+      : (marked.parse(
+          post.blog_html.replace(/\*\*([^*\n\[]+?)\*\*/g, (_m, inner) => inner)
+        ) as string);
+    const sanitized = DOMPurify.sanitize(rawHtml);
+    const result = extractTocAndInjectIds(sanitized);
+    bodyHtml = result.html;
+    toc = result.toc;
+    showToc = shouldShowToc(sanitized, toc);
+  }
 
   return (
     <>
@@ -243,8 +263,8 @@ export default async function BlogDetailPage({
 
       <main className="min-h-screen bg-white">
         {/* 상단 네비 */}
-        <nav className="border-b bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3 text-sm text-gray-500">
+        <nav className="border-b bg-white/80 backdrop-blur sticky top-0 z-30">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-gray-500">
             <Link href="/" className="hover:text-indigo-600">홈</Link>
             <span>/</span>
             <Link href="/blog" className="hover:text-indigo-600">블로그</Link>
@@ -253,7 +273,8 @@ export default async function BlogDetailPage({
           </div>
         </nav>
 
-        <article className="mx-auto max-w-3xl px-4 py-8">
+        <div className="mx-auto max-w-6xl px-4 py-8 md:flex md:gap-10">
+          <article className="flex-1 min-w-0 max-w-3xl">
           {/* 헤더 */}
           <header className="mb-8">
             <div className="mb-3 flex items-center gap-2">
@@ -298,19 +319,15 @@ export default async function BlogDetailPage({
             </div>
           )}
 
-          {/* 본문 (마크다운→HTML 변환 + DOMPurify XSS 방어) */}
-          {post.blog_html ? (
-            <div
-              className="prose prose-lg prose-indigo max-w-none"
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(
-                  // HTML 태그가 이미 있으면 그대로, 없으면 마크다운으로 파싱
-                  /<[a-z][\s\S]*>/i.test(post.blog_html)
-                    ? post.blog_html
-                    : marked.parse(post.blog_html) as string,
-                ),
-              }}
-            />
+          {/* 본문 — 모바일 TOC + 본문 HTML */}
+          {bodyHtml ? (
+            <>
+              {showToc && <TableOfContents items={toc} variant="mobile" />}
+              <div
+                className="prose prose-lg prose-indigo max-w-none scroll-smooth"
+                dangerouslySetInnerHTML={{ __html: bodyHtml }}
+              />
+            </>
           ) : (
             <p className="py-10 text-center text-gray-400">본문이 준비 중입니다.</p>
           )}
@@ -337,7 +354,15 @@ export default async function BlogDetailPage({
               </Link>
             </div>
           )}
-        </article>
+          </article>
+
+          {/* 데스크톱 사이드바 — TOC */}
+          {showToc && (
+            <aside className="hidden md:block w-56 shrink-0">
+              <TableOfContents items={toc} variant="desktop" />
+            </aside>
+          )}
+        </div>
 
         {/* 관련 글 */}
         {relatedPosts.length > 0 && (
