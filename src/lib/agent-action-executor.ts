@@ -159,6 +159,49 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
     return { acknowledged: true, kind, affiliate_id, affiliate_name }
   },
 
+  // ── 일괄 정산 확정 (2026-04-16) ───────────────────────────────────
+  // booking_ids 배열의 모든 예약을 settlement_confirmed_at = NOW() 로 마킹
+  bulk_confirm_settlements: async (args) => {
+    const { booking_ids, reason } = args || {}
+    if (!Array.isArray(booking_ids) || booking_ids.length === 0) {
+      throw new Error('bulk_confirm_settlements: booking_ids 배열 필수')
+    }
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('bookings')
+      .update({
+        settlement_confirmed_at: now,
+        settlement_confirmed_by: 'jarvis_bulk',
+        updated_at: now,
+      })
+      .in('id', booking_ids)
+      .is('settlement_confirmed_at', null)  // 이미 확정된 건은 skip
+      .select('id, booking_no')
+
+    if (error) throw new Error(`bulk_confirm_settlements: ${error.message}`)
+
+    // 감사 로그
+    await supabaseAdmin.from('audit_logs').insert({
+      action: 'BULK_CONFIRM_SETTLEMENTS',
+      target_type: 'booking',
+      target_id: `bulk:${booking_ids.length}건`,
+      description: `자비스 일괄 정산확정: ${data?.length ?? 0}/${booking_ids.length}건 적용. 사유: ${reason ?? '(미기재)'}`,
+      after_value: {
+        requested: booking_ids.length,
+        confirmed: data?.length ?? 0,
+        confirmed_booking_nos: (data ?? []).map((b: any) => b.booking_no),
+      },
+    } as never).then(() => {}).catch(() => {})
+
+    return {
+      requested: booking_ids.length,
+      confirmed: data?.length ?? 0,
+      skipped: booking_ids.length - (data?.length ?? 0),
+      booking_nos: (data ?? []).map((b: any) => b.booking_no),
+    }
+  },
+
   // ── 고객 병합 (Phase 1 dedup) ─────────────────────────────────────
   // primary_id를 생존시키고, duplicate_id의 모든 참조를 primary_id로 이관 후 soft-delete
   // 단계별 에러 컨텍스트 포함: "merge_customers[step=load]: column 'xxx' does not exist"
