@@ -33,6 +33,13 @@ const PATCH_FIELDS = [
   'manager_name', 'package_title', 'departure_date',
   // 결제 정보 (직접 수정용)
   'paid_amount', 'payment_status',
+  // 정산 확정 / 커미션 (20260418 마이그레이션)
+  'settlement_confirmed_at', 'settlement_confirmed_by',
+  'commission_rate', 'commission_amount',
+  // 취소/환불 (20260418010000 마이그레이션)
+  'cancelled_at', 'cancellation_reason', 'refund_settled_at',
+  // 상태 직접 수정
+  'status', 'notes',
 ] as const;
 
 type PatchField = typeof PATCH_FIELDS[number];

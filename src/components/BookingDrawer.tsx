@@ -49,6 +49,10 @@ interface BookingDetail {
   created_at: string;
   customers?: { id: string; name: string; phone?: string };
   metadata?: Record<string, unknown>;
+  settlement_confirmed_at?: string | null;
+  settlement_confirmed_by?: string | null;
+  commission_rate?: number | null;
+  commission_amount?: number | null;
 }
 
 interface MessageLog {
@@ -315,6 +319,8 @@ function DynamicQuoteBuilder({
   rows, setRows, isDirty, setIsDirty,
   netOverride, setNetOverride,
   overrideMemo, setOverrideMemo,
+  commissionRate, setCommissionRate,
+  commissionAmount, setCommissionAmount,
   disabled,
 }: {
   rows: QuoteRow[];
@@ -325,14 +331,28 @@ function DynamicQuoteBuilder({
   setNetOverride: (v: number | null) => void;
   overrideMemo: string;
   setOverrideMemo: (v: string) => void;
+  commissionRate: number | null;
+  setCommissionRate: (v: number | null) => void;
+  commissionAmount: number | null;
+  setCommissionAmount: (v: number | null) => void;
   disabled?: boolean;
 }) {
   const [isEditingNet, setIsEditingNet] = useState(false);
   const netInputRef = useRef<HTMLInputElement>(null);
 
   const computedNet = rows.reduce((s, r) => s + r.count * r.netPrice, 0);
-  const effectiveNet = netOverride !== null ? netOverride : computedNet;
   const totalSale    = rows.reduce((s, r) => s + r.count * r.salePrice, 0);
+
+  // effectiveNet 계산 우선순위:
+  //  1) netOverride (수동 조정) — 최우선
+  //  2) rows의 netPrice 합 (행별 원가 입력됨)
+  //  3) totalSale - commissionAmount (커미션 기반 역산)
+  //  4) 0
+  const effectiveNet =
+    netOverride !== null ? netOverride
+    : computedNet > 0 ? computedNet
+    : (commissionAmount && commissionAmount > 0) ? totalSale - commissionAmount
+    : 0;
 
   const updateRow = (idx: number, field: keyof QuoteRow, val: string | number) => {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
@@ -458,6 +478,65 @@ function DynamicQuoteBuilder({
           <span className="text-[18px] leading-none font-light">+</span> 커스텀 항목 추가
         </button>
 
+        {/* ── 랜드사 커미션 (rate ↔ amount 상호 자동 계산) ────────────── */}
+        <div className="mt-4 pt-3 border-t border-dashed border-gray-200 bg-amber-50/40 -mx-4 px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[12px] font-bold text-amber-800 flex items-center gap-1">
+              🏷️ 랜드사 커미션
+              <span className="text-[10px] text-amber-600 font-normal">(% 또는 총액 — 한쪽만 입력, 나머지 자동)</span>
+            </span>
+            {(commissionRate || commissionAmount) ? (
+              <button onMouseDown={() => { setCommissionRate(null); setCommissionAmount(null); setIsDirty(true); }}
+                disabled={disabled}
+                className="text-[10px] text-gray-400 hover:text-red-500 transition">초기화</button>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-amber-700 mb-0.5">커미션율 (%)</label>
+              <input type="number" min={0} max={100} step={0.1}
+                placeholder="예: 10"
+                value={commissionRate ?? ''}
+                disabled={disabled}
+                onChange={e => {
+                  const v = e.target.value === '' ? null : parseFloat(e.target.value);
+                  setCommissionRate(v);
+                  if (v !== null && totalSale > 0) {
+                    setCommissionAmount(Math.round(totalSale * v / 100));
+                  } else if (v === null) {
+                    setCommissionAmount(null);
+                  }
+                  setIsDirty(true);
+                }}
+                className="w-full border border-amber-200 bg-white rounded-lg px-2 py-1.5 text-right text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-amber-700 mb-0.5">커미션 총액 (원)</label>
+              <input type="number" min={0}
+                placeholder="또는 직접 입력"
+                value={commissionAmount ?? ''}
+                disabled={disabled}
+                onChange={e => {
+                  const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                  setCommissionAmount(v);
+                  if (v !== null && totalSale > 0) {
+                    setCommissionRate(Math.round((v / totalSale) * 10000) / 100);
+                  } else if (v === null) {
+                    setCommissionRate(null);
+                  }
+                  setIsDirty(true);
+                }}
+                className="w-full border border-amber-200 bg-white rounded-lg px-2 py-1.5 text-right text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
+          </div>
+          {commissionAmount && commissionAmount > 0 && totalSale > 0 && netOverride === null && computedNet === 0 && (
+            <p className="text-[11px] text-amber-700 mt-2">
+              ↳ 실 원가 자동: {totalSale.toLocaleString()} − {commissionAmount.toLocaleString()} = <strong>{(totalSale - commissionAmount).toLocaleString()}원</strong>
+              <span className="text-[10px] text-amber-600 ml-1">(성인/아동 행에 원가 직접 입력하면 그쪽 우선)</span>
+            </p>
+          )}
+        </div>
+
         {/* ── 판매가 합계 ─────────────────────────────────────────────── */}
         <div className="mt-4 pt-3 border-t-2 border-gray-100 flex items-center justify-between">
           <span className="text-[13px] font-bold text-gray-500 px-1">총 판매가</span>
@@ -577,6 +656,10 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
   const [netOverride, setNetOverride]       = useState<number | null>(null);
   const [overrideMemo, setOverrideMemo]     = useState('');
 
+  // 랜드사 커미션 (rate ↔ amount 상호 자동 계산, UI에서만 연동)
+  const [commissionRate, setCommissionRate]     = useState<number | null>(null);
+  const [commissionAmount, setCommissionAmount] = useState<number | null>(null);
+
   const timelineRef = useRef<HTMLDivElement>(null);
   const visible = !!bookingId;
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -588,12 +671,17 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
   }, []);
 
   // ── Blueprint (장부) 계산 ─────────────────────────────────────────────────
+  // effectiveNet 우선순위: netOverride > rows.netPrice 합 > (totalSale - commissionAmount)
   const blueprint = useMemo(() => {
     const totalSale   = rows.reduce((s, r) => s + r.count * r.salePrice, 0);
     const totalNet    = rows.reduce((s, r) => s + r.count * r.netPrice,  0);
-    const effectiveNet = netOverride !== null ? netOverride : totalNet;
+    let effectiveNet: number;
+    if (netOverride !== null) effectiveNet = netOverride;
+    else if (totalNet > 0)    effectiveNet = totalNet;
+    else if (commissionAmount && commissionAmount > 0) effectiveNet = Math.max(0, totalSale - commissionAmount);
+    else effectiveNet = 0;
     return { totalSale, totalNet, effectiveNet };
-  }, [rows, netOverride]);
+  }, [rows, netOverride, commissionAmount]);
 
   // ── Reality (통장) 계산 — txs 배열에만 의존, 빌더와 완전 분리 ───────────
   const reality = useMemo(() => {
@@ -658,6 +746,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
       setNetOverride(typeof savedOverride === 'number' ? savedOverride : null);
     }
     setOverrideMemo(typeof booking.metadata?.overrideMemo === 'string' ? booking.metadata.overrideMemo : '');
+    setCommissionRate(typeof booking.commission_rate === 'number' ? booking.commission_rate : null);
+    setCommissionAmount(typeof booking.commission_amount === 'number' && booking.commission_amount > 0 ? booking.commission_amount : null);
     setIsDirty(false);
   }, [booking]);
 
@@ -691,6 +781,36 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
     } finally { setTransitioning(null); }
   };
 
+  // ── 정산 확정 / 되돌리기 ─────────────────────────────────────────────
+  const isConfirmedSettlement = !!booking?.settlement_confirmed_at;
+  const [confirmingSettlement, setConfirmingSettlement] = useState(false);
+
+  const handleConfirmSettlement = async (confirm: boolean) => {
+    if (!bookingId) return;
+    setConfirmingSettlement(true);
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settlement_confirmed_at: confirm ? new Date().toISOString() : null,
+          settlement_confirmed_by: confirm ? 'admin' : null,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        showToast(`정산 확정 실패 — ${(errData as { error?: string }).error ?? '다시 시도'}`, 'err');
+        return;
+      }
+      await fetchAll(bookingId);
+      showToast(confirm ? '✅ 정산 확정 — 목록에서 숨겨집니다' : '♻️ 정산 확정 해제');
+    } catch {
+      showToast('네트워크 오류 — 다시 시도해주세요', 'err');
+    } finally {
+      setConfirmingSettlement(false);
+    }
+  };
+
   const handleSettlementSave = async () => {
     if (!bookingId) return;
     setSavingSettlement(true);
@@ -721,6 +841,9 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
           total_cost:      blueprint.effectiveNet,
           // 오버라이드 잠금 플래그 — netOverride가 있을 때만 true
           is_manual_cost:  netOverride !== null,
+          // 랜드사 커미션 (null이면 명시적으로 클리어)
+          commission_rate:   commissionRate,
+          commission_amount: commissionAmount ?? 0,
           metadata: {
             ...(booking?.metadata ?? {}),
             customRows,
@@ -774,6 +897,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
       setNetOverride(typeof savedOverride === 'number' ? savedOverride : null);
     }
     setOverrideMemo(typeof booking.metadata?.overrideMemo === 'string' ? booking.metadata.overrideMemo : '');
+    setCommissionRate(typeof booking.commission_rate === 'number' ? booking.commission_rate : null);
+    setCommissionAmount(typeof booking.commission_amount === 'number' && booking.commission_amount > 0 ? booking.commission_amount : null);
     setIsDirty(false);
   };
 
@@ -994,6 +1119,10 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
               setNetOverride={setNetOverride}
               overrideMemo={overrideMemo}
               setOverrideMemo={setOverrideMemo}
+              commissionRate={commissionRate}
+              setCommissionRate={setCommissionRate}
+              commissionAmount={commissionAmount}
+              setCommissionAmount={setCommissionAmount}
               disabled={savingSettlement}
             />
 
@@ -1121,6 +1250,24 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
               )}
               {savingSettlement ? '저장 중...' : isDirty ? '장부 저장' : '저장됨'}
             </button>
+
+            {/* 정산 확정 / 해제 */}
+            {isConfirmedSettlement ? (
+              <button onClick={() => handleConfirmSettlement(false)}
+                disabled={confirmingSettlement}
+                title={`확정 시각: ${booking?.settlement_confirmed_at?.slice(0,19).replace('T',' ') ?? ''}`}
+                className="px-4 py-2 text-[13px] bg-slate-100 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-200 transition whitespace-nowrap">
+                ♻️ 정산확정됨 · 해제
+              </button>
+            ) : (
+              <button onClick={() => handleConfirmSettlement(true)}
+                disabled={confirmingSettlement}
+                title="이 예약을 '정산 끝'으로 마킹 → 목록에서 기본 숨김"
+                className="px-4 py-2 text-[13px] bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition whitespace-nowrap font-semibold">
+                ✅ 정산 확정
+              </button>
+            )}
+
             <button onClick={onClose}
               className="px-4 py-2 text-[13px] text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
               닫기

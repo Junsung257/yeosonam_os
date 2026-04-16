@@ -32,6 +32,10 @@ interface Booking {
   cancellation_reason?: string | null;
   refund_settled_at?: string | null;
   net_cashflow?: number | null;
+  settlement_confirmed_at?: string | null;
+  settlement_confirmed_by?: string | null;
+  commission_rate?: number | null;
+  commission_amount?: number | null;
   departure_date?: string;
   departure_region?: string;
   booking_date?: string;
@@ -723,7 +727,7 @@ export default function BookingsPage() {
   // ── 필터/탭 ────────────────────────────────────────────────────────────────
   const [lifecycleTab, setLifecycleTab] = useState<'active' | 'done' | 'cancelled' | 'trash'>('active');
   const [activeTab, setActiveTab] = useState<
-    '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'ghost_cancel' | 'over_cost' | 'refund_pending'
+    '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'over_cost' | 'refund_pending' | 'settlement_pending'
   >('');
   const [rawSearch, setRawSearch]       = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
@@ -1113,12 +1117,20 @@ export default function BookingsPage() {
 
   const unpaidRiskCnt    = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return ['pending','confirmed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && (b.total_price||0)-(b.paid_amount||0) > 0; }).length, [bookings, today]); // eslint-disable-line
   const missingCnt       = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (!b.customers?.phone || !b.departure_date || !b.departure_region)).length, [bookings]);
-  // 유령취소: status != cancelled 인데 입출금 순현금 ±5,000 이내 (송금수수료 오차)
-  const ghostCancelCnt   = useMemo(() => bookings.filter(b => b.status !== 'cancelled' && (b.paid_amount||0) > 0 && (b.total_paid_out||0) > 0 && Math.abs((b.paid_amount||0) - (b.total_paid_out||0)) <= 5000).length, [bookings]);
   // 원가초과: 진짜 손실 (출금이 입금보다 -10k 이상)
   const overCostCnt      = useMemo(() => bookings.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000).length, [bookings]);
   // 환불대기: 취소인데 아직 환불 남음
   const refundPendingCnt = useMemo(() => bookings.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000).length, [bookings]);
+  // 정산대기 D-7 지남: 출발 7일 이상 지났는데 settlement_confirmed_at이 비어있는 취소 제외 건
+  const settlementPendingCnt = useMemo(() => {
+    const now = Date.now();
+    return bookings.filter(b => {
+      if (b.status === 'cancelled' || b.settlement_confirmed_at) return false;
+      if (!b.departure_date) return false;
+      const daysAfter = (now - new Date(b.departure_date).getTime()) / 86400000;
+      return daysAfter >= 7;
+    }).length;
+  }, [bookings]);
   const prepDocsCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; }).length, [bookings, today]); // eslint-disable-line
   const depositUnpaidCnt = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0)).length, [bookings]);
   const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, today]); // eslint-disable-line
@@ -1132,6 +1144,8 @@ export default function BookingsPage() {
       list = list.filter(b => {
         if (b.is_deleted) return false;
         if (!['pending', 'confirmed'].includes(b.status)) return false;
+        // 정산 확정된 건은 기본 숨김 (settlement_pending 필터에서만 보임)
+        if (b.settlement_confirmed_at && activeTab !== 'settlement_pending') return false;
         if (!b.departure_date) return true;
         return new Date(b.departure_date).getTime() >= today.getTime();
       });
@@ -1152,9 +1166,17 @@ export default function BookingsPage() {
     else if (activeTab === 'land_bomb')  list = list.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; });
     else if (activeTab === 'prep_docs')  list = list.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; });
     else if (activeTab === 'deposit_unpaid') list = list.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0));
-    else if (activeTab === 'ghost_cancel')   list = list.filter(b => b.status !== 'cancelled' && (b.paid_amount||0) > 0 && (b.total_paid_out||0) > 0 && Math.abs((b.paid_amount||0) - (b.total_paid_out||0)) <= 5000);
     else if (activeTab === 'over_cost')       list = list.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000);
     else if (activeTab === 'refund_pending')  list = list.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000);
+    else if (activeTab === 'settlement_pending') {
+      const now = Date.now();
+      list = list.filter(b => {
+        if (b.status === 'cancelled' || b.settlement_confirmed_at) return false;
+        if (!b.departure_date) return false;
+        const daysAfter = (now - new Date(b.departure_date).getTime()) / 86400000;
+        return daysAfter >= 7;
+      });
+    }
 
     if (searchQuery.trim()) {
       if (parsedDateRange) {
@@ -1370,9 +1392,9 @@ export default function BookingsPage() {
             ['prep_docs',      '준비물/확정서',       prepDocsCnt,      'rose'],
             ['deposit_unpaid', '계약금 미결제',       depositUnpaidCnt, 'orange'],
             ['land_bomb',      '랜드사 미결제 폭탄',  landBombCnt,      'red'],
-            ['ghost_cancel',   '💸 유령취소 의심',    ghostCancelCnt,   'purple'],
             ['over_cost',      '🩸 원가초과',          overCostCnt,      'red'],
             ['refund_pending', '⚠️ 환불대기',         refundPendingCnt, 'amber'],
+            ['settlement_pending', '⏳ 정산대기(D-7 지남)', settlementPendingCnt, 'slate'],
           ] as [string, string, number, string][]).map(([tab, label, cnt, color]) => (
             <button key={tab} onClick={() => setActiveTab(prev => prev === tab ? '' : tab as typeof activeTab)}
               className={`px-3 py-1 rounded-full text-[11px] font-medium transition flex items-center gap-1 whitespace-nowrap
@@ -1464,10 +1486,10 @@ export default function BookingsPage() {
                 const isCancelled     = b.status === 'cancelled';
                 const isRefundSettled = isCancelled && (!!b.refund_settled_at || Math.abs(netCashflow) <= 5000) && (b.paid_amount || 0) > 0;
                 const isRefundPending = isCancelled && netCashflow > 5000;
-                // 유령 취소: status가 취소 아닌데 입출금 상쇄되어 순현금 거의 0
-                const isGhostCancel   = !isCancelled && (b.paid_amount || 0) > 0 && (b.total_paid_out || 0) > 0 && Math.abs(netCashflow) <= 5000;
                 // 원가 초과: 실제 손실 (송금 초과)
                 const isOverCost      = !isCancelled && netCashflow < -10000;
+                // 정산 확정 여부 (관리자가 '이제 안 봐도 됨' 표시)
+                const isSettled       = !!b.settlement_confirmed_at;
                 const isSel           = selected.has(b.id);
                 const hasBusanRec     = busanRec.has(b.id);
                 const isEditing       = (field: string) => editingCell?.id === b.id && editingCell.field === field;
@@ -1513,8 +1535,8 @@ export default function BookingsPage() {
                         {isDepositUnpaid && !isCancelled && <span className="text-[11px] text-orange-500 font-bold" title="계약금 미결제">미납</span>}
                         {isCancelled    && isRefundSettled && <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full" title={`환불완료 (순현금 ${netCashflow.toLocaleString()}원)`}>♻️ 환불완료</span>}
                         {isCancelled    && isRefundPending && <span className="text-[11px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold" title={`환불대기 — ${netCashflow.toLocaleString()}원 남음`}>⚠️ 환불대기</span>}
-                        {isGhostCancel  && <span className="text-[11px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold animate-pulse" title={`유령취소 의심 — 입금 ${(b.paid_amount||0).toLocaleString()} / 출금 ${(b.total_paid_out||0).toLocaleString()} / 순 ${netCashflow.toLocaleString()}`}>💸 유령취소</span>}
                         {isOverCost     && <span className="text-[11px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold" title={`원가초과 ${Math.abs(netCashflow).toLocaleString()}원 — 출금이 입금보다 큼`}>🩸 원가초과</span>}
+                        {isSettled      && <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full" title={`정산 확정: ${b.settlement_confirmed_at?.slice(0,10)}`}>♻️ 정산확정</span>}
                       </div>
                     </td>
 
@@ -1788,7 +1810,6 @@ export default function BookingsPage() {
                             <p className="text-orange-300 font-semibold mt-2 mb-1">랜드사 미지급금</p>
                             <p>{fmt(Math.max(0, agencyUnpaid))}</p>
                             {isLandBomb && <p className="text-red-400 font-bold mt-1.5 animate-pulse">출발 {dDiff}일 전 미송금</p>}
-                            {isGhostCancel && <p className="text-purple-400 font-bold mt-1.5">💸 유령취소 의심 — 상태 확인 필요</p>}
                             {isOverCost && <p className="text-red-400 font-bold mt-1.5">🩸 원가초과 {Math.abs(netCashflow).toLocaleString()}원</p>}
                           </>
                         )}
