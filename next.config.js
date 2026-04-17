@@ -23,8 +23,6 @@ const nextConfig = {
     return [
       { source: '/tour/:id', destination: '/packages/:id', permanent: true },
       { source: '/products/:id', destination: '/packages/:id', permanent: true },
-      // Sitemap 경로 통합 (Google Search Console 호환)
-      { source: '/api/sitemap.xml', destination: '/api/sitemap', permanent: true },
     ];
   },
 };
