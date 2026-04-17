@@ -58,9 +58,9 @@ const PUBLIC_PATHS = [
   '/blog',
   '/blog/destination',
   '/api/blog',
-  '/api/sitemap',
   '/api/rss',
   '/api/blog-engagement',
+  '/sitemap.xml',
 ];
 
 function isPublicPath(pathname: string) {

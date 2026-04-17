@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://yeosonam.com/api/sitemap.xml
+Sitemap: https://yeosonam.com/sitemap.xml
