@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -24,6 +25,7 @@ interface BlogPost {
   channel: string;
   published_at: string;
   created_at: string;
+  updated_at: string | null;
   product_id: string | null;
   tracking_id: string | null;
   travel_packages: {
@@ -54,7 +56,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   const { data } = await supabaseAdmin
     .from('content_creatives')
     .select(
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)',
     )
     .eq('slug', slug)
     .eq('status', 'published')
@@ -115,6 +117,7 @@ export async function generateMetadata({
       description,
       url: `${BASE_URL}/blog/${slug}`,
       publishedTime: post.published_at,
+      modifiedTime: post.updated_at || post.published_at,
       ...(dbOgImage ? { images: [{ url: dbOgImage, width: 1200, height: 630 }] } : {}),
     },
     twitter: {
@@ -176,12 +179,13 @@ export default async function BlogDetailPage({
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             '@context': 'https://schema.org',
-            '@type': 'Article',
+            '@type': 'BlogPosting',
             headline: title,
             description: post.seo_description || '',
             image: post.og_image_url || `${BASE_URL}/og-image.png`,
             datePublished: post.published_at,
-            dateModified: post.published_at,
+            dateModified: post.updated_at || post.published_at,
+            inLanguage: 'ko-KR',
             author: {
               '@type': 'Organization',
               name: '여소남',
@@ -310,11 +314,14 @@ export default async function BlogDetailPage({
 
           {/* OG 이미지 */}
           {post.og_image_url && (
-            <div className="mb-8 overflow-hidden rounded-xl">
-              <img
+            <div className="mb-8 overflow-hidden rounded-xl relative aspect-[16/9]">
+              <Image
                 src={post.og_image_url}
                 alt={title}
-                className="w-full object-cover"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 768px"
+                priority
               />
             </div>
           )}
@@ -377,12 +384,13 @@ export default async function BlogDetailPage({
                     className="group overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm transition hover:shadow-md"
                   >
                     {rp.og_image_url ? (
-                      <div className="aspect-[16/9] overflow-hidden bg-gray-100">
-                        <img
+                      <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
+                        <Image
                           src={rp.og_image_url}
                           alt={rp.seo_title || ''}
-                          className="h-full w-full object-cover transition group-hover:scale-105"
-                          loading="lazy"
+                          fill
+                          className="object-cover transition group-hover:scale-105"
+                          sizes="(max-width: 640px) 100vw, 33vw"
                         />
                       </div>
                     ) : (
