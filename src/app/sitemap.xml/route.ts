@@ -48,7 +48,7 @@ async function generateSitemap() {
     xml += `    <loc>${BASE_URL}/blog/${post.slug}</loc>\n`;
     xml += `    <lastmod>${new Date(post.published_at).toISOString().split('T')[0]}</lastmod>\n`;
     xml += '    <priority>0.7</priority>\n';
-    xml += '    <changefreq>monthly</changefreq>\n`;
+    xml += '    <changefreq>monthly</changefreq>\n';
     xml += '  </url>\n';
   });
 
