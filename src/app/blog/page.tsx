@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
+
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const revalidate = 600; // 10분 ISR
@@ -190,14 +190,12 @@ export default async function BlogListPage({
                 className="group overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md"
               >
                 {post.og_image_url ? (
-                  <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
-                    <Image
+                  <div className="aspect-[16/9] overflow-hidden bg-gray-100">
+                    <img
                       src={post.og_image_url}
                       alt={post.seo_title || '블로그 썸네일'}
-                      fill
-                      unoptimized
-                      className="object-cover transition group-hover:scale-105"
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="h-full w-full object-cover transition group-hover:scale-105"
+                      loading="lazy"
                     />
                   </div>
                 ) : (

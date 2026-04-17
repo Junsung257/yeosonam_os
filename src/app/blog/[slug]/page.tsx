@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -314,15 +313,11 @@ export default async function BlogDetailPage({
 
           {/* OG 이미지 */}
           {post.og_image_url && (
-            <div className="mb-8 overflow-hidden rounded-xl relative aspect-[16/9]">
-              <Image
+            <div className="mb-8 overflow-hidden rounded-xl">
+              <img
                 src={post.og_image_url}
                 alt={title}
-                fill
-                unoptimized
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 768px"
-                priority
+                className="w-full object-cover"
               />
             </div>
           )}
@@ -385,14 +380,12 @@ export default async function BlogDetailPage({
                     className="group overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm transition hover:shadow-md"
                   >
                     {rp.og_image_url ? (
-                      <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
-                        <Image
+                      <div className="aspect-[16/9] overflow-hidden bg-gray-100">
+                        <img
                           src={rp.og_image_url}
                           alt={rp.seo_title || ''}
-                          fill
-                          unoptimized
-                          className="object-cover transition group-hover:scale-105"
-                          sizes="(max-width: 640px) 100vw, 33vw"
+                          className="h-full w-full object-cover transition group-hover:scale-105"
+                          loading="lazy"
                         />
                       </div>
                     ) : (
