@@ -83,6 +83,9 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
 
+  // ── 0. API/정적 파일 경로는 쿠키 설정 건너뛰기 ──────────────
+  const isApiOrStaticPath = pathname.startsWith('/api/') || pathname.match(/\.(xml|txt|json)$/);
+
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급
   let response: NextResponse | null = null;
@@ -93,7 +96,7 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  if (!existingSession) {
+  if (!existingSession && !isApiOrStaticPath) {
     const res = getResponse();
     res.cookies.set('ys_session_id', crypto.randomUUID(), {
       httpOnly: false, // 클라이언트 tracker.ts에서 읽어야 함
@@ -107,7 +110,7 @@ export function middleware(request: NextRequest) {
   // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
   // 리다이렉트 없이 쿠키만 설정 (URL 그대로 유지)
   const ref = request.nextUrl.searchParams.get('ref');
-  if (ref) {
+  if (ref && !isApiOrStaticPath) {
     const res = getResponse();
     res.cookies.set('aff_ref', ref, {
       httpOnly: false,
