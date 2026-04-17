@@ -3,7 +3,6 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // 이 라우트는 동적으로 XML을 생성하는 API 엔드포인트
 export const dynamic = 'force-dynamic';
-export const contentType = 'application/xml';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
