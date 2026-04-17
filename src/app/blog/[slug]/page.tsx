@@ -319,6 +319,7 @@ export default async function BlogDetailPage({
                 src={post.og_image_url}
                 alt={title}
                 fill
+                unoptimized
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 768px"
                 priority
@@ -389,6 +390,7 @@ export default async function BlogDetailPage({
                           src={rp.og_image_url}
                           alt={rp.seo_title || ''}
                           fill
+                          unoptimized
                           className="object-cover transition group-hover:scale-105"
                           sizes="(max-width: 640px) 100vw, 33vw"
                         />

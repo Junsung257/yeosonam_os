@@ -195,6 +195,7 @@ export default async function BlogListPage({
                       src={post.og_image_url}
                       alt={post.seo_title || '블로그 썸네일'}
                       fill
+                      unoptimized
                       className="object-cover transition group-hover:scale-105"
                       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                     />
