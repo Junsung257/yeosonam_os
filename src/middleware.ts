@@ -58,7 +58,7 @@ const PUBLIC_PATHS = [
   '/blog',
   '/blog/destination',
   '/api/blog',
-  '/api/sitemap.xml',
+  '/api/sitemap',
   '/api/rss',
   '/api/blog-engagement',
 ];

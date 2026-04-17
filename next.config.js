@@ -1,3 +1,10 @@
+const withSerwist = require('@serwist/next').default({
+  swSrc: 'src/app/sw.ts',
+  swDest: 'public/sw.js',
+  cacheOnNavigation: true,
+  disable: process.env.NODE_ENV !== 'production',
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -16,8 +23,10 @@ const nextConfig = {
     return [
       { source: '/tour/:id', destination: '/packages/:id', permanent: true },
       { source: '/products/:id', destination: '/packages/:id', permanent: true },
+      // Sitemap 경로 통합 (Google Search Console 호환)
+      { source: '/api/sitemap.xml', destination: '/api/sitemap', permanent: true },
     ];
   },
 };
 
-module.exports = nextConfig;
+module.exports = withSerwist(nextConfig);
