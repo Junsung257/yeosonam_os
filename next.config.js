@@ -8,6 +8,7 @@ const withSerwist = require('@serwist/next').default({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ['isomorphic-dompurify'],
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
