@@ -67,14 +67,22 @@ export async function waitForStable(page: Page): Promise<void> {
   try {
     await page.waitForSelector('main, [data-testid="main-content"]', { state: 'attached', timeout: 60_000 });
   } catch (e) {
-    // 진단용: 실패 시 URL, 제목, body 처음 2000자를 로그로 남김
     const url = page.url();
     const title = await page.title().catch(() => '(no title)');
     const html = await page.content().catch(() => '(no content)');
+    // body만 추출해서 보기
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/);
+    const bodyContent = bodyMatch ? bodyMatch[1] : '(no body found)';
+    const hasMain = /<main\b/i.test(html);
+    const hasMainTestId = /data-testid=["']main-content["']/i.test(html);
     console.error('─── waitForStable FAILED ───');
     console.error('URL:', url);
     console.error('Title:', title);
-    console.error('HTML (first 2000 chars):', html.substring(0, 2000));
+    console.error('HTML length:', html.length);
+    console.error('<main> tag found:', hasMain);
+    console.error('data-testid="main-content" found:', hasMainTestId);
+    console.error('BODY (first 3000 chars):', bodyContent.substring(0, 3000));
+    console.error('BODY (last 2000 chars):', bodyContent.substring(Math.max(0, bodyContent.length - 2000)));
     console.error('──────────────────────────');
     throw e;
   }
