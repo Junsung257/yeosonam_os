@@ -38,6 +38,7 @@ jobs:
         env:
           VISUAL_TEST_URL: ${{ secrets.PRODUCTION_URL || 'https://yeosonam.com' }}
         run: npm run test:visual
+        timeout-minutes: 15
         continue-on-error: true
 
       - name: Upload HTML report

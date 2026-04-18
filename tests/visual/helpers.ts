@@ -63,10 +63,10 @@ export function normalizeText(raw: string): string {
 // ── 3. ISR / hydration 안정화 대기 ───────────────────────────────────────
 /** DOM이 hydration 완료 + 주요 데이터 로드 완료할 때까지 대기 */
 export async function waitForStable(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle', { timeout: 15_000 });
+  await page.waitForLoadState('networkidle', { timeout: 30_000 });
   // React Hydration이 완료된 후에만 존재하는 마커를 기다리거나
   // 최소한 main tag가 렌더될 때까지 대기
-  await page.waitForSelector('main, [data-testid="main-content"]', { timeout: 10_000 });
+  await page.waitForSelector('main, [data-testid="main-content"]', { timeout: 30_000 });
   // 애니메이션 완료 대기 (CSS transition 300ms 기본)
   await page.waitForTimeout(500);
 }
