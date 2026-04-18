@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { TravelPackageInsertSchema } from '@/lib/validators/package-schema';
+import { validatePackageBusinessRules } from '@/lib/validators/package-rules';
 import { z } from 'zod';
 
 /**
@@ -11,12 +12,15 @@ export async function submitPackageProposal(payload: any, summary: string, reque
     // 1. Zod 강제 검증: 규격에 어긋나는 키/타입이 있으면 ZodError 발생
     const validatedPayload = TravelPackageInsertSchema.parse(payload);
 
-    // 2. 결재함(agent_actions)에 PENDING 상태로 기안서 제출
+    // 2. 비즈니스 규칙 검증 (W13~W19): raw_text 대조로 환각/교차오염 감지
+    const { warnings } = validatePackageBusinessRules(validatedPayload as any);
+
+    // 3. 결재함(agent_actions)에 PENDING 상태로 기안서 제출 (warnings 동봉)
     const { data, error } = await supabaseAdmin.from('agent_actions').insert({
       agent_type: 'operations',
       action_type: 'create_package',
       summary: summary || `[자동등록요청] ${validatedPayload.title}`,
-      payload: validatedPayload,
+      payload: { ...validatedPayload, _validation_warnings: warnings },
       status: 'pending',
       priority: 'high',
       requested_by: requestedBy
@@ -29,7 +33,10 @@ export async function submitPackageProposal(payload: any, summary: string, reque
     return {
       success: true,
       action_id: data?.[0]?.id,
-      message: '성공적으로 결재함에 등록되었습니다. 관리자의 승인이 필요합니다.'
+      warnings,
+      message: warnings.length > 0
+        ? `결재함에 등록되었습니다. 검증 경고 ${warnings.length}건 — 승인 전 확인 필요.`
+        : '성공적으로 결재함에 등록되었습니다. 관리자의 승인이 필요합니다.'
     };
   } catch (error) {
     if (error instanceof z.ZodError) {

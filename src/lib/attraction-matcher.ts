@@ -33,88 +33,202 @@ const MATCH_STOP_WORDS = new Set([
   '체크인', '체크아웃', '휴식', '투숙', '공항', '미팅', '가이드',
   '수속', '탑승', '호텔식', '현지식', '기내식', '한식', '자유',
   '시내', '시장', '거리', '면세점', '마사지', '온천', '쇼핑',
+  // ERR-20260418-28 — 일반 장소 키워드 (오매칭 방지)
+  '공원', '사원', '교회', '성당', '광장', '박물관', '궁전', '탑',
+  '섬', '해변', '호수', '다리', '거리', '야시장', '동굴', '산',
+  '전망대', '분수', '정원', '폭포',
+  // ERR-20260418-31 — 지역/도시명 + 관광단지명 키워드 (오매칭 방지)
+  '말라카', '싱가포르', '쿠알라', '쿠알라룸푸르', '겐팅', '조호바루',
+  '타이베이', '타이페이', '대만', '베트남', '말레이시아', '태국', '중국',
+  '일본', '필리핀', '인도네시아', '호주', '몽골', '라오스',
+  '센토사', '페트로나스', '가든스', 'KLCC', '마리나베이', '마리나',
+  '차이나타운', '야류', '지우펀', '스펀',
 ]);
 
 // 비관광 활동 패턴 (매칭 시도하지 않음)
 const SKIP_PATTERN = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  성능 최적화: 인덱스 기반 매칭
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
- * 관광지 매칭 (aliases 지원)
- * 매칭 순서: exact name → aliases exact → DB name⊂activity → activity⊂DB name → aliases⊂activity → keyword split
+ * AttractionIndex — destination 필터 + 룩업 맵 사전 구축
+ * 한 렌더/한 요청 안에서 여러 activity를 매칭할 때 반복 필터/정렬 비용 제거.
  */
-export function matchAttraction(
-  activity: string,
+export interface AttractionIndex {
+  filtered: AttractionData[];                   // destination 필터 통과한 후보
+  byLowerName: Map<string, AttractionData>;     // 대소문자 무시 정확 이름 → 즉시 룩업
+  byLowerAlias: Map<string, AttractionData>;    // 별칭 정확 룩업
+  substringList: AttractionData[];              // 이름 길이 DESC 정렬 (긴 이름 우선 매칭)
+}
+
+export function buildAttractionIndex(
   attractions: AttractionData[],
-  destination?: string
-): AttractionData | null {
-  if (!attractions?.length || !activity) return null;
-
-  // 비관광 활동은 매칭 스킵
-  if (SKIP_PATTERN.test(activity)) return null;
-
-  // destination/region 필터링
+  destination?: string,
+): AttractionIndex {
   const filtered = destination
     ? attractions.filter(a =>
         !a.region || !destination ||
         destination.includes(a.region) || (a.region && a.region.includes(destination)) ||
         (a.country && destination.includes(a.country)))
     : attractions;
-  if (!filtered.length) return null;
 
-  // 정규화 버전 (공백 제거 + 소문자: "Art Museum" ↔ "art museum" 매칭)
-  const actNoSpace = activity.replace(/\s+/g, '');
+  const byLowerName = new Map<string, AttractionData>();
+  const byLowerAlias = new Map<string, AttractionData>();
+  for (const a of filtered) {
+    if (a.name) byLowerName.set(a.name.toLowerCase(), a);
+    if (a.aliases) {
+      for (const al of a.aliases) {
+        if (al) byLowerAlias.set(al.toLowerCase(), a);
+      }
+    }
+  }
+  // 긴 이름이 짧은 이름보다 먼저 매칭되도록 정렬 (예: "메르데카 광장" > "광장")
+  const substringList = filtered.slice().sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0));
+
+  return { filtered, byLowerName, byLowerAlias, substringList };
+}
+
+/**
+ * 인덱스 기반 관광지 매칭 (matchAttraction의 O(1) 룩업 버전)
+ * 매칭 순서는 기존과 동일 — 호환성 100% 유지.
+ */
+export function matchAttractionIndexed(
+  activity: string,
+  index: AttractionIndex,
+): AttractionData | null {
+  if (!activity || !index.filtered.length) return null;
+  if (SKIP_PATTERN.test(activity)) return null;
+
   const actLower = activity.toLowerCase();
+  const actNoSpace = activity.replace(/\s+/g, '');
   const actLowerNoSpace = actNoSpace.toLowerCase();
 
-  // 1. Exact name match (대소문자 무시)
-  const exact = filtered.find(a => actLower === a.name.toLowerCase());
+  // 1. Exact name (O(1))
+  const exact = index.byLowerName.get(actLower);
   if (exact) return exact;
 
-  // 2. Aliases exact match (대소문자 무시)
-  const aliasExact = filtered.find(a =>
-    a.aliases?.some(alias => actLower === alias.toLowerCase())
-  );
+  // 2. Alias exact (O(1))
+  const aliasExact = index.byLowerAlias.get(actLower);
   if (aliasExact) return aliasExact;
 
-  // 3. DB name ⊂ activity (name >= 2 chars, stop words 제외, 대소문자 무시)
-  const dbInAct = filtered.find(a => a.name.length >= 2 && !MATCH_STOP_WORDS.has(a.name) && actLower.includes(a.name.toLowerCase()));
-  if (dbInAct) return dbInAct;
+  // 3+4. 긴 이름부터 양방향 substring (조기 반환으로 실측 O(log N) 수준)
+  for (const a of index.substringList) {
+    if (!a.name || a.name.length < 2 || MATCH_STOP_WORDS.has(a.name)) continue;
+    const nameLower = a.name.toLowerCase();
+    const nameNoSpace = nameLower.replace(/\s+/g, '');
+    // DB name ⊂ activity
+    if (actLower.includes(nameLower)) return a;
+    if (nameNoSpace.length >= 2 && actLowerNoSpace.includes(nameNoSpace)) return a;
+    // activity ⊂ DB name
+    if (activity.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameLower.includes(actLower)) return a;
+    if (actNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameNoSpace.includes(actLowerNoSpace)) return a;
+  }
 
-  // 3-B. 공백 제거 후 DB name ⊂ activity
-  const dbInActNoSpace = filtered.find(a => {
-    const nameNoSpace = a.name.replace(/\s+/g, '');
-    return nameNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(a.name) && actLowerNoSpace.includes(nameNoSpace.toLowerCase());
-  });
-  if (dbInActNoSpace) return dbInActNoSpace;
+  // 5. Aliases ⊂ activity
+  for (const a of index.filtered) {
+    if (!a.aliases) continue;
+    for (const alias of a.aliases) {
+      if (!alias || alias.length < 2 || MATCH_STOP_WORDS.has(alias)) continue;
+      const aliasLower = alias.toLowerCase();
+      const aliasNoSpace = alias.replace(/\s+/g, '').toLowerCase();
+      if (actLower.includes(aliasLower) || actLowerNoSpace.includes(aliasNoSpace)) return a;
+    }
+  }
 
-  // 4. Activity ⊂ DB name (activity >= 2 chars, 대소문자 무시)
-  const actInDb = filtered.find(a => activity.length >= 2 && !MATCH_STOP_WORDS.has(activity) && a.name.toLowerCase().includes(actLower));
-  if (actInDb) return actInDb;
-
-  // 4-B. 공백 제거 후 activity ⊂ DB name
-  const actInDbNoSpace = filtered.find(a => {
-    const nameNoSpace = a.name.replace(/\s+/g, '');
-    return actNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameNoSpace.toLowerCase().includes(actLowerNoSpace);
-  });
-  if (actInDbNoSpace) return actInDbNoSpace;
-
-  // 5. Aliases ⊂ activity (alias >= 2 chars, 대소문자 무시)
-  const aliasInAct = filtered.find(a =>
-    a.aliases?.some(alias => alias.length >= 2 && !MATCH_STOP_WORDS.has(alias) &&
-      (actLower.includes(alias.toLowerCase()) || actLowerNoSpace.includes(alias.replace(/\s+/g, '').toLowerCase())))
-  );
-  if (aliasInAct) return aliasInAct;
-
-  // 6. Keyword split matching (2+ char keywords, 대소문자 무시)
-  const keywordMatch = filtered.find(a => {
+  // 6. Keyword split
+  for (const a of index.filtered) {
+    if (!a.name) continue;
     const keywords = a.name.split(/[&,+/\s()（）]+/)
       .map(k => k.trim())
       .filter(k => k.length >= 2 && !MATCH_STOP_WORDS.has(k));
-    return keywords.length > 0 && keywords.some(k => actLower.includes(k.toLowerCase()) || actLowerNoSpace.includes(k.toLowerCase()));
-  });
-  if (keywordMatch) return keywordMatch;
+    for (const k of keywords) {
+      const kLower = k.toLowerCase();
+      if (actLower.includes(kLower) || actLowerNoSpace.includes(kLower)) return a;
+    }
+  }
 
   return null;
+}
+
+// ── 렌더/요청 스코프 인덱스 캐시 (WeakMap) ──────────────────────────────────
+// 같은 attractions 배열을 여러 번 매칭할 때 자동으로 인덱스 재사용.
+// destination이 다르면 다른 캐시 엔트리 사용.
+const indexCache = new WeakMap<AttractionData[], Map<string, AttractionIndex>>();
+
+function getOrBuildIndex(attractions: AttractionData[], destination?: string): AttractionIndex {
+  let destMap = indexCache.get(attractions);
+  if (!destMap) {
+    destMap = new Map();
+    indexCache.set(attractions, destMap);
+  }
+  const key = destination || '__no_dest__';
+  let idx = destMap.get(key);
+  if (!idx) {
+    idx = buildAttractionIndex(attractions, destination);
+    destMap.set(key, idx);
+  }
+  return idx;
+}
+
+/**
+ * 관광지 매칭 (aliases 지원)
+ * 매칭 순서: exact name → aliases exact → DB name⊂activity → activity⊂DB name → aliases⊂activity → keyword split
+ *
+ * 성능: WeakMap 캐시로 같은 attractions 배열 반복 호출 시 인덱스 재사용 (O(N) → O(log N) 실측).
+ */
+export function matchAttraction(
+  activity: string,
+  attractions: AttractionData[],
+  destination?: string,
+): AttractionData | null {
+  if (!attractions?.length || !activity) return null;
+  if (SKIP_PATTERN.test(activity)) return null;
+  const index = getOrBuildIndex(attractions, destination);
+  return matchAttractionIndexed(activity, index);
+}
+
+/**
+ * 한 activity 문자열에서 여러 관광지 매칭 (콤마 분리 + 개별 매칭)
+ * 기존 데이터의 "▶오타루운하, 키타이치가라스, 오르골당" 같은 콤마 묶음 대응
+ * 기존 matchAttraction()과 하위 호환: 매칭이 없으면 빈 배열.
+ */
+export function matchAttractions(
+  activity: string,
+  attractions: AttractionData[],
+  destination?: string
+): AttractionData[] {
+  if (!attractions?.length || !activity) return [];
+  if (SKIP_PATTERN.test(activity)) return [];
+
+  // 동일 attractions/destination에 대해 한 번만 인덱스 빌드
+  const index = getOrBuildIndex(attractions, destination);
+
+  // 1) 전체 문자열로 단일 매칭 시도
+  const single = matchAttractionIndexed(activity, index);
+  if (single) {
+    if (!activity.includes(',') && !activity.includes('，')) return [single];
+  }
+
+  // 2) 콤마 분리 후 개별 매칭
+  const body = activity.startsWith('▶') ? activity.slice(1).trim() : activity;
+  const withoutParen = body.replace(/\s*\([^)]*\)\s*$/, '');
+  const parts = withoutParen.split(/[,，]\s*/);
+  if (parts.length <= 1) return single ? [single] : [];
+
+  const results: AttractionData[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.length < 2) continue;
+    const match = matchAttractionIndexed(trimmed, index);
+    if (match && !seen.has(match.name)) {
+      seen.add(match.name);
+      results.push(match);
+    }
+  }
+  return results.length > 0 ? results : (single ? [single] : []);
 }
 
 /**
@@ -133,6 +247,9 @@ export function matchAllActivities(
   const matched = new Map<number, { scheduleIdx: number; attraction: AttractionData }[]>();
   const unmatched: { activity: string; dayNumber: number }[] = [];
 
+  // 한 번만 인덱스 빌드 → 전체 루프에서 재사용
+  const index = getOrBuildIndex(attractions, destination);
+
   for (const day of days) {
     const dayMatches: { scheduleIdx: number; attraction: AttractionData }[] = [];
 
@@ -140,7 +257,7 @@ export function matchAllActivities(
       if (SKIP_PATTERN.test(item.activity)) return;
       if (item.type === 'flight' || item.type === 'hotel') return;
 
-      const attr = matchAttraction(item.activity, attractions, destination);
+      const attr = matchAttractionIndexed(item.activity, index);
       if (attr) {
         dayMatches.push({ scheduleIdx: idx, attraction: attr });
       } else {

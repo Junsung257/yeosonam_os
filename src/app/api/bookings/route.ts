@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
+import { dispatchPushAsync } from '@/lib/push-dispatcher';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -230,6 +231,17 @@ export async function POST(request: NextRequest) {
       tryRetroactiveMatch(booking.id, body.leadCustomerId).catch(e =>
         console.warn('[소급 매칭 실패]', e)
       );
+    }
+
+    // 모바일 관리자에게 새 예약 Web Push (fire-and-forget)
+    if (booking?.id) {
+      dispatchPushAsync({
+        title: '새 예약 접수',
+        body: `${booking.booking_no ?? ''} · ${booking.package_title ?? ''}`.trim(),
+        deepLink: `/m/admin/bookings/${booking.id}`,
+        kind: 'new_booking',
+        tag: `booking-${booking.id}`,
+      });
     }
 
     return NextResponse.json({ booking });

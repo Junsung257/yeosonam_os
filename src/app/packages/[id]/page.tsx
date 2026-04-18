@@ -1,7 +1,8 @@
+import type React from 'react';
 import { createClient } from '@supabase/supabase-js';
 import DetailClient from './DetailClient';
 import type { Metadata } from 'next';
-import { matchAttraction, normalizeDays } from '@/lib/attraction-matcher';
+import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음)
@@ -54,15 +55,57 @@ export default async function PackageDetailPage({
 
   const pkg = pkgResult.data;
 
-  // 관련 관광지만 필터링 (최소한의 트래픽)
-  let attrQuery = sb.from('attractions')
-    .select('name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category');
+  // ── 2-단계 Fetch 전략 (Next.js 2MB 캐시 한계 + 성능 최적화) ─────────────────
+  // Step A: 매칭 전용 경량 fetch (name, country, region, aliases만) — 수백 KB
+  // Step B: 매칭된 N개에 한해 사진/설명 상세 fetch — 수십 KB
+  //
+  // 기존: select('*') + limit(3000) + photos 포함 → 2MB 초과 → fetch cache 실패 + 30s timeout
+  let matchQuery = sb.from('attractions')
+    .select('name, country, region, aliases');
 
   if (pkg && pkg.destination) {
-    attrQuery = attrQuery.or(`region.ilike.%${pkg.destination}%,country.ilike.%${pkg.destination}%,country.eq.중국,country.eq.베트남,country.eq.일본,country.eq.필리핀,country.eq.태국`);
+    const destTokens = pkg.destination.split(/[\/,·&]/).map((t: string) => t.trim()).filter(Boolean);
+    const regionClauses = destTokens.map((t: string) => `region.ilike.%${t}%`).join(',');
+    const countryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
+    const countryClauses = countryList.split(',').map(c => `country.eq.${c}`).join(',');
+    const destCountryClause = `country.ilike.%${pkg.destination}%`;
+    matchQuery = matchQuery.or(`${regionClauses},${destCountryClause},${countryClauses}`);
   }
 
-  const attrResult = await attrQuery.limit(3000);
+  const matchResult = await matchQuery.limit(3000);
+  const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
+
+  // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
+  const matchedNames = new Set<string>();
+  if (pkg?.itinerary_data && lightAttractions.length) {
+    const index = buildAttractionIndex(lightAttractions, pkg.destination);
+    const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
+    for (const day of daysData) {
+      for (const item of (day.schedule || [])) {
+        if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
+        const single = matchAttractionIndexed(item.activity, index);
+        if (single) matchedNames.add(single.name);
+        if (!single && /[,，]/.test(item.activity)) {
+          const parts = item.activity.replace(/^▶/, '').split(/[,，]\s*/).map(s => s.trim()).filter(s => s.length >= 2);
+          for (const part of parts) {
+            const m = matchAttractionIndexed(part, index);
+            if (m) matchedNames.add(m.name);
+          }
+        }
+      }
+    }
+  }
+
+  // Step B: 매칭된 관광지만 photos/short_desc 등 상세 가져오기 (일반적으로 10개 미만)
+  let relevantAttractions: AttractionData[] = [];
+  if (matchedNames.size > 0) {
+    const { data: detail } = await sb.from('attractions')
+      .select('name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category')
+      .in('name', Array.from(matchedNames));
+    relevantAttractions = (detail ?? []) as unknown as AttractionData[];
+  }
+  // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
+  const attrResult = { data: relevantAttractions.length > 0 ? relevantAttractions : lightAttractions };
 
   const normalizedPkg = pkg ? {
     ...pkg,
@@ -103,16 +146,17 @@ export default async function PackageDetailPage({
       .slice(0, 4);
   }
 
-  // 미매칭 관광지 수집 (서버사이드: ISR 빌드 시 1회만 실행, 고객 트래픽 무관)
-  if (pkg?.itinerary_data && attrResult.data?.length) {
+  // 미매칭 관광지 수집 (서버사이드 1회만) — 경량 목록으로 매칭 시도
+  if (pkg?.itinerary_data && lightAttractions.length) {
     const skipPattern = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
     const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
     const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country?: string }[] = [];
     for (const day of daysData) {
       (day.schedule || []).forEach((item) => {
         if (skipPattern.test(item.activity)) return;
-        if (item.type === 'flight' || item.type === 'hotel') return;
-        const attr = matchAttraction(item.activity, attrResult.data as unknown as AttractionData[], pkg.destination);
+        if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') return;
+        if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) return;
+        const attr = matchAttractions(item.activity, lightAttractions, pkg.destination)[0] || null;
         if (!attr) unmatchedItems.push({ activity: item.activity, package_id: id, package_title: pkg.title, day_number: day.day, country: pkg.destination });
       });
     }
@@ -122,10 +166,13 @@ export default async function PackageDetailPage({
     }
   }
 
+  // 서버에서 매칭된 관광지(photos/short_desc 포함)만 전달
+  const attractionsForClient = (attrResult.data ?? []) as React.ComponentProps<typeof DetailClient>['initialAttractions'];
+
   return (
     <DetailClient
       initialPackage={normalizedPkg}
-      initialAttractions={attrResult.data ?? []}
+      initialAttractions={attractionsForClient}
       packageId={id}
       relatedBlogPosts={relatedBlogPosts}
       destinationBlogPosts={destinationBlogPosts}

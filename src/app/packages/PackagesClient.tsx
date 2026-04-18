@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { matchAttraction, normalizeDays } from '@/lib/attraction-matcher';
+import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
@@ -84,8 +84,10 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     const days = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
     for (const day of days) {
       for (const item of (day.schedule || [])) {
-        if (item.type === 'flight' || item.type === 'shopping') continue;
-        const attr = matchAttraction(item.activity, attractions as AttractionData[], pkg.destination);
+        // ERR-20260418-25 — 매칭 스킵 강화
+        if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
+        if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) continue;
+        const attr = matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null;
         if (attr?.photos?.length) {
           for (const photo of attr.photos) {
             if (photo?.src_medium && !usedImageUrls.has(photo.src_medium)) {

@@ -165,8 +165,8 @@ function extractPrices(text: string): ExtractedPrice[] {
   // 패턴1: "599,000/인" or "599,000원"
   // 패턴2: "1,259,-" (랜드부산 스타일, 천원단위)
   // 패턴3: 요금표 내 날짜 + 가격 조합
+  // 패턴4: "39만", "39만원", "139만5천" (축약형 한글 단위)
 
-  // 날짜+가격 패턴: "4월 16일 목요일" 근처의 가격
   const dateBlocks = text.split('\n');
   let currentLabel = '';
 
@@ -179,17 +179,32 @@ function extractPrices(text: string): ExtractedPrice[] {
       currentLabel = trimmed.substring(0, 30);
     }
 
+    // ── 한글 축약 단위 "N만(N천)?원?" 패턴 선처리 (일반 숫자 패턴보다 먼저) ──
+    // "39만원", "39만", "139만5천원", "1,500만원"
+    const koreanPriceRe = /(\d{1,4}(?:,\d{3})?)\s*만(?:\s*(\d{1,4})\s*천)?(?:\s*원)?/g;
+    let km: RegExpExecArray | null;
+    const koreanMatched = new Set<string>();
+    while ((km = koreanPriceRe.exec(trimmed)) !== null) {
+      const manPart = parseInt(km[1].replace(/,/g, ''), 10);
+      const cheonPart = km[2] ? parseInt(km[2], 10) : 0;
+      const num = manPart * 10000 + cheonPart * 1000;
+      if (num >= 300000 && num <= 5000000) {
+        prices.push({ label: currentLabel || '전체', price: num });
+        koreanMatched.add(km[0]);
+      }
+    }
+
     // 가격 패턴: 숫자,숫자,숫자 or 숫자,숫자,-
     const priceMatches = trimmed.match(/(\d{1,3}(?:,\d{3})*(?:,-)?)(?:\s*원|\s*\/인)?/g);
     if (priceMatches) {
       for (const pm of priceMatches) {
+        // 이미 한글 단위로 매칭된 부분은 스킵 (중복 방지)
+        if ([...koreanMatched].some(k => k.includes(pm) || pm.includes(k))) continue;
         let priceStr = pm.replace(/[원\/인\s]/g, '');
-        // 랜드부산 스타일: "1,259,-" → "1,259,000"
         if (priceStr.endsWith(',-')) {
           priceStr = priceStr.replace(',-', ',000');
         }
         const num = parseInt(priceStr.replace(/,/g, ''), 10);
-        // 합리적 가격 범위 (30만~500만)
         if (num >= 300000 && num <= 5000000) {
           prices.push({
             label: currentLabel || '전체',
@@ -606,6 +621,17 @@ export async function registerPackageFromText(
       packageId: data[0].id,
       title: data[0].title,
       destination: dest.name,
+      matchedBlocks: matched,
+      newBlocksNeeded: unmatched,
+      prices,
+      sanitizeCorrections: corrections,
+      sanitizeWarnings: exclWarnings,
+    };
+    return {
+      success: true,
+      packageId: data[0].id,
+      title: data[0].title,
+      destination: dest?.name ?? '',
       matchedBlocks: matched,
       newBlocksNeeded: unmatched,
       prices,

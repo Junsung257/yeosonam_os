@@ -16,6 +16,7 @@ const PUBLIC_PATHS = [
   '/api/slack-webhook',
   '/api/exchange-rate',
   '/api/cron/meta-optimize',
+  '/api/cron/visual-baseline-monitor',
   '/api/cron/journey-scheduler',
   '/api/cron/rfq-timeout',
   '/api/concierge/search',
@@ -60,6 +61,8 @@ const PUBLIC_PATHS = [
   '/api/blog',
   '/api/rss',
   '/api/blog-engagement',
+  // ISR 캐시 무효화 (시크릿 기반 인증)
+  '/api/revalidate',
 ];
 
 function isPublicPath(pathname: string) {

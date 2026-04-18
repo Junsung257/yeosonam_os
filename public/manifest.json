@@ -1,0 +1,44 @@
+{
+  "name": "여소남 OS 관리자",
+  "short_name": "여소남 관리",
+  "description": "여소남 OS 관리자 모바일 포털 — 예약·입금 현장 대응용",
+  "start_url": "/m/admin",
+  "scope": "/m/admin",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#001f3f",
+  "lang": "ko-KR",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "예약 관리",
+      "url": "/m/admin/bookings",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "입금 매칭",
+      "url": "/m/admin/payments",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useAutoRefreshSession } from '@/hooks/useAutoRefreshSession';
 
 // ── 카테고리 그룹핑 사이드바 메뉴 ─────────────────────────────
 interface NavItem {
@@ -94,6 +95,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
+  useAutoRefreshSession();
 
   useEffect(() => {
     const fetchCount = () => {

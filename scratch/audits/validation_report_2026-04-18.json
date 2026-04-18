@@ -1,0 +1,310 @@
+{
+  "summary": {
+    "pass": 249,
+    "fail": 33,
+    "total": 282,
+    "byStatus": {
+      "pending": {
+        "total": 19,
+        "pass": 18,
+        "fail": 1
+      },
+      "archived": {
+        "total": 177,
+        "pass": 154,
+        "fail": 23
+      },
+      "approved": {
+        "total": 20,
+        "pass": 20,
+        "fail": 0
+      },
+      "pending_review": {
+        "total": 63,
+        "pass": 54,
+        "fail": 9
+      },
+      "available": {
+        "total": 2,
+        "pass": 2,
+        "fail": 0
+      },
+      "active": {
+        "total": 1,
+        "pass": 1,
+        "fail": 0
+      }
+    },
+    "patternCounts": {
+      "price_tiers/price_dates 모두 비어있음": 21,
+      "일차 불일치: duration=N vs days.length=N": 13
+    }
+  },
+  "failures": [
+    {
+      "id": "4282fe92-03bf-4480-99a8-afc62da83711",
+      "title": "칭다오 쉐라톤 2박 3일 — 맥주 + 양꼬치 특가",
+      "status": "pending",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "8689a595-f66c-4a5d-8be4-ac5b79a6aa9b",
+      "title": "황하석림 바단지린 칠채산 3박5일",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "3f017e95-6ac4-4800-aecb-3f50568bd1db",
+      "title": "서안, 병마용, 화청지 3박 5일",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "400ebd54-8faa-47fb-8127-9a45921e26aa",
+      "title": "마카오/홍콩",
+      "status": "pending_review",
+      "errors": [
+        "일차 불일치: duration=5 vs days.length=4"
+      ]
+    },
+    {
+      "id": "3e790e98-dafd-4803-875e-f7a6546b632d",
+      "title": "시즈오카골프 특가4/1, 4/8 후지산과 함께하는 후지산 골프 36H 3박4일 PKG",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=4 vs days.length=3"
+      ]
+    },
+    {
+      "id": "865735e4-d109-4c62-b83d-e858b1a257c8",
+      "title": "시즈오카 BX시내숙박 명문골프 4박5일",
+      "status": "pending_review",
+      "errors": [
+        "일차 불일치: duration=5 vs days.length=4"
+      ]
+    },
+    {
+      "id": "e21e37a1-d3db-4422-a985-f5fbadef3577",
+      "title": "부산 북해도 온천",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=4 vs days.length=3"
+      ]
+    },
+    {
+      "id": "2c84bab0-2123-4afe-b2a2-c9f8f0331dfb",
+      "title": "하롱베이 FLC골프텔 PKG 골프비용 식사포함 하노이 VJ 하롱베이 FLC 2박3일",
+      "status": "pending_review",
+      "errors": [
+        "일차 불일치: duration=3 vs days.length=5"
+      ]
+    },
+    {
+      "id": "00b29ce0-c53c-4b88-8588-eca0284a173a",
+      "title": "란주 황하석림 바단지린 칠채산 4박6일",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "1fc05272-41d2-48e2-b8e0-efa699a71e45",
+      "title": "PKG 노옵션 치앙마이 치앙라이 골든트라이앵글 //미쉐린추천특식+ 4박6일",
+      "status": "pending_review",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "995910f7-bc19-4bc0-b40f-0f8ce97221ed",
+      "title": "보홀 직항 슬림패키지 4박6일",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=6 vs days.length=5"
+      ]
+    },
+    {
+      "id": "ee14e8dc-9070-48d8-9bfe-8156fdefd958",
+      "title": "북해도 품격 팩 (3월)",
+      "status": "pending_review",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "28606082-0de3-4a17-a7b6-69430b147d2d",
+      "title": "시즈오카 전세기 후지산 핵심일주",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "35f41b5d-d2af-47ad-b95d-2bcb46512761",
+      "title": "발리 BX 힐링 실속 패키지",
+      "status": "pending_review",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "a86f78b7-9537-47ad-9a85-563f4823d5f9",
+      "title": "부산 오사카 꽉찬 조석 패키지",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "53e67ac7-753c-4bfa-b216-d646518c4a72",
+      "title": "PKG 노옵션 치앙마이 치앙라이 골든트라이앵글 //미쉐린추천특식+ 3박5일",
+      "status": "pending_review",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "a2e7fcd0-5dcf-42d9-8b38-c243dc58c696",
+      "title": "부산-후쿠오카 시내 색골프 3박4일",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=4 vs days.length=3"
+      ]
+    },
+    {
+      "id": "7a2792ed-2690-441d-b923-de35074713a1",
+      "title": "시즈오카 전세기★★ 후지산과 함께하는 후지산 실속 골프 36H 2박3일 PKG",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "038e6346-1153-42db-8b5e-d6a74f2403cf",
+      "title": "발리 힐링 실속 패키지",
+      "status": "pending_review",
+      "errors": [
+        "일차 불일치: duration=5 vs days.length=6"
+      ]
+    },
+    {
+      "id": "18730f2a-c953-4bfc-81f8-214efc359f26",
+      "title": "가치있는 여행을 소개하는, 여소남",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "c5f9f833-8269-44f8-9dcd-c8397b83c458",
+      "title": "마카오+홍콩+심천 3박5일",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=5 vs days.length=4"
+      ]
+    },
+    {
+      "id": "dc4591ad-4e8a-4054-97c2-dbbe46bf9fa9",
+      "title": "보홀 직항 슬림패키지",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=6 vs days.length=5"
+      ]
+    },
+    {
+      "id": "23db8fd6-c15b-4f15-8a40-8644ac4e72aa",
+      "title": "북해도 실속 갓성비알짜팩",
+      "status": "pending_review",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "afe49439-c2dd-432d-adba-f3c390651efe",
+      "title": "란주 황하석림 바단지린 칠채산",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음",
+        "일차 불일치: duration=6 vs days.length=5"
+      ]
+    },
+    {
+      "id": "0b4cfdd3-7916-41b6-87ef-16bebd534a32",
+      "title": "이스타 부산 북해도 정통 온천 2박 시내 1박 4일",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "ae494b84-fb24-428d-b1ca-b5999cd75a90",
+      "title": "시즈오카 전세기★★ 후지산과 함께하는 후지산 실속 골프 54H 3박4일 PKG",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "807ea2da-36e6-4e99-9349-1817df1aece3",
+      "title": "황하석림 바단지린 칠채산",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "d2dd6929-616f-4593-b630-6316fc9a0362",
+      "title": "부산 후쿠오카-구마모토 시티 54홀 골프 3박4일",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=4 vs days.length=3"
+      ]
+    },
+    {
+      "id": "b0fda926-5979-4723-ab59-052960d7d06f",
+      "title": "서안 소림사 용문석굴 운대산 낙양",
+      "status": "archived",
+      "errors": [
+        "일차 불일치: duration=6 vs days.length=5"
+      ]
+    },
+    {
+      "id": "74caa2ff-c6c2-492f-b3c8-d60f3d806f82",
+      "title": "푸꾸옥 3박5일 ◈ 5성 노옵션 스페셜팩 ◈ ※일정표",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "503b244a-508f-47b3-9376-8ad17272a66f",
+      "title": "부산 오사카 일 자유 유니버셜 고베 박 일 중중 -1OROR 3 4 [ ] 관광PKG 매일 출발 명이상 출발확정6★★",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "450d3a97-7bbd-40a5-81a3-f719801caba2",
+      "title": "부산 북해도 정통 온천 2박 시내 1박 4일 (노보리베츠, 도야, 오타루, 삿포로)",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    },
+    {
+      "id": "916e76ff-caa1-4994-ac0d-ce90004e889d",
+      "title": "시즈오카 전세기★★ 후지산과 함께하는 후지산 품격 골프 54H 3박4일 PKG",
+      "status": "archived",
+      "errors": [
+        "price_tiers/price_dates 모두 비어있음"
+      ]
+    }
+  ]
+}

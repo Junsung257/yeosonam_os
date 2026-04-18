@@ -17,6 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { findDuplicate, isSamePriceDates, isSameDeadline } = require('./templates/insert-template');
 
 // ── Supabase (--insert 모드용) ──
 let sb = null;
@@ -194,9 +195,9 @@ const BLOCKS = [
 
   // ── Shopping (1건) ──
   {
-    code: 'TAO-SH01', name: '쇼핑 (라텍스+침향+찻집)', type: 'shopping', duration: 'half',
-    schedule: [N(null, '쇼핑: 라텍스, 침향, 찻집 등 (2~3회)')],
-    keywords: ['라텍스', '침향', '찻집', '쇼핑.*회'],
+    code: 'TAO-SH01', name: '쇼핑 (라텍스+침향+찻집+진주)', type: 'shopping', duration: 'half',
+    schedule: [N(null, '쇼핑: 라텍스, 침향, 찻집, 진주 등 (2~3회)')],
+    keywords: ['라텍스', '침향', '찻집', '진주', '쇼핑.*회', '쇼핑센터.*회'],
     score: -1.0,
   },
 ];
@@ -208,10 +209,10 @@ const BLOCKS = [
 const TEMPLATES = [
   {
     code: 'TAO-실속-2N', name: '칭다오 실속 2박3일', type: '실속', nights: 2, days: 3,
-    signature_blocks: ['TAO-B001', 'TAO-B002', 'TAO-B003', 'TAO-B004', 'TAO-B005'],
+    signature_blocks: ['TAO-B001', 'TAO-B002', 'TAO-B003', 'TAO-B004', 'TAO-B005', 'TAO-B006', 'TAO-B011', 'TAO-B012'],
     excludes_blocks: ['TAO-B013'], // 노산 없음
-    inclusions: ['왕복 항공료 및 텍스', '유류할증료', '호텔', '차량', '관광지입장료', '식사', '여행자보험'],
-    excludes: ['기사/가이드경비', '매너팁', '개인경비', '유류변동분'],
+    inclusions: ['왕복 항공료 및 텍스', '유류할증료', '호텔 (2인1실)', '전용차량', '관광지입장료', '식사', '여행자보험 2억'],
+    excludes: ['기사/가이드경비 $40/인 (현지지불)', '매너팁', '개인경비', '유류변동분'],
   },
   {
     code: 'TAO-노팁-2N', name: '칭다오 노팁노옵션 2박3일', type: '노팁노옵션', nights: 2, days: 3,
@@ -1132,7 +1133,34 @@ function printReport(result) {
 async function insertToDB(product, landOperatorId, commissionRate, ticketingDeadline, supplierCode) {
   const supabase = initSupabase();
 
-  // short_code 생성
+  // ── 중복 감지 (출발일 겹침 기반) ──────────────────────────
+  const { data: existingPkgs } = await supabase
+    .from('travel_packages')
+    .select('id, title, destination, product_type, duration, price, price_tiers, price_dates, ticketing_deadline, short_code, status')
+    .eq('land_operator_id', landOperatorId)
+    .in('status', ['approved', 'active', 'pending']);
+
+  const dup = findDuplicate(product, existingPkgs);
+
+  if (dup) {
+    const overlapInfo = dup._overlapInfo;
+    const samePrices = isSamePriceDates(dup, product);
+    const sameDeadline = isSameDeadline(dup.ticketing_deadline, ticketingDeadline);
+    const overlapLog = `겹치는 출발일: ${overlapInfo.count}건 (${overlapInfo.dates.slice(0, 3).join(', ')}${overlapInfo.count > 3 ? ' ...' : ''})`;
+
+    if (samePrices && sameDeadline) {
+      console.log(`\n⏭️  SKIP: 완전 동일 상품 이미 존재`);
+      console.log(`   기존: ${dup.short_code} | ${dup.title}`);
+      console.log(`   ${overlapLog}`);
+      return null;
+    }
+    const reason = samePrices ? '마감일 변경' : '가격 변경';
+    await supabase.from('travel_packages').update({ status: 'archived' }).eq('id', dup.id);
+    console.log(`\n📦 기존 상품 아카이브 (${reason}): ${dup.short_code} | ${dup.title}`);
+    console.log(`   ${overlapLog}`);
+  }
+
+  // ── short_code 생성 ────────────────────────────────────────
   supplierCode = supplierCode || 'XX';
   const destCode = 'TAO';
   const dur = String(product.duration).padStart(2, '0');

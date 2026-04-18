@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { findDuplicate, isSamePriceDates, isSameDeadline } = require('./templates/insert-template');
 
 // ── Supabase (--insert 모드용) ──
 let sb = null;
@@ -1128,7 +1129,34 @@ function printReport(result) {
 async function insertToDB(product, landOperatorId, commissionRate, ticketingDeadline, supplierCode) {
   const supabase = initSupabase();
 
-  // short_code 생성
+  // ── 중복 감지 (출발일 겹침 기반) ──────────────────────────
+  const { data: existingPkgs } = await supabase
+    .from('travel_packages')
+    .select('id, title, destination, product_type, duration, price, price_tiers, price_dates, ticketing_deadline, short_code, status')
+    .eq('land_operator_id', landOperatorId)
+    .in('status', ['approved', 'active', 'pending']);
+
+  const dup = findDuplicate(product, existingPkgs);
+
+  if (dup) {
+    const overlapInfo = dup._overlapInfo;
+    const samePrices = isSamePriceDates(dup, product);
+    const sameDeadline = isSameDeadline(dup.ticketing_deadline, ticketingDeadline);
+    const overlapLog = `겹치는 출발일: ${overlapInfo.count}건 (${overlapInfo.dates.slice(0, 3).join(', ')}${overlapInfo.count > 3 ? ' ...' : ''})`;
+
+    if (samePrices && sameDeadline) {
+      console.log(`\n⏭️  SKIP: 완전 동일 상품 이미 존재`);
+      console.log(`   기존: ${dup.short_code} | ${dup.title}`);
+      console.log(`   ${overlapLog}`);
+      return null;
+    }
+    const reason = samePrices ? '마감일 변경' : '가격 변경';
+    await supabase.from('travel_packages').update({ status: 'archived' }).eq('id', dup.id);
+    console.log(`\n📦 기존 상품 아카이브 (${reason}): ${dup.short_code} | ${dup.title}`);
+    console.log(`   ${overlapLog}`);
+  }
+
+  // ── short_code 생성 ────────────────────────────────────────
   supplierCode = supplierCode || 'XX';
   const destCode = 'XIY';
   const dur = String(product.duration).padStart(2, '0');

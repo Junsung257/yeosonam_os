@@ -95,15 +95,17 @@ async function generatePackageCode(
 }
 
 // ── 상품 목록 JOIN 필드 (products ERP 데이터 포함) ─────────────────────────
+// ERR-20260418-10 — PACKAGE_LIST_FIELDS에 surcharges 누락 → A4 포스터 써차지 기간 증발
+// country, nights, accommodations도 함께 포함 (렌더링에 필요)
 const PACKAGE_LIST_FIELDS = `
-  id, title, destination, category, product_type, trip_style,
+  id, title, destination, country, category, product_type, trip_style,
   departure_days, departure_airport, airline, min_participants, ticketing_deadline,
   price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
-  inclusions, excludes, guide_tip, single_supplement, small_group_surcharge,
+  inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges,
   optional_tours, itinerary, special_notes, notices_parsed, land_operator, commission_rate,
   product_tags, product_highlights, product_summary, itinerary_data,
   marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title,
-  seats_held, seats_confirmed,
+  seats_held, seats_confirmed, nights, accommodations,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
@@ -212,6 +214,33 @@ export async function POST(request: NextRequest) {
 
     if (!body.title) {
       return NextResponse.json({ error: '상품명(title)이 필요합니다.' }, { status: 400 });
+    }
+
+    // ── ACL 정규화 → Zod 검증 (STRICT_VALIDATION=true일 때만 강제) ──
+    // 평상시: warning으로 유지 (기존 호환). STRICT 모드: 실패 시 draft 또는 400 반환.
+    if (process.env.STRICT_VALIDATION === 'true') {
+      try {
+        // 동적 import로 bundle 영향 최소화
+        const { normalizePackage } = await import('@/lib/package-acl');
+        const { validatePackageLoose, formatZodErrors } = await import('@/lib/package-schema');
+        const normalized = normalizePackage(body);
+        const result = validatePackageLoose(normalized);
+        if (!result.success && result.errors) {
+          const errMsgs = formatZodErrors(result.errors);
+          if (process.env.ALLOW_DRAFT === 'true') {
+            // draft로 저장하고 에러는 validation_errors 필드에 기록
+            body.status = 'draft';
+            body.validation_errors = errMsgs;
+          } else {
+            return NextResponse.json({
+              error: 'Zod 검증 실패',
+              issues: errMsgs,
+            }, { status: 400 });
+          }
+        }
+      } catch (e) {
+        console.warn('[POST /api/packages] Zod validation 스킵:', e instanceof Error ? e.message : e);
+      }
     }
 
     // ── Phase 3-D: 임베딩 기반 중복 감지 ──
@@ -393,11 +422,20 @@ export async function PATCH(request: NextRequest) {
       if (!Array.isArray(packageIds) || packageIds.length === 0) {
         return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
       }
+      const now = new Date().toISOString();
       const { error } = await supabaseAdmin
         .from('travel_packages')
-        .update({ status: 'approved', updated_at: new Date().toISOString() })
+        .update({
+          status: 'approved',
+          updated_at: now,
+          // Option B: 승인 시 자동으로 visual baseline 재생성 큐 등록
+          baseline_requested_at: now,
+        })
         .in('id', packageIds);
       if (error) throw error;
+      // ERR-KUL-ISR — 변경된 각 상품의 ISR 캐시 즉시 무효화 (최대 1시간 대기 방지)
+      for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
+      revalidatePath('/packages');
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -412,6 +450,8 @@ export async function PATCH(request: NextRequest) {
         .update({ status: 'archived', updated_at: new Date().toISOString() })
         .in('id', packageIds);
       if (error) throw error;
+      for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
+      revalidatePath('/packages');
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -426,6 +466,8 @@ export async function PATCH(request: NextRequest) {
         .update({ status: 'pending', updated_at: new Date().toISOString() })
         .in('id', packageIds);
       if (error) throw error;
+      for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
+      revalidatePath('/packages');
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -443,6 +485,8 @@ export async function PATCH(request: NextRequest) {
         .update(updateData)
         .in('id', packageIds);
       if (error) throw error;
+      for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
+      revalidatePath('/packages');
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -453,6 +497,11 @@ export async function PATCH(request: NextRequest) {
     // 단건 상태 변경
     if (action === 'approve') {
       const result = await approvePackage(packageId);
+      // Option B: 승인 시 visual baseline 재생성 큐 등록
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({ baseline_requested_at: new Date().toISOString() })
+        .eq('id', packageId);
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
       return NextResponse.json({ success: true, package: result });

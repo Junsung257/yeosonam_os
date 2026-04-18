@@ -3,8 +3,10 @@
 import React from 'react';
 import { groupForPoster, getEffectivePriceDates, type PriceDate, type MonthGroup } from '@/lib/price-dates';
 import { parseDaysWithTransport, isTransportSegment } from '@/lib/transportParser';
-import { matchAttraction as matchAttractionShared } from '@/lib/attraction-matcher';
+import { matchAttraction as matchAttractionShared, matchAttractions as matchAttractionsShared } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { formatDepartureDays } from '@/lib/admin-utils';
+import { normalizeOptionalTourName, type OptionalTourInput } from '@/lib/itinerary-render';
 import TransportBar from '@/components/itinerary/TransportBar';
 
 /**
@@ -98,7 +100,7 @@ export interface YeosonamA4Props {
     excludes?: string[];
     guide_tip?: string;
     single_supplement?: string;
-    optional_tours?: { name: string; price_usd?: number }[];
+    optional_tours?: { name: string; price?: string; price_usd?: number; price_krw?: number | null; note?: string | null }[];
     itinerary_data?: TravelItinerary;
     special_notes?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,6 +110,8 @@ export interface YeosonamA4Props {
     price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
     product_type?: string;
     product_highlights?: string[];
+    // ERR-20260418-03: 써차지 객체 배열 (A4 포스터가 기간 날짜 렌더링에 사용)
+    surcharges?: { name?: string; start?: string; end?: string; amount?: number; currency?: string; unit?: string }[];
   };
   attractions?: AttractionInfo[];
 }
@@ -130,11 +134,15 @@ const EC = 'outline-none focus:bg-yellow-50';
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════
 
-// 관광지 매칭: 모바일과 동일한 공통 함수 사용 (length>=2, 대소문자 무시, aliases 지원)
+// ERR-20260417-03 — 콤마 관광지 매칭: 복수 매칭 지원
+// activity가 콤마 포함이면 matchAttractions(복수)로 모든 관광지 매칭 후 첫 항목 반환.
+// splitScheduleItems가 등록 시 콤마 분리하지만, 레거시 데이터 호환을 위해 폴백 유지.
 function matchAttraction(activity: string, attractions?: AttractionInfo[], destination?: string): AttractionInfo | null {
   if (!attractions?.length) return null;
-  const result = matchAttractionShared(activity, attractions as unknown as AttractionData[], destination);
-  return result as unknown as AttractionInfo | null;
+  const single = matchAttractionShared(activity, attractions as unknown as AttractionData[], destination);
+  if (single) return single as unknown as AttractionInfo;
+  const multi = matchAttractionsShared(activity, attractions as unknown as AttractionData[], destination);
+  return (multi[0] as unknown as AttractionInfo) || null;
 }
 
 export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props) {
@@ -167,7 +175,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
     })
     .slice(0, 4);
 
-  // 직항 도착 도시 추출: 1일차 도착 항공편에서 도시명 파싱
+  // 직항 도착 도시 추출: 1일차 도착 항공편에서 도시명 파싱 (ERR-20260418-17)
   const arrivalCityName = (() => {
     const rawDays = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
     const firstDay = rawDays[0];
@@ -175,32 +183,33 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
     const arrivalFlight = firstDay.schedule.find(
       (s: { type?: string; activity?: string }) => s.type === 'flight' && s.activity && /도착|입국/.test(s.activity)
     );
-    if (arrivalFlight?.activity) {
-      // "비엔티엔 도착 후 입국수속" → "비엔티엔"
-      const m = arrivalFlight.activity.match(/^(.+?)\s*(국제)?공항?\s*(도착|입국)/);
-      if (m) return m[1].trim();
-      // "장가계 도착" → "장가계"
-      const m2 = arrivalFlight.activity.match(/^(.+?)\s+(도착|입국)/);
-      if (m2) return m2[1].trim();
-    }
+    if (!arrivalFlight?.activity) return undefined;
+    const act = arrivalFlight.activity;
+    // 1) "→ 타이페이 도착" 또는 "→ 타이페이 (국제)공항 도착" 패턴 우선
+    const arrowMatch = act.match(/→\s*([가-힣A-Za-z]+(?:\s[가-힣A-Za-z]+)?)\s*(?:국제)?공항?\s*(?:도착|입국)/);
+    if (arrowMatch) return arrowMatch[1].trim();
+    // 2) "타이페이 공항 도착" 또는 "비엔티엔 도착" — 공백 기준 마지막 단어
+    const m = act.match(/(?:^|\s)([가-힣]{2,6}|[A-Za-z]{3,20})\s*(?:국제)?공항?\s*(?:도착|입국)/);
+    if (m) return m[1].trim();
     return undefined;
   })();
 
   // itinerary_data가 배열로 직접 저장된 경우 대응 (days 래퍼 없이)
   const days = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
-  // 동적 DAYS_PER_PAGE: 콘텐츠 높이 추정 기반
-  // 각 일차별 높이(px) 추정 후 A4에 맞게 자동 분배
+  // ERR-20260418-07 — 일정 하단 잘림 방지 (페이지 분배 높이 보수적 계산)
+  // 원인: activities * 28px 과소 추정 → 4일차 16:40 이후 잘림
+  // 해결: 관광지 short_desc/배지/여백 포함 실측치 반영 (42px/활동)
   const estimateDayHeight = (day: DaySchedule) => {
-    const routeH = 35;
-    const flightBarH = day.schedule?.some(s => s.type === 'flight') ? 45 : 0;
+    const routeH = 40;
+    const flightBarH = day.schedule?.some(s => s.type === 'flight') ? 50 : 0;
     const activities = (day.schedule?.filter(s => s.type !== 'flight')?.length || 0);
-    const actH = activities * 28;
-    const noteH = day.schedule?.filter(s => s.note)?.length ? 15 : 0;
-    const hotelMealH = 35;
-    const gapH = 20;
+    const actH = activities * 42; // 관광지 설명/배지 포함 보수적 값
+    const noteH = (day.schedule?.filter(s => s.note)?.length || 0) * 18;
+    const hotelMealH = 45;
+    const gapH = 24;
     return routeH + flightBarH + actH + noteH + hotelMealH + gapH;
   };
-  const PAGE_CONTENT_HEIGHT = 980; // A4 높이에서 헤더 빼고 사용 가능한 영역
+  const PAGE_CONTENT_HEIGHT = 950; // 안전 마진 확보 (기존 980 → 950)
   // 탐욕법으로 페이지 분배
   const dayChunks: DaySchedule[][] = [];
   let currentChunk: DaySchedule[] = [];
@@ -231,23 +240,123 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   })();
 
   // 뱃지 공통 (출발지 맨 앞 + 강조)
-  const TAG = 'px-2 py-0.5 text-sm rounded font-semibold';
+  const TAG = 'px-2 py-0.5 text-[13px] rounded font-semibold';
+  const cleanAirline = (() => {
+    if (!pkg.airline) return undefined;
+    // "BX(에어부산) | 부산출발 ↔ BX793 부산(김해) 출발 → 타이페이" 정리
+    const pOut = itinerary?.meta?.flight_out;
+    if (pOut) {
+      const code = pOut.replace(/[0-9]/g, '').toUpperCase();
+      const nm: Record<string, string> = { 'BX': '에어부산', 'LJ': '진에어', 'OZ': '아시아나항공', 'KE': '대한항공', '7C': '제주항공', 'TW': '티웨이항공', 'VJ': '비엣젯항공', 'ZE': '이스타항공' };
+      const n = nm[code] || pkg.airline.split('(')[1]?.replace(')', '') || pkg.airline.split('|')[0].trim();
+      return `${pOut}(${n})`;
+    }
+    const parts = pkg.airline.split('|');
+    if (parts.length > 1) {
+      const match = parts[1].match(/[A-Z0-9]{2}\d{2,4}/);
+      if (match) {
+        const code = match[0].replace(/[0-9]/g, '').toUpperCase();
+        const nm: Record<string, string> = { 'BX': '에어부산', 'LJ': '진에어', 'OZ': '아시아나항공', 'KE': '대한항공', '7C': '제주항공', 'TW': '티웨이항공', 'VJ': '비엣젯항공' };
+        return `${match[0]}(${nm[code] || parts[0].replace(/.*?\((.*?)\).*/, '$1')})`;
+      }
+      return parts[0].trim();
+    }
+    return pkg.airline;
+  })();
   const badgesContent = <>
     {departCity && <span className={`${TAG} bg-blue-800 text-white`}>{departCity}출발</span>}
     {pkg.destination && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.destination}</span>}
-    {pkg.airline && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.airline}</span>}
+    {cleanAirline && <span className={`${TAG} bg-slate-100 text-slate-700`}>✈️ {cleanAirline}</span>}
     {(pkg.min_participants || itinerary?.meta?.min_participants) && <span className={`${TAG} bg-slate-100 text-slate-700`}>최소 {pkg.min_participants || itinerary?.meta?.min_participants}명</span>}
     {pkg.product_type && <span className={`${TAG} bg-amber-50 text-amber-700`}>{pkg.product_type}</span>}
     {pkg.ticketing_deadline && <span className={`${TAG} bg-red-50 text-red-600 font-bold border border-red-200`}>{pkg.ticketing_deadline}까지 발권</span>}
-    {pkg.departure_days && <span className="text-[13px] text-slate-500">출발: {pkg.departure_days}</span>}
+    {formatDepartureDays(pkg.departure_days) && <span className="text-[13px] text-slate-500">출발: {formatDepartureDays(pkg.departure_days)}</span>}
   </>;
 
   // 마지막 페이지(포함/불포함/유의사항) 표시 여부 판단
   const hasNotices = (pkg.notices_parsed?.length ?? 0) > 0 || !!pkg.special_notes;
   const hasIncludeExclude =
     ((pkg.inclusions || itinerary?.highlights?.inclusions || []).length > 0) ||
-    ((pkg.excludes || itinerary?.highlights?.excludes || []).length > 0);
+    ((pkg.excludes || itinerary?.highlights?.excludes || []).length > 0) ||
+    ((pkg.surcharges as unknown as SurchargeObject[] | undefined)?.length ?? 0) > 0;
   const hasLastPage = hasNotices || hasIncludeExclude;
+
+  // ERR-20260418-11/12 — 요금표 적응형 청크 분할 (Universal 알고리즘)
+  // 목표: 짧은 상품 / 긴 상품 / 초대형 상품 모두 정확히 렌더링 (어떤 경우에도 잘림 없음)
+  //
+  // 알고리즘:
+  //   1. 월 그룹을 순회하면서 행 수 누적
+  //   2. Page 1 예산(12행) / 이후 페이지 예산(22행) 초과 시 새 청크 시작
+  //   3. 한 월이 한 페이지 예산도 초과하면 그 월을 price 그룹별로 분할 (Fallback)
+  //      (예: 한 달에 30행 이상 = "매일 출발" 상품)
+  //
+  // 이 3단 방어로 임의 크기 상품 모두 처리됨.
+  const priceDatesForTable = getEffectivePriceDates({
+    price_dates: pkg.price_dates,
+    price_tiers: pkg.price_tiers as unknown as Parameters<typeof getEffectivePriceDates>[0]['price_tiers'],
+  });
+  const allMonthGroups = groupForPoster(priceDatesForTable);
+  // 전체 요금표의 최저가 (청크 분할 시 모든 페이지가 동일 globalMin 사용)
+  const priceTableGlobalMin = (() => {
+    const allPrices = priceDatesForTable.map(d => d.price).filter(p => p > 0);
+    return allPrices.length > 0 ? Math.min(...allPrices) : undefined;
+  })();
+  // ERR-20260418-15 — 페이지 낭비 방지: Page 1 공간 최대 활용 + 추가 페이지 압축
+  // 이전 6/16은 너무 보수적 → 4개월 상품이 4페이지로 분산되는 낭비 발생
+  // 18/24로 상향: 타이베이(31행)가 2페이지로 정리, 핵심특전+선택관광은 Page 1 상단에 충분
+  const PRICE_ROWS_PAGE1 = 18;
+  const PRICE_ROWS_OTHER = 24;
+
+  // 각 청크는 (월번호, 가격세트) 배열로 표현. 가격세트 null이면 해당 월 전체
+  type PriceChunkFilter = { month: number; prices: Set<number> | null };
+  const priceChunks: PriceChunkFilter[][] = [[]];
+  const pushToCurrentOrNew = (filter: PriceChunkFilter, rowsToAdd: number, isFirst: boolean, currentRowsRef: { v: number }) => {
+    const limit = isFirst ? PRICE_ROWS_PAGE1 : PRICE_ROWS_OTHER;
+    const last = priceChunks[priceChunks.length - 1];
+    if (currentRowsRef.v + rowsToAdd > limit && last.length > 0) {
+      priceChunks.push([filter]);
+      currentRowsRef.v = rowsToAdd;
+    } else {
+      last.push(filter);
+      currentRowsRef.v += rowsToAdd;
+    }
+  };
+  {
+    const currentRows = { v: 0 };
+    for (const g of allMonthGroups) {
+      const monthNum = parseInt(g.month);
+      const groupRows = 1 + g.rows.length; // 월 헤더 + 요일 행
+      const isFirst = priceChunks.length === 1;
+      const limit = isFirst ? PRICE_ROWS_PAGE1 : PRICE_ROWS_OTHER;
+
+      // 단일 월이 한 페이지 예산 초과하는 극단 케이스 → 가격별로 쪼개기
+      if (groupRows > PRICE_ROWS_OTHER) {
+        // 현재 청크가 남은 예산 있으면 거기에 일부, 아니면 새 청크
+        const uniquePrices = new Set(g.rows.map(r => r.price));
+        for (const price of uniquePrices) {
+          const priceRows = g.rows.filter(r => r.price === price).length;
+          const subRows = 1 + priceRows; // 월 헤더 중복 포함 (여러 페이지 가독성 위해)
+          pushToCurrentOrNew({ month: monthNum, prices: new Set([price]) }, subRows, priceChunks.length === 1, currentRows);
+        }
+      } else if (currentRows.v + groupRows > limit && priceChunks[priceChunks.length - 1].length > 0) {
+        priceChunks.push([{ month: monthNum, prices: null }]);
+        currentRows.v = groupRows;
+      } else {
+        priceChunks[priceChunks.length - 1].push({ month: monthNum, prices: null });
+        currentRows.v += groupRows;
+      }
+    }
+  }
+
+  // 각 청크를 priceDates로 변환 (filter)
+  const priceChunksDates = priceChunks.map(chunk => {
+    return priceDatesForTable.filter(d => {
+      const m = parseInt(d.date.slice(5, 7));
+      return chunk.some(c => c.month === m && (c.prices === null || c.prices.has(d.price)));
+    });
+  });
+  const firstChunk = priceChunksDates[0] || [];
+  const extraChunks = priceChunksDates.slice(1);
 
   return (
     <div className="flex flex-col items-center gap-10">
@@ -264,21 +373,45 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
               ))}
             </div>
           )}
-          {/* Phase 3: price_tiers 직접 전달 제거 — getEffectivePriceDates로 단일 경로 통합 (폴백 유지) */}
-          <PriceTable
-            priceList={pkg.price_list}
-            priceDates={getEffectivePriceDates({
-              price_dates: pkg.price_dates,
-              // 로컬 PriceTier와 lib/price-dates.PriceTier 간 status 타입 차이만 있어 안전한 단언
-              price_tiers: pkg.price_tiers as unknown as Parameters<typeof getEffectivePriceDates>[0]['price_tiers'],
-            })}
-            tiers={undefined}
-            excludedDates={pkg.excluded_dates}
-            confirmedDates={pkg.confirmed_dates}
-          />
+          {/* Page 1 요금표 (firstChunk가 없더라도, price_list가 있으면 표시) */}
+          {(pkg.price_list?.length || firstChunk.length > 0) ? (
+            <PriceTable
+              priceList={pkg.price_list}
+              priceDates={firstChunk}
+              tiers={undefined}
+              excludedDates={pkg.excluded_dates}
+              confirmedDates={pkg.confirmed_dates}
+              globalMin={priceTableGlobalMin}
+            />
+          ) : null}
           {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
         </main>
       </article>
+
+      {/* ═══ 요금표 추가 페이지 (긴 상품 대응) ═══ */}
+      {extraChunks.map((chunk, idx) => (
+        <article key={`price-${idx}`} className="a4-export-page" style={PAGE_STYLE}>
+          <ItineraryPageHeader
+            title={title}
+            departureAirport={pkg.departure_airport}
+            destination={pkg.destination}
+            airline={pkg.airline}
+            arrivalCity={arrivalCityName}
+            flightOut={itinerary?.meta?.flight_out ?? undefined}
+          />
+          <main className="flex-1 px-10 py-6 text-[#0b1c30]">
+            {/* ERR-20260418-15: "(계속)" 제거 — 월 헤더가 어느 월인지 자동 표시 */}
+            <PriceTable
+              priceList={undefined} // 중복 표시 방지
+              priceDates={chunk}
+              tiers={undefined}
+              excludedDates={pkg.excluded_dates}
+              confirmedDates={pkg.confirmed_dates}
+              globalMin={priceTableGlobalMin}
+            />
+          </main>
+        </article>
+      ))}
 
       {/* ═══ PAGE 2+: 일정 (Stitch v2 디자인) ═══ */}
       {dayChunks.map((chunk, chunkIdx) => (
@@ -289,6 +422,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             destination={pkg.destination}
             airline={pkg.airline}
             arrivalCity={arrivalCityName}
+            flightOut={itinerary?.meta?.flight_out ?? undefined}
           />
           <div className="flex-1 px-10 pb-8">
             <DailyItinerary days={chunk} attractions={attractions} destination={pkg.destination} />
@@ -306,6 +440,7 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
             destination={pkg.destination}
             airline={pkg.airline}
             arrivalCity={arrivalCityName}
+            flightOut={itinerary?.meta?.flight_out ?? undefined}
           />
           <main className="flex-1 px-10 py-6 text-[#0b1c30] space-y-4">
             {hasIncludeExclude && (
@@ -313,9 +448,10 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
                 inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
                 excludes={pkg.excludes || itinerary?.highlights?.excludes}
                 shoppingInfo={pkg.special_notes || itinerary?.highlights?.shopping || undefined}
+                surcharges={(pkg.surcharges as unknown) as SurchargeObject[] | undefined}
               />
             )}
-            {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
+            {/* ERR-20260418-08: Page 1에 이미 OptionalTours 표시되므로 중복 제거 */}
             {hasNotices && (
               <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
             )}
@@ -358,7 +494,7 @@ function Page1Header({ title, badges }: { title: string; badges: React.ReactNode
 
 
 
-function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDates }: { priceList?: PriceListItem[]; priceDates?: { date: string; price: number; child_price?: number; confirmed: boolean }[]; tiers?: PriceTier[]; excludedDates?: string[]; confirmedDates?: string[] }) {
+function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDates, globalMin }: { priceList?: PriceListItem[]; priceDates?: { date: string; price: number; child_price?: number; confirmed: boolean }[]; tiers?: PriceTier[]; excludedDates?: string[]; confirmedDates?: string[]; globalMin?: number }) {
   // price_list 우선 → price_dates → tiers 폴백 → 모두 없으면 렌더링 안 함
   const usePriceList = priceList && priceList.length > 0;
   const usePriceDates = !usePriceList && priceDates && priceDates.length > 0;
@@ -452,7 +588,8 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
 
   // ── price_dates 모드: groupForPoster 기반 월별 그룹 렌더링 ──
   if (usePriceDates) {
-    const monthGroups: MonthGroup[] = groupForPoster(priceDates as PriceDate[]);
+    // ERR-20260418-29 — 청크 분할 시 외부에서 전체 최저가 전달 (청크 내 최저가 오표시 방지)
+    const monthGroups: MonthGroup[] = groupForPoster(priceDates as PriceDate[], globalMin != null ? { globalMinOverride: globalMin } : undefined);
 
     // 확정일 배너 계산
     const pdConfirmedDates = priceDates!.filter(d => d.confirmed);
@@ -514,8 +651,8 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
           <tbody>
             {(() => { let pdMinShown = false; return monthGroups.map((mg) => (
               <React.Fragment key={mg.month}>
-                {/* 월 구분 헤더 */}
-                {monthGroups.length > 1 && (
+                {/* 월 구분 헤더 — ERR-20260418-16: 단일 월 청크에서도 월 표기 */}
+                {(
                   <tr>
                     <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[13px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
                       {mg.month}
@@ -682,8 +819,8 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
         <tbody>
           {(() => { let tierMinShown = false; return [...monthGroups.entries()].map(([month, rows]) => (
             <React.Fragment key={month}>
-              {/* 월 구분 헤더 */}
-              {monthGroups.size > 1 && (
+              {/* 월 구분 헤더 — ERR-20260418-16: 단일 월 청크에서도 월 표기 */}
+              {(
                 <tr>
                   <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-[13px] font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
                     {month}
@@ -912,21 +1049,48 @@ function getInclusionIcon(text: string): string {
   return '✅';
 }
 
-/** 배열 항목 평탄화: 쉼표로 이어붙인 단일 문자열도 개별 항목으로 분리 */
+/** 배열 항목 평탄화: 쉼표로 이어붙인 단일 문자열도 개별 항목으로 분리
+ *  ERR-20260418-26 — 괄호 내부 콤마는 절대 분리하지 말 것
+ *  ERR-FUK-comma-number — 숫자 천단위 콤마(2,000엔) 분리 방지
+ *  예: "식사 (특식 2회: 무제한 삼겹살, 순두부 정식)" → 통째로 1항목 유지
+ *  예: "본관 숙박 시 2,000엔/박/인" → 통째로 1항목 (2|000 분리 버그 방지)
+ */
 function flattenItems(items: string[]): string[] {
   const result: string[] = [];
   for (const item of items) {
-    // 괄호 안의 쉼표는 보존, 바깥 쉼표만 분리
-    // "호텔(2인1실), 차량, 생수" → ["호텔(2인1실)", "차량", "생수"]
-    // "달랏 써차지 (4/24~26, 4/30~5/2): 8만원" → 분리 안 함 (금액/날짜 포함)
     if (SURCHARGE_RE.test(item)) {
-      // 추가요금 항목은 통째로 보존
       result.push(item.trim());
-    } else {
-      // 일반 항목은 쉼표 분리 시도
-      const parts = item.split(/,\s*/).map(s => s.trim()).filter(Boolean);
-      result.push(...parts);
+      continue;
     }
+    // 괄호 깊이 추적하며 최상위 콤마에서만 분리
+    // 추가: 숫자 사이 콤마(천단위)는 분리 금지 — 앞뒤 3자 이내에 숫자만 있으면 숫자 콤마로 판단
+    const parts: string[] = [];
+    let depth = 0;
+    let buf = '';
+    const chars = [...item];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch === '(' || ch === '[' || ch === '{') depth++;
+      else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+      if (ch === ',' && depth === 0) {
+        // 숫자 콤마 체크: 직전 1자가 숫자 + 직후 1~3자 내 숫자 연속
+        const prev = buf.slice(-1);
+        const next3 = chars.slice(i + 1, i + 4).join('');
+        const isNumberComma = /\d/.test(prev) && /^\d{3}/.test(next3);
+        if (isNumberComma) {
+          buf += ch;
+          continue;
+        }
+        const t = buf.trim();
+        if (t) parts.push(t);
+        buf = '';
+      } else {
+        buf += ch;
+      }
+    }
+    const t = buf.trim();
+    if (t) parts.push(t);
+    result.push(...parts);
   }
   return result;
 }
@@ -961,21 +1125,59 @@ function classifyExcludes(items: string[]): { basic: string[]; surcharges: strin
   return { basic, surcharges };
 }
 
+// ERR-20260418-03 — surcharges 객체 배열 지원 타입
+type SurchargeObject = {
+  name?: string;
+  start?: string;
+  end?: string;
+  amount?: number;
+  currency?: string;
+  unit?: string;
+};
+
+// 객체 배열을 렌더링용 문자열로 변환 (예: "청명절 (4/3 ~ 4/6): $10/인/박")
+function formatSurchargeObject(s: SurchargeObject): string {
+  const name = s.name?.trim() || '추가요금';
+  const periodRaw = s.start && s.end ? `${s.start} ~ ${s.end}` : (s.start || '');
+  const period = periodRaw
+    .replace(/^\d{4}-0?(\d+)-0?(\d+)\s*~\s*\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2 ~ $3/$4')
+    .replace(/^\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2');
+  const currency = s.currency === 'USD' ? '$' : (s.currency || '');
+  const price = s.amount != null ? `${currency}${s.amount}${s.unit ? `/${s.unit}` : ''}` : '';
+  return `${name}${period ? ` (${period})` : ''}${price ? `: ${price}` : ''}`;
+}
+
 // 포함/불포함 + 추가요금 + 쇼핑 (마지막 페이지)
 // 입력 형식에 관계없이 항상 동일한 4-섹션 출력 포맷 보장
-function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo }: {
+function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo, surcharges: surchargeObjects }: {
   inclusions?: string[]; excludes?: string[]; shoppingInfo?: string;
+  surcharges?: SurchargeObject[];
 }) {
   const hasInc = (inclusions?.length ?? 0) > 0;
   const hasExc = (excludes?.length ?? 0) > 0;
   const cleanShopping = shoppingInfo?.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null;
-  if (!hasInc && !hasExc && !cleanShopping) return null;
+  if (!hasInc && !hasExc && !cleanShopping && !(surchargeObjects?.length)) return null;
 
   // 자동 분류
   const { basic: basicInc, program: programInc } = hasInc
     ? classifyInclusions(inclusions!) : { basic: [], program: [] };
-  const { basic: basicExc, surcharges } = hasExc
+  const { basic: basicExc, surcharges: surchargesFromExcludes } = hasExc
     ? classifyExcludes(excludes!) : { basic: [], surcharges: [] };
+
+  // ERR-20260418-14/18 — 객체 배열 + excludes 문자열 병합, "써차지" 단순 문구만 중복 제거
+  // 핵심: 객체 배열에 구체적 기간이 있으면 excludes의 "써차지 ($10/인/박)" 단순 안내는 중복
+  //       하지만 "기사/가이드경비 $40", "싱글차지" 등 구체 항목은 유지
+  const fromObjects = (surchargeObjects || []).map(formatSurchargeObject);
+  const hasObjects = fromObjects.length > 0;
+  const fromExcludes = surchargesFromExcludes.filter(s => {
+    if (!hasObjects) return true;
+    // "써차지 ($10/인/박)" 같은 단순 안내 문구 감지 — 날짜/경비/팁 등 구체 키워드 없고 "써차지"만 있으면 중복
+    const trimmed = s.trim();
+    const isBareSurcharge =
+      /^\s*(?:하계\s*)?써차지\s*(?:\(?\s*\$?\s*\d*\s*\/?\s*(?:인|박|인\/박)?\s*\)?)?\s*$/i.test(trimmed);
+    return !isBareSurcharge;
+  });
+  const surchargeLines: string[] = [...fromObjects, ...fromExcludes];
 
   return (
     <div className="space-y-1.5 mb-1">
@@ -1015,12 +1217,12 @@ function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo }: {
         </section>
       )}
 
-      {/* ── 섹션 3: 추가 요금 (써차지/싱글 등 — excludes에서 자동 분리) ── */}
-      {surcharges.length > 0 && (
+      {/* ── 섹션 3: 추가 요금 (써차지/싱글 등 — 객체 배열 우선, excludes fallback) ── */}
+      {surchargeLines.length > 0 && (
         <section className="bg-orange-50/60 p-2 rounded">
           <h3 className="font-bold text-orange-900 mb-1 text-[11px]">💲 추가 요금 안내</h3>
           <div className="space-y-0.5">
-            {surcharges.map((item, idx) => (
+            {surchargeLines.map((item, idx) => (
               <p key={idx} className="text-[10px] text-slate-600 leading-snug break-keep">
                 • {item}
               </p>
@@ -1149,14 +1351,21 @@ function NoticesPage({ noticesParsed, specialNotes }: {
   );
 }
 
-function OptionalTours({ tours }: { tours: { name: string; price_usd?: number }[] }) {
+// ERR-20260418-04 + ERR-KUL-04 — optional_tours 렌더는 itinerary-render.ts의 normalizeOptionalTourName을 사용
+// 이유: A4와 모바일이 동일한 라벨 생성 (region suffix 일관성 보장)
+function OptionalTours({ tours }: { tours: OptionalTourInput[] }) {
+  const formatPrice = (t: OptionalTourInput): string => {
+    if (t.price && String(t.price).trim()) return ` (${String(t.price).trim()})`;
+    if (typeof t.price_usd === 'number') return ` ($${t.price_usd})`;
+    return '';
+  };
   return (
     <section className="mb-2">
       <h3 className="font-bold text-[#001f3f] mb-1 text-[11px]">선택 관광</h3>
       <div className="flex flex-wrap gap-1.5">
         {tours.map((tour, idx) => (
           <span key={idx} {...E} className={`px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[10px] rounded border border-amber-200 font-medium ${EC}`}>
-            {tour.name}{tour.price_usd ? ` ($${tour.price_usd})` : ''}
+            {normalizeOptionalTourName(tour)}{formatPrice(tour)}
           </span>
         ))}
       </div>
@@ -1168,7 +1377,7 @@ function OptionalTours({ tours }: { tours: { name: string; price_usd?: number }[
 //  Page 2+ 서브 컴포넌트 (Stitch v2 일정표)
 // ══════════════════════════════════════════════════════════
 
-function ItineraryPageHeader({ title, departureAirport, destination, airline, arrivalCity }: { title: string; departureAirport?: string; destination?: string; airline?: string; arrivalCity?: string }) {
+function ItineraryPageHeader({ title, departureAirport, destination, airline, arrivalCity, flightOut }: { title: string; departureAirport?: string; destination?: string; airline?: string; arrivalCity?: string; flightOut?: string }) {
   // 출발 도시 추출
   const depCity = (() => {
     const ap = departureAirport || '';
@@ -1180,6 +1389,13 @@ function ItineraryPageHeader({ title, departureAirport, destination, airline, ar
   const airlineName = airline ? (getAirlineName(airline) || airline) : null;
   // 직항 도착 도시 (arrivalCity 우선, 없으면 destination 슬래시 첫 번째)
   const directCity = arrivalCity || destination?.split(/[\/,]/)[0]?.trim() || destination;
+  // ERR-20260418-13 — 항공 표기 간결화: "BX793(에어부산) 부산 → 타이페이"
+  const flightLabel = (() => {
+    const parts: string[] = [];
+    if (flightOut) parts.push(flightOut);
+    if (airlineName) parts.push(`(${airlineName})`);
+    return parts.join('');
+  })();
 
   return (
     <header className="w-full border-b border-[#005d90] flex justify-between items-center px-10 py-3">
@@ -1190,9 +1406,9 @@ function ItineraryPageHeader({ title, departureAirport, destination, airline, ar
           {title}
         </h1>
       </div>
-      {(airlineName || depCity) && directCity && (
+      {depCity && directCity && (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[13px] font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded-full">
-          ✈️ {airlineName || ''} <span className="text-blue-300">|</span> {depCity}출발 ↔ {directCity}
+          ✈️ {flightLabel ? `${flightLabel} ` : ''}{depCity} → {directCity}
         </span>
       )}
     </header>
@@ -1207,10 +1423,16 @@ const AIRLINE_MAP: Record<string, string> = {
   'RS': '에어서울', 'QV': '라오항공', 'JL': '일본항공', 'NH': '전일본공수',
   'MU': '중국동방항공', 'CA': '중국국제항공', 'CZ': '중국남방항공',
 };
+// ERR-20260418-17 — 괄호 있는 값("BX(에어부산)") 안전 처리
 function getAirlineName(flightCode?: string | null): string | null {
   if (!flightCode) return null;
-  const code = flightCode.replace(/[0-9]/g, '').toUpperCase();
-  return AIRLINE_MAP[code] || null;
+  // "BX(에어부산)" → "BX" / "BX793" → "BX" / "BX | 부산..." → "BX"
+  const code = flightCode.split(/[\s|(]/)[0].replace(/[0-9]/g, '').toUpperCase().trim();
+  if (AIRLINE_MAP[code]) return AIRLINE_MAP[code];
+  // fallback: 괄호 안에 한국어 항공사명이 있으면 추출
+  const parenMatch = flightCode.match(/\(([^)]+)\)/);
+  if (parenMatch && /[가-힣]/.test(parenMatch[1])) return parenMatch[1].trim();
+  return null;
 }
 
 // 활동 타입별 dot 색상
@@ -1283,7 +1505,9 @@ function getActivityBadge(type?: string, activity?: string): { bg: string; text:
       return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
     default: break;
   }
-  if (activity && /루프탑|마사지|체험|크루즈|요트|스파|전망대|쇼\s/.test(activity)) {
+  // ERR-20260418-30 — "체험" 단일 키워드는 너무 광범위해서 제거 (카지노 체험 = 특전 오판정)
+  // 특전 배지는 명확히 특별 시설/이벤트에 한정
+  if (activity && /루프탑|크루즈|요트|스파|전망대|쇼\s/.test(activity)) {
     return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
   }
   return null;
@@ -1394,7 +1618,11 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                     // 일반 ScheduleItem 렌더
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const item = entry as any;
-                    const attr = matchAttraction(item.activity, attractions, destination);
+                    // ERR-20260418-25/32 — optional/shopping 포함 매칭 스킵 강화
+                    const skipAttrMatch =
+                      item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
+                      /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|추천|선택관광/.test(item.activity || '');
+                    const attr = skipAttrMatch ? null : matchAttraction(item.activity, attractions, destination);
                     const isSpecial = isSpecialBenefit(item);
                     const isPrep = isPreparationNode(item);
                     const badge = isSpecial
