@@ -63,13 +63,22 @@ export function normalizeText(raw: string): string {
 // ── 3. ISR / hydration 안정화 대기 ───────────────────────────────────────
 /** DOM이 hydration 완료 + 주요 데이터 로드 완료할 때까지 대기 */
 export async function waitForStable(page: Page): Promise<void> {
-  await page.waitForLoadState('domcontentloaded', { timeout: 30_000 });
-  // React Hydration이 완료된 후에만 존재하는 마커를 기다리거나
-  // 최소한 main tag가 렌더될 때까지 대기 (attached = DOM에 존재하기만 하면 통과)
-  await page.waitForSelector('main, [data-testid="main-content"]', { state: 'attached', timeout: 30_000 });
-  // 네트워크 안정화 대기 (이미지 로딩 포함)
+  await page.waitForLoadState('domcontentloaded', { timeout: 60_000 });
+  try {
+    await page.waitForSelector('main, [data-testid="main-content"]', { state: 'attached', timeout: 60_000 });
+  } catch (e) {
+    // 진단용: 실패 시 URL, 제목, body 처음 2000자를 로그로 남김
+    const url = page.url();
+    const title = await page.title().catch(() => '(no title)');
+    const html = await page.content().catch(() => '(no content)');
+    console.error('─── waitForStable FAILED ───');
+    console.error('URL:', url);
+    console.error('Title:', title);
+    console.error('HTML (first 2000 chars):', html.substring(0, 2000));
+    console.error('──────────────────────────');
+    throw e;
+  }
   await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
-  // 애니메이션 완료 대기 (CSS transition 300ms 기본)
   await page.waitForTimeout(1000);
 }
 
