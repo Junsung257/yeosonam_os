@@ -160,3 +160,45 @@ export function groupOptionalToursByRegion(tours: OptionalTourInput[]): Optional
   }
   return Array.from(groups.entries()).map(([region, tours]) => ({ region, tours }));
 }
+
+// ── 유의사항 병합: 특약 ↔ 표준약관 충돌 방지 ─────────────────────────────
+// Why: notices_parsed(상품 고유 특약)와 하드코딩 표준약관이 동시에 렌더되면
+//      "14~7일 50% 공제(특약)" vs "30일 전 전액 환불(표준)" 같은 모순이 발생해
+//      법적 분쟁 리스크. 특약이 있을 땐 표준약관의 '예약 및 취소 규정' 블록만 제외.
+// How to apply: 모바일 DetailClient / A4 / 이메일 템플릿 전부 이 함수로 통일.
+
+export interface NoticeBlock {
+  type: string;
+  title: string;
+  text: string;
+}
+
+export function hasSpecialCancelPolicy(notices: readonly NoticeBlock[] | null | undefined): boolean {
+  if (!notices || notices.length === 0) return false;
+  return notices.some(n => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type === 'PAYMENT') return true;
+    const combined = `${n.title || ''} ${n.text || ''}`;
+    return /특별약관|특약|특별\s*규정/.test(combined);
+  });
+}
+
+/**
+ * 상품의 notices_parsed와 표준약관 템플릿을 안전하게 병합.
+ * 특약(type=PAYMENT 또는 "특별약관" 문구)이 있으면 표준약관의
+ * '예약 및 취소 규정'(type=RESERVATION) 블록을 자동 제외.
+ */
+export function mergeNotices(
+  notices: readonly NoticeBlock[] | null | undefined,
+  template: readonly NoticeBlock[],
+): NoticeBlock[] {
+  const typed = (notices || []).filter(
+    (n): n is NoticeBlock =>
+      !!n && typeof n === 'object' && typeof (n as NoticeBlock).type === 'string'
+  );
+  const hasSpecial = hasSpecialCancelPolicy(typed);
+  const filteredTemplate = hasSpecial
+    ? template.filter(t => t.type !== 'RESERVATION')
+    : [...template];
+  return [...typed, ...filteredTemplate];
+}

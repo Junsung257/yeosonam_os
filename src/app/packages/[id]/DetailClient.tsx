@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { normalizeOptionalTourName } from '@/lib/itinerary-render';
+import { normalizeOptionalTourName, mergeNotices, type NoticeBlock } from '@/lib/itinerary-render';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
@@ -957,11 +957,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 유의사항 (독립 토글 다중 열림) + 예약 약관 ═══ */}
       <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-12">
         {(() => {
-          const typedNotices = (pkg.notices_parsed || []).filter(
-            (n): n is { type: string; title: string; text: string } => typeof n === 'object' && n !== null && 'type' in n
-          );
           // ERR-20260418-21 — 예약 약관 (모든 상품 공통, A4 공간 제약으로 모바일만 노출)
-          const RESERVATION_TERMS: { type: string; title: string; text: string }[] = [
+          // ERR-FUK-2026-04-19 — 특약(notices_parsed PAYMENT)이 있으면
+          //   '예약 및 취소 규정' 표준 블록을 mergeNotices가 자동 제외.
+          const RESERVATION_TERMS: NoticeBlock[] = [
             {
               type: 'RESERVATION',
               title: '📋 예약 및 취소 규정',
@@ -1012,7 +1011,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 • 긴급 상황(사고·질병 등) 발생 시 현지 가이드 또는 여행사 긴급 연락망으로 즉시 통보`,
             },
           ];
-          const allNotices = [...typedNotices, ...RESERVATION_TERMS];
+          const allNotices = mergeNotices(pkg.notices_parsed as NoticeBlock[] | null, RESERVATION_TERMS);
           if (allNotices.length === 0 && !pkg.special_notes) return null;
           const dotColor: Record<string, string> = {
             CRITICAL: 'bg-red-500', PAYMENT: 'bg-orange-500', POLICY: 'bg-blue-500', INFO: 'bg-gray-400',
