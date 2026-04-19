@@ -23,6 +23,12 @@ export interface NoticeBlock {
   text: string;
   surfaces?: NoticeSurface[];
   severity?: NoticeSeverity;
+  /**
+   * 이 블록이 명시적으로 대체하는 하위 tier 블록 type 목록.
+   * 예: 특약 PAYMENT 블록이 플랫폼 RESERVATION 을 대체할 때 ['RESERVATION'].
+   * 비워두면 동일 type 만 대체.
+   */
+  replaces?: string[];
   /** 런타임에 채워지는 출처 (UI 배지용). DB에는 저장 X */
   _source?: string;
   /** 런타임 tier 태그 (1~4). DB에는 저장 X */
@@ -133,9 +139,25 @@ function normalizeProductNotices(raw: unknown): NoticeBlock[] {
         ? (notice.surfaces as NoticeSurface[])
         : ['mobile', 'booking_guide'],
       severity: (notice.severity as NoticeSeverity) ?? 'standard',
+      replaces: Array.isArray(notice.replaces) ? (notice.replaces as string[]) : undefined,
     });
   }
   return result;
+}
+
+// ── 특약 탐지: 상위 tier(3+)의 블록 중 취소/환불/수수료/파이널 관련 PAYMENT
+//    또는 "특약" 시그니처가 있으면 하위 tier 의 RESERVATION(예약 및 취소 규정) 자동 제외.
+//    Why: 특약 취소 규정(예: "파이널 후 100%")과 표준약관("30일 전 전액 환불")이
+//    동시 노출되면 약관규제법 §6(2) 에 의해 소비자에게 유리하게 해석 → 여행사 패소.
+//    ERR-FUK-clause-duplication(2026-04-19) 재발 방지.
+//    False positive 방지: 단순 싱글차지 PAYMENT 는 취소 문맥 아니므로 제외.
+function hasSpecialCancelPolicy(notices: readonly NoticeBlock[]): boolean {
+  return notices.some(n => {
+    const combined = `${n.title ?? ''} ${n.text ?? ''}`;
+    if (/특별\s*약관|특약|파이널\s*후|취소\s*불가/.test(combined)) return true;
+    if (n.type === 'PAYMENT' && /취소|환불|수수료|위약|공제|파이널/.test(combined)) return true;
+    return false;
+  });
 }
 
 // ── 메인: 4-level 머지 ───────────────────────────────────────
@@ -145,30 +167,64 @@ export async function resolveTermsForPackage(
 ): Promise<NoticeBlock[]> {
   const templates = await loadTemplates();
 
-  // Tier 1 → 2 → 3 순차 수집
-  const ordered: Array<{ tpl: TermsTemplate; tier: 1 | 2 | 3 }> = [];
+  // Tier 별 블록 수집 (내림차순: 4 → 3 → 2 → 1)
+  const byTier: Record<1 | 2 | 3 | 4, NoticeBlock[]> = { 1: [], 2: [], 3: [], 4: [] };
+
   for (const tier of [1, 2, 3] as const) {
     const matches = templates
       .filter(t => t.tier === tier && matchesScope(t, pkg))
       .sort((a, b) => a.priority - b.priority);
-    for (const tpl of matches) ordered.push({ tpl, tier });
-  }
-
-  // type 기준 override (낮은 tier 먼저 → 높은 tier 덮어씀)
-  const byType = new Map<string, NoticeBlock>();
-  for (const { tpl, tier } of ordered) {
-    for (const n of tpl.notices) {
-      byType.set(n.type, { ...n, _source: tpl.name, _tier: tier });
+    for (const tpl of matches) {
+      for (const n of tpl.notices) {
+        byTier[tier].push({ ...n, _source: tpl.name, _tier: tier });
+      }
     }
   }
 
-  // Tier 4: 상품별 특약 (최우선)
   for (const n of normalizeProductNotices(pkg.notices_parsed)) {
-    byType.set(n.type, { ...n, _source: '상품 특약', _tier: 4 });
+    byTier[4].push({ ...n, _source: '상품 특약', _tier: 4 });
   }
 
+  // ── Exclusion 규칙 ────────────────────────────────────────
+  //   1. 상위 tier 의 type 이 존재하면 하위 tier 의 같은 type 전체 제외 (tier-level override)
+  //      Within-tier 다건은 모두 보존 (예: 상품의 PAYMENT 2개 "취소수수료" + "결제안내" 둘 다 노출)
+  //   2. 상위 tier 에 '특약'이 있으면 하위 tier 의 RESERVATION 도 제외 (cross-type, ERR-FUK 대응)
+  //   3. notice.replaces 필드로 명시적 대체 선언 가능
+
+  const excludedTypes = new Set<string>();
+  const result: NoticeBlock[] = [];
+
+  for (const tier of [4, 3, 2, 1] as const) {
+    const tierBlocks = byTier[tier];
+    if (tierBlocks.length === 0) continue;
+
+    // 이 tier 의 block 중 이미 상위가 claim 한 type 은 skip
+    for (const n of tierBlocks) {
+      if (excludedTypes.has(n.type)) continue;
+      result.push(n);
+    }
+
+    // 이 tier 가 노출한 type + 명시적 replaces + 암묵적 cross-type 규칙을 excludedTypes 에 기록
+    const tierTypes = new Set<string>();
+    for (const n of tierBlocks) {
+      if (excludedTypes.has(n.type)) continue;
+      tierTypes.add(n.type);
+      for (const replaced of (n.replaces ?? [])) tierTypes.add(replaced);
+    }
+
+    // ERR-FUK 암묵 규칙: tier>=3 에 특약 시그니처가 있으면 하위의 RESERVATION 제외
+    if (tier >= 3 && hasSpecialCancelPolicy(tierBlocks)) {
+      tierTypes.add('RESERVATION');
+    }
+
+    for (const t of tierTypes) excludedTypes.add(t);
+  }
+
+  // 결과 순서: tier 4(특약) 먼저, tier 1(표준) 마지막 — 기존 mergeNotices 동작 보존.
+  //   push 순서가 이미 tier 4 → 3 → 2 → 1 이므로 추가 sort 불필요.
+
   // surface 필터
-  return Array.from(byType.values()).filter(n => {
+  return result.filter(n => {
     const surfaces = n.surfaces ?? ['mobile', 'booking_guide'];
     return surfaces.includes(surface);
   });
