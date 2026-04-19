@@ -24,6 +24,7 @@ interface BlogPost {
   channel: string;
   published_at: string;
   created_at: string;
+  updated_at: string | null;
   product_id: string | null;
   tracking_id: string | null;
   travel_packages: {
@@ -54,7 +55,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   const { data } = await supabaseAdmin
     .from('content_creatives')
     .select(
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)',
     )
     .eq('slug', slug)
     .eq('status', 'published')
@@ -115,6 +116,7 @@ export async function generateMetadata({
       description,
       url: `${BASE_URL}/blog/${slug}`,
       publishedTime: post.published_at,
+      modifiedTime: post.updated_at || post.published_at,
       ...(dbOgImage ? { images: [{ url: dbOgImage, width: 1200, height: 630 }] } : {}),
     },
     twitter: {
@@ -176,12 +178,13 @@ export default async function BlogDetailPage({
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
             '@context': 'https://schema.org',
-            '@type': 'Article',
+            '@type': 'BlogPosting',
             headline: title,
             description: post.seo_description || '',
             image: post.og_image_url || `${BASE_URL}/og-image.png`,
             datePublished: post.published_at,
-            dateModified: post.published_at,
+            dateModified: post.updated_at || post.published_at,
+            inLanguage: 'ko-KR',
             author: {
               '@type': 'Organization',
               name: '여소남',

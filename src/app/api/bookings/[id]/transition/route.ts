@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { isValidTransition, ALLOWED_TRANSITIONS } from '@/lib/booking-state-machine';
 import { getNotificationAdapter } from '@/lib/notification-adapter';
+import { dispatchPushAsync } from '@/lib/push-dispatcher';
 
 export async function POST(
   request: NextRequest,
@@ -68,6 +69,17 @@ export async function POST(
         departureDate: (booking as { departure_date?: string }).departure_date,
       },
     });
+
+    // 완납 전이 시 모바일 관리자 Web Push
+    if (to === 'fully_paid') {
+      dispatchPushAsync({
+        title: '💰 완납 완료',
+        body: `${(booking as { booking_no?: string }).booking_no ?? ''} · ${customer?.name ?? ''}`.trim(),
+        deepLink: `/m/admin/bookings/${params.id}`,
+        kind: 'fully_paid',
+        tag: `booking-${params.id}`,
+      });
+    }
 
     return NextResponse.json({
       booking: updated,

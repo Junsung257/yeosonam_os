@@ -20,6 +20,33 @@ export function fmtDate(d?: string): string {
   return d ? d.slice(2, 10).replace(/-/g, '-') : '';
 }
 
+/**
+ * departure_days 정규화 — 저장 포맷 혼재(JSON string / array / plain string) 방어
+ * ERR-KUL-01: A4 포스터에 `["금"]` JSON 배열 문자열이 그대로 노출되는 사고 방지
+ * 입력: `["금"]` | `["월","수"]` | `["금","일"]` | "월/수" | "금" | null | string[] | undefined
+ * 출력: "금" | "월/수" | "금/일" | "" (항상 슬래시 구분 평문)
+ */
+export function formatDepartureDays(val: unknown): string {
+  if (val == null) return '';
+  if (Array.isArray(val)) {
+    return val.map(v => String(v).trim()).filter(Boolean).join('/');
+  }
+  const s = String(val).trim();
+  if (!s) return '';
+  // JSON 배열 문자열 방어: `["금"]`, `["월","수"]`
+  if (s.startsWith('[') && s.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) {
+        return parsed.map(v => String(v).trim()).filter(Boolean).join('/');
+      }
+    } catch {
+      // JSON.parse 실패 시 원본 반환
+    }
+  }
+  return s;
+}
+
 /** 예약의 잔금 (판매가 - 입금액, 최소 0) */
 export function getBalance(booking: {
   total_price?: number;

@@ -8,12 +8,15 @@ const PUBLIC_PATHS = [
   '/auth/callback',
   '/auth/reset-password',
   '/api/auth/session',
+  '/api/auth/refresh',
+  '/m/admin/login',
   '/api/qa/chat',
   '/api/sms/receive',
   '/api/notify/alimtalk',
   '/api/slack-webhook',
   '/api/exchange-rate',
   '/api/cron/meta-optimize',
+  '/api/cron/visual-baseline-monitor',
   '/api/cron/journey-scheduler',
   '/api/cron/rfq-timeout',
   '/api/concierge/search',
@@ -58,6 +61,8 @@ const PUBLIC_PATHS = [
   '/api/blog',
   '/api/rss',
   '/api/blog-engagement',
+  // ISR 캐시 무효화 (시크릿 기반 인증)
+  '/api/revalidate',
 ];
 
 function isPublicPath(pathname: string) {
@@ -127,14 +132,30 @@ export function middleware(request: NextRequest) {
 
   // ── 4. 인증 검사 (비공개 경로만) ───────────────────────────
   const token = request.cookies.get('sb-access-token')?.value;
+  const refreshToken = request.cookies.get('sb-refresh-token')?.value;
 
-  if (!token || !isTokenValid(token)) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+  // access token 이 유효하면 통과
+  if (token && isTokenValid(token)) {
+    return response || NextResponse.next();
   }
 
-  return response || NextResponse.next();
+  // access token 이 만료되었더라도 refresh token 이 있으면 통과.
+  // 클라이언트 훅(useAutoRefreshSession) 이 백그라운드로 /api/auth/refresh 를 호출해 갱신한다.
+  // API 라우트 요청이라면 client-side 훅이 동작하지 않으므로 401 을 반환해 재시도 유도.
+  if (refreshToken) {
+    const isApi = pathname.startsWith('/api/');
+    if (!isApi) {
+      return response || NextResponse.next();
+    }
+    return NextResponse.json({ error: 'token expired' }, { status: 401 });
+  }
+
+  // 모바일 /m/admin 은 전용 로그인 페이지로 유도
+  const isMobile = pathname.startsWith('/m/admin');
+  const loginPath = isMobile ? '/m/admin/login' : '/login';
+  const loginUrl = new URL(loginPath, request.url);
+  loginUrl.searchParams.set('redirect', pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

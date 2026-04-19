@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const COOKIE_OPTIONS = {
+const IS_SECURE = process.env.NODE_ENV === 'production';
+
+// access token: Supabase JWT 자체는 1시간 만료. 서버 쿠키 수명은 짧게 유지.
+const ACCESS_COOKIE = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: IS_SECURE,
   sameSite: 'lax' as const,
   path: '/',
-  maxAge: 60 * 60 * 24 * 7, // 7일
+  maxAge: 60 * 60, // 1시간
+};
+
+// refresh token: 장기 보관. 폰에서 재로그인 없이 쓰기 위함.
+const REFRESH_COOKIE = {
+  httpOnly: true,
+  secure: IS_SECURE,
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 60 * 60 * 24 * 365, // 365일
 };
 
 // 로그인 - 토큰을 HttpOnly 쿠키로 저장
@@ -17,9 +29,9 @@ export async function POST(request: NextRequest) {
     }
 
     const res = NextResponse.json({ success: true });
-    res.cookies.set('sb-access-token', access_token, COOKIE_OPTIONS);
+    res.cookies.set('sb-access-token', access_token, ACCESS_COOKIE);
     if (refresh_token) {
-      res.cookies.set('sb-refresh-token', refresh_token, COOKIE_OPTIONS);
+      res.cookies.set('sb-refresh-token', refresh_token, REFRESH_COOKIE);
     }
     return res;
   } catch {

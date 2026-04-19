@@ -471,6 +471,18 @@ async function processWebhookEvent(
             ` ${tx.type} ${tx.amount.toLocaleString()}원 (${tx.name}) → ${matchClass}`,
           );
         }
+
+        // 모바일 관리자 Web Push: 신규 입금 중 검토/미매칭만 알림 (자동 매칭은 조용히)
+        if (tx.type === '입금' && (matchClass === 'review' || matchClass === 'unmatched')) {
+          const { dispatchPushAsync } = await import('@/lib/push-dispatcher');
+          dispatchPushAsync({
+            title: matchClass === 'review' ? '입금 검토 필요' : '입금 매칭 확인',
+            body: `${tx.amount.toLocaleString()}원 · ${tx.name}`,
+            deepLink: `/m/admin/payments/${inserted.id}`,
+            kind: matchClass === 'review' ? 'payment_review' : 'payment_unmatched',
+            tag: `tx-${inserted.id}`,
+          });
+        }
       } catch (err: any) {
         console.error(
           `[Webhook v5] 예외 발생 [${i}]:` +

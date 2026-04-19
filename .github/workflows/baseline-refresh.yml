@@ -1,0 +1,54 @@
+name: Baseline Refresh (Option B)
+
+on:
+  schedule:
+    # 2시간마다 baseline 큐 처리 (승인된 상품 자동 반영)
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Process baseline queue
+        id: refresh
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BASE_URL: ${{ secrets.PRODUCTION_URL || 'https://yeosonam.com' }}
+          VISUAL_TEST_URL: ${{ secrets.PRODUCTION_URL || 'https://yeosonam.com' }}
+        run: |
+          # .env.local 임시 생성 (refresh-baselines.js가 읽음)
+          cat > .env.local <<EOF
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EOF
+          node scripts/refresh-baselines.js
+
+      - name: Commit updated baselines
+        if: steps.refresh.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/ || true
+          if git diff --cached --quiet; then
+            echo "ℹ️  변경사항 없음"
+          else
+            git commit -m "test: refresh visual baselines (automated)"
+            git push
+          fi

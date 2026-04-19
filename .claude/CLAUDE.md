@@ -11,6 +11,41 @@
 시스템에 데이터를 주입하거나 새로운 에이전트/코드를 작성할 때, 절대 "이렇게 생겼을 것이다"라고 추측하여 네 맘대로 작업하지 마십시오.
 모든 작업 전 **반드시 기존 코드베이스(특히 `DetailClient.tsx`, `YeosonamA4Template.tsx`, `booking-state-machine.ts` 등)가 해당 데이터를 어떻게 파싱하고 화면에 뿌려주는지 먼저 `grep_search` 나 `view_file` 로 조회하고 분석**해야 합니다. 기존 프론트엔드 렌더링 로직이나 정규식을 무시하고 임의 규격으로 DB에 데이터를 밀어 넣으면 UI가 모두 깨지는 대형 참사가 일어납니다.
 
+### 작업 전 필수 체크리스트 (Pre-Flight Check)
+
+모든 작업 시작 전 **아래를 수행했는지 self-check**하십시오. 하나라도 생략되면 ERR-20260418-33 급 참사가 발생합니다.
+
+- [ ] **기존 기능 탐색했는가?** — `Glob`, `Grep`으로 `src/app/admin/`, `src/app/api/`, `src/lib/`에서 관련 구현 확인
+- [ ] **기존 커맨드 MD 파일 읽었는가?** — `.claude/commands/` 내 관련 파일(`register.md`, `manage-attractions.md`, `register-product.md`, `assemble-product.md`)
+- [ ] **Error Registry 최근 10건 체크리스트 확인했는가?** — `db/error-registry.md` 하단
+- [ ] **"이 기능 제가 구현해드릴게요"라고 말하기 전** 진짜 그 기능이 없는지 확인했는가?
+- [ ] **임시 스크립트(`db/seed_XXX.js`, `db/temp_XXX.js`) 만들려 하는가?** → 중단하고 기존 API/UI 사용
+
+### 도메인별 강제 진입점
+
+특정 도메인 작업은 해당 MD 파일을 **반드시 먼저 Read**:
+
+| 도메인 | 필수 Read 파일 |
+|-------|--------------|
+| 상품 등록 | `.claude/commands/register.md` |
+| 서안 등 어셈블러 지역 | `.claude/commands/assemble-product.md` |
+| **관광지(attractions) 관리** | **`.claude/commands/manage-attractions.md`** |
+| **등록 후 상품 검증** | **`.claude/commands/validate-product.md`** (원문 ↔ A4 ↔ 모바일 3자 대조) |
+| **A4/모바일 렌더링 로직 추가·수정** | **`src/lib/itinerary-render.ts` 내부 공통 헬퍼에 추가** (렌더러 내부에 직접 로직 작성 금지, ERR-KUL-05) |
+| **DB 필드에 내용 넣기 전** | **`db/FIELD_POLICY.md`** — 고객 노출 vs 내부 필드 구분. 커미션/정산 메모는 special_notes 금지 (ERR-FUK-customer-leaks) |
+| 예약 상태 변경 | `src/lib/booking-state-machine.ts` |
+
+**이 강제 진입점을 무시하고 추측으로 진행하면 즉시 중단하십시오.**
+
+### 🚨 프로세스 완수 메타 규칙 (ERR-process-violation)
+
+사용자가 `/register` 또는 다른 절차 지시 시:
+- **"INSERT 성공 = 완료" 아님.** `/register`의 모든 Step (0~7)을 끝까지 자동 실행.
+- **Step 7 자동 감사(`post_register_audit.js`)는 MANDATORY.** 사용자에게 "나중에 직접 실행하세요" 안내 금지.
+- **경고 발생 시 자동 수정 가능한 것은 DB UPDATE까지 실행** (예: 과거 출발일 필터, itinerary_data.meta 추가).
+- **최종 보고는 항상 "한 화면" 리포트**로 출력 — 감사 결과, 수정 내역, 사용자가 해야 할 마지막 단계(어드민 승인) 포함.
+- **예외: 사용자가 명시적으로 "INSERT만", "감사는 건너뛰어" 라고 지시한 경우만 스킵.**
+
 ---
 
 ## 1. 유틸리티 카탈로그 — "이미 있는 도구를 먼저 찾아라"
@@ -23,7 +58,18 @@
 | DB 읽기/쓰기 | `supabaseAdmin.from('table')` | `supabase.ts` |
 | DB 설정 여부 체크 | `isSupabaseConfigured` | `supabase.ts` |
 | 관광지 매칭 | `matchAttraction(activity, attractions, destination)` | `attraction-matcher.ts` |
+| 관광지 매칭 (인덱스 사전 구축, 반복 호출 고속) | `buildAttractionIndex()` + `matchAttractionIndexed()` | `attraction-matcher.ts` |
 | itinerary 배열 추출 | `normalizeDays(pkg.itinerary_data)` | `attraction-matcher.ts` |
+| 출발요일 정규화 (JSON/배열/평문 → "월/수") | `formatDepartureDays(val)` | `admin-utils.ts` |
+| 선택관광 라벨 공통 생성 ("2층버스 (싱가포르)") | `normalizeOptionalTourName(tour)` | `itinerary-render.ts` |
+| 선택관광 region별 그룹핑 | `groupOptionalToursByRegion(tours)` | `itinerary-render.ts` |
+| **Package 정규 Zod 스키마 (SSOT)** | `PackageCoreSchema` / `PackageStrictSchema` | `package-schema.ts` |
+| **레거시 DB → 정규 변환 (Anti-Corruption Layer)** | `normalizePackage(raw)` / `normalizePhotos()` / `normalizeOptionalTours()` | `package-acl.ts` |
+| **LLM Structured Output 스키마 변환** | `zodToGeminiSchema()` / `zodToClaudeSchema()` | `llm-structured-output.ts` |
+| **LLM 호출 자동 재시도 (backoff)** | `withRetry(fn, { maxAttempts: 3 })` | `llm-retry.ts` |
+| **Schema drift 전수 감사** | `npm run audit:drift` | `db/audit_schema_drift.js` |
+| **Visual + Text Regression 테스트** | `npm run test:visual` | `tests/visual/*.spec.ts` |
+| **ISR 캐시 즉시 무효화** | `POST /api/revalidate { paths, secret }` | `src/app/api/revalidate/route.ts` |
 | 가격/날짜 계산 | `getEffectivePriceDates()`, `groupForPoster()` | `price-dates.ts` |
 | 카카오 채팅 열기 | `openKakaoChannel()` | `kakaoChannel.ts` |
 | 예약 상태 전이 | `ALLOWED_TRANSITIONS[currentStatus]` | `booking-state-machine.ts` |

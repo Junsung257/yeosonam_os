@@ -1,7 +1,50 @@
 import pdfParse from 'pdf-parse';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import type { TravelItinerary } from '@/types/itinerary';
 import { expandPriceTiersDateRanges, filterTiersByDepartureDays } from './expand-date-range';
+import { formatDepartureDays } from './admin-utils';
+
+// ── optional_tours.region 자동 추론 (등록 시점 방어) ──────────────────────
+// 이름에 "싱가포르", "쿠알라" 등 지역 키워드가 있으면 region 필드 자동 주입.
+// 이유: AI가 region 누락해도 렌더러가 일관된 라벨 생성 가능.
+const OT_REGION_KEYWORDS: Record<string, string> = {
+  '말레이시아': '말레이시아', '쿠알라': '말레이시아', '말라카': '말레이시아', '겐팅': '말레이시아',
+  '싱가포르': '싱가포르',
+  '태국': '태국', '방콕': '태국', '파타야': '태국', '푸켓': '태국',
+  '베트남': '베트남', '다낭': '베트남', '하노이': '베트남', '나트랑': '베트남',
+  '대만': '대만', '타이페이': '대만', '타이베이': '대만',
+  '일본': '일본', '후쿠오카': '일본', '오사카': '일본', '홋카이도': '일본',
+  '중국': '중국', '서안': '중국', '북경': '중국', '상해': '중국', '장가계': '중국', '칭다오': '중국',
+  '라오스': '라오스', '몽골': '몽골', '필리핀': '필리핀', '보홀': '필리핀', '세부': '필리핀',
+  '인도네시아': '인도네시아', '발리': '인도네시아',
+};
+
+function inferOptionalTourRegion(name: string): string | null {
+  if (!name) return null;
+  const parenMatch = name.match(/\(([^)]+)\)/);
+  if (parenMatch) {
+    for (const [kw, region] of Object.entries(OT_REGION_KEYWORDS)) {
+      if (parenMatch[1].includes(kw)) return region;
+    }
+  }
+  for (const [kw, region] of Object.entries(OT_REGION_KEYWORDS)) {
+    if (name.includes(kw)) return region;
+  }
+  return null;
+}
+
+function enrichOptionalToursRegion(tours: unknown): OptionalTour[] {
+  if (!Array.isArray(tours)) return [];
+  return tours.filter(Boolean).map((t) => {
+    const tour = t as OptionalTour;
+    if (!tour.name) return tour;
+    if (!tour.region) {
+      const inferred = inferOptionalTourRegion(tour.name);
+      if (inferred) return { ...tour, region: inferred };
+    }
+    return tour;
+  });
+}
 
 // ─── 항공사 코드 정규화 ────────────────────────────────────
 const AIRLINE_NAME_TO_CODE: Record<string, string> = {
@@ -64,8 +107,12 @@ export interface Surcharge {
 
 export interface OptionalTour {
   name: string;
+  /** 지역 컨텍스트 — "말레이시아" | "싱가포르" 등. 원문의 "[X 선택관광]" 섹션 헤더에서 자동 주입. */
+  region?: string | null;
+  price?: string;          // ERR-20260418-04: 문자열 폼 ("$50/인") 지원
   price_usd?: number;
   price_krw?: number;
+  note?: string | null;
 }
 
 export interface CancellationPolicy {
@@ -169,16 +216,19 @@ export interface ParsedDocument {
 
 // ─── Gemini API 호출 ────────────────────────────────────────
 
-function getGeminiModel(apiKey: string) {
+function getGeminiModel(apiKey: string, schema?: ResponseSchema) {
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
-    generationConfig: { temperature: 0.1 },
+    generationConfig: {
+      temperature: 0.1,
+      ...(schema ? { responseMimeType: 'application/json', responseSchema: schema } : {}),
+    },
   });
 }
 
-async function callGeminiVision(apiKey: string, base64Image: string, mimeType: string, prompt: string): Promise<string> {
-  const model = getGeminiModel(apiKey);
+async function callGeminiVision(apiKey: string, base64Image: string, mimeType: string, prompt: string, schema?: ResponseSchema): Promise<string> {
+  const model = getGeminiModel(apiKey, schema);
   const result = await model.generateContent([
     { inlineData: { mimeType, data: base64Image } },
     prompt,
@@ -186,11 +236,95 @@ async function callGeminiVision(apiKey: string, base64Image: string, mimeType: s
   return result.response.text();
 }
 
-async function callGeminiText(apiKey: string, text: string, prompt: string): Promise<string> {
-  const model = getGeminiModel(apiKey);
+async function callGeminiText(apiKey: string, text: string, prompt: string, schema?: ResponseSchema): Promise<string> {
+  const model = getGeminiModel(apiKey, schema);
   const result = await model.generateContent(`${prompt}\n\n---\n\n${text}`);
   return result.response.text();
 }
+
+// ─── ExtractedData용 Gemini 응답 스키마 ──────────────────────
+// Gemini Structured Output으로 JSON 파싱 실패를 원천 차단
+const EXTRACTED_DATA_SCHEMA: ResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    title: { type: SchemaType.STRING, nullable: true },
+    category: { type: SchemaType.STRING, nullable: true },
+    product_type: { type: SchemaType.STRING, nullable: true },
+    trip_style: { type: SchemaType.STRING, nullable: true },
+    destination: { type: SchemaType.STRING, nullable: true },
+    duration: { type: SchemaType.INTEGER, nullable: true },
+    departure_days: { type: SchemaType.STRING, nullable: true },
+    departure_airport: { type: SchemaType.STRING, nullable: true },
+    airline: { type: SchemaType.STRING, nullable: true },
+    min_participants: { type: SchemaType.INTEGER, nullable: true },
+    ticketing_deadline: { type: SchemaType.STRING, nullable: true },
+    guide_tip: { type: SchemaType.STRING, nullable: true },
+    single_supplement: { type: SchemaType.STRING, nullable: true },
+    small_group_surcharge: { type: SchemaType.STRING, nullable: true },
+    price: { type: SchemaType.INTEGER, nullable: true },
+    price_tiers: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          period_label: { type: SchemaType.STRING },
+          departure_dates: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, nullable: true },
+          date_range: {
+            type: SchemaType.OBJECT,
+            properties: { start: { type: SchemaType.STRING }, end: { type: SchemaType.STRING } },
+            nullable: true,
+          },
+          departure_day_of_week: { type: SchemaType.STRING, nullable: true },
+          adult_price: { type: SchemaType.INTEGER, nullable: true },
+          child_price: { type: SchemaType.INTEGER, nullable: true },
+          status: { type: SchemaType.STRING },
+          note: { type: SchemaType.STRING, nullable: true },
+        },
+      },
+    },
+    price_list: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+      period: { type: SchemaType.STRING },
+      rules: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+        condition: { type: SchemaType.STRING },
+        price_text: { type: SchemaType.STRING },
+        price: { type: SchemaType.INTEGER, nullable: true },
+        badge: { type: SchemaType.STRING, nullable: true },
+      }}},
+      notes: { type: SchemaType.STRING, nullable: true },
+    }}},
+    surcharges: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+      period: { type: SchemaType.STRING, nullable: true },
+      amount_usd: { type: SchemaType.NUMBER, nullable: true },
+      amount_krw: { type: SchemaType.NUMBER, nullable: true },
+      note: { type: SchemaType.STRING },
+    }}},
+    excluded_dates: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    inclusions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    excludes: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    optional_tours: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+      name: { type: SchemaType.STRING },
+      region: { type: SchemaType.STRING, nullable: true },    // "[말레이시아 선택관광]" 섹션 → "말레이시아"
+      price: { type: SchemaType.STRING, nullable: true },     // "$50/인" 원문 그대로
+      price_usd: { type: SchemaType.NUMBER, nullable: true },
+      price_krw: { type: SchemaType.NUMBER, nullable: true },
+      note: { type: SchemaType.STRING, nullable: true },
+    }}},
+    itinerary: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    accommodations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    specialNotes: { type: SchemaType.STRING, nullable: true },
+    notices_parsed: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    cancellation_policy: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+      period: { type: SchemaType.STRING },
+      rate: { type: SchemaType.NUMBER },
+      note: { type: SchemaType.STRING, nullable: true },
+    }}},
+    land_operator: { type: SchemaType.STRING, nullable: true },
+    product_tags: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    product_highlights: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    product_summary: { type: SchemaType.STRING, nullable: true },
+    fullText: { type: SchemaType.STRING, nullable: true },
+  },
+};
 
 // ─── 구조화 추출 프롬프트 ────────────────────────────────────
 // Gemini implicit caching 활성화를 위한 버전 고정.
@@ -261,8 +395,9 @@ const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확
   "inclusions": ["항공료 및 텍스", "숙박", "한국어 가이드"],
   "excludes": ["기사/가이드 경비", "개인경비", "매너팁"],
   "optional_tours": [
-    {"name": "발마사지", "price_usd": 30, "price_krw": null}
+    {"name": "발마사지", "region": "말레이시아", "price": "$30/인", "price_usd": 30, "price_krw": null, "note": null}
   ],
+  "// optional_tours 필수 규칙": "원문에 '[말레이시아 선택관광]' / '[싱가포르 선택관광]' 같은 섹션 헤더가 있으면, 해당 섹션의 모든 선택관광에 region 필드를 주입하라. 원문에 섹션 구분이 없어도 이름에 지역 키워드가 있으면(예: '쿠알라 야경투어') region 추론. '2층버스', '리버보트'처럼 지역 맥락 없이는 모호한 이름은 섹션 헤더 region을 반드시 따라야 한다.",
   "itinerary": ["제1일: 부산출발 → 서안도착", "제2일: 소안탑 → 회족거리"],
   "accommodations": ["천익호텔 또는 홀리데이인익스프레호텔(4성)"],
   "specialNotes": "주의사항, 여권유효기간, 취소규정 외 기타 안내 전체 (원문 보존용)",
@@ -361,7 +496,8 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     trip_style: parsed.trip_style || undefined,
     destination: parsed.destination || undefined,
     duration: typeof parsed.duration === 'number' ? parsed.duration : (parsed.duration ? parseInt(parsed.duration) : undefined),
-    departure_days: parsed.departure_days || undefined,
+    // ERR-KUL-01 — JSON 배열 문자열(`["금"]`) 노출 방지: 저장 시점에 평문으로 정규화
+    departure_days: formatDepartureDays(parsed.departure_days) || undefined,
     departure_airport: parsed.departure_airport || undefined,
     airline: normalizeAirlineCode(parsed.airline) || undefined,
     min_participants: parsed.min_participants || 4,
@@ -384,7 +520,8 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     excluded_dates: Array.isArray(parsed.excluded_dates) ? parsed.excluded_dates : [],
     inclusions: Array.isArray(parsed.inclusions) ? parsed.inclusions.filter(Boolean) : [],
     excludes: Array.isArray(parsed.excludes) ? parsed.excludes.filter(Boolean) : [],
-    optional_tours: Array.isArray(parsed.optional_tours) ? parsed.optional_tours : [],
+    // ERR-KUL-04 — optional_tours.region 자동 주입 (AI가 누락해도 라벨 일관성 보장)
+    optional_tours: enrichOptionalToursRegion(parsed.optional_tours),
     itinerary: Array.isArray(parsed.itinerary) ? parsed.itinerary.filter(Boolean) : [],
     accommodations: Array.isArray(parsed.accommodations) ? parsed.accommodations.filter(Boolean) : [],
     specialNotes: parsed.specialNotes || undefined,
@@ -421,7 +558,7 @@ export async function parseImage(buffer: Buffer, mimeType = 'image/jpeg'): Promi
   const base64 = buffer.toString('base64');
 
   try {
-    const raw = await callGeminiVision(apiKey, base64, mimeType, EXTRACT_PROMPT);
+    const raw = await callGeminiVision(apiKey, base64, mimeType, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
     console.log('[Parser] Gemini Vision 응답:', raw.length, '글자');
     const extractedData = parseGeminiResponse(raw, raw);
     console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
@@ -453,7 +590,7 @@ async function parseTextWithAI(text: string): Promise<ExtractedData> {
   const truncated = text;
 
   try {
-    const raw = await callGeminiText(apiKey, truncated, EXTRACT_PROMPT);
+    const raw = await callGeminiText(apiKey, truncated, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
     console.log('[Parser] Gemini Text 응답:', raw.length, '글자');
     const extractedData = parseGeminiResponse(raw, text);
     extractedData.rawText = text; // 원본 전체 텍스트 보존
@@ -758,7 +895,7 @@ const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 
     "surcharges":[{"period":"","amount_usd":null,"amount_krw":null,"note":""}],
     "excluded_dates":["YYYY-MM-DD"],
     "inclusions":["포함항목 원문 그대로"],"excludes":["불포함항목 원문 그대로"],
-    "optional_tours":[{"name":"","price_usd":null,"price_krw":null}],
+    "optional_tours":[{"name":"","region":null,"price":null,"price_usd":null,"price_krw":null}],
     "accommodations":["호텔명"],
     "specialNotes":"주의사항+비고 전체 원문",
     "notices_parsed":[{"type":"CRITICAL|PAYMENT|POLICY|INFO","title":"제목","text":"• 항목1\n• 항목2\n• 항목3"}],
@@ -783,7 +920,7 @@ const MULTI_PRODUCT_PHASE2_PROMPT = `"{{PRODUCT_TITLE}}" 상품의 일정표만 
   "days":[{"day":1,"regions":["지역"],"meals":{"breakfast":false,"lunch":true,"dinner":true,"breakfast_note":null,"lunch_note":"식사명","dinner_note":"식사명"},
     "schedule":[{"time":"09:05","activity":"원문 그대로","transport":"BX1385","note":null,"type":"flight|normal|golf|optional|shopping|cruise|spa","badge":"⛳ 18홀|null"}],
     "hotel":{"name":"호텔명","grade":"4성","note":"또는 동급"}}],
-  "optional_tours":[{"name":"","price_usd":null,"price_krw":null,"note":null}]
+  "optional_tours":[{"name":"","region":null,"price":null,"price_usd":null,"price_krw":null,"note":null}]
 }
 
 ★ 항공편: 출발/도착 각각 별도 항목. type:"flight", time에 시간 정확히 기입.
@@ -834,7 +971,7 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
     trip_style: (item.trip_style as string) || undefined,
     destination: (item.destination as string) || undefined,
     duration: typeof item.duration === 'number' ? item.duration : undefined,
-    departure_days: (item.departure_days as string) || undefined,
+    departure_days: formatDepartureDays(item.departure_days) || undefined,
     departure_airport: (item.departure_airport as string) || undefined,
     airline: (item.airline as string) || undefined,
     min_participants: typeof item.min_participants === 'number' ? item.min_participants : 4,
@@ -856,7 +993,7 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
     excluded_dates: Array.isArray(item.excluded_dates) ? (item.excluded_dates as string[]) : [],
     inclusions: Array.isArray(item.inclusions) ? (item.inclusions as string[]).filter(Boolean) : [],
     excludes: Array.isArray(item.excludes) ? (item.excludes as string[]).filter(Boolean) : [],
-    optional_tours: Array.isArray(item.optional_tours) ? (item.optional_tours as OptionalTour[]) : [],
+    optional_tours: enrichOptionalToursRegion(item.optional_tours),
     itinerary: Array.isArray(item.itinerary) ? (item.itinerary as string[]).filter(Boolean) : [],
     accommodations: Array.isArray(item.accommodations) ? (item.accommodations as string[]).filter(Boolean) : [],
     specialNotes: (item.specialNotes as string) || undefined,
@@ -887,12 +1024,17 @@ export async function extractMultipleProducts(
 
   try {
     // ── Phase 1: 기본 정보 + 가격 추출 (일정표 제외 → 빠름) ──
+    // response_schema: 배열 형태의 상품 데이터 (JSON 파싱 실패 방지)
+    const MULTI_PRODUCT_SCHEMA: ResponseSchema = {
+      type: SchemaType.ARRAY,
+      items: EXTRACTED_DATA_SCHEMA,
+    };
     console.log('[Parser] Phase 1 시작: 기본 정보 + 가격 추출');
     let phase1Raw: string;
     if (base64Image && mimeType) {
-      phase1Raw = await callGeminiVision(apiKey, base64Image, mimeType, MULTI_PRODUCT_PHASE1_PROMPT);
+      phase1Raw = await callGeminiVision(apiKey, base64Image, mimeType, MULTI_PRODUCT_PHASE1_PROMPT, MULTI_PRODUCT_SCHEMA);
     } else {
-      phase1Raw = await callGeminiText(apiKey, truncatedText, MULTI_PRODUCT_PHASE1_PROMPT);
+      phase1Raw = await callGeminiText(apiKey, truncatedText, MULTI_PRODUCT_PHASE1_PROMPT, MULTI_PRODUCT_SCHEMA);
     }
 
     const phase1Parsed = safeParseJsonArray(phase1Raw);

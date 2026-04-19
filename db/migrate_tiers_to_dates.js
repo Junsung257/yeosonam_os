@@ -4,9 +4,10 @@
  * 목적: 3중 포맷(tiers/list/dates) 중 price_dates를 단일 진실 소스로 확정
  *
  * 사용법:
- *   node db/migrate_tiers_to_dates.js --dry-run   (기본, UPDATE 없이 리포트)
- *   node db/migrate_tiers_to_dates.js --apply     (실제 UPDATE)
- *   node db/migrate_tiers_to_dates.js --verify    (모든 행 price_dates 존재 확인)
+ *   node db/migrate_tiers_to_dates.js --dry-run          (기본, UPDATE 없이 리포트)
+ *   node db/migrate_tiers_to_dates.js --apply           (실제 UPDATE)
+ *   node db/migrate_tiers_to_dates.js --verify          (모든 행 price_dates 존재 확인)
+ *   node db/migrate_tiers_to_dates.js --apply --force-refresh  (기존 price_dates도 재계산)
  *
  * 처리 대상:
  *   price_dates IS NULL OR price_dates = '[]'
@@ -21,6 +22,7 @@ const path = require('path');
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
 const VERIFY = args.includes('--verify');
+const FORCE_REFRESH = args.includes('--force-refresh');
 const DRY_RUN = !APPLY && !VERIFY;
 
 function initSupabase() {
@@ -44,7 +46,8 @@ function tiersToDatePrices(tiers) {
 
   for (const tier of tiers) {
     if (!tier.adult_price) continue;
-    const confirmed = tier.status === 'confirmed' || tier.status === 'departure_confirmed';
+    const confirmed = tier.status === 'confirmed' || tier.status === 'departure_confirmed'
+      || !!(tier.note && /출확|출발확정/.test(tier.note));
 
     // 1) departure_dates 배열 우선
     if (Array.isArray(tier.departure_dates) && tier.departure_dates.length > 0) {
@@ -125,7 +128,7 @@ async function main() {
   for (const pkg of data ?? []) {
     total++;
     const hasDates = Array.isArray(pkg.price_dates) && pkg.price_dates.length > 0;
-    if (hasDates) { skipped++; continue; }
+    if (hasDates && !FORCE_REFRESH) { skipped++; continue; }
 
     const tiers = Array.isArray(pkg.price_tiers) ? pkg.price_tiers : [];
     if (tiers.length === 0) { skipped++; continue; }

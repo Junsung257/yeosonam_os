@@ -1,0 +1,11 @@
+{
+  "투어폰":     { "uuid": "43a54eed-1390-4713-bb43-2624c87436a4", "code": "TP" },
+  "투어비":     { "uuid": "6a2f187f-c33e-45f1-b444-271c5cdcf74e", "code": "TB" },
+  "더투어":     { "uuid": "ae53f857-de2a-43b6-8763-8289f75b91a0", "code": "TT" },
+  "랜드부산":   { "uuid": "de5cd166-9f84-41f5-9124-e9b6b1081ffe", "code": "LB" },
+  "모두투어":   { "uuid": "c982567e-fb23-4f82-8cda-8e7df8e74ea1", "code": "MD" },
+  "베스트아시아": { "uuid": "cd55c45d-69bd-4add-8e07-44f022e35c1c", "code": "BA" },
+  "투어코코넛": { "uuid": "ca9eba2f-203c-41a8-ad25-3d3416851b30", "code": "TC" },
+  "티트레블":   { "uuid": "7b89ad15-c22a-45aa-8d80-ad367d1e0d33", "code": "TI" },
+  "하나투어":   { "uuid": "875a1cd2-8eeb-43b2-b099-2f75e30e160d", "code": "HN" }
+}

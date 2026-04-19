@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/affiliate-anomaly-detect",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/visual-baseline-monitor",
+      "schedule": "0 9 * * *"
     }
   ]
 }

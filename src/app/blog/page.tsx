@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const revalidate = 600; // 10분 ISR
@@ -16,6 +17,13 @@ export const metadata: Metadata = {
     description: '여소남이 엄선한 여행지 정보, 가성비 패키지 추천, 꿀팁 가이드.',
     url: `${BASE_URL}/blog`,
     type: 'website',
+    images: [{ url: `${BASE_URL}/og-image.png`, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '여행 블로그 | 여소남',
+    description: '여소남이 엄선한 여행지 정보, 가성비 패키지 추천, 꿀팁 가이드.',
+    images: [`${BASE_URL}/og-image.png`],
   },
 };
 
@@ -101,6 +109,31 @@ export default async function BlogListPage({
   const totalPages = Math.ceil(total / PER_PAGE);
 
   return (
+    <>
+      {/* CollectionPage JSON-LD */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: '여행 블로그',
+            description: '여소남이 엄선한 여행지 정보, 가성비 패키지 추천, 꿀팁 가이드를 만나보세요.',
+            url: `${BASE_URL}/blog`,
+            inLanguage: 'ko-KR',
+            mainEntity: {
+              '@type': 'ItemList',
+              numberOfItems: total,
+              itemListElement: posts.slice(0, 10).map((p, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${BASE_URL}/blog/${p.slug}`,
+                name: p.seo_title || p.travel_packages?.title || '여행 가이드',
+              })),
+            },
+          }),
+        }}
+      />
     <main className="min-h-screen bg-white">
       {/* 헤더 */}
       <header className="border-b bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
@@ -254,5 +287,6 @@ export default async function BlogListPage({
         )}
       </section>
     </main>
+    </>
   );
 }

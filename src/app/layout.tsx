@@ -58,13 +58,27 @@ export const metadata: Metadata = {
       'naver-site-verification': 'af1da2c30b83023aa5c6f290ba2fc2460ef25edf',
     },
   },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: '여소남 관리',
+  },
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#4f46e5',
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#001f3f' },
+    { media: '(prefers-color-scheme: dark)', color: '#001f3f' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

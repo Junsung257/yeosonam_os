@@ -86,6 +86,9 @@ export function tiersToDatePrices(tiers: PriceTier[]): PriceDate[] {
     // 3) excluded_dates 필터 (tier 레벨)
     const excluded = new Set((tier as any).excluded_dates || []);
 
+    const isConfirmed = tier.status === 'confirmed'
+      || !!(tier.note && /출확|출발확정/.test(tier.note));
+
     for (const date of dates) {
       if (!date || seen.has(date) || excluded.has(date)) continue;
       seen.add(date);
@@ -93,7 +96,7 @@ export function tiersToDatePrices(tiers: PriceTier[]): PriceDate[] {
         date,
         price: tier.adult_price ?? 0,
         ...(tier.child_price ? { child_price: tier.child_price } : {}),
-        confirmed: false, // 기본값 false — 확정은 수동 설정
+        confirmed: isConfirmed,
       });
     }
   }
@@ -136,12 +139,15 @@ export function getStrictPriceDates(pkg: {
 
 const DOW_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
-export function groupForPoster(dates: PriceDate[]): MonthGroup[] {
+// ERR-20260418-29 — 청크 분할 시 전체 최저가를 외부에서 전달 가능 (청크 내 최저가 오표시 방지)
+export function groupForPoster(dates: PriceDate[], opts?: { globalMinOverride?: number }): MonthGroup[] {
   if (dates.length === 0) return [];
 
-  // 전체 최저가
+  // 전체 최저가 (청크 분할 시 override 사용)
   const allPrices = dates.map(d => d.price).filter(p => p > 0);
-  const globalMin = allPrices.length > 0 ? Math.min(...allPrices) : 0;
+  const globalMin = opts?.globalMinOverride != null
+    ? opts.globalMinOverride
+    : (allPrices.length > 0 ? Math.min(...allPrices) : 0);
 
   // Step 1: 월별 분리
   const byMonth = new Map<number, PriceDate[]>();
@@ -153,7 +159,9 @@ export function groupForPoster(dates: PriceDate[]): MonthGroup[] {
 
   const result: MonthGroup[] = [];
 
-  for (const [monthNum, monthDates] of byMonth) {
+  const sortedMonths = [...byMonth.keys()].sort((a, b) => a - b);
+  for (const monthNum of sortedMonths) {
+    const monthDates = byMonth.get(monthNum)!;
     // Step 2: 같은 월 내에서 가격별 그룹
     const byPrice = new Map<number, PriceDate[]>();
     for (const d of monthDates) {
@@ -173,30 +181,18 @@ export function groupForPoster(dates: PriceDate[]): MonthGroup[] {
         byDow.get(d)!.push(pd);
       }
 
-      // 일~수(0,1,2,3) 병합 가능한지 체크
-      const sunToWed = [0, 1, 2, 3];
-      const sunToWedDows = sunToWed.filter(d => byDow.has(d));
-      const otherDows = [...byDow.keys()].filter(d => !sunToWed.includes(d));
-
-      // 서브그룹 생성
+      // ERR-20260418-06 — 요일 강제 병합 완전 제거 (Strict Grouping)
+      // 원칙: "1 요일 + 1 가격 = 1 행"
+      //   - 같은 요일의 날짜는 묶임 (예: "화 2,9,16,23,30")
+      //   - 다른 요일은 절대 섞지 않음 ("일-수", "화,수" 라벨 금지)
+      //
+      // 근거:
+      //   - Set Partitioning 원리: 서로 다른 속성(요일)을 같은 행에 두면 정보 손실
+      //   - 여행업 UI 관행(Skyscanner/Expedia): 요일 범위 병합 없음
+      //   - 사용자 피드백: "강제 그룹화는 기괴함. 원문 그대로 1:1 매핑"
       const subGroups: { label: string; dates: PriceDate[] }[] = [];
-
-      // 일~수 그룹 (2개 이상이면 "일-수"로 병합)
-      if (sunToWedDows.length >= 2) {
-        const merged: PriceDate[] = [];
-        for (const d of sunToWedDows) {
-          merged.push(...byDow.get(d)!);
-        }
-        subGroups.push({ label: '일-수', dates: merged });
-      } else {
-        // 1개 이하면 개별 요일로
-        for (const d of sunToWedDows) {
-          subGroups.push({ label: DOW_NAMES[d], dates: byDow.get(d)! });
-        }
-      }
-
-      // 나머지 요일은 개별 행
-      for (const d of otherDows.sort((a, b) => a - b)) {
+      const sortedDows = [...byDow.keys()].sort((a, b) => a - b);
+      for (const d of sortedDows) {
         subGroups.push({ label: DOW_NAMES[d], dates: byDow.get(d)! });
       }
 
@@ -227,33 +223,6 @@ export function groupForPoster(dates: PriceDate[]): MonthGroup[] {
   }
 
   return result;
-}
-
-function detectDowPattern(dowSet: Set<number>): string {
-  if (dowSet.size === 0) return '특정일';
-  if (dowSet.size === 1) {
-    return DOW_NAMES[[...dowSet][0]];
-  }
-
-  // 일~수 패턴 체크 (0,1,2,3)
-  const sunToWed = new Set([0, 1, 2, 3]);
-  if (dowSet.size <= 4 && [...dowSet].every(d => sunToWed.has(d))) {
-    return '일-수';
-  }
-
-  // 월~금 체크
-  const monToFri = new Set([1, 2, 3, 4, 5]);
-  if (dowSet.size <= 5 && [...dowSet].every(d => monToFri.has(d))) {
-    return '월-금';
-  }
-
-  // 2개 요일 나열 (예: "수,목")
-  if (dowSet.size === 2) {
-    const sorted = [...dowSet].sort((a, b) => a - b);
-    return sorted.map(d => DOW_NAMES[d]).join(',');
-  }
-
-  return '특정일';
 }
 
 // ── 4. getMinPriceFromDates ──
