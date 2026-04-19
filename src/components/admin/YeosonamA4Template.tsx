@@ -1766,7 +1766,8 @@ function ResolvedNoticesA4Page({ notices, packageId }: {
   const hasSpecial = notices.some(n => (n._tier ?? 1) >= 3);
 
   // QR: 모바일 약관 페이지 (상품 상세 #유의사항 앵커)
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://yeosonam.com';
+  // NEXT_PUBLIC_BASE_URL 우선 — admin 도메인에서 프리뷰 시에도 고객 접근 가능한 URL 고정 보장.
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.com';
   const termsUrl = packageId ? `${baseUrl}/packages/${packageId}#유의사항` : `${baseUrl}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(termsUrl)}`;
 
