@@ -2,9 +2,13 @@ name: Visual Regression
 
 on:
   schedule:
-    # 매일 한국 시간 새벽 3시 (UTC 18:00)
     - cron: '0 18 * * *'
-  workflow_dispatch: # 수동 실행 가능
+  workflow_dispatch:
+    inputs:
+      update_baseline:
+        description: 'production 기준으로 모든 baseline을 재생성하고 자동 커밋'
+        type: boolean
+        default: false
   push:
     branches: [main, master]
     paths:
@@ -17,6 +21,8 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,9 +43,30 @@ jobs:
         id: visual
         env:
           VISUAL_TEST_URL: ${{ secrets.PRODUCTION_URL || 'https://yeosonam.com' }}
-        run: npm run test:visual
+          UPDATE_BASELINE: ${{ inputs.update_baseline && '1' || '' }}
+        run: |
+          if [ "$UPDATE_BASELINE" = "1" ]; then
+            echo "🔄 Baseline 전체 재생성 모드 (--update-snapshots)"
+            npx playwright test tests/visual --update-snapshots
+          else
+            npm run test:visual
+          fi
         timeout-minutes: 15
         continue-on-error: true
+
+      - name: Commit updated baselines
+        if: inputs.update_baseline && steps.visual.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/
+          if git diff --cached --quiet; then
+            echo "ℹ️ baseline 변경사항 없음"
+          else
+            git commit -m "test: regenerate visual baselines from production (automated)"
+            git push
+            echo "✅ 새 baseline 커밋 완료"
+          fi
 
       - name: Upload HTML report
         if: always()
@@ -50,7 +77,7 @@ jobs:
           retention-days: 7
 
       - name: Upload snapshot diffs (실패 시)
-        if: steps.visual.outcome == 'failure'
+        if: steps.visual.outcome == 'failure' && !inputs.update_baseline
         uses: actions/upload-artifact@v4
         with:
           name: snapshot-diffs-${{ github.run_id }}
@@ -71,11 +98,7 @@ jobs:
 
             ### 확인 방법
             1. Actions 탭 → 이 실행 → artifacts 다운로드 (snapshot-diffs-*.zip)
-            2. HTML 리포트 확인: \`npx playwright show-report\`
-            3. 의도된 변경이면: \`npm run test:visual:update\` → 새 baseline 커밋
-
-            ### 의심 커밋
-            ${context.sha ? `${context.sha.slice(0, 7)}` : '(없음)'}
+            2. 의도된 변경이면: Visual Regression workflow → Run workflow → update_baseline 체크
             `;
             await github.rest.issues.create({
               owner: context.repo.owner,
