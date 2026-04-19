@@ -10,6 +10,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const envPath = path.join(__dirname, '..', '.env.local');
@@ -24,6 +25,10 @@ if (ids.length === 0) { console.error('사용: node db/post_register_audit.js <i
 
 // insert-template의 validatePackage 재사용
 const { validatePackage } = require('./templates/insert-template.js');
+const { aiCrossCheck } = require('./ai_audit_helper.js');
+
+// AI 감사 스킵 조건 — 환경변수 POST_AUDIT_AI=0 또는 --no-ai 플래그
+const AI_DISABLED = process.env.POST_AUDIT_AI === '0' || process.argv.includes('--no-ai');
 
 async function checkServer(url) {
   try {
@@ -32,13 +37,150 @@ async function checkServer(url) {
   } catch { return false; }
 }
 
+// ───── Extended Rules (E1~E4) ─────────────────────────────────────────
+// validatePackage(W1~W19)가 잡지 못하는 "원문 대조형" 결함 탐지.
+// 어떤 상품/지역이 와도 동작하는 일반화 규칙.
+
+function normalizeText(s) {
+  return String(s || '').replace(/[\s,.\-·()~]/g, '').toLowerCase();
+}
+
+// E0: raw_text 원본 보존 검증 — 해시 부재/불일치 탐지
+// Rule Zero(ERR-FUK-rawtext-pollution@2026-04-19): raw_text는 원문 원본 불변.
+function checkRawTextIntegrity(pkg) {
+  const issues = [];
+  if (!pkg.raw_text) {
+    issues.push(`E0: raw_text가 비어있음 — 감사 기준 데이터 없음. 원문 원본을 복구하세요.`);
+    return issues;
+  }
+  const actualHash = crypto.createHash('sha256').update(pkg.raw_text).digest('hex');
+  if (!pkg.raw_text_hash) {
+    issues.push(`E0: raw_text_hash가 null — 원문 무결성을 검증할 수 없음. 현재 해시 저장 권장: ${actualHash.slice(0, 16)}...`);
+  } else if (pkg.raw_text_hash !== actualHash) {
+    issues.push(`E0: raw_text_hash 불일치 — 등록 이후 원문이 변경됨. 저장된 해시=${pkg.raw_text_hash.slice(0,16)}..., 현재=${actualHash.slice(0,16)}...`);
+  }
+  // 요약본 경고: raw_text가 극단적으로 짧고 parsed_data.prior_raw_text_summary 흔적이 있으면
+  if (pkg.raw_text.length < 500 && !/제\s*\d+\s*일|DAY\s*\d+|\d+일차|일정표/i.test(pkg.raw_text)) {
+    issues.push(`E0: raw_text가 ${pkg.raw_text.length}자로 비정상적으로 짧음 — 요약본이 저장됐을 수 있음. 원문 원본으로 교체 필요.`);
+  }
+  return issues;
+}
+
+// E1: 포함사항에 원문에 없는 금액/스펙이 주입되었는지
+// 예: 원문 "여행자보험" → DB "2억 여행자보험"
+function checkInclusionInjection(pkg) {
+  const issues = [];
+  const raw = pkg.raw_text;
+  if (!raw || !Array.isArray(pkg.inclusions)) return issues;
+  const rawNorm = normalizeText(raw);
+  for (const item of pkg.inclusions) {
+    if (typeof item !== 'string') continue;
+    // 금액/단위 토큰만 추출 — '2박' 같은 숙박 수는 원문 보존 관례상 오탐 많아 제외
+    const tokens = [...item.matchAll(/(\d+\s*억\s*(?:원)?|\d+\s*만\s*(?:원)?|\d+%|JPY\s*\d+|USD\s*\d+|\d+성급)/g)];
+    for (const t of tokens) {
+      const token = t[1];
+      if (!rawNorm.includes(normalizeText(token))) {
+        issues.push(`E1: inclusions "${item}"의 "${token}"이 raw_text에 없음 — 허위 스펙 주입 의심`);
+      }
+    }
+  }
+  return issues;
+}
+
+// E2: itinerary_data.days[i].regions가 원문 어디엔가 존재하는지 + 복수 상품 간 regions 복사 의심
+// - raw_text가 요약형이면 Day별 정밀 분할이 불가하므로 "전체 원문 존재 여부"만 weak-check.
+// - 추가 시그널: 모든 days의 regions가 동일하면서 duration >= 3이면 "regions 복사 의심" 경고.
+function checkRegionsVsRawText(pkg) {
+  const issues = [];
+  const raw = pkg.raw_text;
+  const days = pkg.itinerary_data?.days;
+  if (!Array.isArray(days) || days.length === 0) return issues;
+
+  // 전체 원문에 지역명이 존재하는지 (weak)
+  if (raw) {
+    const rawNorm = normalizeText(raw);
+    for (let i = 0; i < days.length; i++) {
+      const regs = days[i]?.regions || [];
+      for (const reg of regs) {
+        if (!reg || typeof reg !== 'string') continue;
+        const regNorm = normalizeText(reg);
+        if (regNorm.length < 2) continue;
+        if (!rawNorm.includes(regNorm)) {
+          issues.push(`E2: Day${days[i].day || i+1} regions의 "${reg}"가 원문 전체에 없음 — 허위 지역 주입 의심`);
+        }
+      }
+    }
+  }
+
+  // Day별 regions가 모두 동일한지 (중간 일차 이동 누락 의심)
+  if (days.length >= 3) {
+    const fingerprints = days.map(d => (d.regions || []).join('|'));
+    const uniq = new Set(fingerprints);
+    if (uniq.size === 1 && fingerprints[0].length > 0) {
+      // 모든 날 같은 지역 — 관광 이동이 없을 수는 있으므로 INFO 수준
+      issues.push(`E2: 모든 Day의 regions가 동일(${fingerprints[0]}) — 지역 이동 표기 누락 가능성`);
+    }
+  }
+
+  return issues;
+}
+
+// E3: excluded_dates와 surcharges 기간의 날짜 교집합 (출발 불가 날짜에 추가요금 모순)
+function checkDateOverlap(pkg) {
+  const issues = [];
+  const ex = Array.isArray(pkg.excluded_dates) ? pkg.excluded_dates : [];
+  const sur = Array.isArray(pkg.surcharges) ? pkg.surcharges : [];
+  if (ex.length === 0 || sur.length === 0) return issues;
+  const exSet = new Set(ex.map(d => String(d).slice(0, 10)));
+  for (const s of sur) {
+    if (!s?.start || !s?.end) continue;
+    const start = new Date(s.start); const end = new Date(s.end);
+    if (isNaN(start) || isNaN(end)) continue;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      if (exSet.has(iso)) {
+        issues.push(`E3: surcharge "${s.name}"(${s.start}~${s.end})가 excluded_dates(${iso})와 겹침 — 출발 불가 날짜에 추가요금 모순`);
+        break;
+      }
+    }
+  }
+  return issues;
+}
+
+// E4: 특약 상품에 표준약관 '예약 및 취소 규정' 문구가 렌더됐는지
+function checkClauseDuplication(pkg, renderedText) {
+  const issues = [];
+  const notices = Array.isArray(pkg.notices_parsed) ? pkg.notices_parsed : [];
+  const hasSpecial = notices.some(n => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type === 'PAYMENT') return true;
+    return /특별약관|특약/.test(`${n.title||''} ${n.text||''}`);
+  });
+  if (!hasSpecial || !renderedText) return issues;
+  const STANDARD_MARKERS = ['30일 전까지 취소', '29~21일 전 취소', '계약금 전액 환불'];
+  for (const marker of STANDARD_MARKERS) {
+    if (renderedText.includes(marker)) {
+      issues.push(`E4: 특약 상품인데 렌더에 표준약관 문구 "${marker}" 노출 — mergeNotices 로직 미적용 또는 버그`);
+    }
+  }
+  return issues;
+}
+
 async function auditOne(pkg, baseUrl) {
   const result = { id: pkg.id, title: pkg.title, short_code: pkg.short_code };
 
   // 1. validatePackage (W1~W19)
   const v = validatePackage(pkg);
   result.errors = v.errors;
-  result.warnings = v.warnings;
+  result.warnings = [...v.warnings];
+
+  // 1-a. Extended Rule E0 (raw_text 원본 보존 검증 — 다른 규칙의 전제조건)
+  result.warnings.push(...checkRawTextIntegrity(pkg));
+
+  // 1-b. Extended Rules E1~E3 (원문 대조형, DB만으로 수행)
+  result.warnings.push(...checkInclusionInjection(pkg));
+  result.warnings.push(...checkRegionsVsRawText(pkg));
+  result.warnings.push(...checkDateOverlap(pkg));
 
   // 2. Zod 검증 (loose)
   try {
@@ -66,6 +208,30 @@ async function auditOne(pkg, baseUrl) {
         const priceOk = pkg.price && renderedText.includes(pkg.price.toLocaleString());
         const hotelOk = pkg.itinerary_data?.days?.some(d => d.hotel?.name && renderedText.includes(d.hotel.name.split(' ')[0]));
         const flightOk = pkg.itinerary_data?.days?.[0]?.schedule?.some(s => s.transport && renderedText.includes(s.transport));
+
+        // E4: 특약 상품의 표준약관 중복 렌더 감지
+        const clauseIssues = checkClauseDuplication(pkg, renderedText);
+        if (clauseIssues.length) result.errors.push(...clauseIssues);
+
+        // 🆕 E5: Gemini cross-check — 원문 ↔ 렌더 의미 대조 (구조 규칙이 못 잡는 축약/창작)
+        // severity CRITICAL/HIGH → warnings 승격
+        if (!AI_DISABLED && pkg.raw_text && renderedText.length > 500) {
+          console.log(`   🤖 AI cross-check 호출 중... (${pkg.short_code})`);
+          const ai = await aiCrossCheck(pkg.raw_text, renderedText, pkg.title);
+          result.ai = ai;
+          if (ai.available) {
+            console.log(`      Faithfulness ${ai.overall_faithfulness_pct}% / Severity ${ai.severity} (${ai.elapsed_ms}ms)`);
+            if (ai.severity === 'CRITICAL' || ai.severity === 'HIGH') {
+              const summary = [ai.summary].filter(Boolean).join(' ');
+              result.warnings.push(`E5 [AI:${ai.severity}] ${summary || 'AI가 의미적 오류 감지'}`);
+              ai.missing_from_render?.slice(0, 3).forEach(m => result.warnings.push(`E5 누락: ${m}`));
+              ai.distorted_in_render?.slice(0, 3).forEach(m => result.warnings.push(`E5 왜곡: ${m}`));
+              ai.hallucinated_in_render?.slice(0, 3).forEach(m => result.warnings.push(`E5 창작: ${m}`));
+            }
+          } else {
+            console.log(`      AI 감사 스킵: ${ai.reason}`);
+          }
+        }
 
         result.render = {
           url: renderUrl,
@@ -104,7 +270,32 @@ async function auditOne(pkg, baseUrl) {
     const { data: pkg, error } = await sb.from('travel_packages')
       .select('*').eq('id', id).maybeSingle();
     if (error || !pkg) { console.log(`❌ ${id} 조회 실패`); continue; }
-    results.push(await auditOne(pkg, activeUrl));
+    const r = await auditOne(pkg, activeUrl);
+    results.push(r);
+
+    // 🆕 감사 결과를 DB에 영속화 (gating의 기준)
+    // 규칙:
+    //   errors > 0  → blocked (승인 차단)
+    //   warnings > 0 → warnings (승인 가능하나 어드민 확인 필수)
+    //   둘 다 0    → clean (즉시 승인 가능)
+    const auditStatus =
+      (r.errors?.length || 0) > 0 ? 'blocked' :
+      (r.warnings?.length || 0) > 0 ? 'warnings' : 'clean';
+    const auditReport = {
+      errors: r.errors || [],
+      warnings: r.warnings || [],
+      render: r.render || null,
+      ai: r.ai || null,
+      ran_at: new Date().toISOString(),
+    };
+    const { error: upErr } = await sb.from('travel_packages')
+      .update({
+        audit_status: auditStatus,
+        audit_report: auditReport,
+        audit_checked_at: new Date().toISOString(),
+      }).eq('id', id);
+    if (upErr) console.log(`⚠️  audit 결과 저장 실패 (${id}): ${upErr.message}`);
+    else r._persisted_status = auditStatus;
   }
 
   // 🆕 Visual Regression fixtures.json 자동 등록 (ERR-FUK 재발 방지)
@@ -155,6 +346,15 @@ async function auditOne(pkg, baseUrl) {
   for (const r of results) {
     console.log(`📦 ${r.short_code || '(no code)'} | ${r.title}`);
     console.log(`   ID: ${r.id}`);
+
+    // 🆕 audit_status 게이트 결과
+    if (r._persisted_status) {
+      const badge =
+        r._persisted_status === 'clean' ? '🟢 CLEAN (즉시 승인 가능)' :
+        r._persisted_status === 'warnings' ? '🟡 WARNINGS (어드민 확인 필요)' :
+        '🔴 BLOCKED (승인 차단 — 수정 후 재감사)';
+      console.log(`   audit_status: ${badge}`);
+    }
 
     // W1-W19 결과
     if (r.errors.length === 0 && r.warnings.length === 0) {
