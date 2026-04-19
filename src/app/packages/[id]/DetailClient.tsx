@@ -164,7 +164,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const toggleExpand = (key: string) => {
     setExpandedItems(prev => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -186,7 +187,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
   useEffect(() => {
     const ref = searchParams.get('ref');
-    if (ref) fetch(`/api/influencer/track?ref=${ref}&pkg=${id}`).catch(() => {});
+    if (ref) fetch(`/api/influencer/track?ref=${encodeURIComponent(ref)}&pkg=${encodeURIComponent(id)}`).catch(() => {});
   }, [id, searchParams]);
 
   // 캘린더 초기 월 자동 이동은 DepartureCalendar 컴포넌트가 priceDates로부터 처리
@@ -203,7 +204,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       return;
     }
     // 폴백: 클라이언트에서 직접 fetch
-    fetch(`/api/packages?id=${id}`).then(r => r.json()).then(data => {
+    fetch(`/api/packages?id=${encodeURIComponent(id)}`).then(r => r.json()).then(data => {
       const p = data.package ?? null;
       setPkg(p);
       if (p) {
@@ -214,8 +215,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         });
       }
     }).catch(console.error).finally(() => setIsLoading(false));
-    fetch('/api/attractions?limit=500').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
-  }, [id, initialPackage]);
+    // initialAttractions가 비어 있을 때만 폴백 fetch (불필요 중복 호출 방지)
+    if (initialAttractions.length === 0) {
+      fetch('/api/attractions?limit=500').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
+    }
+  }, [id, initialPackage, initialAttractions.length]);
 
   const observerCallback = useCallback((entries: IntersectionObserverEntry[]) => {
     for (const entry of entries) { if (entry.isIntersecting) setActiveSection(entry.target.getAttribute('data-section') || '상품정보'); }
@@ -679,7 +683,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
               <div className="space-y-8">
                 {currentDay.schedule?.map((item, sIdx) => {
-                  const { icon, bg } = getTimelineIcon(item.type, item.activity);
                   // 항공/이동/공항 관련 스케줄은 관광지 매칭 스킵
                   // ERR-20260418-25/32 — optional/shopping 타입도 매칭 스킵 (선택관광 안내에 관광지 카드 안 붙도록)
                   const skipMatch = item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
@@ -787,13 +790,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
                         {/* ═══ 관광지 블록 (하나투어 스타일) ═══ */}
                         {attr && (() => {
-                          const expandKey = `${currentDay.day}-${sIdx}`;
-                          const isExpanded = expandedItems.has(expandKey);
                           // 포함사항에 해당 관광지/활동이 있으면 "스페셜포함"
                           const inclusions = pkg.inclusions || [];
                           const isIncluded = inclusions.some(inc =>
                             item.activity.includes(inc) || inc.includes(attr.name) || attr.name.includes(inc)
-                            || /마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i))
+                            || (/마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i)))
                           );
                           const effectiveBadge = isIncluded ? 'special' : attr.badge_type;
                           return (

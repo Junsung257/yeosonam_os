@@ -293,12 +293,14 @@ export async function POST(request: NextRequest) {
     }
 
     // ── land_operator_id 자동매핑 (텍스트 → UUID) ──
+    // is_active 필터: 소프트 삭제(is_active=false)된 랜드사로 잘못 매핑되는 것을 방지.
     let landOperatorId = body.land_operator_id || null;
     if (!landOperatorId && body.land_operator && supabaseAdmin) {
       const { data: opData } = await supabaseAdmin
         .from('land_operators')
         .select('id')
         .eq('name', body.land_operator)
+        .eq('is_active', true)
         .limit(1);
       if (opData?.length) landOperatorId = opData[0].id;
     }
@@ -389,7 +391,11 @@ export async function POST(request: NextRequest) {
       if (internalCode) patch.internal_code = internalCode;
       if (landOperatorId) patch.land_operator_id = landOperatorId;
       if (Object.keys(patch).length > 0) {
-        await supabaseAdmin.from('travel_packages').update(patch).eq('id', result.id);
+        const { error: patchErr } = await supabaseAdmin
+          .from('travel_packages')
+          .update(patch)
+          .eq('id', result.id);
+        if (patchErr) console.error('[packages] 후처리 update 실패:', patchErr, patch);
       }
     }
 
@@ -435,8 +441,13 @@ export async function PATCH(request: NextRequest) {
         .in('id', packageIds);
       if (error) throw error;
       // ERR-KUL-ISR — 변경된 각 상품의 ISR 캐시 즉시 무효화 (최대 1시간 대기 방지)
-      for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
-      revalidatePath('/packages');
+      // 캐시 무효화 실패가 DB 성공 응답까지 막지 않도록 격리.
+      try {
+        for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
+        revalidatePath('/packages');
+      } catch (e) {
+        console.warn('[packages] revalidatePath 실패 (무시):', e);
+      }
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
