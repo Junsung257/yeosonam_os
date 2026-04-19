@@ -10,7 +10,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { dynamicMasks, textHash, waitForStable, snapshotName } from './helpers';
+import { dynamicMasks, textHash, waitForStable, snapshotName, getMainContainer } from './helpers';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -36,7 +36,7 @@ for (const fx of fixtures) {
     test('모바일 랜딩 — 텍스트 회귀 (innerText hash)', async ({ page }) => {
       await page.goto(`/packages/${fx.id}`);
       await waitForStable(page);
-      const hash = await textHash(page.locator('main'));
+      const hash = await textHash(getMainContainer(page));
 
       // 베이스라인 파일
       const baselinePath = path.join(__dirname, 'baselines', `${fx.product}-text.hash`);

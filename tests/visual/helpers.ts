@@ -64,30 +64,15 @@ export function normalizeText(raw: string): string {
 /** DOM이 hydration 완료 + 주요 데이터 로드 완료할 때까지 대기 */
 export async function waitForStable(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded', { timeout: 60_000 });
-  try {
-    await page.waitForSelector('main, [data-testid="main-content"]', { state: 'attached', timeout: 60_000 });
-  } catch (e) {
-    const url = page.url();
-    const title = await page.title().catch(() => '(no title)');
-    const html = await page.content().catch(() => '(no content)');
-    // body만 추출해서 보기
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/);
-    const bodyContent = bodyMatch ? bodyMatch[1] : '(no body found)';
-    const hasMain = /<main\b/i.test(html);
-    const hasMainTestId = /data-testid=["']main-content["']/i.test(html);
-    console.error('─── waitForStable FAILED ───');
-    console.error('URL:', url);
-    console.error('Title:', title);
-    console.error('HTML length:', html.length);
-    console.error('<main> tag found:', hasMain);
-    console.error('data-testid="main-content" found:', hasMainTestId);
-    console.error('BODY (first 3000 chars):', bodyContent.substring(0, 3000));
-    console.error('BODY (last 2000 chars):', bodyContent.substring(Math.max(0, bodyContent.length - 2000)));
-    console.error('──────────────────────────');
-    throw e;
-  }
+  // 상품 상세 페이지의 최상위 컨테이너 (main 태그 또는 min-h-screen div)
+  await page.waitForSelector('main, [data-testid="main-content"], div.min-h-screen', { state: 'attached', timeout: 60_000 });
   await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(2000);
+}
+
+/** 페이지의 주 컨테이너 locator (main 또는 div.min-h-screen 중 존재하는 것) */
+export function getMainContainer(page: Page): Locator {
+  return page.locator('main, [data-testid="main-content"], div.min-h-screen').first();
 }
 
 // ── 4. 베이스라인 관리 ───────────────────────────────────────────────────
