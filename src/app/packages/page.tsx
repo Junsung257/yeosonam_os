@@ -57,10 +57,12 @@ export default async function PackagesPage({
   const sb = getSupabase();
 
   // 상품 목록 서버사이드 fetch
+  // audit_status === 'blocked' 상품은 고객 목록에서 제외 (감사 게이트 이중 가드)
   let query = sb
     .from('travel_packages')
     .select(PACKAGE_FIELDS)
     .in('status', ['active', 'approved'])
+    .or('audit_status.is.null,audit_status.neq.blocked')
     .order('created_at', { ascending: false })
     .limit(50);
 

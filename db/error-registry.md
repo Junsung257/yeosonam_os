@@ -633,3 +633,10 @@
 - [ ] **ERR-KUL-05 (메타)**: 새 렌더링 로직을 추가할 때 `YeosonamA4Template.tsx` / `DetailClient.tsx` 내부가 아니라 `src/lib/itinerary-render.ts` 공통 헬퍼로 추가했는가? 렌더러는 헬퍼 출력만 소비.
 - [ ] **ERR-KUL-safe-replace**: 중복 상품 감지 시 completeness score 비교했는가? 20%+ 하락 시 `pending_replace` 로 보류.
 - [ ] **ERR-audit-fuzzy**: audit_render_vs_source 결과가 "공백 차이" 같은 false alarm 아닌가? `normalizeEntity()` 통과 여부 재확인.
+- [ ] **ERR-FUK-rawtext-pollution@2026-04-19** (Rule Zero): `raw_text`에 **원문 원본 그대로** 저장했는가? 파서 요약/정규화 버전 금지. `raw_text_hash = sha256(raw_text)` 동반 저장. 증상: LB-FUK-03-01/02에서 raw_text가 1035자 요약본으로 저장되어 E1 감사가 오염된 기준을 사용, "2억 여행자보험" 주입 통과.
+- [ ] **ERR-FUK-insurance-injection@2026-04-19** (E1): `inclusions`에 "2억/1억 여행자보험" 같은 원문 없는 금액을 임의 주입하지 않았는가? 일반 패키지 관행 차용 금지.
+- [ ] **ERR-FUK-regions-copy@2026-04-19** (E2): 한 원문에서 파생한 복수 상품(정통/품격 등)의 `itinerary_data.days[].regions`를 서로 복사하지 않았는가? 각 상품 원문 "지역" 컬럼대로 개별 매핑.
+- [ ] **ERR-FUK-date-overlap@2026-04-19** (E3): `excluded_dates`와 `surcharges` 기간에 **같은 날짜가 동시 존재**하지 않는가? 출발 불가 날짜에 추가요금 모순.
+- [ ] **ERR-FUK-clause-duplication@2026-04-19** (E4): 특약 상품(notices_parsed에 PAYMENT 블록)에 표준약관 '30일 전까지 취소'가 같이 렌더되지 않는가? `mergeNotices()` 헬퍼 사용 필수.
+- [ ] **ERR-FUK-ai-cross-check@2026-04-19** (E5): AI 의미 감사(Gemini 2.5 Flash)가 `post_register_audit.js`에 통합됨. CRITICAL/HIGH → audit_status 'warnings' 승격. E1~E4가 못 잡는 "송영비 경고 증발", "클럽식 조건부 포함 누락", "특약→표준약관 왜곡" 같은 축약형 오류 자동 탐지. `audit_report.ai.missing_from_render / distorted_in_render / hallucinated_in_render` 참조.
+- [ ] **ERR-FUK-audit-gate@2026-04-19** (Gate): `travel_packages.audit_status` 컬럼으로 감사 결과 게이트 구축. blocked 상품은 `/api/packages/[id]/approve` 가 409 반환 + 고객 노출 쿼리 이중 가드(`audit_status.neq.blocked`). warnings는 `force=true` 로 수동 승인 필요.

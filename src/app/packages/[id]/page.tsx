@@ -1,5 +1,6 @@
 import type React from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { notFound } from 'next/navigation';
 import DetailClient from './DetailClient';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
@@ -54,6 +55,11 @@ export default async function PackageDetailPage({
     .single();
 
   const pkg = pkgResult.data;
+
+  // 감사 차단 상품은 고객 상세도 404 처리 (감사 게이트 이중 가드)
+  if (pkg && (pkg as { audit_status?: string }).audit_status === 'blocked') {
+    notFound();
+  }
 
   // ── 2-단계 Fetch 전략 (Next.js 2MB 캐시 한계 + 성능 최적화) ─────────────────
   // Step A: 매칭 전용 경량 fetch (name, country, region, aliases만) — 수백 KB

@@ -9,6 +9,25 @@ $ARGUMENTS
 
 ---
 
+## 🔴 Rule Zero: 원문 원본 불변 보존 (ERR-FUK-rawtext-pollution@2026-04-19)
+
+**`raw_text` 필드에는 사용자가 붙여넣은 원문을 글자 하나 변형 없이 저장.**
+- ❌ **금지**: 요약, 축약, 정규화, 오타 교정, 줄바꿈 정리, 섹션 재배치, 괄호 통일
+- ✅ **허용**: BOM 제거, UTF-8 인코딩 정규화만
+- 파서 요약본은 `parsed_data.summary` 또는 `product_summary`에 별도 저장
+- `raw_text_hash = sha256(raw_text)`를 반드시 같이 저장 → 사후 변조 탐지
+
+**왜 중요한가**: raw_text는 감사(E1~E4)의 기준점입니다. 요약본을 저장하면 "여행자보험 → 2억 여행자보험" 같은 주입이 raw_text와 inclusions 양쪽에 동시 존재하게 되어 **감사가 영구적으로 통과**해버립니다. 오늘 LB-FUK-03-01/02에서 실제로 발생했습니다.
+
+**인서트 전 체크**:
+```js
+const crypto = require('crypto');
+const raw_text = USER_INPUT_VERBATIM;   // 절대 가공 금지
+const raw_text_hash = crypto.createHash('sha256').update(raw_text).digest('hex');
+```
+
+---
+
 ## 🚨 Step 0: 필수 사전 참조 (파싱 시작 전)
 
 파싱 시작 전 반드시 다음 **3개 파일**을 Read:
@@ -52,7 +71,32 @@ $ARGUMENTS
 ### 3. 의심스러우면 원문 문자열 보존 (Quote > Summary)
 
 - 요약하지 말고 원문 그대로 quote
-- `raw_text` 필드에 항상 원문 전체 보존 (validatePackage W13~W15가 대조 검증)
+- `raw_text` 필드에 항상 원문 전체 보존 (Rule Zero 참고 — sha256 해시 동반 저장)
+
+### 3-1. 보험/특전 금액 주입 절대 금지 (ERR-FUK-insurance-injection@2026-04-19)
+
+- 원문에 **"2억"/"1억"/"여행자보험 N만원"** 같은 금액 표기가 **없으면** `inclusions`에 금액 삽입 금지
+- ✅ 올바름: 원문이 `"여행자보험"` → DB도 `"여행자보험"`
+- ❌ 금지: 원문이 `"여행자보험"` → DB에 `"2억 여행자보험"` (일반 패키지 관행을 무의식 차용)
+- 동일 규칙이 **호텔 등급(4성급 등), 라운딩 홀 수(54H), 식사 횟수**에도 적용
+
+**자동 탐지**: `post_register_audit.js`의 Rule E1이 금액 토큰 존재 여부를 raw_text와 대조.
+
+### 3-2. `itinerary_data.days[].regions`는 원문 "지역/일자" 컬럼 1:1 매핑 (ERR-FUK-regions-copy@2026-04-19)
+
+- 여러 상품(정통/품격 등)을 한 원문에서 파생할 때 **Day별 regions 배열을 복사해 쓰면 안 됨**
+- 각 상품의 원문 "지역" 칸에 적힌 이동 경로 그대로 저장
+  - 예: 품격 Day2 = `"사세보 → 나가사키 → 사세보"` → `["사세보","나가사키","사세보"]`
+  - 정통 Day2 = `"사세보"` → `["사세보"]`
+- 모든 Day에서 regions가 완전히 같은 경우 `post_register_audit` Rule E2가 경고 발생
+
+### 3-3. `excluded_dates` ∩ `surcharges` 날짜 교집합 금지 (ERR-FUK-date-overlap@2026-04-19)
+
+- **출발 불가능한 날짜에 추가요금을 받는다는 건 모순**
+- 원문에 "항공제외일 3/18~20"과 "일본공휴일 추가요금 3/18~20"이 동시에 있으면:
+  - `excluded_dates`에만 넣고 `surcharges`에서는 제외
+  - 또는 반대. 둘 다 넣지 말 것
+- 자동 탐지: Rule E3
 
 ### 4. 스키마 이중성 함정 주의
 
@@ -292,11 +336,31 @@ node db/audit_render_vs_source.js <방금 등록한 package_id>
 - 원문의 모든 **항공편 번호**가 렌더에 표시되는가?
 - 일차 수가 일치하는가?
 
-### 7-3. AI 감사 (선택, 고품질 검증)
-```bash
-node db/audit_render_vs_source.js <package_id> --ai
-```
-Gemini 2.5 Flash가 충실도 %와 왜곡 항목 자동 리포트 (약 $0.02/건).
+### 7-3. AI 감사 (자동 실행, ERR-FUK-ai-cross-check@2026-04-19)
+
+`post_register_audit.js`에 **기본 ON으로 통합**됨. 수동 실행 불필요.
+- Gemini 2.5 Flash가 원문 ↔ 렌더 텍스트를 의미 대조
+- CRITICAL/HIGH severity는 `audit_status='warnings'`로 자동 승격
+- 결과는 `travel_packages.audit_report.ai`에 영속
+- 비용: 상품 1건당 ~0.5원
+- 스킵: `POST_AUDIT_AI=0 node db/post_register_audit.js ...` 또는 `--no-ai`
+
+**E5가 잡는 유형 (E1~E4 구조 감사가 놓치는 의미적 문제)**:
+- 특약·예외 조건 누락 (송영비 추가, 클럽식 포함 조건 등)
+- 특별약관이 표준약관으로 대체되어 왜곡된 경우
+- 금액/수치 창작 (원문에 없는 "N억 보험" 등)
+- 고객 권리 조건 누락 (현금영수증 기한, 파이널 완납 등)
+
+### 7-4. 감사 게이트 (자동 blocking)
+
+`post_register_audit.js` 결과에 따라 `audit_status` 자동 결정:
+- **clean** (🟢): 즉시 승인 가능
+- **warnings** (🟡): 어드민이 `force=true` 로 승인해야 고객 노출
+- **blocked** (🔴): 수정 후 재감사 필수. 승인 API 자체가 409 반환
+
+게이트 우회 불가:
+- `/api/packages/[id]/approve` PATCH가 audit_status 체크
+- 고객 노출 쿼리(`getApprovedPackages`, `/packages`, `/packages/[id]`)가 `audit_status.neq.blocked` 이중 가드
 
 ### 7-4. 최종 리포트 사용자에게 출력
 

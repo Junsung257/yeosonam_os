@@ -254,6 +254,13 @@ const STATUS_LABEL: Record<string, string> = {
   archived:       '아카이브',
 };
 
+// 감사 게이트 배지 — post_register_audit 결과 시각화
+const AUDIT_BADGE: Record<string, { cls: string; label: string; title: string }> = {
+  clean:    { cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', label: '🟢 감사통과', title: 'E0~E4 모두 통과 — 즉시 승인 가능' },
+  warnings: { cls: 'bg-amber-50 text-amber-700 border border-amber-200',       label: '🟡 경고',     title: '경고 있음 — 리포트 확인 후 force=true 로 승인' },
+  blocked:  { cls: 'bg-red-50 text-red-700 border border-red-200',             label: '🔴 감사차단', title: '치명 에러 — 수정 후 post_register_audit.js 재실행 필요' },
+};
+
 const LAND_OPERATORS = [
   '투어비', '여소남', '하나투어', '모두투어', '롯데JTB', '노랑풍선',
   '참좋은여행', '온라인투어', '기타',
@@ -582,9 +589,19 @@ const PackageRow = React.memo(function PackageRow({
         )}
       </td>
       <td className="px-3 py-2 text-center cursor-pointer" onClick={handleRowClick}>
-        <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[pkg.status] || 'bg-slate-100 text-slate-500'}`}>
-          {STATUS_LABEL[pkg.status] ?? pkg.status}
-        </span>
+        <div className="flex flex-col items-center gap-1">
+          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[pkg.status] || 'bg-slate-100 text-slate-500'}`}>
+            {STATUS_LABEL[pkg.status] ?? pkg.status}
+          </span>
+          {(pkg as { audit_status?: string }).audit_status && AUDIT_BADGE[(pkg as { audit_status: string }).audit_status] && (
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${AUDIT_BADGE[(pkg as { audit_status: string }).audit_status].cls}`}
+              title={AUDIT_BADGE[(pkg as { audit_status: string }).audit_status].title}
+            >
+              {AUDIT_BADGE[(pkg as { audit_status: string }).audit_status].label}
+            </span>
+          )}
+        </div>
       </td>
       {/* 마케팅 커버리지 + 토글 */}
       <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
@@ -1607,6 +1624,14 @@ export default function PackagesPage() {
                   <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[selected.status] || 'bg-slate-100 text-slate-500'}`}>
                     {STATUS_LABEL[selected.status] ?? selected.status}
                   </span>
+                  {(selected as { audit_status?: string }).audit_status && AUDIT_BADGE[(selected as { audit_status: string }).audit_status] && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-[11px] ${AUDIT_BADGE[(selected as { audit_status: string }).audit_status].cls}`}
+                      title={AUDIT_BADGE[(selected as { audit_status: string }).audit_status].title}
+                    >
+                      {AUDIT_BADGE[(selected as { audit_status: string }).audit_status].label}
+                    </span>
+                  )}
                   {selected.category && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[11px]">{CATEGORY_LABELS[selected.category]}</span>}
                   {selected.product_type && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[11px]">{selected.product_type}</span>}
                   {(() => {

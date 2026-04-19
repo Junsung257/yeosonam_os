@@ -322,13 +322,16 @@ export function getSurchargesForDate(surcharges: {
   return total;
 }
 
-// 여행 상품 조회 (승인된 것만)
+// 여행 상품 조회 (승인된 것만, 감사 차단 제외)
+// audit_status === 'blocked'인 상품은 어드민이 승인하려 해도 API에서 차단되지만
+// 혹시 우회 경로로 들어가더라도 고객에게는 절대 노출되지 않도록 이중 가드.
 export async function getApprovedPackages(destination?: string, keyword?: string) {
   try {
     let query = supabase
       .from('travel_packages')
       .select('*')
       .eq('status', 'approved')
+      .or('audit_status.is.null,audit_status.neq.blocked')
       .order('created_at', { ascending: false });
 
     if (destination) {

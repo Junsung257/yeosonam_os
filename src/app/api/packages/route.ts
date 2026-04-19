@@ -106,6 +106,7 @@ const PACKAGE_LIST_FIELDS = `
   product_tags, product_highlights, product_summary, itinerary_data,
   marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title,
   seats_held, seats_confirmed, nights, accommodations,
+  audit_status, audit_report, audit_checked_at,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
