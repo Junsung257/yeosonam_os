@@ -5,6 +5,7 @@ import DetailClient from './DetailClient';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 
 export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음)
 
@@ -175,6 +176,23 @@ export default async function PackageDetailPage({
   // 서버에서 매칭된 관광지(photos/short_desc 포함)만 전달
   const attractionsForClient = (attrResult.data ?? []) as React.ComponentProps<typeof DetailClient>['initialAttractions'];
 
+  // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기
+  let initialNotices: NoticeBlock[] = [];
+  if (normalizedPkg) {
+    const rawPriceDates = (normalizedPkg as { price_dates?: { date: string }[] }).price_dates ?? [];
+    const earliestDate = rawPriceDates.map(d => d.date).filter(Boolean).sort()[0] ?? null;
+    const resolved = await resolveTermsForPackage(
+      {
+        id: normalizedPkg.id,
+        product_type: normalizedPkg.product_type,
+        land_operator_id: normalizedPkg.land_operator_id,
+        notices_parsed: normalizedPkg.notices_parsed,
+      },
+      'mobile',
+    );
+    initialNotices = formatCancellationDates(resolved, earliestDate);
+  }
+
   return (
     <DetailClient
       initialPackage={normalizedPkg}
@@ -182,6 +200,7 @@ export default async function PackageDetailPage({
       packageId={id}
       relatedBlogPosts={relatedBlogPosts}
       destinationBlogPosts={destinationBlogPosts}
+      initialNotices={initialNotices}
     />
   );
 }

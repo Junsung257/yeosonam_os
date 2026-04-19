@@ -196,6 +196,38 @@ export async function POST(request: NextRequest) {
         .catch(() => {});
     }
 
+    // 약관 스냅샷: 예약 시점 4-level 머지 결과를 freeze (법적 증빙용, Ironclad/Juro CLM 관행)
+    if (booking?.id && body.packageId) {
+      (async () => {
+        try {
+          const { buildTermsSnapshot } = await import('@/lib/standard-terms');
+          const { data: pkg } = await supabaseAdmin
+            .from('travel_packages')
+            .select('id, product_type, land_operator_id, notices_parsed')
+            .eq('id', body.packageId)
+            .limit(1);
+          const row = pkg?.[0];
+          if (row) {
+            const snapshot = await buildTermsSnapshot(
+              {
+                id: row.id as string,
+                product_type: row.product_type as string | null,
+                land_operator_id: row.land_operator_id as string | null,
+                notices_parsed: row.notices_parsed,
+              },
+              'booking_guide',
+            );
+            await supabaseAdmin
+              .from('bookings')
+              .update({ terms_snapshot: snapshot })
+              .eq('id', booking.id);
+          }
+        } catch (e) {
+          console.warn('[Terms Snapshot] 실패 (예약은 정상):', e);
+        }
+      })();
+    }
+
     // lead_time 자동 계산 + 예약 행동 메타데이터
     if (booking?.id && body.departureDate) {
       const leadTime = Math.floor(

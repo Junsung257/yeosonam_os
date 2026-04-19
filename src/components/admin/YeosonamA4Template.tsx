@@ -7,6 +7,7 @@ import { matchAttraction as matchAttractionShared, matchAttractions as matchAttr
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { formatDepartureDays } from '@/lib/admin-utils';
 import { normalizeOptionalTourName, type OptionalTourInput } from '@/lib/itinerary-render';
+import type { NoticeBlock } from '@/lib/standard-terms';
 import TransportBar from '@/components/itinerary/TransportBar';
 
 /**
@@ -84,6 +85,7 @@ export interface AttractionInfo {
 
 export interface YeosonamA4Props {
   pkg: {
+    id?: string;
     title?: string;
     display_title?: string;
     display_name?: string;
@@ -114,6 +116,8 @@ export interface YeosonamA4Props {
     surcharges?: { name?: string; start?: string; end?: string; amount?: number; currency?: string; unit?: string }[];
   };
   attractions?: AttractionInfo[];
+  /** 4-level 머지된 약관 (surface='a4' 필터됨). 제공 시 A4 전용 축약 렌더링. */
+  resolvedNotices?: NoticeBlock[];
 }
 
 // ── 유틸 ─────────────────────────────────────────────────
@@ -145,7 +149,7 @@ function matchAttraction(activity: string, attractions?: AttractionInfo[], desti
   return (multi[0] as unknown as AttractionInfo) || null;
 }
 
-export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props) {
+export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }: YeosonamA4Props) {
   if (!pkg) return <div style={PAGE_STYLE} className="a4-export-page animate-pulse bg-gray-50" />;
 
   // 제목 클렌징: 랜드사명/항공사 코드/해시태그/특전나열 제거 (CLAUDE.md 8번 원칙)
@@ -274,7 +278,8 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
   </>;
 
   // 마지막 페이지(포함/불포함/유의사항) 표시 여부 판단
-  const hasNotices = (pkg.notices_parsed?.length ?? 0) > 0 || !!pkg.special_notes;
+  const hasResolved = (resolvedNotices?.length ?? 0) > 0;
+  const hasNotices = hasResolved || (pkg.notices_parsed?.length ?? 0) > 0 || !!pkg.special_notes;
   const hasIncludeExclude =
     ((pkg.inclusions || itinerary?.highlights?.inclusions || []).length > 0) ||
     ((pkg.excludes || itinerary?.highlights?.excludes || []).length > 0) ||
@@ -452,9 +457,11 @@ export default function YeosonamA4Template({ pkg, attractions }: YeosonamA4Props
               />
             )}
             {/* ERR-20260418-08: Page 1에 이미 OptionalTours 표시되므로 중복 제거 */}
-            {hasNotices && (
+            {resolvedNotices && resolvedNotices.length > 0 ? (
+              <ResolvedNoticesA4Page notices={resolvedNotices} packageId={pkg.id} />
+            ) : hasNotices ? (
               <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
-            )}
+            ) : null}
           </main>
         </article>
       )}
@@ -1744,5 +1751,68 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
         );
       })}
     </section>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+//  A4 전용 약관 페이지 (4-level 해소 후 critical 축약 + QR)
+// ══════════════════════════════════════════════════════════
+function ResolvedNoticesA4Page({ notices, packageId }: {
+  notices: NoticeBlock[];
+  packageId?: string;
+}) {
+  // A4 공간 제약: severity='critical' 만 노출, 나머지는 QR로 유도
+  const critical = notices.filter(n => (n.severity ?? 'standard') === 'critical');
+  const hasSpecial = notices.some(n => (n._tier ?? 1) >= 3);
+
+  // QR: 모바일 약관 페이지 (상품 상세 #유의사항 앵커)
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://yeosonam.com';
+  const termsUrl = packageId ? `${baseUrl}/packages/${packageId}#유의사항` : `${baseUrl}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(termsUrl)}`;
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
+      <div className="flex items-start justify-between gap-3 mb-1.5">
+        <div className="flex-1">
+          <h3 className="font-bold text-[#001f3f] text-[11px]">예약 시 유의사항 · 특별약관</h3>
+          {hasSpecial && (
+            <p className="text-[9px] font-bold text-red-600 mt-0.5">
+              ※ 본 상품은 특별약관이 적용되며 표준약관보다 우선 적용됩니다.
+            </p>
+          )}
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={qrUrl} alt="약관 전문 QR" width={70} height={70} className="shrink-0 border border-slate-300 rounded" />
+      </div>
+
+      {critical.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mb-1.5">
+          {critical.map((notice, idx) => {
+            const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 4);
+            return (
+              <div key={idx} className="bg-white border border-red-200 rounded p-1.5">
+                <div className="flex items-center gap-1 mb-0.5">
+                  <span className={`text-[11px] font-bold text-red-700`}>{notice.title}</span>
+                  {(notice._tier ?? 1) >= 3 && notice._source && (
+                    <span className="text-[8px] font-bold text-red-500 bg-red-50 px-1 rounded">[{notice._source}]</span>
+                  )}
+                </div>
+                <div className="space-y-0.5">
+                  {lines.map((line, lIdx) => (
+                    <p key={lIdx} className="text-[9px] text-slate-600 leading-tight break-keep">
+                      {line.startsWith('•') ? line : `• ${line}`}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-[9px] text-slate-500 italic border-t border-slate-200 pt-1 mt-1">
+        ※ 여권/비자·결제·책임·쇼핑환불 등 표준 약관 전문은 우측 QR 또는 별도 발송되는 [예약 안내문]을 반드시 확인하시기 바랍니다.
+      </p>
+    </div>
   );
 }
