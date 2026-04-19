@@ -1,9 +1,11 @@
 'use client';
 
+import type { NoticeBlock } from '@/lib/standard-terms';
+
 /**
- * 여소남 OS — 예약 안내문 (공통)
- * 모든 상품에 공통 적용되는 예약 규정 안내문
- * A4 1페이지 규격
+ * 여소남 OS — 예약 안내문 (공통 + 상품별 특별약관)
+ * Page 1: 공통 예약 규정 (정적)
+ * Page 2+: 4-level 머지된 전체 약관 (동적, 법적 증빙용 풀 텍스트)
  */
 
 const PAGE_STYLE: React.CSSProperties = {
@@ -15,7 +17,15 @@ const PAGE_STYLE: React.CSSProperties = {
   boxSizing: 'border-box' as const,
 };
 
-export default function BookingGuideTemplate() {
+interface BookingGuideProps {
+  /** 4-level 머지된 약관 (surface='booking_guide'). 제공 시 Page 2+ 에 풀 텍스트 렌더링. */
+  resolvedNotices?: NoticeBlock[];
+  /** 상품 식별용 메타 (안내문 상단에 표시) */
+  packageTitle?: string;
+  packageId?: string;
+}
+
+export default function BookingGuideTemplate({ resolvedNotices, packageTitle, packageId }: BookingGuideProps = {}) {
   return (
     <div className="flex flex-col items-center gap-10">
       <article className="a4-export-page" style={PAGE_STYLE}>
@@ -153,6 +163,63 @@ export default function BookingGuideTemplate() {
           </div>
         </footer>
       </article>
+
+      {/* ═══ Page 2+: 4-level 머지된 약관 풀 텍스트 (법적 증빙용 immutable 스냅샷) ═══ */}
+      {resolvedNotices && resolvedNotices.length > 0 && (
+        <article className="a4-export-page" style={PAGE_STYLE}>
+          <header className="w-full pt-8 pb-4 px-10 border-b-2 border-[#001f3f]">
+            <div className="flex items-baseline justify-between">
+              <h1 className="text-xl font-extrabold text-[#001f3f]">상품별 적용 약관 전문</h1>
+              {packageTitle && (
+                <p className="text-[11px] text-slate-600 truncate max-w-[60%]">{packageTitle}</p>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              ※ 아래는 플랫폼 기본약관 · 랜드사 공통 · 랜드사 상품타입별 특약 · 상품 개별 특약을 4단계 우선순위로 해소한 전체 약관입니다.
+              상위 tier가 같은 항목을 덮어쓴 경우 [출처] 배지로 표시됩니다.
+            </p>
+          </header>
+          <main className="flex-1 px-10 py-5 text-[#0b1c30] space-y-3 overflow-hidden">
+            {resolvedNotices.map((notice, idx) => {
+              const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
+              const isOverride = (notice._tier ?? 1) >= 2;
+              const tierColor: Record<number, string> = {
+                1: 'text-slate-400', 2: 'text-blue-600', 3: 'text-purple-600', 4: 'text-red-600',
+              };
+              return (
+                <section key={idx} className="break-inside-avoid">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-[12px] font-extrabold text-[#001f3f]">{notice.title}</h2>
+                    {isOverride && notice._source && (
+                      <span className={`text-[9px] font-bold ${tierColor[notice._tier ?? 1]} bg-slate-50 px-1.5 py-0.5 rounded`}>
+                        [{notice._source}]
+                      </span>
+                    )}
+                    {notice.severity === 'critical' && (
+                      <span className="text-[9px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded">중요</span>
+                    )}
+                  </div>
+                  <div className="space-y-0.5 pl-3">
+                    {lines.map((line, lIdx) => (
+                      <p key={lIdx} className="text-[10px] text-slate-700 leading-snug break-keep">
+                        {line.startsWith('•') ? line : `• ${line}`}
+                      </p>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </main>
+          <footer className="w-full bg-[#001f3f] py-3 px-10 mt-auto">
+            <div className="flex justify-between items-center">
+              <p className="text-white text-[10px]">
+                ※ 본 약관 해소 결과는 예약 확정 시점에 스냅샷으로 저장되며 분쟁 시 증빙 자료로 사용됩니다.
+              </p>
+              {packageId && <p className="text-blue-300 text-[9px]">PKG: {packageId.slice(0, 8)}</p>}
+            </div>
+          </footer>
+        </article>
+      )}
     </div>
   );
 }

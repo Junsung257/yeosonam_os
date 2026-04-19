@@ -35,6 +35,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/products/review', label: '상품 검수' },
       { href: '/admin/upload', label: '업로드' },
       { href: '/admin/land-operators', label: '랜드사 관리' },
+      { href: '/admin/terms-templates', label: '약관 템플릿' },
       { href: '/admin/departing-locations', label: '출발지 관리' },
       { href: '/admin/attractions', label: '관광지 관리' },
     ],

@@ -3,6 +3,22 @@
 import { useState, useCallback } from 'react';
 // html-to-image, jszip: 다운로드 시점에만 동적 로드
 
+// ── 캡처 전 이미지 로드 대기 ─────────────────────────────
+// 로고/QR/관광지 사진이 로드되기 전에 toJpeg가 실행되면 빈 프레임으로 캡처됨.
+// 느린 네트워크·큰 이미지에서 재현되는 깨진 포스터 근본원인.
+async function waitForImages(root: HTMLElement, perImageTimeoutMs = 10000): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll('img'));
+  await Promise.all(imgs.map(img => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const done = () => resolve();
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });  // 실패해도 진행 (placeholder)
+      setTimeout(done, perImageTimeoutMs);                  // 응답 없는 이미지 방어
+    });
+  }));
+}
+
 // ── 타입 ─────────────────────────────────────────────────
 export type PosterFormat = 'A4' | 'MOBILE';
 
@@ -57,10 +73,6 @@ export function usePosterStudio() {
     setDownloading(true);
 
     try {
-      // 폰트 및 렌더 대기
-      await document.fonts.ready;
-      await new Promise(resolve => setTimeout(resolve, 500));
-
       // 모든 A4 페이지 노드 수집
       const pages = document.querySelectorAll<HTMLElement>('.a4-export-page');
 
@@ -69,6 +81,12 @@ export function usePosterStudio() {
         setDownloading(false);
         return;
       }
+
+      // 폰트 + 이미지 로드 완료까지 대기 (깨진 프레임 캡처 방지)
+      await document.fonts.ready;
+      await Promise.all(Array.from(pages).map(p => waitForImages(p)));
+      // 레이아웃 안정화 여유 (폰트 치환으로 인한 높이 재계산 방어)
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const productName = posterData.destination || posterData.title || '여소남';
 
@@ -95,9 +113,11 @@ export function usePosterStudio() {
         const blob = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a');
         link.download = `${productName}_일정표_${pages.length}페이지.zip`;
-        link.href = URL.createObjectURL(blob);
+        const objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
         link.click();
-        URL.revokeObjectURL(link.href);
+        // 일부 브라우저(Firefox 등)는 click 직후 즉시 revoke하면 다운로드 취소됨. 지연 revoke.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       }
     } catch (err) {
       console.error('포스터 다운로드 실패:', err);

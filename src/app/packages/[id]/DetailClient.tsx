@@ -6,7 +6,9 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { normalizeOptionalTourName, mergeNotices, type NoticeBlock } from '@/lib/itinerary-render';
+import { normalizeOptionalTourName, groupOptionalToursByRegion } from '@/lib/itinerary-render';
+import type { NoticeBlock } from '@/lib/standard-terms';
+import { NOTICE_DOT_COLOR, getSourceBadgeColor } from '@/lib/standard-terms';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
@@ -102,7 +104,7 @@ function parseFlightActivity(activity?: string) {
   };
 }
 
-const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '유의사항'] as const;
+const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '선택관광', '유의사항'] as const;
 
 // 보라색 테마 아이콘
 function getTimelineIcon(type?: string, activity?: string) {
@@ -135,11 +137,13 @@ interface DetailClientProps {
   packageId: string;
   relatedBlogPosts?: RelatedBlogPost[];
   destinationBlogPosts?: DestinationBlogPost[];
+  /** 서버에서 4-level 머지로 해소된 약관 블록 (mobile surface). */
+  initialNotices?: NoticeBlock[];
 }
 
 const ANGLE_LABELS: Record<string, string> = { value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리', urgency: '긴급특가', activity: '액티비티', food: '미식' };
 
-export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [] }: DetailClientProps) {
+export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [], initialNotices = [] }: DetailClientProps) {
   const searchParams = useSearchParams();
   const id = packageId;
   const [pkg, setPkg] = useState<Package | null>(initialPackage);
@@ -160,7 +164,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const toggleExpand = (key: string) => {
     setExpandedItems(prev => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -182,7 +187,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
   useEffect(() => {
     const ref = searchParams.get('ref');
-    if (ref) fetch(`/api/influencer/track?ref=${ref}&pkg=${id}`).catch(() => {});
+    if (ref) fetch(`/api/influencer/track?ref=${encodeURIComponent(ref)}&pkg=${encodeURIComponent(id)}`).catch(() => {});
   }, [id, searchParams]);
 
   // 캘린더 초기 월 자동 이동은 DepartureCalendar 컴포넌트가 priceDates로부터 처리
@@ -199,7 +204,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       return;
     }
     // 폴백: 클라이언트에서 직접 fetch
-    fetch(`/api/packages?id=${id}`).then(r => r.json()).then(data => {
+    fetch(`/api/packages?id=${encodeURIComponent(id)}`).then(r => r.json()).then(data => {
       const p = data.package ?? null;
       setPkg(p);
       if (p) {
@@ -210,8 +215,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         });
       }
     }).catch(console.error).finally(() => setIsLoading(false));
-    fetch('/api/attractions').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
-  }, [id, initialPackage]);
+    // initialAttractions가 비어 있을 때만 폴백 fetch (불필요 중복 호출 방지)
+    if (initialAttractions.length === 0) {
+      fetch('/api/attractions?limit=500').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
+    }
+  }, [id, initialPackage, initialAttractions.length]);
 
   const observerCallback = useCallback((entries: IntersectionObserverEntry[]) => {
     for (const entry of entries) { if (entry.isIntersecting) setActiveSection(entry.target.getAttribute('data-section') || '상품정보'); }
@@ -675,7 +683,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
               <div className="space-y-8">
                 {currentDay.schedule?.map((item, sIdx) => {
-                  const { icon, bg } = getTimelineIcon(item.type, item.activity);
                   // 항공/이동/공항 관련 스케줄은 관광지 매칭 스킵
                   // ERR-20260418-25/32 — optional/shopping 타입도 매칭 스킵 (선택관광 안내에 관광지 카드 안 붙도록)
                   const skipMatch = item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
@@ -783,13 +790,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
                         {/* ═══ 관광지 블록 (하나투어 스타일) ═══ */}
                         {attr && (() => {
-                          const expandKey = `${currentDay.day}-${sIdx}`;
-                          const isExpanded = expandedItems.has(expandKey);
                           // 포함사항에 해당 관광지/활동이 있으면 "스페셜포함"
                           const inclusions = pkg.inclusions || [];
                           const isIncluded = inclusions.some(inc =>
                             item.activity.includes(inc) || inc.includes(attr.name) || attr.name.includes(inc)
-                            || /마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i))
+                            || (/마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i)))
                           );
                           const effectiveBadge = isIncluded ? 'special' : attr.badge_type;
                           return (
@@ -906,21 +911,38 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 선택관광 (일정표 뒤, 유의사항 앞) ═══ */}
+      {/* ═══ 선택관광 (일정표 뒤, 유의사항 앞) — region별 그룹핑 ═══ */}
       {pkg.optional_tours && pkg.optional_tours.length > 0 && (
-        <div className="px-4 py-4">
+        <div
+          ref={el => { sectionRefs.current['선택관광'] = el; }}
+          data-section="선택관광"
+          className="px-4 py-4 scroll-mt-12"
+        >
           <div className="bg-pink-50/50 rounded-2xl p-4">
             <h3 className="text-xs font-bold text-pink-900 mb-3">💎 선택관광 (별도 비용)</h3>
-            <div className="space-y-2">
-              {pkg.optional_tours.map((tour, i) => (
-                <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
-                  <span className="text-sm font-medium text-gray-800">{normalizeOptionalTourName(tour)}</span>
-                  {tour.price_usd && (
-                    <span className="text-sm font-bold text-pink-600">${tour.price_usd}</span>
-                  )}
+            {(() => {
+              const groups = groupOptionalToursByRegion(pkg.optional_tours);
+              const showRegionHeader = groups.length > 1;
+              return (
+                <div className="space-y-3">
+                  {groups.map((group, gi) => (
+                    <div key={gi} className="space-y-2">
+                      {showRegionHeader && (
+                        <div className="text-[11px] font-semibold text-pink-700/80 pl-1">{group.region}</div>
+                      )}
+                      {group.tours.map((tour, i) => (
+                        <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
+                          <span className="text-sm font-medium text-gray-800">{tour.displayName}</span>
+                          {tour.price && (
+                            <span className="text-sm font-bold text-pink-600">{tour.price}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -957,80 +979,37 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 유의사항 (독립 토글 다중 열림) + 예약 약관 ═══ */}
       <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-12">
         {(() => {
-          // ERR-20260418-21 — 예약 약관 (모든 상품 공통, A4 공간 제약으로 모바일만 노출)
-          // ERR-FUK-2026-04-19 — 특약(notices_parsed PAYMENT)이 있으면
-          //   '예약 및 취소 규정' 표준 블록을 mergeNotices가 자동 제외.
-          const RESERVATION_TERMS: NoticeBlock[] = [
-            {
-              type: 'RESERVATION',
-              title: '📋 예약 및 취소 규정',
-              text: `• 여행 출발 30일 전까지 취소: 계약금 전액 환불
-• 29~21일 전 취소: 예약금의 50% 공제
-• 20~10일 전 취소: 계약금 전액 + 여행 요금의 30% 공제
-• 9~1일 전 취소: 여행 요금의 50% 공제
-• 여행 당일 또는 연락 없이 불참(No-show): 여행 요금의 100% 공제
-• 항공권 발권 이후 취소 시 항공사 규정에 따른 별도 수수료 발생
-• 천재지변·전쟁·테러 등 불가항력으로 인한 취소는 별도 규정 적용`,
-            },
-            {
-              type: 'PASSPORT',
-              title: '🛂 여권 및 비자 안내',
-              text: `• 여권 유효기간은 출발일 기준 6개월 이상 남아 있어야 합니다
-• 단수여권 또는 여권 훼손 시 출국이 불가할 수 있습니다
-• 비자가 필요한 국가는 고객이 직접 준비해야 합니다 (여행사는 안내만 제공)
-• 미성년자 단독 여행 시 부모 동반 또는 동의서가 필요합니다 (국가별 상이)
-• 여권 분실 시 즉시 현지 대사관/영사관에 신고 (재발급 절차는 고객 본인 부담)`,
-            },
-            {
-              type: 'PAYMENT',
-              title: '💳 결제 및 계약',
-              text: `• 예약 확정 시 계약금 결제 (여행 요금의 10~20%)
-• 잔금은 출발일 기준 2주 전까지 완납
-• 미완납 시 예약이 자동 취소될 수 있습니다
-• 카드 결제는 일시불/할부 가능 (카드사 정책 준용)
-• 현금 영수증 발행 가능 (요청 시 별도 안내)
-• 전자 계약서는 결제 완료 후 이메일/카카오톡으로 발송됩니다`,
-            },
-            {
-              type: 'LIABILITY',
-              title: '⚖️ 여행사 책임 및 고객 의무',
-              text: `• 현지 교통 체증, 기상 악화, 천재지변 등 불가항력 사유 발생 시 대체 일정 제공
-• 개인 사유(질병, 비자 거절, 출입국 심사 거부 등)로 인한 여행 불가 시 취소 수수료 규정 적용
-• 여행 중 개인 소지품 분실·도난은 여행자 본인 책임
-• 여행자 보험은 패키지 요금에 포함되어 있으며 세부 약관은 보험증권 참조
-• 가이드 지시 미준수로 인한 안전 사고는 여행사 책임에서 제외됩니다
-• 음주·약물 복용 상태의 활동 참여는 금지되며 이로 인한 사고는 본인 책임`,
-            },
-            {
-              type: 'COMPLAINT',
-              title: '📞 클레임 및 긴급 문의',
-              text: `• 여행 중 불만사항은 즉시 가이드 또는 인솔자에게 고지해주세요 (현지 개선 우선)
-• 사후 클레임은 귀국일 기준 30일 이내에 접수 부탁드립니다
-• 30일 경과 후 클레임은 사실 확인이 어려워 처리가 제한될 수 있습니다
-• 여소남 고객센터: 카카오톡 @여소남 (1:1 채팅, 평일 09~18시)
-• 긴급 상황(사고·질병 등) 발생 시 현지 가이드 또는 여행사 긴급 연락망으로 즉시 통보`,
-            },
-          ];
-          const allNotices = mergeNotices(pkg.notices_parsed as NoticeBlock[] | null, RESERVATION_TERMS);
-          if (allNotices.length === 0 && !pkg.special_notes) return null;
-          const dotColor: Record<string, string> = {
-            CRITICAL: 'bg-red-500', PAYMENT: 'bg-orange-500', POLICY: 'bg-blue-500', INFO: 'bg-gray-400',
-            RESERVATION: 'bg-purple-500', PASSPORT: 'bg-amber-500', LIABILITY: 'bg-slate-500', COMPLAINT: 'bg-emerald-500',
-          };
+          // 4-level 약관 해소 결과를 서버(page.tsx)에서 initialNotices 로 주입.
+          //   Tier 1 플랫폼 → Tier 2 랜드사 공통 → Tier 3 랜드사×상품타입 → Tier 4 상품 특약.
+          //   같은 notice.type 이면 상위 tier 가 override. 새 type 은 append.
+          if (initialNotices.length === 0 && !pkg.special_notes) return null;
+          const hasSpecialTerms = initialNotices.some(n => (n._tier ?? 1) >= 3);
           return (
             <div>
-              <h2 className="text-lg font-extrabold text-gray-900 mb-4">유의사항 · 예약 약관</h2>
-              {allNotices.length > 0 ? (
+              <h2 className="text-lg font-extrabold text-gray-900 mb-1">유의사항 · 예약 약관</h2>
+              {hasSpecialTerms && (
+                <p className="text-xs font-bold text-red-600 mb-4">
+                  ※ 본 상품은 <span className="underline">특별약관</span>이 적용되며, 표준약관보다 우선 적용됩니다. 예약 시 동의한 것으로 간주합니다.
+                </p>
+              )}
+              {initialNotices.length > 0 ? (
                 <div className="space-y-2">
-                  {allNotices.map((notice, idx) => {
+                  {initialNotices.map((notice, idx) => {
                     const isOpen = expandedNotices.has(idx);
                     const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
+                    const badgeColor = getSourceBadgeColor(notice._source, notice._tier);
+                    const isOverride = (notice._tier ?? 1) >= 2;
                     return (
                       <div key={idx} className="border border-gray-100 rounded-xl overflow-hidden">
                         <button onClick={() => toggleNotice(idx)}
                           className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-gray-50 transition">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor[notice.type] || dotColor.INFO}`} />
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${NOTICE_DOT_COLOR[notice.type] || NOTICE_DOT_COLOR.INFO}`} />
                           <span className="text-xs font-bold text-gray-700 flex-1">{notice.title}</span>
+                          {isOverride && notice._source && (
+                            <span className={`text-[10px] font-bold ${badgeColor} bg-gray-50 px-1.5 py-0.5 rounded`}>
+                              [{notice._source}]
+                            </span>
+                          )}
                           <span className="text-gray-300 text-sm">{isOpen ? '▲' : '▼'}</span>
                         </button>
                         {isOpen && (
@@ -1043,7 +1022,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       </div>
                     );
                   })}
-                  <p className="text-xs text-gray-500 italic mt-2">※ 본 약관은 일반 여행업 표준 기준이며, 상품별 특이 조건은 [예약 안내문]을 참조해주세요.</p>
+                  <p className="text-xs text-gray-500 italic mt-2">※ 본 약관은 여행상품 표준 기준에 상품·랜드사별 특약을 반영해 해소된 결과입니다. 예약 시점 스냅샷이 별도 [예약 안내문]으로 발송됩니다.</p>
                 </div>
               ) : pkg.special_notes ? (
                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>

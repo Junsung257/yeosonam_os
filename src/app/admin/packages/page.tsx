@@ -179,6 +179,7 @@ interface Package {
   price?: number;
   price_tiers?: PriceTier[];
   status: string;
+  audit_status?: string;
   confidence?: number;
   created_at: string;
   inclusions?: string[];

@@ -71,25 +71,36 @@ class KakaoNotificationAdapter implements NotificationAdapter {
   async send(payload: NotificationPayload): Promise<NotificationResult> {
     let kakaoSent = false;
 
+    let skipReason: string | null = null;
+
     // 알림톡 발송 시도 (이벤트 타입별 분기)
     try {
       if (payload.customerPhone && payload.customerName) {
         const { sendBalanceNotice } = await import('./kakao');
         if (payload.eventType === 'BALANCE_NOTICE') {
-          await sendBalanceNotice({
-            phone:        payload.customerPhone,
-            name:         payload.customerName,
-            packageTitle: (payload.metadata?.packageTitle as string) ?? '여행 상품',
-            balance:      (payload.metadata?.balance as number) ?? 0,
-            dueDate:      (payload.metadata?.dueDate as string) ?? '출발 2주 전',
-            account:      process.env.COMPANY_ACCOUNT ?? '계좌 정보 미설정',
-          });
-          kakaoSent = true;
+          // 계좌 정보 누락 시 발송 중단 — "계좌 정보 미설정" 문자열이 고객에게 그대로 가는 사고 방지.
+          // 대신 message_logs에 system 로그 + skipReason 남겨 어드민이 확인할 수 있게 함.
+          const account = process.env.COMPANY_ACCOUNT;
+          if (!account) {
+            skipReason = 'COMPANY_ACCOUNT 환경변수 미설정 — 잔금 안내 발송 스킵';
+            console.error('[KakaoAdapter]', skipReason);
+          } else {
+            await sendBalanceNotice({
+              phone:        payload.customerPhone,
+              name:         payload.customerName,
+              packageTitle: (payload.metadata?.packageTitle as string) ?? '여행 상품',
+              balance:      (payload.metadata?.balance as number) ?? 0,
+              dueDate:      (payload.metadata?.dueDate as string) ?? '출발 2주 전',
+              account,
+            });
+            kakaoSent = true;
+          }
         }
         // 추후 DEPOSIT_NOTICE, CONFIRMATION_GUIDE 등 템플릿 추가 시 여기에 분기
       }
     } catch (e) {
       console.warn('[KakaoAdapter 발송 실패]', e);
+      skipReason = e instanceof Error ? e.message : 'unknown error';
     }
 
     // DB 기록 (발송 성공 여부와 무관하게 항상 기록)
@@ -100,11 +111,11 @@ class KakaoNotificationAdapter implements NotificationAdapter {
         log_type:   kakaoSent ? 'kakao' : 'system',
         event_type: payload.eventType,
         title:      payload.title,
-        content:    payload.content,
+        content:    skipReason ? `${payload.content ?? ''}\n[발송 스킵] ${skipReason}`.trim() : payload.content,
         is_mock:    false,
         created_by: 'system',
       });
-      return { success: true, isMock: false, logId: log?.id };
+      return { success: kakaoSent || !skipReason, isMock: false, logId: log?.id, error: skipReason ?? undefined };
     } catch (e) {
       const err = e instanceof Error ? e.message : '로그 저장 실패';
       return { success: false, isMock: false, error: err };

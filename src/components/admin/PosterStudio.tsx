@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import type { PosterFormat, PosterData } from '@/hooks/usePosterStudio';
 import YeosonamA4Template from './YeosonamA4Template';
 import type { AttractionInfo } from './YeosonamA4Template';
+import type { NoticeBlock } from '@/lib/standard-terms';
 
 interface PosterStudioProps {
   open: boolean;
@@ -34,6 +35,16 @@ export default function PosterStudio({
   useEffect(() => {
     fetch('/api/attractions').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
   }, []);
+
+  // 4-level 약관 해소 (A4 surface) — 상품이 바뀌면 재fetch
+  const [resolvedNotices, setResolvedNotices] = useState<NoticeBlock[]>([]);
+  useEffect(() => {
+    if (!pkgId) { setResolvedNotices([]); return; }
+    fetch(`/api/packages/${pkgId}/terms?surface=a4`)
+      .then(r => r.json())
+      .then(d => setResolvedNotices((d.data ?? []) as NoticeBlock[]))
+      .catch(() => setResolvedNotices([]));
+  }, [pkgId]);
 
   if (!open) return null;
 
@@ -84,7 +95,7 @@ export default function PosterStudio({
           {isA4 ? (
             /* ═══ A4 포스터 (YeosonamA4Template) ═══ */
             <div id="a4-canvas-wrapper">
-              <YeosonamA4Template pkg={pkg || {}} attractions={attractions} />
+              <YeosonamA4Template pkg={pkg || {}} attractions={attractions} resolvedNotices={resolvedNotices} />
             </div>
           ) : (
             /* ═══ 모바일 iframe 에뮬레이터 ═══ */
