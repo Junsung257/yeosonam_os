@@ -11,7 +11,8 @@
     "test:visual": "playwright test tests/visual",
     "test:visual:update": "cross-env UPDATE_BASELINE=1 playwright test tests/visual --update-snapshots",
     "audit:drift": "node db/audit_schema_drift.js",
-    "audit:drift:detail": "node db/audit_schema_drift.js --detail"
+    "audit:drift:detail": "node db/audit_schema_drift.js --detail",
+    "audit:drift:ci": "node db/audit_schema_drift.js --detail --fail-on-drift"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",

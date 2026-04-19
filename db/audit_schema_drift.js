@@ -15,6 +15,7 @@
  *   node db/audit_schema_drift.js              # 요약만
  *   node db/audit_schema_drift.js --detail     # 개별 레코드까지
  *   node db/audit_schema_drift.js --json       # JSON 리포트 (CI 용)
+ *   node db/audit_schema_drift.js --fail-on-drift  # drift > 0 이면 exit 1 (CI gate)
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -235,5 +236,9 @@ async function paginatedFetch(table, select, filter) {
     console.log('✅ Drift 없음. 모든 레코드가 정규 스키마 준수.\n');
   } else {
     console.log(`⚠️  총 ${totalDrift}건 drift 발견. --detail 플래그로 상세 확인.\n`);
+    if (process.argv.includes('--fail-on-drift')) {
+      console.error('❌ --fail-on-drift: drift 있음 → exit 1 (CI gate).');
+      process.exit(1);
+    }
   }
 })().catch(e => { console.error(e); process.exit(1); });

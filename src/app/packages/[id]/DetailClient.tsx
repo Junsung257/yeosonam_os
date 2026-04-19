@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { normalizeOptionalTourName } from '@/lib/itinerary-render';
+import { normalizeOptionalTourName, groupOptionalToursByRegion } from '@/lib/itinerary-render';
 import type { NoticeBlock } from '@/lib/standard-terms';
 import { NOTICE_DOT_COLOR, getSourceBadgeColor } from '@/lib/standard-terms';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
@@ -104,7 +104,7 @@ function parseFlightActivity(activity?: string) {
   };
 }
 
-const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '유의사항'] as const;
+const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '선택관광', '유의사항'] as const;
 
 // 보라색 테마 아이콘
 function getTimelineIcon(type?: string, activity?: string) {
@@ -214,7 +214,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         });
       }
     }).catch(console.error).finally(() => setIsLoading(false));
-    fetch('/api/attractions').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
+    fetch('/api/attractions?limit=500').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
   }, [id, initialPackage]);
 
   const observerCallback = useCallback((entries: IntersectionObserverEntry[]) => {
@@ -910,21 +910,38 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 선택관광 (일정표 뒤, 유의사항 앞) ═══ */}
+      {/* ═══ 선택관광 (일정표 뒤, 유의사항 앞) — region별 그룹핑 ═══ */}
       {pkg.optional_tours && pkg.optional_tours.length > 0 && (
-        <div className="px-4 py-4">
+        <div
+          ref={el => { sectionRefs.current['선택관광'] = el; }}
+          data-section="선택관광"
+          className="px-4 py-4 scroll-mt-12"
+        >
           <div className="bg-pink-50/50 rounded-2xl p-4">
             <h3 className="text-xs font-bold text-pink-900 mb-3">💎 선택관광 (별도 비용)</h3>
-            <div className="space-y-2">
-              {pkg.optional_tours.map((tour, i) => (
-                <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
-                  <span className="text-sm font-medium text-gray-800">{normalizeOptionalTourName(tour)}</span>
-                  {tour.price_usd && (
-                    <span className="text-sm font-bold text-pink-600">${tour.price_usd}</span>
-                  )}
+            {(() => {
+              const groups = groupOptionalToursByRegion(pkg.optional_tours);
+              const showRegionHeader = groups.length > 1;
+              return (
+                <div className="space-y-3">
+                  {groups.map((group, gi) => (
+                    <div key={gi} className="space-y-2">
+                      {showRegionHeader && (
+                        <div className="text-[11px] font-semibold text-pink-700/80 pl-1">{group.region}</div>
+                      )}
+                      {group.tours.map((tour, i) => (
+                        <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
+                          <span className="text-sm font-medium text-gray-800">{tour.displayName}</span>
+                          {tour.price && (
+                            <span className="text-sm font-bold text-pink-600">{tour.price}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
         </div>
       )}

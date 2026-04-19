@@ -50,8 +50,10 @@ export default async function PackageDetailPage({
   const { id } = await params;
   const sb = getSupabase();
 
+  // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
+  // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
   const pkgResult = await sb.from('travel_packages')
-    .select('*, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)')
+    .select('*, products(internal_code, display_name, departure_region)')
     .eq('id', id)
     .single();
 
