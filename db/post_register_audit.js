@@ -20,15 +20,70 @@ for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
 }
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const ids = process.argv.slice(2);
-if (ids.length === 0) { console.error('사용: node db/post_register_audit.js <id1> [<id2> ...]'); process.exit(1); }
+const ids = process.argv.slice(2).filter(a => !a.startsWith('--'));
+if (ids.length === 0) { console.error('사용: node db/post_register_audit.js <id1> [<id2> ...] [--no-ai] [--no-autofix] [--no-rag]'); process.exit(1); }
 
 // insert-template의 validatePackage 재사용
 const { validatePackage } = require('./templates/insert-template.js');
 const { aiCrossCheck } = require('./ai_audit_helper.js');
+const { applyAutoFixes } = require('./auto-fixer.js');
 
-// AI 감사 스킵 조건 — 환경변수 POST_AUDIT_AI=0 또는 --no-ai 플래그
-const AI_DISABLED = process.env.POST_AUDIT_AI === '0' || process.argv.includes('--no-ai');
+// 스킵 조건 — 환경변수 또는 CLI 플래그
+const AI_DISABLED       = process.env.POST_AUDIT_AI === '0' || process.argv.includes('--no-ai');
+const AUTOFIX_DISABLED  = process.env.POST_AUDIT_AUTOFIX === '0' || process.argv.includes('--no-autofix');
+const RAG_DISABLED      = process.env.POST_AUDIT_RAG === '0' || process.argv.includes('--no-rag');
+
+// ─── 임베딩 (embeddings.ts와 동일 1536 dim) ──────────────────────────
+const GOOGLE_AI_KEY = process.env.GOOGLE_AI_API_KEY;
+const EMBED_MODEL = 'gemini-embedding-001';
+const EMBED_DIM = 1536;
+
+async function embedText(text, taskType = 'RETRIEVAL_QUERY') {
+  if (!GOOGLE_AI_KEY || !text?.trim()) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent?key=${GOOGLE_AI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: `models/${EMBED_MODEL}`,
+          content: { parts: [{ text: text.slice(0, 8000) }] },
+          taskType,
+          outputDimensionality: EMBED_DIM,
+        }),
+      },
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const v = json?.embedding?.values;
+    return Array.isArray(v) && v.length === EMBED_DIM ? v : null;
+  } catch { return null; }
+}
+
+// ─── RAG: 유사 과거 에러 패턴 조회 ─────────────────────────────────
+// 원문 + 주요 메타를 쿼리로 사용하여 error_patterns 테이블에서 유사 패턴 top-3 반환.
+async function queryRelevantPatterns(pkg) {
+  if (RAG_DISABLED) return [];
+  const queryText = [
+    pkg.title,
+    pkg.destination,
+    pkg.duration ? `${pkg.duration}일` : '',
+    pkg.land_operator || '',
+    (pkg.raw_text || '').slice(0, 2500),
+  ].filter(Boolean).join('\n');
+
+  const embed = await embedText(queryText, 'RETRIEVAL_QUERY');
+  if (!embed) return [];
+
+  const { data, error } = await sb.rpc('match_error_patterns', {
+    query_embedding: embed,
+    match_threshold: 0.72,
+    match_count: 3,
+  });
+  if (error) { console.warn(`   [RAG] 조회 실패: ${error.message}`); return []; }
+  return data || [];
+}
 
 async function checkServer(url) {
   try {
@@ -182,6 +237,17 @@ async function auditOne(pkg, baseUrl) {
   result.warnings.push(...checkRegionsVsRawText(pkg));
   result.warnings.push(...checkDateOverlap(pkg));
 
+  // 1-c. RAG — 과거 유사 에러 패턴 조회 (복리 학습: 등록할수록 RAG 풍부해짐)
+  result.rag_hits = await queryRelevantPatterns(pkg);
+  for (const hit of result.rag_hits) {
+    // similarity가 매우 높은 것만(>0.80) "주의" 수준 경고로 승격
+    if (hit.similarity >= 0.80) {
+      result.warnings.push(
+        `RAG[${(hit.similarity * 100).toFixed(0)}%]: ${hit.error_code} "${hit.title}" — 과거 유사 패턴, 재발 주의`
+      );
+    }
+  }
+
   // 2. Zod 검증 (loose)
   try {
     const { validatePackageLoose, formatZodErrors } = require('../dist-check-stub'); // fallback
@@ -270,7 +336,26 @@ async function auditOne(pkg, baseUrl) {
     const { data: pkg, error } = await sb.from('travel_packages')
       .select('*').eq('id', id).maybeSingle();
     if (error || !pkg) { console.log(`❌ ${id} 조회 실패`); continue; }
-    const r = await auditOne(pkg, activeUrl);
+    let r = await auditOne(pkg, activeUrl);
+
+    // ─── Auto-fix: 화이트리스트 룰 자동 적용 후 1회 재감사 ────────────
+    if (!AUTOFIX_DISABLED) {
+      const fix = await applyAutoFixes(sb, pkg, embedText);
+      if (fix.applied.length > 0) {
+        console.log(`   🔧 Auto-fix ${fix.applied.length}건: ${fix.applied.map(a => a.rule_id).join(', ')}`);
+        if (fix.updated) {
+          const { data: refreshed } = await sb.from('travel_packages').select('*').eq('id', id).maybeSingle();
+          if (refreshed) {
+            r = await auditOne(refreshed, activeUrl);
+            r.auto_fixes = fix.applied;
+          }
+        } else if (fix.error) {
+          console.log(`   ⚠️  Auto-fix DB update 실패: ${fix.error}`);
+          r.auto_fix_error = fix.error;
+        }
+      }
+    }
+
     results.push(r);
 
     // 🆕 감사 결과를 DB에 영속화 (gating의 기준)
@@ -286,6 +371,12 @@ async function auditOne(pkg, baseUrl) {
       warnings: r.warnings || [],
       render: r.render || null,
       ai: r.ai || null,
+      auto_fixes: r.auto_fixes || [],
+      rag_hits: (r.rag_hits || []).map(h => ({
+        error_code: h.error_code,
+        title: h.title,
+        similarity: Number((h.similarity || 0).toFixed(3)),
+      })),
       ran_at: new Date().toISOString(),
     };
     const { error: upErr } = await sb.from('travel_packages')
@@ -368,6 +459,19 @@ async function auditOne(pkg, baseUrl) {
         console.log(`   ⚠️  경고 ${r.warnings.length}건`);
         r.warnings.forEach(w => console.log(`      - ${w}`));
       }
+    }
+
+    // 🆕 Auto-fix 결과
+    if (r.auto_fixes && r.auto_fixes.length > 0) {
+      console.log(`   🔧 자동수정 ${r.auto_fixes.length}건 적용됨:`);
+      r.auto_fixes.forEach(a => console.log(`      - ${a.rule_id}: ${a.title}`));
+    }
+
+    // 🆕 RAG 유사 패턴 (경고 승격 여부와 무관하게 참고용 출력)
+    if (r.rag_hits && r.rag_hits.length > 0) {
+      console.log(`   🧠 RAG 유사 과거 패턴 ${r.rag_hits.length}건:`);
+      r.rag_hits.forEach(h =>
+        console.log(`      - [${(h.similarity * 100).toFixed(0)}%] ${h.error_code}: ${h.title.slice(0, 60)}`));
     }
 
     // 렌더 audit
