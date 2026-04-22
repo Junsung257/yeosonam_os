@@ -84,6 +84,24 @@ const PRODUCTS_TOOLS_RAW = [
       }
     }
   },
+  {
+    name: 'propose_product_registration',
+    description: '신규 상품 등록을 기안합니다. (승인 필요) agent_actions 에 기록 → 관리자가 /register 파이프라인으로 승격.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['title', 'destination', 'duration_days'],
+      properties: {
+        title: { type: 'string', description: '상품명 초안' },
+        destination: { type: 'string', description: '목적지' },
+        duration_days: { type: 'number', description: '일정 (박:일 중 일)' },
+        land_operator_id: { type: 'string', description: '랜드사 ID (있으면)' },
+        cost_price: { type: 'number', description: '원가 (원, KRW)' },
+        departure_date: { type: 'string', description: '출발일 YYYY-MM-DD' },
+        source_url: { type: 'string', description: '원문 URL (랜드사 블로그 등)' },
+        raw_notes: { type: 'string', description: '자유 메모 — LLM 이 파악한 원문 요약' },
+      },
+    },
+  },
 ]
 
 const PRODUCTS_TOOLS = convertTools(PRODUCTS_TOOLS_RAW)
@@ -153,6 +171,37 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       const { data, error } = await query
       if (error) throw error
       return data
+    }
+    case 'propose_product_registration': {
+      if (!args.title || !args.destination) throw new Error('title, destination 필수')
+      const summary = `[상품 등록 기안] ${args.destination} · ${args.title} (${args.duration_days}일)`
+      const { data, error } = await supabaseAdmin
+        .from('agent_actions')
+        .insert({
+          agent_type: 'products',
+          action_type: 'register_product',
+          summary,
+          payload: {
+            title: args.title,
+            destination: args.destination,
+            duration_days: args.duration_days,
+            land_operator_id: args.land_operator_id ?? null,
+            cost_price: args.cost_price ?? null,
+            departure_date: args.departure_date ?? null,
+            source_url: args.source_url ?? null,
+            raw_notes: args.raw_notes ?? null,
+          },
+          requested_by: 'jarvis',
+          priority: 'normal',
+        })
+        .select()
+      if (error) throw error
+      return {
+        proposed: true,
+        action_id: data?.[0]?.id,
+        summary,
+        next_step: '관리자가 /register 또는 /register-via-ir 로 실제 등록 수행',
+      }
     }
     default:
       throw new Error(`Unknown tool: ${toolName}`)
