@@ -10,6 +10,11 @@
 -- - SECURITY DEFINER 로 role-switch 없이 호출 가능하지만, 인자를 신뢰하기 전에
 --   반드시 호출부에서 인증 검증을 거칠 것 (middleware + JWT).
 
+-- 기존 정의 제거 — PostgreSQL 은 CREATE OR REPLACE 로 반환 타입 변경 불가.
+-- 이미 같은 이름의 함수가 다른 시그니처로 있었다면 이 DROP 이 없으면 "42P13" 에러.
+DROP FUNCTION IF EXISTS current_jarvis_context();
+DROP FUNCTION IF EXISTS set_jarvis_request_context(UUID, TEXT, UUID);
+
 CREATE OR REPLACE FUNCTION set_jarvis_request_context(
   p_tenant_id UUID,
   p_user_role TEXT,
