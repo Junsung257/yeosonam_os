@@ -11,6 +11,10 @@
 -- 활성화는 아래 한 줄을 주석 해제하면 됨 (Phase 3d):
 --   -- SELECT jarvis_enable_rls();
 
+-- 기존 함수 존재 시 제거 (42P13 회피)
+DROP FUNCTION IF EXISTS jarvis_is_platform_admin();
+DROP FUNCTION IF EXISTS jarvis_current_tenant();
+
 -- ─── 공통 헬퍼: 현재 요청이 platform_admin 인지 ────────────────────────
 CREATE OR REPLACE FUNCTION jarvis_is_platform_admin()
 RETURNS boolean
@@ -29,7 +33,7 @@ AS $$
   SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid
 $$;
 
--- ─── STRICT 테이블 정책 일괄 등록 ─────────────────────────────────────
+-- ─── STRICT 테이블 정책 — 있는 테이블에만 ──────────────────────────────
 DO $$
 DECLARE t TEXT;
 BEGIN
@@ -38,16 +42,21 @@ BEGIN
     'settlements','jarvis_sessions','jarvis_tool_logs','jarvis_pending_actions',
     'agent_actions'
   ]) LOOP
-    EXECUTE format($p$
-      DROP POLICY IF EXISTS jarvis_v2_tenant_isolation ON %I;
-      CREATE POLICY jarvis_v2_tenant_isolation ON %I
-        USING (jarvis_is_platform_admin() OR tenant_id = jarvis_current_tenant())
-        WITH CHECK (jarvis_is_platform_admin() OR tenant_id = jarvis_current_tenant());
-    $p$, t, t);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
+      EXECUTE format('DROP POLICY IF EXISTS jarvis_v2_tenant_isolation ON %I', t);
+      EXECUTE format($p$
+        CREATE POLICY jarvis_v2_tenant_isolation ON %I
+          USING (jarvis_is_platform_admin() OR tenant_id = jarvis_current_tenant())
+          WITH CHECK (jarvis_is_platform_admin() OR tenant_id = jarvis_current_tenant())
+      $p$, t);
+      RAISE NOTICE '✅ STRICT policy on %', t;
+    ELSE
+      RAISE NOTICE '⏭  Skipped STRICT: % (not exists)', t;
+    END IF;
   END LOOP;
 END $$;
 
--- ─── NULLABLE 테이블 정책 일괄 등록 (기존에 tenant_id 있던 테이블 포함) ─
+-- ─── NULLABLE 테이블 정책 — tenant_id 컬럼 있는 테이블에만 ──────────────
 DO $$
 DECLARE t TEXT;
 BEGIN
@@ -55,23 +64,34 @@ BEGIN
     'travel_packages','error_patterns','customer_facts',
     'content_creatives','content_daily_stats','content_insights'
   ]) LOOP
-    EXECUTE format($p$
-      DROP POLICY IF EXISTS jarvis_v2_tenant_or_shared ON %I;
-      CREATE POLICY jarvis_v2_tenant_or_shared ON %I
-        USING (
-          jarvis_is_platform_admin()
-          OR tenant_id IS NULL
-          OR tenant_id = jarvis_current_tenant()
-        )
-        WITH CHECK (
-          jarvis_is_platform_admin()
-          OR tenant_id = jarvis_current_tenant()
-        );
-    $p$, t, t);
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = t AND column_name = 'tenant_id' AND table_schema = 'public'
+    ) THEN
+      EXECUTE format('DROP POLICY IF EXISTS jarvis_v2_tenant_or_shared ON %I', t);
+      EXECUTE format($p$
+        CREATE POLICY jarvis_v2_tenant_or_shared ON %I
+          USING (
+            jarvis_is_platform_admin()
+            OR tenant_id IS NULL
+            OR tenant_id = jarvis_current_tenant()
+          )
+          WITH CHECK (
+            jarvis_is_platform_admin()
+            OR tenant_id = jarvis_current_tenant()
+          )
+      $p$, t);
+      RAISE NOTICE '✅ NULLABLE policy on %', t;
+    ELSE
+      RAISE NOTICE '⏭  Skipped NULLABLE: % (no tenant_id column)', t;
+    END IF;
   END LOOP;
 END $$;
 
--- ─── 활성화 헬퍼 (Phase 3d 에서 호출) ─────────────────────────────────
+-- ─── 활성화/비활성화 헬퍼 (Phase 3d 에서 호출, 없는 테이블 자동 스킵) ───
+DROP FUNCTION IF EXISTS jarvis_enable_rls();
+DROP FUNCTION IF EXISTS jarvis_disable_rls();
+
 CREATE OR REPLACE FUNCTION jarvis_enable_rls()
 RETURNS void
 LANGUAGE plpgsql
@@ -85,7 +105,9 @@ BEGIN
     'travel_packages','error_patterns','customer_facts',
     'content_creatives','content_daily_stats','content_insights'
   ]) LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    END IF;
   END LOOP;
 END;
 $$;
@@ -103,7 +125,9 @@ BEGIN
     'travel_packages','error_patterns','customer_facts',
     'content_creatives','content_daily_stats','content_insights'
   ]) LOOP
-    EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY', t);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
+      EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY', t);
+    END IF;
   END LOOP;
 END;
 $$;
