@@ -175,7 +175,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       const cutoff = new Date(Date.now() - daysAfter * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       const { data, error } = await supabaseAdmin
         .from('bookings')
-        .select('id, booking_no, package_title, departure_date, paid_amount, total_paid_out, total_price, status, customers!lead_customer_id(name)')
+        .select('id, booking_no, package_title, departure_date, paid_amount, total_paid_out, total_price, total_cost, status, customers!lead_customer_id(name)')
         .is('settlement_confirmed_at', null)
         .neq('status', 'cancelled')
         .not('departure_date', 'is', null)
@@ -194,6 +194,8 @@ async function executeTool(toolName: string, args: any): Promise<any> {
           paid: b.paid_amount,
           out: b.total_paid_out,
           net: (b.paid_amount || 0) - (b.total_paid_out || 0),
+          // 장부 입력 여부 → 일괄 확정 시 accrual(장부) vs cash(통장) 기준 결정에 활용
+          expected_mode: (b.total_cost || 0) > 0 ? 'accrual' : 'cash',
           status: b.status,
         })),
       }
