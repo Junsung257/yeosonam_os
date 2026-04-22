@@ -149,6 +149,10 @@ async function executeTool(toolName: string, args: any): Promise<any> {
   }
 }
 
+// V2 (gemini-agent-loop-v2.ts) 공유 export
+export { SALES_TOOLS, SALES_TOOLS_RAW }
+export { executeTool as executeSalesTool }
+
 export async function runSalesAgent(params: AgentRunParams): Promise<AgentRunResult> {
   return runGeminiAgentLoop({
     agentType: 'sales',

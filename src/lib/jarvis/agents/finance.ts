@@ -238,6 +238,10 @@ async function executeTool(toolName: string, args: any): Promise<any> {
   }
 }
 
+// V2 (gemini-agent-loop-v2.ts) 공유 export
+export { FINANCE_TOOLS, FINANCE_TOOLS_RAW }
+export { executeTool as executeFinanceTool }
+
 export async function runFinanceAgent(params: AgentRunParams): Promise<AgentRunResult> {
   return runGeminiAgentLoop({
     agentType: 'finance',
