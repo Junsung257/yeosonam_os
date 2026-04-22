@@ -34,6 +34,7 @@ interface Booking {
   net_cashflow?: number | null;
   settlement_confirmed_at?: string | null;
   settlement_confirmed_by?: string | null;
+  settlement_mode?: 'accrual' | 'cash' | null;
   commission_rate?: number | null;
   commission_amount?: number | null;
   departure_date?: string;
@@ -1536,7 +1537,17 @@ export default function BookingsPage() {
                         {isCancelled    && isRefundSettled && <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full" title={`환불완료 (순현금 ${netCashflow.toLocaleString()}원)`}>♻️ 환불완료</span>}
                         {isCancelled    && isRefundPending && <span className="text-[11px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold" title={`환불대기 — ${netCashflow.toLocaleString()}원 남음`}>⚠️ 환불대기</span>}
                         {isOverCost     && <span className="text-[11px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold" title={`원가초과 ${Math.abs(netCashflow).toLocaleString()}원 — 출금이 입금보다 큼`}>🩸 원가초과</span>}
-                        {isSettled      && <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full" title={`정산 확정: ${b.settlement_confirmed_at?.slice(0,10)}`}>♻️ 정산확정</span>}
+                        {isSettled      && (
+                          <span
+                            className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full"
+                            title={`정산 확정: ${b.settlement_confirmed_at?.slice(0,10)}${
+                              b.settlement_mode === 'cash' ? ' · 현금 기준 (통장 대조만)' :
+                              b.settlement_mode === 'accrual' ? ' · 장부 기준' : ''
+                            }`}
+                          >
+                            ♻️ 정산확정{b.settlement_mode === 'cash' ? ' 💠' : ''}
+                          </span>
+                        )}
                       </div>
                     </td>
 

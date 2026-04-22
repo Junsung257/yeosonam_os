@@ -35,6 +35,7 @@ const PATCH_FIELDS = [
   'paid_amount', 'payment_status',
   // 정산 확정 / 커미션 (20260418 마이그레이션)
   'settlement_confirmed_at', 'settlement_confirmed_by',
+  'settlement_mode', // 20260422 — accrual(장부) / cash(통장 대조)
   'commission_rate', 'commission_amount',
   // 취소/환불 (20260418010000 마이그레이션)
   'cancelled_at', 'cancellation_reason', 'refund_settled_at',

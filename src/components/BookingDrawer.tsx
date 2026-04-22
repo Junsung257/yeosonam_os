@@ -51,6 +51,7 @@ interface BookingDetail {
   metadata?: Record<string, unknown>;
   settlement_confirmed_at?: string | null;
   settlement_confirmed_by?: string | null;
+  settlement_mode?: 'accrual' | 'cash' | null;
   commission_rate?: number | null;
   commission_amount?: number | null;
 }
@@ -124,6 +125,12 @@ function AmountRow({
 
 // ─── Dual Control Tower ───────────────────────────────────────────────────────
 // 장부(Blueprint) vs 통장(Reality) 듀얼 대시보드 + 액션 경고등
+//
+// 정산 라이프사이클 (ERPNext Bank Reconciliation 패턴 차용):
+//   A. draft       — 장부·통장 모두 비어있음 → 안내
+//   B. accrual     — 장부 입력됨 → Blueprint 기반 미수금·미지급 판별
+//   C. cash        — 장부 비어있고 통장만 매칭됨 → 현금 기준 실현수익 노출
+//   D. confirmed   — settlement_confirmed_at 有 → 책 덮음 (어느 기준이든)
 
 function DualControlTower({
   totalSale,
@@ -131,24 +138,31 @@ function DualControlTower({
   netOverride,
   actualIncome,
   actualExpense,
+  settlementConfirmedAt,
+  settlementMode,
 }: {
-  totalSale:     number;
-  effectiveNet:  number;
-  netOverride:   number | null;
-  actualIncome:  number;    // txs 기준 총 입금
-  actualExpense: number;    // txs 기준 총 출금
+  totalSale:              number;
+  effectiveNet:           number;
+  netOverride:            number | null;
+  actualIncome:           number;    // txs 기준 총 입금
+  actualExpense:          number;    // txs 기준 총 출금
+  settlementConfirmedAt:  string | null;
+  settlementMode:         'accrual' | 'cash' | null;
 }) {
   const blueprintMargin = totalSale - effectiveNet;
   const blueprintRate   = totalSale > 0 ? (blueprintMargin / totalSale) * 100 : 0;
   const realizedProfit  = actualIncome - actualExpense;
   const realizedRate    = actualIncome > 0 ? (realizedProfit / actualIncome) * 100 : 0;
 
-  // 액션 경고등 델타
-  const customerUnpaid  = totalSale - actualIncome;    // 고객 미수금
-  const landUnpaid      = effectiveNet - actualExpense; // 랜드사 미지급금
-  // effectiveNet > 0 이어야만 정산 판별 가능 (원가 미입력 시 판별 불가)
-  const hasCostEntered  = effectiveNet > 0;
-  const isSettled       = hasCostEntered && customerUnpaid <= 0 && landUnpaid <= 0;
+  // 라이프사이클 판정
+  const hasBlueprint    = effectiveNet > 0;
+  const hasCashFlow     = actualIncome > 0 || actualExpense > 0;
+  const isConfirmed     = !!settlementConfirmedAt;
+
+  // Accrual(장부) 기준 액션 경고등 델타 — hasBlueprint일 때만 의미 있음
+  const customerUnpaid  = totalSale - actualIncome;
+  const landUnpaid      = effectiveNet - actualExpense;
+  const isAccrualSettled = hasBlueprint && customerUnpaid <= 0 && landUnpaid <= 0;
 
   return (
     <div className="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-lg">
@@ -247,65 +261,105 @@ function DualControlTower({
       </div>
 
       {/* ── 액션 경고등 (Actionable Insights) ─────────────────────── */}
+      {/* 우선순위: D.confirmed > B.accrual > C.cash > A.draft */}
       <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-2">
-        {!hasCostEntered ? (
-          /* 원가 미입력 — 정산 판별 불가 (주황 경고) */
-          <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
-            <span className="text-[16px]">⚠️</span>
-            <div>
-              <p className="text-[13px] font-extrabold text-amber-700">원가(장부) 미입력 — 정산 판별 불가</p>
-              <p className="text-[11px] text-amber-600">견적 빌더에서 랜드사 원가를 입력하세요</p>
-            </div>
-          </div>
-        ) : isSettled ? (
+        {isConfirmed ? (
+          /* D. 책 덮음 — 어떤 모드였는지 명시 */
           <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
             <span className="text-[16px]">✅</span>
-            <div>
-              <p className="text-[13px] font-extrabold text-emerald-700">정산 완벽히 종료됨</p>
-              <p className="text-[11px] text-emerald-600">미수금 · 미지급금 없음</p>
+            <div className="flex-1">
+              <p className="text-[13px] font-extrabold text-emerald-700">
+                정산 종료
+                <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-600 uppercase tracking-wide">
+                  {settlementMode === 'cash' ? '현금 기준' : settlementMode === 'accrual' ? '장부 기준' : '확정됨'}
+                </span>
+              </p>
+              <p className="text-[11px] text-emerald-600">
+                {settlementMode === 'cash'
+                  ? `통장 대조만으로 마감 · 실현 수익 ${realizedProfit >= 0 ? '+' : ''}${realizedProfit.toLocaleString()}원`
+                  : settlementMode === 'accrual'
+                    ? '장부·통장 대조 완료 · 미수금·미지급금 없음'
+                    : '관리자가 정산 완료로 마킹'}
+              </p>
             </div>
           </div>
+        ) : hasBlueprint ? (
+          /* B. Accrual — 장부 기반 미수금·미지급 판별 */
+          isAccrualSettled ? (
+            <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
+              <span className="text-[16px]">✅</span>
+              <div>
+                <p className="text-[13px] font-extrabold text-emerald-700">장부·통장 일치 — 정산 확정 가능</p>
+                <p className="text-[11px] text-emerald-600">미수금 · 미지급금 없음 · 우측 하단 &lsquo;정산 확정&rsquo; 클릭</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {customerUnpaid > 0 && (
+                <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px]">🚨</span>
+                    <div>
+                      <p className="text-[13px] font-extrabold text-red-700">고객 미수금</p>
+                      <p className="text-[11px] text-red-500">판매가 대비 입금 부족</p>
+                    </div>
+                  </div>
+                  <span className="text-[16px] font-extrabold text-red-600 tabular-nums whitespace-nowrap">
+                    {customerUnpaid.toLocaleString()}원 남음
+                  </span>
+                </div>
+              )}
+              {landUnpaid > 0 && (
+                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px]">⚠️</span>
+                    <div>
+                      <p className="text-[13px] font-extrabold text-amber-700">랜드사 미지급금</p>
+                      <p className="text-[11px] text-amber-600">원가 대비 출금 부족</p>
+                    </div>
+                  </div>
+                  <span className="text-[16px] font-extrabold text-amber-600 tabular-nums whitespace-nowrap">
+                    {landUnpaid.toLocaleString()}원 남음
+                  </span>
+                </div>
+              )}
+              {customerUnpaid <= 0 && landUnpaid > 0 && (
+                <div className="text-[11px] text-slate-400 text-center py-0.5">
+                  고객 입금 완료 · 랜드사 정산 대기 중
+                </div>
+              )}
+              {customerUnpaid > 0 && landUnpaid <= 0 && (
+                <div className="text-[11px] text-slate-400 text-center py-0.5">
+                  랜드사 정산 완료 · 고객 잔금 수취 대기 중
+                </div>
+              )}
+            </>
+          )
+        ) : hasCashFlow ? (
+          /* C. Cash-only — 장부 없이 통장만 있을 때 현금 기준 실현수익 노출 */
+          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[15px]">💠</span>
+              <div>
+                <p className="text-[13px] font-extrabold text-blue-700">현금 기준 실현 수익</p>
+                <p className="text-[11px] text-blue-600">장부 미입력 · 입금−출금 기준 · 확인 후 &lsquo;정산 확정&rsquo; 가능</p>
+              </div>
+            </div>
+            <span className={`text-[16px] font-extrabold tabular-nums whitespace-nowrap ${
+              realizedProfit > 0 ? 'text-blue-600' : realizedProfit < 0 ? 'text-red-600' : 'text-slate-400'
+            }`}>
+              {realizedProfit > 0 ? '+' : ''}{realizedProfit.toLocaleString()}원
+            </span>
+          </div>
         ) : (
-          <>
-            {customerUnpaid > 0 && (
-              <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[15px]">🚨</span>
-                  <div>
-                    <p className="text-[13px] font-extrabold text-red-700">고객 미수금</p>
-                    <p className="text-[11px] text-red-500">판매가 대비 입금 부족</p>
-                  </div>
-                </div>
-                <span className="text-[16px] font-extrabold text-red-600 tabular-nums whitespace-nowrap">
-                  {customerUnpaid.toLocaleString()}원 남음
-                </span>
-              </div>
-            )}
-            {landUnpaid > 0 && (
-              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[15px]">⚠️</span>
-                  <div>
-                    <p className="text-[13px] font-extrabold text-amber-700">랜드사 미지급금</p>
-                    <p className="text-[11px] text-amber-600">원가 대비 출금 부족</p>
-                  </div>
-                </div>
-                <span className="text-[16px] font-extrabold text-amber-600 tabular-nums whitespace-nowrap">
-                  {landUnpaid.toLocaleString()}원 남음
-                </span>
-              </div>
-            )}
-            {customerUnpaid <= 0 && landUnpaid > 0 && (
-              <div className="text-[11px] text-slate-400 text-center py-0.5">
-                고객 입금 완료 · 랜드사 정산 대기 중
-              </div>
-            )}
-            {customerUnpaid > 0 && landUnpaid <= 0 && (
-              <div className="text-[11px] text-slate-400 text-center py-0.5">
-                랜드사 정산 완료 · 고객 잔금 수취 대기 중
-              </div>
-            )}
-          </>
+          /* A. Draft — 장부·통장 모두 비어있음 */
+          <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5">
+            <span className="text-[16px]">📭</span>
+            <div>
+              <p className="text-[13px] font-extrabold text-slate-600">장부·통장 모두 비어있음</p>
+              <p className="text-[11px] text-slate-500">견적 빌더 입력 또는 통장 매칭을 진행하세요</p>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -789,12 +843,16 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
     if (!bookingId) return;
     setConfirmingSettlement(true);
     try {
+      // 모드 자동 결정 — 장부(effectiveNet) 입력 여부로 accrual vs cash 분기
+      // 관리자 판단 존중: 장부가 있으면 accrual, 없으면 cash (ERPNext Bank Recon 패턴)
+      const autoMode: 'accrual' | 'cash' = blueprint.effectiveNet > 0 ? 'accrual' : 'cash';
       const res = await fetch(`/api/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           settlement_confirmed_at: confirm ? new Date().toISOString() : null,
           settlement_confirmed_by: confirm ? 'admin' : null,
+          settlement_mode:         confirm ? autoMode : null,
         }),
       });
       if (!res.ok) {
@@ -1107,6 +1165,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
               netOverride={netOverride}
               actualIncome={reality.actualIncome}
               actualExpense={reality.actualExpense}
+              settlementConfirmedAt={booking?.settlement_confirmed_at ?? null}
+              settlementMode={booking?.settlement_mode ?? null}
             />
 
             {/* ② 견적 빌더 — 장부(Blueprint) 예산안 설정 도구 */}
