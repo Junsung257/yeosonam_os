@@ -1184,6 +1184,103 @@ Phase 5                        ───●───
 
 ---
 
+---
+
+# Part C — 구현 완료 스냅샷 (2026-04-22)
+
+> Phase 0 ~ Phase 8 전체가 본 세션에서 브랜치 스택으로 커밋 완료. 실제 서비스 전환은 DB 마이그·RAG 인덱싱·RLS 활성화·프론트 통합 단계만 남음.
+
+## C.1 전체 커밋 스택
+
+```
+main
+ └─ 6e2c1a9  Phase 0·1   설계 마스터 + 저위험 패치
+     └─ 2be4c2a  Phase 2   Gemini streaming agent loop + SSE
+         └─ 352b2e6  Phase 3   멀티테넌트 격리 (scoped-client + RLS)
+             └─ 2970825  Phase 4   Contextual Retrieval RAG (Silo per tenant)
+                 └─ 8d3d6a5  Phase 5   tenant_bot_profiles + persona + cost ledger
+                     └─ b3044e0  Phase 6   전 agent V2 연결 + SSE 훅 + 봇 관리 UI
+                         └─ 91d0699  Phase 7   감사 공백 tool (블로그/상품 기안)
+                             └─ [Phase 8]  smoke 테스트 + 문서화
+```
+
+## C.2 파일 맵 — 어디서 뭘 찾을지
+
+| 주제 | 파일 | 역할 |
+|------|-----|-----|
+| 엔진 선택 | `src/lib/jarvis/gemini-agent-loop-v2.ts` | V2 스트리밍 + caching + parallel tools |
+| 캐시 관리 | `src/lib/jarvis/gemini-cache-manager.ts` | cachedContents REST 래퍼, 1024 토큰 미만 자동 폴백 |
+| 이벤트 스트림 | `src/lib/jarvis/stream-encoder.ts` + `src/app/api/jarvis/stream/route.ts` | SSE 인코더 + 엔드포인트 |
+| 디스패치 | `src/lib/jarvis/v2-dispatch.ts` | Router → agent config 조립 (6개 agent 전체 지원) |
+| 테넌트 격리 | `src/lib/jarvis/scoped-tables.ts` + `scoped-client.ts` | Proxy 기반 강제 스코핑, STRICT/NULLABLE/GLOBAL 카탈로그 |
+| RLS | `supabase/migrations/20260423*.sql` | RPC + tenant_id 컬럼 + 정책 + enable/disable 훅 |
+| RAG | `supabase/migrations/20260424*.sql` + `src/lib/jarvis/rag/retriever.ts` | Contextual + Hybrid Search (Vector+BM25+RRF) |
+| 인덱싱 | `db/rag_contextualize.js` + `db/rag_reindex_all.js` | Flash contextualize + 전수 재인덱싱 오케스트레이터 |
+| 테넌트 봇 | `supabase/migrations/20260425*.sql` + `src/lib/jarvis/persona.ts` + `cost-tracker.ts` | 프로파일 + 쿼터 + 단가 계산 + 원장 |
+| 컨텍스트 | `src/lib/jarvis/context.ts` | JWT + 헤더 + body 우선순위로 JarvisContext 조립 |
+| 프론트 훅 | `src/lib/jarvis/useJarvisStream.ts` | React SSE 훅 + V1 자동 폴백 |
+| 관리자 UI | `src/app/admin/tenants/[tenantId]/bot/page.tsx` | 봇 설정 + 사용량 대시보드 |
+| Admin API | `src/app/api/admin/jarvis/bot-profile/route.ts` + `usage/route.ts` | GET/PUT 봇 프로파일 + 사용량 조회 |
+| 기안 워크플로 | `src/lib/jarvis/agents/marketing.ts::propose_blog_draft` + `products.ts::propose_product_registration` | 감사 공백 채우기 |
+| 스모크 테스트 | `db/smoke_jarvis_v2.js` | node:test, 16 케이스, 단가·분류·SSE·guardrail |
+
+## C.3 라우팅 매트릭스
+
+| Router 결과 | surface | V2 buildConfig → | RAG? | HITL 유발 가능 tool |
+|-----------|--------|-----------------|------|-------------------|
+| operations | admin | operations tools | ❌ | create_booking, update_booking_status, create_customer, update_customer, match_payment, send_booking_guide, propose_merge_customers |
+| products | admin | products tools | ❌ | update_package_status, propose_product_registration |
+| products | customer | concierge (RAG) | ✅ | — |
+| finance | admin | finance tools | ❌ | create_settlement |
+| marketing | admin | marketing tools | ❌ | generate_card_news, propose_blog_draft |
+| sales | admin | sales tools | ❌ | create_settlement, update_rfq_status |
+| system | admin | system tools | ❌ | update_policy |
+
+## C.4 env 플래그 카탈로그
+
+| env | 기본값 | 역할 |
+|-----|-------|-----|
+| `JARVIS_ENGINE` | v1 | `v2` 로 두면 프론트가 `/api/jarvis/stream` 우선 호출 |
+| `JARVIS_STREAM_ENABLED` | true | `false` 면 /api/jarvis/stream 503 (긴급 스위치) |
+| `JARVIS_V2_MAX_ROUNDS` | 5 | V2 tool-use 라운드 상한 |
+| `JARVIS_V2_HISTORY_TURNS` | 5 | V2 히스토리 컨텍스트 포함 턴 수 |
+| `JARVIS_V2_AGENT_MODEL` | gemini-2.5-pro | V2 worker 모델 |
+| `JARVIS_ROUTER_MODEL` | gemini-2.0-flash | Router 모델 |
+| `JARVIS_MAX_ROUNDS` | 10 | V1 tool-use 라운드 상한 |
+| `JARVIS_HISTORY_TURNS` | 10 | V1 히스토리 컨텍스트 턴 수 |
+| `JARVIS_RLS_ENABLED` | false | `true` 면 applyRequestContext 가 RPC 호출 |
+| `DISABLE_RESPONSE_CRITIC` | false | `true` 면 response-critic 검증 스킵 |
+
+## C.5 비용 0 으로 지금 바로 확인 가능한 것
+
+```bash
+# 스모크 테스트
+node --test db/smoke_jarvis_v2.js
+
+# TypeScript 타입 체크
+npx tsc --noEmit
+
+# RAG 인덱싱 dry-run (실제 API 호출 없음)
+node db/rag_reindex_all.js --dry-run --limit=5
+```
+
+## C.6 비용 발생 단계 (사용자 승인 필요)
+
+| 단계 | 추정 비용 | 위험도 |
+|-----|---------|-------|
+| Supabase 스테이징 마이그 5개 | $0 (DB 용량) | 낮음 |
+| RAG 전수 인덱싱 (~3000 청크) | $30~50 (Gemini Flash + Embedding 일회성) | 중 |
+| V2 트래픽 전환 (월 10만 호출 가정) | 기존 V1 대비 **-40~60%** (caching + Flash 라우터) | 낮음 |
+| RLS 활성화 | $0, 스테이징 검증 후 | 높음 (잘못 설정 시 서비스 중단, disable 훅 있음) |
+
+## C.7 남은 후속 작업 (Phase 9+)
+
+- **SSE 프론트 통합** — 실제 어드민 `/admin/jarvis` 페이지에 `useJarvisStream` 훅 적용
+- **qa-chat V2 전환** — 랜딩페이지 고객 상담을 `/api/jarvis/stream` + `surface='customer'` 로 전환 (JSON-lines → SSE 프로토콜 변경)
+- **jarvis-v1 deprecation** — V2 p50/p95 검증 후 V1 폴백 경로 단계적 제거
+- **marketing agent 실제 API 연결** — Meta/Naver/Google Ads (실제 키 필요)
+- **pgvector partial index per 큰 테넌트** — 테넌트 규모가 커지면 Silo partial HNSW 추가
+
 ## B.7 Part B 변경 이력
 
 - 2026-04-22 · Part B 초안 — Phase 2~5 구현 상세. 실제 테이블 스캔 결과 반영 (tenant_id 보유 11개 테이블 확인).
