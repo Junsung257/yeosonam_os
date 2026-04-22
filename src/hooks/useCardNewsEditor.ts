@@ -180,7 +180,59 @@ export function useCardNewsEditor() {
     try {
       const name = cardNewsTitle || '카드뉴스';
 
-      // ── 1차: 서버 Satori 렌더 (card_news_id 가 있어야 함) ─────
+      // ── 1차: V2 render-v2 (Atom 기반, 1:1 포맷) ─────
+      if (cardNewsId) {
+        try {
+          const v2Res = await fetch('/api/card-news/render-v2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_news_id: cardNewsId, formats: ['1x1'] }),
+          });
+          if (v2Res.ok) {
+            const v2Data = await v2Res.json() as {
+              renders?: Array<{ slide_index: number; format: string; url: string | null; error?: string }>;
+              error?: string;
+            };
+            const v2Urls = (v2Data.renders ?? [])
+              .filter((r) => r.format === '1x1')
+              .sort((a, b) => a.slide_index - b.slide_index)
+              .map((r) => r.url);
+            const v2Valid = v2Urls.filter((u): u is string => typeof u === 'string' && u.length > 0);
+
+            // 전 슬라이드 V2 렌더 성공 → ZIP
+            if (v2Valid.length > 0 && v2Valid.length === v2Urls.length) {
+              if (v2Valid.length === 1) {
+                const blob = await (await fetch(v2Valid[0])).blob();
+                const a = document.createElement('a');
+                a.download = `${name}_1.png`;
+                a.href = URL.createObjectURL(blob);
+                a.click();
+                URL.revokeObjectURL(a.href);
+              } else {
+                const { default: JSZip } = await import('jszip');
+                const zip = new JSZip();
+                for (let i = 0; i < v2Valid.length; i++) {
+                  const blob = await (await fetch(v2Valid[i])).blob();
+                  zip.file(`${name}_${i + 1}.png`, blob);
+                }
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const a = document.createElement('a');
+                a.download = `${name}_${v2Valid.length}장.zip`;
+                a.href = URL.createObjectURL(zipBlob);
+                a.click();
+                URL.revokeObjectURL(a.href);
+              }
+              console.log('[exportAll] V2 Satori 렌더 성공:', v2Valid.length, '장');
+              return;
+            }
+            console.warn('[exportAll] V2 렌더 부분 실패, V1로 폴백');
+          }
+        } catch (err) {
+          console.warn('[exportAll] V2 렌더 호출 실패, V1로 폴백:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── 2차: V1 render (기존 Satori, 5 템플릿) ─────
       if (cardNewsId) {
         try {
           const res = await fetch('/api/card-news/render', {

@@ -40,8 +40,8 @@ export const CardSlideV2Schema = z.object({
   tip: z.string().max(80).optional().nullable(),           // 꿀팁 1줄
   warning: z.string().max(80).optional().nullable(),       // 주의사항 1줄
   price_chip: z.string().max(20).optional().nullable(),    // 가격 칩 ("89,900원~")
-  trust_row: z.array(z.string().max(12)).max(4).optional(), // 신뢰 시그널 ["노팁","노옵션","5성급"]
-  accent_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),  // 브랜드 악센트 override
+  trust_row: z.array(z.string().max(12)).max(4).optional().nullable(), // 신뢰 시그널
+  accent_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
   photo_hint: z.string().max(100).optional().nullable(),   // 사진 선택 힌트 (Pexels 외)
 });
 

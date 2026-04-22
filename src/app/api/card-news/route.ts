@@ -67,44 +67,36 @@ export async function POST(request: NextRequest) {
         })
       );
 
-      // V2 slides — Atom 템플릿이 소비하는 전체 슬롯 포함
+      // V2 slides — copySlides 에 V2 슬롯이 이미 있으므로 직접 활용
       const templateFamily: 'editorial' | 'cinematic' | 'premium' | 'bold' =
         briefAny.template_family_suggestion ?? 'editorial';
 
-      // brief.sections[i].card_slide 에 담긴 V2 슬롯을 추출
-      const briefSections = Array.isArray(briefAny.sections) ? briefAny.sections : [];
-      const ctaSlide = briefAny.cta_slide ?? {};
-
-      const slides = copySlides.map((s, i) => {
-        const matchedSection = briefSections.find((sec: any) => sec.position === s.position);
-        const v2Slots = matchedSection?.card_slide ?? (s.role === 'cta' ? ctaSlide : {});
-        return {
-          id: crypto.randomUUID(),
-          position: s.position,
-          headline: s.headline,
-          body: s.body,
-          bg_image_url: images[i] ?? '',
-          pexels_keyword: s.pexels_keyword,
-          overlay_style: s.role === 'hook' || s.role === 'cta' ? 'gradient-bottom' : 'dark',
-          headline_style: { fontFamily: 'Pretendard', fontSize: s.role === 'hook' ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
-          body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
-          // V1 template 매핑
-          template_id: s.template_id,
-          role: s.role,
-          badge: s.badge,
-          brief_section_position: s.position,
-          // V2 슬롯 전부 채움
-          template_family: templateFamily,
-          template_version: 'v2',
-          eyebrow: v2Slots.eyebrow ?? null,
-          tip: v2Slots.tip ?? null,
-          warning: v2Slots.warning ?? null,
-          price_chip: v2Slots.price_chip ?? null,
-          trust_row: v2Slots.trust_row ?? null,
-          accent_color: v2Slots.accent_color ?? null,
-          photo_hint: v2Slots.photo_hint ?? null,
-        };
-      });
+      const slides = copySlides.map((s, i) => ({
+        id: crypto.randomUUID(),
+        position: s.position,
+        headline: s.headline,
+        body: s.body,
+        bg_image_url: images[i] ?? '',
+        pexels_keyword: s.pexels_keyword,
+        overlay_style: s.role === 'hook' || s.role === 'cta' ? 'gradient-bottom' : 'dark',
+        headline_style: { fontFamily: 'Pretendard', fontSize: s.role === 'hook' ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
+        body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
+        // V1 template 매핑
+        template_id: s.template_id,
+        role: s.role,
+        badge: s.badge,
+        brief_section_position: s.position,
+        // V2 슬롯 — copySlides 에서 직접
+        template_family: templateFamily,
+        template_version: 'v2',
+        eyebrow: s.eyebrow ?? null,
+        tip: s.tip ?? null,
+        warning: s.warning ?? null,
+        price_chip: s.price_chip ?? null,
+        trust_row: s.trust_row ?? null,
+        accent_color: s.accent_color ?? null,
+        photo_hint: s.photo_hint ?? null,
+      }));
 
       const title = customTitle ?? briefAny.h1 ?? (briefAny.mode === 'info' ? `${briefAny.h1} — 카드뉴스` : `카드뉴스`);
 
