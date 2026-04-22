@@ -27,8 +27,18 @@ import {
 } from './agents/operations'
 import { OPERATIONS_PROMPT } from './prompts'
 
-/** agent type → V2 config 조립. 아직 구현 안 된 agent 는 null. */
-function buildConfig(agentType: AgentType): GeminiAgentV2Config | null {
+// concierge agent (Phase 4 — RAG 기반 고객 상담)
+import {
+  CONCIERGE_PROMPT,
+  CONCIERGE_TOOLS,
+  buildConciergeExecutor,
+} from './agents/concierge'
+
+/**
+ * agent type → V2 config 조립. 아직 구현 안 된 agent 는 null.
+ * ctx 를 받는 이유: concierge 등 tenant 스코프 tool 을 만드는 데 필요.
+ */
+function buildConfig(agentType: AgentType, ctx: JarvisContext): GeminiAgentV2Config | null {
   switch (agentType) {
     case 'operations':
       return {
@@ -38,8 +48,15 @@ function buildConfig(agentType: AgentType): GeminiAgentV2Config | null {
         executeTool: (name, args, _ctx) => executeOperationsTool(name, args),
         contextExtractor: OPERATIONS_CONTEXT_EXTRACTOR,
       }
-    // TODO (Phase 2 후속): products, finance, marketing, sales, system 도 동일 패턴으로 추가
     case 'products':
+      // Phase 4: products 라우팅을 concierge (RAG 상품 검색) 로 흡수
+      return {
+        agentType: 'products',
+        systemPrompt: CONCIERGE_PROMPT,
+        tools: CONCIERGE_TOOLS,
+        executeTool: (name, args, _ctx) => buildConciergeExecutor(ctx)(name, args),
+      }
+    // TODO (Phase 2 후속): finance, marketing, sales, system 도 동일 패턴으로 추가
     case 'finance':
     case 'marketing':
     case 'sales':
@@ -65,7 +82,7 @@ export interface DispatchResult {
 export async function prepareDispatch(input: DispatchInput): Promise<DispatchResult> {
   const routerResult = await routeMessage(input.message, input.session?.context ?? {})
   const agentType = routerResult.agent
-  const config = buildConfig(agentType)
+  const config = buildConfig(agentType, input.ctx)
   return {
     agentType,
     routerConfidence: routerResult.confidence,
