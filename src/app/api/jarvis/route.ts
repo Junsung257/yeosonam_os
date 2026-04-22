@@ -16,14 +16,34 @@ import { runFinanceAgent } from '@/lib/jarvis/agents/finance'
 import { runMarketingAgent } from '@/lib/jarvis/agents/marketing'
 import { runSalesAgent } from '@/lib/jarvis/agents/sales'
 import { runSystemAgent } from '@/lib/jarvis/agents/system'
+import type { JarvisContext } from '@/lib/jarvis/types'
+
+/**
+ * V2 스코프 컨텍스트 추출 (db/JARVIS_V2_DESIGN.md §4 Layer 1).
+ * 값이 없으면 legacy 전역 경로로 동작 — 기존 동작 보존.
+ */
+function resolveJarvisContext(req: NextRequest, body: any): JarvisContext {
+  const h = req.headers
+  const ctxFromBody = (body?.context ?? {}) as Record<string, any>
+  return {
+    ...ctxFromBody,
+    tenantId: h.get('x-tenant-id') ?? ctxFromBody.tenantId ?? undefined,
+    userId:   h.get('x-user-id')   ?? ctxFromBody.userId   ?? undefined,
+    userRole: (h.get('x-user-role') as JarvisContext['userRole']) ?? ctxFromBody.userRole ?? undefined,
+    surface:  (h.get('x-surface')  as JarvisContext['surface'])  ?? ctxFromBody.surface  ?? 'admin',
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, sessionId, context = {} } = await req.json()
+    const body = await req.json()
+    const { message, sessionId, context = {} } = body
 
     if (!message?.trim()) {
       return NextResponse.json({ error: '메시지가 필요합니다.' }, { status: 400 })
     }
+
+    const ctx: JarvisContext = resolveJarvisContext(req, body)
 
     // 1. 세션 가져오기 또는 생성
     let session: any = null
@@ -38,7 +58,7 @@ export async function POST(req: NextRequest) {
     if (!session) {
       const { data } = await supabaseAdmin
         .from('jarvis_sessions')
-        .insert({ messages: [], context })
+        .insert({ messages: [], context: { ...context, ...ctx } })
         .select()
         .single()
       session = data
@@ -58,7 +78,7 @@ export async function POST(req: NextRequest) {
       system:     runSystemAgent,
     } as const
     const runAgent = agentMap[agentType]
-    const result = await runAgent({ message, session, user: null })
+    const result = await runAgent({ message, session, user: null, ctx })
 
     // 4. 메시지 히스토리 업데이트
     const updatedMessages = [
