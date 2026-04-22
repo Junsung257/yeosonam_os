@@ -68,5 +68,25 @@
     "id": "dc40fbde-2cfa-4d2a-9e7d-f25d67a0891d",
     "title": "부산출발 호화호특 4박5일 품격 (노팁·노옵션, 에어부산 BX 전세기)",
     "product": "tt-het-05-01"
+  },
+  {
+    "id": "419c287a-2ac5-4d99-a632-cf3ff551abcc",
+    "title": "7C 부산-보홀 솔레아코스트 슬림패키지 3박5일",
+    "product": "tc-bho-05-01"
+  },
+  {
+    "id": "dea185a5-4d08-434a-9fec-86dd8fa9f3ca",
+    "title": "7C 부산-보홀 솔레아코스트 슬림패키지 4박6일",
+    "product": "tc-bho-06-01"
+  },
+  {
+    "id": "96fcaed8-a5de-4332-ae7c-e9eeefdbbcab",
+    "title": "7C 부산-보홀 솔레아코스트 노옵션패키지 3박5일",
+    "product": "tc-bho-05-02"
+  },
+  {
+    "id": "d143c933-a275-4ff6-a732-d695d703836e",
+    "title": "7C 부산-보홀 솔레아코스트 노옵션패키지 4박6일",
+    "product": "tc-bho-06-02"
   }
 ]
