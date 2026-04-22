@@ -358,6 +358,14 @@ export default function CardNewsEditorPage() {
           <span className={`text-[11px] font-medium px-2 py-0.5 rounded ${STATUS_BADGE[cardNews.status]}`}>
             {STATUS_LABELS[cardNews.status]}
           </span>
+          <button
+            type="button"
+            onClick={() => router.push(`/admin/marketing/card-news/${id}/v2`)}
+            className="text-[11px] font-semibold px-2.5 py-1 rounded border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100"
+            title="V2 Studio: Atom 기반 템플릿 family + 다중 포맷 + A/B variant"
+          >
+            V2 Studio →
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {/* 비율 선택 */}

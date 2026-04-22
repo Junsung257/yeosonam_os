@@ -53,6 +53,9 @@ function createDefaultSlide(position: number): Slide {
     pexels_keyword: '',
     overlay_style: 'dark',
     elements: [],
+    template_id: 'clean_white',
+    role: position === 0 ? 'hook' : 'content',
+    badge: null,
   };
 }
 
@@ -89,6 +92,10 @@ export function useCardNewsEditor() {
           pexels_keyword: s.pexels_keyword || '',
           overlay_style: s.overlay_style || 'dark',
           elements: s.elements || [],
+          template_id: s.template_id,
+          role: s.role,
+          badge: s.badge ?? null,
+          brief_section_position: s.brief_section_position,
         }))
       );
       setActiveSlideIndex(0);
@@ -167,17 +174,67 @@ export function useCardNewsEditor() {
     }
   }, [cardNewsId, slides, cardNewsTitle]);
 
-  // 전체 슬라이드 내보내기 (JPG/ZIP)
+  // 전체 슬라이드 내보내기 (서버 Satori 우선, html-to-image 폴백)
   const exportAll = useCallback(async () => {
     setExporting(true);
     try {
+      const name = cardNewsTitle || '카드뉴스';
+
+      // ── 1차: 서버 Satori 렌더 (card_news_id 가 있어야 함) ─────
+      if (cardNewsId) {
+        try {
+          const res = await fetch('/api/card-news/render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_news_id: cardNewsId }),
+          });
+          if (res.ok) {
+            const { urls, errors } = await res.json() as { urls: (string | null)[]; errors?: string[] };
+            const validUrls = (urls || []).filter((u): u is string => typeof u === 'string' && u.length > 0);
+
+            // 모든 슬라이드가 서버 렌더 성공한 경우만 이 경로 사용
+            if (validUrls.length > 0 && validUrls.length === urls.length) {
+              // 단건: 바로 다운로드
+              if (validUrls.length === 1) {
+                const blob = await (await fetch(validUrls[0])).blob();
+                const a = document.createElement('a');
+                a.download = `${name}_1.png`;
+                a.href = URL.createObjectURL(blob);
+                a.click();
+                URL.revokeObjectURL(a.href);
+              } else {
+                // 다건: ZIP
+                const { default: JSZip } = await import('jszip');
+                const zip = new JSZip();
+                for (let i = 0; i < validUrls.length; i++) {
+                  const blob = await (await fetch(validUrls[i])).blob();
+                  zip.file(`${name}_${i + 1}.png`, blob);
+                }
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const a = document.createElement('a');
+                a.download = `${name}_${validUrls.length}장.zip`;
+                a.href = URL.createObjectURL(zipBlob);
+                a.click();
+                URL.revokeObjectURL(a.href);
+              }
+              console.log('[exportAll] 서버 Satori 렌더 성공:', validUrls.length, '장');
+              return;
+            }
+            if (errors && errors.length) {
+              console.warn('[exportAll] 서버 렌더 부분 실패, 폴백 사용:', errors);
+            }
+          }
+        } catch (err) {
+          console.warn('[exportAll] 서버 렌더 호출 실패, 폴백:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── 폴백: 클라이언트 html-to-image (서버 렌더 불가 시) ─────
       await document.fonts.ready;
       await new Promise(r => setTimeout(r, 300));
 
       const nodes = document.querySelectorAll<HTMLElement>('.card-news-export-slide');
-      if (nodes.length === 0) { setExporting(false); return; }
-
-      const name = cardNewsTitle || '카드뉴스';
+      if (nodes.length === 0) return;
 
       const { toJpeg } = await import('html-to-image');
       if (nodes.length === 1) {
@@ -205,7 +262,7 @@ export function useCardNewsEditor() {
     } finally {
       setExporting(false);
     }
-  }, [cardNewsTitle]);
+  }, [cardNewsTitle, cardNewsId]);
 
   return {
     slides, activeSlideIndex, aspectRatio, cardNewsId, cardNewsTitle, saving, exporting,
