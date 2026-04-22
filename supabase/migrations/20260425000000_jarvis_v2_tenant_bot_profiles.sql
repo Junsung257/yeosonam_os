@@ -3,6 +3,28 @@
 -- 각 테넌트(여행사)에게 할당되는 전용 봇의 설정과 사용량 추적.
 -- 플랫폼(여소남)은 큰 프로세스를 소유, 테넌트는 페르소나·가드레일·쿼터를 소유.
 
+-- 실측 42703: 이전 세팅에 일부 컬럼이 없는 broken 테이블 발견 시 빈 테이블이면 재생성.
+DO $$
+DECLARE cnt INT := 0;
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'jarvis_cost_ledger' AND table_schema = 'public') THEN
+    EXECUTE 'SELECT count(*) FROM jarvis_cost_ledger' INTO cnt;
+    IF cnt > 0 THEN
+      RAISE EXCEPTION 'jarvis_cost_ledger 에 % 건 데이터 있음. 수동 백업 필요', cnt;
+    END IF;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tenant_bot_profiles' AND table_schema = 'public') THEN
+    EXECUTE 'SELECT count(*) FROM tenant_bot_profiles' INTO cnt;
+    IF cnt > 0 THEN
+      RAISE EXCEPTION 'tenant_bot_profiles 에 % 건 데이터 있음. 수동 백업 필요', cnt;
+    END IF;
+  END IF;
+END $$;
+
+DROP VIEW IF EXISTS jarvis_monthly_usage;
+DROP TABLE IF EXISTS jarvis_cost_ledger CASCADE;
+DROP TABLE IF EXISTS tenant_bot_profiles CASCADE;
+
 -- ─── tenant_bot_profiles ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tenant_bot_profiles (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
