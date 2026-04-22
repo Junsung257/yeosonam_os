@@ -42,9 +42,9 @@ export const TEMPLATE_META: Record<TemplateId, {
 }> = {
   dark_cinematic: {
     label: '다크 시네마틱',
-    description: '풀블리드 이미지 + 그라데이션 + 오렌지 악센트',
+    description: '풀블리드 이미지 + 강한 scrim + 오렌지 악센트',
     bestFor: '자연 풍경, 감성 여행',
-    satoriReady: false,  // 나중에 마이그레이션
+    satoriReady: true,
   },
   clean_white: {
     label: '클린 화이트',
@@ -56,13 +56,13 @@ export const TEMPLATE_META: Record<TemplateId, {
     label: '볼드 그라디언트',
     description: '네이비→블루 그라데이션 + 중앙 대형 텍스트',
     bestFor: '가성비, 특가',
-    satoriReady: false,
+    satoriReady: true,
   },
   magazine: {
     label: '매거진',
     description: '번호(01, 02) + 빨간 배지',
     bestFor: '스토리, 효도',
-    satoriReady: false,
+    satoriReady: true,
   },
   luxury_gold: {
     label: '럭셔리 골드',

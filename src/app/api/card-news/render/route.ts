@@ -77,7 +77,9 @@ export async function POST(request: NextRequest) {
       const templateId: string = s.template_id || 'clean_white';
 
       if (!isSatoriSupported(templateId)) {
-        console.log(`[render] slide ${i + 1} template=${templateId} → Satori 미지원, null 반환 (클라이언트 fallback)`);
+        // TEMPLATE_META.satoriReady=false 인 경우만 여기 도달 (현재는 없음)
+        console.warn(`[render] slide ${i + 1} template=${templateId} → satoriReady=false, null 반환`);
+        errors.push(`slide ${i + 1}: 알 수 없는 템플릿 ${templateId}`);
         urls.push(null);
         continue;
       }
