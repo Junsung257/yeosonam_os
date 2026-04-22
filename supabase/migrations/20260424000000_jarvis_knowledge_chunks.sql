@@ -51,6 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_chunks_source_ref
   ON jarvis_knowledge_chunks (source_type, source_id);
 
 -- ─── Hybrid Search RPC (RRF 기반) ─────────────────────────────────────
+-- 반환 타입 변경 대비 DROP 선행 (42P13 회피)
+DROP FUNCTION IF EXISTS jarvis_hybrid_search(VECTOR(1536), TEXT, UUID, TEXT[], INT, INT);
+
 CREATE OR REPLACE FUNCTION jarvis_hybrid_search(
   p_query_embedding VECTOR(1536),
   p_query_text      TEXT,
