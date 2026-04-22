@@ -72,7 +72,10 @@ CREATE INDEX IF NOT EXISTS idx_cost_ledger_session
   ON jarvis_cost_ledger(session_id);
 
 -- ─── 월간 사용량 집계 뷰 ────────────────────────────────────────────
-CREATE OR REPLACE VIEW jarvis_monthly_usage AS
+-- 컬럼 변경 대비 DROP 선행 (42P16 회피)
+DROP VIEW IF EXISTS jarvis_monthly_usage;
+
+CREATE VIEW jarvis_monthly_usage AS
 SELECT
   tenant_id,
   date_trunc('month', created_at) AS month,
@@ -88,6 +91,9 @@ FROM jarvis_cost_ledger
 GROUP BY tenant_id, date_trunc('month', created_at);
 
 -- ─── 현재 달 사용량 RPC (쿼터 체크용) ───────────────────────────────
+-- 42P13 대비 DROP 선행
+DROP FUNCTION IF EXISTS jarvis_current_month_usage(UUID);
+
 CREATE OR REPLACE FUNCTION jarvis_current_month_usage(p_tenant_id UUID)
 RETURNS TABLE (total_tokens BIGINT, total_cost_usd NUMERIC, call_count INT)
 LANGUAGE sql
