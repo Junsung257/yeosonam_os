@@ -20,23 +20,12 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { prepareDispatch } from '@/lib/jarvis/v2-dispatch'
 import { runGeminiAgentLoopV2 } from '@/lib/jarvis/gemini-agent-loop-v2'
 import { encodeSSE, encodeKeepalive, SSE_HEADERS } from '@/lib/jarvis/stream-encoder'
+import { resolveJarvisContext } from '@/lib/jarvis/context'
 import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
-import type { JarvisContext, AgentRunResult } from '@/lib/jarvis/types'
+import type { AgentRunResult } from '@/lib/jarvis/types'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
-
-function resolveCtx(req: NextRequest, body: any): JarvisContext {
-  const h = req.headers
-  const fromBody = (body?.context ?? {}) as Record<string, any>
-  return {
-    ...fromBody,
-    tenantId: h.get('x-tenant-id') ?? fromBody.tenantId ?? undefined,
-    userId: h.get('x-user-id') ?? fromBody.userId ?? undefined,
-    userRole: (h.get('x-user-role') as JarvisContext['userRole']) ?? fromBody.userRole ?? undefined,
-    surface: (h.get('x-surface') as JarvisContext['surface']) ?? fromBody.surface ?? 'admin',
-  }
-}
 
 export async function POST(req: NextRequest) {
   if (process.env.JARVIS_STREAM_ENABLED === 'false') {
@@ -57,7 +46,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const ctx = resolveCtx(req, body)
+  const ctx = resolveJarvisContext(req, body)
 
   // 1) 세션 로드/생성 (V1 과 동일 스키마)
   let session: any = null

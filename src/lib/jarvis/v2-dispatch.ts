@@ -19,13 +19,25 @@ import { runGeminiAgentLoopV2 } from './gemini-agent-loop-v2'
 import type { StreamEvent } from './stream-encoder'
 import type { AgentRunResult, AgentType, JarvisContext } from './types'
 
-// operations agent 에서 공유된 실행 블록
+// agent 공유 export (V1·V2 공용)
 import {
   OPERATIONS_TOOLS,
   executeOperationsTool,
   OPERATIONS_CONTEXT_EXTRACTOR,
 } from './agents/operations'
-import { OPERATIONS_PROMPT } from './prompts'
+import { PRODUCTS_TOOLS, executeProductsTool } from './agents/products'
+import { FINANCE_TOOLS, executeFinanceTool } from './agents/finance'
+import { MARKETING_TOOLS, executeMarketingTool } from './agents/marketing'
+import { SALES_TOOLS, executeSalesTool } from './agents/sales'
+import { SYSTEM_TOOLS, executeSystemTool } from './agents/system'
+import {
+  OPERATIONS_PROMPT,
+  PRODUCTS_PROMPT,
+  FINANCE_PROMPT,
+  MARKETING_PROMPT,
+  SALES_PROMPT,
+  SYSTEM_PROMPT_AGENT,
+} from './prompts'
 
 // concierge agent (Phase 4 — RAG 기반 고객 상담)
 import {
@@ -35,8 +47,13 @@ import {
 } from './agents/concierge'
 
 /**
- * agent type → V2 config 조립. 아직 구현 안 된 agent 는 null.
- * ctx 를 받는 이유: concierge 등 tenant 스코프 tool 을 만드는 데 필요.
+ * agent type → V2 config 조립. 전 agent V2 지원 (Phase 6 확장 완료).
+ * ctx 는 concierge 등 tenant 스코프 executor 생성에 사용.
+ *
+ * 라우팅 전략 (Phase 6):
+ *   - products 는 surface 에 따라 분기:
+ *       · surface='customer' → concierge (RAG 상품 검색 + 고객 톤)
+ *       · surface='admin'    → products agent (관리자용 상품 CRUD)
  */
 function buildConfig(agentType: AgentType, ctx: JarvisContext): GeminiAgentV2Config | null {
   switch (agentType) {
@@ -45,23 +62,52 @@ function buildConfig(agentType: AgentType, ctx: JarvisContext): GeminiAgentV2Con
         agentType: 'operations',
         systemPrompt: OPERATIONS_PROMPT,
         tools: OPERATIONS_TOOLS,
-        executeTool: (name, args, _ctx) => executeOperationsTool(name, args),
+        executeTool: (name, args) => executeOperationsTool(name, args),
         contextExtractor: OPERATIONS_CONTEXT_EXTRACTOR,
       }
     case 'products':
-      // Phase 4: products 라우팅을 concierge (RAG 상품 검색) 로 흡수
+      if (ctx.surface === 'customer') {
+        return {
+          agentType: 'products',
+          systemPrompt: CONCIERGE_PROMPT,
+          tools: CONCIERGE_TOOLS,
+          executeTool: (name, args) => buildConciergeExecutor(ctx)(name, args),
+        }
+      }
       return {
         agentType: 'products',
-        systemPrompt: CONCIERGE_PROMPT,
-        tools: CONCIERGE_TOOLS,
-        executeTool: (name, args, _ctx) => buildConciergeExecutor(ctx)(name, args),
+        systemPrompt: PRODUCTS_PROMPT,
+        tools: PRODUCTS_TOOLS,
+        executeTool: (name, args) => executeProductsTool(name, args),
       }
-    // TODO (Phase 2 후속): finance, marketing, sales, system 도 동일 패턴으로 추가
     case 'finance':
+      return {
+        agentType: 'finance',
+        systemPrompt: FINANCE_PROMPT,
+        tools: FINANCE_TOOLS,
+        executeTool: (name, args) => executeFinanceTool(name, args),
+      }
     case 'marketing':
+      return {
+        agentType: 'marketing',
+        systemPrompt: MARKETING_PROMPT,
+        tools: MARKETING_TOOLS,
+        executeTool: (name, args) => executeMarketingTool(name, args),
+      }
     case 'sales':
+      return {
+        agentType: 'sales',
+        systemPrompt: SALES_PROMPT,
+        tools: SALES_TOOLS,
+        executeTool: (name, args) => executeSalesTool(name, args),
+      }
     case 'system':
-      return null
+      return {
+        agentType: 'system',
+        systemPrompt: SYSTEM_PROMPT_AGENT,
+        tools: SYSTEM_TOOLS,
+        executeTool: (name, args) => executeSystemTool(name, args),
+      }
   }
 }
 

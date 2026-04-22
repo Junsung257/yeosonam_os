@@ -16,23 +16,8 @@ import { runFinanceAgent } from '@/lib/jarvis/agents/finance'
 import { runMarketingAgent } from '@/lib/jarvis/agents/marketing'
 import { runSalesAgent } from '@/lib/jarvis/agents/sales'
 import { runSystemAgent } from '@/lib/jarvis/agents/system'
+import { resolveJarvisContext } from '@/lib/jarvis/context'
 import type { JarvisContext } from '@/lib/jarvis/types'
-
-/**
- * V2 스코프 컨텍스트 추출 (db/JARVIS_V2_DESIGN.md §4 Layer 1).
- * 값이 없으면 legacy 전역 경로로 동작 — 기존 동작 보존.
- */
-function resolveJarvisContext(req: NextRequest, body: any): JarvisContext {
-  const h = req.headers
-  const ctxFromBody = (body?.context ?? {}) as Record<string, any>
-  return {
-    ...ctxFromBody,
-    tenantId: h.get('x-tenant-id') ?? ctxFromBody.tenantId ?? undefined,
-    userId:   h.get('x-user-id')   ?? ctxFromBody.userId   ?? undefined,
-    userRole: (h.get('x-user-role') as JarvisContext['userRole']) ?? ctxFromBody.userRole ?? undefined,
-    surface:  (h.get('x-surface')  as JarvisContext['surface'])  ?? ctxFromBody.surface  ?? 'admin',
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
