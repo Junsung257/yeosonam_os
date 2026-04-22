@@ -43,6 +43,18 @@
     {
       "path": "/api/cron/visual-baseline-monitor",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/blog-lifecycle",
+      "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/cron/blog-scheduler",
+      "schedule": "0 15 * * 0"
+    },
+    {
+      "path": "/api/cron/blog-learn",
+      "schedule": "0 14 * * 0"
     }
   ]
 }
