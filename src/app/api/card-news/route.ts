@@ -44,13 +44,14 @@ export async function POST(request: NextRequest) {
 
     const resolvedMode = mode || (package_id ? 'product' : 'info');
 
-    // ── Brief 기반 생성 (신규 파이프라인) ────────────────────────
+    // ── Brief 기반 생성 (V2 파이프라인) ────────────────────────
     if (brief) {
       const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
       const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
       const { supabaseAdmin } = await import('@/lib/supabase');
 
       const copySlides = await generateCardCopy(brief as any);
+      const briefAny = brief as any;
 
       // Pexels 이미지 병렬 로드
       const pexelsEnabled = isPexelsConfigured();
@@ -66,24 +67,45 @@ export async function POST(request: NextRequest) {
         })
       );
 
-      const slides = copySlides.map((s, i) => ({
-        id: crypto.randomUUID(),
-        position: s.position,
-        headline: s.headline,
-        body: s.body,
-        bg_image_url: images[i] ?? '',
-        pexels_keyword: s.pexels_keyword,
-        overlay_style: s.role === 'hook' || s.role === 'cta' ? 'gradient-bottom' : 'dark',
-        headline_style: { fontFamily: 'Pretendard', fontSize: s.role === 'hook' ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
-        body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
-        // 신규 필드 (SlideCanvas V2 분기용)
-        template_id: s.template_id,
-        role: s.role,
-        badge: s.badge,
-        brief_section_position: s.position,
-      }));
+      // V2 slides — Atom 템플릿이 소비하는 전체 슬롯 포함
+      const templateFamily: 'editorial' | 'cinematic' | 'premium' | 'bold' =
+        briefAny.template_family_suggestion ?? 'editorial';
 
-      const briefAny = brief as any;
+      // brief.sections[i].card_slide 에 담긴 V2 슬롯을 추출
+      const briefSections = Array.isArray(briefAny.sections) ? briefAny.sections : [];
+      const ctaSlide = briefAny.cta_slide ?? {};
+
+      const slides = copySlides.map((s, i) => {
+        const matchedSection = briefSections.find((sec: any) => sec.position === s.position);
+        const v2Slots = matchedSection?.card_slide ?? (s.role === 'cta' ? ctaSlide : {});
+        return {
+          id: crypto.randomUUID(),
+          position: s.position,
+          headline: s.headline,
+          body: s.body,
+          bg_image_url: images[i] ?? '',
+          pexels_keyword: s.pexels_keyword,
+          overlay_style: s.role === 'hook' || s.role === 'cta' ? 'gradient-bottom' : 'dark',
+          headline_style: { fontFamily: 'Pretendard', fontSize: s.role === 'hook' ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
+          body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
+          // V1 template 매핑
+          template_id: s.template_id,
+          role: s.role,
+          badge: s.badge,
+          brief_section_position: s.position,
+          // V2 슬롯 전부 채움
+          template_family: templateFamily,
+          template_version: 'v2',
+          eyebrow: v2Slots.eyebrow ?? null,
+          tip: v2Slots.tip ?? null,
+          warning: v2Slots.warning ?? null,
+          price_chip: v2Slots.price_chip ?? null,
+          trust_row: v2Slots.trust_row ?? null,
+          accent_color: v2Slots.accent_color ?? null,
+          photo_hint: v2Slots.photo_hint ?? null,
+        };
+      });
+
       const title = customTitle ?? briefAny.h1 ?? (briefAny.mode === 'info' ? `${briefAny.h1} — 카드뉴스` : `카드뉴스`);
 
       const insertData: Record<string, unknown> = {
@@ -91,7 +113,9 @@ export async function POST(request: NextRequest) {
         status: 'DRAFT',
         slides,
         card_news_type: resolvedMode,
-        generation_config: { brief },  // Phase 6에서 블로그 생성 시 재사용
+        template_family: templateFamily,
+        template_version: 'v2',
+        generation_config: { brief },
       };
       if (resolvedMode === 'product' && package_id) insertData.package_id = package_id;
       if (resolvedMode === 'info' && topic) insertData.topic = topic;

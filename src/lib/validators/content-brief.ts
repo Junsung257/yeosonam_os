@@ -2,16 +2,22 @@ import { z } from 'zod';
 import { TEMPLATE_IDS } from '@/lib/card-news/tokens';
 
 /**
- * ContentBrief 스키마 — 블로그+카드뉴스 통합 설계도
+ * ContentBrief 스키마 — 블로그+카드뉴스 통합 설계도 (V2 확장)
+ *
+ * V1: sections[i].card_slide.{headline, body, pexels_keyword, template_suggestion, badge}
+ * V2: 추가 슬롯 — eyebrow/tip/warning/price_chip/trust_row/accent_color/photo_hint
+ *     LLM이 의미 있는 슬롯으로 카피를 뱉으면, briefToSlides()가 family 별로 합성.
  *
  * Call 1 (Brief 설계자)의 출력이 이 스키마를 통과해야 Call 2/3이 실행됨.
- * 실패 시 1회 재호출, 그래도 실패하면 fallback 사용.
+ * V2 슬롯은 모두 optional — 기존 LLM 응답도 호환.
  */
 
 export const SlideRoleEnum = z.enum([
   'hook',         // 1번 슬라이드 (후킹/표지)
   'benefit',      // 핵심 혜택
   'detail',       // 상세 정보
+  'tip',          // 꿀팁
+  'warning',      // 주의점/실수 유형
   'tourist_spot', // 관광지 소개 (product 모드)
   'inclusion',    // 포함 사항
   'cta',          // 마지막 슬라이드 (예약 유도)
@@ -19,43 +25,56 @@ export const SlideRoleEnum = z.enum([
 
 export const ContentModeEnum = z.enum(['product', 'info']);
 
+export const TemplateFamilyEnum = z.enum(['editorial', 'cinematic', 'premium', 'bold']);
+
+/** V2: 슬라이드 단위 구조화 슬롯 */
+export const CardSlideV2Schema = z.object({
+  // V1 (필수)
+  headline: z.string().min(2).max(20),
+  body: z.string().min(2).max(50),
+  template_suggestion: z.enum(TEMPLATE_IDS),
+  pexels_keyword: z.string().min(2).max(40),
+  badge: z.string().max(10).optional().nullable(),
+  // V2 (선택)
+  eyebrow: z.string().max(20).optional().nullable(),       // 카테고리 태그 (예: "TIP", "체크")
+  tip: z.string().max(80).optional().nullable(),           // 꿀팁 1줄
+  warning: z.string().max(80).optional().nullable(),       // 주의사항 1줄
+  price_chip: z.string().max(20).optional().nullable(),    // 가격 칩 ("89,900원~")
+  trust_row: z.array(z.string().max(12)).max(4).optional(), // 신뢰 시그널 ["노팁","노옵션","5성급"]
+  accent_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),  // 브랜드 악센트 override
+  photo_hint: z.string().max(100).optional().nullable(),   // 사진 선택 힌트 (Pexels 외)
+});
+
 export const BriefSectionSchema = z.object({
   position: z.number().int().min(1),
   h2: z.string().min(2).max(50),
   role: SlideRoleEnum,
   blog_paragraph_seed: z.string().min(10).max(500),
-  card_slide: z.object({
-    headline: z.string().min(2).max(20),  // 15자 권장 + 안전 마진 5
-    body: z.string().min(2).max(50),       // 40자 권장 + 안전 마진 10
-    template_suggestion: z.enum(TEMPLATE_IDS),
-    pexels_keyword: z.string().min(2).max(40),  // 영문 명사 1~2개
-    badge: z.string().max(10).optional().nullable(),
-  }),
+  card_slide: CardSlideV2Schema,
 });
 
 export const ContentBriefSchema = z.object({
   mode: ContentModeEnum,
   h1: z.string().min(5).max(80),
   intro_hook: z.string().min(10).max(200),
-  target_audience: z.string().min(5).max(100),  // 필수 — 톤앤매너 일관성
+  target_audience: z.string().min(5).max(100),
   key_selling_points: z.array(z.string().min(2).max(60)).min(2).max(5),
   sections: z.array(BriefSectionSchema).min(3).max(8),
-  cta_slide: z.object({
-    headline: z.string().min(2).max(20),
-    body: z.string().min(2).max(50),
-    template_suggestion: z.enum(TEMPLATE_IDS),
-    pexels_keyword: z.string().min(2).max(40),
-  }),
+  cta_slide: CardSlideV2Schema,
   seo: z.object({
     title: z.string().min(10).max(70),
     description: z.string().min(30).max(200),
     slug_suggestion: z.string().min(3).max(100),
   }),
+  // V2: 템플릿 family 제안 (LLM이 상품/주제 성격에 맞게 추천)
+  template_family_suggestion: TemplateFamilyEnum.optional(),
 });
 
 export type ContentBrief = z.infer<typeof ContentBriefSchema>;
 export type BriefSection = z.infer<typeof BriefSectionSchema>;
 export type SlideRole = z.infer<typeof SlideRoleEnum>;
+export type TemplateFamily = z.infer<typeof TemplateFamilyEnum>;
+export type CardSlideV2 = z.infer<typeof CardSlideV2Schema>;
 
 /**
  * Brief 파싱 + 복구 시도
