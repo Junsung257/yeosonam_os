@@ -10,9 +10,12 @@
     "type-check": "tsc --noEmit",
     "test:visual": "playwright test tests/visual",
     "test:visual:update": "cross-env UPDATE_BASELINE=1 playwright test tests/visual --update-snapshots",
+    "test:jarvis-v2": "node --test db/smoke_jarvis_v2.js",
     "audit:drift": "node db/audit_schema_drift.js",
     "audit:drift:detail": "node db/audit_schema_drift.js --detail",
-    "audit:drift:ci": "node db/audit_schema_drift.js --detail --fail-on-drift"
+    "audit:drift:ci": "node db/audit_schema_drift.js --detail --fail-on-drift",
+    "audit:api-drift": "node db/audit_api_field_drift.js",
+    "audit:api-drift:ci": "node db/audit_api_field_drift.js --strict"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",

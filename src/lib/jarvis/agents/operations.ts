@@ -366,6 +366,17 @@ async function executeTool(toolName: string, args: any): Promise<any> {
   }
 }
 
+// V2 (gemini-agent-loop-v2.ts) 에서 재사용하기 위한 공유 export
+// - tools 정의와 executeTool 은 V1·V2 모두 동일하게 사용
+export { OPERATIONS_TOOLS, OPERATIONS_TOOLS_RAW }
+export { executeTool as executeOperationsTool }
+export const OPERATIONS_CONTEXT_EXTRACTOR = (toolName: string, result: any) => {
+  if (toolName === 'search_customers' && result?.[0]) {
+    return { customerId: result[0].id, customerName: result[0].name }
+  }
+  return {}
+}
+
 export async function runOperationsAgent(params: AgentRunParams): Promise<AgentRunResult> {
   return runGeminiAgentLoop({
     agentType: 'operations',

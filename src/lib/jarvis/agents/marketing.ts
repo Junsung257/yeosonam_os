@@ -68,6 +68,21 @@ const MARKETING_TOOLS_RAW = [
       }
     }
   },
+  {
+    name: 'propose_blog_draft',
+    description: '블로그 초안을 기안합니다. (승인 필요) agent_actions 에 기록되고 관리자가 확인 후 /admin/blog 에서 실제 발행.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['topic'],
+      properties: {
+        topic: { type: 'string', description: '블로그 주제' },
+        destination: { type: 'string', description: '여행지 (태깅)' },
+        package_id: { type: 'string', description: '연관 상품 ID (있으면)' },
+        angle: { type: 'string', description: '앵글 (정보/감성/비교/체크리스트 등)' },
+        target_length: { type: 'number', description: '목표 글자 수 (기본 2000)' },
+      },
+    },
+  },
 ]
 
 const MARKETING_TOOLS = convertTools(MARKETING_TOOLS_RAW)
@@ -125,10 +140,37 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       if (error) throw error
       return data
     }
+    case 'propose_blog_draft': {
+      if (!args.topic) throw new Error('topic 필수')
+      const summary = `[블로그 초안 기안] ${args.destination ? `[${args.destination}] ` : ''}${args.topic}${args.angle ? ` (${args.angle})` : ''}`
+      const { data, error } = await supabaseAdmin
+        .from('agent_actions')
+        .insert({
+          agent_type: 'marketing',
+          action_type: 'blog_draft',
+          summary,
+          payload: {
+            topic: args.topic,
+            destination: args.destination ?? null,
+            package_id: args.package_id ?? null,
+            angle: args.angle ?? null,
+            target_length: args.target_length ?? 2000,
+          },
+          requested_by: 'jarvis',
+          priority: 'normal',
+        })
+        .select()
+      if (error) throw error
+      return { proposed: true, action_id: data?.[0]?.id, summary, next_step: '관리자가 /admin/blog 에서 승인 후 발행' }
+    }
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
 }
+
+// V2 (gemini-agent-loop-v2.ts) 공유 export
+export { MARKETING_TOOLS, MARKETING_TOOLS_RAW }
+export { executeTool as executeMarketingTool }
 
 export async function runMarketingAgent(params: AgentRunParams): Promise<AgentRunResult> {
   return runGeminiAgentLoop({

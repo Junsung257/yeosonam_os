@@ -5,8 +5,11 @@ import { requiresHITL, getHITLInfo } from './hitl'
 import { AgentType, AgentRunParams, AgentRunResult, PendingActionInfo } from './types'
 import type { GeminiFunctionDeclaration } from './gemini-tool-format'
 
-const MAX_ROUNDS = 10
+// V2 설계 §B.1 / §3 #5 — env 로 라운드·히스토리 상한 조정 가능. 기본값은 기존 동작 보존.
+const MAX_ROUNDS = Number.parseInt(process.env.JARVIS_MAX_ROUNDS ?? '10', 10)
+const HISTORY_TURNS = Number.parseInt(process.env.JARVIS_HISTORY_TURNS ?? '10', 10)
 const FALLBACK_MSG = '일시적인 오류가 발생했어요. 잠시 후 다시 시도해주세요.'
+const MAX_ROUNDS_ESCALATE_MSG = '요청이 조금 복잡하네요. 담당자에게 확인 후 정확히 안내드릴게요.'
 
 export interface GeminiAgentConfig {
   agentType: AgentType
@@ -38,7 +41,7 @@ export async function runGeminiAgentLoop(
 
   // session.messages → Gemini contents 변환
   const contents: any[] = [
-    ...(session?.messages?.slice(-10) || []).map((m: any) => ({
+    ...(session?.messages?.slice(-HISTORY_TURNS) || []).map((m: any) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     })),
@@ -46,8 +49,11 @@ export async function runGeminiAgentLoop(
   ]
 
   let lastTextResponse = ''
+  let hitMaxRounds = false
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    // 마지막 라운드에 도달했는지 사전 체크 (초과 감지용)
+    if (round === MAX_ROUNDS - 1) hitMaxRounds = true
     let json: any
     try {
       const res = await fetch(url, {
@@ -162,6 +168,12 @@ export async function runGeminiAgentLoop(
 
     // Tool 결과를 다음 턴에 전달
     contents.push({ role: 'user', parts: functionResponses })
+  }
+
+  // 라운드 상한에 걸려 텍스트 응답 없이 빠져나온 경우 → 친근한 에스컬레이션 메시지
+  if (!lastTextResponse && hitMaxRounds) {
+    console.warn(`[자비스] MAX_ROUNDS(${MAX_ROUNDS}) 초과 — 에이전트: ${agentType}, tools: ${toolsUsed.join(',')}`)
+    lastTextResponse = MAX_ROUNDS_ESCALATE_MSG
   }
 
   return {

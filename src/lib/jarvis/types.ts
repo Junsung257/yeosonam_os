@@ -17,6 +17,11 @@ export interface JarvisContext {
   bookingNo?: string
   packageId?: string
   recentTopic?: string
+  // V2 멀티테넌트 스코프 (db/JARVIS_V2_DESIGN.md §4 참고, 현재는 optional)
+  tenantId?: string
+  userId?: string
+  userRole?: 'platform_admin' | 'tenant_admin' | 'tenant_staff' | 'customer'
+  surface?: 'admin' | 'customer' | 'api'
 }
 
 export interface ToolResult {
@@ -39,6 +44,9 @@ export interface AgentRunParams {
   message: string
   session: any
   user: any
+  // V2: worker 가 tenant-scoped 쿼리를 만들 수 있도록 context 를 optional 로 전달
+  // 값이 없으면 기존처럼 전역 쿼리 (legacy 경로)
+  ctx?: JarvisContext
 }
 
 export interface AgentRunResult {
