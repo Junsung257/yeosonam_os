@@ -35,6 +35,7 @@ interface CardNews {
   template_family?: TemplateFamily;
   template_version?: string;
   brand_kit_id?: string;
+  package_id?: string | null;
 }
 
 interface RenderResult {
@@ -196,13 +197,25 @@ export default function CardNewsV2Studio() {
             슬라이드 {slideCount}장 · 버전 {cardNews.template_version ?? 'v1'}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push(`/admin/marketing/card-news/${id}`)}
-          className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded"
-        >
-          ← V1 에디터로
-        </button>
+        <div className="flex items-center gap-2">
+          {cardNews.package_id && (
+            <button
+              type="button"
+              onClick={() => router.push(`/admin/products/${cardNews.package_id}/distribute`)}
+              className="px-3 py-2 text-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded font-semibold"
+              title="IG 캡션 + Threads 포스트 생성"
+            >
+              Content Distribute →
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push(`/admin/marketing/card-news/${id}`)}
+            className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded"
+          >
+            ← V1 에디터로
+          </button>
+        </div>
       </div>
 
       {/* Family + Format */}
