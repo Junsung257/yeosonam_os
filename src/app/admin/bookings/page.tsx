@@ -1994,6 +1994,11 @@ export default function BookingsPage() {
         bookingId={drawerBookingId}
         onClose={() => setDrawerBookingId(null)}
         onStatusChange={(id, newStatus) => setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b))}
+        onSave={(id, updated) => {
+          // 드로어에서 저장된 최신 booking 필드를 리스트 state 에 머지 — 드로어를 닫지 않아도
+          // 인원·판매가·원가·마진·정산 컬럼이 즉시 재계산됨 (유동 동기화)
+          setBookings(prev => prev.map(b => b.id === id ? { ...b, ...(updated as Partial<Booking>) } : b));
+        }}
       />
     </div>
   );
