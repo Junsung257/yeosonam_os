@@ -20,8 +20,8 @@ function CinematicCover({ slide, format, pageIndex, totalPages }: VariantProps):
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const bodyText = truncateBody(slide.body, 60);
-  const headlineSize = getHeadlineFontSize(headlineText, 64);
-  const bodySize = getBodyFontSize(bodyText, 24);
+  const headlineSize = getHeadlineFontSize(headlineText, 90);
+  const bodySize = getBodyFontSize(bodyText, 32);
   const accent = slide.accent_color || BRAND_COLORS.orange;
 
   return (
@@ -100,8 +100,8 @@ function CinematicDetail({ slide, format, pageIndex, totalPages }: VariantProps)
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 24);
   const bodyText = truncateBody(slide.body, 80);
-  const headlineSize = getHeadlineFontSize(headlineText, 50);
-  const bodySize = getBodyFontSize(bodyText, 22);
+  const headlineSize = getHeadlineFontSize(headlineText, 72);
+  const bodySize = getBodyFontSize(bodyText, 30);
   const accent = slide.accent_color || BRAND_COLORS.orange;
 
   return (
@@ -169,7 +169,7 @@ function CinematicTip({ slide, format, pageIndex, totalPages }: VariantProps): J
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const tipText = slide.tip || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 48);
+  const headlineSize = getHeadlineFontSize(headlineText, 68);
   const accent = slide.accent_color || BRAND_COLORS.orange;
 
   return (
@@ -226,7 +226,7 @@ function CinematicWarning({ slide, format, pageIndex, totalPages }: VariantProps
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const warnText = slide.warning || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 48);
+  const headlineSize = getHeadlineFontSize(headlineText, 68);
 
   return (
     <div
@@ -282,7 +282,7 @@ function CinematicCTA({ slide, format, pageIndex, totalPages }: VariantProps): J
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 18);
   const bodyText = truncateBody(slide.body, 48);
-  const headlineSize = getHeadlineFontSize(headlineText, 54);
+  const headlineSize = getHeadlineFontSize(headlineText, 76);
   const accent = slide.accent_color || BRAND_COLORS.orange;
 
   return (
@@ -332,7 +332,7 @@ function CinematicCTA({ slide, format, pageIndex, totalPages }: VariantProps): J
         >
           {slide.price_chip && (
             <div style={{ display: 'flex', marginBottom: 16 }}>
-              <PriceChip text={slide.price_chip} surface={accent} size={26} />
+              <PriceChip text={slide.price_chip} surface={accent} size={38} />
             </div>
           )}
           <Headline

@@ -74,21 +74,23 @@ export const TEMPLATE_META: Record<TemplateId, {
 
 /**
  * 글자 수 기반 반응형 폰트 크기 (오버플로 방지)
+ * 1080×1080 기준. Instagram 권장 heading 70pt+ 를 충족하도록 기본값 상향.
  */
-export function getHeadlineFontSize(text: string, baseSize: number = 52): number {
+export function getHeadlineFontSize(text: string, baseSize: number = 80): number {
   const len = (text ?? '').length;
-  if (len <= 10) return baseSize;
-  if (len <= 15) return Math.round(baseSize * 0.85);
-  if (len <= 20) return Math.round(baseSize * 0.7);
-  return Math.round(baseSize * 0.6);  // 20자 초과 (안전망)
+  if (len <= 8)  return baseSize;
+  if (len <= 12) return Math.round(baseSize * 0.9);
+  if (len <= 16) return Math.round(baseSize * 0.78);
+  if (len <= 20) return Math.round(baseSize * 0.68);
+  return Math.round(baseSize * 0.58);  // 20자 초과 안전망
 }
 
-export function getBodyFontSize(text: string, baseSize: number = 20): number {
+export function getBodyFontSize(text: string, baseSize: number = 30): number {
   const len = (text ?? '').length;
   if (len <= 20) return baseSize;
-  if (len <= 40) return Math.round(baseSize * 0.9);
-  if (len <= 60) return Math.round(baseSize * 0.8);
-  return Math.round(baseSize * 0.7);
+  if (len <= 40) return Math.round(baseSize * 0.93);
+  if (len <= 60) return Math.round(baseSize * 0.85);
+  return Math.round(baseSize * 0.75);
 }
 
 /**

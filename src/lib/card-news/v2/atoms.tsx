@@ -48,7 +48,7 @@ export interface EyebrowProps {
   size?: number;
   letterSpacing?: number;
 }
-export function Eyebrow({ text, color, size = 12, letterSpacing = 3 }: EyebrowProps): JSX.Element {
+export function Eyebrow({ text, color, size = 18, letterSpacing = 3 }: EyebrowProps): JSX.Element {
   return (
     <div
       style={{
@@ -154,9 +154,9 @@ export function TipBlock({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        padding: '14px 18px',
+        padding: '20px 26px',
         background: surface ?? '#f0f6fb',
-        borderLeft: `4px solid ${BRAND_COLORS.blue}`,
+        borderLeft: `6px solid ${BRAND_COLORS.blue}`,
         borderRadius: 4,
       }}
     >
@@ -164,10 +164,10 @@ export function TipBlock({
         style={{
           display: 'flex',
           color: BRAND_COLORS.blue,
-          fontSize: 11,
+          fontSize: 16,
           fontWeight: 800,
           letterSpacing: 2,
-          marginBottom: 4,
+          marginBottom: 8,
         }}
       >
         {label}
@@ -176,9 +176,9 @@ export function TipBlock({
         style={{
           display: 'flex',
           color: ink ?? BRAND_COLORS.navy,
-          fontSize: 16,
-          fontWeight: 500,
-          lineHeight: 1.5,
+          fontSize: 26,
+          fontWeight: 600,
+          lineHeight: 1.45,
         }}
       >
         {text}
@@ -200,9 +200,9 @@ export function WarningBlock({ label = '주의', text }: WarningBlockProps): JSX
       style={{
         display: 'flex',
         flexDirection: 'column',
-        padding: '14px 18px',
+        padding: '20px 26px',
         background: '#fef2f2',
-        borderLeft: `4px solid ${BRAND_COLORS.red}`,
+        borderLeft: `6px solid ${BRAND_COLORS.red}`,
         borderRadius: 4,
       }}
     >
@@ -210,10 +210,10 @@ export function WarningBlock({ label = '주의', text }: WarningBlockProps): JSX
         style={{
           display: 'flex',
           color: BRAND_COLORS.red,
-          fontSize: 11,
+          fontSize: 16,
           fontWeight: 800,
           letterSpacing: 2,
-          marginBottom: 4,
+          marginBottom: 8,
         }}
       >
         {label}
@@ -222,9 +222,9 @@ export function WarningBlock({ label = '주의', text }: WarningBlockProps): JSX
         style={{
           display: 'flex',
           color: '#7f1d1d',
-          fontSize: 16,
-          fontWeight: 500,
-          lineHeight: 1.5,
+          fontSize: 26,
+          fontWeight: 600,
+          lineHeight: 1.45,
         }}
       >
         {text}
@@ -242,17 +242,17 @@ export interface PriceChipProps {
   ink?: string;
   size?: number;
 }
-export function PriceChip({ text, surface, ink, size = 22 }: PriceChipProps): JSX.Element {
+export function PriceChip({ text, surface, ink, size = 36 }: PriceChipProps): JSX.Element {
   return (
     <div
       style={{
         display: 'flex',
-        padding: '6px 14px',
+        padding: '10px 22px',
         background: surface ?? BRAND_COLORS.orange,
         color: ink ?? BRAND_COLORS.white,
         fontSize: size,
-        fontWeight: 800,
-        letterSpacing: -0.3,
+        fontWeight: 900,
+        letterSpacing: -0.5,
         borderRadius: 999,
       }}
     >
@@ -283,15 +283,15 @@ export function TrustRow({ items, ink, surface }: TrustRowProps): JSX.Element {
           key={i}
           style={{
             display: 'flex',
-            padding: '4px 10px',
-            marginRight: 6,
-            marginBottom: 6,
-            background: surface ?? 'rgba(255,255,255,0.15)',
+            padding: '8px 16px',
+            marginRight: 8,
+            marginBottom: 8,
+            background: surface ?? 'rgba(255,255,255,0.22)',
             color: ink ?? BRAND_COLORS.white,
-            fontSize: 12,
-            fontWeight: 700,
+            fontSize: 20,
+            fontWeight: 800,
             letterSpacing: 0.5,
-            borderRadius: 3,
+            borderRadius: 6,
           }}
         >
           {t}
@@ -314,18 +314,18 @@ export function CTAButton({
   label,
   surface,
   ink,
-  size = 20,
+  size = 30,
 }: CTAButtonProps): JSX.Element {
   return (
     <div
       style={{
         display: 'flex',
-        padding: '14px 32px',
+        padding: '20px 44px',
         background: surface ?? BRAND_COLORS.orange,
         color: ink ?? BRAND_COLORS.white,
         fontSize: size,
-        fontWeight: 800,
-        letterSpacing: 0.5,
+        fontWeight: 900,
+        letterSpacing: 1,
         borderRadius: 999,
       }}
     >
@@ -428,8 +428,8 @@ export function LogoCorner({
       style={{
         display: 'flex',
         color,
-        fontSize: 13,
-        fontWeight: 700,
+        fontSize: 18,
+        fontWeight: 800,
         letterSpacing: 3,
         alignSelf: align === 'right' ? 'flex-end' : 'flex-start',
       }}
@@ -452,7 +452,7 @@ export function PageIndicator({
   pageIndex,
   totalPages,
   color,
-  opacity = 0.75,
+  opacity = 0.85,
 }: PageIndicatorProps): JSX.Element | null {
   if (!pageIndex || !totalPages) return null;
   return (
@@ -460,8 +460,8 @@ export function PageIndicator({
       style={{
         display: 'flex',
         color: color ?? BRAND_COLORS.white,
-        fontSize: 11,
-        fontWeight: 400,
+        fontSize: 16,
+        fontWeight: 600,
         letterSpacing: 2,
         opacity,
       }}
@@ -555,13 +555,13 @@ export function BadgePill({
     <div
       style={{
         display: 'flex',
-        padding: '5px 12px',
+        padding: '8px 18px',
         background: surface ?? BRAND_COLORS.navy,
         color: ink ?? BRAND_COLORS.white,
-        fontSize: 12,
-        fontWeight: 800,
+        fontSize: 18,
+        fontWeight: 900,
         letterSpacing: 1.5,
-        borderRadius: rounded ? 999 : 3,
+        borderRadius: rounded ? 999 : 4,
         alignSelf: align,
       }}
     >

@@ -26,8 +26,8 @@ function EditorialCover({ slide, format, pageIndex, totalPages }: VariantProps):
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const bodyText = truncateBody(slide.body, 60);
-  const headlineSize = getHeadlineFontSize(headlineText, 58);
-  const bodySize = getBodyFontSize(bodyText, 22);
+  const headlineSize = getHeadlineFontSize(headlineText, 82);
+  const bodySize = getBodyFontSize(bodyText, 30);
   const imageH = Math.round(h * 0.58);
   const cardH = h - imageH;
   const accent = slide.accent_color || BRAND_COLORS.blue;
@@ -110,8 +110,8 @@ function EditorialDetail({ slide, format, pageIndex, totalPages }: VariantProps)
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 24);
   const bodyText = truncateBody(slide.body, 80);
-  const headlineSize = getHeadlineFontSize(headlineText, 48);
-  const bodySize = getBodyFontSize(bodyText, 22);
+  const headlineSize = getHeadlineFontSize(headlineText, 68);
+  const bodySize = getBodyFontSize(bodyText, 28);
   const accent = slide.accent_color || BRAND_COLORS.blue;
   const hasImage = !!slide.bg_image_url;
   const imageH = hasImage ? Math.round(h * 0.36) : 0;
@@ -215,7 +215,7 @@ function EditorialTip({ slide, format, pageIndex, totalPages }: VariantProps): J
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const tipText = slide.tip || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 48);
+  const headlineSize = getHeadlineFontSize(headlineText, 68);
   const accent = slide.accent_color || BRAND_COLORS.blue;
 
   return (
@@ -266,7 +266,7 @@ function EditorialWarning({ slide, format, pageIndex, totalPages }: VariantProps
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const warnText = slide.warning || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 48);
+  const headlineSize = getHeadlineFontSize(headlineText, 68);
 
   return (
     <div
@@ -311,7 +311,7 @@ function EditorialCTA({ slide, format, pageIndex, totalPages }: VariantProps): J
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 18);
   const bodyText = truncateBody(slide.body, 48);
-  const headlineSize = getHeadlineFontSize(headlineText, 56);
+  const headlineSize = getHeadlineFontSize(headlineText, 78);
   const accent = slide.accent_color || BRAND_COLORS.orange;
 
   return (
@@ -365,7 +365,7 @@ function EditorialCTA({ slide, format, pageIndex, totalPages }: VariantProps): J
       >
         {slide.price_chip && (
           <div style={{ display: 'flex', marginBottom: 20 }}>
-            <PriceChip text={slide.price_chip} surface={BRAND_COLORS.white} ink={accent} size={26} />
+            <PriceChip text={slide.price_chip} surface={BRAND_COLORS.white} ink={accent} size={38} />
           </div>
         )}
         <Headline

@@ -92,7 +92,7 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
 }
 
 // ──────────────────────────────────────────────────────
-// V2 슬롯 보강 — LLM이 일부 누락해도 product 데이터로 사후 채움
+// V2 슬롯 보강 — LLM이 누락/모호하게 뱉어도 토스 CTR 공식대로 사후 채움/보정
 // ──────────────────────────────────────────────────────
 function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): ContentBrief {
   if (input.mode !== 'product' || !input.product) return brief;
@@ -102,34 +102,61 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
   const trustSignals = extractTrustSignals(p);
   const family = brief.template_family_suggestion ?? deriveFamily(p, input.angle);
 
+  // 토스 긴급성 어휘 (hook/cta eyebrow 자동 주입용)
+  const urgencyEyebrowForHook = pickUrgencyEyebrow(p, 'hook');
+  const urgencyEyebrowForCta = pickUrgencyEyebrow(p, 'cta');
+
   const enrichedSections = brief.sections.map((s) => {
     const cs = { ...s.card_slide };
-    // eyebrow 자동 채움 (빈 경우만)
-    if (!cs.eyebrow) {
-      if (s.role === 'hook') cs.eyebrow = p.destination || '여행';
-      else if (s.role === 'benefit') cs.eyebrow = '핵심 혜택';
-      else if (s.role === 'tourist_spot') cs.eyebrow = '주요 관광지';
-      else if (s.role === 'inclusion') cs.eyebrow = '포함 사항';
+
+    // 1) eyebrow — 긴급성/카테고리 자동 주입
+    if (!cs.eyebrow || isGenericEyebrow(cs.eyebrow)) {
+      if (s.role === 'hook') cs.eyebrow = urgencyEyebrowForHook;
+      else if (s.role === 'benefit') cs.eyebrow = '[0원] 추가 비용';
+      else if (s.role === 'tourist_spot') cs.eyebrow = `[${p.destination || '현지'}] 핵심`;
+      else if (s.role === 'inclusion') cs.eyebrow = '[0원] 포함';
       else if (s.role === 'tip') cs.eyebrow = 'PRO TIP';
-      else if (s.role === 'warning') cs.eyebrow = '주의';
+      else if (s.role === 'warning') cs.eyebrow = 'WATCH OUT';
+      else if (s.role === 'detail') cs.eyebrow = '핵심 디테일';
     }
-    // price_chip — hook 섹션에 가격 표시
-    if (!cs.price_chip && s.role === 'hook' && priceChip) {
+
+    // 2) eyebrow 대괄호 보정 — hook/cta 에는 [ ] 강제
+    if ((s.role === 'hook') && cs.eyebrow && !/\[.*\]/.test(cs.eyebrow)) {
+      cs.eyebrow = `[${cs.eyebrow}]`;
+    }
+
+    // 3) price_chip — hook/benefit 에 자동
+    if (!cs.price_chip && (s.role === 'hook' || s.role === 'benefit') && priceChip) {
       cs.price_chip = priceChip;
     }
-    // trust_row — benefit/inclusion 섹션에
-    if ((!cs.trust_row || cs.trust_row.length === 0) &&
-        (s.role === 'benefit' || s.role === 'inclusion') &&
-        trustSignals.length > 0) {
-      cs.trust_row = trustSignals.slice(0, 4);
+
+    // 4) trust_row — benefit/inclusion 에 자동 (LLM 출력이 빈약하면 product 데이터로 보충)
+    if (trustSignals.length > 0 && (s.role === 'benefit' || s.role === 'inclusion')) {
+      const existing = Array.isArray(cs.trust_row) ? cs.trust_row : [];
+      if (existing.length < 3) {
+        // merge 중복 제거
+        const merged = Array.from(new Set([...existing, ...trustSignals])).slice(0, 4);
+        cs.trust_row = merged;
+      }
     }
+
+    // 5) body 의 "/" 구분자 → 쉼표 (토스 가독성 공식)
+    if (cs.body && cs.body.includes(' / ') && !cs.body.includes(',')) {
+      cs.body = cs.body.replace(/\s*\/\s*/g, ', ');
+    }
+
     return { ...s, card_slide: cs };
   });
 
   const enrichedCta = { ...brief.cta_slide };
+  if (!enrichedCta.eyebrow || isGenericEyebrow(enrichedCta.eyebrow)) {
+    enrichedCta.eyebrow = urgencyEyebrowForCta;
+  } else if (!/\[.*\]/.test(enrichedCta.eyebrow)) {
+    enrichedCta.eyebrow = `[${enrichedCta.eyebrow}]`;
+  }
   if (!enrichedCta.price_chip && priceChip) enrichedCta.price_chip = priceChip;
-  if (!enrichedCta.eyebrow) enrichedCta.eyebrow = '지금 예약하기';
-  if (!enrichedCta.trust_row && trustSignals.length > 0) {
+  if (!enrichedCta.badge) enrichedCta.badge = '지금 예약';
+  if ((!enrichedCta.trust_row || enrichedCta.trust_row.length === 0) && trustSignals.length > 0) {
     enrichedCta.trust_row = trustSignals.slice(0, 3);
   }
 
@@ -139,6 +166,31 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
     cta_slide: enrichedCta,
     template_family_suggestion: family,
   };
+}
+
+// 긴급성 eyebrow 선택 — destination/duration 기반
+function pickUrgencyEyebrow(p: BriefInput['product'], role: 'hook' | 'cta'): string {
+  if (!p) return role === 'hook' ? '[이번 주 특가]' : '[오늘만]';
+  const month = new Date().getMonth() + 1;
+  if (role === 'cta') {
+    return '[오늘만 이 가격]';
+  }
+  // hook 은 상품 성격별
+  if (p.product_summary && /특가|가성비|최저가|마감/i.test(p.product_summary)) {
+    return '[선착순 20석]';
+  }
+  if (/5\s*성급|프리미엄|럭셔리|허니문/i.test(`${p.title} ${p.product_summary ?? ''}`)) {
+    return '[VIP 20석 한정]';
+  }
+  return `[${month}월 특가]`;
+}
+
+// eyebrow 가 너무 일반적이면 재생성 대상
+function isGenericEyebrow(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length <= 2) return true;
+  // "여행", "정보", "안내" 등 단일 단어면 generic
+  return /^(여행|정보|안내|카테고리|카드뉴스)$/.test(trimmed);
 }
 
 // ──────────────────────────────────────────────────────
@@ -261,74 +313,161 @@ function buildBriefPrompt(input: BriefInput): string {
 - 카테고리: ${input.category ?? '일반'}`;
   }
 
-  return `너는 10년차 여행 콘텐츠 마케팅 기획자다. 블로그와 카드뉴스를 **동시에 일관되게** 생산하기 위한 Brief(설계도)를 JSON으로 짜내라.
+  return `너는 **인스타그램 카드뉴스 성과형 카피라이터 10년차**다. 토스애즈 실데이터 기반 CTR 공식을 완벽히 체화하고 있다. 블로그 + 카드뉴스 Brief(설계도) 를 JSON으로 짜내라.
 
 ${contextBlock}
 
 ${angleBlock}
 
 ## 슬라이드 수 / 톤
-- 슬라이드 수: ${slideCount}장 (= sections + cta_slide 1개 = ${slideCount - 1}개의 섹션 + 마지막 cta_slide)
+- 슬라이드 수: ${slideCount}장 (= sections + cta_slide 1개 = ${slideCount - 1}개 섹션 + 마지막 cta_slide)
 - 톤: ${tone}
 ${input.extraPrompt ? `- 추가 지시: ${input.extraPrompt}` : ''}
 
-## 템플릿 Family (4개 중 1개 선택)
-- editorial: 정보성/가이드 (하얀 카드 매거진 스타일)
-- cinematic: 감성/풍경 여행 (풀이미지 + 진한 scrim)
-- premium:   럭셔리/신혼 (블랙 + 골드 보더 + 세리프 톤)
-- bold:      특가/가성비 (네이비→블루→골드 그라디언트, 장식 원)
+## 템플릿 Family (상품 성격에 맞게 1개)
+- editorial: 정보성/가이드 (하얀 카드)
+- cinematic: 감성/풍경 (풀이미지 + scrim)
+- premium:   럭셔리/신혼 (블랙 + 골드)
+- bold:      특가/가성비 (그라디언트 + 장식)
 
-## V2 슬롯 생성 규칙 (중요!)
-각 sections[].card_slide 와 cta_slide 는 **단순 headline+body가 아니라 아래 슬롯들을 의미있게 채워야 한다**:
+## ⚡ 토스 CTR 4대 공식 (필수 체화 — CTR 평균 +30%)
 
-- eyebrow: 카테고리 태그 1줄 (예: "핵심 혜택", "주요 관광지", "포함 사항", "PRO TIP", "주의"). 최대 20자.
-- tip: role이 'tip'인 섹션에만 꿀팁 1줄 (예: "항공권은 출발 3개월 전 예약이 가장 저렴"). 최대 80자.
-- warning: role이 'warning'인 섹션에만 주의 1줄 (예: "여권 유효기간 6개월 미만이면 출국 거부"). 최대 80자.
-- price_chip: product 모드의 hook 섹션과 cta_slide에 **반드시** 채움. 형식 "${priceHint || '41만9천원~'}" 같은 칩 텍스트. 최대 20자.
-- trust_row: product 모드의 benefit/inclusion 섹션에 **배열 3~4개** 채움. 각 항목 최대 12자 (예: ["노팁","노옵션","5성급","전식사"]). 힌트: ${trustHint || '상품 정보에서 추출'}.
-- accent_color: 기본 null (템플릿 기본 악센트 사용). 특별히 다른 색이 필요한 경우만 "#RRGGBB" 6자리.
-- photo_hint: Pexels 키워드 외에 추가로 "어떤 분위기 사진"을 원하는지 한국어 1줄 (예: "해질 무렵 팜트리 실루엣"). 최대 100자.
+### 1️⃣ 긴급성 (CTR +20~30%)
+- "[선착순 N명]", "[오늘만]", "[마감 D-N]", "[단 N석]"
+- 대괄호 [ ] 로 감싼다. 숫자는 구체적으로.
+- ❌ BAD: "마감 임박!"  → 막연함
+- ✅ GOOD: "[선착순 20석] 부산 직항"
 
-## 출력 JSON 스키마 (반드시 이 형식 준수)
+### 2️⃣ 자기관련성 (CTR +15%)
+- "~이라면 주목!", "~이신 분", "~분들께"
+- 타겟의 상황/욕망을 2인칭으로 호명
+- ❌ BAD: "여행하세요"  → 불특정
+- ✅ GOOD: "4박5일 여유 있는 분이라면"
+
+### 3️⃣ 혜택성 (CTR +25%)
+- 대괄호 [ ] 로 핵심 혜택 강조: "[0원]", "[5성급 포함]", "[팁·옵션·쇼핑 0]"
+- 수치로 구체화 (금액/횟수/일수)
+- 쉼표로 가독성 (A, B, C 3개 나열)
+- ❌ BAD: "추가 비용 걱정 없이"
+- ✅ GOOD: "[0원] 추가 비용, 팁·옵션·쇼핑 전부 포함"
+
+### 4️⃣ 구체성 (감성적 수식어 + 팩트)
+관광지는 이름만 나열하지 말고 **감성 수식어 + 팩트** 조합:
+- "바나산 국립공원" → "[구름 위 판타지 테마파크] 바나산"
+- "미케 비치" → "[세계 6대 해변] 미케 비치"
+- "칭다오 맥주박물관" → "[120년 역사의 심장] 칭다오 맥주"
+호텔은 구체 등급/체인/수치:
+- "5성급" → "전 일정 5성급 + 매일 조식뷔페"
+
+## V2 슬롯 생성 규칙 (슬롯마다 명시적 역할)
+
+| 슬롯 | 내용 | 제한 | 예시 |
+|---|---|---|---|
+| eyebrow | 카테고리 태그 (대괄호 OK) | 20자 | "[선착순 20석]", "핵심 혜택", "주요 관광지" |
+| headline | 슬라이드 메인 | 15자 | "호캉스 4박5일", "구름 위 다낭" |
+| body | 본문 (쉼표 OK) | 40자 | "팁·옵션·쇼핑 0원, 5성급 조식까지" |
+| tip | role=tip만 꿀팁 | 80자 | "출발 3개월 전 예약 시 평균 25% 절약" |
+| warning | role=warning만 | 80자 | "여권 유효기간 6개월 미만 시 출국 거부" |
+| price_chip | hook + cta 필수 | 20자 | "${priceHint || '41만9천원~'}" |
+| trust_row | benefit/inclusion | 각 12자 × 3~4개 | ["노팁","노옵션","5성급","전식사"] |
+| photo_hint | Pexels 힌트 외 추가 | 100자 | "해질 무렵 팜트리 실루엣" |
+| badge | 작은 라벨 | 10자 | "핵심", "TIP", "특가" |
+| pexels_keyword | 영문 명사 1~2개 | 40자 | "bohol beach" |
+| accent_color | 기본 null | #RRGGBB | null |
+
+## 슬라이드 역할별 카피 설계 (토스 공식 적용)
+
+### Role: hook (1장, 후킹)
+- eyebrow: 긴급성 [ ] 필수 — "[선착순 N석]" 또는 "[D-N 마감]" 또는 "[N월 특가]"
+- headline: 자기관련성 포함 — "~이신 분 주목" 또는 destination+duration 임팩트 조합
+- body: 핵심 혜택 1줄 + 쉼표 가독성 — "A, B, C"
+- price_chip: **필수** "${priceHint || '41만9천원~'}"
+- trust_row: 3~4개 시그널 (있으면)
+- ❌ BAD: headline "다낭 4박5일" / eyebrow "다낭"
+- ✅ GOOD: eyebrow "[선착순 20석]" / headline "4박5일 호캉스" / body "팁·옵션·쇼핑 0원, 5성급 포함"
+
+### Role: benefit (핵심 혜택)
+- eyebrow: "[0원] 추가비용" 또는 "핵심 혜택" + 대괄호
+- headline: 가장 강력한 1가지 혜택 (수치화)
+- body: 구체 포함 아이템 쉼표 나열
+- trust_row: **필수** 3~4개
+- ✅ GOOD: headline "[0원] 추가비용" / body "팁·옵션·쇼핑 전부 포함, 5성급 조식 매일"
+
+### Role: tourist_spot (관광지)
+- eyebrow: "주요 관광지" 또는 "[도시] 핵심"
+- headline: **감성 수식어 + 장소명**
+- body: 구체 체험/특징 쉼표 나열
+- ❌ BAD: headline "바나산" / body "바나산 국립공원"
+- ✅ GOOD: headline "[구름 위 다낭]" / body "바나산 국립공원, 황금다리 SKY 워크"
+
+### Role: inclusion (포함사항)
+- eyebrow: "포함 사항" or "[0원] 포함"
+- headline: 가장 가치 높은 포함물
+- body: 체크리스트 스타일 쉼표 나열
+- trust_row: **필수** 3~4개
+- ✅ GOOD: body "왕복항공, 5성급 숙박, 전 식사, 전용차량"
+
+### Role: detail (디테일)
+- 일정/스케줄/호텔 등 구체 정보
+- headline: 시간·횟수·등급 포함
+- body: 실제 이름/장소 구체 언급
+
+### Role: tip (꿀팁, 해당 슬라이드만)
+- tip 필드에 실용 팁 1줄 (수치 포함)
+- headline: 간결한 질문/후킹
+
+### Role: warning (주의, 해당 슬라이드만)
+- warning 필드에 구체 주의사항 (수치·기간 포함)
+
+### Role: cta (마지막, 예약 유도)
+- eyebrow: 긴급성 [ ] — "[오늘만]" "[마감 D-3]" "[선착순 N석]"
+- headline: 행동 동사 + 감정 — "지금 바로 출발" "놓치면 후회"
+- body: 요약 한 줄 + 쉼표
+- badge: "지금 예약" 또는 "상담 신청"
+- price_chip: **필수**
+- trust_row: 3개
+- ✅ GOOD: eyebrow "[오늘만]" / headline "지금 예약 놓치지 마세요" / body "팁·옵션 0원, 5성급"
+
+## 출력 JSON 스키마 (정확히 이 형식)
 {
   "mode": "${input.mode}",
-  "h1": "블로그 H1 (최대 70자)",
-  "intro_hook": "인트로 후킹 (100~150자)",
-  "target_audience": "타겟 (예: '2030 가성비 여행객', '60대 효도관광 자녀')",
-  "key_selling_points": ["핵심 소구점1","핵심 소구점2","핵심 소구점3"],
+  "h1": "블로그 H1 (최대 70자, SEO + 클릭 유도)",
+  "intro_hook": "인트로 후킹 2~3줄 (100~200자)",
+  "target_audience": "구체적 타겟 (예: '30대 커플 3박5일 첫 동남아 여행자', '50대 부모님 효도여행 자녀')",
+  "key_selling_points": ["수치 포함 셀링포인트1","2","3"],
   "template_family_suggestion": "editorial|cinematic|premium|bold",
   "sections": [
     {
       "position": 1,
-      "h2": "블로그 H2 (2~50자)",
+      "h2": "블로그 H2",
       "role": "hook|benefit|detail|tip|warning|tourist_spot|inclusion",
-      "blog_paragraph_seed": "블로그 본문 씨앗 2~3줄 (10~500자)",
+      "blog_paragraph_seed": "블로그 본문 씨앗 2~3줄 (구체 팩트 포함)",
       "card_slide": {
-        "headline": "카드뉴스 제목 (최대 15자)",
-        "body": "카드뉴스 본문 (최대 40자)",
+        "headline": "최대 15자",
+        "body": "최대 40자",
         "template_suggestion": "${TEMPLATE_IDS[0]}",
-        "pexels_keyword": "영문 명사 1~2개 (예: 'bohol beach')",
-        "badge": "선택 배지 (예: '특가', 'NEW', null)",
-        "eyebrow": "카테고리 태그 (최대 20자)",
-        "tip": "role=tip인 경우만 (최대 80자, 아니면 null)",
-        "warning": "role=warning인 경우만 (최대 80자, 아니면 null)",
-        "price_chip": "hook 섹션이면 '${priceHint || '41만9천원~'}' 형식 (최대 20자, 아니면 null)",
-        "trust_row": "benefit/inclusion이면 ['노팁','노옵션','5성급'] 3~4개 (아니면 null)",
+        "pexels_keyword": "영문 명사 1~2개",
+        "badge": "선택 배지",
+        "eyebrow": "[긴급성 또는 카테고리] 최대 20자",
+        "tip": "role=tip만, 아니면 null",
+        "warning": "role=warning만, 아니면 null",
+        "price_chip": "hook이면 '${priceHint || '41만9천원~'}'",
+        "trust_row": ["노팁","노옵션","5성급","전식사"],
         "accent_color": null,
-        "photo_hint": "사진 분위기 힌트 (최대 100자)"
+        "photo_hint": "사진 분위기 1줄"
       }
     }
   ],
   "cta_slide": {
-    "headline": "최대 15자",
-    "body": "최대 40자",
+    "headline": "행동 유도 15자",
+    "body": "마감·혜택 요약 40자",
     "template_suggestion": "${TEMPLATE_IDS[0]}",
-    "pexels_keyword": "영문 명사 1~2개",
-    "badge": "'지금 예약' 같은 CTA 라벨",
-    "eyebrow": "LIMITED OFFER 같은 카테고리",
+    "pexels_keyword": "영문 명사",
+    "badge": "지금 예약",
+    "eyebrow": "[오늘만] 또는 [마감 D-N]",
     "price_chip": "${priceHint || '41만9천원~'}",
-    "trust_row": "['노팁','노옵션','5성급'] 3~4개",
-    "tip": null, "warning": null, "accent_color": null, "photo_hint": "사진 힌트"
+    "trust_row": ["노팁","노옵션","5성급"],
+    "tip": null, "warning": null, "accent_color": null, "photo_hint": "일몰 커플"
   },
   "seo": {
     "title": "SEO 타이틀 (10~70자)",
@@ -337,22 +476,23 @@ ${input.extraPrompt ? `- 추가 지시: ${input.extraPrompt}` : ''}
   }
 }
 
-## 템플릿 ID (template_suggestion 후보)
+## 템플릿 ID
 ${TEMPLATE_LIST}
 
-## 엄격 규칙
-1. sections 배열 길이는 정확히 ${slideCount - 1}개
+## 엄격 규칙 (위반 시 카드뉴스 광고 효율 50% 이하)
+1. sections 배열은 정확히 ${slideCount - 1}개
 2. position은 1부터 순서대로
-3. headline 15자 이하, body 40자 이하 엄수
-4. pexels_keyword는 영문 명사 1~2개만 (문장 금지)
-5. **price_chip은 상품 모드 hook 섹션과 cta_slide에 반드시 채움** (형식: "${priceHint || '41만9천원~'}")
-6. **trust_row는 benefit/inclusion 섹션에 3~4개 배열** (각 항목 12자 이하)
-7. product 모드에서는 박수/일수/가격 팩트 변경 금지
-8. target_audience는 구체적으로
-9. template_family_suggestion은 상품 성격에 맞게 4개 중 1개
-10. JSON만 출력, 마크다운 코드블록 없이
+3. headline 15자, body 40자 엄수
+4. **hook + cta 의 eyebrow 에 [대괄호] 긴급성 필수** (예: [선착순 N], [오늘만], [마감 D-N])
+5. **headline 은 상품명 단순 복제 금지** — 감성 수식어, 수치, 자기관련성 중 1개 필수
+6. **body 는 "완벽한 휴식" 같은 모호한 표현 금지** — 구체 혜택/장소/수치 포함 필수
+7. tourist_spot section headline 은 **"[감성 수식어]" 포함 필수**
+8. price_chip 은 hook 과 cta 에 반드시. ("${priceHint || '41만9천원~'}")
+9. trust_row 는 benefit/inclusion 섹션과 cta 에 반드시 3~4개
+10. 박수/일수/가격 팩트 변경 금지
+11. JSON만 출력, 마크다운 코드블록 금지
 
-반드시 위 JSON 스키마 그대로 출력하라.`;
+위 11개 규칙 모두 준수해서 JSON 출력.`;
 }
 
 /**

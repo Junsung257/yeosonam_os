@@ -90,8 +90,8 @@ function PremiumCover({ slide, format, pageIndex, totalPages }: VariantProps): J
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const bodyText = truncateBody(slide.body, 60);
-  const headlineSize = getHeadlineFontSize(headlineText, 58);
-  const bodySize = getBodyFontSize(bodyText, 22);
+  const headlineSize = getHeadlineFontSize(headlineText, 90);
+  const bodySize = getBodyFontSize(bodyText, 30);
 
   return (
     <div
@@ -133,35 +133,40 @@ function PremiumCover({ slide, format, pageIndex, totalPages }: VariantProps): J
             <div
               style={{
                 display: 'flex',
-                padding: '6px 16px',
-                border: `1px solid ${GOLD}`,
+                padding: '10px 22px',
+                border: `1.5px solid ${GOLD}`,
                 color: GOLD,
-                fontSize: 11,
-                fontWeight: 700,
+                fontSize: 18,
+                fontWeight: 800,
                 letterSpacing: 3,
-                marginBottom: 20,
+                marginBottom: 26,
               }}
             >
               {slide.eyebrow}
             </div>
           )}
-          <AccentLine width={40} height={1} color={GOLD} align="center" />
-          <div style={{ display: 'flex', height: 22 }} />
+          <AccentLine width={56} height={2} color={GOLD} align="center" />
+          <div style={{ display: 'flex', height: 26 }} />
           <Headline
             text={headlineText}
             size={headlineSize}
             color={BRAND_COLORS.white}
-            weight={700}
+            weight={800}
             align="center"
-            lineHeight={1.2}
+            lineHeight={1.15}
           />
-          <div style={{ display: 'flex', height: 18 }} />
-          <BodyBlock text={bodyText} size={bodySize} color={BRAND_COLORS.white} opacity={0.88} align="center" />
           <div style={{ display: 'flex', height: 22 }} />
-          <AccentLine width={40} height={1} color={GOLD} align="center" />
+          <BodyBlock text={bodyText} size={bodySize} color={BRAND_COLORS.white} opacity={0.92} align="center" />
+          <div style={{ display: 'flex', height: 26 }} />
+          <AccentLine width={56} height={2} color={GOLD} align="center" />
+          {slide.trust_row && slide.trust_row.length > 0 && (
+            <div style={{ display: 'flex', marginTop: 26, justifyContent: 'center' }}>
+              <TrustRow items={slide.trust_row} surface="rgba(201,169,97,0.18)" ink={GOLD} />
+            </div>
+          )}
           {slide.price_chip && (
-            <div style={{ display: 'flex', marginTop: 22 }}>
-              <PriceChip text={slide.price_chip} surface="transparent" ink={GOLD} size={22} />
+            <div style={{ display: 'flex', marginTop: 26 }}>
+              <PriceChip text={slide.price_chip} surface={GOLD} ink={BRAND_COLORS.black} size={38} />
             </div>
           )}
         </div>
@@ -179,8 +184,8 @@ function PremiumDetail({ slide, format, pageIndex, totalPages }: VariantProps): 
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const bodyText = truncateBody(slide.body, 80);
-  const headlineSize = getHeadlineFontSize(headlineText, 48);
-  const bodySize = getBodyFontSize(bodyText, 22);
+  const headlineSize = getHeadlineFontSize(headlineText, 72);
+  const bodySize = getBodyFontSize(bodyText, 30);
 
   return (
     <div
@@ -254,7 +259,7 @@ function PremiumTip({ slide, format, pageIndex, totalPages }: VariantProps): JSX
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const tipText = slide.tip || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 46);
+  const headlineSize = getHeadlineFontSize(headlineText, 66);
 
   return (
     <div
@@ -325,7 +330,7 @@ function PremiumWarning({ slide, format, pageIndex, totalPages }: VariantProps):
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const warnText = slide.warning || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 46);
+  const headlineSize = getHeadlineFontSize(headlineText, 66);
 
   return (
     <div
@@ -391,7 +396,7 @@ function PremiumCTA({ slide, format, pageIndex, totalPages }: VariantProps): JSX
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 18);
   const bodyText = truncateBody(slide.body, 48);
-  const headlineSize = getHeadlineFontSize(headlineText, 54);
+  const headlineSize = getHeadlineFontSize(headlineText, 76);
 
   return (
     <div
@@ -431,7 +436,7 @@ function PremiumCTA({ slide, format, pageIndex, totalPages }: VariantProps): JSX
         >
           {slide.price_chip && (
             <div style={{ display: 'flex', marginBottom: 18 }}>
-              <PriceChip text={slide.price_chip} surface="transparent" ink={GOLD} size={24} />
+              <PriceChip text={slide.price_chip} surface="transparent" ink={GOLD} size={34} />
             </div>
           )}
           <Headline

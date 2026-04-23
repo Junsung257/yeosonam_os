@@ -83,7 +83,7 @@ function BoldCover({ slide, format, pageIndex, totalPages }: VariantProps): JSX.
   const headlineText = truncateHeadline(slide.headline, 22);
   const bodyText = truncateBody(slide.body, 60);
   const headlineSize = getHeadlineFontSize(headlineText, 72);
-  const bodySize = getBodyFontSize(bodyText, 24);
+  const bodySize = getBodyFontSize(bodyText, 32);
 
   return (
     <div
@@ -147,9 +147,14 @@ function BoldCover({ slide, format, pageIndex, totalPages }: VariantProps): JSX.
           <AccentLine width={64} height={3} color={BRAND_COLORS.gold} align="center" />
           <div style={{ display: 'flex', height: 22 }} />
           <BodyBlock text={bodyText} size={bodySize} color={BRAND_COLORS.white} opacity={0.92} align="center" />
+          {slide.trust_row && slide.trust_row.length > 0 && (
+            <div style={{ display: 'flex', marginTop: 22, justifyContent: 'center' }}>
+              <TrustRow items={slide.trust_row} surface="rgba(201,169,97,0.28)" ink={BRAND_COLORS.white} />
+            </div>
+          )}
           {slide.price_chip && (
             <div style={{ display: 'flex', marginTop: 22 }}>
-              <PriceChip text={slide.price_chip} surface={BRAND_COLORS.gold} ink={BRAND_COLORS.navy} size={28} />
+              <PriceChip text={slide.price_chip} surface={BRAND_COLORS.gold} ink={BRAND_COLORS.navy} size={40} />
             </div>
           )}
         </div>
@@ -178,8 +183,8 @@ function BoldDetail({ slide, format, pageIndex, totalPages }: VariantProps): JSX
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 24);
   const bodyText = truncateBody(slide.body, 80);
-  const headlineSize = getHeadlineFontSize(headlineText, 54);
-  const bodySize = getBodyFontSize(bodyText, 22);
+  const headlineSize = getHeadlineFontSize(headlineText, 76);
+  const bodySize = getBodyFontSize(bodyText, 30);
 
   return (
     <div
@@ -250,7 +255,7 @@ function BoldTip({ slide, format, pageIndex, totalPages }: VariantProps): JSX.El
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const tipText = slide.tip || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 50);
+  const headlineSize = getHeadlineFontSize(headlineText, 72);
 
   return (
     <div
@@ -311,7 +316,7 @@ function BoldWarning({ slide, format, pageIndex, totalPages }: VariantProps): JS
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 22);
   const warnText = slide.warning || slide.body || '';
-  const headlineSize = getHeadlineFontSize(headlineText, 50);
+  const headlineSize = getHeadlineFontSize(headlineText, 72);
 
   return (
     <div
@@ -367,7 +372,7 @@ function BoldCTA({ slide, format, pageIndex, totalPages }: VariantProps): JSX.El
   const { w, h, safeInset } = format;
   const headlineText = truncateHeadline(slide.headline, 18);
   const bodyText = truncateBody(slide.body, 48);
-  const headlineSize = getHeadlineFontSize(headlineText, 64);
+  const headlineSize = getHeadlineFontSize(headlineText, 90);
 
   return (
     <div
@@ -416,7 +421,7 @@ function BoldCTA({ slide, format, pageIndex, totalPages }: VariantProps): JSX.El
         >
           {slide.price_chip && (
             <div style={{ display: 'flex', marginBottom: 18 }}>
-              <PriceChip text={slide.price_chip} surface={BRAND_COLORS.gold} ink={BRAND_COLORS.navy} size={28} />
+              <PriceChip text={slide.price_chip} surface={BRAND_COLORS.gold} ink={BRAND_COLORS.navy} size={40} />
             </div>
           )}
           <Headline
