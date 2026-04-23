@@ -1,5 +1,7 @@
+import type { ReactElement } from 'react';
 import { NextRequest, NextResponse } from 'next/server';
-import { ImageResponse } from 'next/og';
+import satori from 'satori';
+import { Resvg } from '@resvg/resvg-js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
           ratio,
         });
 
-        const image = new ImageResponse(element, {
+        const svg = await satori(element as ReactElement, {
           width: ratio.w,
           height: ratio.h,
           fonts: [
@@ -111,9 +113,14 @@ export async function POST(request: NextRequest) {
             { name: 'Pretendard', data: fontBold!, weight: 700, style: 'normal' },
           ],
         });
-        const pngBuffer = Buffer.from(await image.arrayBuffer());
+        const resvg = new Resvg(svg, {
+          fitTo: { mode: 'width', value: ratio.w },
+          font: { loadSystemFonts: false },
+        });
+        const pngBuffer = resvg.render().asPng();
 
-        const path = `${card_news_id}/satori-slide-${i + 1}-${Date.now()}.png`;
+        // 결정적 path — 같은 슬라이드 재렌더 시 덮어씌움 (Storage 누적 방지)
+        const path = `${card_news_id}/satori-slide-${i + 1}.png`;
         const { error: uploadError } = await supabaseAdmin.storage
           .from('blog-assets')
           .upload(path, pngBuffer, { contentType: 'image/png', upsert: true });

@@ -20,8 +20,11 @@
  */
 import React from 'react';
 import { NextRequest, NextResponse } from 'next/server';
-// Next.js 14 권장: next/og (@vercel/og 를 Next 번들러 친화적으로 래핑)
-import { ImageResponse } from 'next/og';
+// satori + @resvg/resvg-js 를 직접 사용 (@vercel/og / next/og 우회)
+// 이유: @vercel/og 는 내부 wasm 로딩에서 new URL(..., import.meta.url) 실패 가능.
+// satori 는 순수 JS + yoga-wasm (내장), Resvg 는 native binding → 우리가 완전히 통제.
+import satori from 'satori';
+import { Resvg } from '@resvg/resvg-js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -87,7 +90,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `폰트 로드 실패: ${msg}` }, { status: 500 });
     }
 
-    // 2b. 진단 — 3단 시퀀스로 실패 지점 정확히 특정
+    // ── PNG 렌더 헬퍼 (satori → SVG → Resvg → PNG) ─────
+    const renderElementToPng = async (
+      element: React.ReactElement,
+      w: number,
+      h: number,
+    ): Promise<Buffer> => {
+      const svg = await satori(element, {
+        width: w,
+        height: h,
+        fonts: [
+          { name: 'Pretendard', data: fontRegular as ArrayBuffer, weight: 400, style: 'normal' },
+          { name: 'Pretendard', data: fontBold as ArrayBuffer, weight: 700, style: 'normal' },
+        ],
+      });
+      const resvg = new Resvg(svg, {
+        fitTo: { mode: 'width', value: w },
+        font: { loadSystemFonts: false },
+      });
+      return resvg.render().asPng();
+    };
+
+    // 2b. 진단 테스트 렌더 (최소 element 로 satori + Resvg 동작 확인)
     const diagnostics: Array<{ step: string; ok: boolean; err?: string; stack?: string }> = [];
     const runDiagnostic = async (
       step: string,
@@ -114,65 +138,20 @@ export async function POST(request: NextRequest) {
           width: 200, height: 200,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: '#001f3f', color: '#fff',
-          fontSize: 24,
+          fontSize: 24, fontFamily: 'Pretendard',
         },
       },
-      'TEST',   // text child 직접
+      'TEST',
     );
 
-    // Step 1: 폰트 없이 기본 렌더 (Satori/ImageResponse 설정 자체 검증)
-    const step1Ok = await runDiagnostic('no-font-render', async () => {
-      const img = new ImageResponse(minimalElement, { width: 200, height: 200 });
-      await img.arrayBuffer();
+    const testOk = await runDiagnostic('satori-resvg-render', async () => {
+      await renderElementToPng(minimalElement, 200, 200);
     });
-
-    // Step 2: ArrayBuffer 폰트로 렌더 (폰트 버퍼 포맷 검증)
-    let step2Ok = false;
-    if (step1Ok) {
-      step2Ok = await runDiagnostic('font-arraybuffer-render', async () => {
-        const img = new ImageResponse(minimalElement, {
-          width: 200, height: 200,
-          fonts: [
-            { name: 'Pretendard', data: fontRegular!, weight: 400, style: 'normal' },
-          ],
-        });
-        await img.arrayBuffer();
-      });
-    }
-
-    // Step 3: Buffer 직접 전달 (대체 포맷 시도 — @vercel/og 는 런타임에 Uint8Array 계열 전부 허용)
-    let step3Ok = false;
-    if (step1Ok && !step2Ok) {
-      step3Ok = await runDiagnostic('font-buffer-render', async () => {
-        const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
-        const reg = await readFile(regPath);
-        const img = new ImageResponse(minimalElement, {
-          width: 200, height: 200,
-          // Buffer 를 ArrayBuffer 로 강제 캐스팅 (타입만, 런타임 OK)
-          fonts: [
-            { name: 'Pretendard', data: reg as unknown as ArrayBuffer, weight: 400, style: 'normal' },
-          ],
-        });
-        await img.arrayBuffer();
-      });
-    }
-
-    if (!step1Ok || (!step2Ok && !step3Ok)) {
+    if (!testOk) {
       return NextResponse.json({
-        error: '진단 실패 — Satori/폰트 설정 문제',
+        error: '진단 실패 — satori/resvg 설정 문제',
         diagnostics,
       }, { status: 500 });
-    }
-
-    // Step 2 가 실패했지만 Step 3 는 성공 → Buffer 를 메인 렌더에도 쓰도록
-    const useBuffer = !step2Ok && step3Ok;
-    if (useBuffer) {
-      console.log('[render-v2] Buffer 폰트 포맷으로 전환');
-      const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
-      const boldPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Bold.otf');
-      const [reg, bold] = await Promise.all([readFile(regPath), readFile(boldPath)]);
-      fontRegular = reg as unknown as ArrayBuffer;
-      fontBold = bold as unknown as ArrayBuffer;
     }
 
     // 3. 슬라이드 × 포맷 크로스 렌더
@@ -225,15 +204,7 @@ export async function POST(request: NextRequest) {
             pageIndex: i + 1,
             totalPages,
           });
-          const image = new ImageResponse(element, {
-            width: format.w,
-            height: format.h,
-            fonts: [
-              { name: 'Pretendard', data: fontRegular!, weight: 400, style: 'normal' },
-              { name: 'Pretendard', data: fontBold!, weight: 700, style: 'normal' },
-            ],
-          });
-          return Buffer.from(await image.arrayBuffer());
+          return renderElementToPng(element as React.ReactElement, format.w, format.h);
         };
 
         let stage: 'render' | 'retry-render' | 'upload' | 'public-url' | 'db-upsert' = 'render';
