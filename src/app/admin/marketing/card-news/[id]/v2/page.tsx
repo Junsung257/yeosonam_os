@@ -58,6 +58,7 @@ export default function CardNewsV2Studio() {
   const [renderResults, setRenderResults] = useState<RenderResult[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [variantBusy, setVariantBusy] = useState<TemplateFamily | null>(null);
+  const [diagnostics, setDiagnostics] = useState<Array<{ step: string; ok: boolean; err?: string; stack?: string }> | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -93,6 +94,7 @@ export default function CardNewsV2Studio() {
     }
     setRendering(true);
     setRenderResults([]);
+    setDiagnostics(null);
     try {
       const res = await fetch('/api/card-news/render-v2', {
         method: 'POST',
@@ -100,7 +102,10 @@ export default function CardNewsV2Studio() {
         body: JSON.stringify({ card_news_id: id, formats, family }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '렌더 실패');
+      if (!res.ok) {
+        if (Array.isArray(data.diagnostics)) setDiagnostics(data.diagnostics);
+        throw new Error(data.error || '렌더 실패');
+      }
       setRenderResults(data.renders ?? []);
       const ok = (data.renders as RenderResult[]).filter((r) => r.url).length;
       const fail = (data.renders as RenderResult[]).filter((r) => !r.url).length;
@@ -295,6 +300,31 @@ export default function CardNewsV2Studio() {
           ))}
         </div>
       </div>
+
+      {/* 진단 결과 (전체 실패 시) */}
+      {diagnostics && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-5 mb-6">
+          <div className="text-sm font-bold text-red-900 mb-2">진단 단계 실패</div>
+          <div className="space-y-2">
+            {diagnostics.map((d, i) => (
+              <div key={i} className="text-xs">
+                <div className={d.ok ? 'text-emerald-700' : 'text-red-700 font-semibold'}>
+                  {d.ok ? '✅' : '❌'} {d.step}
+                </div>
+                {!d.ok && d.err && (
+                  <div className="text-red-600 whitespace-pre-wrap break-all mt-1 ml-4">{d.err}</div>
+                )}
+                {!d.ok && d.stack && (
+                  <details className="ml-4 mt-1">
+                    <summary className="cursor-pointer text-[10px] text-red-400">stack</summary>
+                    <pre className="text-[9px] whitespace-pre-wrap break-all text-red-400">{d.stack}</pre>
+                  </details>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 렌더 결과 */}
       {renderResults.length > 0 && (

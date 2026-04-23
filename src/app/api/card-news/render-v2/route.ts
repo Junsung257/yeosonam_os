@@ -86,37 +86,92 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `폰트 로드 실패: ${msg}` }, { status: 500 });
     }
 
-    // 2b. 진단 — 최소 element 로 테스트 렌더. 실패 시 Satori/폰트 설정 자체의 문제.
-    try {
-      const testElement = React.createElement(
-        'div',
-        {
-          style: {
-            width: 200, height: 200,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: '#001f3f', color: '#fff',
-            fontFamily: 'Pretendard', fontSize: 24, fontWeight: 700,
-          },
+    // 2b. 진단 — 3단 시퀀스로 실패 지점 정확히 특정
+    const diagnostics: Array<{ step: string; ok: boolean; err?: string; stack?: string }> = [];
+    const runDiagnostic = async (
+      step: string,
+      fn: () => Promise<void>,
+    ): Promise<boolean> => {
+      try {
+        await fn();
+        diagnostics.push({ step, ok: true });
+        console.log(`[render-v2] 진단 "${step}" 성공`);
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 8).join('\n') : '';
+        diagnostics.push({ step, ok: false, err: msg, stack });
+        console.error(`[render-v2] 진단 "${step}" 실패:`, msg, '\n', stack);
+        return false;
+      }
+    };
+
+    const minimalElement = React.createElement(
+      'div',
+      {
+        style: {
+          width: 200, height: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: '#001f3f', color: '#fff',
+          fontSize: 24,
         },
-        React.createElement('span', null, 'TEST'),
-      );
-      const testImg = new ImageResponse(testElement, {
-        width: 200, height: 200,
-        fonts: [
-          { name: 'Pretendard', data: fontRegular!, weight: 400, style: 'normal' },
-          { name: 'Pretendard', data: fontBold!, weight: 700, style: 'normal' },
-        ],
+      },
+      'TEST',   // text child 직접
+    );
+
+    // Step 1: 폰트 없이 기본 렌더 (Satori/ImageResponse 설정 자체 검증)
+    const step1Ok = await runDiagnostic('no-font-render', async () => {
+      const img = new ImageResponse(minimalElement, { width: 200, height: 200 });
+      await img.arrayBuffer();
+    });
+
+    // Step 2: ArrayBuffer 폰트로 렌더 (폰트 버퍼 포맷 검증)
+    let step2Ok = false;
+    if (step1Ok) {
+      step2Ok = await runDiagnostic('font-arraybuffer-render', async () => {
+        const img = new ImageResponse(minimalElement, {
+          width: 200, height: 200,
+          fonts: [
+            { name: 'Pretendard', data: fontRegular!, weight: 400, style: 'normal' },
+          ],
+        });
+        await img.arrayBuffer();
       });
-      await testImg.arrayBuffer();
-      console.log('[render-v2] 진단 테스트 렌더 성공');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 8).join('\n') : '';
-      console.error('[render-v2] 진단 테스트 렌더 실패:', msg, '\n', stack);
+    }
+
+    // Step 3: Buffer 직접 전달 (대체 포맷 시도 — @vercel/og 는 런타임에 Uint8Array 계열 전부 허용)
+    let step3Ok = false;
+    if (step1Ok && !step2Ok) {
+      step3Ok = await runDiagnostic('font-buffer-render', async () => {
+        const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
+        const reg = await readFile(regPath);
+        const img = new ImageResponse(minimalElement, {
+          width: 200, height: 200,
+          // Buffer 를 ArrayBuffer 로 강제 캐스팅 (타입만, 런타임 OK)
+          fonts: [
+            { name: 'Pretendard', data: reg as unknown as ArrayBuffer, weight: 400, style: 'normal' },
+          ],
+        });
+        await img.arrayBuffer();
+      });
+    }
+
+    if (!step1Ok || (!step2Ok && !step3Ok)) {
       return NextResponse.json({
-        error: `Satori 기본 렌더 실패: ${msg}`,
-        stack,
+        error: '진단 실패 — Satori/폰트 설정 문제',
+        diagnostics,
       }, { status: 500 });
+    }
+
+    // Step 2 가 실패했지만 Step 3 는 성공 → Buffer 를 메인 렌더에도 쓰도록
+    const useBuffer = !step2Ok && step3Ok;
+    if (useBuffer) {
+      console.log('[render-v2] Buffer 폰트 포맷으로 전환');
+      const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
+      const boldPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Bold.otf');
+      const [reg, bold] = await Promise.all([readFile(regPath), readFile(boldPath)]);
+      fontRegular = reg as unknown as ArrayBuffer;
+      fontBold = bold as unknown as ArrayBuffer;
     }
 
     // 3. 슬라이드 × 포맷 크로스 렌더
