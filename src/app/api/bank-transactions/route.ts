@@ -19,6 +19,24 @@ import {
   AUTO_THRESHOLD,
   BookingCandidate,
 } from '@/lib/payment-matcher';
+import { learnAlias } from '@/lib/slack-ingest';
+
+// 매칭 성공 후 counterparty_name ↔ customer 매핑 학습 (best-effort)
+async function learnAliasForMatch(bookingId: string, counterpartyName: string | undefined | null) {
+  if (!counterpartyName) return;
+  try {
+    const { data: bk } = await supabaseAdmin
+      .from('bookings')
+      .select('lead_customer_id')
+      .eq('id', bookingId)
+      .maybeSingle();
+    const customerId = (bk as any)?.lead_customer_id;
+    if (!customerId) return;
+    await learnAlias({ customerId, alias: counterpartyName, source: 'manual_match' });
+  } catch (e) {
+    console.warn('[bank-transactions] alias 학습 실패 (무시):', (e as any)?.message);
+  }
+}
 
 // ─── 공통 유틸 ────────────────────────────────────────────────────────────────
 
@@ -529,6 +547,10 @@ export async function PATCH(request: NextRequest) {
 
       for (const split of splits) {
         await applyToBooking(split.bookingId, txType, split.amount, isRefund, 1, { counterpartyName });
+        // 다중 매칭도 학습 대상 — 모든 split 예약 고객에 대해 alias 저장
+        if (txType === '입금' && !isRefund) {
+          learnAliasForMatch(split.bookingId, counterpartyName).catch(() => {});
+        }
       }
 
       await supabaseAdmin
@@ -582,6 +604,11 @@ export async function PATCH(request: NextRequest) {
     const counterpartyName = (txData as any)?.counterparty_name ?? undefined;
 
     await applyToBooking(bookingId, txType, txAmount, isRefund, 1, { counterpartyName });
+
+    // Alias 학습 — 다음 같은 입금자가 오면 자동 매칭 신뢰도 +0.3
+    if (txType === '입금' && !isRefund) {
+      learnAliasForMatch(bookingId, counterpartyName).catch(() => {});
+    }
 
     // 입금 매칭 시 마일리지 자동 적립 (등급 적립률 기반)
     if (txType === '입금' && !isRefund) {
