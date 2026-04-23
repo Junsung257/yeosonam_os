@@ -62,6 +62,19 @@ export const supabaseAdmin = {
     if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
     return (client as any).rpc(fn, args);
   },
+  // Storage 프록시 — 매번 client 조회 후 storage 속성 반환
+  // (V1 render / V2 render-v2 / 기타 모든 업로드 경로가 이걸 쓴다)
+  get storage() {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
+    return (client as any).storage;
+  },
+  // Auth 프록시 (관리자 API: 사용자 생성/초대 등)
+  get auth() {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
+    return (client as any).auth;
+  },
 } as any;
 
 // Auth 전용 - 실제 클라이언트 인스턴스 반환 (login 페이지에서 사용)
