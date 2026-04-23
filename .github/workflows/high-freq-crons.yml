@@ -1,0 +1,80 @@
+name: High-Freq Crons (입출금 실시간성 유지용)
+
+# Vercel Hobby 는 일간 크론만 허용되므로, 15/30분 주기 크론을 여기서 실행.
+# 두 엔드포인트는 Bearer CRON_SECRET 인증 → Vercel 환경변수와 동일 값 사용.
+#
+# 필요 GitHub Secrets (Settings → Secrets and variables → Actions):
+#   CRON_SECRET     : Vercel 환경변수의 CRON_SECRET 와 동일 값
+#   VERCEL_BASE_URL : 크론을 호출할 프로덕션 도메인 (예: https://yeosonam.com)
+#
+# 동시성: 이전 실행이 아직 진행중이면 새 실행은 대기열에 추가. 중복 호출은
+#   해당 엔드포인트가 자체 멱등성으로 방어 (slack_raw_events UNIQUE 인덱스 등).
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # slack-gap-fill (Slack 놓친 입금 메시지 복구)
+    - cron: '*/30 * * * *'   # payment-heartbeat (입금 이상 감지)
+  workflow_dispatch:
+    inputs:
+      target:
+        description: '수동 실행할 크론'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - slack-gap-fill
+          - payment-heartbeat
+
+concurrency:
+  group: high-freq-crons-${{ github.event.schedule || inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  slack-gap-fill:
+    # 15분 크론 OR 수동(both / slack-gap-fill)
+    if: |
+      github.event.schedule == '*/15 * * * *'
+      || (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'slack-gap-fill'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/cron/slack-gap-fill
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BASE_URL:    ${{ secrets.VERCEL_BASE_URL }}
+        run: |
+          set -euo pipefail
+          echo "▶ $(date -u +%FT%TZ) slack-gap-fill"
+          curl -sS --fail-with-body \
+               --max-time 120 \
+               --retry 2 --retry-delay 5 --retry-all-errors \
+               -H "Authorization: Bearer ${CRON_SECRET}" \
+               -H "User-Agent: github-actions-cron" \
+               "${BASE_URL}/api/cron/slack-gap-fill"
+          echo ""
+          echo "✓ done at $(date -u +%FT%TZ)"
+
+  payment-heartbeat:
+    # 30분 크론 OR 수동(both / payment-heartbeat)
+    if: |
+      github.event.schedule == '*/30 * * * *'
+      || (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'payment-heartbeat'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/cron/payment-heartbeat
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BASE_URL:    ${{ secrets.VERCEL_BASE_URL }}
+        run: |
+          set -euo pipefail
+          echo "▶ $(date -u +%FT%TZ) payment-heartbeat"
+          curl -sS --fail-with-body \
+               --max-time 120 \
+               --retry 2 --retry-delay 5 --retry-all-errors \
+               -H "Authorization: Bearer ${CRON_SECRET}" \
+               -H "User-Agent: github-actions-cron" \
+               "${BASE_URL}/api/cron/payment-heartbeat"
+          echo ""
+          echo "✓ done at $(date -u +%FT%TZ)"
