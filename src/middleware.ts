@@ -58,6 +58,7 @@ const PUBLIC_PATHS = [
   '/api/cron/slack-gap-fill',
   '/api/cron/dlq-replay',
   '/api/cron/payment-heartbeat',
+  '/api/cron/booking-tasks-runner',
   // Meta webhook (GET verify + POST event). 서명 검증 내부에서 수행.
   '/api/webhooks/instagram',
   '/api/webhooks/threads',

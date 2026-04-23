@@ -58,7 +58,7 @@
     },
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "0 * * * *"
+      "schedule": "30 23 * * *"
     },
     {
       "path": "/api/cron/sync-engagement",
@@ -73,16 +73,12 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/slack-gap-fill",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/cron/dlq-replay",
-      "schedule": "0 * * * *"
+      "schedule": "30 1 * * *"
     },
     {
-      "path": "/api/cron/payment-heartbeat",
-      "schedule": "*/30 * * * *"
+      "path": "/api/cron/booking-tasks-runner",
+      "schedule": "15 0 * * *"
     }
   ]
 }
