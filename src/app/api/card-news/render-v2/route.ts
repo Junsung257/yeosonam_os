@@ -95,10 +95,28 @@ export async function POST(request: NextRequest) {
 
     const totalPages = slides.length;
 
+    // URL 검증 헬퍼 — Satori/fetch 가 파싱할 수 있는 https URL 만 통과
+    const isValidImageUrl = (url: unknown): url is string => {
+      if (typeof url !== 'string' || url.length === 0) return false;
+      try {
+        const u = new URL(url);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
+
     for (let i = 0; i < slides.length; i++) {
       const slide = { ...slides[i] };
       if (familyOverride) slide.template_family = familyOverride;
       if (!slide.template_family) slide.template_family = 'editorial';
+      // 깨진 URL 사전 차단 — 빈 문자열/상대경로/data: 등 모두 제거
+      if (!isValidImageUrl(slide.bg_image_url)) {
+        if (slide.bg_image_url) {
+          console.warn(`[render-v2] slide ${i + 1} bg_image_url 무효 → 제거:`, slide.bg_image_url);
+        }
+        slide.bg_image_url = undefined;
+      }
 
       for (const fk of formats) {
         const format = FORMATS[fk];
@@ -107,14 +125,13 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        try {
+        const renderPng = async (slideForRender: SlideV2): Promise<Buffer> => {
           const element = renderSlideV2({
-            slide: slide as SlideV2,
+            slide: slideForRender,
             format,
             pageIndex: i + 1,
             totalPages,
           });
-
           const image = new ImageResponse(element, {
             width: format.w,
             height: format.h,
@@ -123,7 +140,28 @@ export async function POST(request: NextRequest) {
               { name: 'Pretendard', data: fontBold!, weight: 700, style: 'normal' },
             ],
           });
-          const pngBuffer = Buffer.from(await image.arrayBuffer());
+          return Buffer.from(await image.arrayBuffer());
+        };
+
+        try {
+          let pngBuffer: Buffer;
+          try {
+            pngBuffer = await renderPng(slide as SlideV2);
+          } catch (imgErr) {
+            // 이미지 fetch 실패(Invalid URL / timeout) 시 이미지 없이 재시도
+            const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
+            if (slide.bg_image_url) {
+              console.warn(
+                `[render-v2] slide ${i + 1} 이미지 렌더 실패 → 이미지 제거 후 재시도:`,
+                msg,
+                'url=', slide.bg_image_url,
+              );
+              const retrySlide = { ...(slide as SlideV2), bg_image_url: undefined };
+              pngBuffer = await renderPng(retrySlide);
+            } else {
+              throw imgErr;
+            }
+          }
 
           const storagePath = `${body.card_news_id}/v2-${fk}-slide-${i + 1}-${Date.now()}.png`;
           const { error: uploadError } = await supabaseAdmin.storage
