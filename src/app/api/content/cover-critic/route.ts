@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { critiqueCover } from '@/lib/content-pipeline/agents/cover-critic';
+import { applyCritiqueToCover } from '@/lib/content-pipeline/apply-critique';
 import type { SlideV2 } from '@/lib/card-news/v2/types';
 
 export const runtime = 'nodejs';
@@ -16,6 +17,7 @@ export const maxDuration = 60;
 
 interface RequestBody {
   card_news_id: string;
+  apply?: boolean;   // true 면 rewritten_cover 를 slides[0] 에 즉시 덮어쓰기
 }
 
 export async function POST(request: NextRequest) {
@@ -66,7 +68,16 @@ export async function POST(request: NextRequest) {
 
     const critique = await critiqueCover({ cover, product_context: productContext });
 
-    return NextResponse.json({ critique });
+    // apply 요청 시 rewritten_cover 를 slides[0] 에 즉시 반영
+    let applyResult: Awaited<ReturnType<typeof applyCritiqueToCover>> | undefined;
+    if (body.apply) {
+      applyResult = await applyCritiqueToCover(body.card_news_id, critique);
+    }
+
+    return NextResponse.json({
+      critique,
+      ...(applyResult ? { apply: applyResult } : {}),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[cover-critic] 실패:', msg);
