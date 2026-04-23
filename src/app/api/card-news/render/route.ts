@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ImageResponse } from '@vercel/og';
+import { ImageResponse } from 'next/og';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';

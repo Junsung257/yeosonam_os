@@ -20,7 +20,8 @@
  */
 import React from 'react';
 import { NextRequest, NextResponse } from 'next/server';
-import { ImageResponse } from '@vercel/og';
+// Next.js 14 권장: next/og (@vercel/og 를 Next 번들러 친화적으로 래핑)
+import { ImageResponse } from 'next/og';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
