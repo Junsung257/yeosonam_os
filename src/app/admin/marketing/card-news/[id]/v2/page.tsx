@@ -42,6 +42,7 @@ interface RenderResult {
   format: FormatKey;
   url: string | null;
   error?: string;
+  stack?: string;
 }
 
 export default function CardNewsV2Studio() {
@@ -306,8 +307,15 @@ export default function CardNewsV2Studio() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={r.url} alt={`${r.format} slide ${r.slide_index + 1}`} className="w-full" />
                 ) : (
-                  <div className="aspect-square bg-red-50 flex items-center justify-center text-xs text-red-500 p-3">
-                    {r.error || '실패'}
+                  <div className="aspect-square bg-red-50 flex flex-col items-start justify-start text-xs text-red-700 p-3 overflow-auto">
+                    <div className="font-bold mb-1">실패</div>
+                    <div className="mb-2 whitespace-pre-wrap break-all">{r.error || '(에러 없음)'}</div>
+                    {r.stack && (
+                      <details className="w-full">
+                        <summary className="cursor-pointer text-[10px] text-red-500">stack</summary>
+                        <pre className="text-[9px] whitespace-pre-wrap break-all mt-1 text-red-400">{r.stack}</pre>
+                      </details>
+                    )}
                   </div>
                 )}
                 <div className="p-2 text-xs text-slate-500 bg-slate-50">

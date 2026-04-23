@@ -18,6 +18,7 @@
  *     }>
  *   }
  */
+import React from 'react';
 import { NextRequest, NextResponse } from 'next/server';
 import { ImageResponse } from '@vercel/og';
 import { readFile } from 'node:fs/promises';
@@ -85,12 +86,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `폰트 로드 실패: ${msg}` }, { status: 500 });
     }
 
+    // 2b. 진단 — 최소 element 로 테스트 렌더. 실패 시 Satori/폰트 설정 자체의 문제.
+    try {
+      const testElement = React.createElement(
+        'div',
+        {
+          style: {
+            width: 200, height: 200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#001f3f', color: '#fff',
+            fontFamily: 'Pretendard', fontSize: 24, fontWeight: 700,
+          },
+        },
+        React.createElement('span', null, 'TEST'),
+      );
+      const testImg = new ImageResponse(testElement, {
+        width: 200, height: 200,
+        fonts: [
+          { name: 'Pretendard', data: fontRegular!, weight: 400, style: 'normal' },
+          { name: 'Pretendard', data: fontBold!, weight: 700, style: 'normal' },
+        ],
+      });
+      await testImg.arrayBuffer();
+      console.log('[render-v2] 진단 테스트 렌더 성공');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 8).join('\n') : '';
+      console.error('[render-v2] 진단 테스트 렌더 실패:', msg, '\n', stack);
+      return NextResponse.json({
+        error: `Satori 기본 렌더 실패: ${msg}`,
+        stack,
+      }, { status: 500 });
+    }
+
     // 3. 슬라이드 × 포맷 크로스 렌더
     const results: Array<{
       slide_index: number;
       format: FormatKey;
       url: string | null;
       error?: string;
+      stack?: string;
     }> = [];
 
     const totalPages = slides.length;
@@ -145,6 +180,7 @@ export async function POST(request: NextRequest) {
           return Buffer.from(await image.arrayBuffer());
         };
 
+        let stage: 'render' | 'retry-render' | 'upload' | 'public-url' | 'db-upsert' = 'render';
         try {
           let pngBuffer: Buffer;
           const effectiveSlide: SlideV2 = slideImageDisabled
@@ -154,33 +190,31 @@ export async function POST(request: NextRequest) {
             pngBuffer = await renderPng(effectiveSlide);
           } catch (imgErr) {
             const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
-            if (effectiveSlide.bg_image_url) {
-              console.warn(
-                `[render-v2] slide ${i + 1} 이미지 렌더 실패 → 슬라이드 레벨에서 이미지 비활성화, 재시도:`,
-                msg,
-                'url=', effectiveSlide.bg_image_url,
-              );
-              slideImageDisabled = true;   // 다음 포맷 루프에서도 이미지 없이
-              const retrySlide = { ...effectiveSlide, bg_image_url: undefined };
-              pngBuffer = await renderPng(retrySlide);
-            } else {
-              throw imgErr;
-            }
+            const errStack = imgErr instanceof Error ? (imgErr.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
+            console.warn(
+              `[render-v2] slide ${i + 1}/${fk} 1차 렌더 실패 (bg_image_url=${effectiveSlide.bg_image_url ?? '(없음)'}):`,
+              msg, '\n', errStack,
+            );
+            slideImageDisabled = true;
+            stage = 'retry-render';
+            const retrySlide = { ...effectiveSlide, bg_image_url: undefined };
+            pngBuffer = await renderPng(retrySlide);
           }
 
-          // 결정적 path — 같은 (card_news_id, format, slide_index, template_version)
-          // 은 항상 같은 파일명으로 덮어씀. Storage 무한 누적 방지.
+          // 결정적 path
+          stage = 'upload';
           const storagePath = `${body.card_news_id}/v2-${templateVersion}-${fk}-slide-${i + 1}.png`;
           const { error: uploadError } = await supabaseAdmin.storage
             .from('blog-assets')
             .upload(storagePath, pngBuffer, { contentType: 'image/png', upsert: true });
           if (uploadError) throw new Error(`Storage 업로드 실패: ${uploadError.message}`);
 
+          stage = 'public-url';
           const {
             data: { publicUrl },
           } = supabaseAdmin.storage.from('blog-assets').getPublicUrl(storagePath);
 
-          // card_news_renders 테이블에 업서트
+          stage = 'db-upsert';
           await supabaseAdmin
             .from('card_news_renders')
             .upsert({
@@ -197,8 +231,15 @@ export async function POST(request: NextRequest) {
           results.push({ slide_index: i, format: fk, url: publicUrl });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[render-v2] slide ${i + 1} format ${fk} 실패:`, msg);
-          results.push({ slide_index: i, format: fk, url: null, error: msg });
+          const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
+          console.error(`[render-v2] slide ${i + 1}/${fk} 실패 (stage=${stage}):`, msg, '\n', stack);
+          results.push({
+            slide_index: i,
+            format: fk,
+            url: null,
+            error: `[${stage}] ${msg}`,
+            stack,
+          });
         }
       }
     }
