@@ -227,12 +227,58 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
   }
   if (!enrichedCta.social_proof) enrichedCta.social_proof = socialProofText;
 
+  // ▣ H1 어순 교정 — 가격 숫자가 뒤에 있으면 앞으로 재배치 (Senior 원칙 [1])
+  const enrichedH1 = reorderH1WithPriceFront(brief.h1, priceChip);
+
+  // ▣ SEO 설명 마감 뉘앙스 보정 (Senior 원칙 [7])
+  const enrichedSeoDescription = ensureScarcityClosing(brief.seo.description, priceChip);
+
   return {
     ...brief,
+    h1: enrichedH1,
     sections: enrichedSections,
     cta_slide: enrichedCta,
     template_family_suggestion: family,
+    seo: {
+      ...brief.seo,
+      description: enrichedSeoDescription,
+    },
   };
+}
+
+// ──────────────────────────────────────────────────────
+// H1 가격 앞으로 이동 — 숫자 훅은 0.25초 정지 결정 요인
+// "부터/특가/한정" 같이 가격 직후 suffix 는 같이 뽑아서 어색한 끊김 방지
+// ──────────────────────────────────────────────────────
+function reorderH1WithPriceFront(h1: string, priceChip: string | null): string {
+  if (!priceChip) return h1;
+  // 가격 + 선택적 suffix (부터/~/특가) 까지 한 덩어리로 매칭
+  const pricePattern = /(\d+만(?:\d+천)?원|\d{1,3}(?:,\d{3})+원|\d+,?\d{3,6}원)\s*(부터|~|특가)?/;
+  const match = h1.match(pricePattern);
+  if (!match) return h1;
+  const priceIdx = h1.indexOf(match[0]);
+  if (priceIdx < 20) return h1;
+
+  const beforePrice = h1.slice(0, priceIdx).replace(/[,\s·!?]+$/, '').trim();
+  const afterPrice = h1.slice(priceIdx + match[0].length).replace(/^[,\s·!?]+/, '').trim();
+  const priceBlock = match[0].trim();
+  const reordered = `${priceBlock} ${beforePrice}${afterPrice ? ' ' + afterPrice : ''}`.trim();
+  return reordered.slice(0, 70);
+}
+
+// ──────────────────────────────────────────────────────
+// SEO 설명 마감 뉘앙스 보장 — 한정/마감/시효 단어가 없으면 추가
+// ──────────────────────────────────────────────────────
+function ensureScarcityClosing(description: string, priceChip: string | null): string {
+  if (!description) return description;
+  // 이미 한정/마감/선착순/임박 포함이면 OK
+  if (/한정|마감|선착순|임박|D-\d|\d+석/.test(description)) return description;
+
+  // 마지막 문장에 scarcity 추가
+  const priceHint = priceChip ? `${priceChip} 혜택은 [선착순 한정]. ` : '';
+  const addon = `${priceHint}항공권 오르기 전 지금 예약하세요.`;
+  const combined = description.replace(/[.。!]$/, '').trim() + '. ' + addon;
+  return combined.slice(0, 200);
 }
 
 // ──────────────────────────────────────────────────────
@@ -337,11 +383,17 @@ function isGenericEyebrow(text: string): boolean {
   return /^(여행|정보|안내|카테고리|카드뉴스)$/.test(trimmed);
 }
 
-// cta body가 너무 generic ("지금 예약", "안심 예약" 등) 이면 교체 대상
+// cta body가 generic 이거나 "프로필 링크" 같은 3단계 요구 문구면 교체 대상
 function isGenericCtaBody(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length <= 8) return true;
-  return /^(지금\s*예약|안심\s*예약|특별가\s*예약|바로\s*예약)/.test(trimmed);
+  // 앞쪽 generic opening
+  if (/^(지금\s*예약|안심\s*예약|특별가\s*예약|바로\s*예약|여행\s*준비)/.test(trimmed)) return true;
+  // 문장 내 generic 동사 (어디 있든 포함)
+  if (/(떠나요!?|즐겨\s*보세요|떠나\s*보세요|놓치지\s*마세요)/.test(trimmed)) return true;
+  // 프로필 링크 유도 — 3단계 이탈 유발 (CreatorFlow 공식)
+  if (/프로필\s*링크|링크\s*클릭|바이오\s*링크/.test(trimmed)) return true;
+  return false;
 }
 
 // ──────────────────────────────────────────────────────
@@ -533,18 +585,68 @@ social_proof 필드에 채움. product 모드에서만. 없으면 "여소남 검
 hook_type이 question이면 → **cta slide에 답 배치** (사용자가 마지막까지 스와이프).
 예: hook "보홀 3박 얼마?" → cta body "답: 41만9천원~ [선착순 10석]"
 
-## 📱 CTA Engagement Prompt (CreatorFlow 2026 데이터: 전환율 1~3% → 8~15%)
+## 📱 CTA Engagement Prompt (CreatorFlow 2026: 전환율 1~3% → 8~15%)
 
-**cta_slide.body** 는 단순 "지금 예약"보다 **인스타 액션 유도형** 이 8배 효과적:
+**cta_slide.body** 는 단순 "지금 예약"보다 **인스타 액션 유도형** 이 8배 효과적.
 
-| 전략 | 예시 body (40자 이내) |
+❌ BAD: "프로필 링크 예약" — 프로필 이동 → 링크 → 상품 찾기 3단계 = 90% 이탈
+✅ GOOD: "댓글 '보홀' 남기세요, 특가 DM 1초 발송"
+       → 댓글 1번 → 자동 DM = 이탈 최소
+
+| 전략 | 예시 body |
 |---|---|
-| DM 유도 (전환율 최고) | "댓글 '예약' 남겨주세요, 특가 DM 발송" |
-| 저장 유도 | "저장 👉 공유, 동행에게 알려주세요" |
-| 프로필 링크 | "프로필 링크 → 예약상담 1분" |
-| 질문 유도 (댓글) | "가고 싶으면 댓글 🏝️" |
+| DM 유도 (최고 전환) | "댓글 '예약' 남기세요, 41만9천원 DM 발송" |
+| 저장 유도 | "저장 → 공유, 동행에게 알려주세요" |
+| 고가 상품 상담 | "DM 상담 1분, 맞춤 견적 즉시 회신" |
 
-cta_slide.badge 는 짧은 동사 ("지금 예약", "DM 받기", "상담 1분") 로 통일.
+## 🏆 Senior 카피 7대 원칙 (현업 피드백 반영)
+
+### [1] H1 어순 — 가격/숫자가 문장 **맨 앞**
+❌ BAD: "부산 직항 주말 출발, 솔레아 4박, 419,000원 특가" (가격 뒤)
+✅ GOOD: "419,000원 주말 보홀 4박, 부산 직항" (숫자 앞)
+✅ BEST: "연차 없이 주말 출발! 부산→보홀 4박 419,000원" (자기관련성 + 숫자)
+
+### [2] 자기관련성 — 타겟을 2인칭으로 직접 호명
+hook 헤드라인 또는 H1에 반드시 **1개 이상**:
+- "연차 없이" (직장인)
+- "주말만 출발" (근무자)
+- "첫 동남아" (초보 여행자)
+- "부모님 모시고" (효도)
+- "커플 여행" (2인)
+❌ "보홀 4박5일 패키지" (불특정)
+✅ "연차 없이 주말 보홀 4박" (직장인 호명)
+
+### [3] tourist_spot — 감성 수식어 = 구체적 장면 / 시간대 / 온도
+❌ "여유로운", "멋진", "아름다운" (전부 generic)
+✅ "해질녘 팡라오 해변", "새벽 일출 초콜릿힐", "밤 10시 루프탑 바",
+   "30도 한낮 호핑투어", "석양 황금빛 바나산", "물 위 수상 방갈로"
+구체 장소명 + 시간·온도·색 중 1개 이상 결합.
+
+### [4] inclusion — 차별점 "이게 다?" 프레이밍
+❌ "왕복 항공 + 호텔 4박" (나열, 여행사 언어)
+✅ "이 가격에 왕복 항공 + 4박 5성급이라고?" (놀람)
+✅ "41만9천원에 이게 다 포함" (가격 앵커 + 가치 강조)
+질문형 또는 가격 앵커 헤드라인 + 포함 아이템 쉼표 나열 body.
+
+### [5] detail — 역할 명시 (5가지 중 1개 고정)
+detail role 은 모호. 반드시 **하나의 하위 주제**만 다룸:
+- 일정표 요약 (1일차 / 2일차 / ...)
+- 호텔 스펙 (룸 타입, 편의시설, 전망)
+- 항공편 스펙 (항공사, 편명, 시각)
+- 주의사항 (여권/비자/환전)
+- 차량/가이드 서비스
+headline 과 body 가 어느 subtype 인지 드러나게 작성.
+❌ "솔레아 코스트 4박 숙박" + "슈페리어 가든뷰, 주말 직항" (호텔+항공 섞임)
+✅ "[호텔] 솔레아 슈페리어 가든뷰" + "팡라오 해변 도보 3분, 인피니티 풀"
+
+### [6] CTA — 구체 출발일 + 자리수 + 행동
+출발일 데이터 있으면 **날짜 명시**: "5/17, 5/31 잔여 3석"
+날짜 없으면 행동+혜택: "댓글 '보홀' → 41만9천원 DM 1초"
+
+### [7] SEO 설명 마감 뉘앙스
+❌ "...즐겨보세요" (막연)
+✅ "...41만9천원 혜택은 [선착순 20석] 한정. 항공권 오르기 전 지금 예약."
+마지막 문장에 **한정·마감·시효** 중 1개.
 
 ## V2 슬롯 생성 규칙 (슬롯마다 명시적 역할)
 
