@@ -55,6 +55,14 @@
     {
       "path": "/api/cron/blog-learn",
       "schedule": "0 14 * * 0"
+    },
+    {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-engagement",
+      "schedule": "0 4 * * *"
     }
   ]
 }

@@ -18,6 +18,7 @@ import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { getBrandVoiceBlock } from '../brand-voice';
+import { getCompetitorPromptBlock } from './competitor-ad-analyzer';
 
 const META_CTA_VALUES = [
   'SHOP_NOW',      // 지금 쇼핑하기
@@ -66,7 +67,10 @@ export async function generateMetaAds(input: MetaAdsInput): Promise<MetaAds> {
   });
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'meta_ads');
-  const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildMetaAdsPrompt(input);
+  const destHints = input.product?.destination ? [input.product.destination] : [];
+  const competitorBlock = await getCompetitorPromptBlock(destHints);
+  const prompt = [voiceBlock, competitorBlock, buildMetaAdsPrompt(input)]
+    .filter(Boolean).join('\n\n');
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
