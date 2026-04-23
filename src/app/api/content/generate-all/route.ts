@@ -30,12 +30,23 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { generateInstagramCaption } from '@/lib/content-pipeline/agents/instagram-caption';
 import { generateThreadsPost } from '@/lib/content-pipeline/agents/threads-post';
+import { generateMetaAds } from '@/lib/content-pipeline/agents/meta-ads';
+import { generateGoogleAdsRSA } from '@/lib/content-pipeline/agents/google-ads-rsa';
+import { generateKakaoChannelMessage } from '@/lib/content-pipeline/agents/kakao-channel';
+import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 
 export const runtime = 'nodejs';
-export const maxDuration = 90;
+export const maxDuration = 120;
 
-type Platform = 'instagram_caption' | 'threads_post' | 'card_news';
+type Platform =
+  | 'instagram_caption'
+  | 'threads_post'
+  | 'meta_ads'
+  | 'google_ads_rsa'
+  | 'kakao_channel'
+  | 'blog_body'
+  | 'card_news';
 
 interface RequestBody {
   product_id: string;
@@ -54,7 +65,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'product_id 필수' }, { status: 400 });
     }
 
-    const platforms: Platform[] = body.platforms ?? ['instagram_caption', 'threads_post'];
+    const platforms: Platform[] = body.platforms ?? [
+      'instagram_caption',
+      'threads_post',
+      'meta_ads',
+      'google_ads_rsa',
+      'kakao_channel',
+      'blog_body',
+    ];
 
     // 1. Product 조회
     const { data: pkg, error: pkgErr } = await supabaseAdmin
@@ -162,7 +180,126 @@ export async function POST(request: NextRequest) {
       })());
     }
 
-    // card_news 는 기존 /api/card-news POST 이미 있으므로 여기서는 생략 (별도 경로 호출)
+    // Meta Ads
+    if (platforms.includes('meta_ads')) {
+      tasks.push((async () => {
+        try {
+          const ads = await generateMetaAds({ brief, product });
+          const { data: existing } = await supabaseAdmin
+            .from('content_distributions').select('id')
+            .eq('product_id', body.product_id).eq('platform', 'meta_ads').maybeSingle();
+          const row = {
+            product_id: body.product_id, card_news_id: body.card_news_id ?? null,
+            platform: 'meta_ads', payload: ads, status: 'draft',
+            generation_agent: 'meta-ads-v1', generation_config: { brief },
+            updated_at: new Date().toISOString(),
+          };
+          let id: string;
+          if (existing?.id) {
+            await supabaseAdmin.from('content_distributions').update(row).eq('id', existing.id);
+            id = existing.id as string;
+          } else {
+            const { data: ins } = await supabaseAdmin.from('content_distributions').insert(row).select('id').single();
+            id = ins?.id as string;
+          }
+          results.meta_ads = { distribution_id: id, payload: ads };
+        } catch (err) {
+          errors.meta_ads = err instanceof Error ? err.message : String(err);
+        }
+      })());
+    }
+
+    // Google Ads RSA
+    if (platforms.includes('google_ads_rsa')) {
+      tasks.push((async () => {
+        try {
+          const rsa = await generateGoogleAdsRSA({ brief, product });
+          const { data: existing } = await supabaseAdmin
+            .from('content_distributions').select('id')
+            .eq('product_id', body.product_id).eq('platform', 'google_ads_rsa').maybeSingle();
+          const row = {
+            product_id: body.product_id, card_news_id: body.card_news_id ?? null,
+            platform: 'google_ads_rsa', payload: rsa, status: 'draft',
+            generation_agent: 'google-ads-rsa-v1', generation_config: { brief },
+            updated_at: new Date().toISOString(),
+          };
+          let id: string;
+          if (existing?.id) {
+            await supabaseAdmin.from('content_distributions').update(row).eq('id', existing.id);
+            id = existing.id as string;
+          } else {
+            const { data: ins } = await supabaseAdmin.from('content_distributions').insert(row).select('id').single();
+            id = ins?.id as string;
+          }
+          results.google_ads_rsa = { distribution_id: id, payload: rsa };
+        } catch (err) {
+          errors.google_ads_rsa = err instanceof Error ? err.message : String(err);
+        }
+      })());
+    }
+
+    // Kakao Channel
+    if (platforms.includes('kakao_channel')) {
+      tasks.push((async () => {
+        try {
+          const msg = await generateKakaoChannelMessage({ brief, product });
+          const { data: existing } = await supabaseAdmin
+            .from('content_distributions').select('id')
+            .eq('product_id', body.product_id).eq('platform', 'kakao_channel').maybeSingle();
+          const row = {
+            product_id: body.product_id, card_news_id: body.card_news_id ?? null,
+            platform: 'kakao_channel', payload: msg, status: 'draft',
+            generation_agent: 'kakao-channel-v1', generation_config: { brief },
+            updated_at: new Date().toISOString(),
+          };
+          let id: string;
+          if (existing?.id) {
+            await supabaseAdmin.from('content_distributions').update(row).eq('id', existing.id);
+            id = existing.id as string;
+          } else {
+            const { data: ins } = await supabaseAdmin.from('content_distributions').insert(row).select('id').single();
+            id = ins?.id as string;
+          }
+          results.kakao_channel = { distribution_id: id, payload: msg };
+        } catch (err) {
+          errors.kakao_channel = err instanceof Error ? err.message : String(err);
+        }
+      })());
+    }
+
+    // Blog Body
+    if (platforms.includes('blog_body')) {
+      tasks.push((async () => {
+        try {
+          const markdown = await generateBlogBody({ brief, productContext: product });
+          const payload = {
+            markdown,
+            word_count: markdown.split(/\s+/).length,
+            seo: brief.seo,
+          };
+          const { data: existing } = await supabaseAdmin
+            .from('content_distributions').select('id')
+            .eq('product_id', body.product_id).eq('platform', 'blog_body').maybeSingle();
+          const row = {
+            product_id: body.product_id, card_news_id: body.card_news_id ?? null,
+            platform: 'blog_body', payload, status: 'draft',
+            generation_agent: 'blog-body-v1', generation_config: { brief },
+            updated_at: new Date().toISOString(),
+          };
+          let id: string;
+          if (existing?.id) {
+            await supabaseAdmin.from('content_distributions').update(row).eq('id', existing.id);
+            id = existing.id as string;
+          } else {
+            const { data: ins } = await supabaseAdmin.from('content_distributions').insert(row).select('id').single();
+            id = ins?.id as string;
+          }
+          results.blog_body = { distribution_id: id, payload };
+        } catch (err) {
+          errors.blog_body = err instanceof Error ? err.message : String(err);
+        }
+      })());
+    }
 
     await Promise.all(tasks);
 

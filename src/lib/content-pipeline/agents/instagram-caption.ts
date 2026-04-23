@@ -14,6 +14,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { getBrandVoiceBlock } from '../brand-voice';
 
 export const InstagramCaptionSchema = z.object({
   caption: z.string().min(50).max(2200),
@@ -53,7 +54,8 @@ export async function generateInstagramCaption(input: InstagramCaptionInput): Pr
     generationConfig: { temperature: 0.85, responseMimeType: 'application/json' },
   });
 
-  const prompt = buildCaptionPrompt(input);
+  const voiceBlock = await getBrandVoiceBlock('yeosonam', 'instagram_caption');
+  const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildCaptionPrompt(input);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
