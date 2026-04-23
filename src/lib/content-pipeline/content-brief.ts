@@ -3,6 +3,8 @@ import { ContentBrief, parseAndValidateBrief, HookType } from '@/lib/validators/
 import { TEMPLATE_IDS, TEMPLATE_META } from '@/lib/card-news/tokens';
 import { ANGLE_PRESETS } from '@/lib/content-generator';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { designBriefStructure, type StructureInput } from './agents/structure-designer';
+import { writeCardCopy } from './agents/card-news-copywriter';
 
 /**
  * Call 1: Content Brief 설계자 (V2)
@@ -55,40 +57,85 @@ export interface BriefInput {
 const TEMPLATE_LIST = TEMPLATE_IDS.map(id => `  - ${id}: ${TEMPLATE_META[id].label} (${TEMPLATE_META[id].bestFor})`).join('\n');
 
 /**
- * Gemini 1회 호출로 Brief 생성 (검증 실패 시 1회 재시도)
+ * 2-stage 파이프라인:
+ *   Stage 1 — Structure Designer: 뼈대 (role, hook_type, h2, template_family 등)
+ *   Stage 2 — Card News Copywriter: 확정된 구조에 슬라이드 카피 채움
+ *   Stage 3 — enricher: 결정론적 보정 (규칙 기반)
+ *
+ * 각 stage 는 독립 LLM 호출 또는 fallback.
+ * 단일 mega-prompt 한계 돌파 + 각 에이전트 집중도 ↑.
  */
 export async function generateContentBrief(input: BriefInput): Promise<ContentBrief> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
+  const slideCount = input.slideCount ?? 6;
+  const structureInput: StructureInput = {
+    mode: input.mode,
+    slideCount,
+    tone: input.tone,
+    extraPrompt: input.extraPrompt,
+    product: input.product,
+    angle: input.angle,
+    topic: input.topic,
+    category: input.category,
+  };
+
+  // Stage 1: Structure
+  let structure;
+  try {
+    structure = await designBriefStructure(structureInput);
+  } catch (err) {
+    console.warn('[content-brief] structure-designer 실패 → mono fallback:', err instanceof Error ? err.message : err);
     return fallbackBrief(input);
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.8, responseMimeType: 'application/json' },
-  });
-
-  const prompt = buildBriefPrompt(input);
-
+  // Stage 2: Copy
+  let copy;
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const { data, errors } = parseAndValidateBrief(text);
-    if (data) return enrichBriefWithV2Slots(data, input);
-    console.warn('[content-brief] 1차 검증 실패:', errors.slice(0, 3));
-
-    const retryPrompt = prompt + `\n\n## 재시도 주의사항\n이전 응답이 스키마 검증에 실패했다. 반드시 JSON만 출력하고, 모든 필수 필드(특히 target_audience, sections, cta_slide, seo, template_family_suggestion)를 누락 없이 채워라. V2 슬롯(eyebrow/price_chip/trust_row)도 의미있게 채워라. 글자 수 제한을 엄수하라.`;
-    const retry = await model.generateContent(retryPrompt);
-    const retryText = retry.response.text();
-    const retryResult = parseAndValidateBrief(retryText);
-    if (retryResult.data) return enrichBriefWithV2Slots(retryResult.data, input);
-    console.warn('[content-brief] 2차 검증도 실패, fallback 사용:', retryResult.errors.slice(0, 3));
+    copy = await writeCardCopy(structure, structureInput);
   } catch (err) {
-    console.warn('[content-brief] Gemini 호출 실패:', err instanceof Error ? err.message : err);
+    console.warn('[content-brief] card-news-copywriter 실패 → mono fallback:', err instanceof Error ? err.message : err);
+    return fallbackBrief(input);
   }
 
-  return fallbackBrief(input);
+  // Merge structure + copy → ContentBrief
+  const merged: ContentBrief = {
+    mode: structure.mode,
+    h1: structure.h1,
+    intro_hook: structure.intro_hook,
+    target_audience: structure.target_audience,
+    key_selling_points: structure.key_selling_points,
+    template_family_suggestion: structure.template_family_suggestion,
+    sections: structure.sections.map((s) => {
+      const copyForSection = copy.sections.find((c) => c.position === s.position);
+      const card_slide = copyForSection?.card_slide ?? {
+        headline: s.h2.slice(0, 15),
+        body: '여소남 추천 상품',
+        template_suggestion: s.template_suggestion,
+        pexels_keyword: s.pexels_keyword,
+        badge: null,
+        eyebrow: s.h2.slice(0, 20),
+        tip: null,
+        warning: null,
+        price_chip: null,
+        trust_row: null,
+        accent_color: null,
+        photo_hint: null,
+        hook_type: s.hook_type ?? null,
+        social_proof: null,
+      };
+      return {
+        position: s.position,
+        h2: s.h2,
+        role: s.role,
+        blog_paragraph_seed: s.blog_paragraph_seed,
+        card_slide,
+      };
+    }),
+    cta_slide: copy.cta_slide,
+    seo: structure.seo,
+  };
+
+  // Stage 3: 결정론적 enricher
+  return enrichBriefWithV2Slots(merged, input);
 }
 
 // ──────────────────────────────────────────────────────
