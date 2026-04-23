@@ -60,6 +60,14 @@ export default function CardNewsV2Studio() {
   const [toast, setToast] = useState<string | null>(null);
   const [variantBusy, setVariantBusy] = useState<TemplateFamily | null>(null);
   const [diagnostics, setDiagnostics] = useState<Array<{ step: string; ok: boolean; err?: string; stack?: string }> | null>(null);
+  const [critiquing, setCritiquing] = useState(false);
+  const [critique, setCritique] = useState<{
+    overall_score: number;
+    dimensions: Record<string, number>;
+    issues: Array<{ severity: string; slot: string; problem: string; suggestion: string }>;
+    rewritten_cover?: { headline?: string | null; body?: string | null; eyebrow?: string | null } | null;
+    verdict: string;
+  } | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -151,6 +159,26 @@ export default function CardNewsV2Studio() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : '다운로드 실패';
       showToast(msg);
+    }
+  };
+
+  const handleCoverCritic = async () => {
+    setCritiquing(true);
+    setCritique(null);
+    try {
+      const res = await fetch('/api/content/cover-critic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_news_id: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '비평 실패');
+      setCritique(data.critique);
+      showToast(`Cover 점수: ${data.critique.overall_score}/100`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '비평 실패');
+    } finally {
+      setCritiquing(false);
     }
   };
 
@@ -291,7 +319,83 @@ export default function CardNewsV2Studio() {
             ZIP 다운로드
           </button>
         )}
+        <button
+          type="button"
+          onClick={handleCoverCritic}
+          disabled={critiquing}
+          className="ml-auto px-4 py-2.5 bg-purple-700 text-white rounded font-semibold disabled:opacity-50"
+          title="Claude Sonnet 으로 Cover 슬라이드 품질 비평"
+        >
+          {critiquing ? 'Critic 중…' : '🎯 Cover Critic (Sonnet)'}
+        </button>
       </div>
+
+      {/* Critic 결과 */}
+      {critique && (
+        <div className="bg-white border border-purple-200 rounded-lg p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-purple-700">COVER CRITIC</span>
+              <span className={`text-3xl font-black ${critique.overall_score >= 80 ? 'text-emerald-600' : critique.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                {critique.overall_score}
+              </span>
+              <span className="text-xs text-slate-500">/ 100</span>
+              <span className={`ml-2 px-2 py-0.5 text-xs rounded font-semibold ${
+                critique.verdict === 'ship_as_is' ? 'bg-emerald-100 text-emerald-800'
+                : critique.verdict === 'minor_polish' ? 'bg-amber-100 text-amber-800'
+                : 'bg-red-100 text-red-800'
+              }`}>
+                {critique.verdict === 'ship_as_is' ? '즉시 발행 OK' : critique.verdict === 'minor_polish' ? '미세 조정 필요' : '재생성 권장'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCritique(null)}
+              className="text-slate-400 hover:text-slate-600 text-sm"
+            >
+              닫기
+            </button>
+          </div>
+
+          <div className="grid grid-cols-5 gap-3 mb-4 text-xs">
+            {Object.entries(critique.dimensions).map(([k, v]) => (
+              <div key={k} className="bg-slate-50 rounded p-2 text-center">
+                <div className="text-slate-500">{k}</div>
+                <div className="text-lg font-bold text-slate-900">{v}<span className="text-xs text-slate-400">/10</span></div>
+              </div>
+            ))}
+          </div>
+
+          {critique.issues.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs font-bold text-slate-700 mb-2">지적사항</div>
+              {critique.issues.map((issue, i) => (
+                <div key={i} className="text-xs bg-slate-50 rounded p-2 mb-1">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] mr-2 font-bold ${
+                    issue.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                    issue.severity === 'major' ? 'bg-amber-100 text-amber-700' :
+                    'bg-slate-200 text-slate-600'
+                  }`}>
+                    {issue.severity.toUpperCase()}
+                  </span>
+                  <span className="font-mono text-[10px] text-slate-500">{issue.slot}</span>
+                  <div className="mt-1 text-slate-700">{issue.problem}</div>
+                  <div className="mt-1 text-emerald-700">→ {issue.suggestion}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {critique.rewritten_cover && (
+            <div className="bg-purple-50 border border-purple-200 rounded p-3 text-xs">
+              <div className="font-bold text-purple-900 mb-2">재작성 제안</div>
+              {critique.rewritten_cover.eyebrow && <div><span className="text-slate-500">eyebrow:</span> {critique.rewritten_cover.eyebrow}</div>}
+              {critique.rewritten_cover.headline && <div><span className="text-slate-500">headline:</span> {critique.rewritten_cover.headline}</div>}
+              {critique.rewritten_cover.body && <div><span className="text-slate-500">body:</span> {critique.rewritten_cover.body}</div>}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* A/B variant 생성 */}
       <div className="bg-white rounded-lg p-5 border border-slate-200 mb-6">

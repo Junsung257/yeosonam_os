@@ -29,13 +29,14 @@ interface Product {
   price?: number;
 }
 
-const PLATFORM_META: Record<string, { label: string; color: string; icon: string }> = {
-  instagram_caption: { label: 'Instagram 캡션', color: 'from-pink-500 to-orange-500', icon: 'IG' },
-  threads_post:      { label: 'Threads 포스트',   color: 'from-slate-700 to-slate-900',  icon: 'Th' },
-  card_news:         { label: '카드뉴스',          color: 'from-blue-500 to-indigo-600',  icon: 'CN' },
-  blog_body:         { label: '블로그 본문',       color: 'from-emerald-500 to-teal-600', icon: 'Bg' },
-  meta_ads:          { label: 'Meta Ads',         color: 'from-blue-600 to-blue-800',    icon: 'MA' },
-  google_ads_rsa:    { label: 'Google Ads RSA',   color: 'from-amber-500 to-orange-600', icon: 'GA' },
+const PLATFORM_META: Record<string, { label: string; color: string; icon: string; api: string }> = {
+  instagram_caption: { label: 'Instagram 캡션', color: 'from-pink-500 to-orange-500', icon: 'IG', api: 'instagram-caption' },
+  threads_post:      { label: 'Threads 포스트',   color: 'from-slate-700 to-slate-900',  icon: 'Th', api: 'threads-post' },
+  card_news:         { label: '카드뉴스',          color: 'from-blue-500 to-indigo-600',  icon: 'CN', api: '' },
+  blog_body:         { label: '블로그 본문',       color: 'from-emerald-500 to-teal-600', icon: 'Bg', api: 'blog-body' },
+  meta_ads:          { label: 'Meta Ads',         color: 'from-blue-600 to-blue-800',    icon: 'MA', api: 'meta-ads' },
+  google_ads_rsa:    { label: 'Google Ads RSA',   color: 'from-amber-500 to-orange-600', icon: 'GA', api: 'google-ads-rsa' },
+  kakao_channel:     { label: 'Kakao Channel',   color: 'from-yellow-400 to-yellow-600', icon: 'KK', api: 'kakao-channel' },
 };
 
 export default function DistributePage() {
@@ -86,7 +87,7 @@ export default function DistributePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           product_id: id,
-          platforms: ['instagram_caption', 'threads_post'],
+          platforms: ['instagram_caption', 'threads_post', 'meta_ads', 'google_ads_rsa', 'kakao_channel', 'blog_body'],
         }),
       });
       const data = await res.json();
@@ -100,17 +101,19 @@ export default function DistributePage() {
     }
   }, [id, fetchAll, showToast]);
 
-  const generateOne = useCallback(async (platform: 'instagram_caption' | 'threads_post') => {
+  const generateOne = useCallback(async (platform: string) => {
+    const meta = PLATFORM_META[platform];
+    if (!meta || !meta.api) return;
     setGenerating(platform);
     try {
-      const res = await fetch(`/api/content/${platform.replace('_', '-')}`, {
+      const res = await fetch(`/api/content/${meta.api}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ product_id: id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '생성 실패');
-      showToast(`${PLATFORM_META[platform].label} 생성 완료`);
+      showToast(`${meta.label} 생성 완료`);
       await fetchAll();
     } catch (err) {
       showToast(err instanceof Error ? err.message : '생성 실패');
@@ -126,9 +129,6 @@ export default function DistributePage() {
 
   if (loading) return <div className="p-10 text-slate-500">로딩 중…</div>;
   if (!product) return <div className="p-10 text-red-500">상품을 찾을 수 없습니다</div>;
-
-  const igDist = distributions.find((d) => d.platform === 'instagram_caption');
-  const threadsDist = distributions.find((d) => d.platform === 'threads_post');
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 max-w-[1200px] mx-auto">
@@ -171,33 +171,25 @@ export default function DistributePage() {
         </div>
       </div>
 
-      {/* 플랫폼 카드들 */}
+      {/* 플랫폼 카드들 - 6종 + 카드뉴스 스튜디오 링크 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-        {/* Instagram Caption */}
-        <PlatformCard
-          platform="instagram_caption"
-          dist={igDist}
-          generating={generating === 'instagram_caption'}
-          disabled={!!generating}
-          onGenerate={() => generateOne('instagram_caption')}
-          onCopy={copyText}
-        />
+        {(['instagram_caption','threads_post','meta_ads','google_ads_rsa','kakao_channel','blog_body'] as const).map((p) => (
+          <PlatformCard
+            key={p}
+            platform={p}
+            dist={distributions.find((d) => d.platform === p)}
+            generating={generating === p}
+            disabled={!!generating}
+            onGenerate={() => generateOne(p)}
+            onCopy={copyText}
+          />
+        ))}
 
-        {/* Threads Post */}
-        <PlatformCard
-          platform="threads_post"
-          dist={threadsDist}
-          generating={generating === 'threads_post'}
-          disabled={!!generating}
-          onGenerate={() => generateOne('threads_post')}
-          onCopy={copyText}
-        />
-
-        {/* 카드뉴스 링크 */}
-        <div className="bg-white rounded-lg border border-slate-200 p-5 flex items-center justify-between">
+        {/* 카드뉴스 스튜디오 링크 */}
+        <div className="bg-white rounded-lg border border-slate-200 p-5 flex items-center justify-between col-span-full">
           <div>
-            <div className="font-bold text-slate-900">카드뉴스</div>
-            <div className="text-sm text-slate-500 mt-1">별도 스튜디오에서 생성/관리</div>
+            <div className="font-bold text-slate-900">카드뉴스 (별도 스튜디오)</div>
+            <div className="text-sm text-slate-500 mt-1">Satori Atom 기반 family 4종 × 포맷 4종 렌더</div>
           </div>
           <button
             type="button"
@@ -206,12 +198,6 @@ export default function DistributePage() {
           >
             카드뉴스 스튜디오 →
           </button>
-        </div>
-
-        {/* 예정 플랫폼 */}
-        <div className="bg-slate-100 rounded-lg border border-dashed border-slate-300 p-5 text-slate-500">
-          <div className="font-bold mb-1">예정</div>
-          <div className="text-xs">블로그 본문 · Meta Ads · Google Ads RSA · 카카오채널</div>
         </div>
       </div>
 
@@ -287,9 +273,7 @@ function PlatformCard({
     const thread = (payload.thread as string[] | undefined) ?? [];
     const hashtags = (payload.hashtags as string[] | undefined) ?? [];
     const ctaType = payload.cta_type as string | undefined;
-
     const allText = [main, ...thread].join('\n\n---\n\n');
-
     return (
       <div className="space-y-3">
         <div>
@@ -305,9 +289,7 @@ function PlatformCard({
               <span className="text-xs font-semibold text-slate-600">Thread {thread.length}개</span>
               <button type="button" onClick={() => onCopy(thread.join('\n\n'), 'Thread')} className="text-[11px] text-blue-600 hover:underline">전체 복사</button>
             </div>
-            {thread.map((t, i) => (
-              <pre key={i} className="text-xs bg-slate-50 rounded p-2 whitespace-pre-wrap mb-1">{t}</pre>
-            ))}
+            {thread.map((t, i) => (<pre key={i} className="text-xs bg-slate-50 rounded p-2 whitespace-pre-wrap mb-1">{t}</pre>))}
           </div>
         )}
         <div className="flex items-center gap-3 text-[11px] text-slate-500">
@@ -318,6 +300,87 @@ function PlatformCard({
       </div>
     );
   };
+
+  const renderMetaAds = () => {
+    if (!payload) return <div className="text-sm text-slate-400">생성 안 됨</div>;
+    const primary = (payload.primary_texts as string[]) ?? [];
+    const headlines = (payload.headlines as string[]) ?? [];
+    const descriptions = (payload.descriptions as string[]) ?? [];
+    const cta = payload.cta_button as string;
+    return (
+      <div className="space-y-3">
+        <Section label={`Primary Text (${primary.length})`} items={primary} onCopy={onCopy} />
+        <Section label={`Headlines (${headlines.length})`} items={headlines} onCopy={onCopy} />
+        <Section label={`Descriptions (${descriptions.length})`} items={descriptions} onCopy={onCopy} />
+        <div className="text-[11px] text-slate-500">CTA: <span className="font-mono">{cta}</span></div>
+      </div>
+    );
+  };
+
+  const renderGoogleAdsRSA = () => {
+    if (!payload) return <div className="text-sm text-slate-400">생성 안 됨</div>;
+    const headlines = (payload.headlines as string[]) ?? [];
+    const descriptions = (payload.descriptions as string[]) ?? [];
+    const paths = (payload.paths as string[]) ?? [];
+    return (
+      <div className="space-y-3">
+        <Section label={`Headlines (${headlines.length})`} items={headlines} onCopy={onCopy} />
+        <Section label={`Descriptions (${descriptions.length})`} items={descriptions} onCopy={onCopy} />
+        <div className="text-[11px] text-slate-500">
+          paths: /{paths[0] ?? ''} /{paths[1] ?? ''}
+        </div>
+      </div>
+    );
+  };
+
+  const renderKakaoChannel = () => {
+    if (!payload) return <div className="text-sm text-slate-400">생성 안 됨</div>;
+    const msg = payload.message_text as string;
+    const buttons = (payload.buttons as Array<{ label: string; action: string; url?: string | null }>) ?? [];
+    return (
+      <div className="space-y-3">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-slate-600">메시지</span>
+            <button type="button" onClick={() => onCopy(msg, '메시지')} className="text-[11px] text-blue-600 hover:underline">복사</button>
+          </div>
+          <pre className="text-sm bg-slate-50 rounded p-3 whitespace-pre-wrap">{msg}</pre>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {buttons.map((b, i) => (
+            <span key={i} className="px-2 py-1 text-xs bg-yellow-100 border border-yellow-300 rounded">
+              {b.label} <span className="text-slate-500">· {b.action}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderBlogBody = () => {
+    if (!payload) return <div className="text-sm text-slate-400">생성 안 됨</div>;
+    const markdown = payload.markdown as string;
+    const wordCount = payload.word_count as number;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-500">{wordCount}단어 · 마크다운</span>
+          <button type="button" onClick={() => onCopy(markdown, '블로그 본문')} className="text-[11px] text-blue-600 hover:underline">전체 복사</button>
+        </div>
+        <pre className="text-xs bg-slate-50 rounded p-3 whitespace-pre-wrap max-h-64 overflow-auto">{markdown.slice(0, 2000)}{markdown.length > 2000 ? '\n\n...(요약)' : ''}</pre>
+      </div>
+    );
+  };
+
+  const renderers: Record<string, () => JSX.Element> = {
+    instagram_caption: renderInstagramCaption,
+    threads_post:      renderThreadsPost,
+    meta_ads:          renderMetaAds,
+    google_ads_rsa:    renderGoogleAdsRSA,
+    kakao_channel:     renderKakaoChannel,
+    blog_body:         renderBlogBody,
+  };
+  const renderFn = renderers[platform] ?? (() => <div className="text-sm text-slate-400">지원 예정</div>);
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-5">
@@ -342,7 +405,27 @@ function PlatformCard({
           {generating ? '생성 중…' : dist ? '재생성' : '생성'}
         </button>
       </div>
-      {platform === 'instagram_caption' ? renderInstagramCaption() : renderThreadsPost()}
+      {renderFn()}
+    </div>
+  );
+}
+
+function Section({ label, items, onCopy }: { label: string; items: string[]; onCopy: (t: string, l: string) => void }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-slate-600">{label}</span>
+        <button type="button" onClick={() => onCopy(items.join('\n'), label)} className="text-[11px] text-blue-600 hover:underline">전체 복사</button>
+      </div>
+      <div className="flex flex-col gap-1">
+        {items.map((it, i) => (
+          <div key={i} className="flex items-center justify-between text-xs bg-slate-50 rounded p-2">
+            <span className="flex-1 pr-2">{it}</span>
+            <button type="button" onClick={() => onCopy(it, label + i)} className="text-slate-400 hover:text-blue-600">복사</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

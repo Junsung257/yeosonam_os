@@ -15,6 +15,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { getBrandVoiceBlock } from '../brand-voice';
 
 export const ThreadsPostSchema = z.object({
   main: z.string().min(30).max(500),                  // 첫 포스트
@@ -52,7 +53,8 @@ export async function generateThreadsPost(input: ThreadsPostInput): Promise<Thre
     generationConfig: { temperature: 0.9, responseMimeType: 'application/json' },
   });
 
-  const prompt = buildThreadsPrompt(input);
+  const voiceBlock = await getBrandVoiceBlock('yeosonam', 'threads_post');
+  const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildThreadsPrompt(input);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
