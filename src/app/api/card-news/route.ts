@@ -44,27 +44,38 @@ export async function POST(request: NextRequest) {
 
     const resolvedMode = mode || (package_id ? 'product' : 'info');
 
-    // ── Brief 기반 생성 (신규 파이프라인) ────────────────────────
+    // ── Brief 기반 생성 (V2 파이프라인) ────────────────────────
     if (brief) {
       const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
       const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
       const { supabaseAdmin } = await import('@/lib/supabase');
 
       const copySlides = await generateCardCopy(brief as any);
+      const briefAny = brief as any;
 
-      // Pexels 이미지 병렬 로드
+      // Pexels 이미지 병렬 로드 — 키워드 실패 시 h1/destination 폴백
       const pexelsEnabled = isPexelsConfigured();
+      const fallbackKeyword = (briefAny.h1 || briefAny.target_audience || 'travel')
+        .toString().split(/\s+/).slice(0, 2).join(' ') || 'travel';
       const images: string[] = await Promise.all(
         copySlides.map(async (s) => {
           if (!pexelsEnabled) return '';
-          try {
-            const photos = await searchPexelsPhotos(s.pexels_keyword, 3);
-            return photos[0]?.src?.large2x || photos[0]?.src?.large || '';
-          } catch {
-            return '';
+          const candidates = [s.pexels_keyword, fallbackKeyword, 'travel landscape']
+            .filter((k): k is string => !!k && k.trim().length > 0);
+          for (const kw of candidates) {
+            try {
+              const photos = await searchPexelsPhotos(kw, 3);
+              const url = photos[0]?.src?.large2x || photos[0]?.src?.large;
+              if (url) return url;
+            } catch { /* 다음 후보 */ }
           }
+          return '';
         })
       );
+
+      // V2 slides — copySlides 에 V2 슬롯이 이미 있으므로 직접 활용
+      const templateFamily: 'editorial' | 'cinematic' | 'premium' | 'bold' =
+        briefAny.template_family_suggestion ?? 'editorial';
 
       const slides = copySlides.map((s, i) => ({
         id: crypto.randomUUID(),
@@ -76,14 +87,23 @@ export async function POST(request: NextRequest) {
         overlay_style: s.role === 'hook' || s.role === 'cta' ? 'gradient-bottom' : 'dark',
         headline_style: { fontFamily: 'Pretendard', fontSize: s.role === 'hook' ? 40 : 32, color: '#ffffff', fontWeight: 'bold', textAlign: 'center' },
         body_style: { fontFamily: 'Pretendard', fontSize: 18, color: '#e0e0e0', fontWeight: 'normal', textAlign: 'center' },
-        // 신규 필드 (SlideCanvas V2 분기용)
+        // V1 template 매핑
         template_id: s.template_id,
         role: s.role,
         badge: s.badge,
         brief_section_position: s.position,
+        // V2 슬롯 — copySlides 에서 직접
+        template_family: templateFamily,
+        template_version: 'v2',
+        eyebrow: s.eyebrow ?? null,
+        tip: s.tip ?? null,
+        warning: s.warning ?? null,
+        price_chip: s.price_chip ?? null,
+        trust_row: s.trust_row ?? null,
+        accent_color: s.accent_color ?? null,
+        photo_hint: s.photo_hint ?? null,
       }));
 
-      const briefAny = brief as any;
       const title = customTitle ?? briefAny.h1 ?? (briefAny.mode === 'info' ? `${briefAny.h1} — 카드뉴스` : `카드뉴스`);
 
       const insertData: Record<string, unknown> = {
@@ -91,7 +111,9 @@ export async function POST(request: NextRequest) {
         status: 'DRAFT',
         slides,
         card_news_type: resolvedMode,
-        generation_config: { brief },  // Phase 6에서 블로그 생성 시 재사용
+        template_family: templateFamily,
+        template_version: 'v2',
+        generation_config: { brief },
       };
       if (resolvedMode === 'product' && package_id) insertData.package_id = package_id;
       if (resolvedMode === 'info' && topic) insertData.topic = topic;

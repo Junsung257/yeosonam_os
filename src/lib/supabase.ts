@@ -62,6 +62,19 @@ export const supabaseAdmin = {
     if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
     return (client as any).rpc(fn, args);
   },
+  // Storage 프록시 — 매번 client 조회 후 storage 속성 반환
+  // (V1 render / V2 render-v2 / 기타 모든 업로드 경로가 이걸 쓴다)
+  get storage() {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
+    return (client as any).storage;
+  },
+  // Auth 프록시 (관리자 API: 사용자 생성/초대 등)
+  get auth() {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
+    return (client as any).auth;
+  },
 } as any;
 
 // Auth 전용 - 실제 클라이언트 인스턴스 반환 (login 페이지에서 사용)
@@ -1349,6 +1362,21 @@ export interface CardNewsSlide {
   overlay_style: 'dark' | 'light' | 'gradient-bottom' | 'gradient-top';
   headline_style?: TextStyle;
   body_style?: TextStyle;
+  // V1 디자인 시스템
+  template_id?: string;
+  role?: string;
+  badge?: string | null;
+  brief_section_position?: number;
+  // V2 슬롯 (Atom 기반 템플릿에서 사용)
+  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold';
+  template_version?: string;
+  eyebrow?: string | null;
+  tip?: string | null;
+  warning?: string | null;
+  price_chip?: string | null;
+  trust_row?: string[] | null;
+  accent_color?: string | null;
+  photo_hint?: string | null;
 }
 
 export interface CardNews {
@@ -1376,6 +1404,16 @@ export interface CardNews {
   ig_caption?: string | null;
   ig_error?: string | null;
   ig_slide_urls?: string[] | null;
+  // V2 컬럼 (20260423010000 migration)
+  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold' | null;
+  template_version?: string | null;
+  brand_kit_id?: string | null;
+  // brief 스냅샷 (LLM ContentBrief V2 원본)
+  generation_config?: { brief?: unknown } | null;
+  // 기타 메타
+  card_news_type?: 'product' | 'info';
+  topic?: string | null;
+  category_id?: string | null;
 }
 
 export async function getCardNewsList(filters?: {

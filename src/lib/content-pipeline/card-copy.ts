@@ -18,6 +18,17 @@ export interface CardSlideCopy {
   template_id: string;
   role: string;
   badge?: string | null;
+  // V2 슬롯
+  eyebrow?: string | null;
+  tip?: string | null;
+  warning?: string | null;
+  price_chip?: string | null;
+  trust_row?: string[] | null;
+  accent_color?: string | null;
+  photo_hint?: string | null;
+  // V3 슬롯 (Hook Type + Social Proof)
+  hook_type?: string | null;
+  social_proof?: string | null;
 }
 
 /**
@@ -39,6 +50,15 @@ export async function generateCardCopy(brief: ContentBrief): Promise<CardSlideCo
       template_id: s.card_slide.template_suggestion,
       role: s.role,
       badge: s.card_slide.badge ?? null,
+      eyebrow: s.card_slide.eyebrow ?? null,
+      tip: s.card_slide.tip ?? null,
+      warning: s.card_slide.warning ?? null,
+      price_chip: s.card_slide.price_chip ?? null,
+      trust_row: s.card_slide.trust_row ?? null,
+      accent_color: s.card_slide.accent_color ?? null,
+      photo_hint: s.card_slide.photo_hint ?? null,
+      hook_type: s.card_slide.hook_type ?? null,
+      social_proof: s.card_slide.social_proof ?? null,
     })),
     // cta slide (마지막)
     {
@@ -48,7 +68,16 @@ export async function generateCardCopy(brief: ContentBrief): Promise<CardSlideCo
       pexels_keyword: brief.cta_slide.pexels_keyword,
       template_id: brief.cta_slide.template_suggestion,
       role: 'cta',
-      badge: null,
+      badge: brief.cta_slide.badge ?? null,
+      eyebrow: brief.cta_slide.eyebrow ?? null,
+      tip: brief.cta_slide.tip ?? null,
+      warning: brief.cta_slide.warning ?? null,
+      price_chip: brief.cta_slide.price_chip ?? null,
+      trust_row: brief.cta_slide.trust_row ?? null,
+      accent_color: brief.cta_slide.accent_color ?? null,
+      photo_hint: brief.cta_slide.photo_hint ?? null,
+      hook_type: brief.cta_slide.hook_type ?? null,
+      social_proof: brief.cta_slide.social_proof ?? null,
     },
   ];
 

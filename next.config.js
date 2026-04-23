@@ -14,7 +14,14 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ['isomorphic-dompurify'],
+    // @resvg/resvg-js 는 .node native binding 포함 → webpack 이 처리 불가.
+    //   external 로 빼서 런타임에 require() 처리 (webpack 이 아예 터치 안 함).
+    // satori 도 yoga-wasm 번들 포함이라 external 권장.
+    serverComponentsExternalPackages: [
+      'isomorphic-dompurify',
+      '@resvg/resvg-js',
+      'satori',
+    ],
   },
   images: {
     formats: ['image/avif', 'image/webp'],

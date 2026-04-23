@@ -42,9 +42,9 @@ export const TEMPLATE_META: Record<TemplateId, {
 }> = {
   dark_cinematic: {
     label: '다크 시네마틱',
-    description: '풀블리드 이미지 + 그라데이션 + 오렌지 악센트',
+    description: '풀블리드 이미지 + 강한 scrim + 오렌지 악센트',
     bestFor: '자연 풍경, 감성 여행',
-    satoriReady: false,  // 나중에 마이그레이션
+    satoriReady: true,
   },
   clean_white: {
     label: '클린 화이트',
@@ -56,13 +56,13 @@ export const TEMPLATE_META: Record<TemplateId, {
     label: '볼드 그라디언트',
     description: '네이비→블루 그라데이션 + 중앙 대형 텍스트',
     bestFor: '가성비, 특가',
-    satoriReady: false,
+    satoriReady: true,
   },
   magazine: {
     label: '매거진',
     description: '번호(01, 02) + 빨간 배지',
     bestFor: '스토리, 효도',
-    satoriReady: false,
+    satoriReady: true,
   },
   luxury_gold: {
     label: '럭셔리 골드',
@@ -74,21 +74,23 @@ export const TEMPLATE_META: Record<TemplateId, {
 
 /**
  * 글자 수 기반 반응형 폰트 크기 (오버플로 방지)
+ * 1080×1080 기준. Instagram 권장 heading 70pt+ 를 충족하도록 기본값 상향.
  */
-export function getHeadlineFontSize(text: string, baseSize: number = 52): number {
+export function getHeadlineFontSize(text: string, baseSize: number = 80): number {
   const len = (text ?? '').length;
-  if (len <= 10) return baseSize;
-  if (len <= 15) return Math.round(baseSize * 0.85);
-  if (len <= 20) return Math.round(baseSize * 0.7);
-  return Math.round(baseSize * 0.6);  // 20자 초과 (안전망)
+  if (len <= 8)  return baseSize;
+  if (len <= 12) return Math.round(baseSize * 0.9);
+  if (len <= 16) return Math.round(baseSize * 0.78);
+  if (len <= 20) return Math.round(baseSize * 0.68);
+  return Math.round(baseSize * 0.58);  // 20자 초과 안전망
 }
 
-export function getBodyFontSize(text: string, baseSize: number = 20): number {
+export function getBodyFontSize(text: string, baseSize: number = 30): number {
   const len = (text ?? '').length;
   if (len <= 20) return baseSize;
-  if (len <= 40) return Math.round(baseSize * 0.9);
-  if (len <= 60) return Math.round(baseSize * 0.8);
-  return Math.round(baseSize * 0.7);
+  if (len <= 40) return Math.round(baseSize * 0.93);
+  if (len <= 60) return Math.round(baseSize * 0.85);
+  return Math.round(baseSize * 0.75);
 }
 
 /**
