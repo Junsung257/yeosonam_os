@@ -976,10 +976,10 @@ export default function PaymentsPage() {
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="flex items-center gap-1.5 justify-end">
-                      {(tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error') && !tx.is_refund && (
+                      {(tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error') && (
                         <button onClick={() => openMatchModal(tx)}
                           className="px-3 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded text-[13px] font-medium transition-colors whitespace-nowrap">
-                          수동 매칭
+                          {tx.is_refund ? '환불 매칭' : tx.transaction_type === '출금' ? '출금 매칭' : '수동 매칭'}
                         </button>
                       )}
                       {(tx.match_status === 'auto' || tx.match_status === 'manual') && (
@@ -1068,9 +1068,11 @@ export default function PaymentsPage() {
           >
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <h3 className="text-[16px] font-semibold text-slate-800">수동 예약 매칭</h3>
+                <h3 className="text-[16px] font-semibold text-slate-800">
+                  {selectedTx.is_refund ? '환불 매칭' : selectedTx.transaction_type === '출금' ? '출금 매칭' : '수동 예약 매칭'}
+                </h3>
                 <p className="text-[13px] text-slate-500 mt-0.5">
-                  {selectedTx.transaction_type === '입금' ? '고객 입금' : '랜드사 출금'} —&nbsp;
+                  {selectedTx.is_refund ? '환불 송금' : selectedTx.transaction_type === '입금' ? '고객 입금' : '랜드사 출금'} —&nbsp;
                   <strong className="text-slate-800">{selectedTx.counterparty_name}</strong>&nbsp;
                   <span className="font-bold text-slate-800">{selectedTx.amount.toLocaleString()}원</span>
                 </p>
@@ -1079,6 +1081,25 @@ export default function PaymentsPage() {
             </div>
 
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
+              {/* 출금/환불 경고 배너 — 매칭 시 예약 원장에 어떻게 반영되는지 명시 */}
+              {(selectedTx.is_refund || selectedTx.transaction_type === '출금') && (
+                <div className={`rounded-lg p-3 text-[12px] border ${
+                  selectedTx.is_refund
+                    ? 'bg-orange-50 border-orange-300 text-orange-800'
+                    : 'bg-red-50 border-red-300 text-red-800'
+                }`}>
+                  <strong>⚠ 주의 — 출금/환불 매칭은 예약 원장에 다음과 같이 반영됩니다:</strong>
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                    {selectedTx.is_refund ? (
+                      <li>매칭된 예약의 <strong>입금액(paid_amount)이 차감</strong>됩니다 (페이백).</li>
+                    ) : (
+                      <li>매칭된 예약의 <strong>랜드사 송금액(total_paid_out)이 증가</strong>합니다.</li>
+                    )}
+                    <li>잘못 매칭 시 반드시 "매칭 취소"로 원복하세요.</li>
+                  </ul>
+                </div>
+              )}
+
               {/* 단일/다중 모드 토글 */}
               <div className="flex gap-2">
                 <button onClick={() => setMatchMode('single')}

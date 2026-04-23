@@ -104,65 +104,50 @@ async function resyncFallback(): Promise<{ updated: number; errors?: string[] }>
   return { updated, ...(errors.length > 0 ? { errors } : {}) };
 }
 
-/** 예약 paid_amount / total_paid_out 업데이트 + 4단계 자동 진행 + 타임라인 로그 */
+/**
+ * 예약 원장 갱신 — update_booking_ledger RPC 호출 + 타임라인 로그
+ *
+ * Race condition 방지:
+ *   기존: SELECT paid_amount → JS에서 +amount → UPDATE (lost update 가능)
+ *   신규: UPDATE ... SET paid_amount = paid_amount + x (atomic, row-lock 내장)
+ *
+ * delta = +1 적용 / -1 롤백 (매칭 취소 시 부호 반전)
+ */
 async function applyToBooking(
   bookingId: string,
   txType: '입금' | '출금',
   amount: number,
   isRefund: boolean,
-  delta: number = 1, // +1 적용, -1 롤백
+  delta: number = 1,
   meta?: { counterpartyName?: string },
 ) {
-  const { data: b } = await supabaseAdmin
-    .from('bookings')
-    .select('total_price, total_cost, paid_amount, total_paid_out, status')
-    .eq('id', bookingId)
-    .single();
+  const sign = delta;
 
-  if (!b) return;
-
-  const book = b as any;
-  let paidAmount   = book.paid_amount   || 0;
-  let totalPaidOut = book.total_paid_out || 0;
-  const totalPrice = book.total_price   || 0;
+  let paidDelta = 0;
+  let payoutDelta = 0;
 
   if (txType === '입금' && !isRefund) {
-    paidAmount = Math.max(0, paidAmount + amount * delta);
-  } else if (txType === '출금' && !isRefund) {
-    totalPaidOut = Math.max(0, totalPaidOut + amount * delta);
+    paidDelta = amount * sign;
   } else if (isRefund) {
-    paidAmount = Math.max(0, paidAmount - amount * delta);
+    paidDelta = -amount * sign;
+  } else {
+    payoutDelta = amount * sign;
   }
 
-  // ── 4단계 자동 상태 진행 (적용 시에만, 취소된 예약 제외) ──────────────────
-  let newStatus: string | null = null;
-  const curStatus = book.status as string;
-  if (delta === 1 && curStatus !== 'cancelled') {
-    if (txType === '입금' && !isRefund) {
-      if (paidAmount >= totalPrice && totalPrice > 0) {
-        if (curStatus !== 'completed') newStatus = 'completed';
-      } else if (paidAmount > 0) {
-        if (curStatus === 'pending') newStatus = 'confirmed';
-      }
-    }
-  }
+  const { data, error: rpcErr } = await supabaseAdmin.rpc('update_booking_ledger', {
+    p_booking_id: bookingId,
+    p_paid_delta: paidDelta,
+    p_payout_delta: payoutDelta,
+  });
 
-  const updatePayload: Record<string, unknown> = {
-    paid_amount:    paidAmount,
-    total_paid_out: totalPaidOut,
-    updated_at:     new Date().toISOString(),
-  };
-  if (newStatus) updatePayload.status = newStatus;
-
-  const { error: updateErr } = await supabaseAdmin
-    .from('bookings')
-    .update(updatePayload)
-    .eq('id', bookingId);
-
-  if (updateErr) {
-    console.error('[applyToBooking] UPDATE 실패:', bookingId, updateErr.message);
+  if (rpcErr) {
+    console.error('[applyToBooking] RPC 실패:', bookingId, rpcErr.message);
     return;
   }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const newStatus: string | null =
+    (row as any)?.auto_status_changed ? ((row as any)?.booking_status ?? null) : null;
 
   // ── 타임라인 자동 로그 (적용 시에만) ──────────────────────────────────────
   if (delta === 1) {
@@ -529,6 +514,31 @@ export async function PATCH(request: NextRequest) {
       const splits: { bookingId: string; amount: number }[] = body.splits || [];
       if (splits.length === 0) return NextResponse.json({ error: 'splits 필요' }, { status: 400 });
 
+      // [하드닝] 각 split 유효성 검증
+      for (const [idx, s] of splits.entries()) {
+        if (!s.bookingId) return NextResponse.json({ error: `splits[${idx}].bookingId 필요` }, { status: 400 });
+        if (!Number.isFinite(s.amount) || s.amount <= 0) {
+          return NextResponse.json({ error: `splits[${idx}].amount는 양수여야 합니다 (현재: ${s.amount})` }, { status: 400 });
+        }
+      }
+
+      // [하드닝] bookingId 중복 금지
+      const bookingIdSet = new Set(splits.map(s => s.bookingId));
+      if (bookingIdSet.size !== splits.length) {
+        return NextResponse.json({ error: '같은 예약이 여러 split에 중복됐습니다' }, { status: 400 });
+      }
+
+      // [하드닝] 모든 bookingId 실재 확인
+      const { data: existingBks } = await supabaseAdmin
+        .from('bookings')
+        .select('id')
+        .in('id', [...bookingIdSet]);
+      const existingIds = new Set((existingBks || []).map((b: any) => b.id));
+      const missing = splits.filter(s => !existingIds.has(s.bookingId)).map(s => s.bookingId);
+      if (missing.length > 0) {
+        return NextResponse.json({ error: `존재하지 않는 예약 ID: ${missing.join(', ')}` }, { status: 400 });
+      }
+
       const { data: txData } = await supabaseAdmin
         .from('bank_transactions')
         .select('amount, transaction_type, is_refund, counterparty_name')
@@ -541,8 +551,19 @@ export async function PATCH(request: NextRequest) {
       const counterpartyName = (txData as any)?.counterparty_name ?? undefined;
 
       const splitTotal = splits.reduce((s, r) => s + r.amount, 0);
-      if (Math.abs(splitTotal - txAmount) > 500) {
-        return NextResponse.json({ error: `분배 합계(${splitTotal.toLocaleString()})가 거래 금액(${txAmount.toLocaleString()})과 일치하지 않습니다.` }, { status: 400 });
+      const diff = splitTotal - txAmount;
+
+      // [하드닝] 초과 분할은 무조건 거부 (장부 조작 방어)
+      if (diff > 0) {
+        return NextResponse.json({
+          error: `분배 합계(${splitTotal.toLocaleString()}원)가 거래 금액(${txAmount.toLocaleString()}원)을 ${diff.toLocaleString()}원 초과합니다. 초과 분할은 허용되지 않습니다.`,
+        }, { status: 400 });
+      }
+      // 부족은 500원 허용 (부가세/은행수수료 반올림 오차 대응)
+      if (diff < -500) {
+        return NextResponse.json({
+          error: `분배 합계(${splitTotal.toLocaleString()}원)가 거래 금액(${txAmount.toLocaleString()}원)보다 ${Math.abs(diff).toLocaleString()}원 부족합니다.`,
+        }, { status: 400 });
       }
 
       for (const split of splits) {

@@ -20,7 +20,6 @@ import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
   classifyMatch,
-  calcPaymentStatus,
   isRefundTransaction,
   isFeeTransaction,
   BookingCandidate,
@@ -115,7 +114,7 @@ export async function parseRawEvent(rawEventId: string, source: Source = 'manual
   // 원문 로드
   const { data: rawRow, error: loadErr } = await supabaseAdmin
     .from('slack_raw_events')
-    .select('id, extracted_text, parse_attempts, parse_status')
+    .select('id, extracted_text, parse_attempts, parse_status, channel_id, message_ts, event_id')
     .eq('id', rawEventId)
     .maybeSingle();
 
@@ -123,7 +122,15 @@ export async function parseRawEvent(rawEventId: string, source: Source = 'manual
     return { rawEventId, duplicated: false, parsedCount: 0, parseStatus: 'failed', errors: [loadErr?.message ?? 'rawEvent 조회 실패'] };
   }
 
-  const row = rawRow as { id: string; extracted_text: string; parse_attempts: number; parse_status: string };
+  const row = rawRow as {
+    id: string;
+    extracted_text: string;
+    parse_attempts: number;
+    parse_status: string;
+    channel_id: string | null;
+    message_ts: string | null;
+    event_id: string | null;
+  };
 
   if (row.parse_status === 'parsed') {
     return { rawEventId, duplicated: true, parsedCount: 0, parseStatus: 'parsed', errors: [] };
@@ -189,11 +196,20 @@ export async function parseRawEvent(rawEventId: string, source: Source = 'manual
     source === 'gap_fill' ? 'slack_gap_fill' :
     'dlq_replay';
 
+  // ── Slack 원천 식별자 선정 (Stripe 원칙) ─────────────────────────────────
+  // 우선순위: channel+message_ts (gap-fill과 webhook이 같은 값을 가짐) → event_id → raw row id
+  const slackIdentity =
+    row.channel_id && row.message_ts
+      ? `ts:${row.channel_id}:${row.message_ts}`
+      : row.event_id
+      ? `evt:${row.event_id}`
+      : `row:${row.id}`;
+
   for (let i = 0; i < transactions.length; i++) {
     const tx = transactions[i];
     try {
       const inserted = await insertOneTransaction({
-        tx, bookings, aliasMap, rawEventId, rawText: row.extracted_text, txSource,
+        tx, txIndex: i, slackIdentity, bookings, aliasMap, rawEventId, rawText: row.extracted_text, txSource,
       });
       if (inserted) insertedCount++;
     } catch (e: any) {
@@ -231,17 +247,21 @@ export async function parseRawEvent(rawEventId: string, source: Source = 'manual
 
 async function insertOneTransaction(args: {
   tx: ClobeTransaction;
+  txIndex: number;                    // 같은 메시지 내 여러 트랜잭션 구분용
+  slackIdentity: string;              // Slack 원천 식별자 (ts:channel:message_ts 등)
   bookings: BookingCandidate[];
   aliasMap: Map<string, { customerId: string; boost: number }>;
   rawEventId: string;
   rawText: string;
   txSource: 'slack_webhook' | 'slack_gap_fill' | 'dlq_replay';
 }): Promise<boolean> {
-  const { tx, bookings, aliasMap, rawEventId, rawText, txSource } = args;
+  const { tx, txIndex, slackIdentity, bookings, aliasMap, rawEventId, rawText, txSource } = args;
 
-  // Data-driven 멱등성 키
+  // Stripe 원칙: 원천(source-of-truth) 식별자 기반 멱등키
+  // 같은 날짜·같은 이름·같은 금액의 2건 송금이 서로 다른 Slack 메시지이면
+  // slackIdentity가 다르므로 정상적으로 2건 모두 저장됨
   const txEventId = createHash('sha256')
-    .update(`${tx.type}|${tx.transactionDate}|${tx.name}|${tx.amount}`)
+    .update(`${slackIdentity}#${txIndex}`)
     .digest('hex');
 
   const isRefund = tx.type === '출금' && isRefundTransaction(tx.memo + ' ' + tx.name);
@@ -335,9 +355,9 @@ async function insertOneTransaction(args: {
     return false; // 중복 스킵
   }
 
-  // auto 매칭 시 예약 반영 + alias 학습
+  // auto 매칭 시 예약 반영 (RPC 원자적 증감)
   if (matchClass === 'auto' && bestMatch) {
-    await applyToBooking({
+    await applyLedger({
       bookingId: bestMatch.booking.id,
       transactionType: tx.type,
       amount: tx.amount,
@@ -349,15 +369,10 @@ async function insertOneTransaction(args: {
       .update({ booking_id: bestMatch.booking.id })
       .eq('id', inserted.id);
 
-    // Alias 학습: 성공한 매칭의 counterparty_name ↔ customer 매핑 저장
-    const matchedBooking = bestMatch.booking as any;
-    if (matchedBooking.lead_customer_id && tx.name) {
-      await learnAlias({
-        customerId: matchedBooking.lead_customer_id,
-        alias: tx.name,
-        source: 'auto_match',
-      });
-    }
+    // ⚠️ auto_match alias 학습 비활성화
+    // 이유: 부모-자식 대리입금 등 예외 케이스가 영구 노이즈로 고착화됨.
+    // 오직 사장님이 수동 검토 후 연결한 건(manual_match)만 학습 대상.
+    // bank-transactions PATCH match 경로에서 learnAlias() 호출.
 
     // 관리자 push 알림 (auto는 조용히, review/unmatched만 알림)
   } else if (tx.type === '입금' && (matchClass === 'review' || matchClass === 'unmatched')) {
@@ -378,49 +393,54 @@ async function insertOneTransaction(args: {
   return true;
 }
 
-// ─── [4] 예약 입금액 반영 (자동 매칭 전용) ────────────────────────────────────
+// ─── [4] 예약 원장 Atomic 갱신 — update_booking_ledger RPC 래퍼 ─────────────
+//
+// 왜 RPC인가:
+//   기존 SELECT → JS덧셈 → UPDATE 패턴은 동시 실행 시 lost update 발생.
+//   RPC는 Postgres UPDATE 한 문장에서 row-lock + paid_amount = paid_amount + x
+//   를 원자적으로 수행하므로 race-free.
+//
+// 입금:  paid_delta = +amount
+// 환불:  paid_delta = -amount  (입금액 차감)
+// 출금:  payout_delta = +amount (랜드사 송금 누적)
 
-async function applyToBooking(params: {
+export async function applyLedger(params: {
   bookingId: string;
   transactionType: '입금' | '출금';
   amount: number;
   isRefund: boolean;
+  rollback?: boolean;               // true면 부호 반전 (매칭 취소 등)
 }): Promise<string | null> {
-  const { bookingId, transactionType, amount, isRefund } = params;
+  const { bookingId, transactionType, amount, isRefund, rollback = false } = params;
+  const sign = rollback ? -1 : 1;
 
-  const { data: booking } = await supabaseAdmin
-    .from('bookings')
-    .select('total_price, total_cost, paid_amount, total_paid_out')
-    .eq('id', bookingId)
-    .single();
+  let paidDelta = 0;
+  let payoutDelta = 0;
 
-  if (!booking) return null;
+  if (transactionType === '입금' && !isRefund) {
+    paidDelta = amount * sign;
+  } else if (isRefund) {
+    // 환불은 입금 차감
+    paidDelta = -amount * sign;
+  } else {
+    // 일반 출금은 랜드사 송금 누적
+    payoutDelta = amount * sign;
+  }
 
-  let paidAmount = (booking as any).paid_amount || 0;
-  let totalPaidOut = (booking as any).total_paid_out || 0;
-
-  if (transactionType === '입금') paidAmount += amount;
-  else if (isRefund) paidAmount = Math.max(0, paidAmount - amount);
-  else totalPaidOut += amount;
-
-  const newStatus = calcPaymentStatus({
-    total_price: (booking as any).total_price,
-    total_cost: (booking as any).total_cost,
-    paid_amount: paidAmount,
-    total_paid_out: totalPaidOut,
+  const { data, error } = await supabaseAdmin.rpc('update_booking_ledger', {
+    p_booking_id: bookingId,
+    p_paid_delta: paidDelta,
+    p_payout_delta: payoutDelta,
   });
 
-  await supabaseAdmin
-    .from('bookings')
-    .update({
-      paid_amount: paidAmount,
-      total_paid_out: totalPaidOut,
-      payment_status: newStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', bookingId);
+  if (error) {
+    console.error('[applyLedger] RPC 호출 실패:', error.message);
+    throw error;
+  }
 
-  return newStatus;
+  // RPC는 TABLE을 반환하므로 data는 배열
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row as any)?.payment_status ?? null;
 }
 
 // ─── [5] Alias 학습/조회 ────────────────────────────────────────────────────
