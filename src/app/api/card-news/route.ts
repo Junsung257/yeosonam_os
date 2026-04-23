@@ -53,17 +53,23 @@ export async function POST(request: NextRequest) {
       const copySlides = await generateCardCopy(brief as any);
       const briefAny = brief as any;
 
-      // Pexels 이미지 병렬 로드
+      // Pexels 이미지 병렬 로드 — 키워드 실패 시 h1/destination 폴백
       const pexelsEnabled = isPexelsConfigured();
+      const fallbackKeyword = (briefAny.h1 || briefAny.target_audience || 'travel')
+        .toString().split(/\s+/).slice(0, 2).join(' ') || 'travel';
       const images: string[] = await Promise.all(
         copySlides.map(async (s) => {
           if (!pexelsEnabled) return '';
-          try {
-            const photos = await searchPexelsPhotos(s.pexels_keyword, 3);
-            return photos[0]?.src?.large2x || photos[0]?.src?.large || '';
-          } catch {
-            return '';
+          const candidates = [s.pexels_keyword, fallbackKeyword, 'travel landscape']
+            .filter((k): k is string => !!k && k.trim().length > 0);
+          for (const kw of candidates) {
+            try {
+              const photos = await searchPexelsPhotos(kw, 3);
+              const url = photos[0]?.src?.large2x || photos[0]?.src?.large;
+              if (url) return url;
+            } catch { /* 다음 후보 */ }
           }
+          return '';
         })
       );
 

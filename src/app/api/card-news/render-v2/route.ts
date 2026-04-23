@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
         }
         slide.bg_image_url = undefined;
       }
+      // 슬라이드 레벨에서 이미지 실패 한번 만나면 다음 format 에도 이미지 제외 — 성능 최적화
+      let slideImageDisabled = false;
 
       for (const fk of formats) {
         const format = FORMATS[fk];
@@ -145,25 +147,30 @@ export async function POST(request: NextRequest) {
 
         try {
           let pngBuffer: Buffer;
+          const effectiveSlide: SlideV2 = slideImageDisabled
+            ? ({ ...(slide as SlideV2), bg_image_url: undefined } as SlideV2)
+            : (slide as SlideV2);
           try {
-            pngBuffer = await renderPng(slide as SlideV2);
+            pngBuffer = await renderPng(effectiveSlide);
           } catch (imgErr) {
-            // 이미지 fetch 실패(Invalid URL / timeout) 시 이미지 없이 재시도
             const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
-            if (slide.bg_image_url) {
+            if (effectiveSlide.bg_image_url) {
               console.warn(
-                `[render-v2] slide ${i + 1} 이미지 렌더 실패 → 이미지 제거 후 재시도:`,
+                `[render-v2] slide ${i + 1} 이미지 렌더 실패 → 슬라이드 레벨에서 이미지 비활성화, 재시도:`,
                 msg,
-                'url=', slide.bg_image_url,
+                'url=', effectiveSlide.bg_image_url,
               );
-              const retrySlide = { ...(slide as SlideV2), bg_image_url: undefined };
+              slideImageDisabled = true;   // 다음 포맷 루프에서도 이미지 없이
+              const retrySlide = { ...effectiveSlide, bg_image_url: undefined };
               pngBuffer = await renderPng(retrySlide);
             } else {
               throw imgErr;
             }
           }
 
-          const storagePath = `${body.card_news_id}/v2-${fk}-slide-${i + 1}-${Date.now()}.png`;
+          // 결정적 path — 같은 (card_news_id, format, slide_index, template_version)
+          // 은 항상 같은 파일명으로 덮어씀. Storage 무한 누적 방지.
+          const storagePath = `${body.card_news_id}/v2-${templateVersion}-${fk}-slide-${i + 1}.png`;
           const { error: uploadError } = await supabaseAdmin.storage
             .from('blog-assets')
             .upload(storagePath, pngBuffer, { contentType: 'image/png', upsert: true });
@@ -193,6 +200,23 @@ export async function POST(request: NextRequest) {
           console.error(`[render-v2] slide ${i + 1} format ${fk} 실패:`, msg);
           results.push({ slide_index: i, format: fk, url: null, error: msg });
         }
+      }
+    }
+
+    // 가능한 경우 slides 배열/카드 레코드 둘 다 template_family 동기화
+    if (familyOverride) {
+      try {
+        const updatedSlides = slides.map((s) => ({ ...s, template_family: familyOverride }));
+        await supabaseAdmin
+          .from('card_news')
+          .update({
+            template_family: familyOverride,
+            template_version: templateVersion,
+            slides: updatedSlides,
+          })
+          .eq('id', body.card_news_id);
+      } catch (err) {
+        console.warn('[render-v2] family 동기화 실패 (렌더 결과는 OK):', err instanceof Error ? err.message : err);
       }
     }
 

@@ -29,11 +29,21 @@ export interface Slide {
   pexels_keyword: string;
   overlay_style: 'dark' | 'light' | 'none';
   elements: SlideElement[];
-  // ── 디자인 템플릿 시스템 (옵셔널 — V1 슬라이드는 없을 수 있음) ─────
-  template_id?: string;          // 'dark_cinematic' | 'clean_white' | 'bold_gradient' | 'magazine' | 'luxury_gold'
-  role?: string;                 // 'hook' | 'benefit' | 'detail' | 'tourist_spot' | 'inclusion' | 'cta'
-  badge?: string | null;         // 옵셔널 배지 ("핵심", "TIP" 등)
+  // ── V1 디자인 템플릿 시스템 (옵셔널) ─────
+  template_id?: string;
+  role?: string;                 // SlideRole enum (hook/benefit/detail/tip/warning/tourist_spot/inclusion/cta)
+  badge?: string | null;
   brief_section_position?: number;
+  // ── V2 슬롯 (Atom 기반 family에서 사용) ─────
+  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold';
+  template_version?: string;
+  eyebrow?: string | null;
+  tip?: string | null;
+  warning?: string | null;
+  price_chip?: string | null;
+  trust_row?: string[] | null;
+  accent_color?: string | null;
+  photo_hint?: string | null;
 }
 
 export const ASPECT_RATIOS: Record<AspectRatio, { w: number; h: number; label: string }> = {
@@ -54,8 +64,17 @@ function createDefaultSlide(position: number): Slide {
     overlay_style: 'dark',
     elements: [],
     template_id: 'clean_white',
-    role: position === 0 ? 'hook' : 'content',
+    role: position === 0 ? 'hook' : 'detail',  // SlideRoleEnum 준수 (content는 무효)
     badge: null,
+    template_family: 'editorial',
+    template_version: 'v2',
+    eyebrow: null,
+    tip: null,
+    warning: null,
+    price_chip: null,
+    trust_row: null,
+    accent_color: null,
+    photo_hint: null,
   };
 }
 
@@ -84,6 +103,7 @@ export function useCardNewsEditor() {
       setCardNewsTitle(cn.title || '');
       setSlides(
         (cn.slides || []).map((s: Partial<Slide>, i: number) => ({
+          // V1 필드
           id: s.id || `slide-${i}`,
           position: s.position ?? i,
           headline: s.headline || '',
@@ -96,6 +116,16 @@ export function useCardNewsEditor() {
           role: s.role,
           badge: s.badge ?? null,
           brief_section_position: s.brief_section_position,
+          // V2 슬롯 (DB에서 저장된 값 그대로 복원 — 편집 라운드트립에서 loss 방지)
+          template_family: s.template_family,
+          template_version: s.template_version,
+          eyebrow: s.eyebrow ?? null,
+          tip: s.tip ?? null,
+          warning: s.warning ?? null,
+          price_chip: s.price_chip ?? null,
+          trust_row: s.trust_row ?? null,
+          accent_color: s.accent_color ?? null,
+          photo_hint: s.photo_hint ?? null,
         }))
       );
       setActiveSlideIndex(0);
@@ -179,6 +209,19 @@ export function useCardNewsEditor() {
     setExporting(true);
     try {
       const name = cardNewsTitle || '카드뉴스';
+
+      // ── 사전 저장: 편집 내용이 DB 반영되도록 ─────
+      if (cardNewsId) {
+        try {
+          await fetch(`/api/card-news/${cardNewsId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: cardNewsTitle, slides }),
+          });
+        } catch (err) {
+          console.warn('[exportAll] 사전 저장 실패 (렌더는 DB 최근본 사용):', err);
+        }
+      }
 
       // ── 1차: V2 render-v2 (Atom 기반, 1:1 포맷) ─────
       if (cardNewsId) {
@@ -314,7 +357,7 @@ export function useCardNewsEditor() {
     } finally {
       setExporting(false);
     }
-  }, [cardNewsTitle, cardNewsId]);
+  }, [cardNewsTitle, cardNewsId, slides]);
 
   return {
     slides, activeSlideIndex, aspectRatio, cardNewsId, cardNewsTitle, saving, exporting,
