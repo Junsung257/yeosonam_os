@@ -18,7 +18,7 @@ export interface CardSlideCopy {
   template_id: string;
   role: string;
   badge?: string | null;
-  // V2 슬롯 (brief 에 있으면 그대로 통과시킴 — API 레이어에서 slide에 직접 꽂힘)
+  // V2 슬롯
   eyebrow?: string | null;
   tip?: string | null;
   warning?: string | null;
@@ -26,6 +26,9 @@ export interface CardSlideCopy {
   trust_row?: string[] | null;
   accent_color?: string | null;
   photo_hint?: string | null;
+  // V3 슬롯 (Hook Type + Social Proof)
+  hook_type?: string | null;
+  social_proof?: string | null;
 }
 
 /**
@@ -54,6 +57,8 @@ export async function generateCardCopy(brief: ContentBrief): Promise<CardSlideCo
       trust_row: s.card_slide.trust_row ?? null,
       accent_color: s.card_slide.accent_color ?? null,
       photo_hint: s.card_slide.photo_hint ?? null,
+      hook_type: s.card_slide.hook_type ?? null,
+      social_proof: s.card_slide.social_proof ?? null,
     })),
     // cta slide (마지막)
     {
@@ -71,6 +76,8 @@ export async function generateCardCopy(brief: ContentBrief): Promise<CardSlideCo
       trust_row: brief.cta_slide.trust_row ?? null,
       accent_color: brief.cta_slide.accent_color ?? null,
       photo_hint: brief.cta_slide.photo_hint ?? null,
+      hook_type: brief.cta_slide.hook_type ?? null,
+      social_proof: brief.cta_slide.social_proof ?? null,
     },
   ];
 

@@ -535,7 +535,36 @@ export function AccentLine({
 }
 
 // ──────────────────────────────────────────────────────
-// 14. BadgePill — "핵심" "NEW" 등 작은 칩 배지 (Eyebrow와 구분: Eyebrow는 대문자 텍스트, BadgePill은 색 배경)
+// 14. SocialProof — "⭐ 4.9 · 예약 50건" 같은 신뢰 증거 수치
+//    마이리얼트립/Airbnb 공식 — 핵심 전환 축
+// ──────────────────────────────────────────────────────
+export interface SocialProofProps {
+  text: string;
+  color?: string;
+  surface?: string;
+  compact?: boolean;
+}
+export function SocialProof({ text, color, surface, compact = false }: SocialProofProps): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        padding: compact ? '4px 10px' : '8px 16px',
+        background: surface ?? 'rgba(255,255,255,0.12)',
+        color: color ?? BRAND_COLORS.white,
+        fontSize: compact ? 14 : 18,
+        fontWeight: 600,
+        letterSpacing: 0.3,
+        borderRadius: 4,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────
+// 15. BadgePill — "핵심" "NEW" 등 작은 칩 배지
 // ──────────────────────────────────────────────────────
 export interface BadgePillProps {
   text: string;

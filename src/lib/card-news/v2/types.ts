@@ -32,13 +32,13 @@ export function roleToVariant(role: string | undefined, positionIndex: number, t
   return 'detail';
 }
 
-/** Slide V2 — DB에 저장되는 슬라이드 단위 (기존 Slide 타입과 유사하나 V2 슬롯 포함) */
+/** Slide V2 — DB에 저장되는 슬라이드 단위 */
 export interface SlideV2 {
   id: string;
   position: number;
   role?: string;
   template_family?: TemplateFamily;
-  template_version?: string;          // 'v2' 고정 (향후 v3에서 변경)
+  template_version?: string;
 
   // 텍스트 슬롯
   headline: string;
@@ -56,7 +56,11 @@ export interface SlideV2 {
   accent_color?: string | null;
   photo_hint?: string | null;
 
-  // 메타 (V1 호환 유지)
+  // V3 슬롯 (Hook Type + Social Proof)
+  hook_type?: 'urgency' | 'question' | 'number' | 'fomo' | 'story' | null;
+  social_proof?: string | null;
+
+  // 메타
   brief_section_position?: number;
 }
 

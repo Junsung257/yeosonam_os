@@ -27,6 +27,16 @@ export const ContentModeEnum = z.enum(['product', 'info']);
 
 export const TemplateFamilyEnum = z.enum(['editorial', 'cinematic', 'premium', 'bold']);
 
+/**
+ * V3: 5가지 Hook 유형 — PostNitro AIDA + 토스 CTR 공식 + 여행업 케이스 종합
+ *   urgency  : [선착순 N석] / [오늘만]        → 특가/마감
+ *   question : 보홀 3박, 진짜 얼마?          → 가성비/정보성
+ *   number   : 다낭 4박 7가지 꿀팁            → 정보성 가이드
+ *   fomo     : 이번 주 사라지는 특가 TOP 3     → 재고 한정
+ *   story    : 작년 보홀 갔다 눈물흘린 이유    → 프리미엄/신혼
+ */
+export const HookTypeEnum = z.enum(['urgency', 'question', 'number', 'fomo', 'story']);
+
 /** V2: 슬라이드 단위 구조화 슬롯 */
 export const CardSlideV2Schema = z.object({
   // V1 (필수)
@@ -36,13 +46,16 @@ export const CardSlideV2Schema = z.object({
   pexels_keyword: z.string().min(2).max(40),
   badge: z.string().max(10).optional().nullable(),
   // V2 (선택)
-  eyebrow: z.string().max(20).optional().nullable(),       // 카테고리 태그 (예: "TIP", "체크")
-  tip: z.string().max(80).optional().nullable(),           // 꿀팁 1줄
-  warning: z.string().max(80).optional().nullable(),       // 주의사항 1줄
-  price_chip: z.string().max(20).optional().nullable(),    // 가격 칩 ("89,900원~")
-  trust_row: z.array(z.string().max(12)).max(4).optional().nullable(), // 신뢰 시그널
+  eyebrow: z.string().max(20).optional().nullable(),
+  tip: z.string().max(80).optional().nullable(),
+  warning: z.string().max(80).optional().nullable(),
+  price_chip: z.string().max(20).optional().nullable(),
+  trust_row: z.array(z.string().max(12)).max(4).optional().nullable(),
   accent_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
-  photo_hint: z.string().max(100).optional().nullable(),   // 사진 선택 힌트 (Pexels 외)
+  photo_hint: z.string().max(100).optional().nullable(),
+  // V3 (선택)
+  hook_type: HookTypeEnum.optional().nullable(),           // hook 섹션일 때만 의미
+  social_proof: z.string().max(40).optional().nullable(),  // "별점 4.9 · 예약 50건" 같이 증거 수치
 });
 
 export const BriefSectionSchema = z.object({
@@ -75,6 +88,7 @@ export type BriefSection = z.infer<typeof BriefSectionSchema>;
 export type SlideRole = z.infer<typeof SlideRoleEnum>;
 export type TemplateFamily = z.infer<typeof TemplateFamilyEnum>;
 export type CardSlideV2 = z.infer<typeof CardSlideV2Schema>;
+export type HookType = z.infer<typeof HookTypeEnum>;
 
 /**
  * Brief 파싱 + 복구 시도

@@ -8,7 +8,7 @@ import React from 'react';
 import {
   Eyebrow, Headline, BodyBlock, TipBlock, WarningBlock,
   PriceChip, TrustRow, CTAButton, PhotoFrame, LogoCorner,
-  PageIndicator, AccentLine, BadgePill,
+  PageIndicator, AccentLine, BadgePill, SocialProof,
 } from '../atoms';
 import { BRAND_COLORS, getHeadlineFontSize, getBodyFontSize, truncateHeadline, truncateBody } from '../../tokens';
 import type { FamilyRegistry, VariantProps } from '../types';
@@ -80,6 +80,11 @@ function CinematicCover({ slide, format, pageIndex, totalPages }: VariantProps):
           {slide.trust_row && slide.trust_row.length > 0 && (
             <div style={{ display: 'flex', marginTop: 16 }}>
               <TrustRow items={slide.trust_row} />
+            </div>
+          )}
+          {slide.social_proof && (
+            <div style={{ display: 'flex', marginTop: 12 }}>
+              <SocialProof text={slide.social_proof} />
             </div>
           )}
           {slide.price_chip && (

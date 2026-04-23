@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ContentBrief, parseAndValidateBrief } from '@/lib/validators/content-brief';
+import { ContentBrief, parseAndValidateBrief, HookType } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS, TEMPLATE_META } from '@/lib/card-news/tokens';
 import { ANGLE_PRESETS } from '@/lib/content-generator';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
@@ -92,7 +92,8 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
 }
 
 // ──────────────────────────────────────────────────────
-// V2 슬롯 보강 — LLM이 누락/모호하게 뱉어도 토스 CTR 공식대로 사후 채움/보정
+// V2 슬롯 보강 — LLM 출력이 모호해도 3 레이어 공식 사후 보정
+// (토스 CTR + PostNitro AIDA + 국내외 여행사 베스트 패턴)
 // ──────────────────────────────────────────────────────
 function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): ContentBrief {
   if (input.mode !== 'product' || !input.product) return brief;
@@ -101,18 +102,44 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
   const priceChip = p.price ? formatPriceChip(p.price) : null;
   const trustSignals = extractTrustSignals(p);
   const family = brief.template_family_suggestion ?? deriveFamily(p, input.angle);
+  const recommendedHookType = deriveHookType(p, input.angle);
+  const socialProofText = deriveSocialProof(p);
 
-  // 토스 긴급성 어휘 (hook/cta eyebrow 자동 주입용)
   const urgencyEyebrowForHook = pickUrgencyEyebrow(p, 'hook');
   const urgencyEyebrowForCta = pickUrgencyEyebrow(p, 'cta');
+
+  // hook 섹션에서 question 타입이 감지되면 cta 가 답을 제공 (information gap)
+  let hookIsQuestion = false;
 
   const enrichedSections = brief.sections.map((s) => {
     const cs = { ...s.card_slide };
 
-    // 1) eyebrow — 긴급성/카테고리 자동 주입
-    if (!cs.eyebrow || isGenericEyebrow(cs.eyebrow)) {
-      if (s.role === 'hook') cs.eyebrow = urgencyEyebrowForHook;
-      else if (s.role === 'benefit') cs.eyebrow = '[0원] 추가 비용';
+    // ▣ 이모지 sanitize — 폰트 미지원 글리프 제거
+    cs.headline = sanitizeEmojis(cs.headline) ?? cs.headline;
+    cs.body = sanitizeEmojis(cs.body) ?? cs.body;
+    if (cs.eyebrow) cs.eyebrow = sanitizeEmojis(cs.eyebrow);
+    if (cs.tip) cs.tip = sanitizeEmojis(cs.tip);
+    if (cs.warning) cs.warning = sanitizeEmojis(cs.warning);
+    if (cs.social_proof) cs.social_proof = sanitizeEmojis(cs.social_proof);
+    if (cs.badge) cs.badge = sanitizeEmojis(cs.badge);
+
+    // ▣ Hook 섹션 특수 처리 (AIDA Attention) ────────────
+    if (s.role === 'hook') {
+      // hook_type 없으면 product 성격으로 추천
+      if (!cs.hook_type) cs.hook_type = recommendedHookType;
+
+      // hook_type 별 eyebrow 자동 재구성 (generic 이거나 없을 때)
+      if (!cs.eyebrow || isGenericEyebrow(cs.eyebrow)) {
+        cs.eyebrow = eyebrowForHookType(cs.hook_type ?? 'urgency', p);
+      }
+
+      // question 타입 기록 — cta 에서 활용
+      if (cs.hook_type === 'question') {
+        hookIsQuestion = true;
+      }
+    } else if (!cs.eyebrow || isGenericEyebrow(cs.eyebrow)) {
+      // ▣ 비-hook 섹션 eyebrow 자동 주입
+      if (s.role === 'benefit') cs.eyebrow = '[0원] 추가 비용';
       else if (s.role === 'tourist_spot') cs.eyebrow = `[${p.destination || '현지'}] 핵심`;
       else if (s.role === 'inclusion') cs.eyebrow = '[0원] 포함';
       else if (s.role === 'tip') cs.eyebrow = 'PRO TIP';
@@ -120,27 +147,31 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
       else if (s.role === 'detail') cs.eyebrow = '핵심 디테일';
     }
 
-    // 2) eyebrow 대괄호 보정 — hook/cta 에는 [ ] 강제
-    if ((s.role === 'hook') && cs.eyebrow && !/\[.*\]/.test(cs.eyebrow)) {
+    // ▣ hook eyebrow 에 대괄호 강제
+    if (s.role === 'hook' && cs.eyebrow && !/\[.*\]/.test(cs.eyebrow)) {
       cs.eyebrow = `[${cs.eyebrow}]`;
     }
 
-    // 3) price_chip — hook/benefit 에 자동
+    // ▣ price_chip — hook/benefit 자동
     if (!cs.price_chip && (s.role === 'hook' || s.role === 'benefit') && priceChip) {
       cs.price_chip = priceChip;
     }
 
-    // 4) trust_row — benefit/inclusion 에 자동 (LLM 출력이 빈약하면 product 데이터로 보충)
+    // ▣ trust_row — benefit/inclusion 자동
     if (trustSignals.length > 0 && (s.role === 'benefit' || s.role === 'inclusion')) {
       const existing = Array.isArray(cs.trust_row) ? cs.trust_row : [];
       if (existing.length < 3) {
-        // merge 중복 제거
         const merged = Array.from(new Set([...existing, ...trustSignals])).slice(0, 4);
         cs.trust_row = merged;
       }
     }
 
-    // 5) body 의 "/" 구분자 → 쉼표 (토스 가독성 공식)
+    // ▣ social_proof — benefit/detail 섹션에 자동 (마이리얼트립/Airbnb 공식)
+    if (!cs.social_proof && (s.role === 'benefit' || s.role === 'detail')) {
+      cs.social_proof = socialProofText;
+    }
+
+    // ▣ body "/" → "," (토스 가독성 공식)
     if (cs.body && cs.body.includes(' / ') && !cs.body.includes(',')) {
       cs.body = cs.body.replace(/\s*\/\s*/g, ', ');
     }
@@ -149,16 +180,52 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
   });
 
   const enrichedCta = { ...brief.cta_slide };
+
+  // ▣ CTA 이모지 sanitize
+  enrichedCta.headline = sanitizeEmojis(enrichedCta.headline) ?? enrichedCta.headline;
+  enrichedCta.body = sanitizeEmojis(enrichedCta.body) ?? enrichedCta.body;
+  if (enrichedCta.eyebrow) enrichedCta.eyebrow = sanitizeEmojis(enrichedCta.eyebrow);
+  if (enrichedCta.social_proof) enrichedCta.social_proof = sanitizeEmojis(enrichedCta.social_proof);
+  if (enrichedCta.badge) enrichedCta.badge = sanitizeEmojis(enrichedCta.badge);
+
+  // ▣ hook이 question이었으면 CTA body를 "답" 형태로 시작 (information gap)
+  if (hookIsQuestion && priceChip && enrichedCta.body && !/\d만.*원/.test(enrichedCta.body)) {
+    const shortAnswer = `답: ${priceChip}`;
+    // body 앞에 답 prefix 붙이되 40자 넘지 않게
+    const merged = `${shortAnswer} · ${enrichedCta.body}`.slice(0, 40);
+    enrichedCta.body = merged;
+  }
+
   if (!enrichedCta.eyebrow || isGenericEyebrow(enrichedCta.eyebrow)) {
     enrichedCta.eyebrow = urgencyEyebrowForCta;
   } else if (!/\[.*\]/.test(enrichedCta.eyebrow)) {
     enrichedCta.eyebrow = `[${enrichedCta.eyebrow}]`;
   }
   if (!enrichedCta.price_chip && priceChip) enrichedCta.price_chip = priceChip;
-  if (!enrichedCta.badge) enrichedCta.badge = '지금 예약';
+
+  // engagement 유도 CTA (CreatorFlow 공식 — 전환율 8~15%)
+  if (!enrichedCta.badge || enrichedCta.badge === '지금 예약') {
+    // 상품 가격 기반 CTA 선택 — 고가(100만원+) 상담 유도, 저가 즉시 예약
+    if (p.price && p.price >= 1000000) {
+      enrichedCta.badge = 'DM 상담 1분';
+    } else {
+      enrichedCta.badge = '지금 예약';
+    }
+  }
+  // body 가 generic("지금 예약하기")이면 댓글 유도형으로 교체
+  if (enrichedCta.body && isGenericCtaBody(enrichedCta.body)) {
+    enrichedCta.body = priceChip
+      ? `댓글 '예약' 남기세요, ${priceChip} DM 발송`
+      : `댓글 '예약' 남기세요, 특가 DM 발송`;
+    if (enrichedCta.body.length > 40) {
+      enrichedCta.body = enrichedCta.body.slice(0, 39) + '…';
+    }
+  }
+
   if ((!enrichedCta.trust_row || enrichedCta.trust_row.length === 0) && trustSignals.length > 0) {
     enrichedCta.trust_row = trustSignals.slice(0, 3);
   }
+  if (!enrichedCta.social_proof) enrichedCta.social_proof = socialProofText;
 
   return {
     ...brief,
@@ -166,6 +233,84 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
     cta_slide: enrichedCta,
     template_family_suggestion: family,
   };
+}
+
+// ──────────────────────────────────────────────────────
+// Hook type 자동 추천 — product 성격 기반
+// ──────────────────────────────────────────────────────
+function deriveHookType(p: BriefInput['product'], angle?: string): HookType {
+  if (!p) return 'urgency';
+  const text = [
+    p.title,
+    p.product_summary,
+    p.special_notes,
+    ...(p.product_highlights ?? []),
+  ].filter(Boolean).join(' ');
+
+  // angle 명시 우선
+  if (angle === 'value' || angle === 'deal') return 'urgency';
+  if (angle === 'info' || angle === 'guide') return 'number';
+  if (angle === 'emotional' || angle === 'honeymoon') return 'story';
+  if (angle === 'premium' || angle === 'luxury') return 'story';
+
+  // 키워드 추론
+  if (/특가|가성비|반값|최저가|마감|선착순/i.test(text)) return 'urgency';
+  if (/한정|이번주|오늘만|\d+명|\d+석/i.test(text)) return 'fomo';
+  if (/프리미엄|럭셔리|허니문|신혼|품격|5성급/i.test(text)) return 'story';
+  if (/꿀팁|가이드|TOP|체크리스트|알아야/i.test(text)) return 'number';
+  return 'question';  // 기본값 — 호기심 유발
+}
+
+// hook_type 별 eyebrow
+function eyebrowForHookType(hookType: HookType, p: BriefInput['product']): string {
+  const month = new Date().getMonth() + 1;
+  switch (hookType) {
+    case 'urgency':  return '[선착순 20석]';
+    case 'question': return `진짜 최저가는?`;
+    case 'number':   return `TOP 7 꿀팁`;
+    case 'fomo':     return '[이번 주만 사라짐]';
+    case 'story':    return 'REAL STORY';
+    default:         return `[${month}월 특가]`;
+  }
+}
+
+// ──────────────────────────────────────────────────────
+// Social proof 생성 (product 데이터 기반, fallback 은 브랜드 신뢰 문구)
+// ──────────────────────────────────────────────────────
+function deriveSocialProof(p: BriefInput['product']): string {
+  if (!p) return '✓ 여소남 검증';
+  // Pretendard 폰트에 글리프 있는 기호만 사용 (✓ ★ · 지원, ⭐🏝️ 미지원)
+  const keywords = [
+    p.title,
+    p.product_summary,
+    ...(p.product_highlights ?? []),
+  ].filter(Boolean).join(' ');
+  if (/인기|베스트|추천/i.test(keywords)) {
+    return '★ 이달의 추천 · 여소남 검증';
+  }
+  if (/5\s*성급|프리미엄|럭셔리/i.test(keywords)) {
+    return '★ 5성급 · 여소남 프리미엄 인증';
+  }
+  if (/가성비|특가|노팁|노옵션/i.test(keywords)) {
+    return '✓ 추가비용 0원 보장';
+  }
+  return '✓ 여소남 검증 상품';
+}
+
+/** LLM 출력 sanitizer — 폰트 미지원 이모지를 안전한 유니코드 기호로 치환 */
+function sanitizeEmojis(text: string | null | undefined): string | null {
+  if (!text) return text ?? null;
+  return text
+    .replace(/⭐/g, '★')
+    .replace(/🏝️/g, '·')
+    .replace(/🏝/g, '·')
+    .replace(/👉/g, '→')
+    .replace(/👀/g, '')
+    .replace(/🔥/g, '★')
+    .replace(/💎/g, '★')
+    .replace(/🎁/g, '')
+    .replace(/✨/g, '★')
+    .trim() || null;
 }
 
 // 긴급성 eyebrow 선택 — destination/duration 기반
@@ -189,8 +334,14 @@ function pickUrgencyEyebrow(p: BriefInput['product'], role: 'hook' | 'cta'): str
 function isGenericEyebrow(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length <= 2) return true;
-  // "여행", "정보", "안내" 등 단일 단어면 generic
   return /^(여행|정보|안내|카테고리|카드뉴스)$/.test(trimmed);
+}
+
+// cta body가 너무 generic ("지금 예약", "안심 예약" 등) 이면 교체 대상
+function isGenericCtaBody(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length <= 8) return true;
+  return /^(지금\s*예약|안심\s*예약|특별가\s*예약|바로\s*예약)/.test(trimmed);
 }
 
 // ──────────────────────────────────────────────────────
@@ -330,34 +481,70 @@ ${input.extraPrompt ? `- 추가 지시: ${input.extraPrompt}` : ''}
 - premium:   럭셔리/신혼 (블랙 + 골드)
 - bold:      특가/가성비 (그라디언트 + 장식)
 
-## ⚡ 토스 CTR 4대 공식 (필수 체화 — CTR 평균 +30%)
+## ⚡ 카드뉴스 3 레이어 공식 (종합 — 토스 CTR + PostNitro AIDA + 국내외 여행사 베스트)
 
-### 1️⃣ 긴급성 (CTR +20~30%)
-- "[선착순 N명]", "[오늘만]", "[마감 D-N]", "[단 N석]"
-- 대괄호 [ ] 로 감싼다. 숫자는 구체적으로.
-- ❌ BAD: "마감 임박!"  → 막연함
-- ✅ GOOD: "[선착순 20석] 부산 직항"
+### [레이어 A] 토스 CTR 4대 공식
+1. **긴급성 +20~30%**: "[선착순 N석]", "[오늘만]", "[마감 D-N]"
+2. **자기관련성 +15%**: "~이라면", "~이신 분"
+3. **혜택성 +25%**: "[0원] 추가비용, 팁·옵션·쇼핑 전부 포함"
+4. **구체성**: "바나산" → "[구름 위 판타지] 바나산"
 
-### 2️⃣ 자기관련성 (CTR +15%)
-- "~이라면 주목!", "~이신 분", "~분들께"
-- 타겟의 상황/욕망을 2인칭으로 호명
-- ❌ BAD: "여행하세요"  → 불특정
-- ✅ GOOD: "4박5일 여유 있는 분이라면"
+### [레이어 B] PostNitro AIDA 배치 (22M 포스트 연구)
+- 슬라이드 1 (Attention): 훅 타입 1개 적용, 0.25초 내 정지
+- 슬라이드 2~3 (Interest): 문제 명명 + 수치
+- 슬라이드 4~5 (Desire): 단계별 해법 + 증거 (trust_row, social_proof)
+- 마지막 (Action): **단 하나의** 명확한 CTA
 
-### 3️⃣ 혜택성 (CTR +25%)
-- 대괄호 [ ] 로 핵심 혜택 강조: "[0원]", "[5성급 포함]", "[팁·옵션·쇼핑 0]"
-- 수치로 구체화 (금액/횟수/일수)
-- 쉼표로 가독성 (A, B, C 3개 나열)
-- ❌ BAD: "추가 비용 걱정 없이"
-- ✅ GOOD: "[0원] 추가 비용, 팁·옵션·쇼핑 전부 포함"
+### [레이어 C] 국내외 여행사 패턴
+- **하나투어 ("의외성")**: 발리 마사지 → "전기 통닭" 밈 → 700만뷰 + 발리 검색 +1378
+- **모두투어 ("공감")**: "여행, 참지마요" 시리즈 (PAS 공식)
+- **마이리얼트립 ("1인칭 후기")**: "실제 간 사람들 얘기" 톤
+- **Airbnb ("mood")**: 방 사진 → "여기서 자고 싶다" 감각 어필
+- **Klook/Booking**: 별점 · 예약수 · 리뷰 수치 전면
 
-### 4️⃣ 구체성 (감성적 수식어 + 팩트)
-관광지는 이름만 나열하지 말고 **감성 수식어 + 팩트** 조합:
-- "바나산 국립공원" → "[구름 위 판타지 테마파크] 바나산"
-- "미케 비치" → "[세계 6대 해변] 미케 비치"
-- "칭다오 맥주박물관" → "[120년 역사의 심장] 칭다오 맥주"
-호텔은 구체 등급/체인/수치:
-- "5성급" → "전 일정 5성급 + 매일 조식뷔페"
+## 🎯 Hook Type 5종 (hook 섹션에 반드시 1개 선택)
+
+상품 성격에 맞게 hook_type 필드에 정확히 하나 지정:
+
+| 타입 | 예시 headline | eyebrow | 언제 |
+|---|---|---|---|
+| **urgency**  | 4박5일 호캉스      | [선착순 20석]         | 특가·마감 |
+| **question** | 보홀 3박, 얼마?     | 진짜 최저가는?        | 가성비·정보성 |
+| **number**   | 다낭 4박 꿀팁 7     | TOP 7                 | 정보성 가이드 |
+| **fomo**     | 이번주만 TOP 3      | [D-3 마감]            | 재고 한정 |
+| **story**    | 작년 눈물흘린 이유  | REAL STORY            | 프리미엄·신혼 |
+
+❌ BAD: hook headline "다낭 4박5일 패키지" (상품명 복제)
+✅ GOOD urgency: eyebrow "[선착순 20석]" / headline "4박5일 호캉스" / price_chip "77만9천원~"
+✅ GOOD question: eyebrow "진짜 최저가?" / headline "보홀 3박, 얼마?" / body "답은 마지막 슬라이드에"
+✅ GOOD story: eyebrow "REAL STORY" / headline "작년 보홀 이 실수" / body "여소남 고객은 이렇게"
+
+## 📊 Social Proof (신뢰 증거 수치)
+
+AIRBNB/마이리얼트립이 압도하는 축. **benefit 또는 detail** 섹션에 1개 필수:
+- "⭐ 4.9 · 예약 50건 · 재방문 32%"
+- "🏆 2025 고객만족 1위"
+- "✓ 후기 245건 · 평균 만족도 98%"
+
+social_proof 필드에 채움. product 모드에서만. 없으면 "여소남 검증 상품".
+
+## 🔄 Information Gap (캐러셀 전용 트릭)
+
+hook_type이 question이면 → **cta slide에 답 배치** (사용자가 마지막까지 스와이프).
+예: hook "보홀 3박 얼마?" → cta body "답: 41만9천원~ [선착순 10석]"
+
+## 📱 CTA Engagement Prompt (CreatorFlow 2026 데이터: 전환율 1~3% → 8~15%)
+
+**cta_slide.body** 는 단순 "지금 예약"보다 **인스타 액션 유도형** 이 8배 효과적:
+
+| 전략 | 예시 body (40자 이내) |
+|---|---|
+| DM 유도 (전환율 최고) | "댓글 '예약' 남겨주세요, 특가 DM 발송" |
+| 저장 유도 | "저장 👉 공유, 동행에게 알려주세요" |
+| 프로필 링크 | "프로필 링크 → 예약상담 1분" |
+| 질문 유도 (댓글) | "가고 싶으면 댓글 🏝️" |
+
+cta_slide.badge 는 짧은 동사 ("지금 예약", "DM 받기", "상담 1분") 로 통일.
 
 ## V2 슬롯 생성 규칙 (슬롯마다 명시적 역할)
 
@@ -454,20 +641,23 @@ ${input.extraPrompt ? `- 추가 지시: ${input.extraPrompt}` : ''}
         "price_chip": "hook이면 '${priceHint || '41만9천원~'}'",
         "trust_row": ["노팁","노옵션","5성급","전식사"],
         "accent_color": null,
-        "photo_hint": "사진 분위기 1줄"
+        "photo_hint": "사진 분위기 1줄",
+        "hook_type": "hook 섹션이면 urgency|question|number|fomo|story 중 1개, 아니면 null",
+        "social_proof": "benefit/detail 섹션에 '⭐ 4.9 · 예약 N건' 같은 수치, 없으면 null"
       }
     }
   ],
   "cta_slide": {
     "headline": "행동 유도 15자",
-    "body": "마감·혜택 요약 40자",
+    "body": "마감·혜택 요약 40자 (hook이 question이었으면 여기가 답)",
     "template_suggestion": "${TEMPLATE_IDS[0]}",
     "pexels_keyword": "영문 명사",
     "badge": "지금 예약",
     "eyebrow": "[오늘만] 또는 [마감 D-N]",
     "price_chip": "${priceHint || '41만9천원~'}",
     "trust_row": ["노팁","노옵션","5성급"],
-    "tip": null, "warning": null, "accent_color": null, "photo_hint": "일몰 커플"
+    "social_proof": "⭐ 4.9 · 예약 N건",
+    "tip": null, "warning": null, "accent_color": null, "photo_hint": "일몰 커플", "hook_type": null
   },
   "seo": {
     "title": "SEO 타이틀 (10~70자)",
@@ -574,6 +764,12 @@ function fallbackBrief(input: BriefInput): ContentBrief {
       },
     ] as SectionTpl[]).slice(0, contentCount);
 
+    const hookType = deriveHookType(p, input.angle);
+    const socialProof = deriveSocialProof(p);
+    const ctaBodyText = priceChip
+      ? `댓글 '예약' 남기세요, ${priceChip} DM 발송`.slice(0, 40)
+      : `댓글 '예약' 남기세요, 특가 DM 발송`.slice(0, 40);
+
     return {
       mode: 'product',
       h1: `${dest} ${dur} ${angleLabel} 패키지 ${price} | 여소남 ${year}`.slice(0, 70),
@@ -599,21 +795,25 @@ function fallbackBrief(input: BriefInput): ContentBrief {
           trust_row: s.trust && trustSignals.length > 0 ? trustSignals.slice(0, 4) : null,
           accent_color: null,
           photo_hint: `${dest} 풍경`,
+          hook_type: s.role === 'hook' ? hookType : null,
+          social_proof: (s.role === 'benefit' || s.role === 'detail') ? socialProof : null,
         },
       })),
       cta_slide: {
         headline: '지금 예약하기',
-        body: `${price} 특별가 예약`.slice(0, 40),
+        body: ctaBodyText,
         template_suggestion: TEMPLATE_IDS[0],
         pexels_keyword: 'travel booking',
-        badge: '지금 예약',
-        eyebrow: 'LIMITED OFFER',
+        badge: p.price && p.price >= 1000000 ? 'DM 상담 1분' : '지금 예약',
+        eyebrow: '[오늘만 이 가격]',
         tip: null,
         warning: null,
         price_chip: priceChip,
         trust_row: trustSignals.slice(0, 3).length > 0 ? trustSignals.slice(0, 3) : null,
         accent_color: null,
         photo_hint: `${dest} 일몰 커플`,
+        hook_type: null,
+        social_proof: socialProof,
       },
       seo: {
         title: `${dest} ${dur} ${angleLabel} 패키지 ${price} | 여소남 ${year}`.slice(0, 70),
@@ -670,21 +870,25 @@ function fallbackBrief(input: BriefInput): ContentBrief {
         trust_row: null,
         accent_color: null,
         photo_hint: `${topic} 분위기 사진`,
+        hook_type: s.role === 'hook' ? 'number' : null,
+        social_proof: s.role === 'benefit' ? '✓ 여소남 검증' : null,
       },
     })),
     cta_slide: {
       headline: '여소남과 함께',
-      body: '안심 여행 준비 시작',
+      body: "댓글 '여행' 남기세요, DM 상담",
       template_suggestion: TEMPLATE_IDS[1],
       pexels_keyword: 'travel booking',
-      badge: '시작하기',
-      eyebrow: 'START NOW',
+      badge: 'DM 상담',
+      eyebrow: '[지금 시작]',
       tip: null,
       warning: null,
       price_chip: null,
       trust_row: null,
       accent_color: null,
       photo_hint: '여행 시작 분위기',
+      hook_type: null,
+      social_proof: '✓ 여소남 검증',
     },
     seo: {
       title: `${topic} 완벽 가이드 ${year} | 여소남`.slice(0, 70),
