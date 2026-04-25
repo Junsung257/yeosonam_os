@@ -79,6 +79,14 @@
     {
       "path": "/api/cron/booking-tasks-runner",
       "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/cron/variant-winner-decide",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/card-news-seasonal",
+      "schedule": "0 0 * * 1"
     }
   ]
 }
