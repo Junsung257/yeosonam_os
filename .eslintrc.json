@@ -1,0 +1,36 @@
+{
+  "extends": "next/core-web-vitals",
+  "overrides": [
+    {
+      "files": [
+        "src/components/admin/YeosonamA4Template.tsx",
+        "src/app/packages/[id]/DetailClient.tsx"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "MemberExpression[object.name='pkg'][property.name='excludes']",
+            "message": "W1 CRC (ERR-KUL-05): 렌더러 내부에서 pkg.excludes 직접 접근 금지. view.excludes.basic / view.surchargesMerged 를 소비하세요 (@/lib/render-contract)."
+          },
+          {
+            "selector": "MemberExpression[object.name='pkg'][property.name='surcharges']",
+            "message": "W1 CRC (ERR-KUL-05): pkg.surcharges 직접 접근 금지. view.surchargesMerged 를 소비하세요."
+          },
+          {
+            "selector": "MemberExpression[object.name='pkg'][property.name='inclusions']",
+            "message": "Phase1 CRC (ERR-HSN-render-bundle): pkg.inclusions 직접 접근 금지. view.inclusions.basic (IconizedInclusion[]) / view.inclusions.program 를 소비하세요 (@/lib/render-contract)."
+          },
+          {
+            "selector": "CallExpression[callee.name='getInclusionIcon']",
+            "message": "Phase1 CRC: 렌더러에서 getInclusionIcon 직접 호출 금지. view.inclusions.basic[i].icon 를 소비하세요 (CRC가 이미 매칭 완료)."
+          },
+          {
+            "selector": "CallExpression[callee.name='classifyInclusions']",
+            "message": "Phase1 CRC: 렌더러에서 classifyInclusions 직접 호출 금지. view.inclusions 를 소비하세요."
+          }
+        ]
+      }
+    }
+  ]
+}
