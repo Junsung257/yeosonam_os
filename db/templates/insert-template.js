@@ -14,7 +14,17 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+
+// ─── W-final F3: Rule Zero 강제 ──────────────────────────────────────────────
+// 파서/프롬프트 버전 — 변경할 때마다 이 상수 bump (예: sonnet 교체, prompt 개정)
+const PARSER_VERSION = 'register-v2026.04.21-sonnet-4.6';
+
+function computeRawHash(text) {
+  if (!text || typeof text !== 'string') return null;
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
 
 // ─── Supabase 초기화 ─────────────────────────────────────────
 function initSupabase() {
@@ -58,6 +68,10 @@ function meal(b, l, d, bn, ln, dn) {
 }
 
 // ─── 콤마 구분 관광지 분리 (관광지 매칭 최적화) ─────────────
+// ERR-LB-DAD-paren-split@2026-04-20: "▶호이안 구시가지 (풍흥의 집, 일본내원교, 떤키의 집, 관운장사당 등) 유네스코 지정 전통거리 관광"
+//   처럼 **중간에** 괄호로 묶인 콤마 항목 + 괄호 뒤 추가 텍스트가 있으면, 단순 콤마 split이 괄호를 깨뜨려
+//   "▶호이안 구시가지 (풍흥의 집" / "▶관운장사당 등) 유네스코 지정 전통거리 관광" 같은 손상된 항목을 만든다.
+//   해결: 괄호 위치에 관계없이 (...) 내부의 콤마와 외부 콤마를 분리해서 처리.
 function splitScheduleItems(scheduleItems) {
   const result = [];
   for (const item of scheduleItems) {
@@ -71,25 +85,49 @@ function splitScheduleItems(scheduleItems) {
       result.push(item);
       continue;
     }
-    // 괄호 안 부가설명 분리 (마지막 항목에만 붙임)
-    const body = act.slice(1).trim(); // ▶ 제거
-    const trailingParen = body.match(/\s*\([^)]*\)\s*$/);
-    const mainBody = trailingParen ? body.slice(0, -trailingParen[0].length) : body;
-    const suffix = trailingParen ? ' ' + trailingParen[0].trim() : '';
 
-    const parts = mainBody.split(/[,，]\s*/);
-    if (parts.length <= 1) {
-      result.push(item);
+    const body = act.slice(1).trim(); // ▶ 제거
+
+    // 1) 중간/말미 괄호 ( ... ) 추출 (가장 마지막 매칭 — non-greedy로 가장 작은 단위)
+    const parenMatch = body.match(/\(([^)]*)\)/);
+    if (parenMatch) {
+      // body를 [prefix] (paren 내용) [suffix] 로 분해
+      const parenStart = parenMatch.index;
+      const parenEnd = parenStart + parenMatch[0].length;
+      const prefix = body.slice(0, parenStart).trim().replace(/[,，]\s*$/, '');
+      const innerCSV = parenMatch[1];
+      const suffix = body.slice(parenEnd).trim().replace(/^[,，]\s*/, '');
+
+      // ─── W30 ERR-HET-render-over-split@2026-04-21: 과다 분리 방어 ───
+      // 괄호 안이 "서브 관광지 리스트" 가 아니라 "체험 리스트 / 부연 설명 / 연혁" 이면 분리 skip.
+      // 판정:
+      //   (a) suffix 가 비어 있으면 → 설명/체험 가능성 高 (호이안 케이스는 괄호 뒤에 "유네스코 지정 전통거리 관광" 같은 suffix 가 있음)
+      //   (b) 괄호 안에 서술/체험/연혁 키워드 감지 (년 역사, M 높이, A급, 체험, 관람 등)
+      // 둘 중 하나라도 해당되면 activity 통째 유지.
+      const DESCRIPTIVE_KW = /(\d+\s*년|\d+\s*[Mm](?![a-zA-Z])|A급|불리는|상징|역사|시대|높이|체험|관람|포함|맛보기|감상|중\s*한\s*명)/;
+      const hasDescriptive = DESCRIPTIVE_KW.test(innerCSV);
+      if (!suffix || hasDescriptive) {
+        result.push(item);
+        continue;
+      }
+
+      // prefix는 메인 항목 (suffix가 있으면 합침: "호이안 구시가지" + " 유네스코 지정 전통거리 관광")
+      const mainTitle = [prefix, suffix].filter(Boolean).join(' ').trim();
+      const innerParts = innerCSV.split(/[,，]\s*/).map(s => s.trim()).filter(Boolean);
+
+      // 메인 항목 push
+      if (mainTitle) result.push({ ...item, activity: `▶${mainTitle}` });
+      // 괄호 안 항목들 각각 push
+      for (const p of innerParts) result.push({ ...item, activity: `▶${p}` });
       continue;
     }
-    for (let i = 0; i < parts.length; i++) {
-      const partText = parts[i].trim();
-      if (!partText) continue;
-      const isLast = i === parts.length - 1;
-      result.push({
-        ...item,
-        activity: `▶${partText}${isLast ? suffix : ''}`,
-      });
+
+    // 2) 괄호 없는 일반 콤마 분리 (기존 동작)
+    const parts = body.split(/[,，]\s*/);
+    if (parts.length <= 1) { result.push(item); continue; }
+    for (const partText of parts) {
+      const t = partText.trim();
+      if (t) result.push({ ...item, activity: `▶${t}` });
     }
   }
   return result;
@@ -177,6 +215,19 @@ function validatePackage(pkg) {
   if (!pkg.duration || pkg.duration < 1) errors.push('duration 1 이상 필수');
   if (pkg.nights == null || pkg.nights < 0) errors.push('nights 0 이상 필수');
   if (pkg.nights >= pkg.duration) errors.push(`nights(${pkg.nights}) >= duration(${pkg.duration}) — 박수가 일수 이상은 불가능`);
+
+  // E1-Z. Rule Zero 강제 (W-final F3) — raw_text 필수 + hash 일치 검증.
+  //        이전: warning. 이제: ERROR (INSERT 차단).
+  //        raw_text 원본이 감사의 기준점이므로 오염/부재 시 INSERT 불가.
+  if (!pkg.raw_text || typeof pkg.raw_text !== 'string' || pkg.raw_text.length < 50) {
+    errors.push(`[RuleZero] raw_text 누락 또는 의심스럽게 짧음 (${pkg.raw_text?.length || 0}자). 원문 원본을 저장해야 감사가 가능합니다 (ERR-FUK-rawtext-pollution).`);
+  } else if (pkg.raw_text_hash) {
+    // 해시가 명시되어 있으면 반드시 일치해야 함
+    const actual = computeRawHash(pkg.raw_text);
+    if (actual !== pkg.raw_text_hash) {
+      errors.push(`[RuleZero] raw_text_hash 불일치: 저장된 해시=${pkg.raw_text_hash.slice(0, 16)}... vs 실제=${actual.slice(0, 16)}... — 사후 변조 또는 해시 계산 오류`);
+    }
+  }
 
   // E2. price_dates 필수 (요금표 렌더링)
   const pd = pkg.price_dates || tiersToDatePrices(pkg.price_tiers || []);
@@ -412,17 +463,19 @@ function validatePackage(pkg) {
   // "의미론적 검증" — 데이터 구조는 맞지만 잘못된 내용이 고객 필드에 있는지 감지
   // ─────────────────────────────────────────────────────────────────────
 
-  // W21 — special_notes에 내부 운영 키워드 금지
-  // A4 템플릿이 special_notes를 쇼핑센터 fallback으로 렌더 → 커미션/정산 메모 노출 위험
+  // W21 — customer_notes 에 내부 운영 키워드 금지 (ERR-special-notes-leak@2026-04-27)
+  // CRC resolveShopping 이 customer_notes 를 쇼핑 fallback 으로 렌더 → 운영 메모 누출 위험
+  // special_notes 는 deprecated (LLM 컨텍스트만 사용, 고객 fallback 경로 제거됨) → 자유 통과
+  // internal_notes 는 운영 전용 (어떤 텍스트도 OK)
   const INTERNAL_KEYWORDS = [
     '커미션', 'commission_rate', 'commission ', '정산',
     '스키마 제약', 'LAND_OPERATOR', '내부', '[랜드사', '[INTERNAL]',
     '네트 가격', 'net_price', 'margin_rate',
   ];
-  if (pkg.special_notes && typeof pkg.special_notes === 'string') {
-    const leaked = INTERNAL_KEYWORDS.filter(kw => pkg.special_notes.includes(kw));
+  if (pkg.customer_notes && typeof pkg.customer_notes === 'string') {
+    const leaked = INTERNAL_KEYWORDS.filter(kw => pkg.customer_notes.includes(kw));
     if (leaked.length > 0) {
-      errors.push(`[W21 ERR-FUK-customer-leaks] special_notes에 내부 운영 키워드 노출 위험: ${leaked.join(', ')} — A4 쇼핑센터 섹션에 그대로 노출됨. null 또는 고객용 텍스트만 저장할 것.`);
+      errors.push(`[W21 ERR-special-notes-leak] customer_notes 에 내부 운영 키워드 노출: ${leaked.join(', ')} — 쇼핑센터 섹션에 그대로 노출됨. internal_notes 로 옮기거나 제거할 것.`);
     }
   }
 
@@ -673,7 +726,7 @@ function isSameDeadline(oldDeadline, newDeadline) {
 }
 
 // ─── 메인 inserter 팩토리 ───────────────────────────────────
-function createInserter({ landOperator, commissionRate, ticketingDeadline, destCode }) {
+function createInserter({ landOperator, commissionRate, commissionFixedAmount, commissionCurrency, ticketingDeadline, destCode }) {
   const operators = loadOperators();
   const op = operators[landOperator];
   if (!op) throw new Error(`알 수 없는 랜드사: ${landOperator}. land-operators.json 확인 필요.`);
@@ -681,7 +734,10 @@ function createInserter({ landOperator, commissionRate, ticketingDeadline, destC
   const LAND_OPERATOR_ID = op.uuid;
   const SUPPLIER_CODE = op.code;
   const DEST_CODE = destCode;
-  const COMMISSION_RATE = commissionRate;
+  // P1 #5 (2026-04-27): 정액/% 마진 상호배타. 정액이면 commissionRate=0 자동 설정.
+  const COMMISSION_FIXED_AMOUNT = commissionFixedAmount ?? null;
+  const COMMISSION_CURRENCY = commissionCurrency || 'KRW';
+  const COMMISSION_RATE = COMMISSION_FIXED_AMOUNT != null ? 0 : commissionRate;
   const TICKETING_DEADLINE = ticketingDeadline;
 
   async function run(packages) {
@@ -727,6 +783,82 @@ function createInserter({ landOperator, commissionRate, ticketingDeadline, destC
       // 렌더링 계약 검증 (errors: 차단, warnings: STRICT 모드에서 차단)
       const { errors: validationErrors, warnings: validationWarnings } = validatePackage(pkg);
       const STRICT = process.env.STRICT_VALIDATION === 'true';
+
+      // Phase 1 CRC — Zod PackageStrictSchema (W26~W29) 기본 ON
+      // ZOD_STRICT=false 로만 비활성화 가능. ERR-HSN-render-bundle 재발 방지.
+      if (process.env.ZOD_STRICT !== 'false') {
+        try {
+          // CommonJS 에서 TS Zod 를 직접 쓰기 어려우므로, 경량 수동 검증 수행
+          // 1) inclusions 최상위 콤마 (W26)
+          if (Array.isArray(pkg.inclusions)) {
+            pkg.inclusions.forEach((item, idx) => {
+              if (typeof item !== 'string') return;
+              let depth = 0;
+              for (const ch of item) {
+                if (ch === '(' || ch === '[' || ch === '{') depth++;
+                else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+                else if (ch === ',' && depth === 0) {
+                  const prev = item[item.indexOf(ch) - 1];
+                  const nextRest = item.slice(item.indexOf(ch) + 1, item.indexOf(ch) + 4);
+                  if (!(/\d/.test(prev || '') && /^\d{3}/.test(nextRest || ''))) {
+                    validationErrors.push(`[W26 ERR-HSN] inclusions[${idx}] 콤마 포함: "${item.slice(0, 50)}..." → 개별 배열 요소로 분리 필요`);
+                    break;
+                  }
+                }
+              }
+            });
+          }
+          // 2) 하루 flight activity 분리 (W27)
+          const daysArr = Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : (pkg.itinerary_data?.days || []);
+          daysArr.forEach((day, dIdx) => {
+            const flights = (day?.schedule || []).filter(s => s?.type === 'flight');
+            if (flights.length > 1) {
+              const unmerged = flights.some(f => !/→|↦|⇒/.test(f.activity || ''));
+              if (unmerged) {
+                validationErrors.push(`[W27 ERR-HSN] Day ${day?.day ?? dIdx + 1}: 분리된 flight activity ${flights.length}개. "A 출발 → B 도착 HH:MM" 단일 포맷 필요`);
+              }
+            }
+          });
+          // 3) 호텔 activity 앞절 붙이기 (W28)
+          daysArr.forEach((day, dIdx) => {
+            (day?.schedule || []).forEach((item, sIdx) => {
+              if (item?.type !== 'normal' || !item.activity) return;
+              const hasHotelSuffix = /호텔\s*(?:투숙|휴식|체크인|체크 인)/.test(item.activity);
+              const startsWithHotel = /^[*\s]*호텔/.test(item.activity);
+              if (hasHotelSuffix && !startsWithHotel) {
+                validationErrors.push(`[W28 ERR-HSN] Day ${day?.day ?? dIdx + 1} schedule[${sIdx}] "${item.activity.slice(0, 40)}..." — 호텔 activity 앞절 붙이기 금지 (별도 normal 로 분리)`);
+              }
+            });
+          });
+        } catch (zodErr) {
+          console.warn(`   ⚠️  Zod strict 검증 예외(무시): ${zodErr?.message || zodErr}`);
+        }
+      }
+
+      // 🆕 P3 #2 — Agent self-audit INSERT 차단 게이트 (ERR-self-audit-gate-bypass@2026-04-27)
+      //   agent_audit_report.overall_verdict === 'blocked' 또는 CRITICAL unsupported claim 존재 시 INSERT 차단.
+      //   기존: post-audit 단계에서 warnings 만 추가됨 → INSERT 는 그대로 진행되어 환각 데이터가 DB에 유입.
+      //   해결: pre-INSERT 에서 verdict 검사. STRICT_AUDIT=true 면 report 누락도 차단.
+      {
+        const ar = pkg.agent_audit_report;
+        const STRICT_AUDIT = process.env.STRICT_AUDIT === 'true';
+        if (ar && typeof ar === 'object') {
+          const verdict = ar.overall_verdict;
+          const critical = Number(ar.unsupported_critical || 0);
+          const high = Number(ar.unsupported_high || 0);
+          if (verdict === 'blocked') {
+            validationErrors.push(`[AGENT_AUDIT_BLOCKED] agent_audit_report.overall_verdict=blocked (CRITICAL:${critical} HIGH:${high}) — claims[].supported=false 항목을 원문 근거로 정정 후 재시도`);
+          } else if (critical >= 1) {
+            validationErrors.push(`[AGENT_AUDIT_CRITICAL] CRITICAL unsupported claim ${critical}건 — INSERT 차단. 환각·축약 의심 claim 을 원문 근거로 정정`);
+          } else if (high >= 3) {
+            const msg = `[AGENT_AUDIT_HIGH] HIGH unsupported claim ${high}건 — 검토 필요`;
+            if (STRICT_AUDIT) validationErrors.push(msg);
+            else validationWarnings.push(msg);
+          }
+        } else if (STRICT_AUDIT) {
+          validationErrors.push(`[AGENT_AUDIT_MISSING] agent_audit_report 누락 — STRICT_AUDIT 모드에서는 필수`);
+        }
+      }
 
       if (validationWarnings.length > 0) {
         console.log(`\n⚠️  경고 (${pkg.title || '제목없음'}):`);
@@ -828,6 +960,8 @@ function createInserter({ landOperator, commissionRate, ticketingDeadline, destC
         excludes: pkg.excludes || [],
         notices_parsed: pkg.notices_parsed || null,
         special_notes: pkg.special_notes || null,
+        customer_notes: pkg.customer_notes || null,
+        internal_notes: pkg.internal_notes || null,
         product_highlights: pkg.product_highlights || [],
         product_summary: pkg.product_summary || null,
         product_tags: pkg.product_tags || [],
@@ -835,12 +969,20 @@ function createInserter({ landOperator, commissionRate, ticketingDeadline, destC
         itinerary: pkg.itinerary || [],
         accommodations: pkg.accommodations || [],
         raw_text: pkg.raw_text || '',
+        // W-final F3 — Rule Zero 강제. hash 누락 시 자동 계산.
+        raw_text_hash: pkg.raw_text_hash || (pkg.raw_text ? computeRawHash(pkg.raw_text) : null),
+        // W-final F3 — 파서 버전 기록. Agent 가 명시하면 그 값, 아니면 기본 버전.
+        parser_version: pkg.parser_version || PARSER_VERSION,
+        // W-final F1 — Agent self-audit 결과 (있으면 저장, 없으면 null → post-audit 에서 채워짐)
+        agent_audit_report: pkg.agent_audit_report || null,
         filename: pkg.filename || 'manual',
         file_type: pkg.file_type || 'manual',
         confidence: pkg.confidence ?? 0.9,
         land_operator_id: LAND_OPERATOR_ID,
         short_code,
         commission_rate: COMMISSION_RATE,
+        commission_fixed_amount: COMMISSION_FIXED_AMOUNT,
+        commission_currency: COMMISSION_FIXED_AMOUNT != null ? COMMISSION_CURRENCY : null,
         ticketing_deadline: TICKETING_DEADLINE,
         // Option B: INSERT 시점에 baseline 큐 자동 등록
         baseline_requested_at: new Date().toISOString(),
@@ -909,8 +1051,51 @@ function createInserter({ landOperator, commissionRate, ticketingDeadline, destC
         } else {
           console.log('ℹ️  post_register_audit.js 미발견 — 감사 생략');
         }
+
+        // 🚀 7-A. clean 자동 승인 (MANDATORY — ERR-process-violation-auto-approve)
+        //      approve_package.js 가 audit_status 를 읽어 clean 만 active 로 승격.
+        //      Dev 서버 독립 (Supabase 직접 UPDATE) → 서버 다운 중이어도 작동.
+        const approveScript = path.join(__dirname, '..', 'approve_package.js');
+        if (require('fs').existsSync(approveScript) && !process.env.SKIP_AUTO_APPROVE) {
+          console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('  🚀 Step 7-A: 자동 승인 (CLEAN 만)');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+          spawnSync('node', [approveScript, ...insertedIds], { stdio: 'inherit' });
+        }
+
+        // 📋 7-C. 결과값 도출 (MANDATORY — 사장님 재요청 방지)
+        //        실제 DB 에 들어간 판매 필드 풀덤프.
+        const dumpScript = path.join(__dirname, '..', 'dump_package_result.js');
+        if (require('fs').existsSync(dumpScript) && !process.env.SKIP_DUMP_RESULT) {
+          console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('  📋 Step 7-C: 결과값 도출 (판매 필드 풀덤프)');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+          spawnSync('node', [dumpScript, ...insertedIds], { stdio: 'inherit' });
+        }
+
+        // 📸 7-D. 시각 회귀 baseline 생성 (OPTIONAL — ERR-HET-* 렌더 회귀 차단)
+        //        fixtures.json upsert + playwright --update-snapshots 로 baseline 생성.
+        //        실패해도 등록 프로세스는 진행(상품 활성화 유지). dev 서버 off 시 자동 skip.
+        const visualScript = path.join(__dirname, '..', 'generate_visual_baseline.js');
+        if (require('fs').existsSync(visualScript) && !process.env.SKIP_VISUAL_BASELINE) {
+          // dev 서버가 안 떠 있으면 baseline 생성 불가 → 빠른 health check 후 스킵
+          // (playwright 의 reuseExistingServer 는 dev 서버 없으면 자동 기동하지만 5~10분 소요되어
+          //  등록 프로세스를 너무 오래 잡아둠. dev 서버가 이미 떠 있을 때만 실행.)
+          const http = require('http');
+          const ok = await new Promise(resolve => {
+            const req = http.get('http://localhost:3000', { timeout: 2000 }, res => { resolve(res.statusCode !== undefined); req.destroy(); });
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+          });
+          if (ok) {
+            spawnSync('node', [visualScript, ...insertedIds], { stdio: 'inherit' });
+          } else {
+            console.log('\nℹ️  Step 7-D 건너뜀: dev 서버(localhost:3000) 응답 없음. 수동 실행:');
+            console.log(`   npm run dev (다른 터미널) → node db/generate_visual_baseline.js ${insertedIds.join(' ')}`);
+          }
+        }
       } catch (e) {
-        console.log(`⚠️  감사 실행 실패: ${e.message}`);
+        console.log(`⚠️  감사/승인/덤프/baseline 실행 실패: ${e.message}`);
       }
     }
 
