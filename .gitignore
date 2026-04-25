@@ -44,3 +44,16 @@ temp_qingdao.txt
 
 # Supabase CLI 자동생성
 supabase/.temp/
+
+# 스크래치/실험 폴더 (LLM 출력 덤프, 실험 HTML, 임시 로그)
+scratch/
+
+# Playwright 실패 덤프 (재현용)
+test-results/
+
+# Claude Code 런타임 산출물
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# 외부 사이트 클립 / 임시 텍스트
+여행약관.txt
