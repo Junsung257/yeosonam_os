@@ -139,6 +139,20 @@ export default function CardNewsListPage() {
           >
             + 새 카드뉴스
           </button>
+          <button
+            onClick={() => router.push('/admin/marketing/card-news/new-html')}
+            className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
+            title="Claude Sonnet 4.6 + Puppeteer · 6장 1080×1080 HTML carousel"
+          >
+            + HTML 단건
+          </button>
+          <button
+            onClick={() => router.push('/admin/marketing/card-news/variants/new')}
+            className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700"
+            title="한 상품에 여러 각도 변형 5장 동시 생성 → Cover Critic 자동 점수 → 비교 → winner 발행"
+          >
+            + 변형 5장 (A/B)
+          </button>
         </div>
       </div>
 

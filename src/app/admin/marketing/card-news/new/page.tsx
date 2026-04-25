@@ -102,8 +102,16 @@ export default function CardNewsNewWizardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Brief 생성 실패');
+      const raw = await res.text();
+      let data: any = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {
+        throw new Error(
+          res.status === 504 || res.status === 502
+            ? 'Brief 생성이 오래 걸려 타임아웃됐습니다. 슬라이드 수를 줄이거나 잠시 후 다시 시도해 주세요.'
+            : `Brief 생성 실패 (HTTP ${res.status})`,
+        );
+      }
+      if (!res.ok) throw new Error(data?.error || `Brief 생성 실패 (HTTP ${res.status})`);
       setBrief(data.brief);
       setBriefProductId(data.product_id || null);
       setStep(2);
@@ -159,8 +167,16 @@ export default function CardNewsNewWizardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok || !data.card_news?.id) throw new Error(data.error || '카드뉴스 생성 실패');
+      const raw = await res.text();
+      let data: any = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {
+        throw new Error(
+          res.status === 504 || res.status === 502
+            ? '카드뉴스 생성이 오래 걸려 타임아웃됐습니다. 슬라이드 수를 줄이거나 잠시 후 다시 시도해 주세요.'
+            : `카드뉴스 생성 실패 (HTTP ${res.status})`,
+        );
+      }
+      if (!res.ok || !data?.card_news?.id) throw new Error(data?.error || `카드뉴스 생성 실패 (HTTP ${res.status})`);
       router.push(`/admin/marketing/card-news/${data.card_news.id}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err));
