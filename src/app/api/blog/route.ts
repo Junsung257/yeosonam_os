@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       const adminStatus = searchParams.get('status'); // draft|published|archived|null
       let adminQuery = supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, seo_title, status, category, published_at, created_at, travel_packages(title, destination)', { count: 'exact' })
+        .select('id, slug, seo_title, status, category, published_at, created_at, view_count, topic_source, travel_packages(title, destination)', { count: 'exact' })
         .eq('channel', 'naver_blog')
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -166,9 +166,29 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, blog_html, slug, seo_title, seo_description, og_image_url, status: reqStatus, category } = body;
+    const { id, blog_html, slug, seo_title, seo_description, og_image_url, status: reqStatus, category, force_revalidate } = body;
 
     if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
+
+    // force_revalidate: 콘텐츠 변경 없이 캐시만 강제 무효화 + 색인 재요청
+    // (ISR이 빈 결과로 stuck 됐을 때 운영자가 수동 복구하는 비상 경로)
+    if (force_revalidate === true) {
+      const { data: row, error: rowErr } = await supabaseAdmin
+        .from('content_creatives')
+        .select('slug, status, channel')
+        .eq('id', id)
+        .limit(1);
+      if (rowErr) throw rowErr;
+      const target = row?.[0];
+      if (!target?.slug) {
+        return NextResponse.json({ error: '글을 찾을 수 없거나 slug 없음' }, { status: 404 });
+      }
+      revalidatePath('/blog');
+      revalidatePath(`/blog/${target.slug}`);
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      const report = await notifyIndexing(`${baseUrl}/blog/${target.slug}`, baseUrl);
+      return NextResponse.json({ success: true, force_revalidate: true, slug: target.slug, indexing: report });
+    }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (blog_html !== undefined) updateData.blog_html = blog_html;

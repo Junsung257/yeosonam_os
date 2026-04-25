@@ -38,10 +38,18 @@ const nextConfig = {
   },
   // 상품 상세 라우트 통일 — /packages/[id] 를 단일 진실 소스로
   // /tour/[id] 와 /products/[id] 는 영구 리다이렉트(308)
+  // 추가: 정식 도메인은 www.yeosonam.com. non-www 는 SEO 신호 통합을 위해 영구 리다이렉트(308).
+  // (Vercel 기본 도메인 alias 는 307 임시 리다이렉트라 PageRank 가 통합되지 않음)
   async redirects() {
     return [
       { source: '/tour/:id', destination: '/packages/:id', permanent: true },
       { source: '/products/:id', destination: '/packages/:id', permanent: true },
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'yeosonam.com' }],
+        destination: 'https://www.yeosonam.com/:path*',
+        permanent: true,
+      },
     ];
   },
 };
