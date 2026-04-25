@@ -31,7 +31,7 @@
 | 서안 등 어셈블러 지역 | `.claude/commands/assemble-product.md` |
 | **관광지(attractions) 관리** | **`.claude/commands/manage-attractions.md`** |
 | **등록 후 상품 검증** | **`.claude/commands/validate-product.md`** (원문 ↔ A4 ↔ 모바일 3자 대조) |
-| **A4/모바일 렌더링 로직 추가·수정** | **`src/lib/itinerary-render.ts` 내부 공통 헬퍼에 추가** (렌더러 내부에 직접 로직 작성 금지, ERR-KUL-05) |
+| **A4/모바일 렌더링 로직 추가·수정** | **`src/lib/render-contract.ts` 의 `renderPackage()` 출력에 추가** (렌더러는 `view.*` 만 소비, pkg 직접 파싱 금지 — ERR-KUL-05) |
 | **DB 필드에 내용 넣기 전** | **`db/FIELD_POLICY.md`** — 고객 노출 vs 내부 필드 구분. 커미션/정산 메모는 special_notes 금지 (ERR-FUK-customer-leaks) |
 | 예약 상태 변경 | `src/lib/booking-state-machine.ts` |
 
@@ -63,10 +63,17 @@
 | 출발요일 정규화 (JSON/배열/평문 → "월/수") | `formatDepartureDays(val)` | `admin-utils.ts` |
 | 선택관광 라벨 공통 생성 ("2층버스 (싱가포르)") | `normalizeOptionalTourName(tour)` | `itinerary-render.ts` |
 | 선택관광 region별 그룹핑 | `groupOptionalToursByRegion(tours)` | `itinerary-render.ts` |
+| **🆕 A4/모바일 공통 렌더 계약 (CRC)** — 항공헤더·써차지 병합·쇼핑 출처·선택관광 | `renderPackage(pkg)` → `CanonicalView` | `render-contract.ts` |
+| **🆕 IATA 코드 → 항공사명 (A4·모바일 통합)** | `getAirlineName(flightCode)` | `render-contract.ts` |
+| **🆕 excludes 평탄화 (괄호·숫자콤마 보호)** | `flattenItems(items)` / `classifyExcludes(items)` | `render-contract.ts` |
 | **Package 정규 Zod 스키마 (SSOT)** | `PackageCoreSchema` / `PackageStrictSchema` | `package-schema.ts` |
 | **레거시 DB → 정규 변환 (Anti-Corruption Layer)** | `normalizePackage(raw)` / `normalizePhotos()` / `normalizeOptionalTours()` | `package-acl.ts` |
 | **LLM Structured Output 스키마 변환** | `zodToGeminiSchema()` / `zodToClaudeSchema()` | `llm-structured-output.ts` |
 | **LLM 호출 자동 재시도 (backoff)** | `withRetry(fn, { maxAttempts: 3 })` | `llm-retry.ts` |
+| **🆕 LLM + Zod refine + feedback loop (instructor 패턴)** | `callWithZodValidation({ schema, fn })` / `parseWithValidation({ basePrompt, caller, schema })` | `llm-validate-retry.ts` |
+| **🆕 CoVe claim-by-claim 검증 (post-audit E6, Gemini opt-in)** | `runCoVeAudit(pkg)` | `db/cove_audit.js` |
+| **🆕 flight/city 활동 파서 (A4·Mobile 공통)** | `parseFlightActivity(act)` / `parseCityFromActivity(act)` / `formatFlightLabel(code)` | `render-contract.ts` |
+| **🆕 API 필드 drift 감사 (ERR-20260418-10 재발 방지)** | `npm run audit:api-drift[:ci]` | `db/audit_api_field_drift.js` |
 | **Schema drift 전수 감사** | `npm run audit:drift` | `db/audit_schema_drift.js` |
 | **Visual + Text Regression 테스트** | `npm run test:visual` | `tests/visual/*.spec.ts` |
 | **ISR 캐시 즉시 무효화** | `POST /api/revalidate { paths, secret }` | `src/app/api/revalidate/route.ts` |

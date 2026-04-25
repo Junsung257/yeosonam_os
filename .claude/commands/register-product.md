@@ -53,7 +53,7 @@ const PKG1 = {
   optional_tours: [ /* { name, price_usd, price_krw, note } */ ],
   accommodations: ['호텔명(등급)'],
   product_highlights: ['핵심 특전 3개 이내'],
-  product_summary: '2~3줄 요약',
+  product_summary: '친근/구체/소통 톤의 추천 코멘트 — 모바일 "여소남의 추천 코멘트"에 그대로 노출. 슬래시 나열 금지. 3~5문장 200~400자. (feedback_product_summary_tone.md 참조)',
   product_tags: ['태그'],
   notices_parsed: [ /* {type:'CRITICAL'|'PAYMENT'|'POLICY'|'INFO', title, text} */ ],
   special_notes: null,

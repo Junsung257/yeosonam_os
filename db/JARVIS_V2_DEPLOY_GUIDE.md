@@ -320,7 +320,7 @@ gh pr edit <phase8-pr-number> --base main
 그리고 GitHub 웹에서 Phase 8 PR 머지.
 
 ### Step 6-B. Vercel 자동 배포 대기
-- `main` 에 머지하면 Vercel 이 알아서 빌드·배포 (2~5분)
+- `main` 에 머지하면 Vercel 이 알아서 빌드·배포 (2~5분)rm -rf .next
 - Vercel 대시보드: https://vercel.com/dashboard → 여소남 프로젝트
 - **Deployments** 탭에서 빌드 진행 상황 실시간 보기
 - 성공하면 초록색 ✓ + URL 표시
