@@ -216,8 +216,10 @@ export function groupForPoster(dates: PriceDate[], opts?: { globalMinOverride?: 
       }
     }
 
-    // 가격 오름차순 → 같은 가격이면 첫 날짜 오름차순
-    rows.sort((a, b) => a.price - b.price || (a.dates[0]?.day ?? 0) - (b.dates[0]?.day ?? 0));
+    // ERR-HET-price-table-desc-order@2026-04-22 — 월 내에서는 날짜 오름차순이 원문 순서와 일치.
+    // 이전 정렬(가격 오름차순 우선)은 8월 가격이 하락세일 때 8/26→8/5 역순으로 표시되어
+    // 원문(8/5→8/26) 과 어긋났음. 최저가는 isLowest 뱃지로 별도 강조되므로 정렬을 바꿔도 부각 유지.
+    rows.sort((a, b) => (a.dates[0]?.day ?? 0) - (b.dates[0]?.day ?? 0) || a.price - b.price);
 
     result.push({ month: `${monthNum}월`, rows });
   }

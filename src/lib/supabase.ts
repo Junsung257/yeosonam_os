@@ -1405,15 +1405,29 @@ export interface CardNews {
   ig_error?: string | null;
   ig_slide_urls?: string[] | null;
   // V2 컬럼 (20260423010000 migration)
-  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold' | null;
+  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold' | 'html' | null;
   template_version?: string | null;
   brand_kit_id?: string | null;
   // brief 스냅샷 (LLM ContentBrief V2 원본)
-  generation_config?: { brief?: unknown } | null;
+  generation_config?: { brief?: unknown; html_mode?: unknown } | null;
   // 기타 메타
   card_news_type?: 'product' | 'info';
   topic?: string | null;
   category_id?: string | null;
+  // HTML 모드 (20260427100000 migration · Claude Sonnet 4.6 + Puppeteer)
+  html_raw?: string | null;
+  html_generated?: string | null;
+  html_thinking?: string | null;
+  html_usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+    costUsd?: number;
+    model?: string;
+    durationMs?: number;
+    generatedAt?: string;
+  } | null;
 }
 
 export async function getCardNewsList(filters?: {

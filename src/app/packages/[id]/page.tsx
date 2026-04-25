@@ -2,12 +2,13 @@ import type React from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
 import DetailClient from './DetailClient';
+import ReviewsSection from '@/components/reviews/ReviewsSection';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 
-export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음)
+export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음) // refreshed 2026-04-22
 
 function getSupabase() {
   return createClient(
@@ -109,7 +110,7 @@ export default async function PackageDetailPage({
   let relevantAttractions: AttractionData[] = [];
   if (matchedNames.size > 0) {
     const { data: detail } = await sb.from('attractions')
-      .select('name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category')
+      .select('id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category')
       .in('name', Array.from(matchedNames));
     relevantAttractions = (detail ?? []) as unknown as AttractionData[];
   }
@@ -148,10 +149,19 @@ export default async function PackageDetailPage({
 
     relatedBlogPosts = (productScoped.data ?? []) as typeof relatedBlogPosts;
 
-    // 중복 slug 제거 + 상위 4개
+    // 중복 slug 제거 + 정보성 글만 + 상위 4개
+    // ERR-LB-DAD-editor-section@2026-04-20:
+    //   "여소남 에디터의 가이드" 섹션은 destination이 같은 다른 상품의 콘텐츠를 노출하는데,
+    //   angle_type='value' (가성비/가격형) 글은 다른 상품의 가격(73만원 등)을 우리 상품(110만)
+    //   페이지에서 광고하는 꼴이 되어 부적절. 정보성(가이드/날씨/준비물) 글만 노출.
+    const FORBIDDEN_ANGLES = ['value', 'price', 'sale', 'deal', 'discount', 'promotion', 'comparison'];
+    const PRICE_PATTERN = /\d+만원|\d+,\d{3},?\d*\s*원|\₩\s*\d|\d+만\s*~|특가|최저가/;
     const seenSlugs = new Set(relatedBlogPosts.map(p => p.slug));
     destinationBlogPosts = ((destinationScoped.data ?? []) as typeof destinationBlogPosts)
       .filter(p => !seenSlugs.has(p.slug))
+      .filter(p => !FORBIDDEN_ANGLES.includes(p.angle_type))
+      .filter(p => !PRICE_PATTERN.test(p.seo_title || ''))
+      .filter(p => !PRICE_PATTERN.test(p.seo_description || ''))
       .slice(0, 4);
   }
 
@@ -170,8 +180,28 @@ export default async function PackageDetailPage({
       });
     }
     if (unmatchedItems.length > 0) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
-      fetch(`${baseUrl}/api/unmatched`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: unmatchedItems }) }).catch(() => {});
+      // ERR-unmatched-queue-middleware-401@2026-04-21:
+      //   기존: fetch('https://yeosonam.com/api/unmatched') 로 self-call → middleware PUBLIC_PATHS 미등록
+      //         → 401 리다이렉트 → .catch(() => {}) 로 침묵 실패 → 2026-04-10 ~ 04-21 사이 등록된
+      //         16개 상품 전부 unmatched 자동 큐잉 누락.
+      //   해결: supabaseAdmin 으로 직접 upsert (middleware 독립).
+      const sbAdmin = getSupabase();
+      const upsertPayload = unmatchedItems.map(it => ({
+        activity: it.activity,
+        package_id: it.package_id,
+        package_title: it.package_title,
+        day_number: it.day_number,
+        country: it.country || null,
+        region: null,
+        occurrence_count: 1,
+        status: 'pending',
+      }));
+      sbAdmin
+        .from('unmatched_activities')
+        .upsert(upsertPayload, { onConflict: 'activity' })
+        .then(({ error }) => {
+          if (error) console.error('[unmatched upsert 실패]', error.message);
+        });
     }
   }
 
@@ -196,13 +226,19 @@ export default async function PackageDetailPage({
   }
 
   return (
-    <DetailClient
-      initialPackage={normalizedPkg}
-      initialAttractions={attractionsForClient}
-      packageId={id}
-      relatedBlogPosts={relatedBlogPosts}
-      destinationBlogPosts={destinationBlogPosts}
-      initialNotices={initialNotices}
-    />
+    <>
+      <DetailClient
+        initialPackage={normalizedPkg}
+        initialAttractions={attractionsForClient}
+        packageId={id}
+        relatedBlogPosts={relatedBlogPosts}
+        destinationBlogPosts={destinationBlogPosts}
+        initialNotices={initialNotices}
+      />
+      {/* 고객 후기 (approved 리뷰 있을 때만 렌더) */}
+      <div className="mx-auto max-w-4xl px-4">
+        <ReviewsSection packageId={id} limit={5} />
+      </div>
+    </>
   );
 }

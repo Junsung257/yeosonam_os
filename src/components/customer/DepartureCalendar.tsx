@@ -64,8 +64,46 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
 
   const [y, m] = viewMonth.split('-').map(Number);
 
+  // P2 #3 (2026-04-27): 출발 가능 월 chip row.
+  // 사장님 화면에서 5월만 보고 6월 출발일 존재 인지 못하는 케이스 방어 — 한눈에 모든 가능 월 노출.
+  const availableMonths = useMemo(() => {
+    const today = todayYMD();
+    const buckets = new Map<string, number>();
+    [...dateMap.entries()].forEach(([ymd, pd]) => {
+      if (ymd < today) return;
+      if (!pd || pd.price <= 0) return;
+      const ym = ymd.slice(0, 7);
+      buckets.set(ym, (buckets.get(ym) || 0) + 1);
+    });
+    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [dateMap]);
+
   return (
     <div className="w-full">
+      {/* 출발 가능 월 chip row (2개월 이상 출발일이 있을 때만) */}
+      {availableMonths.length >= 2 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {availableMonths.map(([ym, count]) => {
+            const [yy, mm] = ym.split('-').map(Number);
+            const isActive = ym === viewMonth;
+            return (
+              <button
+                key={ym}
+                type="button"
+                onClick={() => setViewMonth(ym)}
+                className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
+                  isActive
+                    ? 'bg-violet-600 text-white border-violet-600 font-bold shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300 hover:bg-violet-50'
+                }`}
+              >
+                {mm}월 <span className={isActive ? 'text-violet-100' : 'text-gray-400'}>({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* 월 네비 */}
       <div className="flex items-center justify-between mb-3">
         <button
@@ -150,7 +188,15 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
               </span>
               {pd && !isPast && (
                 <span className={`text-[9px] leading-tight font-medium ${isSelected ? 'text-white/90' : 'text-gray-600'}`}>
-                  {pd.price > 0 ? `${Math.round(pd.price / 10000)}만` : ''}
+                  {pd.price > 0
+                    ? (() => {
+                        // P0 #3 (2026-04-27): 반올림 시 579,000 → "58만" 으로 부풀려져 가격 사기 인상.
+                        // 항상 floor + 1자리 정밀도. 정수면 소수점 생략.
+                        const v = pd.price / 10000;
+                        const s = (Math.floor(v * 10) / 10).toFixed(1);
+                        return `${s.endsWith('.0') ? s.slice(0, -2) : s}만`;
+                      })()
+                    : ''}
                 </span>
               )}
               {isLowest && !isSelected && !isPast && (

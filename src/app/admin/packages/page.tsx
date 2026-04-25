@@ -6,6 +6,11 @@ import type { MarketingCopy } from '@/lib/ai';
 import { useVendors } from '@/hooks/useVendors';
 import { useMarketingTracker, PLATFORMS, PlatformKey } from '@/hooks/useMarketingTracker';
 import { usePosterStudio } from '@/hooks/usePosterStudio';
+import {
+  PACKAGE_STATUS_BADGE as STATUS_BADGE,
+  PACKAGE_STATUS_LABEL as STATUS_LABEL,
+  AUDIT_BADGE,
+} from '@/lib/package-status';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
 const ApprovalModal = dynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
@@ -235,32 +240,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   package: '패키지', golf: '골프', honeymoon: '허니문', cruise: '크루즈', theme: '테마',
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  pending:        'bg-yellow-50 text-yellow-700',
-  pending_review: 'bg-yellow-50 text-yellow-700',
-  approved:       'bg-emerald-50 text-emerald-700',
-  active:         'bg-emerald-50 text-emerald-700',
-  rejected:       'bg-red-50 text-red-700',
-  draft:          'bg-yellow-50 text-yellow-700',
-  archived:       'bg-slate-100 text-slate-500',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  pending:        '검토 대기',
-  pending_review: '검토 대기',
-  approved:       '판매 중',
-  active:         '판매 중',
-  rejected:       '거부됨',
-  draft:          '검토 대기',
-  archived:       '아카이브',
-};
-
-// 감사 게이트 배지 — post_register_audit 결과 시각화
-const AUDIT_BADGE: Record<string, { cls: string; label: string; title: string }> = {
-  clean:    { cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', label: '🟢 감사통과', title: 'E0~E4 모두 통과 — 즉시 승인 가능' },
-  warnings: { cls: 'bg-amber-50 text-amber-700 border border-amber-200',       label: '🟡 경고',     title: '경고 있음 — 리포트 확인 후 force=true 로 승인' },
-  blocked:  { cls: 'bg-red-50 text-red-700 border border-red-200',             label: '🔴 감사차단', title: '치명 에러 — 수정 후 post_register_audit.js 재실행 필요' },
-};
+// 상태/감사 배지 매핑은 SSOT (src/lib/package-status.ts) 에서 import — 위 import 블록 참조
 
 const LAND_OPERATORS = [
   '투어비', '여소남', '하나투어', '모두투어', '롯데JTB', '노랑풍선',
@@ -1287,7 +1267,7 @@ export default function PackagesPage() {
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           placeholder="상품명, 목적지, 랜드사 검색..."
-          className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          className="flex-1 px-3 py-2 border-2 border-admin-border rounded-lg text-admin-sm text-admin-text focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface transition-colors"
         />
         <select
           value={landOperatorFilter}

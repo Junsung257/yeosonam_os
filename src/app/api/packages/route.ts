@@ -96,16 +96,16 @@ async function generatePackageCode(
 
 // ── 상품 목록 JOIN 필드 (products ERP 데이터 포함) ─────────────────────────
 // ERR-20260418-10 — PACKAGE_LIST_FIELDS에 surcharges 누락 → A4 포스터 써차지 기간 증발
-// country, nights, accommodations도 함께 포함 (렌더링에 필요)
+// W-final F5 (2026-04-21) — drift 감사로 duration / cancellation_policy / normalized_surcharges 3건 추가 감지
 const PACKAGE_LIST_FIELDS = `
   id, title, destination, country, category, product_type, trip_style,
-  departure_days, departure_airport, airline, min_participants, ticketing_deadline,
+  duration, departure_days, departure_airport, airline, min_participants, ticketing_deadline,
   price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
-  inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges,
-  optional_tours, itinerary, special_notes, notices_parsed, land_operator, commission_rate,
+  inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges, normalized_surcharges,
+  optional_tours, itinerary, special_notes, customer_notes, internal_notes, notices_parsed, land_operator, commission_rate, commission_fixed_amount, commission_currency,
   product_tags, product_highlights, product_summary, itinerary_data,
   marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title,
-  seats_held, seats_confirmed, nights, accommodations,
+  seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
   audit_status, audit_report, audit_checked_at,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
@@ -217,11 +217,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '상품명(title)이 필요합니다.' }, { status: 400 });
     }
 
-    // ── ACL 정규화 → Zod 검증 (STRICT_VALIDATION=true일 때만 강제) ──
-    // 평상시: warning으로 유지 (기존 호환). STRICT 모드: 실패 시 draft 또는 400 반환.
-    if (process.env.STRICT_VALIDATION === 'true') {
+    // ── W-final F4: Zod Hard-Block (default ON, 2026-04-21) ──
+    // 이전: STRICT_VALIDATION 플래그 필요. 변경: **기본 ON**. 이제 POST 로 들어오는 모든 데이터가
+    //   ACL 정규화 → PackageCoreSchema 검증을 거친다. 실패 시 HTTP 400 (draft 저장 옵션은 유지).
+    //
+    //   우회는 `STRICT_VALIDATION=false` 환경변수로만 (개발/마이그레이션 용도, 프로덕션 금지).
+    //   `ALLOW_DRAFT=true` 시 검증 실패해도 draft 로 저장하고 validation_errors 에 기록.
+    //
+    //   Rule Zero 강제: raw_text 50자 미만이면 검증 이전에 400 반환.
+    const STRICT_OFF = process.env.STRICT_VALIDATION === 'false';
+    if (!body.raw_text || typeof body.raw_text !== 'string' || body.raw_text.length < 50) {
+      if (!STRICT_OFF) {
+        return NextResponse.json({
+          error: '[RuleZero] raw_text 누락 또는 의심스럽게 짧음. 원문 원본(50자 이상) 필수.',
+          field: 'raw_text',
+          length: body.raw_text?.length || 0,
+        }, { status: 400 });
+      }
+    }
+    if (!STRICT_OFF) {
       try {
-        // 동적 import로 bundle 영향 최소화
         const { normalizePackage } = await import('@/lib/package-acl');
         const { validatePackageLoose, formatZodErrors } = await import('@/lib/package-schema');
         const normalized = normalizePackage(body);
@@ -229,18 +244,26 @@ export async function POST(request: NextRequest) {
         if (!result.success && result.errors) {
           const errMsgs = formatZodErrors(result.errors);
           if (process.env.ALLOW_DRAFT === 'true') {
-            // draft로 저장하고 에러는 validation_errors 필드에 기록
+            // draft 로 저장하고 에러는 validation_errors 필드에 기록 — 어드민이 수동 수정
             body.status = 'draft';
             body.validation_errors = errMsgs;
+            console.warn(`[POST /api/packages] draft 저장 (ALLOW_DRAFT=true): ${errMsgs.length}건 위반`);
           } else {
+            // Hard block — 어떤 프론트엔드/외부 API 도 불량 데이터 INSERT 불가
             return NextResponse.json({
-              error: 'Zod 검증 실패',
+              error: 'Zod 검증 실패 (W-final F4 hard-block)',
               issues: errMsgs,
+              hint: '프론트엔드에서 오는 데이터라도 동일 검증 적용. 임시 우회는 STRICT_VALIDATION=false (비권장).',
             }, { status: 400 });
           }
         }
       } catch (e) {
-        console.warn('[POST /api/packages] Zod validation 스킵:', e instanceof Error ? e.message : e);
+        // ACL/Zod 모듈 import 자체 실패 — 이건 심각 (스키마 파일 결실)
+        console.error('[POST /api/packages] Zod 모듈 로드 실패:', e instanceof Error ? e.message : e);
+        return NextResponse.json({
+          error: 'Zod 검증기 로드 실패 — 서버 설정 오류',
+          detail: e instanceof Error ? e.message : String(e),
+        }, { status: 500 });
       }
     }
 

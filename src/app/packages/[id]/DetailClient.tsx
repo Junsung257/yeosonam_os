@@ -7,8 +7,13 @@ import { useSearchParams } from 'next/navigation';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { normalizeOptionalTourName, groupOptionalToursByRegion } from '@/lib/itinerary-render';
+import {
+  renderPackage, getAirlineName,
+  parseCityFromActivity, parseFlightActivity, formatFlightLabel,
+  type CanonicalView,
+} from '@/lib/render-contract';
 import type { NoticeBlock } from '@/lib/standard-terms';
-import { NOTICE_DOT_COLOR, getSourceBadgeColor } from '@/lib/standard-terms';
+import { NOTICE_DOT_COLOR, NOTICE_CARD_TONE, getSourceBadgeColor } from '@/lib/standard-terms';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
@@ -54,7 +59,10 @@ interface Package {
   surcharges?: { name?: string; start?: string; end?: string; amount?: number; currency?: string; unit?: string }[];
   optional_tours?: { name: string; price?: string; price_usd?: number }[];
   product_highlights?: string[];
+  /** @deprecated 고객 fallback 경로 제거됨. customer_notes/internal_notes 사용. */
   special_notes?: string;
+  customer_notes?: string;
+  internal_notes?: string;
   notices_parsed?: (string | { type: string; title: string; text: string })[];
   itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
   display_title?: string;
@@ -68,41 +76,9 @@ interface AttractionInfo {
   country?: string; region?: string;
 }
 
-const AIRLINES: Record<string, string> = { BX: '에어부산', LJ: '진에어', OZ: '아시아나', KE: '대한항공', '7C': '제주항공', TW: '티웨이', VJ: '비엣젯', ZE: '이스타항공', QV: '라오항공', D7: '에어아시아', OD: '바틱에어', '5J': '세부퍼시픽', VN: '베트남항공', MU: '중국동방항공', SC: '산동항공' };
-function getAirlineName(code?: string) { if (!code) return null; const m = code.match(/^([A-Z]{2}|\d[A-Z])/); return m ? AIRLINES[m[1]] || code : code; }
-function getFlightLabel(transport?: string) { if (!transport) return ''; const name = getAirlineName(transport); return name && name !== transport ? `${name} ${transport}` : transport; }
-// ERR-FUK-flight — "BX143 후쿠오카" 같이 flight code prefix 포함 시 도시만 추출
-function parseCityFromActivity(activity?: string) {
-  if (!activity) return null;
-  // 먼저 flight code 제거 (예: "BX143 후쿠오카" → "후쿠오카")
-  const cleaned = activity.replace(/^[A-Z0-9]{2,5}\s+/, '').trim();
-  const m = cleaned.match(/^(.+?)[\s·]*(국제)?공항/);
-  return m ? m[1].trim() : null;
-}
-
-// ERR-20260418-22 + ERR-FUK-flight-arrival — flight activity 파싱
-// 입력 예 1: "BX792 타이페이 출발 → 부산(김해) 도착 19:55"
-// 입력 예 2: "BX148 김해국제공항 출발 → 후쿠오카국제공항 08:25 도착" (시간이 도착 앞)
-function parseFlightActivity(activity?: string) {
-  if (!activity) return { depCity: null, arrCity: null, arrTime: null };
-  const arrowIdx = activity.search(/[→↦⇒]/);
-  if (arrowIdx < 0) return { depCity: null, arrCity: null, arrTime: null };
-  const before = activity.slice(0, arrowIdx);
-  const after = activity.slice(arrowIdx + 1);
-  // 앞쪽: "BX792 타이페이 출발" → "타이페이" / "김해국제공항 출발" → "김해"
-  const depMatch = before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()\s]+?)\s*(?:국제)?공항?\s*출발/)
-    || before.match(/([가-힣A-Za-z()]+)\s*(?:국제)?공항?\s*출발/);
-  // 뒤쪽: "후쿠오카국제공항 08:25 도착" / "부산(김해) 도착 19:55" / "타이페이 국제공항 도착"
-  // 도시 다음에 공항+(시간)?+도착 순서 허용
-  const arrMatch = after.match(/^\s*([가-힣A-Za-z()]+(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항?\s*(?:\d{1,2}:\d{2}\s*)?도착/);
-  // 도착 시간: "도착 HH:MM" 또는 "HH:MM 도착" 양방향 지원
-  const arrTimeMatch = after.match(/도착\s+(\d{1,2}:\d{2})/) || after.match(/(\d{1,2}:\d{2})\s*도착/);
-  return {
-    depCity: depMatch?.[1]?.trim() || null,
-    arrCity: arrMatch?.[1]?.trim() || null,
-    arrTime: arrTimeMatch?.[1] || null,
-  };
-}
+// W-final F2 — flight/city 파서는 render-contract.ts 단일 소스로 이관.
+// 로컬 복사본 제거됨. import 참조:
+//   parseCityFromActivity, parseFlightActivity, formatFlightLabel, getAirlineName
 
 const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '선택관광', '유의사항'] as const;
 
@@ -251,6 +227,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
 
+  // W1 CRC — 렌더링 계약 단일 진입점. pkg 필드를 렌더러 내부에서 다시 파싱하지 말 것 (ERR-KUL-05).
+  const view: CanonicalView = renderPackage(pkg as Parameters<typeof renderPackage>[0]);
+
   const days: DaySchedule[] = normalizeDays(pkg.itinerary_data);
   const tiers = filterTiersByDepartureDays(pkg.price_tiers || [] as any, pkg.departure_days) as PriceTier[];
   const minTierPrice = tiers.length > 0 ? Math.min(...tiers.map(t => t.adult_price || Infinity)) : Infinity;
@@ -260,8 +239,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const minPrice = Math.min(minTierPrice, minDatePrice, pkg.price || Infinity);
   const allPriceDates = getEffectivePriceDates(pkg as any);
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
-  const displayPrice = selectedTier?.adult_price || selectedDateInfo?.price || minPrice;
-  const airlineName = getAirlineName(pkg.airline);
+  // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
+  // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
+  const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
+  const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
 
   // 히어로 사진: destination 관광지 중 사진 있는 첫 번째 항목
   const heroPhoto = attractions.find(a => a.photos && a.photos.length > 0 && a.country && pkg.destination?.includes(a.country))?.photos?.[0];
@@ -402,15 +383,28 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       </section>
 
       {/* ═══ 상품 감성 스토리 (product_summary 인젝션) ═══ */}
-      {pkg.product_summary && (
-        <div className="px-5 mt-8 border-b border-gray-100 pb-6 relative">
-          <div className="absolute top-0 right-5 text-4xl opacity-5">❞</div>
-          <h2 className="text-lg font-extrabold text-gray-900 mb-2">여소남의 추천 코멘트 ✍️</h2>
-          <p className="text-sm text-gray-600 leading-loose break-keep">
-            {pkg.product_summary}
-          </p>
-        </div>
-      )}
+      {/* product_summary 포맷 (feedback_product_summary_tone.md):
+          [이모지+따옴표 헤더 한 줄]\n\n[본문 2~3문장]
+          첫 \n\n으로 분리: 첫 단락은 헤더 강조, 나머지는 본문 */}
+      {pkg.product_summary && (() => {
+        const parts = pkg.product_summary.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+        const header = parts.length > 1 ? parts[0] : null;
+        const body = parts.length > 1 ? parts.slice(1).join('\n\n') : pkg.product_summary;
+        return (
+          <div className="px-5 mt-8 border-b border-gray-100 pb-6 relative">
+            <div className="absolute top-0 right-5 text-4xl opacity-5">❞</div>
+            <h2 className="text-lg font-extrabold text-gray-900 mb-3">여소남의 추천 코멘트 ✍️</h2>
+            {header && (
+              <p className="text-base font-bold text-violet-700 mb-3 leading-snug break-keep">
+                {header}
+              </p>
+            )}
+            <p className="text-sm text-gray-600 leading-loose break-keep whitespace-pre-line">
+              {body}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* ═══ 아이콘 정보바 (모두투어 스타일) ═══ */}
       <div className="flex justify-around py-5 px-4 mt-4 border-b border-gray-100">
@@ -459,7 +453,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <div className="w-12 h-[1px] bg-violet-300" />
                     <div className="w-1.5 h-1.5 rounded-full bg-violet-600" />
                   </div>
-                  <span className="text-xs text-gray-500 mt-0.5">{getFlightLabel(flightDep.transport)} 직항</span>
+                  <span className="text-xs text-gray-500 mt-0.5">{formatFlightLabel(flightDep.transport)} 직항</span>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500 mb-0.5">도착</p>
@@ -488,7 +482,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <div className="w-12 h-[1px] bg-orange-200" />
                     <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
                   </div>
-                  <span className="text-xs text-gray-500 mt-0.5">{getFlightLabel(flightReturn.transport)} 직항</span>
+                  <span className="text-xs text-gray-500 mt-0.5">{formatFlightLabel(flightReturn.transport)} 직항</span>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500 mb-0.5">도착</p>
@@ -579,65 +573,72 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 포함/불포함 ═══ */}
-      {(pkg.inclusions?.length || pkg.excludes?.length) ? (
+      {/* ═══ 포함/불포함/써차지 ═══ */}
+      {/* Phase 1 CRC: view.inclusions 소비 — 아이콘 매칭 완료된 basic + 프로그램 분류 */}
+      {(view.inclusions.basic.length || view.inclusions.program.length || view.excludes.basic.length || view.surchargesMerged.length) ? (
         <div className="px-4 py-6 space-y-3">
-          {pkg.inclusions && pkg.inclusions.length > 0 && (
+          {(view.inclusions.basic.length > 0 || view.inclusions.program.length > 0) && (
             <div className="bg-violet-50/50 rounded-2xl p-4">
               <h3 className="text-xs font-bold text-violet-900 mb-3">✅ 포함 사항</h3>
               <ul className="space-y-1.5">
-                {pkg.inclusions.map((item, i) => (
-                  <li key={i} className="text-sm text-violet-800 flex gap-2 leading-relaxed"><span className="shrink-0 text-violet-400">•</span>{item}</li>
+                {view.inclusions.basic.map((item, i) => (
+                  <li key={i} className="text-sm text-violet-800 flex gap-2 leading-relaxed">
+                    <span className="shrink-0 text-base leading-snug">{item.icon}</span>{item.text}
+                  </li>
+                ))}
+                {view.inclusions.program.length > 0 && (
+                  <li className="pt-2 mt-1.5 border-t border-violet-100 text-xs text-violet-600 leading-relaxed">
+                    <span className="mr-1">✨</span>{view.inclusions.program.join(' · ')}
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+          {/* W1 CRC — 불포함/써차지 병합은 view에서 이미 해결됨 (ERR-20260418-14/24) */}
+          {view.excludes.basic.length > 0 && (
+            <div className="bg-red-50/30 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-red-800 mb-3">❌ 불포함 사항</h3>
+              <ul className="space-y-1.5">
+                {view.excludes.basic.map((item, i) => (
+                  <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed"><span className="shrink-0 text-red-300">•</span>{item}</li>
                 ))}
               </ul>
             </div>
           )}
-          {pkg.excludes && pkg.excludes.length > 0 && (() => {
-            // ERR-20260418-24 — 써차지 객체 배열이 있을 때 불포함의 단순 "써차지" 문구는 중복이므로 제거
-            const hasSurchargeObjects = (pkg.surcharges?.length ?? 0) > 0;
-            const filteredExcludes = pkg.excludes.filter(item => {
-              if (!hasSurchargeObjects) return true;
-              const trimmed = item.trim();
-              const isBareSurcharge =
-                /^\s*(?:하계\s*)?써차지\s*(?:\(?\s*\$?\s*\d*\s*\/?\s*(?:인|박|인\/박)?\s*\)?)?\s*$/i.test(trimmed);
-              return !isBareSurcharge;
-            });
-            if (filteredExcludes.length === 0) return null;
+          {view.surchargesMerged.length > 0 && (() => {
+            // 기간(start/end)이 있는 써차지가 하나라도 있으면 "기간별" 제목 + 안내문구 표시
+            const hasPeriod = view.surchargesMerged.some(s => s.structured?.start);
             return (
-              <div className="bg-red-50/30 rounded-2xl p-4">
-                <h3 className="text-xs font-bold text-red-800 mb-3">❌ 불포함 사항</h3>
+              <div className="bg-orange-50/50 rounded-2xl p-4">
+                <h3 className="text-xs font-bold text-orange-800 mb-3">💲 {hasPeriod ? '기간별 추가 요금' : '추가 요금'}</h3>
                 <ul className="space-y-1.5">
-                  {filteredExcludes.map((item, i) => (
-                    <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed"><span className="shrink-0 text-red-300">•</span>{item}</li>
+                  {view.surchargesMerged.map((s, i) => (
+                    <li key={i} className="text-sm text-orange-800 flex gap-2 leading-relaxed">
+                      <span className="shrink-0 text-orange-300">•</span>
+                      {s.structured ? (
+                        <span>
+                          <b>{s.name || '추가요금'}</b>
+                          {s.period && <span className="text-orange-600"> ({s.period})</span>}
+                          {s.priceLabel && <span className="font-semibold">: {s.priceLabel}</span>}
+                        </span>
+                      ) : (
+                        <span>{s.label}</span>
+                      )}
+                    </li>
                   ))}
                 </ul>
+                {hasPeriod && (
+                  <p className="text-[11px] text-orange-600 mt-2 italic">※ 위 기간 출발 시 1박당 해당 금액이 추가됩니다.</p>
+                )}
               </div>
             );
           })()}
-          {/* ERR-20260418-23: 기간별 추가 요금 (써차지 객체 배열) */}
-          {pkg.surcharges && pkg.surcharges.length > 0 && (
-            <div className="bg-orange-50/50 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-orange-800 mb-3">💲 기간별 추가 요금</h3>
-              <ul className="space-y-1.5">
-                {pkg.surcharges.map((s, i) => {
-                  const period = s.start && s.end
-                    ? `${s.start.slice(5).replace('-', '/')} ~ ${s.end.slice(5).replace('-', '/')}`
-                    : (s.start ? s.start.slice(5).replace('-', '/') : '');
-                  const currency = s.currency === 'USD' ? '$' : (s.currency || '');
-                  const priceStr = s.amount != null ? `${currency}${s.amount}${s.unit ? `/${s.unit}` : ''}` : '';
-                  return (
-                    <li key={i} className="text-sm text-orange-800 flex gap-2 leading-relaxed">
-                      <span className="shrink-0 text-orange-300">•</span>
-                      <span>
-                        <b>{s.name || '추가요금'}</b>
-                        {period && <span className="text-orange-600"> ({period})</span>}
-                        {priceStr && <span className="font-semibold">: {priceStr}</span>}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="text-[11px] text-orange-600 mt-2 italic">※ 위 기간 출발 시 1박당 해당 금액이 추가됩니다.</p>
+          {/* ERR-HET-mobile-shopping-missing@2026-04-22 — A4 에는 있지만 모바일엔 쇼핑센터 섹션이 누락돼
+              품격 상품의 "쇼핑 3회" 정보가 고객 화면에 안 노출됨. view.shopping(CRC) 를 소비해 추가. */}
+          {view.shopping.text && !/노쇼핑/.test(view.shopping.text) && (
+            <div className="bg-purple-50/50 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-purple-800 mb-2">🛍️ 쇼핑센터</h3>
+              <p className="text-sm text-purple-900 leading-relaxed">{view.shopping.text}</p>
             </div>
           )}
         </div>
@@ -670,7 +671,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
 
           {/* 타임라인 — 모든 day를 연속 렌더링 */}
-          {days.map(currentDay => (
+          {(() => {
+            // ERR-HET-attraction-global-dedup@2026-04-22 — 한 상품의 일정 전체에서 동일 관광지 카드는 1번만 노출.
+            // 1차 수정(ERR-HET-attraction-day-duplicate)은 DAY 범위 dedup 이었지만, DAY1 숙박 → DAY2 아침까지
+            // 같은 관광지에서 활동이 이어지는 경우(예: 시라무런 초원 2일 연속) 카드가 두 번 나와 고객이 중복으로 오인.
+            // 이제 days.map 바깥에서 Set 을 공유해 **전 DAY 에서 처음 매칭된 activity에만 카드**, 이후는 텍스트만.
+            const seenAttractionIds = new Set<string>();
+            return days.map(currentDay => (
             <div key={currentDay.day} ref={el => { dayRefs.current[currentDay.day] = el; }} data-day={currentDay.day} className="scroll-mt-[160px] mb-10">
               {/* Day 헤더 */}
               <div className="flex items-center gap-2 mb-4">
@@ -688,7 +695,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const skipMatch = item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
                     /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|추천|선택관광/.test(item.activity);
                   // ERR-20260417-03 — matchAttractions(복수)로 콤마 관광지도 매칭, 첫 결과 사용
-                  const attr = skipMatch ? null : (matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null);
+                  const attrCandidate = skipMatch ? null : (matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null);
+                  // DAY 내 dedup: 이미 같은 DAY 에 표시한 관광지면 카드 생략 (activity 텍스트는 유지).
+                  // 키는 id 우선, 없으면 name. page.tsx 의 attractions select 에 id 가 빠져 있어도 name 으로 안전.
+                  const candidateKey = attrCandidate?.id || attrCandidate?.name || null;
+                  const isDuplicateInDay = !!(candidateKey && seenAttractionIds.has(candidateKey));
+                  const attr = isDuplicateInDay ? null : attrCandidate;
+                  if (candidateKey) seenAttractionIds.add(candidateKey);
                   const hasPhotos = attr?.photos && attr.photos.length > 0;
 
                   // 항공편은 하나투어 스타일 카드로 렌더링 (첫날/마지막날만, 중간DAY는 일반 표시)
@@ -729,7 +742,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             <div className="flex-1 flex flex-col justify-between py-0.5">
                               <div>
                                 <p className="font-bold text-sm text-gray-900">{depCity} 출발</p>
-                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-violet-600' : 'text-orange-500'}`}>✈ {getFlightLabel(item.transport)} 직항</p>
+                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-violet-600' : 'text-orange-500'}`}>✈ {formatFlightLabel(item.transport)} 직항</p>
                               </div>
                               <p className="font-bold text-sm text-gray-900">{arrCityParsed} 도착</p>
                             </div>
@@ -740,12 +753,28 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   }
 
                   // 도착 아이템은 flight 카드에 이미 포함되므로 스킵
-                  if (item.type !== 'flight' && (
-                    /국제공항 도착|공항 도착/.test(item.activity) ||
-                    (currentDay.day === 1 && /청도 도착\/가이드 미팅/.test(item.activity.replace(/\s/g, '')))
-                  )) {
-                    return null;
-                  }
+                  // ERR-HSN-flight-dup-render@2026-04-21: 출발/도착이 개별 flight activity 로
+                  // 분리 등록된 레거시 데이터 방어. type==='flight' 도 스킵 대상에 포함.
+                  const isArrivalFlightItem =
+                    item.type === 'flight' &&
+                    /도착/.test(item.activity) &&
+                    !/출발/.test(item.activity) &&
+                    sIdx > 0 &&
+                    currentDay.schedule?.[sIdx - 1]?.type === 'flight';
+                  if (isArrivalFlightItem) return null;
+                  // P2 (2026-04-27): "X공항 도착" 만 있는 단순 도착 행만 skip.
+                  // "청도공항 도착 후 가이드 미팅 ..." 처럼 도착 뒤 추가 활동이 있으면 보존
+                  // (이전 정규식 /공항 도착/ 이 "후 가이드 미팅" 같은 핵심 정보까지 삼키던 버그 수정).
+                  const isSimpleArrival = item.type !== 'flight' && (() => {
+                    const a = item.activity.trim();
+                    // 끝까지 도착으로 끝나는 단순 행만 skip
+                    if (/^[가-힣\s]*공항\s*도착\s*$/.test(a)) return true;
+                    if (/^[가-힣\s]*국제공항\s*도착\s*$/.test(a)) return true;
+                    // 호환: 청도 도착/가이드 미팅 (슬래시 단일 행) — 기존 케이스
+                    if (currentDay.day === 1 && /^청도도착\/가이드미팅/.test(a.replace(/\s/g, ''))) return true;
+                    return false;
+                  })();
+                  if (isSimpleArrival) return null;
 
                   // 호텔 투숙/휴식 텍스트 → 하단 호텔 카드에서 통합 표시하므로 스킵
                   // 단, "*과일 도시락" 같은 추가 정보는 보존
@@ -790,13 +819,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
                         {/* ═══ 관광지 블록 (하나투어 스타일) ═══ */}
                         {attr && (() => {
-                          // 포함사항에 해당 관광지/활동이 있으면 "스페셜포함"
-                          const inclusions = pkg.inclusions || [];
+                          // Phase 1 CRC: view.inclusions.flat 소비 (콤마 분리·괄호 보호 완료)
+                          const inclusions = view.inclusions.flat;
                           const isIncluded = inclusions.some(inc =>
                             item.activity.includes(inc) || inc.includes(attr.name) || attr.name.includes(inc)
                             || (/마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i)))
                           );
-                          const effectiveBadge = isIncluded ? 'special' : attr.badge_type;
+                          // ERR-LB-DAD-optional-badge@2026-04-20:
+                          //   attr.badge_type='optional' (attractions DB 분류용)인 항목이
+                          //   실제 schedule item.type='normal' (포함 활동)일 때 "선택관광" 배지가 잘못 표시되어
+                          //   고객이 "추가 비용?" 오해할 수 있는 사고 방지.
+                          //   schedule item.type이 명시적으로 'optional'일 때만 선택관광으로 인정.
+                          const isScheduleOptional = item.type === 'optional';
+                          const effectiveBadge = isIncluded
+                            ? 'special'
+                            : (attr.badge_type === 'optional' && !isScheduleOptional)
+                              ? 'tour'
+                              : attr.badge_type;
                           return (
                           <div className="mt-2 text-left">
                             {/* 관광지명 */}
@@ -857,32 +896,62 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   );
                 })}
 
-                {/* 호텔 숙소 (호텔명이 있고, 마지막 날이 아닐 때만 표시) */}
-                {currentDay.hotel?.name && currentDay.day !== days[days.length - 1]?.day && (
-                  <div className="relative pl-8">
-                    <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#340897] ring-2 ring-[#e6deff] z-10" />
-                    <div>
-                      <h3 className="font-bold text-base text-gray-900 mb-2">호텔 투숙 및 휴식</h3>
-                      <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-200 to-violet-400 flex items-center justify-center text-xl shrink-0">🏨</div>
-                        <div>
-                          {currentDay.hotel.grade && (
-                            <div className="flex flex-row gap-0.5 mb-0.5 items-center">
-                              {Array.from({ length: parseInt(currentDay.hotel.grade) || 4 }).map((_, i) => (
-                                <span key={i} className="text-amber-400 text-xs leading-none">★</span>
-                              ))}
-                            </div>
-                          )}
-                          <h4 className="font-bold text-xs text-gray-800">{currentDay.hotel.name}</h4>
-                          {currentDay.hotel.note && <p className="text-xs text-gray-500 mt-0.5">{currentDay.hotel.note}</p>}
+                {/* 호텔 숙소 — Phase 1 CRC: view.days[i].hotelCard 소비.
+                    하드코딩 "호텔 투숙 및 휴식" 제거 → activity text 기반 동적 헤더.
+                    note 는 hotel.note + activity extras(*로 시작) 통합됨. */}
+                {(() => {
+                  const viewDay = view.days.find(v => v.day === currentDay.day);
+                  const card = viewDay?.hotelCard;
+                  if (!card?.name) return null;
+                  return (
+                    <div className="relative pl-8">
+                      <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#340897] ring-2 ring-[#e6deff] z-10" />
+                      <div>
+                        <h3 className="font-bold text-base text-gray-900 mb-2">{card.title}</h3>
+                        <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
+                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-200 to-violet-400 flex items-center justify-center text-xl shrink-0">
+                            {/* ERR-HET-hotel-ger-star@2026-04-22 — 게르는 성급 표기가 없는 숙소라 별 대신 🛖 아이콘 */}
+                            {card.grade && /게르/.test(card.grade) ? '🛖' : '🏨'}
+                          </div>
+                          <div>
+                            {card.grade && (() => {
+                              // "5성급"/"준5성급"/"4성급" 등에서 숫자만 추출. 숫자 없으면 텍스트 배지로 표시.
+                              // ERR-HET-hotel-grade-ambiguity@2026-04-22 — 별만 5개 있으면 "준5성"인지 "정5성"
+                              // 인지 고객이 혼동. 별 옆에 grade 문자열 원본("준5성급"/"5성급") 을 라벨로 병기.
+                              const m = card.grade.match(/(\d+)\s*성/);
+                              const starCount = m ? parseInt(m[1], 10) : null;
+                              if (Number.isFinite(starCount) && starCount! > 0) {
+                                const label = card.grade.trim();
+                                return (
+                                  <div className="flex flex-row gap-0.5 mb-0.5 items-center">
+                                    {Array.from({ length: starCount! }).map((_, i) => (
+                                      <span key={i} className="text-amber-400 text-xs leading-none">★</span>
+                                    ))}
+                                    <span className="text-[10px] text-gray-600 ml-1.5 font-semibold">{label}</span>
+                                  </div>
+                                );
+                              }
+                              // 숫자 없는 등급 (게르 등) — 별 대신 라벨 배지
+                              return (
+                                <span className="inline-block text-[10px] text-gray-600 bg-gray-200 px-1.5 py-0.5 rounded mb-0.5">{card.grade}</span>
+                              );
+                            })()}
+                            <h4 className="font-bold text-xs text-gray-800">{card.name}</h4>
+                            {card.note && <p className="text-xs text-gray-500 mt-0.5">{card.note}</p>}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
-                {/* 식사 */}
-                {currentDay.meals && (
+                {/* 식사 — P0 #3 (2026-04-27): 모든 식사 미포함 + note 도 없으면 섹션 숨김 (귀국일 등) */}
+                {currentDay.meals && (() => {
+                  const m = currentDay.meals;
+                  const hasAny = m.breakfast || m.lunch || m.dinner ||
+                    !!(m.breakfast_note || m.lunch_note || m.dinner_note);
+                  return hasAny;
+                })() && (
                   <div className="relative pl-10">
                     <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full bg-orange-400 flex items-center justify-center ring-4 ring-white z-10">
                       <span className="text-xs">🍽️</span>
@@ -907,7 +976,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               </div>
             </div>
             </div>
-          ))}
+            ));
+          })()}
         </div>
       )}
 
@@ -982,7 +1052,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           // 4-level 약관 해소 결과를 서버(page.tsx)에서 initialNotices 로 주입.
           //   Tier 1 플랫폼 → Tier 2 랜드사 공통 → Tier 3 랜드사×상품타입 → Tier 4 상품 특약.
           //   같은 notice.type 이면 상위 tier 가 override. 새 type 은 append.
-          if (initialNotices.length === 0 && !pkg.special_notes) return null;
+          if (initialNotices.length === 0 && !pkg.customer_notes) return null;
           const hasSpecialTerms = initialNotices.some(n => (n._tier ?? 1) >= 3);
           return (
             <div>
@@ -999,10 +1069,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
                     const badgeColor = getSourceBadgeColor(notice._source, notice._tier);
                     const isOverride = (notice._tier ?? 1) >= 2;
+                    const tone = NOTICE_CARD_TONE[notice.type] || NOTICE_CARD_TONE.INFO;
                     return (
-                      <div key={idx} className="border border-gray-100 rounded-xl overflow-hidden">
+                      <div key={idx} className={`border border-gray-100 border-l-4 ${tone.border} ${tone.bg} rounded-xl overflow-hidden`}>
                         <button onClick={() => toggleNotice(idx)}
-                          className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-gray-50 transition">
+                          className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-white/60 transition">
                           <div className={`w-2 h-2 rounded-full shrink-0 ${NOTICE_DOT_COLOR[notice.type] || NOTICE_DOT_COLOR.INFO}`} />
                           <span className="text-xs font-bold text-gray-700 flex-1">{notice.title}</span>
                           {isOverride && notice._source && (
@@ -1024,8 +1095,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   })}
                   <p className="text-xs text-gray-500 italic mt-2">※ 본 약관은 여행상품 표준 기준에 상품·랜드사별 특약을 반영해 해소된 결과입니다. 예약 시점 스냅샷이 별도 [예약 안내문]으로 발송됩니다.</p>
                 </div>
-              ) : pkg.special_notes ? (
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.special_notes}</p>
+              ) : pkg.customer_notes ? (
+                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.customer_notes}</p>
               ) : null}
             </div>
           );

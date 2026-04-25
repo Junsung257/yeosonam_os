@@ -92,7 +92,12 @@ export interface RenderPackageInput {
   excludes?: string[] | null;
   surcharges?: SurchargeObject[] | null;
   optional_tours?: OptionalTourInput[] | null;
+  /** @deprecated 2026-04-27 — 고객 노출 fallback 경로에서 제거됨. customer_notes 또는 internal_notes 사용. */
   special_notes?: string | null;
+  /** 고객 노출 OK 자유 텍스트. 운영성 키워드는 W21 검증에서 차단. */
+  customer_notes?: string | null;
+  /** 운영 전용 메모. 고객 노출 차단 (어드민 전용). */
+  internal_notes?: string | null;
   inclusions?: string[] | null;
   itinerary_data?: {
     meta?: {
@@ -149,7 +154,7 @@ export interface CanonicalShopping {
   /** 고객 노출용 텍스트. null이면 섹션 숨김. */
   text: string | null;
   /** 출처 (감사/디버깅용) */
-  source: 'highlights' | 'special_notes' | null;
+  source: 'highlights' | 'customer_notes' | null;
   /** 내부 키워드(커미션/정산) 감지로 차단된 경우 true (FIELD_POLICY) */
   blocked: boolean;
 }
@@ -369,8 +374,19 @@ function formatSurchargeObject(s: SurchargeObject): MergedSurcharge {
         .replace(/^\d{4}-0?(\d+)-0?(\d+)\s*~\s*\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2 ~ $3/$4')
         .replace(/^\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2')
     : null;
-  const currency = s.currency === 'USD' ? '$' : (s.currency || '');
-  const priceLabel = s.amount != null ? `${currency}${s.amount}${s.unit ? `/${s.unit}` : ''}` : null;
+  // P0 #3 (2026-04-27): 통화별 한국어 친화 표기. KRW 는 천단위 콤마 + "원" suffix.
+  // 외화는 코드 prefix 유지 (USD→$, JPY→¥, CNY→元).
+  const fmtAmount = (() => {
+    if (s.amount == null) return null;
+    const cur = (s.currency || 'KRW').toUpperCase();
+    const num = Number(s.amount);
+    if (cur === 'KRW') return `${num.toLocaleString('ko-KR')}원`;
+    if (cur === 'USD') return `$${num.toLocaleString('en-US')}`;
+    if (cur === 'JPY') return `¥${num.toLocaleString('ja-JP')}`;
+    if (cur === 'CNY') return `${num.toLocaleString('zh-CN')}元`;
+    return `${cur} ${num.toLocaleString('ko-KR')}`;
+  })();
+  const priceLabel = fmtAmount ? `${fmtAmount}${s.unit ? `/${s.unit}` : ''}` : null;
   const label = `${name}${period ? ` (${period})` : ''}${priceLabel ? `: ${priceLabel}` : ''}`;
   return { label, structured: s, raw: null, name, period, priceLabel };
 }
@@ -404,15 +420,22 @@ function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  쇼핑 출처 결정 (FIELD_POLICY.md, ERR-FUK-customer-leaks)
+//  쇼핑 출처 결정 (FIELD_POLICY.md, ERR-FUK-customer-leaks, ERR-special-notes-leak@2026-04-27)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * special_notes에 들어가면 안 되는 내부 메모 키워드.
- * 이게 감지되면 쇼핑 섹션을 차단 — 고객 화면에 커미션/정산 정보 노출 금지.
+ * 고객 노출 텍스트에 절대 들어가면 안 되는 내부 메모 키워드.
+ * customer_notes 검증의 마지막 안전망 — Pre-INSERT(W21)에서 1차 차단되지만
+ * 회색지대 통과를 대비한 렌더 시점 2중 가드.
  */
 const INTERNAL_KEYWORDS = /커미션|commission_rate|정산|LAND_OPERATOR|스키마\s*제약|랜드사\s*메모|랜드사\s*커미션/i;
 
+/**
+ * 쇼핑 섹션 출처 우선순위:
+ *   1) itinerary_data.highlights.shopping (가장 명시적)
+ *   2) customer_notes (고객 노출 OK 검증 통과 자유 텍스트)
+ *   3) special_notes는 더 이상 fallback 출처가 아님 (ERR-special-notes-leak 차단)
+ */
 function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
   const fromHighlights = pkg.itinerary_data?.highlights?.shopping?.trim();
   if (fromHighlights) {
@@ -422,16 +445,16 @@ function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
       blocked: false,
     };
   }
-  const fallback = pkg.special_notes?.trim();
+  const fallback = pkg.customer_notes?.trim();
   if (!fallback) return { text: null, source: null, blocked: false };
 
-  // 내부 키워드 감지 시 차단 — 고객 노출 절대 금지
+  // 내부 키워드 감지 시 차단 — 렌더 시점 2중 가드
   if (INTERNAL_KEYWORDS.test(fallback)) {
-    return { text: null, source: 'special_notes', blocked: true };
+    return { text: null, source: 'customer_notes', blocked: true };
   }
   return {
     text: fallback.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null,
-    source: 'special_notes',
+    source: 'customer_notes',
     blocked: false,
   };
 }

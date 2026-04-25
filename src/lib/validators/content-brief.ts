@@ -20,6 +20,8 @@ export const SlideRoleEnum = z.enum([
   'warning',      // 주의점/실수 유형
   'tourist_spot', // 관광지 소개 (product 모드)
   'inclusion',    // 포함 사항
+  'objection',    // V4: 반론 예측+해소 ("노옵션인데 추가금?", "너무 싸서 불안" → 약관 근거로 방어)
+  'save_hook',    // V4: 저장 유도 체크리스트 ("저장해두고 보는 O가지") — 뒤에서 두 번째 슬라이드 기본값
   'cta',          // 마지막 슬라이드 (예약 유도)
 ]);
 
@@ -29,13 +31,14 @@ export const TemplateFamilyEnum = z.enum(['editorial', 'cinematic', 'premium', '
 
 /**
  * V3: 5가지 Hook 유형 — PostNitro AIDA + 토스 CTR 공식 + 여행업 케이스 종합
- *   urgency  : [선착순 N석] / [오늘만]        → 특가/마감
- *   question : 보홀 3박, 진짜 얼마?          → 가성비/정보성
- *   number   : 다낭 4박 7가지 꿀팁            → 정보성 가이드
- *   fomo     : 이번 주 사라지는 특가 TOP 3     → 재고 한정
- *   story    : 작년 보홀 갔다 눈물흘린 이유    → 프리미엄/신혼
+ *   urgency    : [선착순 N석] / [오늘만]        → 특가/마감
+ *   question   : 보홀 3박, 진짜 얼마?          → 가성비/정보성
+ *   number     : 다낭 4박 7가지 꿀팁            → 정보성 가이드
+ *   fomo       : 이번 주 사라지는 특가 TOP 3     → 재고 한정
+ *   story      : 작년 보홀 갔다 눈물흘린 이유    → 프리미엄/신혼
+ *   contrarian : V4 — 통념 파괴 ("보홀은 비싸다는 거짓말")  → 글로벌 캐러셀 Hook Top 5
  */
-export const HookTypeEnum = z.enum(['urgency', 'question', 'number', 'fomo', 'story']);
+export const HookTypeEnum = z.enum(['urgency', 'question', 'number', 'fomo', 'story', 'contrarian']);
 
 /** V2: 슬라이드 단위 구조화 슬롯 */
 export const CardSlideV2Schema = z.object({

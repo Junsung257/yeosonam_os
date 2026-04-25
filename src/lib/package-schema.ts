@@ -248,6 +248,80 @@ export const PackageStrictSchema = PackageCoreSchema.extend({
       });
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // W26~W29 — ERR-HSN-render-bundle@2026-04-21 재발 방지
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // W26 — inclusions 콤마 포함 금지 (A4 아이콘 매칭 실패 방지)
+  if (Array.isArray(pkg.inclusions)) {
+    pkg.inclusions.forEach((item, idx) => {
+      if (typeof item !== 'string') return;
+      // 괄호 밖 top-level 콤마가 있으면 분리 필요. 괄호 안 콤마(예: "(라면, 소세지)")는 허용.
+      let depth = 0;
+      let hasTopComma = false;
+      for (const ch of item) {
+        if (ch === '(' || ch === '[' || ch === '{') depth++;
+        else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+        else if (ch === ',' && depth === 0) { hasTopComma = true; break; }
+      }
+      if (hasTopComma) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `[W26 ERR-HSN] inclusions[${idx}] 최상위 콤마 포함: "${item.slice(0, 40)}..." — 각 항목을 개별 배열 요소로 분리해야 A4 아이콘 매칭이 정상 작동합니다.`,
+          path: ['inclusions', idx],
+        });
+      }
+    });
+  }
+
+  // W27 — 하루 flight activity 최대 1개 (이미 "→" 병합 포맷 허용, 분리된 2개는 차단)
+  if (pkg.itinerary_data) {
+    const days = Array.isArray(pkg.itinerary_data)
+      ? pkg.itinerary_data
+      : (pkg.itinerary_data.days || []);
+    days.forEach((day: { day?: number; schedule?: Array<{ type?: string; activity?: string }> }, dIdx: number) => {
+      const flights = (day?.schedule ?? []).filter((s) => s?.type === 'flight');
+      if (flights.length > 1) {
+        // 이미 병합된 "→" 포맷 여러 개(왕복·환승)는 허용. 순수 "출발"-"도착" 분리 쌍만 차단.
+        const unmergedPair = flights.some((f) => !/→|↦|⇒/.test(f.activity || ''));
+        if (unmergedPair) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `[W27 ERR-HSN] Day ${day?.day ?? dIdx + 1}: flight activity 가 ${flights.length}개 분리됨. "출발지 출발 → 도착지 도착 HH:MM" 단일 activity 로 병합해야 히어로 섹션 도착 시간 "—" / 타임라인 이중 렌더 방지.`,
+            path: ['itinerary_data', 'days', dIdx, 'schedule'],
+          });
+        }
+      }
+    });
+  }
+
+  // W28 — 호텔 activity 앞절 붙이기 금지 ("라운드 후 석식 및 호텔 투숙" 같은 혼합 표현)
+  if (pkg.itinerary_data) {
+    const days = Array.isArray(pkg.itinerary_data)
+      ? pkg.itinerary_data
+      : (pkg.itinerary_data.days || []);
+    days.forEach((day: { day?: number; schedule?: Array<{ type?: string; activity?: string }> }, dIdx: number) => {
+      (day?.schedule ?? []).forEach((item, sIdx: number) => {
+        if (item?.type !== 'normal' || !item.activity) return;
+        const act = item.activity;
+        // "호텔 투숙" 앞에 다른 토큰이 있으면 정보 손실 위험
+        const hasHotelSuffix = /호텔\s*(?:투숙|휴식|체크인|체크 인)/.test(act);
+        const startsWithHotel = /^[*\s]*호텔/.test(act);
+        if (hasHotelSuffix && !startsWithHotel) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `[W28 ERR-HSN] Day ${day?.day ?? dIdx + 1} schedule[${sIdx}] "${act.slice(0, 40)}...": 호텔 activity 앞절 붙이기 금지. DetailClient 가 "호텔.*투숙" 매칭 시 activity 전체를 스킵하여 앞 절 정보 손실. 별도 normal activity 로 분리 필요.`,
+            path: ['itinerary_data', 'days', dIdx, 'schedule', sIdx, 'activity'],
+          });
+        }
+      });
+    });
+  }
+
+  // W29 — notices_parsed 의 PAYMENT/RESERVATION 타입에 "출발N일전" 형태 주의
+  // → standard-terms.ts 의 formatCancellationDates 가 negative lookbehind 로 방어.
+  //    Zod 차단하지 않음 (정보성). post_register_audit 에서 체크.
 });
 
 export type PackageCore = z.infer<typeof PackageCoreSchema>;

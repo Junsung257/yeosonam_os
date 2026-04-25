@@ -12,14 +12,76 @@ export interface ExecutionResult {
 // 기존 /api/jarvis/approve/route.ts의 executeApprovedAction()에서 추출
 // agent_actions, jarvis_pending_actions 양쪽에서 공통 사용
 const handlers: Record<string, (args: any) => Promise<any>> = {
-  // 프롬프트 개선 제안 승인: 로그만 남기고 실제 프롬프트는 개발자가 코드 반영
-  // (자동 프롬프트 수정은 위험하므로 "아카이브"만 하고 실제 변경은 수동)
+  // 프롬프트 개선 제안 승인 → prompt_versions 에 새 버전 등록 + 활성화
+  // analysis.suggested_prompt_changes 를 기존 style_guide 내용에 appendix 로 붙여서 새 버전 생성.
+  // blog-publisher 가 매 발행 시 is_active=true 버전을 읽기 때문에 자동 반영됨.
   prompt_improvement_suggestion: async (args) => {
-    // 향후 확장: prompt_versions 테이블에 기록 등
+    const analysis = args?.analysis
+    const domain = args?.domain || 'blog_style_guide'
+    const actionId = args?.action_id || null
+
+    if (!analysis || !analysis.suggested_prompt_changes) {
+      return { acknowledged: true, note: 'analysis 비어있음 — 버전 생성 스킵', patched: false }
+    }
+
+    // 현재 활성 버전 조회
+    const { data: current } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('version, content')
+      .eq('domain', domain)
+      .eq('is_active', true)
+      .limit(1)
+    const currentVersion = current?.[0]?.version || 'v1.0'
+    const currentContent = current?.[0]?.content || ''
+
+    // 다음 버전 번호 — v1.0 → v1.1 / v1.9 → v1.10
+    const match = currentVersion.match(/v(\d+)\.(\d+)/)
+    const next = match
+      ? `v${match[1]}.${parseInt(match[2]) + 1}`
+      : `${currentVersion}-next`
+
+    // 개선 사항을 appendix 섹션으로 덧붙임
+    const changesAppendix = [
+      `\n\n## 자동 학습 개선 사항 (${next} — ${new Date().toISOString().split('T')[0]})`,
+      `\n> 아래는 성과 데이터 분석으로 발견된 패턴이다. 반드시 반영해라.`,
+      ...(analysis.top_patterns || []).map((p: string) => `- (상위 패턴) ${p}`),
+      ...(analysis.suggested_prompt_changes || []).map((c: any) =>
+        `- [${c.area}] ${c.change} — 근거: ${c.reason}`),
+    ].join('\n')
+
+    const newContent = currentContent + changesAppendix
+
+    // 기존 active 비활성화
+    await supabaseAdmin
+      .from('prompt_versions')
+      .update({ is_active: false })
+      .eq('domain', domain)
+      .eq('is_active', true)
+
+    // 새 버전 insert (활성)
+    const { data: inserted, error } = await supabaseAdmin
+      .from('prompt_versions')
+      .insert({
+        domain,
+        version: next,
+        content: newContent,
+        change_notes: analysis.summary || '자동 학습 개선',
+        source: 'auto_learning',
+        source_action_id: actionId,
+        is_active: true,
+        activated_at: new Date().toISOString(),
+        performance_baseline: analysis.baseline || null,
+      })
+      .select('id, version')
+
+    if (error) throw error
+
     return {
       acknowledged: true,
-      note: '승인됨. 차기 프롬프트 버전 업데이트 시 반영하세요.',
-      suggestion_summary: args?.analysis?.summary || null,
+      patched: true,
+      new_version: inserted?.[0]?.version,
+      from_version: currentVersion,
+      domain,
     }
   },
 

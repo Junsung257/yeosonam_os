@@ -7,6 +7,7 @@ import { matchAttraction as matchAttractionShared, matchAttractions as matchAttr
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { formatDepartureDays } from '@/lib/admin-utils';
 import { normalizeOptionalTourName, type OptionalTourInput } from '@/lib/itinerary-render';
+import { renderPackage, getAirlineName, type CanonicalView } from '@/lib/render-contract';
 import type { NoticeBlock } from '@/lib/standard-terms';
 import TransportBar from '@/components/itinerary/TransportBar';
 
@@ -104,7 +105,10 @@ export interface YeosonamA4Props {
     single_supplement?: string;
     optional_tours?: { name: string; price?: string; price_usd?: number; price_krw?: number | null; note?: string | null }[];
     itinerary_data?: TravelItinerary;
+    /** @deprecated 고객 fallback 경로 제거됨. customer_notes 사용. */
     special_notes?: string;
+    customer_notes?: string;
+    internal_notes?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     notices_parsed?: any[];
     excluded_dates?: string[];
@@ -166,6 +170,9 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
     .split(/\s*[—–]\s+/)[0]             // " — " 이후 특전 나열 제거
     .trim();
   const itinerary = pkg.itinerary_data;
+
+  // W1 CRC — 렌더링 계약 단일 진입점. pkg 필드를 렌더러 내부에서 다시 파싱하지 말 것 (ERR-KUL-05).
+  const view: CanonicalView = renderPackage(pkg as Parameters<typeof renderPackage>[0]);
 
   // 핵심 특전: 상위 4개 + 단독 무의미 단어만 제외 (수식어 붙으면 통과)
   // 예: "마사지" → 제외, "전신 마사지 120분" → 통과 (가치 있는 소구점)
@@ -245,28 +252,8 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
 
   // 뱃지 공통 (출발지 맨 앞 + 강조)
   const TAG = 'px-2 py-0.5 text-[13px] rounded font-semibold';
-  const cleanAirline = (() => {
-    if (!pkg.airline) return undefined;
-    // "BX(에어부산) | 부산출발 ↔ BX793 부산(김해) 출발 → 타이페이" 정리
-    const pOut = itinerary?.meta?.flight_out;
-    if (pOut) {
-      const code = pOut.replace(/[0-9]/g, '').toUpperCase();
-      const nm: Record<string, string> = { 'BX': '에어부산', 'LJ': '진에어', 'OZ': '아시아나항공', 'KE': '대한항공', '7C': '제주항공', 'TW': '티웨이항공', 'VJ': '비엣젯항공', 'ZE': '이스타항공' };
-      const n = nm[code] || pkg.airline.split('(')[1]?.replace(')', '') || pkg.airline.split('|')[0].trim();
-      return `${pOut}(${n})`;
-    }
-    const parts = pkg.airline.split('|');
-    if (parts.length > 1) {
-      const match = parts[1].match(/[A-Z0-9]{2}\d{2,4}/);
-      if (match) {
-        const code = match[0].replace(/[0-9]/g, '').toUpperCase();
-        const nm: Record<string, string> = { 'BX': '에어부산', 'LJ': '진에어', 'OZ': '아시아나항공', 'KE': '대한항공', '7C': '제주항공', 'TW': '티웨이항공', 'VJ': '비엣젯항공' };
-        return `${match[0]}(${nm[code] || parts[0].replace(/.*?\((.*?)\).*/, '$1')})`;
-      }
-      return parts[0].trim();
-    }
-    return pkg.airline;
-  })();
+  // W1 CRC — airline 배지 라벨은 view 단일 출력만 소비 (ERR-20260418-13/17)
+  const cleanAirline = view.airlineHeader.airlineLabel ?? undefined;
   const badgesContent = <>
     {departCity && <span className={`${TAG} bg-blue-800 text-white`}>{departCity}출발</span>}
     {pkg.destination && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.destination}</span>}
@@ -279,11 +266,13 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
 
   // 마지막 페이지(포함/불포함/유의사항) 표시 여부 판단
   const hasResolved = (resolvedNotices?.length ?? 0) > 0;
-  const hasNotices = hasResolved || (pkg.notices_parsed?.length ?? 0) > 0 || !!pkg.special_notes;
+  const hasNotices = hasResolved || (pkg.notices_parsed?.length ?? 0) > 0 || !!pkg.customer_notes;
+  // Phase 1 CRC: pkg.inclusions 직접 접근 제거 → view.inclusions 에서 flat count 소비
   const hasIncludeExclude =
-    ((pkg.inclusions || itinerary?.highlights?.inclusions || []).length > 0) ||
-    ((pkg.excludes || itinerary?.highlights?.excludes || []).length > 0) ||
-    ((pkg.surcharges as unknown as SurchargeObject[] | undefined)?.length ?? 0) > 0;
+    view.inclusions.flat.length > 0 ||
+    view.excludes.basic.length > 0 ||
+    view.surchargesMerged.length > 0 ||
+    !!view.shopping.text;
   const hasLastPage = hasNotices || hasIncludeExclude;
 
   // ERR-20260418-11/12 — 요금표 적응형 청크 분할 (Universal 알고리즘)
@@ -449,18 +438,13 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
           />
           <main className="flex-1 px-10 py-6 text-[#0b1c30] space-y-4">
             {hasIncludeExclude && (
-              <IncludeExcludeInfo
-                inclusions={pkg.inclusions || itinerary?.highlights?.inclusions}
-                excludes={pkg.excludes || itinerary?.highlights?.excludes}
-                shoppingInfo={pkg.special_notes || itinerary?.highlights?.shopping || undefined}
-                surcharges={(pkg.surcharges as unknown) as SurchargeObject[] | undefined}
-              />
+              <IncludeExcludeInfo view={view} />
             )}
             {/* ERR-20260418-08: Page 1에 이미 OptionalTours 표시되므로 중복 제거 */}
             {resolvedNotices && resolvedNotices.length > 0 ? (
               <ResolvedNoticesA4Page notices={resolvedNotices} packageId={pkg.id} />
             ) : hasNotices ? (
-              <NoticesPage noticesParsed={pkg.notices_parsed} specialNotes={pkg.special_notes} />
+              <NoticesPage noticesParsed={pkg.notices_parsed} customerNotes={pkg.customer_notes} />
             ) : null}
           </main>
         </article>
@@ -1035,174 +1019,46 @@ const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string;
 //  — 어떤 지역/상품이든 동일한 출력 포맷 보장
 // ══════════════════════════════════════════════════════════
 
-// 기본 포함 키워드: 항공·호텔·식사·차량·가이드·보험·입장료 등 표준 항목
-const BASIC_INC_RE = /항공|TAX|텍스|유류|호텔|숙박|리조트|식사|조식|중식|석식|차량|버스|리무진|가이드|인솔|보험|입장료|입장권|생수|노팁|노옵션|경비|고속열차|비자|VISA/i;
+// Phase 1 CRC — getInclusionIcon / classifyInclusions / flattenItems / BASIC_INC_RE / SURCHARGE_RE
+// 모두 render-contract.ts 로 이관됨 (ERR-HSN-render-bundle 근본 해결).
+// 렌더러는 view.inclusions.basic (IconizedInclusion[]) / view.inclusions.program 만 소비.
 
-// 추가요금 키워드: 금액이 포함된 excludes 항목 → 별도 "추가 요금" 섹션으로 분리
-const SURCHARGE_RE = /\d+만원|\$\d+|써차지|싱글차지|싱글비용|싱글발생|추가요금|룸당|박당|의무디너|필수식사/;
-
-// 포함사항 아이콘 자동 매핑 (키워드 기반, 지역 무관)
-function getInclusionIcon(text: string): string {
-  if (/항공|TAX|유류/.test(text)) return '✈️';
-  if (/호텔|숙박|리조트|게르/.test(text)) return '🏨';
-  if (/식사|조식|중식|석식/.test(text)) return '🍽️';
-  if (/차량|버스|생수|리무진/.test(text)) return '🚌';
-  if (/가이드|인솔자/.test(text)) return '👤';
-  if (/보험/.test(text)) return '🛡️';
-  if (/팁|노팁|노옵션|경비/.test(text)) return '💰';
-  if (/입장료|입장권/.test(text)) return '🎫';
-  if (/비자|VISA/i.test(text)) return '🛂';
-  if (/고속열차|KTX|열차/.test(text)) return '🚄';
-  return '✅';
-}
-
-/** 배열 항목 평탄화: 쉼표로 이어붙인 단일 문자열도 개별 항목으로 분리
- *  ERR-20260418-26 — 괄호 내부 콤마는 절대 분리하지 말 것
- *  ERR-FUK-comma-number — 숫자 천단위 콤마(2,000엔) 분리 방지
- *  예: "식사 (특식 2회: 무제한 삼겹살, 순두부 정식)" → 통째로 1항목 유지
- *  예: "본관 숙박 시 2,000엔/박/인" → 통째로 1항목 (2|000 분리 버그 방지)
- */
-function flattenItems(items: string[]): string[] {
-  const result: string[] = [];
-  for (const item of items) {
-    if (SURCHARGE_RE.test(item)) {
-      result.push(item.trim());
-      continue;
-    }
-    // 괄호 깊이 추적하며 최상위 콤마에서만 분리
-    // 추가: 숫자 사이 콤마(천단위)는 분리 금지 — 앞뒤 3자 이내에 숫자만 있으면 숫자 콤마로 판단
-    const parts: string[] = [];
-    let depth = 0;
-    let buf = '';
-    const chars = [...item];
-    for (let i = 0; i < chars.length; i++) {
-      const ch = chars[i];
-      if (ch === '(' || ch === '[' || ch === '{') depth++;
-      else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
-      if (ch === ',' && depth === 0) {
-        // 숫자 콤마 체크: 직전 1자가 숫자 + 직후 1~3자 내 숫자 연속
-        const prev = buf.slice(-1);
-        const next3 = chars.slice(i + 1, i + 4).join('');
-        const isNumberComma = /\d/.test(prev) && /^\d{3}/.test(next3);
-        if (isNumberComma) {
-          buf += ch;
-          continue;
-        }
-        const t = buf.trim();
-        if (t) parts.push(t);
-        buf = '';
-      } else {
-        buf += ch;
-      }
-    }
-    const t = buf.trim();
-    if (t) parts.push(t);
-    result.push(...parts);
-  }
-  return result;
-}
-
-/** inclusions 자동 분류: 기본 포함 vs 프로그램/특전 */
-function classifyInclusions(items: string[]): { basic: string[]; program: string[] } {
-  const flat = flattenItems(items);
-  const basic: string[] = [];
-  const program: string[] = [];
-  for (const item of flat) {
-    if (BASIC_INC_RE.test(item)) {
-      basic.push(item);
-    } else {
-      program.push(item);
-    }
-  }
-  return { basic, program };
-}
-
-/** excludes 자동 분류: 기본 불포함 vs 추가요금 */
-function classifyExcludes(items: string[]): { basic: string[]; surcharges: string[] } {
-  const flat = flattenItems(items);
-  const basic: string[] = [];
-  const surcharges: string[] = [];
-  for (const item of flat) {
-    if (SURCHARGE_RE.test(item)) {
-      surcharges.push(item);
-    } else {
-      basic.push(item);
-    }
-  }
-  return { basic, surcharges };
-}
-
-// ERR-20260418-03 — surcharges 객체 배열 지원 타입
-type SurchargeObject = {
-  name?: string;
-  start?: string;
-  end?: string;
-  amount?: number;
-  currency?: string;
-  unit?: string;
-};
-
-// 객체 배열을 렌더링용 문자열로 변환 (예: "청명절 (4/3 ~ 4/6): $10/인/박")
-function formatSurchargeObject(s: SurchargeObject): string {
-  const name = s.name?.trim() || '추가요금';
-  const periodRaw = s.start && s.end ? `${s.start} ~ ${s.end}` : (s.start || '');
-  const period = periodRaw
-    .replace(/^\d{4}-0?(\d+)-0?(\d+)\s*~\s*\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2 ~ $3/$4')
-    .replace(/^\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2');
-  const currency = s.currency === 'USD' ? '$' : (s.currency || '');
-  const price = s.amount != null ? `${currency}${s.amount}${s.unit ? `/${s.unit}` : ''}` : '';
-  return `${name}${period ? ` (${period})` : ''}${price ? `: ${price}` : ''}`;
-}
+// classifyExcludes / formatSurchargeObject / SurchargeObject 타입은 render-contract.ts로 이관됨 (W1 CRC).
+// 이 렌더러에서는 더 이상 직접 파싱하지 않고 view.surchargesMerged / view.excludes.basic 만 소비.
 
 // 포함/불포함 + 추가요금 + 쇼핑 (마지막 페이지)
-// 입력 형식에 관계없이 항상 동일한 4-섹션 출력 포맷 보장
-function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo, surcharges: surchargeObjects }: {
-  inclusions?: string[]; excludes?: string[]; shoppingInfo?: string;
-  surcharges?: SurchargeObject[];
+// W1 CRC — 써차지 병합 / 쇼핑 출처 선택 / 내부메모 차단은 모두 view에서 이미 해결됨 (ERR-KUL-05)
+function IncludeExcludeInfo({ view }: {
+  view: CanonicalView;
 }) {
-  const hasInc = (inclusions?.length ?? 0) > 0;
-  const hasExc = (excludes?.length ?? 0) > 0;
-  const cleanShopping = shoppingInfo?.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null;
-  if (!hasInc && !hasExc && !cleanShopping && !(surchargeObjects?.length)) return null;
-
-  // 자동 분류
-  const { basic: basicInc, program: programInc } = hasInc
-    ? classifyInclusions(inclusions!) : { basic: [], program: [] };
-  const { basic: basicExc, surcharges: surchargesFromExcludes } = hasExc
-    ? classifyExcludes(excludes!) : { basic: [], surcharges: [] };
-
-  // ERR-20260418-14/18 — 객체 배열 + excludes 문자열 병합, "써차지" 단순 문구만 중복 제거
-  // 핵심: 객체 배열에 구체적 기간이 있으면 excludes의 "써차지 ($10/인/박)" 단순 안내는 중복
-  //       하지만 "기사/가이드경비 $40", "싱글차지" 등 구체 항목은 유지
-  const fromObjects = (surchargeObjects || []).map(formatSurchargeObject);
-  const hasObjects = fromObjects.length > 0;
-  const fromExcludes = surchargesFromExcludes.filter(s => {
-    if (!hasObjects) return true;
-    // "써차지 ($10/인/박)" 같은 단순 안내 문구 감지 — 날짜/경비/팁 등 구체 키워드 없고 "써차지"만 있으면 중복
-    const trimmed = s.trim();
-    const isBareSurcharge =
-      /^\s*(?:하계\s*)?써차지\s*(?:\(?\s*\$?\s*\d*\s*\/?\s*(?:인|박|인\/박)?\s*\)?)?\s*$/i.test(trimmed);
-    return !isBareSurcharge;
-  });
-  const surchargeLines: string[] = [...fromObjects, ...fromExcludes];
+  // Phase 1 CRC: view.inclusions 에서 이미 basic(iconized) / program 분류 완료.
+  // 로컬 classifyInclusions / getInclusionIcon 호출 제거.
+  const basicInc = view.inclusions.basic;
+  const programInc = view.inclusions.program;
+  const basicExc = view.excludes.basic;
+  const surchargeLines = view.surchargesMerged;
+  const cleanShopping = view.shopping.text;
+  if (basicInc.length === 0 && programInc.length === 0 && basicExc.length === 0 && !cleanShopping && surchargeLines.length === 0) return null;
 
   return (
     <div className="space-y-1.5 mb-1">
       {/* ── 섹션 1: 기본 포함 (아이콘 그리드) ── */}
-      {basicInc.length > 0 && (
+      {(basicInc.length > 0 || programInc.length > 0) && (
         <section className="bg-blue-50/60 p-2 rounded">
           <h3 className="font-bold text-blue-900 mb-1.5 text-[11px]">포함 사항</h3>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-            {basicInc.map((item, idx) => (
-              <span key={idx} className="text-[11px] text-slate-700 leading-snug break-keep">
-                <span className="text-[10px] mr-0.5">{getInclusionIcon(item)}</span>
-                {item}
-              </span>
-            ))}
-          </div>
+          {basicInc.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {basicInc.map((item, idx) => (
+                <span key={idx} className="text-[11px] text-slate-700 leading-snug break-keep">
+                  <span className="text-[10px] mr-0.5">{item.icon}</span>
+                  {item.text}
+                </span>
+              ))}
+            </div>
+          )}
           {/* 프로그램/특전 항목이 있으면 구분선 아래 컴팩트 표시 */}
           {programInc.length > 0 && (
-            <p className="mt-1.5 pt-1.5 border-t border-blue-100 text-[10px] text-slate-500 leading-snug break-keep">
+            <p className={`${basicInc.length > 0 ? 'mt-1.5 pt-1.5 border-t border-blue-100' : ''} text-[10px] text-slate-500 leading-snug break-keep`}>
               ✅ {programInc.join(', ')}
             </p>
           )}
@@ -1231,7 +1087,7 @@ function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo, surcharges: su
           <div className="space-y-0.5">
             {surchargeLines.map((item, idx) => (
               <p key={idx} className="text-[10px] text-slate-600 leading-snug break-keep">
-                • {item}
+                • {item.label}
               </p>
             ))}
           </div>
@@ -1250,9 +1106,9 @@ function IncludeExcludeInfo({ inclusions, excludes, shoppingInfo, surcharges: su
 }
 
 // 유의사항 전용 페이지 (Page 1.5)
-function NoticesPage({ noticesParsed, specialNotes }: {
+function NoticesPage({ noticesParsed, customerNotes }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  noticesParsed?: any[]; specialNotes?: string;
+  noticesParsed?: any[]; customerNotes?: string;
 }) {
   let typedNotices: NoticeItemLocal[] = [];
   let legacyNotes: string[] = [];
@@ -1264,8 +1120,8 @@ function NoticesPage({ noticesParsed, specialNotes }: {
     } else {
       legacyNotes = noticesParsed as string[];
     }
-  } else if (specialNotes) {
-    legacyNotes = splitSpecialNotes(specialNotes);
+  } else if (customerNotes) {
+    legacyNotes = splitSpecialNotes(customerNotes);
   }
 
   const TYPE_ORDER: Record<string, number> = { CRITICAL: 0, PAYMENT: 1, POLICY: 2, INFO: 3 };
@@ -1423,24 +1279,8 @@ function ItineraryPageHeader({ title, departureAirport, destination, airline, ar
 }
 
 
-// IATA 항공사 코드 → 항공사명
-const AIRLINE_MAP: Record<string, string> = {
-  'BX': '에어부산', 'LJ': '진에어', 'OZ': '아시아나항공', 'KE': '대한항공',
-  '7C': '제주항공', 'TW': '티웨이항공', 'VJ': '비엣젯항공', 'ZE': '이스타항공',
-  'RS': '에어서울', 'QV': '라오항공', 'JL': '일본항공', 'NH': '전일본공수',
-  'MU': '중국동방항공', 'CA': '중국국제항공', 'CZ': '중국남방항공',
-};
-// ERR-20260418-17 — 괄호 있는 값("BX(에어부산)") 안전 처리
-function getAirlineName(flightCode?: string | null): string | null {
-  if (!flightCode) return null;
-  // "BX(에어부산)" → "BX" / "BX793" → "BX" / "BX | 부산..." → "BX"
-  const code = flightCode.split(/[\s|(]/)[0].replace(/[0-9]/g, '').toUpperCase().trim();
-  if (AIRLINE_MAP[code]) return AIRLINE_MAP[code];
-  // fallback: 괄호 안에 한국어 항공사명이 있으면 추출
-  const parenMatch = flightCode.match(/\(([^)]+)\)/);
-  if (parenMatch && /[가-힣]/.test(parenMatch[1])) return parenMatch[1].trim();
-  return null;
-}
+// AIRLINE_MAP / getAirlineName 은 render-contract.ts로 이관됨 (W1 CRC).
+// ItineraryPageHeader 등 이 파일 내부 사용처는 파일 상단 import에서 해결.
 
 // 활동 타입별 dot 색상
 function getDotColor(type?: string): string {
@@ -1513,8 +1353,10 @@ function getActivityBadge(type?: string, activity?: string): { bg: string; text:
     default: break;
   }
   // ERR-20260418-30 — "체험" 단일 키워드는 너무 광범위해서 제거 (카지노 체험 = 특전 오판정)
-  // 특전 배지는 명확히 특별 시설/이벤트에 한정
-  if (activity && /루프탑|크루즈|요트|스파|전망대|쇼\s/.test(activity)) {
+  // ERR-HET-activity-badge-paren-leak@2026-04-22 — "▶춘쿤산 관광 (...전망대관람 포함)" 처럼
+  // 괄호 안 부연설명에 우연히 "전망대" 가 들어있으면 특전 배지 오판정. 괄호 안은 제외하고 검사.
+  const core = activity ? activity.replace(/\s*\([^)]*\)\s*/g, ' ').trim() : '';
+  if (core && /루프탑|크루즈|요트|스파|전망대|쇼\s/.test(core)) {
     return { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-100', label: '특전' };
   }
   return null;
@@ -1539,6 +1381,11 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
   // ══ 통합 교통 파서: 전체 days 한 번에 처리 (ship cross-day pair 포함) ══
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parsedDays = parseDaysWithTransport(days as any);
+
+  // ERR-HET-a4-shortdesc-duplicate@2026-04-22 — A4 포스터에서 같은 관광지에 매칭된 여러 activity 마다
+  // `— {attr.short_desc}` 가 반복 노출 (예: 시라무런 초원 5회). 전체 일정에 걸쳐 **첫 매칭 activity 에만**
+  // short_desc 를 렌더. 모바일 DetailClient 의 seenAttractionIds 와 동일한 글로벌 dedup.
+  const seenAttractionIdsForDesc = new Set<string>();
 
   return (
     <section className="space-y-3">
@@ -1643,8 +1490,14 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                           <span className={`text-[13px] break-keep leading-snug flex flex-wrap items-center gap-1 ${EC}`}>
                             {item.time && <span className="text-blue-600 font-bold">{item.time}</span>}
                             {badge ? (() => {
-                              const displayName = item.activity;
-                              const displayDesc = !attr && !isSpecial ? splitPoi(item.activity).poiDesc : null;
+                              // ERR-HET-activity-desc-duplicate@2026-04-22 — displayName 에 activity 전체(괄호 포함)를
+                              // 넣고 displayDesc 에도 poiDesc(괄호) 를 또 넣으면 **괄호 내용이 2번** 노출됨.
+                              // attractions 매칭 실패(춘쿤산 등)한 ▶관광지에서 재현. splitPoi 로 이름·설명 분리.
+                              const { poiName, poiDesc } = splitPoi(item.activity);
+                              // attr 또는 특전: 전체 activity 를 그대로 이름으로 (부연 분리 안 함)
+                              // 일반 ▶관광지(매칭 실패): 이름은 괄호 앞, 부연은 괄호 안만
+                              const displayName = (attr || isSpecial) ? item.activity : poiName;
+                              const displayDesc = (!attr && !isSpecial && poiDesc) ? poiDesc : null;
                               return <>
                                 {isSpecial && <span>🎁</span>}
                                 {!isSpecial && attr?.emoji && <span>{attr.emoji}</span>}
@@ -1655,9 +1508,14 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                                 {displayDesc && <span className="text-[12px] text-gray-500 font-normal">{displayDesc}</span>}
                               </>;
                             })() : <span {...E} className={`font-bold ${isPrep ? 'text-slate-500' : 'text-slate-800'}`}>{item.activity}</span>}
-                            {attr?.short_desc && (
-                              <span className="text-[12px] text-slate-500 font-normal"> — {attr.short_desc}</span>
-                            )}
+                            {(() => {
+                              if (!attr?.short_desc || !attr.name) return null;
+                              if (seenAttractionIdsForDesc.has(attr.name)) return null;
+                              seenAttractionIdsForDesc.add(attr.name);
+                              return (
+                                <span className="text-[12px] text-slate-500 font-normal"> — {attr.short_desc}</span>
+                              );
+                            })()}
                             {item.note && (
                               <span className="text-[12px] text-red-500 font-medium">({item.note})</span>
                             )}

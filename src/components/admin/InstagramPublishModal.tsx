@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 
 interface Props {
   cardNewsId: string;
@@ -8,6 +8,12 @@ interface Props {
   slideImageUrls?: string[];
   onClose: () => void;
   onSuccess: (result: { mode: 'now' | 'scheduled'; post_id?: string; scheduled_for?: string }) => void;
+}
+
+// KST 기준 "YYYY-MM-DDTHH:mm" 형태를 생성 (datetime-local input 용)
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function InstagramPublishModal({
@@ -19,10 +25,12 @@ export default function InstagramPublishModal({
 }: Props) {
   const [tab, setTab] = useState<'now' | 'scheduled'>('now');
   const [caption, setCaption] = useState(defaultCaption);
-  const [date, setDate] = useState(() => {
+  // 기본값: 내일 오전 9시 (KST)
+  const [scheduledAt, setScheduledAt] = useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().slice(0, 10);
+    tomorrow.setHours(9, 0, 0, 0);
+    return toLocalInput(tomorrow);
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,9 +51,16 @@ export default function InstagramPublishModal({
         image_urls: slideImageUrls,
       };
       if (tab === 'scheduled') {
-        // 날짜 → 그날 자정 KST로 스케줄 (크론이 하루 1회 자정 UTC 실행, 약 9시간 오차)
-        // 사용자 선택 날짜의 0시 UTC = KST 오전 9시
-        body.scheduled_for = new Date(`${date}T00:00:00Z`).toISOString();
+        // datetime-local 입력값 (로컬 시간) → ISO (UTC). 브라우저가 로컬 TZ 를 적용.
+        // publish-scheduled 크론이 매시간 정각 실행 → 예약 시각 도래 후 최대 1시간 이내 발행
+        const parsed = new Date(scheduledAt);
+        if (isNaN(parsed.getTime())) {
+          throw new Error('예약 시각 파싱 실패');
+        }
+        if (parsed.getTime() < Date.now() + 5 * 60 * 1000) {
+          throw new Error('예약 시각은 현재로부터 5분 이후여야 합니다');
+        }
+        body.scheduled_for = parsed.toISOString();
       }
       const res = await fetch(`/api/card-news/${cardNewsId}/publish-instagram`, {
         method: 'POST',
@@ -126,16 +141,16 @@ export default function InstagramPublishModal({
           <div className="px-5 py-4 overflow-y-auto flex-1 space-y-4">
             {tab === 'scheduled' && (
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">발행 날짜</label>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">발행 일시 (KST)</label>
                 <input
-                  type="date"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                  min={new Date().toISOString().slice(0, 10)}
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={e => setScheduledAt(e.target.value)}
+                  min={toLocalInput(new Date(Date.now() + 10 * 60 * 1000))}
                   className="w-full border border-slate-200 rounded px-3 py-2 text-sm"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  선택한 날짜 이후 가장 가까운 자정 크론(UTC)에 발행됩니다. 한국시간 오전 9시경.
+                  크론이 매시간 정각에 확인해 도래 후 최대 1시간 이내 발행됩니다. 실 발행 시각 오차 ±60분.
                 </p>
               </div>
             )}

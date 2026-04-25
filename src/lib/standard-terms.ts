@@ -281,12 +281,26 @@ export function formatCancellationDates(
 
   return notices.map(n => {
     if (!['RESERVATION', 'PAYMENT'].includes(n.type)) return n;
-    const enriched = n.text.replace(/(\d+)일\s*전/g, (match, daysStr) => {
+    // ERR-HSN-cancel-date-pollution@2026-04-21: "출발21일전" 같이 "출발" 접두사가 붙은
+    // 복합 표현은 취소수수료가 아니라 발권 기한 안내이므로 날짜 자동 주입 금지.
+    // negative lookbehind 로 바로 앞이 "출발" 이면 스킵.
+    //
+    // ERR-HET-cancel-date-pollution-double-paren@2026-04-22: "45일전(~45)까지 통보시" 처럼
+    // 바로 뒤에 기존 괄호가 있으면 `(YYYY.MM.DD)(~45)` 처럼 괄호가 두 개 연속 붙어 어색.
+    // 기존 괄호 안쪽 끝에 `, YYYY.MM.DD까지` 를 병합해 자연스러운 형태로 변환.
+    // (rebuild-trigger 2026-04-22-02)
+    const enriched = n.text.replace(/(?<!출발\s?)(\d+)일\s*전(\s*\(([^)]*)\))?/g, (match, daysStr, bracket, inner) => {
       const days = parseInt(daysStr, 10);
       if (!Number.isFinite(days) || days < 0 || days > 365) return match;
       const target = new Date(dep);
       target.setDate(target.getDate() - days);
-      return `${match}(${toYMD(target)})`;
+      const ymd = toYMD(target);
+      if (bracket) {
+        // 기존 괄호 안에 날짜 병합: `(~45)` → `(~45, 2026.05.24까지)`
+        return `${daysStr}일전(${inner}, ${ymd}까지)`;
+      }
+      // 괄호 없으면 단독 괄호로 날짜만 추가
+      return `${daysStr}일전(${ymd}까지)`;
     });
     return enriched === n.text ? n : { ...n, text: enriched };
   });
@@ -305,6 +319,23 @@ export const NOTICE_DOT_COLOR: Record<string, string> = {
   CRITICAL: 'bg-red-500',
   POLICY: 'bg-blue-500',
   INFO: 'bg-gray-400',
+};
+
+// P2 #2 (2026-04-27): 유의사항 카드 type 별 좌측 보더 + 배경 톤.
+// 아코디언이 닫혀 있어도 한눈에 type 구분 가능. 모든 항목이 동일한 "[상품 특약]" 라벨이어도
+// CRITICAL(빨강) / PAYMENT(주황) / POLICY(파랑) / INFO(회색) 차별화로 우선순위 시각화.
+export const NOTICE_CARD_TONE: Record<string, { border: string; bg: string }> = {
+  RESERVATION: { border: 'border-l-purple-400', bg: 'bg-purple-50/40' },
+  PAYMENT:     { border: 'border-l-orange-400', bg: 'bg-orange-50/40' },
+  PASSPORT:    { border: 'border-l-amber-400',  bg: 'bg-amber-50/40' },
+  LIABILITY:   { border: 'border-l-slate-400',  bg: 'bg-slate-50/60' },
+  COMPLAINT:   { border: 'border-l-emerald-400',bg: 'bg-emerald-50/40' },
+  NOSHOW:      { border: 'border-l-red-400',    bg: 'bg-red-50/40' },
+  PANDEMIC:    { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
+  SURCHARGE:   { border: 'border-l-rose-400',   bg: 'bg-rose-50/40' },
+  CRITICAL:    { border: 'border-l-red-500',    bg: 'bg-red-50/60' },
+  POLICY:      { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
+  INFO:        { border: 'border-l-gray-300',   bg: 'bg-white' },
 };
 
 export function getSourceBadgeColor(source?: string, tier?: number): string {

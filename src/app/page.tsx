@@ -113,14 +113,102 @@ export default async function HomePage() {
     return dest;
   });
 
+  // 추천 여행지 TOP 4 (Pillar 준비된 destination 우선)
+  const { data: topDestsRaw } = await sb
+    .from('active_destinations')
+    .select('*')
+    .order('package_count', { ascending: false })
+    .limit(4);
+
+  // 각 destination 대표 이미지 + Pillar 존재 여부
+  const topDestNames = ((topDestsRaw as Array<{ destination: string }>) || []).map(d => d.destination);
+  const [{ data: topDestAttrs }, { data: pillarExists }] = topDestNames.length > 0
+    ? await Promise.all([
+        sb.from('attractions').select('destination, name, photos').in('destination', topDestNames).not('photos', 'is', null).limit(50),
+        sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
+      ])
+    : [{ data: null }, { data: null }];
+
+  const attrImageByDest: Record<string, string> = {};
+  ((topDestAttrs as Array<{ destination: string; photos: Array<{ src_medium?: string }> | null }>) || []).forEach(a => {
+    if (a.destination && !attrImageByDest[a.destination]) {
+      const img = a.photos?.[0]?.src_medium;
+      if (img) attrImageByDest[a.destination] = img;
+    }
+  });
+
+  const pillarSet = new Set(((pillarExists as Array<{ pillar_for: string | null }>) || []).map(p => p.pillar_for).filter(Boolean) as string[]);
+
+  const topDests = ((topDestsRaw as Array<{ destination: string; package_count: number; avg_rating: number | null; total_reviews: number | null; min_price: number | null }>) || [])
+    .map(d => ({
+      ...d,
+      image: attrImageByDest[d.destination] || null,
+      hasPillar: pillarSet.has(d.destination),
+    }));
+
+  // 전체 평점 집계 (aggregateRating Schema 용)
+  const { data: ratingAgg } = await sb
+    .from('travel_packages')
+    .select('avg_rating, review_count')
+    .not('avg_rating', 'is', null)
+    .gte('review_count', 1);
+
+  const totalReviews = ((ratingAgg as Array<{ review_count: number }> | null) || [])
+    .reduce((s, r) => s + (r.review_count || 0), 0);
+  const weightedSum = ((ratingAgg as Array<{ avg_rating: number; review_count: number }> | null) || [])
+    .reduce((s, r) => s + (r.avg_rating * r.review_count), 0);
+  const aggregateRating = totalReviews > 0 ? (weightedSum / totalReviews) : null;
+
+  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+
   return (
     <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
+      {/* TravelAgency + WebSite SearchAction Schema */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@graph': [
+              {
+                '@type': 'TravelAgency',
+                name: '여소남',
+                alternateName: 'Yeosonam',
+                url: BASE_URL,
+                logo: `${BASE_URL}/logo.png`,
+                description: '가치 있는 여행을 소개하는 단위 — 부산 출발 해외여행 패키지 전문',
+                areaServed: 'KR',
+                ...(aggregateRating ? {
+                  aggregateRating: {
+                    '@type': 'AggregateRating',
+                    ratingValue: aggregateRating.toFixed(2),
+                    reviewCount: totalReviews,
+                    bestRating: 5,
+                  },
+                } : {}),
+              },
+              {
+                '@type': 'WebSite',
+                url: BASE_URL,
+                name: '여소남',
+                potentialAction: {
+                  '@type': 'SearchAction',
+                  target: { '@type': 'EntryPoint', urlTemplate: `${BASE_URL}/packages?q={search_term_string}` },
+                  'query-input': 'required name=search_term_string',
+                },
+              },
+            ],
+          }),
+        }}
+      />
+
       {/* 데스크톱 전용 상단 네비 */}
       <nav className="hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-gray-100 px-8 py-4 items-center justify-between">
         <Link href="/" className="text-xl font-black tracking-tight text-[#340897]">여소남</Link>
         <div className="flex items-center gap-6 text-sm font-medium text-gray-700">
           <Link href="/packages" className="hover:text-[#340897] transition">전체 상품</Link>
-          <Link href="/blog" className="hover:text-[#340897] transition">여행 정보</Link>
+          <Link href="/destinations" className="hover:text-[#340897] transition">여행지</Link>
+          <Link href="/blog" className="hover:text-[#340897] transition">매거진</Link>
           <Link href="/group-inquiry" className="hover:text-[#340897] transition">단체 문의</Link>
           <a href="tel:051-000-0000" className="text-gray-500 hover:text-gray-900 transition">📞 051-000-0000</a>
           <a
@@ -164,6 +252,59 @@ export default async function HomePage() {
         <div className="mb-4 md:mb-8">
           <SearchBar />
         </div>
+
+        {/* 🆕 추천 여행지 TOP 4 — Pillar 가이드 연결 */}
+        {topDests.length > 0 && (
+          <div className="mb-4 md:mb-8">
+            <div className="flex items-end justify-between mb-3 md:mb-4">
+              <div>
+                <h2 className="text-base md:text-2xl font-bold text-gray-800">🗺 추천 여행지</h2>
+                <p className="text-[11px] md:text-[13px] text-gray-500 mt-0.5">완벽 가이드 · 관광지 · 엄선 패키지</p>
+              </div>
+              <Link href="/destinations" className="text-[12px] md:text-[13px] text-[#340897] font-semibold hover:underline">
+                전체 보기 →
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4">
+              {topDests.map(d => (
+                <Link
+                  key={d.destination}
+                  href={`/destinations/${encodeURIComponent(d.destination)}`}
+                  className="group relative h-44 md:h-56 rounded-xl overflow-hidden border border-gray-100 bg-gray-200 hover:shadow-lg transition"
+                >
+                  {d.image ? (
+                    <img
+                      src={d.image}
+                      alt={`${d.destination} 여행 대표 사진`}
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center text-5xl">
+                      🌍
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
+                    {d.hasPillar && (
+                      <span className="inline-block mb-1 px-1.5 py-0.5 bg-amber-400 text-slate-900 text-[9px] font-bold rounded">
+                        ✨ 완벽 가이드
+                      </span>
+                    )}
+                    <h3 className="text-[15px] md:text-[18px] font-extrabold leading-tight">
+                      {d.destination}
+                    </h3>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] md:text-[11px] opacity-90">
+                      <span>🧳 {d.package_count}개</span>
+                      {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
+                      {d.avg_rating && <span>· ⭐ {Number(d.avg_rating).toFixed(1)}</span>}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-8">
           <h2 className="text-base md:text-2xl font-bold text-gray-800 mb-3 md:mb-6">인기 여행지</h2>

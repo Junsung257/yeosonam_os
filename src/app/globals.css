@@ -38,6 +38,35 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * Admin scope — 어드민 ERP 가독성 토큰
+ *   기본: comfortable(14px, 행 56px)
+ *   data-density="compact": 13px, 행 48px
+ * ────────────────────────────────────────────────────────── */
+.admin-scope {
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  --admin-row-h: 56px;
+}
+.admin-scope[data-density="compact"] {
+  font-size: 13px;
+  line-height: 1.45;
+  --admin-row-h: 48px;
+}
+.admin-scope table.admin-data-table tbody tr {
+  height: var(--admin-row-h);
+}
+.admin-scope .admin-col-priority-2 { display: table-cell; }
+.admin-scope .admin-col-priority-3 { display: table-cell; }
+@media (max-width: 1024px) {
+  .admin-scope .admin-col-priority-3 { display: none; }
+}
+@media (max-width: 768px) {
+  .admin-scope .admin-col-priority-2 { display: none; }
 }
 
 /* ──────────────────────────────────────────────────────────

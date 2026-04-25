@@ -207,7 +207,11 @@ export async function GET(request: NextRequest) {
       push('IG 예약 스킵 — META_ACCESS_TOKEN 또는 META_IG_USER_ID 미설정')
       igStats.quota_reason = 'not_configured'
     } else {
-      const cfg = getInstagramConfig()!
+      const cfg = await getInstagramConfig()
+      if (!cfg) {
+        push('IG 예약 스킵 — 토큰 해석 실패 (env+DB)')
+        igStats.quota_reason = 'token_unresolved'
+      } else {
       const quota = await checkPublishingLimit(cfg.igUserId, cfg.accessToken)
       if (quota && quota.quotaUsed >= quota.quotaLimit - 5) {
         push(`IG 예약 스킵 — quota ${quota.quotaUsed}/${quota.quotaLimit} (5건 미만 잔여)`)
@@ -273,6 +277,7 @@ export async function GET(request: NextRequest) {
           }
         }
       }
+      } // close else (cfg ok)
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

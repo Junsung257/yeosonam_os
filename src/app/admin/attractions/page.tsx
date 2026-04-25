@@ -146,10 +146,11 @@ export default function AttractionsPage() {
       const a = noPhotos[i];
       setAutoPhotoProgress({ current: i + 1, total: noPhotos.length });
       try {
-        const keyword = `${a.name} ${a.region || a.country || ''} travel`.trim();
+        // ERR-pexels-korean-search@2026-04-21: attractionId 전달 → 서버가 aliases 의 영어명 우선 사용.
+        // 영어 alias 없으면 서버가 자동으로 한글+지역 fallback.
         const res = await fetch('/api/attractions/photos', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword, per_page: 3 }),
+          body: JSON.stringify({ attractionId: a.id, per_page: 3 }),
         });
         const data = await res.json();
         const photos = (data.photos || []).slice(0, 3);
@@ -210,22 +211,33 @@ export default function AttractionsPage() {
     const allRows = parseCsvFull(text);
     const dataRows = allRows.slice(1); // 헤더 제외
     // header: name,short_desc,long_desc,country,region,badge_type,emoji
-    const items = dataRows.map(cols => ({
-      name: (cols[0] || '').trim(),
-      short_desc: (cols[1] || '').trim(),
-      long_desc: (cols[2] || '').trim() || null,
-      country: (cols[3] || '').trim(),
-      region: (cols[4] || '').trim(),
-      badge_type: (cols[5] || 'tour').trim(),
-      emoji: (cols[6] || '').trim(),
-    })).filter(i => i.name);
+    // ⚠️ ERR-attractions-csv-badge-check@2026-04-21: 엑셀에서 badge_type 칸에 공백/한글/대소문자 변형 등이 들어가면
+    //    서버 CHECK 제약 위반으로 전체 0건 반영되던 사고 → 서버가 정규화하지만 클라이언트도 확실히 trim 후 fallback.
+    const items = dataRows.map(cols => {
+      const badgeRaw = (cols[5] || '').trim();
+      return {
+        name: (cols[0] || '').trim(),
+        short_desc: (cols[1] || '').trim(),
+        long_desc: (cols[2] || '').trim() || null,
+        country: (cols[3] || '').trim(),
+        region: (cols[4] || '').trim(),
+        badge_type: badgeRaw || 'tour', // 빈/공백 → 'tour' (서버가 한번 더 한글·대소문자 정규화)
+        emoji: (cols[6] || '').trim(),
+      };
+    }).filter(i => i.name);
     if (items.length === 0) { alert('유효한 행이 없습니다. CSV 형식을 확인해주세요.\n헤더: name,short_desc,long_desc,country,region,badge_type,emoji'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/attractions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || '서버 오류');
-      alert(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (총 ${items.length}건)`);
+      const dup = json.skippedDuplicates > 0 ? `\n(중복 name ${json.skippedDuplicates}건 자동 제거)` : '';
+      if (json.totalErrors > 0) {
+        const top = (json.errors || []).slice(0, 5).map((e: { name: string; error: string }) => `  • ${e.name.slice(0, 40)}: ${e.error.slice(0, 60)}`).join('\n');
+        alert(`CSV 업로드: ${json.upserted}/${items.length}건 반영\n실패 ${json.totalErrors}건:\n${top}${json.totalErrors > 5 ? `\n  ... 외 ${json.totalErrors - 5}건` : ''}${dup}`);
+      } else {
+        alert(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (총 ${items.length}건)${dup}`);
+      }
       load();
     } catch (err) {
       alert(`CSV 업로드 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
@@ -367,7 +379,13 @@ export default function AttractionsPage() {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-bold text-slate-600">📷 사진 ({a.photos?.length || 0}/5)</h4>
-                        <button onClick={(e) => { e.stopPropagation(); setPhotoPanel(isPhotoOpen ? null : { id: a.id, results: [], keyword: `${a.name} ${a.region || ''} travel`, searching: false }); }}
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          // ERR-pexels-korean-search@2026-04-21: 영어 alias 있으면 Pexels 검색에 그걸 기본 키워드로
+                          const englishAlias = (a.aliases || []).find(al => typeof al === 'string' && /^[\x20-\x7E\s]{2,}$/.test(al));
+                          const defaultKeyword = englishAlias || `${a.name} ${a.region || ''} travel`;
+                          setPhotoPanel(isPhotoOpen ? null : { id: a.id, results: [], keyword: defaultKeyword, searching: false });
+                        }}
                           className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200">
                           {isPhotoOpen ? '닫기' : '+ 사진 추가/변경'}
                         </button>

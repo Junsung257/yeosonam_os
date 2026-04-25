@@ -595,12 +595,34 @@ export function generateBlogPost(
 
   const sections: string[] = [];
 
-  // ── H1 + 인트로 ─────────────────────────────────────────
-  sections.push(`# ${dest} ${dur} ${angleLabel} 여행 추천`);
-  sections.push(`\n안녕하세요, 여소남입니다.\n오늘은 ${dest} ${dur} 여행을 **${angleLabel}** 관점에서 소개해드릴게요.\n`);
+  // ── H1 (후킹형 — seo_title과 구분되어 키워드 스터핑 방지, 친근한 존댓말) ────────
+  const h1Options: Record<AngleType, string> = {
+    value: `${dest} ${dur} ${priceStr || '이 가격'}, 이게 말이 되나 싶으시죠?`,
+    emotional: `${dest} ${dur}, 잠깐 일상을 내려놓고 싶으실 때`,
+    filial: `부모님과 가는 ${dest} ${dur}, 동선부터 편하게`,
+    luxury: `${dest} ${dur} 프리미엄, 어디서 갈리는 걸까요?`,
+    urgency: `${dest} ${dur} 특가, 지금 이 가격이 말이 되는 이유`,
+    activity: `${dest} ${dur} 액티비티, 몸에 맞는 일정 고르는 법`,
+    food: `${dest} ${dur} 먹는 여행, 뭐부터 잡으면 좋을까요?`,
+  };
+  sections.push(`# ${h1Options[angle] || `${dest} ${dur} ${angleLabel} 여행`}`);
+
+  // ── TL;DR (핵심 요약 — GEO 인용률 상승 패턴) ────────
+  const tldrLines: string[] = [];
+  if (dest && dur) tldrLines.push(`- ${dest} ${dur} ${angleLabel} 여행 (여소남 엄선)`);
+  if (priceStr) tldrLines.push(`- 출발가 ${priceStr}~ (숨은 비용 없음)`);
+  if (product.airline) tldrLines.push(`- ${product.airline} 이용 · ${product.departure_airport ?? ''} 출발`.trim());
+  if (highlights.length > 0) {
+    const top = highlights[0].replace(/\*\*/g, '').slice(0, 60);
+    if (top) tldrLines.push(`- 핵심 포인트: ${top}`);
+  }
+  if (tldrLines.length >= 2) {
+    sections.push(`\n## 핵심 요약`);
+    sections.push(tldrLines.join('\n'));
+  }
 
   // ── 여행 개요 ──────────────────────────────────────────
-  const overview = [`## 여행 개요`, `- **목적지:** ${dest}`, `- **기간:** ${dur}`];
+  const overview = [`\n## 여행 개요`, `- **목적지:** ${dest}`, `- **기간:** ${dur}`];
   if (priceStr) overview.push(`- **가격:** ${priceStr}~`);
   if (product.airline) overview.push(`- **항공:** ${product.airline}`);
   if (product.departure_airport) overview.push(`- **출발:** ${product.departure_airport}`);
@@ -659,7 +681,8 @@ export function generateBlogPost(
     if (matchedSpots.length > 0) {
       for (const spot of matchedSpots) {
         sections.push(`\n### ${spot.name}`);
-        if (spot.photo) sections.push(`![${spot.name}](${spot.photo})`);
+        // alt 형식: "${destination} ${관광지명}" — 이미지 로드 실패 시에도 맥락 유지
+        if (spot.photo) sections.push(`![${dest} ${spot.name}](${spot.photo})`);
         if (spot.desc) sections.push(spot.desc);
       }
     } else {
@@ -681,29 +704,66 @@ export function generateBlogPost(
     ).join('\n'));
   }
 
-  // ── FAQ (notices_parsed에서 자동 추출) ──────────────────
+  // ── FAQ (FAQPage JSON-LD 자동 추출 + 롱테일 검색 유입) ──────────────
+  // 1) notices_parsed 우선, 2) 없으면 상품 스펙 기반 기본 FAQ 3종 생성
   const notices = (product as any).notices_parsed;
-  if (Array.isArray(notices) && notices.length > 0) {
-    const faqItems = notices
-      .filter((n: any) => typeof n === 'object' && n !== null && 'title' in n && 'text' in n)
-      .slice(0, 5);
+  const faqItems: { title: string; text: string }[] = [];
 
-    if (faqItems.length > 0) {
-      sections.push(`\n## 자주 묻는 질문`);
-      for (const faq of faqItems) {
-        sections.push(`\n**Q. ${faq.title}**\n\nA. ${faq.text}`);
-      }
+  if (Array.isArray(notices) && notices.length > 0) {
+    const parsed = notices
+      .filter((n: any) => typeof n === 'object' && n !== null && 'title' in n && 'text' in n)
+      .slice(0, 4);
+    faqItems.push(...parsed);
+  }
+
+  // 기본 FAQ — notices 부족 시 채움 (최소 3개 보장)
+  if (faqItems.length < 3) {
+    const defaults: { title: string; text: string }[] = [];
+    if (product.departure_airport && product.airline) {
+      defaults.push({
+        title: `${product.departure_airport.replace(/\(.*?\)/g, '').trim()} 출발 공항 수속은 몇 시간 전에 가야 하나요?`,
+        text: `국제선이라 출발 2시간 30분 전 공항 도착을 권장합니다. ${product.airline} 카운터 위치는 출국장 전광판에서 확인하실 수 있고, 여소남 예약 확정서에도 표기해 드립니다.`,
+      });
+    }
+    if (dest) {
+      defaults.push({
+        title: `${dest} 여행에 비자가 필요한가요?`,
+        text: `여소남은 예약 확정 시 해당 국가 비자 정책과 유효기간(보통 여권 잔여 6개월 이상)을 안내해 드립니다. 단수/복수, 도착비자 여부는 변동될 수 있어 출발 전 재확인이 원칙입니다.`,
+      });
+    }
+    if (priceStr) {
+      defaults.push({
+        title: `${priceStr}~ 금액에 모든 비용이 포함되나요?`,
+        text: `항공·숙박·현지 이동·일정표상 식사·기사 가이드 경비 등 명시된 포함 항목은 모두 포함된 가격입니다. 선택관광·일부 개인 경비·환율 변동에 따른 유류할증료 조정분은 별도이며, 예약 시 구체 내역을 확인하실 수 있습니다.`,
+      });
+    }
+    defaults.push({
+      title: `현지 사정으로 일정이 변경될 수 있나요?`,
+      text: `기상·항공 스케줄·현지 운영 사정에 따라 순서 조정이 있을 수 있으며, 동급 대체 일정으로 진행됩니다. 여소남 OP(운영팀)가 출발 전 최종 일정을 재확인해 드립니다.`,
+    });
+
+    for (const d of defaults) {
+      if (faqItems.length >= 5) break;
+      if (!faqItems.some((f) => f.title === d.title)) faqItems.push(d);
     }
   }
 
-  // ── CTA (실제 상품 상세 페이지로 바로 연결) ────────────────
+  if (faqItems.length > 0) {
+    sections.push(`\n## 자주 묻는 질문`);
+    for (const faq of faqItems) {
+      // FAQPage JSON-LD 자동 추출 패턴: **Q. 질문**\n\nA. 답변
+      sections.push(`\n**Q. ${faq.title}**\n\nA. ${faq.text}`);
+    }
+  }
+
+  // ── CTA (친근한 존댓말, 상품 상세 페이지 연결) ────────────────
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
   const productUrl = product.id ? `${baseUrl}/packages/${product.id}` : baseUrl;
-  sections.push(`\n## 예약 안내`);
+  sections.push(`\n## [지금 상품 살펴보기]`);
   sections.push(
-    `여소남에서 ${dest} ${angleLabel} 여행을 만나보세요.\n` +
-    `아래 버튼을 눌러 상품 상세 정보와 일정을 확인하고 바로 예약하세요.\n\n` +
-    `**[👉 ${dest} ${dur} ${angleLabel} 상품 예약하기](${productUrl})**`
+    `여소남에서 ${dest} ${angleLabel} 여행 중 가치 있는 상품만 골라 두었어요.\n` +
+      `일정이 몸에 맞는지 일정표만 한 번 훑어 주세요. 고민되시면 카카오톡 상담으로 편하게 물어보셔도 돼요.\n\n` +
+      `**[👉 ${dest} ${dur} ${angleLabel} 상품 상세 보기](${productUrl})**`,
   );
 
   return sections.join('\n');
@@ -765,23 +825,27 @@ export function generateBlogSeo(
   const slugParts = [destRoman, durPart, ANGLE_SLUG[angle]];
   const slug = slugParts.filter(Boolean).join('-');
 
-  // SEO 제목 최적화 (구글 SEO 베스트: 키워드 앞쪽 + 숫자 + 50자 내외 + 브랜드 뒤)
-  // 패턴: [출발지] [목적지] [기간] [앵글+강조어] [가격] | 여소남 [년도]
+  // SEO 제목 최적화
+  // 루트 layout(src/app/layout.tsx)의 metadata template이 " | 여소남"을 자동으로 붙이므로
+  // seoTitle에는 브랜드/접미사를 넣지 않는다 (이전 형식 " | 여소남 2026"은 이중 표기 유발).
+  // 패턴: [출발지]출발 [목적지] [기간] [앵글] 패키지 [가격]~ ([년도])
   const departure = (product as any).departure_airport as string | undefined;
   const depPrefix = departure ? `${departure.replace(/\(.*?\)/g, '').trim()}출발 ` : '';
   const priceShort = price > 0 ? ` ${Math.round(price / 10000)}만원~` : '';
   const destClean = dest.replace(/\s+/g, ' ').trim();
-  // 60자 제한을 벗어나지 않도록 우선순위로 빌드
-  let title = `${depPrefix}${destClean} ${dur} ${angleLabel} 패키지${priceShort} | 여소남 ${year}`;
-  if (title.length > 60) {
-    // 출발지 생략
-    title = `${destClean} ${dur} ${angleLabel} 패키지${priceShort} | 여소남 ${year}`;
+  // 55자 이내 (brand 접미사 " | 여소남" 약 6자 여유)
+  const MAX = 55;
+  let title = `${depPrefix}${destClean} ${dur} ${angleLabel} 패키지${priceShort} (${year})`;
+  if (title.length > MAX) {
+    title = `${depPrefix}${destClean} ${dur} ${angleLabel} 패키지${priceShort}`;
   }
-  if (title.length > 60) {
-    // 가격 생략
-    title = `${destClean} ${dur} ${angleLabel} 패키지 추천 | 여소남 ${year}`;
+  if (title.length > MAX) {
+    title = `${destClean} ${dur} ${angleLabel} 패키지${priceShort}`;
   }
-  const seoTitle = title.substring(0, 60);
+  if (title.length > MAX) {
+    title = `${destClean} ${dur} ${angleLabel} 패키지 추천`;
+  }
+  const seoTitle = title.substring(0, MAX);
 
   // SEO 설명: 160자 이내 (highlights + 가격 + inclusions 핵심)
   // 목적지+기간 중복 제거 (이미 앞 descParts에 들어감)

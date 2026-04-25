@@ -19,7 +19,9 @@
  * 로그 prefix: [ig-publish]
  */
 
-const GRAPH_API_BASE = 'https://graph.facebook.com/v18.0';
+import { resolveMetaToken } from './meta-token-resolver';
+
+const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
 
 export interface PublishCarouselInput {
   igUserId: string;
@@ -36,16 +38,22 @@ export interface PublishResult {
 }
 
 export function isInstagramConfigured(): boolean {
+  // 동기 버전 — env 만 체크. 실 토큰 조회는 getInstagramConfig() async.
   return !!(
-    process.env.META_ACCESS_TOKEN &&
+    (process.env.META_ACCESS_TOKEN || process.env.META_IG_USER_ID) &&
     process.env.META_IG_USER_ID
   );
 }
 
-export function getInstagramConfig(): { igUserId: string; accessToken: string } | null {
-  const token = process.env.META_ACCESS_TOKEN;
+/**
+ * 토큰 해석 우선순위: env META_ACCESS_TOKEN → DB system_secrets.META_ACCESS_TOKEN.
+ * Phase 7 자동 refresh 크론이 DB 에 최신 값을 써둠 → env 만료돼도 동작.
+ */
+export async function getInstagramConfig(): Promise<{ igUserId: string; accessToken: string } | null> {
   const userId = process.env.META_IG_USER_ID;
-  if (!token || !userId) return null;
+  if (!userId) return null;
+  const token = await resolveMetaToken('META_ACCESS_TOKEN');
+  if (!token) return null;
   return { igUserId: userId, accessToken: token };
 }
 
@@ -85,11 +93,15 @@ export async function publishCarouselToInstagram(input: PublishCarouselInput): P
     }
 
     // ── Step 2: 각 자식 컨테이너 FINISHED 폴링 ──────────────
-    for (let i = 0; i < childIds.length; i++) {
-      const poll = await pollContainerStatus(childIds[i], accessToken);
-      if (!poll.ok) {
-        console.error('[ig-publish] child-poll-fail', i + 1, poll.error);
-        return { ok: false, step: `child_poll_${i + 1}`, error: poll.error };
+    // PERF-01: sequential → parallel. 최악 대기 = N×90s → 90s (병렬).
+    // 모든 자식 polling 끝나면 결과 합치고, 하나라도 실패면 전체 실패.
+    const pollResults = await Promise.all(
+      childIds.map((childId) => pollContainerStatus(childId, accessToken)),
+    );
+    for (let i = 0; i < pollResults.length; i++) {
+      if (!pollResults[i].ok) {
+        console.error('[ig-publish] child-poll-fail', i + 1, pollResults[i].error);
+        return { ok: false, step: `child_poll_${i + 1}`, error: pollResults[i].error };
       }
     }
 

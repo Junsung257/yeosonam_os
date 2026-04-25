@@ -117,11 +117,12 @@ ${sectionBrief}
 - 구체성: "바나산" → "[구름 위 판타지] 바나산"
 
 ### B. hook_type 별 헤드라인 규칙
-- urgency:  eyebrow=[선착순 N석] / headline=간결 상품+기간 / price_chip 필수
-- question: eyebrow=진짜 최저가? / headline="목적지 N박, 얼마?" / body="답은 마지막에"
-- number:   eyebrow=TOP N / headline="목적지 N박 꿀팁 N가지"
-- fomo:     eyebrow=[이번 주만] / headline=한정 재고 강조
-- story:    eyebrow=REAL STORY / headline=1인칭 스토리 시작
+- urgency:    eyebrow=[선착순 N석] / headline=간결 상품+기간 / price_chip 필수
+- question:   eyebrow=진짜 최저가? / headline="목적지 N박, 얼마?" / body="답은 마지막에"
+- number:     eyebrow=TOP N / headline="목적지 N박 꿀팁 N가지"
+- fomo:       eyebrow=[이번 주만] / headline=한정 재고 강조
+- story:      eyebrow=REAL STORY / headline=1인칭 스토리 시작
+- contrarian: eyebrow=[반전] 또는 [실화] / headline=상식 정면 반박 ("보홀은 비싸다는 거짓말") / body=근거 1줄
 
 ### C. 슬라이드 유형별 카피
 - benefit: "이 가격에 이게 다?" 놀람 프레이밍 + trust_row 3~4개
@@ -130,7 +131,9 @@ ${sectionBrief}
 - detail: 호텔/항공/주의/차량 중 1개 subtype 고정
 - tip: eyebrow=PRO TIP, tip 필드에 80자 팁
 - warning: eyebrow=WATCH OUT, warning 필드에 80자 주의
-- cta: eyebrow=[오늘만] 긴급성, body=DM 유도 (예: "댓글 '예약' 남기세요, ${priceChip || '특가'} DM 발송")
+- objection (V4): eyebrow=[의심 해소] / headline=고객 속내 ("이거 싼 게 비지떡?") / body=약관·포함사항 근거 1줄 방어
+- save_hook (V4): eyebrow=[체크리스트] / headline="저장해두고 보는 OOO N" / body=4~5개 항목 쉼표 나열 / badge="SAVE"
+- cta: eyebrow=[오늘만] 긴급성, body=**DM 마이크로 커밋먼트** (결제 강요 금지. "댓글 'O' 남기면 일정표 DM" 형식)
 
 ### D. 작성 제약
 - headline ≤ 15자
@@ -140,6 +143,34 @@ ${sectionBrief}
 - price_chip = "${priceChip}" (hook/benefit/cta 필수, 나머지 null)
 - social_proof = "★ 4.9 · 예약 N건" 같은 수치 (benefit/detail 에 추천)
 - photo_hint 한국어 1줄 (100자)
+
+### E. V4 글로벌 베스트프랙티스 (필수 준수)
+
+**1. Open-loop (스와이프 강제)**
+각 슬라이드 body 끝을 마침표로 끝내지 말고 **"…"** 로 끊어 다음 장으로 유도.
+예: 1장 "호구 안 잡히려면…" → 2장 "이 3가지만 기억"
+마지막 슬라이드(cta)만 예외.
+
+**2. 금지어 리스트 (네거티브 프롬프팅)**
+다음 단어·표현 절대 사용 금지 — AI 티 나는 진부한 표현:
+- 형용사: "매력적인 / 아름다운 / 특별한 / 완벽한 / 잊지 못할 / 환상적인 / 놀라운 / 인상적인"
+- 문구: "놓치지 마세요 / 지금 바로 / 절대 후회 없는"
+- 거짓 경험: "다녀왔는데 / 가봤어요 / 직접 체크했어요"
+대신: **숫자, 구체적 장소명, 감각 묘사(온도·색·시간·소리)** 만 사용.
+
+**3. 1 슬라이드 1 아이디어**
+한 슬라이드에 핵심 메시지 1개만. 혜택 3개면 슬라이드 3개로 쪼갤 것.
+
+**4. Bionic reading 힌트 (photo_hint 활용)**
+photo_hint 필드 맨 끝에 "BOLD:단어1,단어2" 형식으로 1~2개 강조할 단어 표기.
+예: photo_hint="팡라오 일몰, 투명한 에메랄드빛 / BOLD:일몰,에메랄드빛"
+
+**5. 쉬운 단어만**
+한자어·업계용어 금지 ("체크아웃" OK / "이용료 정산" 금지). 초등 5학년이 1초 만에 이해 수준. 한 문장 어절 8개 이하.
+
+**6. CTA 마이크로 커밋먼트 고정**
+마지막 cta 슬라이드는 반드시 **DM 유도** (결제 압박 금지). badge="DM 받기" 고정.
+body 템플릿: "댓글 '[키워드]' → DM 발송" (결제/예약 링크 금지)
 
 ## 출력 JSON (정확히 이 형식)
 {

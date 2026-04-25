@@ -255,12 +255,20 @@ ${contextBlock}
 
 ## 출력 스펙
 - 슬라이드 ${slideCount}장 = ${contentCount}개 섹션 + 1 CTA
-- AIDA 배치: 1=hook / 2~3=benefit·tourist_spot / 4~5=detail·inclusion / 중간=tip/warning
-- hook 섹션의 hook_type 은 'urgency'|'question'|'number'|'fomo'|'story' 중 1개
+- AIDA + PAS 혼합 배치 권장:
+  · 1: hook (주목)
+  · 2: objection (반론 예측+해소) — 상품 모드일 때 "비싼 거 아냐?" "노옵션 진짜?" 같은 의심 해소
+  · 3~4: benefit·tourist_spot·inclusion (혜택·구체 근거)
+  · 중간: tip / warning / detail (심화 정보)
+  · 마지막 전: save_hook (체크리스트 형식) — IG 알고리즘이 '저장(Save)' 에 최고 가중치 부여
+  · 마지막: cta (DM 유도)
+- hook 섹션의 hook_type 6종:
   · 특가·마감 → urgency
   · 가성비·정보 → question/number
   · 프리미엄·신혼 → story
   · 재고 한정 → fomo
+  · 통념 파괴 → contrarian ("보홀은 비싸다는 거짓말") — 글로벌 상위 1% 마케터가 가장 많이 쓰는 hook
+- role enum 전체: hook|benefit|detail|tip|warning|tourist_spot|inclusion|objection|save_hook|cta
 - template_family_suggestion: editorial|cinematic|premium|bold 중 상품 성격 1개
 - h2 는 블로그 목차 — 간결/명확
 - pexels_keyword 는 영문 명사 1~2개
@@ -276,7 +284,7 @@ ${contextBlock}
   "sections": [
     {
       "position": 1,
-      "role": "hook|benefit|detail|tip|warning|tourist_spot|inclusion",
+      "role": "hook|benefit|detail|tip|warning|tourist_spot|inclusion|objection|save_hook",
       "h2": "블로그 H2 (2~50자)",
       "blog_paragraph_seed": "본문 씨앗 (10~500자)",
       "hook_type": "hook 섹션이면 urgency|question|number|fomo|story 중 1개, 아니면 null",

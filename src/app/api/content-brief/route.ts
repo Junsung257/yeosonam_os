@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 /**
  * POST /api/content-brief

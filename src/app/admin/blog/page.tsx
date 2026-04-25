@@ -12,6 +12,8 @@ interface BlogPost {
   category: string | null;
   published_at: string | null;
   created_at: string;
+  view_count?: number | null;
+  topic_source?: string | null;
   travel_packages: { title: string; destination: string } | null;
 }
 
@@ -83,6 +85,12 @@ export default function BlogAdminPage() {
         </div>
         <div className="flex gap-2">
           <Link
+            href="/admin/blog/queue"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50 transition"
+          >
+            자동 발행 큐
+          </Link>
+          <Link
             href="/admin/blog/categories"
             className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50 transition"
           >
@@ -131,6 +139,7 @@ export default function BlogAdminPage() {
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="text-left px-4 py-2.5 text-[11px] text-slate-500 font-medium">제목</th>
                 <th className="text-left px-3 py-2.5 text-[11px] text-slate-500 font-medium w-20">카테고리</th>
+                <th className="text-right px-3 py-2.5 text-[11px] text-slate-500 font-medium w-16">조회</th>
                 <th className="text-left px-3 py-2.5 text-[11px] text-slate-500 font-medium w-16">상태</th>
                 <th className="text-left px-3 py-2.5 text-[11px] text-slate-500 font-medium w-24">날짜</th>
                 <th className="w-16"></th>
@@ -151,6 +160,14 @@ export default function BlogAdminPage() {
                     <span className="text-[10px] text-slate-500">
                       {CAT_LABELS[post.category || ''] || post.travel_packages?.destination || '-'}
                     </span>
+                    {post.topic_source && post.topic_source !== 'manual' && (
+                      <span className="ml-1 px-1 py-0.5 text-[9px] bg-indigo-50 text-indigo-600 rounded">
+                        auto
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-right text-[12px] tabular-nums font-semibold text-slate-700">
+                    {(post.view_count ?? 0).toLocaleString()}
                   </td>
                   <td className="px-3 py-3">
                     <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${STATUS_BADGE[post.status] || 'bg-slate-100 text-slate-500'}`}>
