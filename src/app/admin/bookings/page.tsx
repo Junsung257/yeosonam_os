@@ -1209,6 +1209,7 @@ export default function BookingsPage() {
           case 'adult_price':    av = a.adult_price||0; bv = b.adult_price||0; break;
           case 'total_price':    av = a.total_price||0; bv = b.total_price||0; break;
           case 'paid_amount':    av = a.paid_amount||0; bv = b.paid_amount||0; break;
+          case 'total_paid_out': av = a.total_paid_out||0; bv = b.total_paid_out||0; break;
           case 'balance':        av = (a.total_price||0)-(a.paid_amount||0); bv = (b.total_price||0)-(b.paid_amount||0); break;
           default:               av = a.created_at; bv = b.created_at;
         }
@@ -1223,9 +1224,11 @@ export default function BookingsPage() {
   }, [bookings, lifecycleTab, activeTab, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today]);
 
   const footerStats = useMemo(() => ({
-    totalSales:   filtered.reduce((s, b) => s + (b.total_price||0), 0),
-    totalPaid:    filtered.reduce((s, b) => s + (b.paid_amount||0), 0),
-    totalBalance: filtered.reduce((s, b) => s + Math.max(0, (b.total_price||0)-(b.paid_amount||0)), 0),
+    totalSales:    filtered.reduce((s, b) => s + (b.total_price||0), 0),
+    totalPaid:     filtered.reduce((s, b) => s + (b.paid_amount||0), 0),
+    totalPaidOut:  filtered.reduce((s, b) => s + (b.total_paid_out||0), 0),
+    totalBalance:  filtered.reduce((s, b) => s + Math.max(0, (b.total_price||0)-(b.paid_amount||0)), 0),
+    totalNetMargin: filtered.reduce((s, b) => s + ((b.paid_amount||0) - (b.total_paid_out||0)), 0),
   }), [filtered]);
 
   const cardStats = useMemo(() => ({
@@ -1461,6 +1464,7 @@ export default function BookingsPage() {
                 <th className="text-right px-3 py-2 text-[13px] font-semibold text-slate-800 whitespace-nowrap min-w-[140px]">예상 마진</th>
                 <th className="text-center px-3 py-2 text-[13px] font-semibold text-slate-800 whitespace-nowrap min-w-[110px]">마진율</th>
                 <SortTh label="입금액"      field="paid_amount"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
+                <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <th className="text-center px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
                 <th className="px-3 py-2 min-w-[140px]" />
@@ -1468,14 +1472,19 @@ export default function BookingsPage() {
             </thead>
 
             <tbody>
-              {vPadTop > 0 && <tr style={{ height: vPadTop }}><td colSpan={18} /></tr>}
+              {vPadTop > 0 && <tr style={{ height: vPadTop }}><td colSpan={19} /></tr>}
               {filtered.slice(vStartIdx, vEndIdx + 1).map((b, i) => {
                 const ri              = vStartIdx + i;
                 const balance         = (b.total_price||0) - (b.paid_amount||0);
                 const agencyUnpaid    = (b.total_cost||0) - (b.total_paid_out||0);
                 const isPaid          = balance <= 0 && (b.total_price||0) > 0;
-                const margin          = (b.total_price||0) - (b.total_cost||0);
-                const mRate           = b.total_price ? ((margin / b.total_price) * 100).toFixed(1) : '0';
+                // 예상 마진 = 실현 현금 마진 (입금액 − 출금액). 현금 흐름 기반.
+                const margin          = (b.paid_amount||0) - (b.total_paid_out||0);
+                // 마진율: 입금액 대비 (입금 전이면 '—' 표시, mHasPaid 로 분기)
+                const mHasPaid        = (b.paid_amount||0) > 0;
+                const mRate           = mHasPaid ? ((margin / (b.paid_amount||1)) * 100).toFixed(1) : '0';
+                // 데이터 유무: 입금/출금 중 하나라도 있어야 의미 있음
+                const hasCashData     = (b.paid_amount||0) > 0 || (b.total_paid_out||0) > 0;
                 const dDiff           = dDiffFn(b.departure_date);
                 const isRisk          = dDiff !== null && dDiff >= 0 && dDiff <= 7 && balance > 0 && ['pending','confirmed'].includes(b.status);
                 const isLandBomb      = dDiff !== null && dDiff >= 0 && dDiff <= 7 && agencyUnpaid > 0 && b.status !== 'cancelled';
@@ -1746,18 +1755,19 @@ export default function BookingsPage() {
                       {fmt(b.total_price)}
                     </td>
 
-                    {/* 예상 마진 */}
-                    <td className="px-3 min-w-[140px] text-right whitespace-nowrap tabular-nums">
-                      {b.total_cost != null && b.total_price != null ? (
+                    {/* 예상 마진 — 실현 현금 마진 (입금액 − 출금액) */}
+                    <td className="px-3 min-w-[140px] text-right whitespace-nowrap tabular-nums"
+                        title={`실현 현금 마진 = 입금 ${(b.paid_amount||0).toLocaleString()}원 − 출금 ${(b.total_paid_out||0).toLocaleString()}원`}>
+                      {hasCashData ? (
                         <span className={`font-bold text-[13px] tabular-nums ${margin >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                           {margin >= 0 ? '+' : ''}{Math.round(margin / 10000)}만원
                         </span>
                       ) : <span className="text-slate-300 text-[13px]">—</span>}
                     </td>
 
-                    {/* 마진율 */}
+                    {/* 마진율 — 입금액 대비 */}
                     <td className="px-3 min-w-[110px] text-center whitespace-nowrap">
-                      {b.total_price ? (
+                      {mHasPaid ? (
                         <MarginBadge rate={parseFloat(mRate)} />
                       ) : <span className="text-slate-300 text-[13px]">—</span>}
                     </td>
@@ -1768,9 +1778,16 @@ export default function BookingsPage() {
                       {fmt(b.paid_amount)}
                     </td>
 
-                    {/* 잔금 / 취소건은 순현금 */}
+                    {/* 출금액 — 랜드사 송금액 (total_paid_out) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 13)} onFocus={() => setFocusedCell({ row: ri, col: 13 })}
-                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(13)}`}>
+                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(13)} ${!(b.total_paid_out) ? 'text-slate-300 font-normal text-[13px]' : 'font-bold text-[14px] text-orange-700'}`}
+                      title={`랜드사 송금액 (원가 ${(b.total_cost||0).toLocaleString()}원 중)`}>
+                      {fmt(b.total_paid_out)}
+                    </td>
+
+                    {/* 잔금 / 취소건은 순현금 */}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 14)} onFocus={() => setFocusedCell({ row: ri, col: 14 })}
+                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(14)}`}>
                       {isCancelled ? (
                         <div>
                           <span className={`font-bold text-[13px] ${
@@ -1829,8 +1846,8 @@ export default function BookingsPage() {
                     </td>
 
                     {/* 상태 뱃지 */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 14)} onFocus={() => setFocusedCell({ row: ri, col: 14 })}
-                      className={`px-3 min-w-[140px] text-center whitespace-nowrap outline-none ${focusCls(14)}`}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 15)} onFocus={() => setFocusedCell({ row: ri, col: 15 })}
+                      className={`px-3 min-w-[140px] text-center whitespace-nowrap outline-none ${focusCls(15)}`}
                       onClick={e => e.stopPropagation()}>
                       {isEditing('status') ? (
                         <select autoFocus value={cellValue}
@@ -1872,7 +1889,7 @@ export default function BookingsPage() {
                   </tr>
                 );
               })}
-              {vPadBottom > 0 && <tr style={{ height: vPadBottom }}><td colSpan={18} /></tr>}
+              {vPadBottom > 0 && <tr style={{ height: vPadBottom }}><td colSpan={19} /></tr>}
             </tbody>
 
             <tfoot className="sticky bottom-0 z-10">
@@ -1880,8 +1897,16 @@ export default function BookingsPage() {
                 <td className="sticky left-0 bg-[#001f3f] px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
                 <td colSpan={9} />
                 <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap tabular-nums font-bold">{footerStats.totalSales.toLocaleString()}원</td>
-                <td colSpan={2} /> {/* 예상마진, 마진율 */}
+                {/* 예상마진 합계 (입금 − 출금) */}
+                <td className="px-3 py-2 text-right text-[13px] whitespace-nowrap tabular-nums font-bold"
+                    title="실현 현금 마진 합계 (입금액 − 출금액)">
+                  <span className={footerStats.totalNetMargin >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                    {footerStats.totalNetMargin >= 0 ? '+' : ''}{Math.round(footerStats.totalNetMargin / 10000)}만원
+                  </span>
+                </td>
+                <td /> {/* 마진율 */}
                 <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap text-blue-200 tabular-nums font-bold">{footerStats.totalPaid.toLocaleString()}원</td>
+                <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap text-orange-200 tabular-nums font-bold">{footerStats.totalPaidOut > 0 ? footerStats.totalPaidOut.toLocaleString() + '원' : '—'}</td>
                 <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap text-red-200 tabular-nums font-bold">{footerStats.totalBalance > 0 ? footerStats.totalBalance.toLocaleString() + '원' : '—'}</td>
                 <td colSpan={2} />
               </tr>
@@ -1969,6 +1994,11 @@ export default function BookingsPage() {
         bookingId={drawerBookingId}
         onClose={() => setDrawerBookingId(null)}
         onStatusChange={(id, newStatus) => setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b))}
+        onSave={(id, updated) => {
+          // 드로어에서 저장된 최신 booking 필드를 리스트 state 에 머지 — 드로어를 닫지 않아도
+          // 인원·판매가·원가·마진·정산 컬럼이 즉시 재계산됨 (유동 동기화)
+          setBookings(prev => prev.map(b => b.id === id ? { ...b, ...(updated as Partial<Booking>) } : b));
+        }}
       />
     </div>
   );

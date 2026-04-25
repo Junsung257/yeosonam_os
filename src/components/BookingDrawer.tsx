@@ -72,6 +72,12 @@ interface BookingDrawerProps {
   bookingId: string | null;
   onClose: () => void;
   onStatusChange?: (id: string, newStatus: string) => void;
+  /**
+   * 예약 필드(인원·판매가·원가·정산 등)가 드로어 내부에서 변경·저장된 뒤 호출.
+   * 부모(예: /admin/bookings 리스트)는 받은 업데이트를 자신의 state 에 머지해서
+   * 드로어를 닫지 않아도 즉시 리스트 컬럼이 최신화되도록 함.
+   */
+  onSave?: (id: string, updated: Record<string, unknown>) => void;
 }
 
 type QuoteRow = {
@@ -80,7 +86,23 @@ type QuoteRow = {
   count:     number;
   salePrice: number;
   netPrice:  number;
+  /**
+   * 커미션 계산에서 제외할지 여부.
+   * 예: 싱글차지/유류할증/공항세 등은 총 판매가에는 포함되지만
+   *     랜드사 커미션 base 에서는 빼야 함.
+   * undefined/false → 포함, true → 제외.
+   */
+  excludeFromCommission?: boolean;
 };
+
+/**
+ * 라벨이 커미션 제외 대상 키워드를 포함하는지 감지.
+ * 새 custom row 추가 시 기본값 자동 설정에 사용.
+ */
+const COMMISSION_EXCLUDE_PATTERN = /싱글|single|유류|연료|할증|세금|vat|공항세|택스|tax|surcharge/i;
+function shouldAutoExcludeFromCommission(label: string): boolean {
+  return COMMISSION_EXCLUDE_PATTERN.test(label);
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -397,6 +419,13 @@ function DynamicQuoteBuilder({
   const computedNet = rows.reduce((s, r) => s + r.count * r.netPrice, 0);
   const totalSale    = rows.reduce((s, r) => s + r.count * r.salePrice, 0);
 
+  // 커미션 기준액: 싱글차지/유류/세금 같이 excludeFromCommission 가 체크된 행은 제외
+  // 즉 "랜드사 커미션을 받을 수 있는 실질적 판매가"
+  const commissionBase = rows
+    .filter(r => !r.excludeFromCommission)
+    .reduce((s, r) => s + r.count * r.salePrice, 0);
+  const excludedFromCommission = totalSale - commissionBase;
+
   // effectiveNet 계산 우선순위:
   //  1) netOverride (수동 조정) — 최우선
   //  2) rows의 netPrice 합 (행별 원가 입력됨)
@@ -408,8 +437,17 @@ function DynamicQuoteBuilder({
     : (commissionAmount && commissionAmount > 0) ? totalSale - commissionAmount
     : 0;
 
-  const updateRow = (idx: number, field: keyof QuoteRow, val: string | number) => {
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  const updateRow = (idx: number, field: keyof QuoteRow, val: string | number | boolean) => {
+    setRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const next = { ...r, [field]: val } as QuoteRow;
+      // 라벨이 수동 변경될 때, 사용자가 체크박스를 아직 건드리지 않았으면
+      // (excludeFromCommission 가 undefined) 키워드 자동감지
+      if (field === 'label' && typeof val === 'string' && r.excludeFromCommission === undefined) {
+        next.excludeFromCommission = shouldAutoExcludeFromCommission(val);
+      }
+      return next;
+    }));
     setIsDirty(true);
   };
 
@@ -420,6 +458,8 @@ function DynamicQuoteBuilder({
       count:     1,
       salePrice: 0,
       netPrice:  0,
+      // 커스텀 행 기본은 포함. 라벨을 "싱글차지" 등으로 바꾸면 자동 제외 전환.
+      excludeFromCommission: false,
     }]);
     setIsDirty(true);
   };
@@ -463,12 +503,15 @@ function DynamicQuoteBuilder({
 
       <div className="px-4 pt-3 pb-4">
         {/* Column labels */}
-        <div className="grid grid-cols-[1fr_76px_108px_108px_88px_28px] gap-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide px-1 mb-2">
+        <div className="grid grid-cols-[1fr_60px_108px_108px_88px_48px_24px] gap-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide px-1 mb-2">
           <span>항목</span>
           <span className="text-center">인원</span>
           <span className="text-right">판매단가</span>
           <span className="text-right bg-amber-50 rounded px-1">랜드사원가</span>
           <span className="text-right">소계</span>
+          <span className="text-center text-amber-600" title="커미션 계산에서 제외 (싱글차지/유류할증 등)">커미션
+            <br /><span className="text-[9px]">제외</span>
+          </span>
           <span />
         </div>
 
@@ -478,7 +521,7 @@ function DynamicQuoteBuilder({
             const isFixed = ['adult', 'child', 'infant'].includes(row.id);
             return (
               <div key={row.id}
-                className="grid grid-cols-[1fr_76px_108px_108px_88px_28px] gap-1.5 items-center py-1 border-t border-gray-50 first:border-none">
+                className="grid grid-cols-[1fr_60px_108px_108px_88px_48px_24px] gap-1.5 items-center py-1 border-t border-gray-50 first:border-none">
                 {isFixed ? (
                   <span className="text-[14px] font-bold text-gray-700 px-1">{row.label}</span>
                 ) : (
@@ -516,6 +559,20 @@ function DynamicQuoteBuilder({
                 <p className={`text-right text-[13px] tabular-nums font-bold pr-1 ${row.count === 0 ? 'text-gray-300' : 'text-gray-800'}`}>
                   {(row.count * row.salePrice).toLocaleString()}
                 </p>
+
+                {/* 커미션 제외 토글 */}
+                <div className="flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={!!row.excludeFromCommission}
+                    disabled={disabled}
+                    onChange={e => updateRow(idx, 'excludeFromCommission', e.target.checked)}
+                    title={row.excludeFromCommission
+                      ? '커미션 계산에서 제외됨 (싱글차지/유류 등)'
+                      : '커미션 계산에 포함'}
+                    className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-400 cursor-pointer disabled:opacity-50"
+                  />
+                </div>
 
                 {!isFixed ? (
                   <button onMouseDown={() => { setRows(prev => prev.filter((_, i) => i !== idx)); setIsDirty(true); }}
@@ -555,12 +612,18 @@ function DynamicQuoteBuilder({
                 onChange={e => {
                   const v = e.target.value === '' ? null : parseFloat(e.target.value);
                   setCommissionRate(v);
-                  if (v !== null && totalSale > 0) {
-                    setCommissionAmount(Math.round(totalSale * v / 100));
+                  if (v !== null && commissionBase > 0) {
+                    setCommissionAmount(Math.round(commissionBase * v / 100));
                   } else if (v === null) {
                     setCommissionAmount(null);
                   }
                   setIsDirty(true);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
                 }}
                 className="w-full border border-amber-200 bg-white rounded-lg px-2 py-1.5 text-right text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
@@ -573,17 +636,36 @@ function DynamicQuoteBuilder({
                 onChange={e => {
                   const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
                   setCommissionAmount(v);
-                  if (v !== null && totalSale > 0) {
-                    setCommissionRate(Math.round((v / totalSale) * 10000) / 100);
+                  if (v !== null && commissionBase > 0) {
+                    setCommissionRate(Math.round((v / commissionBase) * 10000) / 100);
                   } else if (v === null) {
                     setCommissionRate(null);
                   }
                   setIsDirty(true);
                 }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
                 className="w-full border border-amber-200 bg-white rounded-lg px-2 py-1.5 text-right text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
           </div>
-          {commissionAmount && commissionAmount > 0 && totalSale > 0 && netOverride === null && computedNet === 0 && (
+
+          {/* 커미션 기준액 표시 — 제외 항목이 있을 때만 */}
+          {excludedFromCommission > 0 && (
+            <div className="mt-2 flex items-center justify-between text-[11px] bg-white/60 border border-amber-200 rounded-md px-2 py-1.5">
+              <span className="text-amber-700 font-semibold">💰 커미션 기준액</span>
+              <span className="tabular-nums text-gray-700">
+                전체 <b>{totalSale.toLocaleString()}</b>
+                <span className="text-red-500 mx-1">− 제외 {excludedFromCommission.toLocaleString()}</span>
+                = <strong className="text-amber-700">{commissionBase.toLocaleString()}원</strong>
+              </span>
+            </div>
+          )}
+
+          {commissionAmount && commissionAmount > 0 && commissionBase > 0 && netOverride === null && computedNet === 0 && (
             <p className="text-[11px] text-amber-700 mt-2">
               ↳ 실 원가 자동: {totalSale.toLocaleString()} − {commissionAmount.toLocaleString()} = <strong>{(totalSale - commissionAmount).toLocaleString()}원</strong>
               <span className="text-[10px] text-amber-600 ml-1">(성인/아동 행에 원가 직접 입력하면 그쪽 우선)</span>
@@ -686,7 +768,7 @@ function DynamicQuoteBuilder({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function BookingDrawer({ bookingId, onClose, onStatusChange }: BookingDrawerProps) {
+export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSave }: BookingDrawerProps) {
   const [booking, setBooking]               = useState<BookingDetail | null>(null);
   const [logs, setLogs]                     = useState<MessageLog[]>([]);
   const [loading, setLoading]               = useState(false);
@@ -860,7 +942,11 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
         showToast(`정산 확정 실패 — ${(errData as { error?: string }).error ?? '다시 시도'}`, 'err');
         return;
       }
+      const patchedPayload = await res.json().catch(() => null) as { booking?: Record<string, unknown> } | null;
       await fetchAll(bookingId);
+      if (patchedPayload?.booking) {
+        onSave?.(bookingId, patchedPayload.booking);
+      }
       showToast(confirm ? '✅ 정산 확정 — 목록에서 숨겨집니다' : '♻️ 정산 확정 해제');
     } catch {
       showToast('네트워크 오류 — 다시 시도해주세요', 'err');
@@ -925,7 +1011,12 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange }: Bo
 
       // ── 성공: 서버 최신 데이터로 리렌더링 ──────────────────────────────
       setIsDirty(false);
+      const patchedPayload = await res.json().catch(() => null) as { booking?: Record<string, unknown> } | null;
       await fetchAll(bookingId);
+      // 부모 리스트에 변경 전파 (드로어 닫지 않아도 즉시 리스트 컬럼 업데이트)
+      if (patchedPayload?.booking) {
+        onSave?.(bookingId, patchedPayload.booking);
+      }
       const profitLabel = `실현 수익 ${(reality.actualIncome - reality.actualExpense).toLocaleString()}원`;
       showToast(`✅ 저장됨 — ${profitLabel}`);
     } catch {

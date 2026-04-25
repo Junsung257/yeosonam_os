@@ -40,11 +40,39 @@ interface BookingFull {
 
 function fmt만(n: number) { return `${(n / 10000).toFixed(1)}만`; }
 function fmtDate(d?: string) { return d ? d.slice(2, 10).replace(/-/g, '-') : ''; }
+/** 고객명 + 출발일(YYMMDD) 앵커 — 업계 표준 (Cloudbeds/Xero 패턴) */
+function fmtDateCompact(d?: string): string {
+  if (!d) return 'TBD';
+  return d.slice(2, 10).replace(/-/g, '');  // "2026-05-07" → "260507"
+}
+/** 외국인명(영문 10자+) → 성+이니셜 축약: "LEE MIKYUNG" → "L.MIKYUNG" */
+function abbrevName(raw?: string): string {
+  if (!raw) return '이름 없음';
+  const s = raw.trim();
+  if (s.length <= 8) return s;
+  // 영문 2단어 이상이면 성+이니셜
+  if (/^[A-Za-z .]+$/.test(s) && s.includes(' ')) {
+    const parts = s.split(/\s+/);
+    if (parts.length >= 2) return `${parts[0][0]}.${parts.slice(1).join('')}`.slice(0, 12);
+  }
+  return s.slice(0, 10) + '…';
+}
+/** "이미경 / 260507" 형식 앵커 생성 — 다건 예약 중 구분용 */
+function fmtBookingAnchor(b: { customers?: { name?: string }; departure_date?: string }): string {
+  const name = abbrevName(b.customers?.name);
+  const date = fmtDateCompact(b.departure_date);
+  return `${name} / ${date}`;
+}
 function fmtTs(iso: string): string {
   return new Intl.DateTimeFormat('ko-KR', {
     month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
   }).format(new Date(iso));
+}
+/** 거래가 얼마나 오래 방치됐는지 시간 단위로 반환 (24h 이상이면 빨간 뱃지) */
+function hoursSince(iso?: string): number {
+  if (!iso) return 0;
+  return (Date.now() - new Date(iso).getTime()) / 3600_000;
 }
 function getBalance(b: BookingFull) { return Math.max(0, (b.total_price || 0) - (b.paid_amount || 0)); }
 function nameSim(a?: string, b?: string): number {
@@ -54,6 +82,13 @@ function nameSim(a?: string, b?: string): number {
   if (an.includes(bn) || bn.includes(an)) return 0.7;
   if (an[0] === bn[0]) return 0.3;
   return 0;
+}
+
+/** 신뢰도 → 3색 pill (ACTICO 패턴) — 숫자 해석 부담 제거 */
+function confidenceBucket(c: number): { label: string; cls: string } {
+  if (c >= 0.9)  return { label: '자동 확정', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  if (c >= 0.6)  return { label: '검토 필요', cls: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  return             { label: '후보 부족', cls: 'bg-slate-100 text-slate-500 border border-slate-200' };
 }
 
 const MATCH_LABELS: Record<string, string> = {
@@ -160,9 +195,8 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
                   )}
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-400">[출발 {fmtDate(b.departure_date)}]</span>
-                      <span className="font-medium text-slate-800">{b.customers?.name || '이름 없음'}</span>
-                      {b.package_title && <span className="text-slate-500">· {b.package_title}</span>}
+                      <span className="font-medium text-slate-800 tabular-nums">{fmtBookingAnchor({ customers: b.customers, departure_date: b.departure_date })}</span>
+                      {b.package_title && <span className="text-slate-500 text-[12px]">· {b.package_title}</span>}
                       {rec && <span className="text-[11px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-semibold">추천</span>}
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
@@ -214,7 +248,7 @@ function parseTSV(text: string): ImportRow[] {
 export default function PaymentsPage() {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>([]);
-  const [tab, setTab] = useState<'review' | 'matched' | 'unmatched'>('review');
+  const [tab, setTab] = useState<'review' | 'matched' | 'unmatched' | 'outflow'>('review');
   const [dateFilter, setDateFilter] = useState<string>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
   const DATE_FILTERS = ['이번 달', '지난 달', '3개월', '전체'] as const;
@@ -303,7 +337,13 @@ export default function PaymentsPage() {
   }, []);
 
   const filtered = useMemo(() => {
+    // B-3: 환불/출금은 입금 탭에서 분리 — 전용 탭(outflow)에서만 노출
+    const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
+
     const result = transactions.filter(tx => {
+      if (tab === 'outflow') return isOutflow(tx);
+      // 입금 탭들에서는 출금/환불 완전 제외
+      if (isOutflow(tx)) return false;
       if (tab === 'review')  return tx.match_status === 'review';
       if (tab === 'matched') return tx.match_status === 'auto' || tx.match_status === 'manual';
       // unmatched 탭: error(파싱 오류)도 최우선 표시
@@ -316,12 +356,22 @@ export default function PaymentsPage() {
         return pri(a.match_status) - pri(b.match_status);
       });
     }
+    // 24h 이상 방치는 최상단으로 (스테일 우선 처리)
+    if (tab === 'review' || tab === 'unmatched') {
+      result.sort((a, b) => {
+        const aStale = hoursSince(a.created_at) >= 24 ? 1 : 0;
+        const bStale = hoursSince(b.created_at) >= 24 ? 1 : 0;
+        return bStale - aStale;
+      });
+    }
     return result;
   }, [transactions, tab]);
 
-  const reviewCount    = transactions.filter(t => t.match_status === 'review').length;
-  const unmatchedCount = transactions.filter(t => t.match_status === 'unmatched' || t.match_status === 'error').length;
-  const matchedCount   = transactions.filter(t => t.match_status === 'auto' || t.match_status === 'manual').length;
+  const isOutflowTx = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
+  const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
+  const unmatchedCount = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
+  const matchedCount   = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const outflowCount   = transactions.filter(isOutflowTx).length;
 
   const collectionRate = useMemo(() =>
     erp ? Math.min(100, Math.round((erp.totalPaid / Math.max(erp.totalPrice, 1)) * 100)) : 0,
@@ -741,11 +791,12 @@ export default function PaymentsPage() {
       </div>
 
       {/* ── Metric Filter Cards (탭 겸용) ──────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-4 gap-3 mb-5">
         {([
-          { id: 'review'    as const, label: '검토 필요', count: reviewCount,    active: 'border-amber-400 bg-amber-50', num: 'text-amber-700' },
-          { id: 'matched'   as const, label: '매칭 완료', count: matchedCount,   active: 'border-emerald-400 bg-emerald-50', num: 'text-emerald-700' },
-          { id: 'unmatched' as const, label: '미매칭',    count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
+          { id: 'review'    as const, label: '검토 필요',   count: reviewCount,    active: 'border-amber-400 bg-amber-50', num: 'text-amber-700' },
+          { id: 'matched'   as const, label: '매칭 완료',   count: matchedCount,   active: 'border-emerald-400 bg-emerald-50', num: 'text-emerald-700' },
+          { id: 'unmatched' as const, label: '미매칭',      count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
+          { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
         ] as const).map(card => (
           <button key={card.id} onClick={() => setTab(card.id)}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
@@ -861,32 +912,74 @@ export default function PaymentsPage() {
                       {tx.transaction_type === '입금' ? '+' : '-'}{tx.amount.toLocaleString()}원
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-[13px] text-slate-500">
+                  <td className="px-3 py-2 text-[13px] text-slate-500 group relative">
                     {tx.bookings ? (
-                      <span>{tx.bookings.customers?.name} · {tx.bookings.package_title || '상품 미지정'}</span>
+                      <>
+                        {/* 핵심 앵커: 고객명 / 260507 */}
+                        <div className="font-medium text-slate-800 tabular-nums">
+                          {fmtBookingAnchor(tx.bookings)}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate max-w-[240px]">
+                          {tx.bookings.package_title || '상품 미지정'}
+                          {tx.bookings.booking_no && ` · ${tx.bookings.booking_no}`}
+                        </div>
+                        {/* Hover 프리뷰 (B-4) */}
+                        <div className="hidden group-hover:block absolute left-0 top-full mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-lg p-3 min-w-[260px] text-[12px]">
+                          <div className="font-semibold text-slate-800 mb-1">
+                            {tx.bookings.customers?.name} · {tx.bookings.package_title || '미지정'}
+                          </div>
+                          <div className="text-slate-600 space-y-0.5">
+                            <div>📅 출발: {tx.bookings.departure_date ? fmtDate(tx.bookings.departure_date) : '미정'}</div>
+                            {tx.bookings.booking_no && <div>🔖 예약번호: {tx.bookings.booking_no}</div>}
+                            {tx.bookings.total_price != null && (
+                              <div>💰 판매가: {tx.bookings.total_price.toLocaleString()}원</div>
+                            )}
+                            {tx.bookings.paid_amount != null && tx.bookings.total_price != null && (
+                              <div>잔금: <strong className={(tx.bookings.total_price - tx.bookings.paid_amount) > 0 ? 'text-red-600' : 'text-emerald-600'}>
+                                {Math.max(0, tx.bookings.total_price - tx.bookings.paid_amount).toLocaleString()}원
+                              </strong></div>
+                            )}
+                          </div>
+                        </div>
+                      </>
                     ) : <span className="text-slate-400">-</span>}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {tx.booking_id && (
-                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded-full
-                        ${tx.match_confidence >= 0.9 ? 'bg-emerald-50 text-emerald-700'
-                          : tx.match_confidence >= 0.5 ? 'bg-amber-50 text-amber-700'
-                          : 'bg-slate-100 text-slate-500'}`}>
-                        {Math.round(tx.match_confidence * 100)}%
-                      </span>
-                    )}
+                    {tx.booking_id && (() => {
+                      const bucket = confidenceBucket(tx.match_confidence);
+                      return (
+                        <span
+                          title={`신뢰도 ${Math.round(tx.match_confidence * 100)}%`}
+                          className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${bucket.cls}`}
+                        >
+                          {bucket.label}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${MATCH_COLORS[tx.match_status] || 'bg-slate-100 text-slate-500'}`}>
-                      {MATCH_LABELS[tx.match_status] || tx.match_status}
-                    </span>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${MATCH_COLORS[tx.match_status] || 'bg-slate-100 text-slate-500'}`}>
+                        {MATCH_LABELS[tx.match_status] || tx.match_status}
+                      </span>
+                      {/* 24h 이상 미처리 뱃지 (B-2) */}
+                      {(tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') &&
+                        hoursSince(tx.created_at) >= 24 && (
+                          <span
+                            title={`${Math.round(hoursSince(tx.created_at))}시간 방치`}
+                            className="text-[10px] font-semibold text-red-600 animate-pulse"
+                          >
+                            ⚠ {Math.round(hoursSince(tx.created_at))}h
+                          </span>
+                        )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="flex items-center gap-1.5 justify-end">
-                      {(tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error') && !tx.is_refund && (
+                      {(tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error') && (
                         <button onClick={() => openMatchModal(tx)}
                           className="px-3 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded text-[13px] font-medium transition-colors whitespace-nowrap">
-                          수동 매칭
+                          {tx.is_refund ? '환불 매칭' : tx.transaction_type === '출금' ? '출금 매칭' : '수동 매칭'}
                         </button>
                       )}
                       {(tx.match_status === 'auto' || tx.match_status === 'manual') && (
@@ -975,9 +1068,11 @@ export default function PaymentsPage() {
           >
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <h3 className="text-[16px] font-semibold text-slate-800">수동 예약 매칭</h3>
+                <h3 className="text-[16px] font-semibold text-slate-800">
+                  {selectedTx.is_refund ? '환불 매칭' : selectedTx.transaction_type === '출금' ? '출금 매칭' : '수동 예약 매칭'}
+                </h3>
                 <p className="text-[13px] text-slate-500 mt-0.5">
-                  {selectedTx.transaction_type === '입금' ? '고객 입금' : '랜드사 출금'} —&nbsp;
+                  {selectedTx.is_refund ? '환불 송금' : selectedTx.transaction_type === '입금' ? '고객 입금' : '랜드사 출금'} —&nbsp;
                   <strong className="text-slate-800">{selectedTx.counterparty_name}</strong>&nbsp;
                   <span className="font-bold text-slate-800">{selectedTx.amount.toLocaleString()}원</span>
                 </p>
@@ -986,6 +1081,25 @@ export default function PaymentsPage() {
             </div>
 
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
+              {/* 출금/환불 경고 배너 — 매칭 시 예약 원장에 어떻게 반영되는지 명시 */}
+              {(selectedTx.is_refund || selectedTx.transaction_type === '출금') && (
+                <div className={`rounded-lg p-3 text-[12px] border ${
+                  selectedTx.is_refund
+                    ? 'bg-orange-50 border-orange-300 text-orange-800'
+                    : 'bg-red-50 border-red-300 text-red-800'
+                }`}>
+                  <strong>⚠ 주의 — 출금/환불 매칭은 예약 원장에 다음과 같이 반영됩니다:</strong>
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                    {selectedTx.is_refund ? (
+                      <li>매칭된 예약의 <strong>입금액(paid_amount)이 차감</strong>됩니다 (페이백).</li>
+                    ) : (
+                      <li>매칭된 예약의 <strong>랜드사 송금액(total_paid_out)이 증가</strong>합니다.</li>
+                    )}
+                    <li>잘못 매칭 시 반드시 "매칭 취소"로 원복하세요.</li>
+                  </ul>
+                </div>
+              )}
+
               {/* 단일/다중 모드 토글 */}
               <div className="flex gap-2">
                 <button onClick={() => setMatchMode('single')}
@@ -1178,21 +1292,58 @@ export default function PaymentsPage() {
                 </div>
               )}
 
-              {/* 다중 모드: 합계 */}
-              {matchMode === 'multi' && multiSelected.size > 0 && (
-                <div className={`rounded-lg p-3 text-[13px] border ${
-                  Math.abs(multiTotal - selectedTx.amount) <= 500
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                    : 'bg-amber-50 border-amber-300 text-amber-800'
-                }`}>
-                  <p className="font-medium">
-                    선택 {multiSelected.size}건 잔금 합계: <strong>{multiTotal.toLocaleString()}원</strong>
-                    &nbsp;/ 입금액: <strong>{selectedTx.amount.toLocaleString()}원</strong>
-                    &nbsp;{Math.abs(multiTotal - selectedTx.amount) <= 500
-                      ? '일치' : `차액 ${(selectedTx.amount - multiTotal).toLocaleString()}원`}
-                  </p>
-                </div>
-              )}
+              {/* 다중 모드: Split 매칭 (B-5 — 실시간 진행률 바 + 각 예약별 할당액) */}
+              {matchMode === 'multi' && multiSelected.size > 0 && (() => {
+                const diff = selectedTx.amount - multiTotal;
+                const pctFilled = Math.min(100, Math.round((multiTotal / Math.max(1, selectedTx.amount)) * 100));
+                const isMatched = Math.abs(diff) <= 500;
+                const isOverflow = diff < -500;
+
+                return (
+                  <div className={`rounded-lg p-3 text-[13px] border ${
+                    isMatched ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : isOverflow ? 'bg-orange-50 border-orange-300 text-orange-800'
+                      : 'bg-amber-50 border-amber-300 text-amber-800'
+                  }`}>
+                    {/* 헤더: 합계 + 진행률 바 */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold">
+                        {multiSelected.size}건 선택 · {isMatched ? '✓ 일치' : isOverflow ? `과입금 ${Math.abs(diff).toLocaleString()}원` : `부족 ${diff.toLocaleString()}원`}
+                      </span>
+                      <span className="text-[11px] tabular-nums">
+                        {multiTotal.toLocaleString()} / {selectedTx.amount.toLocaleString()}원
+                      </span>
+                    </div>
+                    {/* 시각적 진행률 */}
+                    <div className="h-1.5 bg-white/60 rounded-full overflow-hidden mb-2">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          isMatched ? 'bg-emerald-500' : isOverflow ? 'bg-orange-500' : 'bg-amber-500'
+                        }`}
+                        style={{ width: `${pctFilled}%` }}
+                      />
+                    </div>
+
+                    {/* 선택된 예약별 할당액 프리뷰 */}
+                    <div className="space-y-1 text-[11px]">
+                      {Array.from(multiSelected).map(id => {
+                        const b = bookings.find(x => x.id === id);
+                        if (!b) return null;
+                        const alloc = getBalance(b);
+                        return (
+                          <div key={id} className="flex justify-between items-center">
+                            <span className="truncate">
+                              {fmtBookingAnchor({ customers: b.customers, departure_date: b.departure_date })}
+                              <span className="text-slate-500 ml-1">· {b.package_title || '미지정'}</span>
+                            </span>
+                            <span className="tabular-nums font-medium ml-2 shrink-0">{alloc.toLocaleString()}원</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* 하단 버튼 */}

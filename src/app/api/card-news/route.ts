@@ -120,7 +120,40 @@ export async function POST(request: NextRequest) {
       if (category_id) insertData.category_id = category_id;
 
       const cardNews = await upsertCardNews(insertData as any);
-      return NextResponse.json({ card_news: cardNews }, { status: 201 });
+
+      // ── 자동 Cover Critic + Apply (환경변수로 끄기 가능) ──
+      //    DISABLE_COVER_CRITIC=1 면 스킵. 기본 활성.
+      //    80점 이상이면 적용 스킵, 60~79 는 minor_polish 로 rewritten_cover 있으면 적용, 59 이하면 regenerate.
+      let coverCritique: unknown = null;
+      let coverApply: unknown = null;
+      if (cardNews?.id && process.env.DISABLE_COVER_CRITIC !== '1') {
+        try {
+          const { critiqueCover } = await import('@/lib/content-pipeline/agents/cover-critic');
+          const { applyCritiqueToCover } = await import('@/lib/content-pipeline/apply-critique');
+          const firstSlide = slides[0];
+          const critique = await critiqueCover({
+            cover: firstSlide as never,
+            product_context: {
+              title: (briefAny.h1 as string | undefined) ?? undefined,
+              destination: (briefAny.target_audience as string | undefined) ?? undefined,
+              key_selling_points: briefAny.key_selling_points as string[] | undefined,
+              target_audience: briefAny.target_audience as string | undefined,
+            },
+          });
+          coverCritique = critique;
+          if (critique.verdict !== 'ship_as_is' && critique.rewritten_cover) {
+            coverApply = await applyCritiqueToCover(cardNews.id, critique);
+          }
+        } catch (err) {
+          console.warn('[card-news POST] 자동 cover critic 실패(무시):', err instanceof Error ? err.message : err);
+        }
+      }
+
+      return NextResponse.json({
+        card_news: cardNews,
+        cover_critique: coverCritique,
+        cover_apply: coverApply,
+      }, { status: 201 });
     }
 
     // ── 정보성 모드 ──────────────────────────────────────────────

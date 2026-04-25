@@ -48,6 +48,23 @@ export async function notifyIndexing(
     duration_ms: 0,
   };
 
+  // 0. Self-warmup — 발행 직후 자기 URL을 즉시 GET해서 ISR 캐시를 정상 데이터로 채운다.
+  //    revalidatePath만 호출하고 끝내면 "다음 첫 요청"이 봇이 될 경우 잠깐의 빈 결과가 캐시될 위험이
+  //    있어, 명시적으로 한 번 hydrate한다. URL_DELETED 시에는 스킵.
+  if (type !== 'URL_DELETED') {
+    try {
+      await fetch(url, {
+        method: 'GET',
+        headers: { 'User-Agent': 'YeosonamWarmup/1.0' },
+        cache: 'no-store',
+        // 너무 오래 기다리지 않도록 타임아웃 — 6초면 충분
+        signal: AbortSignal.timeout(6000),
+      });
+    } catch {
+      // warmup 실패는 무시 (revalidatePath가 이미 캐시를 비웠으므로 다음 요청이 자연 hydrate)
+    }
+  }
+
   // 1. Google Indexing API (개별 URL 알림)
   const googleResult: IndexingResult = await requestGoogleIndexing(url, type);
   report.google = googleResult.ok ? 'success' : 'failed';

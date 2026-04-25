@@ -22,6 +22,7 @@ const navGroups: NavGroup[] = [
     title: '운영',
     items: [
       { href: '/admin', label: '대시보드', exact: true },
+      { href: '/admin/inbox', label: '📥 Inbox (액션 큐)' },
       { href: '/admin/bookings', label: '예약 관리' },
       { href: '/admin/customers', label: '고객 관리' },
       { href: '/admin/payments', label: '입금 관리' },

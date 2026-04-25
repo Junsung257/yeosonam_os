@@ -74,6 +74,22 @@ export async function POST(
       }
     })();
 
+    // booking_tasks 연쇄 종결 (fire-and-forget — 실패해도 취소는 성공)
+    (async () => {
+      try {
+        const { supabaseAdmin } = await import('@/lib/supabase');
+        const { data: superseded } = await supabaseAdmin.rpc('supersede_booking_tasks', {
+          p_booking_id: params.id,
+          p_reason: 'booking_cancelled',
+        });
+        if (typeof superseded === 'number' && superseded > 0) {
+          console.log(`[booking-tasks/supersede] ${params.id} → ${superseded}건 종결`);
+        }
+      } catch (e) {
+        console.warn('[booking-tasks/supersede 실패]', e);
+      }
+    })();
+
     return NextResponse.json({ booking });
   } catch (error) {
     return NextResponse.json(

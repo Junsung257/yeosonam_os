@@ -28,6 +28,10 @@ const PUBLIC_PATHS = [
   '/api/share',
   '/api/packages',
   '/api/attractions',
+  // Phase 1.5 IR 파이프 (Canary) — 내부 admin CLI/Agent 호출용
+  '/api/register-via-ir',
+  '/api/audit-pkg-to-ir',
+  '/api/register-via-assembler',
   // 단체여행 RFQ (고객 인터뷰 → 공고 → 채팅 → 계약)
   '/group',
   '/group-inquiry',
@@ -43,6 +47,21 @@ const PUBLIC_PATHS = [
   '/api/cron/sync-creative-performance',
   '/api/cron/auto-archive',
   '/api/cron/embed-products',
+  '/api/cron/blog-lifecycle',
+  '/api/cron/blog-scheduler',
+  '/api/cron/blog-publisher',
+  '/api/cron/blog-learn',
+  '/api/cron/publish-scheduled',
+  '/api/cron/sync-engagement',
+  '/api/cron/card-news-refine',
+  '/api/cron/meta-token-refresh',
+  '/api/cron/slack-gap-fill',
+  '/api/cron/dlq-replay',
+  '/api/cron/payment-heartbeat',
+  '/api/cron/booking-tasks-runner',
+  // Meta webhook (GET verify + POST event). 서명 검증 내부에서 수행.
+  '/api/webhooks/instagram',
+  '/api/webhooks/threads',
   // 인플루언서 포털 (자체 PIN 인증)
   '/influencer',
   '/api/influencer',
@@ -61,6 +80,11 @@ const PUBLIC_PATHS = [
   '/api/blog',
   '/api/rss',
   '/api/blog-engagement',
+  // 여행지 허브 (공개 Pillar)
+  '/destinations',
+  // 리뷰 수집 + 조회 (고객용, booking_id 기반 인증)
+  '/review',
+  '/api/reviews',
   // ISR 캐시 무효화 (시크릿 기반 인증)
   '/api/revalidate',
 ];

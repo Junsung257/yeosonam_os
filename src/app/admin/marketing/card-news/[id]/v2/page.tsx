@@ -162,19 +162,31 @@ export default function CardNewsV2Studio() {
     }
   };
 
-  const handleCoverCritic = async () => {
+  const handleCoverCritic = async (options: { apply?: boolean } = {}) => {
     setCritiquing(true);
-    setCritique(null);
+    if (!options.apply) setCritique(null);
     try {
       const res = await fetch('/api/content/cover-critic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ card_news_id: id }),
+        body: JSON.stringify({ card_news_id: id, apply: !!options.apply }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '비평 실패');
       setCritique(data.critique);
-      showToast(`Cover 점수: ${data.critique.overall_score}/100`);
+      if (options.apply && data.apply?.applied) {
+        const changedSlots = Object.keys(data.apply.changes ?? {}).join(', ') || '없음';
+        showToast(`Cover 자동 적용 완료 (${changedSlots}). 재렌더 추천.`);
+        // 카드뉴스 재조회해 최신 slides 반영
+        const fresh = await fetch(`/api/card-news/${id}`);
+        if (fresh.ok) {
+          const d = await fresh.json();
+          if (d.card_news) setCardNews(d.card_news);
+        }
+      } else {
+        const score = data.critique.overall_score;
+        showToast(`Cover 점수: ${score}/100 · ${data.critique.verdict}`);
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : '비평 실패');
     } finally {
@@ -319,15 +331,26 @@ export default function CardNewsV2Studio() {
             ZIP 다운로드
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleCoverCritic}
-          disabled={critiquing}
-          className="ml-auto px-4 py-2.5 bg-purple-700 text-white rounded font-semibold disabled:opacity-50"
-          title="Claude Sonnet 으로 Cover 슬라이드 품질 비평"
-        >
-          {critiquing ? 'Critic 중…' : '🎯 Cover Critic (Sonnet)'}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleCoverCritic({ apply: false })}
+            disabled={critiquing}
+            className="px-3 py-2.5 bg-slate-100 text-slate-700 rounded text-sm font-semibold disabled:opacity-50 border border-slate-300"
+            title="비평만 실행 — 결과 표시"
+          >
+            🎯 비평만
+          </button>
+          <button
+            type="button"
+            onClick={() => handleCoverCritic({ apply: true })}
+            disabled={critiquing}
+            className="px-4 py-2.5 bg-purple-700 text-white rounded font-semibold disabled:opacity-50"
+            title="Claude Sonnet 비평 + 권장 사항 즉시 적용"
+          >
+            {critiquing ? 'Critic 중…' : '🎯 비평 + 자동 적용'}
+          </button>
+        </div>
       </div>
 
       {/* Critic 결과 */}
@@ -388,10 +411,23 @@ export default function CardNewsV2Studio() {
 
           {critique.rewritten_cover && (
             <div className="bg-purple-50 border border-purple-200 rounded p-3 text-xs">
-              <div className="font-bold text-purple-900 mb-2">재작성 제안</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-bold text-purple-900">재작성 제안</div>
+                <button
+                  type="button"
+                  onClick={() => handleCoverCritic({ apply: true })}
+                  disabled={critiquing}
+                  className="px-3 py-1 bg-purple-700 text-white rounded text-[11px] font-semibold disabled:opacity-50"
+                >
+                  {critiquing ? '적용 중…' : '⚡ 바로 적용 + 재렌더'}
+                </button>
+              </div>
               {critique.rewritten_cover.eyebrow && <div><span className="text-slate-500">eyebrow:</span> {critique.rewritten_cover.eyebrow}</div>}
               {critique.rewritten_cover.headline && <div><span className="text-slate-500">headline:</span> {critique.rewritten_cover.headline}</div>}
               {critique.rewritten_cover.body && <div><span className="text-slate-500">body:</span> {critique.rewritten_cover.body}</div>}
+              <div className="mt-2 text-[10px] text-purple-700">
+                적용 시 slide[0] 의 헤드라인/본문/eyebrow 를 위 값으로 덮어쓰고 DB 저장. 이후 Satori 재렌더로 시각 반영.
+              </div>
             </div>
           )}
         </div>
