@@ -58,40 +58,62 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
   const seasonalTarget = Math.ceil(infoTarget * 0.6);
   const coverageTarget = infoTarget - seasonalTarget;
 
-  // 시즌 토픽 뽑기
+  // 시즌 토픽 뽑기 — 단일 batch INSERT (Split 1 § 5)
   const seasonals = await pickSeasonalTopics(seasonalTarget);
-  for (const s of seasonals) {
-    const { error } = await supabaseAdmin.from('blog_topic_queue').insert({
+  if (seasonals.length > 0) {
+    const seasonalRows = seasonals.map(s => ({
       topic: s.topic,
       source: 'seasonal',
       priority: 60,
       destination: s.destination ?? null,
       category: inferCategoryFromSeasonal(s.topic),
       meta: { keywords: s.keywords, season_tag: s.season_tag },
-    });
+    }));
+    const { data: inserted, error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .insert(seasonalRows)
+      .select('topic');
     if (!error) {
-      seasonalAdded++;
-      // 사용 표시
-      await supabaseAdmin.from('blog_seasonal_calendar')
-        .update({ used: true, used_at: new Date().toISOString() })
-        .eq('year_month', s.year_month)
-        .eq('topic', s.topic);
+      const insertedTopics = new Set((inserted ?? []).map((r: { topic: string }) => r.topic));
+      const usedSeasonals = seasonals.filter(s => insertedTopics.has(s.topic));
+      seasonalAdded = usedSeasonals.length;
+      // 캘린더 사용 표시 — 월별 그룹 단위 1쿼리로 묶음
+      const byMonth = new Map<string, string[]>();
+      for (const s of usedSeasonals) {
+        const arr = byMonth.get(s.year_month) ?? [];
+        arr.push(s.topic);
+        byMonth.set(s.year_month, arr);
+      }
+      const usedAt = new Date().toISOString();
+      await Promise.all(
+        Array.from(byMonth.entries()).map(([year_month, topics]) =>
+          supabaseAdmin
+            .from('blog_seasonal_calendar')
+            .update({ used: true, used_at: usedAt })
+            .eq('year_month', year_month)
+            .in('topic', topics)
+        )
+      );
     }
   }
 
-  // 커버리지 갭
+  // 커버리지 갭 — 단일 batch INSERT
   const gaps = await analyzeCoverageGaps({ maxPerDestination: 2 });
   const toAddGaps = gaps.slice(0, coverageTarget);
-  for (const g of toAddGaps) {
-    const { error } = await supabaseAdmin.from('blog_topic_queue').insert({
+  if (toAddGaps.length > 0) {
+    const gapRows = toAddGaps.map(g => ({
       topic: g.topic,
       source: 'coverage_gap',
       priority: 40,
       destination: g.destination,
       category: g.category,
       meta: { expected_slug: g.slug_suffix },
-    });
-    if (!error) coverageAdded++;
+    }));
+    const { data: inserted, error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .insert(gapRows)
+      .select('topic');
+    if (!error) coverageAdded = (inserted ?? []).length;
   }
 
   // --- 상품: 최근 7일 내 approved 됐는데 아직 블로그 없는 상품
@@ -127,9 +149,9 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     .filter((p) => !existingProductBlogs.has(p.id))
     .slice(0, productTarget);
 
-  for (const p of eligibleProducts) {
-    // 상품 블로그는 "가성비(value)" 기본 앵글
-    const { error } = await supabaseAdmin.from('blog_topic_queue').insert({
+  if (eligibleProducts.length > 0) {
+    // 상품 블로그는 "가성비(value)" 기본 앵글 — 단일 batch INSERT
+    const productRows = eligibleProducts.map(p => ({
       topic: `${p.destination} ${p.title || '패키지'} 가성비 리뷰`,
       source: 'product',
       priority: 80,
@@ -138,8 +160,12 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
       product_id: p.id,
       category: 'product_intro',
       meta: { product_title: p.title },
-    });
-    if (!error) productAdded++;
+    }));
+    const { data: inserted, error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .insert(productRows)
+      .select('id');
+    if (!error) productAdded = (inserted ?? []).length;
   }
 
   // 이제 targetPublishAt 배정

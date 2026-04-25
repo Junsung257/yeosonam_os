@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import DOMPurify from 'dompurify';
 
 export default function ContractPage() {
   const params  = useParams();
@@ -95,7 +96,7 @@ export default function ContractPage() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div
           className="bg-white shadow-sm rounded-xl overflow-hidden"
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
         />
       </div>
 

@@ -26,12 +26,74 @@ if (ids.length === 0) { console.error('사용: node db/post_register_audit.js <i
 // insert-template의 validatePackage 재사용
 const { validatePackage } = require('./templates/insert-template.js');
 const { aiCrossCheck } = require('./ai_audit_helper.js');
+const { runCoVeAudit } = require('./cove_audit.js');
 const { applyAutoFixes } = require('./auto-fixer.js');
 
-// 스킵 조건 — 환경변수 또는 CLI 플래그
-const AI_DISABLED       = process.env.POST_AUDIT_AI === '0' || process.argv.includes('--no-ai');
+// ═══════════════════════════════════════════════════════════════════════════
+//  W-final F1 — AI 감사 정책 (2026-04-21 최종)
+// ═══════════════════════════════════════════════════════════════════════════
+//  사장님 지시 (2026-04-21): Gemini 유료 호출은 **opt-in 완전 복귀**.
+//  지금은 Agent Self-Audit (`/register` Step 6.5) 가 제로-코스트로 감사 수행.
+//  Gemini E5/E6 는 `--ai` 명시 시에만 실행 (두 번째 의견이 필요할 때만).
+//
+//  ON 강제 (이 때만 유료 호출):
+//    - `--ai` 또는 `POST_AUDIT_AI=1`
+//
+//  OFF (기본):
+//    - 명시 안 하면 OFF. E1~E4 구조 감사 + RAG + 렌더 검증 + Agent self-audit 결과만 사용.
+//
+//  비용 캡 (ON 시에도):
+//    - `POST_AUDIT_AI_MONTHLY_CAP_KRW` (기본 5000원/월)
+//    - 카운터: scratch/audit_ai_usage.json
+//    - 80% 소진 시 경고, 100% 도달 시 자동 OFF
+// ═══════════════════════════════════════════════════════════════════════════
+const AI_ENABLED        = process.env.POST_AUDIT_AI === '1' || process.argv.includes('--ai');
+const COVE_DISABLED     = process.env.POST_AUDIT_COVE === '0' || process.argv.includes('--no-cove');
 const AUTOFIX_DISABLED  = process.env.POST_AUDIT_AUTOFIX === '0' || process.argv.includes('--no-autofix');
 const RAG_DISABLED      = process.env.POST_AUDIT_RAG === '0' || process.argv.includes('--no-rag');
+const AI_MONTHLY_CAP_KRW = Number(process.env.POST_AUDIT_AI_MONTHLY_CAP_KRW || 5000);
+
+// 비용 추정치 (Gemini 2.5 Flash, 2026-04 기준 대략)
+const COST_PER_CALL_KRW = { e5: 0.5, e6: 0.3 };
+
+// 비용 추적 (월별 누적, scratch/audit_ai_usage.json)
+const USAGE_FILE = path.join(__dirname, '..', 'scratch', 'audit_ai_usage.json');
+function loadUsage() {
+  try { return JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8')); } catch { return {}; }
+}
+function saveUsage(usage) {
+  const dir = path.dirname(USAGE_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(USAGE_FILE, JSON.stringify(usage, null, 2));
+}
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function currentMonthCostKrw() {
+  const u = loadUsage();
+  return Number(u[currentMonthKey()]?.krw || 0);
+}
+function recordCost(kind /* 'e5' | 'e6' */) {
+  const key = currentMonthKey();
+  const u = loadUsage();
+  const cur = u[key] || { krw: 0, calls: { e5: 0, e6: 0 } };
+  cur.krw = Number(cur.krw || 0) + (COST_PER_CALL_KRW[kind] || 0);
+  cur.calls = cur.calls || { e5: 0, e6: 0 };
+  cur.calls[kind] = (cur.calls[kind] || 0) + 1;
+  u[key] = cur;
+  saveUsage(u);
+}
+
+/** W-final F1 — Gemini 호출 여부 (opt-in 전용, 캡 체크만 수행) */
+function shouldCallGemini() {
+  if (!AI_ENABLED) return { enable: false, reason: 'Gemini 미명시 (--ai 또는 POST_AUDIT_AI=1 필요)' };
+  const cost = currentMonthCostKrw();
+  if (cost >= AI_MONTHLY_CAP_KRW) {
+    return { enable: false, reason: `월 비용 캡 도달 (${cost.toFixed(1)}/${AI_MONTHLY_CAP_KRW}원)` };
+  }
+  return { enable: true, reason: '--ai 명시' };
+}
 
 // ─── 임베딩 (embeddings.ts와 동일 1536 dim) ──────────────────────────
 const GOOGLE_AI_KEY = process.env.GOOGLE_AI_API_KEY;
@@ -248,11 +310,41 @@ async function auditOne(pkg, baseUrl) {
     }
   }
 
-  // 2. Zod 검증 (loose)
-  try {
-    const { validatePackageLoose, formatZodErrors } = require('../dist-check-stub'); // fallback
-  } catch {
-    // Zod는 TS 파일에만 있어서 runtime에 바로 못 씀. 일단 skip.
+  // 1-d. W-final F1 — Gemini 호출 여부 (opt-in 전용). 기본 OFF, --ai 시만 호출.
+  //      Agent self-audit 결과는 pkg.agent_audit_report 에 이미 기록되어 있음 → 그대로 result 에 복사.
+  const aiDecision = shouldCallGemini();
+  result.ai_decision = aiDecision;
+  if (pkg.agent_audit_report) {
+    result.agent_audit = pkg.agent_audit_report;
+    const unsupported = (pkg.agent_audit_report.claims || []).filter(c => c.supported === false);
+    if (unsupported.length > 0) {
+      console.log(`   🧠 Agent self-audit: ${unsupported.length}건 불일치 감지 → warnings 승격`);
+      for (const c of unsupported) {
+        const prefix = c.severity === 'CRITICAL' ? 'E6 [Agent:CRITICAL]' : 'E6 [Agent:HIGH]';
+        result.warnings.push(`${prefix} ${c.field || '?'} "${(c.text || '').slice(0, 100)}" — ${c.note || '원문 근거 없음'}`);
+      }
+    } else {
+      console.log(`   🧠 Agent self-audit 통과 (${(pkg.agent_audit_report.claims || []).length}개 claim)`);
+    }
+  } else {
+    // Mandatory per /register Step 6.5 — silent skip 금지 (Split 6 § 2.3 권고).
+    console.log('   ⚠️  agent_audit_report 미기재 — Step 6.5 (Agent self-audit) 미실행 의심');
+    result.errors.push('agent_audit_report 미기재 — /register Step 6.5 (Agent self-audit) 재실행 필요');
+  }
+  if (aiDecision.enable) console.log(`   🤖 Gemini 감사 ON: ${aiDecision.reason}`);
+  else console.log(`   ⏭️  Gemini 감사 OFF: ${aiDecision.reason}`);
+
+  // 1-e. E6 (Gemini CoVe) — opt-in 전용. Agent self-audit 와 독립적으로 두 번째 의견용.
+  if (aiDecision.enable && !COVE_DISABLED && pkg.raw_text) {
+    const cove = await runCoVeAudit(pkg);
+    result.cove = cove;
+    if (cove.available) {
+      recordCost('e6');
+      console.log(`      CoVe: ${cove.total_claims || 0}개 claim 검증, ${cove.unsupported_count || 0}건 불일치 (${cove.elapsed_ms}ms)`);
+      result.warnings.push(...(cove.warnings || []));
+    } else if (cove.reason && !/GOOGLE_AI_API_KEY/.test(cove.reason)) {
+      console.log(`      CoVe 스킵: ${cove.reason}`);
+    }
   }
 
   // 3. 렌더 페이지 audit (서버 있으면)
@@ -280,12 +372,13 @@ async function auditOne(pkg, baseUrl) {
         if (clauseIssues.length) result.errors.push(...clauseIssues);
 
         // 🆕 E5: Gemini cross-check — 원문 ↔ 렌더 의미 대조 (구조 규칙이 못 잡는 축약/창작)
-        // severity CRITICAL/HIGH → warnings 승격
-        if (!AI_DISABLED && pkg.raw_text && renderedText.length > 500) {
-          console.log(`   🤖 AI cross-check 호출 중... (${pkg.short_code})`);
+        // W3: AI 자동 트리거 판정(aiDecision)에 따라 결정. severity CRITICAL/HIGH → warnings 승격
+        if (aiDecision.enable && pkg.raw_text && renderedText.length > 500) {
+          console.log(`   🤖 E5 AI cross-check 호출 중... (${pkg.short_code})`);
           const ai = await aiCrossCheck(pkg.raw_text, renderedText, pkg.title);
           result.ai = ai;
           if (ai.available) {
+            recordCost('e5');
             console.log(`      Faithfulness ${ai.overall_faithfulness_pct}% / Severity ${ai.severity} (${ai.elapsed_ms}ms)`);
             if (ai.severity === 'CRITICAL' || ai.severity === 'HIGH') {
               const summary = [ai.summary].filter(Boolean).join(' ');
@@ -358,19 +451,42 @@ async function auditOne(pkg, baseUrl) {
 
     results.push(r);
 
-    // 🆕 감사 결과를 DB에 영속화 (gating의 기준)
-    // 규칙:
-    //   errors > 0  → blocked (승인 차단)
-    //   warnings > 0 → warnings (승인 가능하나 어드민 확인 필수)
-    //   둘 다 0    → clean (즉시 승인 가능)
+    // 🆕 감사 결과 4단계 (P0 #2, 2026-04-27)
+    //   blocked  — errors 존재. 승인 차단.
+    //   warnings — 위험성 warnings 존재 (환각·축약·매칭 실패). force 필요.
+    //   info     — 안내성 warnings 만 존재 (자동 처리·정보 알림). 자동 승인 OK.
+    //   clean    — warnings/errors 없음.
+    //
+    // INFO_RULES: 데이터 무결성 영향 없는 알림형 W-code (자동 분리 안내 등).
+    // 신규 INFO 규칙 추가 시 아래 set 에 W-code 추가.
+    const INFO_RULES = new Set(['W12']);
+    const isInfoOnly = (warns) => warns.length > 0 && warns.every(w => {
+      const m = String(w).match(/\[(W\d+)/);
+      return m && INFO_RULES.has(m[1]);
+    });
+    const warnList = r.warnings || [];
     const auditStatus =
       (r.errors?.length || 0) > 0 ? 'blocked' :
-      (r.warnings?.length || 0) > 0 ? 'warnings' : 'clean';
+      warnList.length === 0 ? 'clean' :
+      isInfoOnly(warnList) ? 'info' : 'warnings';
     const auditReport = {
       errors: r.errors || [],
       warnings: r.warnings || [],
       render: r.render || null,
       ai: r.ai || null,
+      cove: r.cove ? {
+        available: r.cove.available,
+        total_claims: r.cove.total_claims,
+        unsupported_count: r.cove.unsupported_count,
+        elapsed_ms: r.cove.elapsed_ms,
+        verdicts: (r.cove.verdicts || []).filter(v => v.supported === false).map(v => ({
+          field: v.field, severity: v.severity,
+          text: v.text, evidence: v.evidence, note: v.note,
+        })),
+      } : null,
+      // W-final F1 — Agent self-audit (제로-코스트, /register Step 6.5 에서 생성)
+      agent_audit: r.agent_audit || null,
+      ai_decision: r.ai_decision || null,
       auto_fixes: r.auto_fixes || [],
       rag_hits: (r.rag_hits || []).map(h => ({
         error_code: h.error_code,
@@ -504,6 +620,17 @@ async function auditOne(pkg, baseUrl) {
     console.log(`⚠️  경고 ${totalWarnings}건 — 검토 후 필요 시 수정 / status는 변경 가능`);
   } else {
     console.log(`❌ 에러 ${totalErrors}건 — DB 수정 필요`);
+  }
+
+  // W3 — AI 감사 월간 비용 요약
+  const monthlyCost = currentMonthCostKrw();
+  const usage = loadUsage()[currentMonthKey()] || { krw: 0, calls: { e5: 0, e6: 0 } };
+  console.log(
+    `\n💰 AI 감사 월간 비용 (${currentMonthKey()}): ${monthlyCost.toFixed(1)}원 / ${AI_MONTHLY_CAP_KRW}원` +
+    ` (E5 ${usage.calls?.e5 || 0}회, E6 ${usage.calls?.e6 || 0}회)`
+  );
+  if (monthlyCost >= AI_MONTHLY_CAP_KRW * 0.8) {
+    console.log(`   ⚠️  월 캡의 80% 이상 소진 — 사장님 승인 없이 추가 실행 시 자동 OFF`);
   }
 
   console.log('\n어드민 승인 후 고객 노출: /admin/packages?status=pending');

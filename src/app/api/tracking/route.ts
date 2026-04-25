@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  supabaseAdmin,
   isSupabaseConfigured,
   insertTrafficLog,
   insertSearchLog,
@@ -102,6 +103,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         landing_page: body.landing_page ?? null,
         content_creative_id: body.content_creative_id ?? null,
       });
+      // 내부 조회수 원자적 증가 (어드민 대시보드 용)
+      if (body.content_creative_id) {
+        const creativeId = body.content_creative_id as string;
+        supabaseAdmin.rpc('increment_content_view_count', {
+          p_creative_id: creativeId,
+        }).then(async (res: { error: unknown }) => {
+          if (res.error) {
+            // RPC 없으면 fallback: 현재값 +1 (race condition 허용 — 통계 용도)
+            const { data } = await supabaseAdmin
+              .from('content_creatives')
+              .select('view_count')
+              .eq('id', creativeId)
+              .limit(1);
+            const current = ((data?.[0] as { view_count?: number } | undefined)?.view_count) ?? 0;
+            await supabaseAdmin
+              .from('content_creatives')
+              .update({ view_count: current + 1 })
+              .eq('id', creativeId);
+          }
+        });
+      }
       return NextResponse.json({ ok: true }, { status: 202 });
     }
 
@@ -190,36 +212,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         content_creative_id,
       });
 
-      // ── Postback ──────────────────────────────────────
+      // ── Postback (fire-and-forget) ──────────────────────
+      // 외부 광고 플랫폼 전환 통보. await 차단으로 응답 지연 방지 — 실패해도 Conversion DB 기록은 이미 적재됨.
       // Google Ads 전환 Postback
       if (attributed_gclid && process.env.GOOGLE_CONVERSION_ID) {
-        try {
-          await fetch(
-            `https://www.googleadservices.com/pagead/conversion/${process.env.GOOGLE_CONVERSION_ID}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
-          );
-          console.log(`[Postback] Google Ads 전환: gclid=${attributed_gclid}, value=${final_sales_price}`);
-        } catch (e) {
-          console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e);
-        }
+        fetch(
+          `https://www.googleadservices.com/pagead/conversion/${process.env.GOOGLE_CONVERSION_ID}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
+        )
+          .then(() => console.log(`[Postback] Google Ads 전환: gclid=${attributed_gclid}, value=${final_sales_price}`))
+          .catch(e => console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e));
       }
 
       // Meta Conversions API Postback
       if (attributed_fbclid && process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
-        try {
-          await fetch(`https://graph.facebook.com/v18.0/${process.env.META_PIXEL_ID}/events`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
-                user_data: { fbclid: attributed_fbclid },
-                custom_data: { value: final_sales_price, currency: 'KRW' } }],
-              access_token: process.env.META_ACCESS_TOKEN,
-            }),
-          });
-          console.log(`[Postback] Meta CAPI 전환: fbclid=${attributed_fbclid}, value=${final_sales_price}`);
-        } catch (e) {
-          console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e);
-        }
+        fetch(`https://graph.facebook.com/v18.0/${process.env.META_PIXEL_ID}/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
+              user_data: { fbclid: attributed_fbclid },
+              custom_data: { value: final_sales_price, currency: 'KRW' } }],
+            access_token: process.env.META_ACCESS_TOKEN,
+          }),
+        })
+          .then(() => console.log(`[Postback] Meta CAPI 전환: fbclid=${attributed_fbclid}, value=${final_sales_price}`))
+          .catch(e => console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e));
       }
 
       const net_profit = final_sales_price - base_cost - allocated_ad_spend;

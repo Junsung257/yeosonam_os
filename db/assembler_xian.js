@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { findDuplicate, isSamePriceDates, isSameDeadline } = require('./templates/insert-template');
 
 // ── Supabase (--insert 모드용) ──
@@ -713,6 +714,9 @@ function matchTemplate(nights, allBlockCodes, productType) {
 
 function buildProduct(parsed, rawText) {
   const fullText = rawText || parsed.days.flatMap(d => d.lines).join('\n');
+  if (!fullText || !fullText.trim()) {
+    throw new Error('Rule Zero — raw_text 비어 있음. parseRawText 입력을 확인하십시오.');
+  }
 
   // ── 일자별 블록 매칭 ──
   const dayResults = [];
@@ -943,7 +947,10 @@ function buildProduct(parsed, rawText) {
       : [],
     product_summary: null,
     itinerary: [],
-    raw_text: '',
+    // W-final F3 — Rule Zero 강제. fullText 빈 값은 buildProduct 진입부에서 throw됨.
+    raw_text: fullText,
+    raw_text_hash: crypto.createHash('sha256').update(fullText).digest('hex'),
+    parser_version: 'assembler_xian-v2026.04.21',
     filename: 'assembler_output',
     file_type: 'assembled',
     confidence: 0.85,

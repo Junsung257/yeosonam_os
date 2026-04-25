@@ -13,11 +13,16 @@ export async function POST(request: NextRequest) {
     const { items } = await request.json();
     if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ success: true, saved: 0 });
 
-    let saved = 0;
-    for (const item of items) {
-      if (!item.activity || item.activity.length < 3) continue;
+    // ── bounded-concurrency 병렬화 (Split 7 § 2.6) ──
+    // RPC는 occurrence_count++ 의미를 보존하므로 per-row 호출 유지. 직렬 await만 제거.
+    // CONCURRENCY=10 — 큰 배치(50+)에서도 connection pool 안전.
+    const valid = items.filter((item: { activity?: string }) =>
+      typeof item.activity === 'string' && item.activity.length >= 3
+    );
 
-      // ON CONFLICT(activity) → occurrence_count 증가
+    const CONCURRENCY = 10;
+    let saved = 0;
+    const upsertOne = async (item: { activity: string; package_id?: string; package_title?: string; day_number?: number; country?: string; region?: string }) => {
       const { error } = await supabaseAdmin.rpc('upsert_unmatched_activity', {
         p_activity: item.activity,
         p_package_id: item.package_id || null,
@@ -27,8 +32,8 @@ export async function POST(request: NextRequest) {
         p_region: item.region || null,
       }).single();
 
-      // rpc가 없으면 fallback으로 직접 upsert
       if (error) {
+        // RPC 부재 fallback — count 갱신 없이 단순 upsert (관리자 미매칭 큐 적재가 우선)
         const { error: e2 } = await supabaseAdmin
           .from('unmatched_activities')
           .upsert({
@@ -41,11 +46,15 @@ export async function POST(request: NextRequest) {
             occurrence_count: 1,
             status: 'pending',
           }, { onConflict: 'activity' });
-
-        if (!e2) saved++;
-      } else {
-        saved++;
+        return !e2;
       }
+      return true;
+    };
+
+    for (let i = 0; i < valid.length; i += CONCURRENCY) {
+      const chunk = valid.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(chunk.map(upsertOne));
+      saved += results.filter(r => r.status === 'fulfilled' && r.value === true).length;
     }
 
     return NextResponse.json({ success: true, saved });
@@ -66,17 +75,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
 
-    let query = supabaseAdmin
-      .from('unmatched_activities')
-      .select('*')
-      .order('occurrence_count', { ascending: false })
-      .order('created_at', { ascending: false });
+    // ⚠️ ERR-unmatched-limit-200@2026-04-21:
+    //    기존 하드코딩 .limit(200) → UI "미매칭 200건" 고정 표시, 실제 pending=203+ 일 때 침묵 누락.
+    //    해결: 1000 건 단위 페이지네이션 루프 (attractions 와 동일 패턴).
+    const buildQuery = () => {
+      let q = supabaseAdmin
+        .from('unmatched_activities')
+        .select('*')
+        .order('occurrence_count', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (status !== 'all') q = q.eq('status', status);
+      return q;
+    };
 
-    if (status !== 'all') query = query.eq('status', status);
+    const allItems: unknown[] = [];
+    const PAGE = 1000;
+    for (let from = 0; from < 100000; from += PAGE) {
+      const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allItems.push(...data);
+      if (data.length < PAGE) break;
+    }
 
-    const { data, error } = await query.limit(200);
-    if (error) throw error;
-    return NextResponse.json({ items: data || [] });
+    return NextResponse.json({ items: allItems });
   } catch (error) {
     console.error('[Unmatched API] 조회 오류:', error);
     return NextResponse.json({ items: [] });

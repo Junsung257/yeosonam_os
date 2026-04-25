@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import DOMPurify from 'dompurify';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -412,7 +413,7 @@ export default function RfqDetailPage() {
             {report.report_html && (
               <div
                 className="prose prose-sm max-w-none text-gray-700"
-                dangerouslySetInnerHTML={{ __html: report.report_html }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(report.report_html) }}
               />
             )}
           </div>

@@ -7,6 +7,7 @@ import BookingDrawer from '@/components/BookingDrawer';
 import CommandPalette from '@/components/CommandPalette';
 import { useVendors } from '@/hooks/useVendors';
 import { useLocations } from '@/hooks/useLocations';
+import { isValidTransition } from '@/lib/booking-state-machine';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -58,10 +59,10 @@ const STATUS_LABELS: Record<string, string> = {
   pending: '예약대기', confirmed: '예약확정', completed: '결제완료', cancelled: '취소',
 };
 const STATUS_COLORS: Record<string, string> = {
-  pending:   'bg-slate-100 text-slate-500',
-  confirmed: 'bg-blue-50 text-blue-700',
-  completed: 'bg-emerald-50 text-emerald-700',
-  cancelled: 'bg-slate-50 text-slate-400 line-through',
+  pending:   'bg-status-neutralBg text-status-neutralFg',
+  confirmed: 'bg-status-infoBg text-status-infoFg',
+  completed: 'bg-status-successBg text-status-successFg',
+  cancelled: 'bg-status-neutralBg text-admin-textSubtle line-through',
 };
 const DATE_RANGE_RE = /^(\d{6})(?:\s*~\s*(\d{6}))?$/;
 
@@ -1026,7 +1027,21 @@ export default function BookingsPage() {
   }, [flashCell, showToast]);
 
   // ── 상태 변경 ───────────────────────────────────────────────────────────────
+  // CLAUDE.md §6: 모든 전이는 ALLOWED_TRANSITIONS 통과 필수. 어느 단계에서든 cancelled 가능.
+  // 레거시 호환: pending→confirmed, confirmed→completed (기존 어드민 버튼 흐름)
   const patchStatus = useCallback(async (id: string, status: string) => {
+    const current = bookings.find(b => b.id === id);
+    if (current && current.status !== status) {
+      const allowed =
+        status === 'cancelled' ||
+        isValidTransition(current.status, status) ||
+        (current.status === 'pending' && status === 'confirmed') ||
+        (current.status === 'confirmed' && status === 'completed');
+      if (!allowed) {
+        showToast(`'${current.status}' → '${status}' 는 허용되지 않은 전이입니다`, 'err');
+        return;
+      }
+    }
     setProcessing(id);
     try {
       const res = await fetch('/api/bookings', {
@@ -1037,7 +1052,7 @@ export default function BookingsPage() {
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status } : b));
     } catch (e) { showToast(e instanceof Error ? e.message : '처리 실패', 'err'); }
     finally { setProcessing(null); }
-  }, [showToast]);
+  }, [bookings, showToast]);
 
   // ── Undo 삭제 ────────────────────────────────────────────────────────────────
   const commitDeleteToDB = useCallback(async (ids: string[]) => {
@@ -1348,7 +1363,7 @@ export default function BookingsPage() {
         <div className="relative flex-1">
           <input type="text" value={rawSearch} onChange={e => setRawSearch(e.target.value)}
             placeholder="고객명, 상품명, 예약번호, 출발지역 / 날짜: 260320 또는 260101~260331"
-            className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg text-[14px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-slate-800" />
+            className="w-full pl-3 pr-8 py-2 border-2 border-admin-border rounded-lg text-admin-base focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface text-admin-text transition-colors" />
           {rawSearch && (
             <button onClick={() => setRawSearch('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[18px] leading-none">×</button>
