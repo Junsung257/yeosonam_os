@@ -135,16 +135,16 @@ export function middleware(request: NextRequest) {
   }
 
   // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
-  // PIPA 2026-09 대응: 마케팅 쿠키 동의 없으면 30분 세션, 동의 후 30일.
+  // 사장님 결정(2026-04-26): 동의 배너 미노출 → 추적 쿠키는 암묵 동의로 30일 발급.
+  // PIPA 2026-09 시행 시 동의 검사 재도입 검토. (consent.ts 의 hasMarketingConsent 함수는 보존)
   const ref = request.nextUrl.searchParams.get('ref');
   if (ref) {
     const res = getResponse();
-    const hasMarketingConsent = request.cookies.get('ys_marketing_consent')?.value === 'true';
     res.cookies.set('aff_ref', ref, {
       httpOnly: false,
       secure: isSecure,
       sameSite: 'lax',
-      maxAge: hasMarketingConsent ? 30 * 24 * 60 * 60 : 30 * 60, // 동의 시 30일, 미동의 시 30분
+      maxAge: 30 * 24 * 60 * 60, // 30일
       path: '/',
     });
   }

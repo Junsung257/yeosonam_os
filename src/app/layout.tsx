@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import MetaPixel from '@/components/MetaPixel';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
-import ConsentBanner from '@/components/ConsentBanner';
+// ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
+// PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
@@ -121,7 +122,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MetaPixel />
         {children}
         <JarvisFloatingWidget />
-        <ConsentBanner />
       </body>
     </html>
   );
