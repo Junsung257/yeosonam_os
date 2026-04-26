@@ -289,7 +289,10 @@ export function formatCancellationDates(
     // 바로 뒤에 기존 괄호가 있으면 `(YYYY.MM.DD)(~45)` 처럼 괄호가 두 개 연속 붙어 어색.
     // 기존 괄호 안쪽 끝에 `, YYYY.MM.DD까지` 를 병합해 자연스러운 형태로 변환.
     // (rebuild-trigger 2026-04-22-02)
-    const enriched = n.text.replace(/(?<!출발\s?)(\d+)일\s*전(\s*\(([^)]*)\))?/g, (match, daysStr, bracket, inner) => {
+    // (?<!\d) 추가 이유 — 기존 (?<!출발\s?) 만으로는 \d+ 의 greedy 가
+    //   "출발 30일전" 에서 lookbehind 차단을 회피해 "0일전" 부분 매칭으로 우회됨.
+    //   숫자 중간 매칭 차단을 추가해 의도된 동작 회복.
+    const enriched = n.text.replace(/(?<!출발\s?)(?<!\d)(\d+)일\s*전(\s*\(([^)]*)\))?/g, (match, daysStr, bracket, inner) => {
       const days = parseInt(daysStr, 10);
       if (!Number.isFinite(days) || days < 0 || days > 365) return match;
       const target = new Date(dep);

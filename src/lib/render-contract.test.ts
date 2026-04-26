@@ -51,12 +51,13 @@ describe('getAirlineName', () => {
     expect(getAirlineName('XX999')).toBeNull();
   });
 
-  it('숫자 시작 IATA 코드 (7C, 5J)는 현 구현에서 매칭 안 됨 — replace(/[0-9]/g) 가 prefix 숫자까지 제거', () => {
-    // 잠재 개선 후보: AIRLINE_MAP 에 \'7C\', \'5J\' 등 디지트-프리픽스 코드가 있는데
-    // getAirlineName 이 숫자 전체 strip 후 lookup 해서 매칭 실패.
-    // 현 동작 보존 — 테스트는 실제 동작을 락인.
-    expect(getAirlineName('7C')).toBeNull();
-    expect(getAirlineName('7C123')).toBeNull();
+  it('digit-prefix IATA 코드 (7C → 제주항공) — 버그 수정 후 정상 매칭', () => {
+    // 기존 구현: replace(/[0-9]/g, '') 가 prefix 숫자까지 strip → 매칭 실패.
+    // 수정: replace(/\d+$/, '') 로 trailing 숫자(편명)만 제거.
+    expect(getAirlineName('7C')).toBe('제주항공');
+    expect(getAirlineName('7C123')).toBe('제주항공');
+    expect(getAirlineName('5J')).toBe('세부퍼시픽');
+    expect(getAirlineName('5J789')).toBe('세부퍼시픽');
   });
 
   it('소문자도 처리 (bx → 에어부산)', () => {

@@ -280,10 +280,13 @@ const AIRLINE_MAP: Record<string, string> = {
 /**
  * 항공 코드/원문에서 항공사 한글명 추출.
  * ERR-20260418-17 — "BX(에어부산)" / "BX793" / "BX | 부산..." 모두 안전하게 처리.
+ *
+ * digit-prefix IATA 코드(7C 제주, 5J 세부퍼시픽) 보존:
+ *   trailing 숫자(편명)만 strip 하고 prefix 숫자는 유지.
  */
 export function getAirlineName(flightCode?: string | null): string | null {
   if (!flightCode) return null;
-  const code = flightCode.split(/[\s|(]/)[0].replace(/[0-9]/g, '').toUpperCase().trim();
+  const code = flightCode.split(/[\s|(]/)[0].replace(/\d+$/, '').toUpperCase().trim();
   if (AIRLINE_MAP[code]) return AIRLINE_MAP[code];
   const parenMatch = flightCode.match(/\(([^)]+)\)/);
   if (parenMatch && /[가-힣]/.test(parenMatch[1])) return parenMatch[1].trim();
