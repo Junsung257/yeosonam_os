@@ -23,8 +23,12 @@ export async function GET(request: NextRequest) {
     //    Supabase PostgREST 기본 max-rows=1000 때문에 .limit(5000) 을 호출해도 서버에서 1000 에서 잘림.
     //    실제 1097건이 등록돼 있음에도 UI 상단에 "총 1000개"로 잘못 표시되는 버그.
     //    해결: 명시 limit 파라미터가 없으면 1000건 단위 페이지네이션 루프로 전체 조회.
+    // include_inactive=1 → 어드민 휴지통 보기. 기본은 활성만.
+    const includeInactive = searchParams.get('include_inactive') === '1';
+
     const baseQuery = () => {
       let q = supabaseAdmin.from('attractions').select(fields).order('mention_count', { ascending: false });
+      if (!includeInactive) q = q.eq('is_active', true);
       if (search) q = q.ilike('name', `%${search}%`);
       if (country) q = q.eq('country', country);
       if (region) q = q.eq('region', region);
@@ -232,22 +236,35 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/attractions?id=
+// DELETE /api/attractions?id=        → 소프트 삭제 (is_active=false)
+// DELETE /api/attractions?id=&hard=1  → 하드 삭제 (특수 상황만, audit 트레일 손실)
+// PUT 별칭으로 ?id=&restore=1 로 복구도 가능 (PATCH 경로 활용)
 export async function DELETE(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const hard = searchParams.get('hard') === '1';
     if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
 
+    if (hard) {
+      // 하드 삭제 — FK / aliases 연결 끊김 위험. 어드민 명시 옵션 시에만 허용.
+      const { error } = await supabaseAdmin
+        .from('attractions')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return NextResponse.json({ success: true, mode: 'hard' });
+    }
+
+    // 기본: 소프트 삭제 (CLAUDE.md §2-3)
     const { error } = await supabaseAdmin
       .from('attractions')
-      .delete()
+      .update({ is_active: false })
       .eq('id', id);
-
     if (error) throw error;
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, mode: 'soft' });
   } catch (error) {
     console.error('[Attractions API] 삭제 오류:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '삭제 실패' }, { status: 500 });
