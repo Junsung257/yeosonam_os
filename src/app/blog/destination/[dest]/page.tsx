@@ -75,6 +75,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
     <>
       {/* CollectionPage JSON-LD */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({

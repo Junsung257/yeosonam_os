@@ -22,6 +22,20 @@ const nextConfig = {
       '@resvg/resvg-js',
       'satori',
     ],
+    // 자주 쓰는 큰 라이브러리에 자동 트리쉐이킹 적용 — dev 첫 컴파일/HMR 속도 개선.
+    // 특히 lucide-react는 import 1개당 전체 아이콘 번들이 통째로 들어가는 패턴이라 효과 큼.
+    // @supabase/supabase-js는 ESM/CJS 혼합이라 optimizePackageImports와 호환 안 됨(webpack chunk
+    // 깨짐) — 제외.
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns',
+      'react-icons',
+      'recharts',
+    ],
+    // RSC와 클라이언트 컴파일을 병렬화 — 첫 컴파일 30s대 → 절반대로 단축 기대.
+    // (webpackBuildWorker는 production build 전용이라 dev에서 부작용 — 제외)
+    parallelServerCompiles: true,
+    parallelServerBuildTraces: true,
   },
   images: {
     formats: ['image/avif', 'image/webp'],

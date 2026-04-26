@@ -107,6 +107,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
     <>
       {/* JSON-LD: TouristDestination + BreadcrumbList */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({

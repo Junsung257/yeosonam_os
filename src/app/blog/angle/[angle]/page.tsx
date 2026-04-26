@@ -77,6 +77,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
     <>
       {/* CollectionPage JSON-LD */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
