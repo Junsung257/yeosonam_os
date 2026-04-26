@@ -163,7 +163,10 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   const { data } = await supabaseAdmin
     .from('content_creatives')
     .select(
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, hero_image_url)',
+      // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
+      // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
+      // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions)',
     )
     .eq('slug', slug)
     .eq('status', 'published')
@@ -264,7 +267,7 @@ async function getCurationProductsForInfo(destination: string) {
 
   const { data } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, duration, nights, price, category, hero_image_url, airline, departure_airport, price_dates')
+    .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
     .eq('destination', destination)
     .in('status', ['approved', 'active'])
     .order('price', { ascending: true })
@@ -449,6 +452,7 @@ export default async function BlogDetailPage({
 
       {/* JSON-LD: BlogPosting */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
@@ -543,6 +547,7 @@ export default async function BlogDetailPage({
 
       {/* BreadcrumbList JSON-LD */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
@@ -570,6 +575,7 @@ export default async function BlogDetailPage({
       {/* FAQPage JSON-LD */}
       {faqItems.length > 0 && (
         <script
+          suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({

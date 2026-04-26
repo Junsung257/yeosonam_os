@@ -167,7 +167,11 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
       {/* TravelAgency + WebSite SearchAction Schema */}
+      {/* suppressHydrationWarning: 일부 브라우저 확장(Grammarly/ColorZilla/광고차단기)이 SSR HTML
+          수신 직후 <script> 태그에 inline style을 inject 해 React가 "Extra attributes from the
+          server: style" 경고를 띄우는 알려진 문제 회피. JSON-LD 자체는 정상 렌더된다. */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({

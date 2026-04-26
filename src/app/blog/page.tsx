@@ -235,6 +235,7 @@ export default async function BlogListPage({
     <>
       {/* CollectionPage + WebSite+SearchAction JSON-LD */}
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
