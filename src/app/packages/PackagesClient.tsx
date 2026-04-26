@@ -77,50 +77,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
   const [sortBy, setSortBy] = useState('recommended');
   const priceMaxNum = priceMax ? Number(priceMax) : 0;
 
-  // 상품의 대표 이미지 찾기 (상품별로 다른 사진 사용)
-  const usedImageUrls = new Set<string>();
-
-  function getProductImage(pkg: Package): string | null {
-    // 1차: itinerary에서 관광지 매칭
-    const days = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
-    for (const day of days) {
-      for (const item of (day.schedule || [])) {
-        // ERR-20260418-25 — 매칭 스킵 강화
-        if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
-        if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) continue;
-        const attr = matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null;
-        if (attr?.photos?.length) {
-          for (const photo of attr.photos) {
-            if (photo?.src_medium && !usedImageUrls.has(photo.src_medium)) {
-              usedImageUrls.add(photo.src_medium);
-              return photo.src_medium;
-            }
-          }
-        }
-      }
-    }
-
-    // 2차: 같은 목적지 관광지 중 아직 안 쓴 사진
-    const destParts = (pkg.destination || '').split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
-    const destAttractions = attractions
-      .filter(a => a.photos && a.photos.length > 0 && destParts.some(part =>
-        (a.region || '').includes(part) || (a.country || '').includes(part)
-      ))
-      .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
-
-    for (const attr of destAttractions) {
-      for (const photo of (attr.photos || [])) {
-        if (photo?.src_medium && !usedImageUrls.has(photo.src_medium)) {
-          usedImageUrls.add(photo.src_medium);
-          return photo.src_medium;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  // 최저가 계산
+  // 최저가 계산 (순수 함수 — useMemo 의존성 안에서만 호출)
   function getMinPrice(pkg: Package): number {
     if (pkg.price_dates?.length) {
       const min = getMinPriceFromDates(pkg.price_dates as any);
@@ -130,6 +87,60 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     const all = [pkg.price, ...tierPrices].filter(Boolean) as number[];
     return all.length > 0 ? Math.min(...all) : 0;
   }
+
+  // 상품별 대표 이미지 + 최저가를 packages/attractions 변경 시 1회만 계산.
+  // 이전 구현은 렌더 중 Set 변이 + 매 렌더마다 matchAttractions() 호출 → 순서 의존 + 비용 N배.
+  const imageByPkgId = useMemo(() => {
+    const used = new Set<string>();
+    const map = new Map<string, string | null>();
+    for (const pkg of packages) {
+      let chosen: string | null = null;
+      // 1차: itinerary 관광지 매칭
+      const days = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
+      outer: for (const day of days) {
+        for (const item of (day.schedule || [])) {
+          if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
+          if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) continue;
+          const attr = matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null;
+          if (attr?.photos?.length) {
+            for (const photo of attr.photos) {
+              if (photo?.src_medium && !used.has(photo.src_medium)) {
+                used.add(photo.src_medium);
+                chosen = photo.src_medium;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      // 2차: 목적지 폴백
+      if (!chosen) {
+        const destParts = (pkg.destination || '').split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
+        const destAttractions = attractions
+          .filter(a => a.photos && a.photos.length > 0 && destParts.some(part =>
+            (a.region || '').includes(part) || (a.country || '').includes(part)
+          ))
+          .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
+        outer2: for (const attr of destAttractions) {
+          for (const photo of (attr.photos || [])) {
+            if (photo?.src_medium && !used.has(photo.src_medium)) {
+              used.add(photo.src_medium);
+              chosen = photo.src_medium;
+              break outer2;
+            }
+          }
+        }
+      }
+      map.set(pkg.id, chosen);
+    }
+    return map;
+  }, [packages, attractions]);
+
+  const minPriceByPkgId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const pkg of packages) map.set(pkg.id, getMinPrice(pkg));
+    return map;
+  }, [packages]);
 
   // 출발월 매칭: price_dates 또는 price_tiers.departure_dates에 해당 YYYY-MM 시작 날짜가 있는지
   function matchesMonth(pkg: Package, ym: string): boolean {
@@ -145,18 +156,19 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     return false;
   }
 
-  // 필터 + 정렬 (클라이언트 사이드)
+  // 필터 + 정렬 (클라이언트 사이드) — minPrice는 사전 계산된 맵에서 조회
   const filteredPackages = useMemo(() => {
+    const mp = (pkg: Package) => minPriceByPkgId.get(pkg.id) ?? 0;
     let result = packages.filter(pkg => matchesFilter(pkg, activeFilter));
     if (month) result = result.filter(pkg => matchesMonth(pkg, month));
     if (priceMaxNum > 0) result = result.filter(pkg => {
-      const mp = getMinPrice(pkg);
-      return mp > 0 && mp <= priceMaxNum;
+      const v = mp(pkg);
+      return v > 0 && v <= priceMaxNum;
     });
-    if (sortBy === 'price_asc') result = [...result].sort((a, b) => getMinPrice(a) - getMinPrice(b));
-    if (sortBy === 'price_desc') result = [...result].sort((a, b) => getMinPrice(b) - getMinPrice(a));
+    if (sortBy === 'price_asc') result = [...result].sort((a, b) => mp(a) - mp(b));
+    if (sortBy === 'price_desc') result = [...result].sort((a, b) => mp(b) - mp(a));
     return result;
-  }, [packages, activeFilter, sortBy, month, priceMaxNum]);
+  }, [packages, activeFilter, sortBy, month, priceMaxNum, minPriceByPkgId]);
 
   return (
     <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
@@ -244,8 +256,8 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
       ) : (
         <div className="px-4 py-4 space-y-3 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
           {filteredPackages.map(pkg => {
-            const minPrice = getMinPrice(pkg);
-            const image = getProductImage(pkg);
+            const minPrice = minPriceByPkgId.get(pkg.id) ?? 0;
+            const image = imageByPkgId.get(pkg.id) ?? null;
             const airlineName = getAirlineName(pkg.airline) ?? pkg.airline;
 
             return (

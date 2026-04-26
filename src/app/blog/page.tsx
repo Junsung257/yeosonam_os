@@ -80,29 +80,8 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
 
   const offset = (page - 1) * PER_PAGE;
 
-  // 활성 목적지 통계 (destination hub 링크용)
-  const { data: destData } = await supabaseAdmin
-    .from('active_destinations')
-    .select('*')
-    .order('package_count', { ascending: false })
-    .limit(16);
-
-  // Featured 블록 (상위 3개)
-  const { data: featuredData } = await supabaseAdmin
-    .from('content_creatives')
-    .select(
-      'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
-    )
-    .eq('status', 'published')
-    .eq('channel', 'naver_blog')
-    .eq('featured', true)
-    .not('slug', 'is', null)
-    .order('featured_order', { ascending: true, nullsFirst: false })
-    .order('published_at', { ascending: false })
-    .limit(3);
-
-  // 전체 목록 쿼리
-  let query = supabaseAdmin
+  // 전체 목록 쿼리 빌더 (Promise 생성 전에 동적 필터 체이닝)
+  let listQuery = supabaseAdmin
     .from('content_creatives')
     .select(
       'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
@@ -114,10 +93,37 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     .order('published_at', { ascending: false })
     .range(offset, offset + PER_PAGE - 1);
 
-  if (filter.angle) query = query.eq('angle_type', filter.angle);
-  if (filter.destination) query = query.eq('destination', filter.destination);
+  if (filter.angle) listQuery = listQuery.eq('angle_type', filter.angle);
+  if (filter.destination) listQuery = listQuery.eq('destination', filter.destination);
 
-  const { data, count } = await query;
+  // 3개 독립 쿼리 병렬화 — TTFB / ISR 빌드 단축
+  const [destRes, featuredRes, listRes] = await Promise.all([
+    // 활성 목적지 통계 (destination hub 링크용)
+    supabaseAdmin
+      .from('active_destinations')
+      .select('*')
+      .order('package_count', { ascending: false })
+      .limit(16),
+    // Featured 블록 (상위 3개)
+    supabaseAdmin
+      .from('content_creatives')
+      .select(
+        'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
+      )
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .eq('featured', true)
+      .not('slug', 'is', null)
+      .order('featured_order', { ascending: true, nullsFirst: false })
+      .order('published_at', { ascending: false })
+      .limit(3),
+    listQuery,
+  ]);
+
+  const destData = destRes.data;
+  const featuredData = featuredRes.data;
+  const data = listRes.data;
+  const count = listRes.count;
 
   const posts = (data as BlogPost[]) || [];
   // featured 중복 제거

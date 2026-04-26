@@ -383,24 +383,21 @@ export default async function BlogDetailPage({
   const isInfoBlog = !post.product_id;
   const isLanding = !!post.landing_enabled && !!post.product_id;
 
-  // DKI 결정 (상품 블로그 + 광고 유입일 때만)
-  const dki = isLanding
-    ? await resolveDki(
-        { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
-        {
-          seo_title: title,
-          landing_headline: post.landing_headline,
-          landing_subtitle: post.landing_subtitle,
-        },
-      )
-    : null;
-
-  // 정보성 블로그: destination 기반 큐레이션 상품 3개 가져오기
-  const curationProducts = isInfoBlog && post.destination
-    ? await getCurationProductsForInfo(post.destination)
-    : [];
-
-  const [relatedPosts, relatedProducts] = await Promise.all([
+  // post 의존 4개 쿼리 병렬화 — 직렬 누적 RT → 1 RT (TTFB 200~400ms 단축 기대)
+  const [dki, curationProducts, relatedPosts, relatedProducts] = await Promise.all([
+    isLanding
+      ? resolveDki(
+          { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
+          {
+            seo_title: title,
+            landing_headline: post.landing_headline,
+            landing_subtitle: post.landing_subtitle,
+          },
+        )
+      : Promise.resolve(null),
+    isInfoBlog && post.destination
+      ? getCurationProductsForInfo(post.destination)
+      : Promise.resolve([] as Awaited<ReturnType<typeof getCurationProductsForInfo>>),
     getRelatedPosts(slug, pkg?.destination, post.angle_type),
     getRelatedProducts(pkg?.id, pkg?.destination),
   ]);

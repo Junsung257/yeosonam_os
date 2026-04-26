@@ -52,15 +52,36 @@ export async function calculateDraftForAffiliate(
     .maybeSingle();
   if (existing && ['READY', 'COMPLETED'].includes(existing.status)) return null;
 
-  const { data: bookings } = await supabaseAdmin
-    .from('bookings')
-    .select('id, influencer_commission, return_date, status, self_referral_flag')
-    .eq('affiliate_id', affiliate.id)
-    .in('status', ['confirmed', 'completed', 'fully_paid'])
-    .gte('departure_date', periodStart)
-    .lte('departure_date', periodEnd)
-    .lte('return_date', todayIso)
-    .or('is_deleted.is.null,is_deleted.eq.false');
+  const prevMonthDate = new Date(`${period}-01`);
+  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+  const prevPeriod = prevMonthDate.toISOString().slice(0, 7);
+
+  const [bookingsRes, prevSettlementRes, pendingAdjustmentsRes] = await Promise.all([
+    supabaseAdmin
+      .from('bookings')
+      .select('id, influencer_commission, return_date, status, self_referral_flag')
+      .eq('affiliate_id', affiliate.id)
+      .in('status', ['confirmed', 'completed', 'fully_paid'])
+      .gte('departure_date', periodStart)
+      .lte('departure_date', periodEnd)
+      .lte('return_date', todayIso)
+      .or('is_deleted.is.null,is_deleted.eq.false'),
+    supabaseAdmin
+      .from('settlements')
+      .select('carryover_balance')
+      .eq('affiliate_id', affiliate.id)
+      .eq('settlement_period', prevPeriod)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('commission_adjustments')
+      .select('id, amount')
+      .eq('affiliate_id', affiliate.id)
+      .eq('status', 'pending'),
+  ]);
+
+  const bookings = bookingsRes.data;
+  const prevSettlement = prevSettlementRes.data;
+  const pendingAdjustments = pendingAdjustmentsRes.data;
 
   const qualifiedBookings = (bookings || []).filter((b: any) =>
     b.return_date && b.return_date <= todayIso && !b.self_referral_flag,
@@ -71,24 +92,7 @@ export async function calculateDraftForAffiliate(
     0,
   );
 
-  const prevMonthDate = new Date(`${period}-01`);
-  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-  const prevPeriod = prevMonthDate.toISOString().slice(0, 7);
-  const { data: prevSettlement } = await supabaseAdmin
-    .from('settlements')
-    .select('carryover_balance')
-    .eq('affiliate_id', affiliate.id)
-    .eq('settlement_period', prevPeriod)
-    .maybeSingle();
   const prevCarryover = (prevSettlement as any)?.carryover_balance ?? 0;
-
-  // ── pending 커미션 조정(clawback / bonus) 합산 ──
-  // 환불/취소로 발생한 음수 entry, 수기 보너스 양수 entry가 다음 정산에 자동 반영됨.
-  const { data: pendingAdjustments } = await supabaseAdmin
-    .from('commission_adjustments')
-    .select('id, amount')
-    .eq('affiliate_id', affiliate.id)
-    .eq('status', 'pending');
   const adjustmentSum = (pendingAdjustments || []).reduce(
     (s: number, a: any) => s + (Number(a.amount) || 0),
     0,

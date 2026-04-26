@@ -400,25 +400,19 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용)
-      let landOpName: string | null = null;
-      let depLocName: string | null = null;
-      if ((product as any).land_operator_id) {
-        const { data: lo } = await supabaseAdmin
-          .from('land_operators')
-          .select('name')
-          .eq('id', (product as any).land_operator_id)
-          .maybeSingle();
-        landOpName = (lo as any)?.name ?? null;
-      }
-      if ((product as any).departing_location_id) {
-        const { data: dl } = await supabaseAdmin
-          .from('departing_locations')
-          .select('name')
-          .eq('id', (product as any).departing_location_id)
-          .maybeSingle();
-        depLocName = (dl as any)?.name ?? null;
-      }
+      // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용) — 병렬 fetch
+      const landOpId = (product as any).land_operator_id;
+      const depLocId = (product as any).departing_location_id;
+      const [loRes, dlRes] = await Promise.all([
+        landOpId
+          ? supabaseAdmin.from('land_operators').select('name').eq('id', landOpId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        depLocId
+          ? supabaseAdmin.from('departing_locations').select('name').eq('id', depLocId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const landOpName: string | null = (loRes.data as any)?.name ?? null;
+      const depLocName: string | null = (dlRes.data as any)?.name ?? null;
 
       const updateFields: Record<string, unknown> = {
         product_id:    (product as any).internal_code,

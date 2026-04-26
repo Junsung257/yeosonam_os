@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -224,28 +224,44 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // 미매칭 관광지 수집은 클라이언트에서 제거 (트래픽 폭탄 방지)
   // → 서버사이드(page.tsx)에서 ISR 빌드 시 1회만 실행
 
+  // pkg 의존 헤비 계산은 메모이제이션 (state 변경 시 불필요한 재계산 방지)
+  // CRC: renderPackage()는 845줄 모듈의 풀 파이프라인이므로 매 렌더 호출 비용 큼.
+  const view: CanonicalView | null = useMemo(
+    () => (pkg ? renderPackage(pkg as Parameters<typeof renderPackage>[0]) : null),
+    [pkg],
+  );
+  const days: DaySchedule[] = useMemo(
+    () => (pkg ? normalizeDays(pkg.itinerary_data) : []),
+    [pkg],
+  );
+  const tiers = useMemo(
+    () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers || [] as any, pkg.departure_days) as PriceTier[]) : []),
+    [pkg],
+  );
+  const allPriceDates = useMemo(
+    () => (pkg ? getEffectivePriceDates(pkg as any) : []),
+    [pkg],
+  );
+  const minPrice = useMemo(() => {
+    if (!pkg) return 0;
+    const minTier = tiers.length > 0 ? Math.min(...tiers.map(t => t.adult_price || Infinity)) : Infinity;
+    const minDate = (pkg.price_dates && pkg.price_dates.length > 0)
+      ? Math.min(...pkg.price_dates.map(d => d.price || Infinity))
+      : Infinity;
+    return Math.min(minTier, minDate, pkg.price || Infinity);
+  }, [pkg, tiers]);
+  const heroPhoto = useMemo(() => {
+    if (!pkg) return undefined;
+    return attractions.find(a => a.photos && a.photos.length > 0 && a.country && pkg.destination?.includes(a.country))?.photos?.[0];
+  }, [pkg, attractions]);
+
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
-  if (!pkg) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
-
-  // W1 CRC — 렌더링 계약 단일 진입점. pkg 필드를 렌더러 내부에서 다시 파싱하지 말 것 (ERR-KUL-05).
-  const view: CanonicalView = renderPackage(pkg as Parameters<typeof renderPackage>[0]);
-
-  const days: DaySchedule[] = normalizeDays(pkg.itinerary_data);
-  const tiers = filterTiersByDepartureDays(pkg.price_tiers || [] as any, pkg.departure_days) as PriceTier[];
-  const minTierPrice = tiers.length > 0 ? Math.min(...tiers.map(t => t.adult_price || Infinity)) : Infinity;
-  const minDatePrice = (pkg.price_dates && pkg.price_dates.length > 0) 
-    ? Math.min(...pkg.price_dates.map(d => d.price || Infinity)) 
-    : Infinity;
-  const minPrice = Math.min(minTierPrice, minDatePrice, pkg.price || Infinity);
-  const allPriceDates = getEffectivePriceDates(pkg as any);
+  if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
   // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
-
-  // 히어로 사진: destination 관광지 중 사진 있는 첫 번째 항목
-  const heroPhoto = attractions.find(a => a.photos && a.photos.length > 0 && a.country && pkg.destination?.includes(a.country))?.photos?.[0];
 
   // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
   // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
