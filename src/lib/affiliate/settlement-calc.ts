@@ -28,11 +28,16 @@ export function resolvePreviousPeriod(today = new Date()): {
   periodEnd: string;
   todayIso: string;
 } {
-  const prevMonth = today.getMonth() === 0 ? 12 : today.getMonth();
-  const prevYear = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
+  // UTC 기준으로 일관 계산 — 로컬 TZ에 의존하면 한국(UTC+9)에서 periodEnd 가 하루 밀림.
+  const utcMonth = today.getUTCMonth(); // 0-11
+  const utcYear = today.getUTCFullYear();
+  const prevMonth = utcMonth === 0 ? 12 : utcMonth; // 1-12
+  const prevYear = utcMonth === 0 ? utcYear - 1 : utcYear;
   const period = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
   const periodStart = `${period}-01`;
-  const periodEnd = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0];
+  // Date.UTC(year, month, 0) = 해당 month 이전 달의 마지막 날 (month 는 0-indexed)
+  // prevMonth(1-12) 그대로 넣으면 prevMonth 의 마지막 날 (UTC).
+  const periodEnd = new Date(Date.UTC(prevYear, prevMonth, 0)).toISOString().split('T')[0];
   const todayIso = today.toISOString().split('T')[0];
   return { period, periodStart, periodEnd, todayIso };
 }
