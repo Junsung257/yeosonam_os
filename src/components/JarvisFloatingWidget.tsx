@@ -55,11 +55,6 @@ export default function JarvisFloatingWidget() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // admin 페이지에서만 표시
-  if (!pathname.startsWith('/admin')) return null
-  // /admin/jarvis 페이지에서는 중복 방지 위해 숨김
-  if (pathname.startsWith('/admin/jarvis')) return null
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
@@ -67,6 +62,11 @@ export default function JarvisFloatingWidget() {
   useEffect(() => {
     if (isOpen) inputRef.current?.focus()
   }, [isOpen])
+
+  // admin 페이지에서만 표시 (모든 hook 이후 early return — react-hooks/rules-of-hooks)
+  if (!pathname.startsWith('/admin')) return null
+  // /admin/jarvis 페이지에서는 중복 방지 위해 숨김
+  if (pathname.startsWith('/admin/jarvis')) return null
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return

@@ -167,6 +167,7 @@ export default function RfqDetailPage() {
 
   useEffect(() => {
     fetchAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [id]);
 
   async function fetchAll() {

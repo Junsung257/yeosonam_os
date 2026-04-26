@@ -88,6 +88,7 @@ export default function TenantRfqsPage() {
     fetchRfqs();
     const interval = setInterval(fetchRfqs, 30000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [tenantId]);
 
   async function fetchRfqs() {

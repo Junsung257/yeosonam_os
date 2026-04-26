@@ -154,7 +154,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 전이 대상 상태 결정
-    let targetStatus = action === 'approve' ? 'approved' : 'rejected'
+    const targetStatus = action === 'approve' ? 'approved' : 'rejected'
 
     // 전이 유효성 검증
     if (!isValidTransition(current.status, targetStatus)) {

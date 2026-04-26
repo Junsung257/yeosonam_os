@@ -866,6 +866,7 @@ export default function BookingsPage() {
     await commitCell(id, field, val);
     const colIdx = Number(Object.entries(COL_FIELD).find(([, f]) => f === field)?.[0]);
     if (!isNaN(colIdx)) setTimeout(() => navigateTo(row + 1, colIdx), 60);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [commitCell]); // navigateTo는 아래에서 선언
 
   // ── [1][2] AI 자동 정산 — 무한루프 완전 차단 아키텍처 ────────────────────────

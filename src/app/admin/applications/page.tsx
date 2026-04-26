@@ -52,6 +52,7 @@ export default function ApplicationsPage() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   useEffect(() => { load(); }, [filter]);
 
   const handleApprove = async (id: string) => {

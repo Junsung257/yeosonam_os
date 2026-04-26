@@ -607,11 +607,7 @@ export default function LandingPage({ params }: { params: { id: string } }) {
     loadData();
   }, [params.id]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">불러오는 중...</div>;
-  if (!data) return <div className="min-h-screen flex items-center justify-center">상품 정보를 찾을 수 없습니다.</div>;
-
-  const msg = data.customMessage[validSource];
-
+  // ── Hooks must be called before any early return (react-hooks/rules-of-hooks) ──
   // Intersection Observer → FAB 활성화
   const { itineraryViewed, setItineraryViewed, registerScrollSentinel, getSnapshot } = useTracking();
   const handleItineraryViewed = useCallback(() => setItineraryViewed(true), [setItineraryViewed]);
@@ -629,6 +625,11 @@ export default function LandingPage({ params }: { params: { id: string } }) {
     const c90 = registerScrollSentinel(sentinel90Ref.current, 90);
     return () => { c25?.(); c50?.(); c90?.(); };
   }, [registerScrollSentinel]);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">불러오는 중...</div>;
+  if (!data) return <div className="min-h-screen flex items-center justify-center">상품 정보를 찾을 수 없습니다.</div>;
+
+  const msg = data.customMessage[validSource];
 
   // 채널별 히어로 스타일
   const isInsta = validSource === 'insta';

@@ -32,12 +32,14 @@ export default function RfqChatPage() {
   // 최초 로드
   useEffect(() => {
     fetchMessages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [id]);
 
   // 10초 폴링
   useEffect(() => {
     const interval = setInterval(fetchMessages, 10000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [id]);
 
   // 자동 스크롤

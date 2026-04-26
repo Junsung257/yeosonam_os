@@ -3,7 +3,10 @@ import Image from 'next/image';
 import { createClient } from '@supabase/supabase-js';
 import SearchBar from '@/components/customer/SearchBar';
 
-export const revalidate = 300; // 5분 ISR
+// Vercel(Linux) 에서는 ISR 5분 유지, Windows 로컬 빌드는 chunk race 회피용으로 force-dynamic.
+// ERR-windows-prerender-chunk@2026-04-26 (Next.js 14.0.4 로컬 빌드 한정 회피책)
+export const revalidate = process.platform === 'win32' ? 0 : 300;
+export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
 
 // ── Supabase 서버사이드 ──
 function getSupabase() {

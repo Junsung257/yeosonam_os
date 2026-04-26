@@ -41,6 +41,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadPackages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [filters]);
 
   async function loadPackages() {

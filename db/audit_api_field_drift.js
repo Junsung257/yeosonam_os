@@ -69,6 +69,10 @@ const INTERNAL_ONLY = new Set([
   'seats_ticketed',          // ERP 내부 재고 상태
   'structured_features',     // AI 추출 메타
   'tenant_id',               // 멀티테넌시 내부
+  // 2026-04-26 — RAG 인덱싱 전용 마크다운 필드 (src/ 미사용, db/rag_reindex_all.js 만 참조)
+  'highlights_md',           // RAG 인덱싱용 (고객 노출은 product_highlights 사용)
+  'itinerary_md',            // RAG 인덱싱용 (고객 노출은 itinerary_data 사용)
+  'terms_md',                // RAG 인덱싱용 (고객 노출은 notices_parsed 사용)
 ]);
 
 // 허용 목록 — "있으면 좋지만 필수 아님". 빠져도 경고만.

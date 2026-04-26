@@ -141,7 +141,7 @@ ${JSON.stringify(bottomPosts.map(summarize), null, 2)}
 반드시 위 JSON 형식만 출력하라. 마크다운 코드블록 금지.`;
 
     const result = await model.generateContent(prompt);
-    let analysisText = result.response.text()
+    const analysisText = result.response.text()
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     let analysis: any = null;

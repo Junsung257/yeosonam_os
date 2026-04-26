@@ -60,6 +60,7 @@ export default function BlogEditPage() {
   const seoScore = useMemo(() => {
     if (!blogHtml) return null;
     return calculateSeoScore({ content: blogHtml, primaryKeyword, metaTitle: seoTitle, metaDescription: seoDescription });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [blogHtml, seoTitle, seoDescription]);
 
   const grade = seoScore ? getSeoGrade(seoScore.overall) : null;

@@ -106,6 +106,7 @@ const PACKAGE_LIST_FIELDS = `
   product_tags, product_highlights, product_summary, itinerary_data,
   marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title,
   seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
+  avg_rating, review_count,
   audit_status, audit_report, audit_checked_at,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
@@ -515,6 +516,13 @@ export async function PATCH(request: NextRequest) {
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (fields.land_operator !== undefined) updateData.land_operator = fields.land_operator;
       if (fields.commission_rate !== undefined) updateData.commission_rate = Number(fields.commission_rate);
+      if (fields.affiliate_commission_rate !== undefined) {
+        // 0~30% 범위 강제 (DB CHECK 제약과 동일)
+        const r = Number(fields.affiliate_commission_rate);
+        if (Number.isFinite(r) && r >= 0 && r <= 0.30) {
+          updateData.affiliate_commission_rate = r;
+        }
+      }
       const { error } = await supabaseAdmin
         .from('travel_packages')
         .update(updateData)
@@ -565,7 +573,7 @@ export async function PATCH(request: NextRequest) {
       'optional_tours', 'cancellation_policy', 'category_attrs',
       'inclusions', 'excludes', 'special_notes', 'notices_parsed',
       'itinerary', 'itinerary_data', 'raw_text',
-      'land_operator', 'land_operator_id', 'commission_rate',
+      'land_operator', 'land_operator_id', 'commission_rate', 'affiliate_commission_rate',
       'product_tags', 'product_highlights', 'product_summary',
       'marketing_copies', 'internal_code', 'confidence',
       'country', 'nights', 'accommodations',

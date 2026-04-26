@@ -78,7 +78,7 @@ export function estimateHeights(
   const { meta, highlights } = itinerary;
 
   // Header
-  let headerH = 68;
+  const headerH = 68;
 
   // Price block
   let priceH = 8;

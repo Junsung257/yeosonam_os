@@ -9,9 +9,6 @@ import { MessageCircle, X, Send } from 'lucide-react';
 export default function ChatWidget() {
   const pathname = usePathname();
   const { isOpen, messages, isTyping, toggleChat, closeChat } = useChatStore();
-
-  // admin 페이지에서는 자비스 플로팅 위젯을 사용하므로 숨김
-  if (pathname.startsWith('/admin')) return null;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
@@ -25,6 +22,9 @@ export default function ChatWidget() {
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
+
+  // admin 페이지에서는 자비스 플로팅 위젯을 사용하므로 숨김 (모든 hook 이후 early return — react-hooks/rules-of-hooks)
+  if (pathname.startsWith('/admin')) return null;
 
   const handleSend = async () => {
     const text = inputValue.trim();

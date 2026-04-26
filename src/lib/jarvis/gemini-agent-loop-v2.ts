@@ -59,7 +59,7 @@ export async function* runGeminiAgentLoopV2(
   const model = config.model ?? process.env.JARVIS_V2_AGENT_MODEL ?? 'gemini-2.5-pro'
   const maxRounds = config.maxRounds ?? MAX_ROUNDS_V2
   const startedAt = Date.now()
-  let totalUsage = { promptTokenCount: 0, candidatesTokenCount: 0, cachedContentTokenCount: 0, thoughtsTokenCount: 0 }
+  const totalUsage = { promptTokenCount: 0, candidatesTokenCount: 0, cachedContentTokenCount: 0, thoughtsTokenCount: 0 }
 
   // 0-a) 쿼터 체크 — 초과 시 즉시 중단
   try {

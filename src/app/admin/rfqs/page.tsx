@@ -78,6 +78,7 @@ export default function AdminRfqsPage() {
 
   useEffect(() => {
     fetchRfqs();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [statusFilter]);
 
   async function fetchRfqs() {

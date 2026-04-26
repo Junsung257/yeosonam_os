@@ -150,6 +150,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
       }
     } catch { /* 실패 무시 */ }
     finally { setSyncing(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [autoKill]);
 
   // ── Kill Switch ────────────────────────────────────────

@@ -2,17 +2,17 @@
 
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 
-const ComposedChart = dynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
-const Bar = dynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
-const Line = dynamic(() => import('recharts').then(m => ({ default: m.Line })), { ssr: false });
-const LineChart = dynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
-const XAxis = dynamic(() => import('recharts').then(m => ({ default: m.XAxis })), { ssr: false });
-const YAxis = dynamic(() => import('recharts').then(m => ({ default: m.YAxis })), { ssr: false });
-const Tooltip = dynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
-const ResponsiveContainer = dynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
-const Cell = dynamic(() => import('recharts').then(m => ({ default: m.Cell })), { ssr: false });
+const ComposedChart = nextDynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
+const Bar = nextDynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
+const Line = nextDynamic(() => import('recharts').then(m => ({ default: m.Line })), { ssr: false });
+const LineChart = nextDynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
+const XAxis = nextDynamic(() => import('recharts').then(m => ({ default: m.XAxis })), { ssr: false });
+const YAxis = nextDynamic(() => import('recharts').then(m => ({ default: m.YAxis })), { ssr: false });
+const Tooltip = nextDynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
+const ResponsiveContainer = nextDynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
+const Cell = nextDynamic(() => import('recharts').then(m => ({ default: m.Cell })), { ssr: false });
 
 // ── 타입 ──────────────────────────────────────────────────
 

@@ -167,6 +167,7 @@ export default function ContentHubPage() {
     } finally {
       setGenerating(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [selectedPkg, selectedAngles, selectedChannels, ratio, slideCount, tone, extraPrompt]);
 
   // ── 슬라이드 요소 수정 ─────────────────────────────────

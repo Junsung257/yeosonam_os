@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import type { MarketingCopy } from '@/lib/ai';
 import { useVendors } from '@/hooks/useVendors';
 import { useMarketingTracker, PLATFORMS, PlatformKey } from '@/hooks/useMarketingTracker';
@@ -13,13 +13,13 @@ import {
 } from '@/lib/package-status';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
-const ApprovalModal = dynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
-const MarketingLogModal = dynamic(() => import('@/components/admin/MarketingLogModal'), { ssr: false });
-const PosterStudio = dynamic(() => import('@/components/admin/PosterStudio'), { ssr: false });
-const MarketingPromptGenerator = dynamic(() => import('@/components/admin/MarketingPromptGenerator'), { ssr: false });
-const CardNewsStudio = dynamic(() => import('@/components/admin/CardNewsStudio'), { ssr: false });
-const AdPerformanceDashboard = dynamic(() => import('@/components/admin/AdPerformanceDashboard'), { ssr: false });
-const MetaAutoPublisher = dynamic(() => import('@/components/admin/MetaAutoPublisher'), { ssr: false });
+const ApprovalModal = nextDynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
+const MarketingLogModal = nextDynamic(() => import('@/components/admin/MarketingLogModal'), { ssr: false });
+const PosterStudio = nextDynamic(() => import('@/components/admin/PosterStudio'), { ssr: false });
+const MarketingPromptGenerator = nextDynamic(() => import('@/components/admin/MarketingPromptGenerator'), { ssr: false });
+const CardNewsStudio = nextDynamic(() => import('@/components/admin/CardNewsStudio'), { ssr: false });
+const AdPerformanceDashboard = nextDynamic(() => import('@/components/admin/AdPerformanceDashboard'), { ssr: false });
+const MetaAutoPublisher = nextDynamic(() => import('@/components/admin/MetaAutoPublisher'), { ssr: false });
 
 // ── DB 구조화 필드 → 고객용 상품 원문 생성 (민감정보 0) ──
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
