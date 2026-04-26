@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { getMinPriceFromDates } from '@/lib/price-dates';
+import { getAirlineName } from '@/lib/render-contract';
 import SearchBar from '@/components/customer/SearchBar';
 
 interface Package {
@@ -34,7 +35,7 @@ interface AttractionInfo {
   country?: string; region?: string; mention_count?: number;
 }
 
-const AIRLINES: Record<string, string> = { BX: '에어부산', LJ: '진에어', OZ: '아시아나', KE: '대한항공', '7C': '제주항공', TW: '티웨이', VJ: '비엣젯', ZE: '이스타항공', CA: '중국국제항공', CZ: '중국남방항공', MU: '중국동방항공' };
+// 항공사 매핑 SSOT: getAirlineName() in @/lib/render-contract (CRC). 인라인 dict 제거.
 
 const FILTER_OPTIONS = ['전체', '중국', '일본', '동남아', '마카오/홍콩', '인천출발'] as const;
 const SORT_OPTIONS = [
@@ -245,7 +246,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
           {filteredPackages.map(pkg => {
             const minPrice = getMinPrice(pkg);
             const image = getProductImage(pkg);
-            const airlineName = AIRLINES[pkg.airline || ''] || pkg.airline;
+            const airlineName = getAirlineName(pkg.airline) ?? pkg.airline;
 
             return (
               <Link key={pkg.id} href={`/packages/${pkg.id}`} prefetch={true} className="md:block md:rounded-2xl md:overflow-hidden md:border md:border-gray-100 md:hover:border-violet-300 md:hover:shadow-lg md:transition-all">

@@ -216,8 +216,23 @@ export interface CanonicalDay {
   meals: MealInfo | null;
 }
 
+/**
+ * 헤더용 flight 한 쌍 (출발편 / 귀국편).
+ * outbound = 첫 날 항공편 (한국 → 도착지)
+ * inbound  = 마지막 날 항공편 (도착지 → 한국). 마지막 날에 없으면 마지막-1일에서 fallback.
+ *
+ * 렌더 위치: A4 포스터 상단 항공 카드 + 모바일 일정 카드 헤더.
+ * 사용자 코드는 view.flightHeader 만 소비하고, view.days[i].schedule 재파싱 금지.
+ */
+export interface FlightHeader {
+  outbound: CanonicalFlight | null;
+  inbound: CanonicalFlight | null;
+}
+
 export interface CanonicalView {
   airlineHeader: AirlineHeader;
+  /** 출발/귀국 항공편 헤더 (Phase 2 확장 — ERR-KUL-05 후속) */
+  flightHeader: FlightHeader;
   optionalTours: CanonicalOptionalTours;
   surchargesMerged: MergedSurcharge[];
   excludes: CanonicalExcludes;
@@ -719,15 +734,30 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
  */
 export function renderPackage(pkg: RenderPackageInput): CanonicalView {
   const { merged, excludes } = resolveSurchargesAndExcludes(pkg);
+  const days = resolveDays(pkg);
   return {
     airlineHeader: resolveAirlineHeader(pkg),
+    flightHeader: resolveFlightHeader(days),
     optionalTours: resolveOptionalTours(pkg),
     surchargesMerged: merged,
     excludes,
     shopping: resolveShopping(pkg),
     inclusions: resolveInclusions(pkg),
-    days: resolveDays(pkg),
+    days,
   };
+}
+
+/**
+ * 출발편/귀국편 헤더 추출. days[0].flight = outbound,
+ * 귀국편은 마지막 날 우선, 없으면 마지막-1일 fallback (마지막 날이 도착-only 인 경우).
+ */
+function resolveFlightHeader(days: CanonicalDay[]): FlightHeader {
+  if (days.length === 0) return { outbound: null, inbound: null };
+  const outbound = days[0]?.flight ?? null;
+  const last = days[days.length - 1];
+  const beforeLast = days.length >= 2 ? days[days.length - 2] : null;
+  const inbound = last?.flight ?? beforeLast?.flight ?? null;
+  return { outbound, inbound };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

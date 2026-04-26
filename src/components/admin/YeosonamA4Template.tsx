@@ -6,7 +6,7 @@ import { parseDaysWithTransport, isTransportSegment } from '@/lib/transportParse
 import { matchAttraction as matchAttractionShared, matchAttractions as matchAttractionsShared } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { formatDepartureDays } from '@/lib/admin-utils';
-import { normalizeOptionalTourName, type OptionalTourInput } from '@/lib/itinerary-render';
+import { normalizeOptionalTourName, type OptionalTourInput, type NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { renderPackage, getAirlineName, type CanonicalView } from '@/lib/render-contract';
 import type { NoticeBlock } from '@/lib/standard-terms';
 import TransportBar from '@/components/itinerary/TransportBar';
@@ -186,24 +186,9 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
     })
     .slice(0, 4);
 
-  // 직항 도착 도시 추출: 1일차 도착 항공편에서 도시명 파싱 (ERR-20260418-17)
-  const arrivalCityName = (() => {
-    const rawDays = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
-    const firstDay = rawDays[0];
-    if (!firstDay?.schedule) return undefined;
-    const arrivalFlight = firstDay.schedule.find(
-      (s: { type?: string; activity?: string }) => s.type === 'flight' && s.activity && /도착|입국/.test(s.activity)
-    );
-    if (!arrivalFlight?.activity) return undefined;
-    const act = arrivalFlight.activity;
-    // 1) "→ 타이페이 도착" 또는 "→ 타이페이 (국제)공항 도착" 패턴 우선
-    const arrowMatch = act.match(/→\s*([가-힣A-Za-z]+(?:\s[가-힣A-Za-z]+)?)\s*(?:국제)?공항?\s*(?:도착|입국)/);
-    if (arrowMatch) return arrowMatch[1].trim();
-    // 2) "타이페이 공항 도착" 또는 "비엔티엔 도착" — 공백 기준 마지막 단어
-    const m = act.match(/(?:^|\s)([가-힣]{2,6}|[A-Za-z]{3,20})\s*(?:국제)?공항?\s*(?:도착|입국)/);
-    if (m) return m[1].trim();
-    return undefined;
-  })();
+  // 직항 도착 도시 — view.flightHeader.outbound.arrCity 로 통합 (ERR-KUL-05 / Phase 2).
+  // 이전: pkg.itinerary_data.days[0].schedule 직접 파싱 → CRC 우회.
+  const arrivalCityName = view.flightHeader.outbound?.arrCity ?? undefined;
 
   // itinerary_data가 배열로 직접 저장된 경우 대응 (days 래퍼 없이)
   const days = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
@@ -378,7 +363,7 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
               globalMin={priceTableGlobalMin}
             />
           ) : null}
-          {(pkg.optional_tours?.length ?? 0) > 0 && <OptionalTours tours={pkg.optional_tours!} />}
+          {view.optionalTours.count > 0 && <OptionalTours tours={view.optionalTours.flat} />}
         </main>
       </article>
 
@@ -1216,19 +1201,15 @@ function NoticesPage({ noticesParsed, customerNotes }: {
 
 // ERR-20260418-04 + ERR-KUL-04 — optional_tours 렌더는 itinerary-render.ts의 normalizeOptionalTourName을 사용
 // 이유: A4와 모바일이 동일한 라벨 생성 (region suffix 일관성 보장)
-function OptionalTours({ tours }: { tours: OptionalTourInput[] }) {
-  const formatPrice = (t: OptionalTourInput): string => {
-    if (t.price && String(t.price).trim()) return ` (${String(t.price).trim()})`;
-    if (typeof t.price_usd === 'number') return ` ($${t.price_usd})`;
-    return '';
-  };
+function OptionalTours({ tours }: { tours: NormalizedOptionalTour[] }) {
+  // CRC view.optionalTours.flat 소비 — displayName + price 정규화 완료된 형태.
   return (
     <section className="mb-2">
       <h3 className="font-bold text-[#001f3f] mb-1 text-[11px]">선택 관광</h3>
       <div className="flex flex-wrap gap-1.5">
         {tours.map((tour, idx) => (
           <span key={idx} {...E} className={`px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[10px] rounded border border-amber-200 font-medium ${EC}`}>
-            {normalizeOptionalTourName(tour)}{formatPrice(tour)}
+            {tour.displayName}{tour.price ? ` (${tour.price})` : ''}
           </span>
         ))}
       </div>

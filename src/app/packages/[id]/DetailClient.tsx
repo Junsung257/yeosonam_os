@@ -247,21 +247,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // 히어로 사진: destination 관광지 중 사진 있는 첫 번째 항목
   const heroPhoto = attractions.find(a => a.photos && a.photos.length > 0 && a.country && pkg.destination?.includes(a.country))?.photos?.[0];
 
-  // 항공편 추출 (첫 날 출발편 + 마지막 날 귀국편)
-  const flightDep = days[0]?.schedule?.find(s => s.type === 'flight' && /출발|향발/.test(s.activity));
-  const flightDepArr = days[0]?.schedule?.find(s => s.type !== 'flight' && /도착/.test(s.activity || ''));
-  // 귀국편: 마지막 날 또는 마지막 전날의 flight 타입 스케줄
-  const flightReturn = days[days.length - 1]?.schedule?.find(s => s.type === 'flight')
-    || days[days.length - 2]?.schedule?.find(s => s.type === 'flight');
-  const flightReturnArr = days[days.length - 1]?.schedule?.find(s => /도착/.test(s.activity || '') && s.type !== 'flight');
-
-  // ERR-20260418-19 + ERR-FUK-flight-arrival — flight activity 파싱 통합
-  // parseFlightActivity 사용: flight code prefix 제거 + 시간 양방향 + 정확한 도시 추출
-  const depFlightInfo = parseFlightActivity(flightDep?.activity);
-  const retFlightInfo = parseFlightActivity(flightReturn?.activity);
-  const depArrTime = flightDepArr?.time || depFlightInfo.arrTime || undefined;
-  const depArrCity = parseCityFromActivity(flightDepArr?.activity) || depFlightInfo.arrCity || (pkg.destination || '').split('/')[0];
-  const retArrTime = flightReturnArr?.time || retFlightInfo.arrTime || undefined;
+  // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
+  // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
+  const flightDep = view.flightHeader.outbound
+    ? {
+        time: view.flightHeader.outbound.depTime ?? null,
+        transport: view.flightHeader.outbound.code ?? null,
+        activity: view.flightHeader.outbound.label,
+      }
+    : null;
+  const flightReturn = view.flightHeader.inbound
+    ? {
+        time: view.flightHeader.inbound.depTime ?? null,
+        transport: view.flightHeader.inbound.code ?? null,
+        activity: view.flightHeader.inbound.label,
+        depCity: view.flightHeader.inbound.depCity,
+      }
+    : null;
+  const depArrTime = view.flightHeader.outbound?.arrTime ?? undefined;
+  const depArrCity = view.flightHeader.outbound?.arrCity ?? (pkg.destination || '').split('/')[0];
+  const retArrTime = view.flightHeader.inbound?.arrTime ?? undefined;
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.phone) return;
@@ -472,7 +477,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 <div className="text-center">
                   <p className="text-xs text-gray-500 mb-0.5">출발</p>
                   <p className="text-lg font-black text-gray-900">{flightReturn.time || '—'}</p>
-                  <p className="text-xs text-gray-500">{parseCityFromActivity(flightReturn.activity) || (pkg.destination || '').split('/')[0]}</p>
+                  <p className="text-xs text-gray-500">{flightReturn.depCity || (pkg.destination || '').split('/')[0]}</p>
                 </div>
                 <div className="flex flex-col items-center px-3">
                   <div className="flex items-center gap-1">
@@ -981,8 +986,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 선택관광 (일정표 뒤, 유의사항 앞) — region별 그룹핑 ═══ */}
-      {pkg.optional_tours && pkg.optional_tours.length > 0 && (
+      {/* ═══ 선택관광 (일정표 뒤, 유의사항 앞) — region별 그룹핑 (CRC view.optionalTours) ═══ */}
+      {view.optionalTours.count > 0 && (
         <div
           ref={el => { sectionRefs.current['선택관광'] = el; }}
           data-section="선택관광"
@@ -991,7 +996,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <div className="bg-pink-50/50 rounded-2xl p-4">
             <h3 className="text-xs font-bold text-pink-900 mb-3">💎 선택관광 (별도 비용)</h3>
             {(() => {
-              const groups = groupOptionalToursByRegion(pkg.optional_tours);
+              const groups = view.optionalTours.groups;
               const showRegionHeader = groups.length > 1;
               return (
                 <div className="space-y-3">
