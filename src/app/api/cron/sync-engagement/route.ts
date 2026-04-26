@@ -30,6 +30,8 @@ import { withCronLogging } from '@/lib/cron-observability';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+// CRON_SECRET 헤더 검증 → static prerender 불가. 빌드 시 Dynamic server usage 경고 차단.
+export const dynamic = 'force-dynamic';
 
 type NormalizedMetrics = {
   views?: number;

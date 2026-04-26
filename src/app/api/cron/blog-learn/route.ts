@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 
+// 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
+export const dynamic = 'force-dynamic';
+
 /**
  * 블로그 자기학습 크론 — 매주 일요일 23시 실행 (KST 월요일 스케줄러 직전)
  *
@@ -72,6 +75,13 @@ export async function GET() {
   // ── B) Prompt optimizer ────────────────────────────────────
   try {
     const optRes = await fetch(`${baseUrl}/api/agent/prompt-optimizer`, { method: 'POST' });
+    // 5xx 또는 비-JSON 응답(빌드 타임 self-fetch 실패 등) 방어.
+    const ct = optRes.headers.get('content-type') || '';
+    if (!optRes.ok || !ct.includes('application/json')) {
+      const body = await optRes.text();
+      result.prompt_learning = { step: 'analysis', status: 'unreachable', http_status: optRes.status, body: body.slice(0, 200) };
+      return NextResponse.json(result);
+    }
     const optData = await optRes.json();
 
     if (optData.status !== 'suggestion_created') {

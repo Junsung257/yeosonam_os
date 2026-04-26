@@ -28,6 +28,8 @@ import { onContentRefinementCreated } from '@/lib/task-hooks';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+// CRON_SECRET 헤더 검증 → static prerender 불가. 빌드 시 Dynamic server usage 경고 차단.
+export const dynamic = 'force-dynamic';
 
 const WEEKLY_LIMIT = 5;
 const SCORE_THRESHOLD = 0.30;     // 이 미만 = 저성과
