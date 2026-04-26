@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     if (cn.package_id) {
       const { data: pkg } = await supabaseAdmin
         .from('travel_packages')
-        .select('title, destination, price, product_highlights')
+        .select('title, destination, price, nights, product_highlights')
         .eq('id', cn.package_id)
         .single();
       if (pkg) {
@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
           title: p.title as string,
           destination: p.destination as string | undefined,
           price: p.price as number | undefined,
+          nights: p.nights as number | undefined,
           key_selling_points: p.product_highlights as string[] | undefined,
         };
       }

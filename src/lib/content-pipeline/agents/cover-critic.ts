@@ -61,6 +61,7 @@ export interface CoverCriticInput {
     title?: string;
     destination?: string;
     price?: number;
+    nights?: number;
     key_selling_points?: string[];
     target_audience?: string;
   };
@@ -225,6 +226,11 @@ function buildCriticPrompt(input: CoverCriticInput): string {
   return `너는 **인스타그램 카드뉴스 시니어 리뷰어**. 10년차. Socialinsider 22M 포스트 연구 + 토스애즈 + PostNitro AIDA + 국내외 여행사 Best Practice 내재화.
 
 Cover 슬라이드 1장 받아 **5개 축 각 10점 만점** + 총 100점으로 심사.
+
+## 🚨 출처 제약 (Faithfulness)
+- 심사 시 cover 의 사실 주장(가격·박일·재구매율·만족도·N위 등)이 Product 맥락과 일치하는지 점검.
+- **불일치/근거없음** 발견 시 → faithfulness_warnings 배열에 기록 + overall_score 30점 이상 감점.
+- rewritten_variants 생성 시에도 **Product 맥락 외 사실 추가 금지** (수치·통계·인증 등 임의 생성 X).
 
 ## 심사 대상 Cover
 - eyebrow:     "${c.eyebrow ?? ''}"
@@ -418,15 +424,17 @@ function fallbackCritique(
         eyebrow: `[${audience}]`.slice(0, 20),
       },
       {
+        // Faithfulness: 재구매율/만족도 통계는 출처가 없으므로 입력에 명시된 박일·가격만 사용.
         angle: 'number_stat' as const,
-        headline: `재구매율 1위`.slice(0, 20),
-        body: `만족도 99%, ${dest} ${origHead.slice(0, 6)}…`.slice(0, 50),
-        eyebrow: '[TOP 1]',
+        headline: (p.nights ? `${p.nights}박 ${dest}` : dest).slice(0, 20),
+        body: `${priceStr} ${dest} ${origHead.slice(0, 8)}…`.slice(0, 50),
+        eyebrow: priceStr === '특가' ? '[특가]' : `[${priceStr}]`,
       },
       {
+        // Faithfulness: 단언("거짓말 끝") 대신 의문형 프레임으로 제한.
         angle: 'contrarian' as const,
         headline: `${dest} 비싸다고?`.slice(0, 20),
-        body: `${dest} 비싸다는 거짓말 끝…`.slice(0, 50),
+        body: `${priceStr}로 ${dest} 다녀온 후기…`.slice(0, 50),
         eyebrow: '[반전]',
       },
     ];

@@ -250,6 +250,12 @@ function buildDesignerPrompt(input: StructureInput): string {
   const templateList = TEMPLATE_IDS.map(id => `  - ${id}: ${TEMPLATE_META[id].label}`).join('\n');
 
   return `너는 카드뉴스 기획 전문가다. **카피는 쓰지 말고** Brief 의 구조 설계만 한다.
+
+## 🚨 출처 제약 (Faithfulness — 최상위 규칙)
+- blog_paragraph_seed / h2 / key_selling_points 등 모든 텍스트 출력은 **입력 productContext / topic 에 명시된 사실에서만** 추출한다.
+- 입력에 없는 시설(수영장, 라이브공연 등), 수치(만족도·재구매율·인기도), 운영조건(연령제한, 할인조건 등)을 임의로 만들지 마라.
+- 모르면 적지 마라. 추측보다 빈칸이 낫다.
+- 위반 시 전체 재작성.
 (다음 에이전트가 카피를 쓸 것이므로, 너는 role/배치/메타만 결정)
 ${contextBlock}
 

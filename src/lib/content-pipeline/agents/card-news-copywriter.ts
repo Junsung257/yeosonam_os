@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { CardSlideV2Schema } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS } from '@/lib/card-news/tokens';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import type { StructureOutput, StructureInput } from './structure-designer';
 
 /** Copywriter 출력: section 별 card_slide + cta_slide */
@@ -52,31 +53,25 @@ export async function writeCardCopy(
 
   const prompt = buildCopywriterPrompt(structure, input);
 
-  const tryGenerate = async (extra = ''): Promise<CardCopyOutput | null> => {
-    try {
-      const result = await model.generateContent(prompt + extra);
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = CardCopyOutputSchema.safeParse(parsed);
-      if (!checked.success) {
-        console.warn('[card-copy] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-        return null;
-      }
-      return checked.data;
-    } catch (err) {
-      console.warn('[card-copy] 호출/파싱 실패:', err instanceof Error ? err.message : err);
-      return null;
-    }
-  };
+  // W3 Pivot C — Zod 위반 시 LLM 에 구체 피드백 전달 → 자기수정 (instructor-js 패턴)
+  // 이전: 단순 1회 재시도 (fixed feedback). 새로: 최대 3회, 매 시도마다 Zod 에러 상세 전달.
+  const result = await callWithZodValidation({
+    label: 'card-news-copywriter',
+    schema: CardCopyOutputSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const fullPrompt = prompt + (feedback ?? '');
+      const r = await model.generateContent(fullPrompt);
+      return r.response.text();
+    },
+  });
 
-  const first = await tryGenerate();
-  if (first) return first;
+  if (result.success) return result.value;
 
-  const retry = await tryGenerate(`\n\n## 재시도 — 글자수 엄수. headline 15자 이하, body 40자 이하.`);
-  if (retry) return retry;
-
+  console.warn(
+    '[card-copy] callWithZodValidation 최종 실패 → fallback:',
+    'attemptErrors' in result ? result.attemptErrors.length : 'unknown'
+  );
   return fallbackCopy(structure, input);
 }
 
@@ -93,6 +88,12 @@ function buildCopywriterPrompt(structure: StructureOutput, input: StructureInput
   }).join('\n');
 
   return `너는 **인스타그램 카드뉴스 성과형 카피라이터 10년차**다. 구조는 이미 확정됐다. **슬라이드 카피만** 작성한다.
+
+## 🚨 출처 제약 (Faithfulness — 가장 중요한 규칙)
+- **입력에 명시되지 않은 사실을 절대 만들지 마라.** 연령 제한, 할인 조건, 운영 시간, 거리·소요 시간, 인증/면허, 포함 식사 종류, 좌석 수, 객실 등급, 특정 통계(재구매율·만족도·인기도 N위 등)는 입력에 명시된 경우에만 사용한다.
+- 모르거나 입력에 없으면 **차라리 적지 마라.** 빈칸 두는 게 거짓 사실보다 낫다.
+- "최고", "최대", "유일한" 같은 절대 표현은 입력에 명시 근거가 있을 때만 허용.
+- 위반 시 전체 재작성.
 
 ## 상품 정보
 ${input.product ? `- 상품명: ${input.product.title}
