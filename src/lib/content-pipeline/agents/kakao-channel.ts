@@ -14,6 +14,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const KakaoChannelMessageSchema = z.object({
@@ -56,23 +57,18 @@ export async function generateKakaoChannelMessage(input: KakaoChannelInput): Pro
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'kakao_channel');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildKakaoPrompt(input);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await model.generateContent(
-        prompt + (attempt > 0 ? '\n\n## 재시도 — 본문 1000자 이하 엄수. 버튼 1~4개.' : ''),
-      );
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = KakaoChannelMessageSchema.safeParse(parsed);
-      if (checked.success) return checked.data;
-      console.warn('[kakao-channel] 검증 실패:', checked.error.errors.slice(0, 3));
-    } catch (err) {
-      console.warn(`[kakao-channel] 시도 ${attempt + 1} 실패:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const result = await callWithZodValidation({
+    label: 'kakao-channel',
+    schema: KakaoChannelMessageSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const r = await model.generateContent(prompt + (feedback ?? ''));
+      return r.response.text();
+    },
+  });
 
+  if (result.success) return result.value;
+  console.warn('[kakao-channel] callWithZodValidation 실패 → fallback');
   return fallbackKakao(input);
 }
 

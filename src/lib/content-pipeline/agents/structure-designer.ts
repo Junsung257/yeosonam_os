@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { TEMPLATE_IDS, TEMPLATE_META } from '@/lib/card-news/tokens';
 import { SlideRoleEnum, TemplateFamilyEnum, HookTypeEnum } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 
 export interface StructureInput {
   mode: 'product' | 'info';
@@ -192,31 +193,19 @@ export async function designBriefStructure(input: StructureInput): Promise<Struc
 
   const prompt = buildDesignerPrompt(input);
 
-  const tryGenerate = async (extra = ''): Promise<StructureOutput | null> => {
-    try {
-      const result = await model.generateContent(prompt + extra);
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = StructureOutputSchema.safeParse(parsed);
-      if (!checked.success) {
-        console.warn('[structure-designer] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-        return null;
-      }
-      return checked.data;
-    } catch (err) {
-      console.warn('[structure-designer] 호출/파싱 실패:', err instanceof Error ? err.message : err);
-      return null;
-    }
-  };
+  // W3 Pivot C — Zod 위반 시 LLM 자기수정 (instructor-js 패턴)
+  const result = await callWithZodValidation({
+    label: 'structure-designer',
+    schema: StructureOutputSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const r = await model.generateContent(prompt + (feedback ?? ''));
+      return r.response.text();
+    },
+  });
 
-  const first = await tryGenerate();
-  if (first) return first;
-
-  const retry = await tryGenerate(`\n\n## 재시도 — 반드시 JSON 스키마 엄수. 필수 필드 누락 금지. h2 정확히 ${input.slideCount - 1}개.`);
-  if (retry) return retry;
-
+  if (result.success) return result.value;
+  console.warn('[structure-designer] callWithZodValidation 실패 → fallback');
   return fallbackStructure(input);
 }
 

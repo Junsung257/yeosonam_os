@@ -14,6 +14,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const InstagramCaptionSchema = z.object({
@@ -57,23 +58,19 @@ export async function generateInstagramCaption(input: InstagramCaptionInput): Pr
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'instagram_caption');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildCaptionPrompt(input);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await model.generateContent(
-        prompt + (attempt > 0 ? '\n\n## 재시도 — JSON 스키마 엄수, 해시태그 10~30개, 첫 125자 프리뷰 훅 필수.' : ''),
-      );
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = InstagramCaptionSchema.safeParse(parsed);
-      if (checked.success) return checked.data;
-      console.warn('[instagram-caption] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-    } catch (err) {
-      console.warn(`[instagram-caption] 시도 ${attempt + 1} 실패:`, err instanceof Error ? err.message : err);
-    }
-  }
+  // W3 Pivot C — Zod 위반 시 LLM 자기수정 (instructor-js 패턴)
+  const result = await callWithZodValidation({
+    label: 'instagram-caption',
+    schema: InstagramCaptionSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const r = await model.generateContent(prompt + (feedback ?? ''));
+      return r.response.text();
+    },
+  });
 
+  if (result.success) return result.value;
+  console.warn('[instagram-caption] callWithZodValidation 실패 → fallback');
   return fallbackCaption(input);
 }
 

@@ -15,6 +15,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const ThreadsPostSchema = z.object({
@@ -56,23 +57,18 @@ export async function generateThreadsPost(input: ThreadsPostInput): Promise<Thre
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'threads_post');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildThreadsPrompt(input);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await model.generateContent(
-        prompt + (attempt > 0 ? '\n\n## 재시도 — main 500자 이하 엄수, 후속 thread 0~4개.' : ''),
-      );
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = ThreadsPostSchema.safeParse(parsed);
-      if (checked.success) return checked.data;
-      console.warn('[threads-post] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-    } catch (err) {
-      console.warn(`[threads-post] 시도 ${attempt + 1} 실패:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const result = await callWithZodValidation({
+    label: 'threads-post',
+    schema: ThreadsPostSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const r = await model.generateContent(prompt + (feedback ?? ''));
+      return r.response.text();
+    },
+  });
 
+  if (result.success) return result.value;
+  console.warn('[threads-post] callWithZodValidation 실패 → fallback');
   return fallbackThreadsPost(input);
 }
 

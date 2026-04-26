@@ -12,6 +12,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 
 export const CompetitorPatternSchema = z.object({
   common_hooks: z.array(z.string().max(100)).max(10),       // 자주 쓰는 훅 문구
@@ -56,21 +57,20 @@ export async function analyzeCompetitorAds(
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) return fallbackPattern(data as never[]);
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: BLOG_AI_MODEL,
-      generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
-    });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: BLOG_AI_MODEL,
+    generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+  });
 
-    const sample = (data as Array<Record<string, unknown>>).slice(0, 10)
-      .map((r, i) => `[${i + 1}] ${r.brand} · ${r.destination_hint ?? '-'} · ${r.active_days ?? '?'}일
+  const sample = (data as Array<Record<string, unknown>>).slice(0, 10)
+    .map((r, i) => `[${i + 1}] ${r.brand} · ${r.destination_hint ?? '-'} · ${r.active_days ?? '?'}일
   P: ${(r.copy_primary as string || '').slice(0, 180)}
   H: ${r.copy_headline ?? '-'}
   CTA: ${r.cta_button ?? '-'}`)
-      .join('\n');
+    .join('\n');
 
-    const prompt = `너는 광고 카피 분석가. 아래 경쟁사 Meta 광고 ${data.length}건을 분석해 패턴 추출.
+  const prompt = `너는 광고 카피 분석가. 아래 경쟁사 Meta 광고 ${data.length}건을 분석해 패턴 추출.
 
 ## 데이터
 ${sample}
@@ -91,17 +91,18 @@ ${sample}
 
 JSON만 출력.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-    const match = text.match(/\{[\s\S]*\}/);
-    const jsonStr = match ? match[0] : text;
-    const parsed = JSON.parse(jsonStr);
-    const checked = CompetitorPatternSchema.safeParse(parsed);
-    if (checked.success) return checked.data;
-  } catch (err) {
-    console.warn('[competitor-analyzer] AI 분석 실패:', err instanceof Error ? err.message : err);
-  }
+  const result = await callWithZodValidation({
+    label: 'competitor-ad-analyzer',
+    schema: CompetitorPatternSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const r = await model.generateContent(prompt + (feedback ?? ''));
+      return r.response.text();
+    },
+  });
 
+  if (result.success) return result.value;
+  console.warn('[competitor-analyzer] callWithZodValidation 실패 → fallback');
   return fallbackPattern(data as never[]);
 }
 

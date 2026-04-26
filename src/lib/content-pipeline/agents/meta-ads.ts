@@ -17,6 +17,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import { getBrandVoiceBlock } from '../brand-voice';
 import { getCompetitorPromptBlock } from './competitor-ad-analyzer';
 
@@ -72,23 +73,18 @@ export async function generateMetaAds(input: MetaAdsInput): Promise<MetaAds> {
   const prompt = [voiceBlock, competitorBlock, buildMetaAdsPrompt(input)]
     .filter(Boolean).join('\n\n');
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await model.generateContent(
-        prompt + (attempt > 0 ? '\n\n## 재시도 — 배열 정확히 5개씩. 글자수 엄수.' : ''),
-      );
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = MetaAdsSchema.safeParse(parsed);
-      if (checked.success) return checked.data;
-      console.warn('[meta-ads] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-    } catch (err) {
-      console.warn(`[meta-ads] 시도 ${attempt + 1} 실패:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const result = await callWithZodValidation({
+    label: 'meta-ads',
+    schema: MetaAdsSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const r = await model.generateContent(prompt + (feedback ?? ''));
+      return r.response.text();
+    },
+  });
 
+  if (result.success) return result.value;
+  console.warn('[meta-ads] callWithZodValidation 실패 → fallback');
   return fallbackMetaAds(input);
 }
 
