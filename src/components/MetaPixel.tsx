@@ -1,15 +1,18 @@
 'use client';
 
 import Script from 'next/script';
+import { useAnalyticsConsent } from '@/lib/consent';
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
 /**
  * Meta 픽셀 초기화 + PageView 자동 추적
  * NEXT_PUBLIC_META_PIXEL_ID 없으면 렌더링 안 함
+ * PIPA: 사용자 분석 동의 전엔 발화 안 함 (`@/lib/consent`)
  */
 export default function MetaPixel() {
-  if (!PIXEL_ID) return null;
+  const consent = useAnalyticsConsent();
+  if (!PIXEL_ID || !consent) return null;
 
   return (
     <>
@@ -45,14 +48,19 @@ export default function MetaPixel() {
   );
 }
 
+// 동의 게이트 — 외부에서 import 시 사용
+import { hasAnalyticsConsent } from '@/lib/consent';
+
 /**
  * ViewContent 이벤트 (상품 상세 페이지)
+ * 동의 없으면 noop.
  */
 export function trackViewContent(params: {
   content_name: string;
   content_category: string;
   value: number;
 }) {
+  if (!hasAnalyticsConsent()) return;
   if (typeof window !== 'undefined' && (window as any).fbq) {
     (window as any).fbq('track', 'ViewContent', {
       content_name: params.content_name,
@@ -65,11 +73,13 @@ export function trackViewContent(params: {
 
 /**
  * Lead 이벤트 (문의 버튼 클릭)
+ * 동의 없으면 noop.
  */
 export function trackLead(params: {
   content_name: string;
   value: number;
 }) {
+  if (!hasAnalyticsConsent()) return;
   if (typeof window !== 'undefined' && (window as any).fbq) {
     (window as any).fbq('track', 'Lead', {
       content_name: params.content_name,

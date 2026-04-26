@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { trackContentView } from '@/lib/tracker';
+import { hasAnalyticsConsent } from '@/lib/consent';
 
 /**
  * 블로그 글 조회 추적 컴포넌트 (자가발전 AI용 데이터 수집)
@@ -15,8 +16,11 @@ import { trackContentView } from '@/lib/tracker';
 export default function BlogTracker({ contentCreativeId }: { contentCreativeId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
-    trackContentView(contentCreativeId);
+    // PIPA: First-touch 콘텐츠 어트리뷰션은 동의 후에만 기록.
+    // 익명 engagement (체류시간/스크롤)은 비식별 통계 — 그대로 진행.
+    if (hasAnalyticsConsent()) {
+      trackContentView(contentCreativeId);
+    }
 
     const startedAt = Date.now();
     let maxScrollPct = 0;
