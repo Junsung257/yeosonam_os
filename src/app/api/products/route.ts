@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 
 // ─── B2B 필드 목록 (VA 역할에게 숨겨야 하는 필드) ────────────────────────────
 const B2B_FIELDS = ['net_price', 'margin_rate', 'discount_amount', 'b2b_notes', 'supplier_code'] as const;
@@ -109,6 +110,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
 
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await request.json();
 
@@ -193,6 +197,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
 
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await request.json();
     const { id } = body;
@@ -232,6 +239,9 @@ export async function DELETE(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
+
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');

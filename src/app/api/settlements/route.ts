@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 
 function getSupabase() {
   return createClient(
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest) {
 
 // POST: 월간 정산 마감 실행
 export async function POST(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   const supabase = getSupabase();
 
   try {
@@ -178,6 +182,9 @@ export async function POST(request: NextRequest) {
 
 // PATCH: 정산 상태 수동 변경 (COMPLETED, VOID + 원복)
 export async function PATCH(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   const supabase = getSupabase();
 
   try {

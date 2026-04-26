@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { creditMileageForBooking } from '@/lib/mileage-service';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
@@ -283,8 +284,11 @@ export async function GET(request: NextRequest) {
 
 // ─── PUT: 원클릭 일괄 자동 매칭 ──────────────────────────────────────────────
 
-export async function PUT() {
+export async function PUT(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
 
   try {
     // 미매칭 건 전체 로드
@@ -339,6 +343,9 @@ export async function PUT() {
 
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
 
   try {
     const body = await request.json();
@@ -699,6 +706,9 @@ interface BulkRow {
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
 
   try {
     const body = await request.json();
