@@ -65,6 +65,7 @@ export default async function DestinationsIndexPage() {
   return (
     <>
       <script
+        suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({

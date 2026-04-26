@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import MetaPixel from '@/components/MetaPixel';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
+import ConsentBanner from '@/components/ConsentBanner';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
@@ -64,6 +65,11 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: '여소남 관리',
   },
+  // 표준 PWA 메타 — Chrome/Edge가 권장. apple-mobile-web-app-capable는 deprecated 경고가
+  // 뜨지만 Safari 호환 위해 appleWebApp으로 유지하고, 표준 mobile-web-app-capable를 추가 emit.
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
@@ -92,6 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
         {/* 사이트 전역 JSON-LD: TravelAgency */}
         <script
+          suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
@@ -114,6 +121,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MetaPixel />
         {children}
         <JarvisFloatingWidget />
+        <ConsentBanner />
       </body>
     </html>
   );
