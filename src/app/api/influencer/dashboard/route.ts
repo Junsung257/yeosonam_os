@@ -117,6 +117,48 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
   const totalClicks = linkStats?.reduce((sum, l) => sum + (l.click_count || 0), 0) || 0;
   const totalConversions = linkStats?.reduce((sum, l) => sum + (l.conversion_count || 0), 0) || 0;
 
+  // ── 콘텐츠별 매출 기여도 (어필리에이터가 만든 콘텐츠 → 예약 → 매출) ──
+  const { data: contents } = await supabaseAdmin
+    .from('content_distributions')
+    .select('id, product_id, platform, status, generation_agent, created_at, published_at')
+    .eq('affiliate_id', affiliate.id)
+    .order('updated_at', { ascending: false })
+    .limit(20);
+
+  const contentIds = (contents || []).map((c: { id: string }) => c.id);
+
+  let contentRevenue: Array<{
+    content_id: string;
+    bookings: number;
+    revenue: number;
+    commission: number;
+  }> = [];
+
+  if (contentIds.length > 0) {
+    const { data: attributedBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id, content_creative_id, total_price, influencer_commission, status')
+      .eq('affiliate_id', affiliate.id)
+      .in('content_creative_id', contentIds);
+
+    const byContent = new Map<string, { bookings: number; revenue: number; commission: number }>();
+    for (const b of (attributedBookings || []) as Array<{
+      content_creative_id: string;
+      total_price: number;
+      influencer_commission: number;
+    }>) {
+      const cur = byContent.get(b.content_creative_id) || { bookings: 0, revenue: 0, commission: 0 };
+      cur.bookings += 1;
+      cur.revenue += Number(b.total_price) || 0;
+      cur.commission += Number(b.influencer_commission) || 0;
+      byContent.set(b.content_creative_id, cur);
+    }
+    contentRevenue = contentIds.map((id: string) => ({
+      content_id: id,
+      ...(byContent.get(id) || { bookings: 0, revenue: 0, commission: 0 }),
+    }));
+  }
+
   return NextResponse.json({
     authenticated,
     affiliate: {
@@ -142,5 +184,7 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
     },
     settlements: settlements || [],
     recent_bookings: recentBookings || [],
+    contents: contents || [],
+    content_revenue: contentRevenue,
   });
 }

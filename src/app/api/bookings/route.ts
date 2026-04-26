@@ -135,14 +135,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '성인 인원은 1명 이상이어야 합니다.' }, { status: 400 });
     }
 
+    // 멱등성: idempotency_key 가 있으면 기존 booking 반환 (재시도/이중제출 방어)
+    if (body.idempotencyKey) {
+      const { data: existing } = await supabaseAdmin
+        .from('bookings')
+        .select('*')
+        .eq('idempotency_key', body.idempotencyKey)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ booking: existing, idempotent_replay: true }, { status: 200 });
+      }
+    }
+
     // 어필리에이트 자동 귀속: 쿠키 또는 body에서 referral_code 확인
     const affRef = body.affiliateRef || request.cookies.get('aff_ref')?.value;
-    let affData: { id: string; commission_rate: number; bonus_rate: number } | null = null;
+    let affData: { id: string; grade: number | null; bonus_rate: number; created_at: string | null } | null = null;
     if (affRef && !body.affiliateId) {
       try {
         const { data: aff } = await supabaseAdmin
           .from('affiliates')
-          .select('id, commission_rate, bonus_rate')
+          .select('id, grade, bonus_rate, created_at')
           .eq('referral_code', affRef)
           .eq('is_active', true)
           .maybeSingle();
@@ -153,16 +165,68 @@ export async function POST(request: NextRequest) {
           console.log(`[Affiliate] 자동 귀속: ${affRef} → ${aff.id}`);
         }
       } catch { /* 귀속 실패해도 예약은 진행 */ }
+    } else if (body.affiliateId) {
+      // body에 직접 affiliateId만 들어온 경우에도 등급 정보 확보
+      try {
+        const { data: aff } = await supabaseAdmin
+          .from('affiliates')
+          .select('id, grade, bonus_rate, created_at')
+          .eq('id', body.affiliateId)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (aff) affData = aff;
+      } catch { /* */ }
     }
 
-    // 커미션 자동계산 (surcharge 제외, 순수 상품가 기준)
+    // 커미션 자동계산 — 가산식 정책 엔진 + 예약 시점 스냅샷 (ERR-방지)
+    //   final = 상품기본률 + 등급보너스 + Σ캠페인 ↓ min(글로벌 캡)
+    //   surcharge 제외, 순수 상품가 기준
     if (body.affiliateId && affData) {
+      const { applyCommissionPolicies } = await import('@/lib/policy-engine');
+
+      // 상품 기본 커미션율 + 메타 조회 (목적지 필터용)
+      let baseRate = 0.02;
+      let destination: string | undefined;
+      if (body.packageId) {
+        try {
+          const { data: pkg } = await supabaseAdmin
+            .from('travel_packages')
+            .select('affiliate_commission_rate, destination')
+            .eq('id', body.packageId)
+            .maybeSingle();
+          if (pkg) {
+            const r = Number(pkg.affiliate_commission_rate);
+            if (Number.isFinite(r) && r >= 0) baseRate = r;
+            destination = pkg.destination as string | undefined;
+          }
+        } catch { /* fallback to default 2% */ }
+      }
+
+      const daysSinceSignup = affData.created_at
+        ? Math.max(0, Math.floor((Date.now() - new Date(affData.created_at).getTime()) / 86400000))
+        : 0;
+
+      const breakdown = await applyCommissionPolicies({
+        product_id: body.packageId,
+        destination,
+        affiliate_id: affData.id,
+        affiliate_grade: affData.grade ?? 1,
+        days_since_signup: daysSinceSignup,
+        base_rate: baseRate,
+        tier_bonus: affData.bonus_rate ?? 0,
+      });
+
       const commissionBase = (body.adultCount || 0) * (body.adultPrice || 0)
                            + (body.childCount || 0) * (body.childPrice || 0);
-      const totalRate = (affData.commission_rate || 0.09) * (1 + (affData.bonus_rate || 0));
-      body.influencerCommission = Math.round(commissionBase * totalRate);
-      body.appliedTotalCommissionRate = Math.round(totalRate * 10000) / 10000;
-      console.log(`[Affiliate] 커미션 자동계산: base=${commissionBase} × rate=${totalRate} = ${body.influencerCommission}`);
+
+      body.influencerCommission = Math.round(commissionBase * breakdown.final_rate);
+      body.appliedTotalCommissionRate = breakdown.final_rate;
+      body.commissionBreakdown = breakdown;
+
+      console.log(
+        `[Affiliate] 커미션 자동계산(가산식): base=${commissionBase} × ${breakdown.final_rate} = ${body.influencerCommission} ` +
+        `[${breakdown.base}+${breakdown.tier}+캠페인${breakdown.campaigns.length}건${breakdown.capped ? '(캡적용)' : ''}]`
+      );
     }
 
     const booking = await createBooking(body);

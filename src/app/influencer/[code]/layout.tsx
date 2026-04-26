@@ -39,6 +39,7 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
   const navItems = [
     { href: `/influencer/${code}`, label: '대시보드', icon: '📊' },
     { href: `/influencer/${code}/products`, label: '상품 & 링크', icon: '🔗' },
+    { href: `/influencer/${code}/create-content`, label: '콘텐츠 생성', icon: '✨' },
     { href: `/influencer/${code}/assets`, label: '마케팅 소재', icon: '🎨' },
   ];
 
@@ -98,6 +99,7 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
                 <button
                   onClick={() => {
                     sessionStorage.removeItem(`inf_auth_${code}`);
+                    sessionStorage.removeItem(`inf_pin_${code}`);
                     setAffiliate(null);
                     setAuthenticated(false);
                   }}

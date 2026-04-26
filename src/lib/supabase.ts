@@ -788,6 +788,14 @@ export async function createBooking(data: {
   status?: string;
   paidAmount?: number;
   affiliateId?: string; bookingType?: string;
+  // ── 어필리에이터 커미션 스냅샷 (가산식 정책 엔진 결과) ──
+  influencerCommission?: number;
+  appliedTotalCommissionRate?: number;
+  commissionBreakdown?: Record<string, unknown>;
+  // ── 콘텐츠 크리에이티브 어트리뷰션 (어떤 카드뉴스/블로그로 들어왔나) ──
+  contentCreativeId?: string;
+  // ── 멱등성: 클라이언트 발급 UUID v4. 동일 키 재시도 시 새 booking 생성 차단. ──
+  idempotencyKey?: string;
   conversationId?: string;
   companions?: { name: string; phone?: string; passport_no?: string; passport_expiry?: string }[];
   quickCreated?: boolean; quickCreatedTxId?: string;
@@ -833,7 +841,34 @@ export async function createBooking(data: {
       paid_amount: data.paidAmount ?? 0,
       is_deleted: false,
       ...(data.affiliateId ? { affiliate_id: data.affiliateId, booking_type: 'AFFILIATE' } : {}),
-      ...(selfReferralFlag ? { self_referral_flag: true, self_referral_reason: selfReferralReason, influencer_commission: 0 } : {}),
+      // self-referral은 커미션 0 강제 (스냅샷도 0으로 — UI에서 "왜 0?" 명확히 답할 수 있도록)
+      ...(selfReferralFlag
+        ? {
+            self_referral_flag: true,
+            self_referral_reason: selfReferralReason,
+            influencer_commission: 0,
+            applied_total_commission_rate: 0,
+            commission_breakdown: {
+              base: 0,
+              tier: 0,
+              campaigns: [],
+              raw_total: 0,
+              cap: null,
+              cap_policy_name: null,
+              final_rate: 0,
+              capped: false,
+              self_referral: true,
+              self_referral_reason: selfReferralReason,
+              computed_at: new Date().toISOString(),
+            },
+          }
+        : {
+            ...(data.influencerCommission !== undefined ? { influencer_commission: data.influencerCommission } : {}),
+            ...(data.appliedTotalCommissionRate !== undefined ? { applied_total_commission_rate: data.appliedTotalCommissionRate } : {}),
+            ...(data.commissionBreakdown ? { commission_breakdown: data.commissionBreakdown } : {}),
+          }),
+      ...(data.contentCreativeId ? { content_creative_id: data.contentCreativeId } : {}),
+      ...(data.idempotencyKey ? { idempotency_key: data.idempotencyKey } : {}),
       ...(data.conversationId ? { conversation_id: data.conversationId } : {}),
       ...(data.quickCreated ? { quick_created: true } : {}),
       ...(data.quickCreatedTxId ? { quick_created_tx_id: data.quickCreatedTxId } : {}),

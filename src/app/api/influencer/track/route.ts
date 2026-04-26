@@ -19,7 +19,8 @@ import {
   getClientIp,
 } from '@/lib/affiliate/session';
 
-const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+const COOKIE_MAX_AGE_FULL = 30 * 24 * 60 * 60;  // 동의 후 30일
+const COOKIE_MAX_AGE_SESSION = 60 * 30;         // 동의 전 30분 (브라우저 세션)
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
@@ -107,8 +108,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // PIPA 2026-09 대응: 마케팅 쿠키 동의 없으면 30분 세션 쿠키, 동의 시 30일.
+    const hasConsent = request.cookies.get('ys_marketing_consent')?.value === 'true';
+    const cookieAge = hasConsent ? COOKIE_MAX_AGE_FULL : COOKIE_MAX_AGE_SESSION;
+
     response.cookies.set('aff_ref', ref, {
-      maxAge: COOKIE_MAX_AGE,
+      maxAge: cookieAge,
       path: '/',
       httpOnly: false,
       sameSite: 'lax',
@@ -116,7 +121,7 @@ export async function GET(request: NextRequest) {
 
     if (sub) {
       response.cookies.set('aff_sub', sub, {
-        maxAge: COOKIE_MAX_AGE,
+        maxAge: cookieAge,
         path: '/',
         httpOnly: false,
         sameSite: 'lax',

@@ -41,6 +41,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/affiliate-content-24h-report",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/cron/visual-baseline-monitor",
       "schedule": "0 9 * * *"
     },

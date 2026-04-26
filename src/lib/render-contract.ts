@@ -241,6 +241,26 @@ export interface CanonicalView {
   inclusions: CanonicalInclusions;
   /** 일차별 정규화 — flight 병합·호텔 카드 분리 (Phase 1 확장) */
   days: CanonicalDay[];
+  /** Co-branding 메타: 어필리에이터가 발행한 콘텐츠일 때만 채워짐.
+   *   null = 일반 여소남 콘텐츠 (단독 브랜드).
+   *   객체 = 어필리에이터 + 여소남 동시 노출 + 광고 표시 자동 삽입.
+   *   렌더러는 이 슬롯을 소비해서 카드뉴스 마지막 슬라이드 / 블로그 footer / A4 하단에
+   *   "발행: {affiliate.name} × 여소남" + ad_disclosure 를 출력한다. */
+  affiliateView: AffiliateCoBrand | null;
+}
+
+/** 어필리에이터 + 여소남 Co-branding 메타. content_distributions.payload._cobrand 와 동일. */
+export interface AffiliateCoBrand {
+  affiliate_id: string;
+  affiliate_name: string;
+  affiliate_handle: string;       // referral_code (= 짧은 도메인 핸들)
+  affiliate_logo_url: string | null;
+  affiliate_channel_url: string | null;
+  brand_name: string;             // '여소남'
+  brand_url: string;
+  share_url: string;              // /packages/{id}?ref={code}
+  ad_disclosure: string;          // 공정위 표시지침 워터마크
+  generated_at: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -732,7 +752,10 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
  * `pkg.special_notes`·`pkg.airline`·`pkg.inclusions`·`pkg.itinerary_data.days[].schedule` 를
  * 렌더러 내부에서 다시 파싱하지 말 것 (ERR-KUL-05, ERR-HSN-render-bundle).
  */
-export function renderPackage(pkg: RenderPackageInput): CanonicalView {
+export function renderPackage(
+  pkg: RenderPackageInput,
+  options?: { affiliate?: AffiliateCoBrand | null },
+): CanonicalView {
   const { merged, excludes } = resolveSurchargesAndExcludes(pkg);
   const days = resolveDays(pkg);
   return {
@@ -744,6 +767,7 @@ export function renderPackage(pkg: RenderPackageInput): CanonicalView {
     shopping: resolveShopping(pkg),
     inclusions: resolveInclusions(pkg),
     days,
+    affiliateView: options?.affiliate ?? null,
   };
 }
 

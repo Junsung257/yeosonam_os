@@ -25,6 +25,23 @@ interface Booking {
   created_at: string;
 }
 
+interface ContentItem {
+  id: string;
+  product_id: string;
+  platform: string;
+  status: string;
+  generation_agent?: string;
+  created_at: string;
+  published_at?: string | null;
+}
+
+interface ContentRevenue {
+  content_id: string;
+  bookings: number;
+  revenue: number;
+  commission: number;
+}
+
 interface DashboardData {
   affiliate: {
     id: string; name: string; referral_code: string;
@@ -38,6 +55,8 @@ interface DashboardData {
   };
   settlements: Settlement[];
   recent_bookings: Booking[];
+  contents?: ContentItem[];
+  content_revenue?: ContentRevenue[];
 }
 
 // ── 등급 진행률 계산 ──
@@ -78,6 +97,9 @@ export default function InfluencerDashboard() {
       setData(json);
       if (withPin && json.affiliate) {
         setAuth(json.affiliate);
+        // PIN을 sessionStorage에 저장하여 후속 LLM 비용 발생 endpoint(/api/influencer/content)에서 본인확인 가능.
+        // 평문 4자리 — XSS 시 노출 위험 있으나 PIN은 본인 명의 콘텐츠 생성에만 사용되며 정산/계좌 변경에는 사용 불가.
+        try { sessionStorage.setItem(`inf_pin_${code}`, withPin); } catch { /* */ }
       }
     } catch {
       setPinError('서버 연결 실패');
@@ -149,7 +171,23 @@ export default function InfluencerDashboard() {
     );
   }
 
-  const { affiliate: aff, stats, settlements, recent_bookings } = data;
+  const { affiliate: aff, stats, settlements, recent_bookings, contents, content_revenue } = data;
+  const PLATFORM_ICON: Record<string, string> = {
+    blog_body: '📝',
+    instagram_caption: '📷',
+    threads_post: '🧵',
+    meta_ads: '📣',
+    naver_blog: '🟢',
+  };
+  const PLATFORM_LABEL: Record<string, string> = {
+    blog_body: '블로그',
+    instagram_caption: '인스타',
+    threads_post: '스레드',
+    meta_ads: 'Meta',
+    naver_blog: '네이버',
+  };
+  const totalContentRevenue = (content_revenue || []).reduce((s, c) => s + (c.revenue || 0), 0);
+  const totalContentBookings = (content_revenue || []).reduce((s, c) => s + (c.bookings || 0), 0);
   const progress = getGradeProgress(aff.grade, aff.booking_count);
 
   const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -198,6 +236,42 @@ export default function InfluencerDashboard() {
         </div>
         <p className="text-xs text-gray-400 mt-1 text-right">{progress}%</p>
       </div>
+
+      {/* ── 콘텐츠별 매출 기여도 ── */}
+      {contents && contents.length > 0 && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-bold text-gray-900">내가 만든 콘텐츠 성과</h2>
+              <p className="text-xs text-gray-500">총 {contents.length}개 콘텐츠 / {totalContentBookings}건 예약 / ₩{totalContentRevenue.toLocaleString()}</p>
+            </div>
+            <a href={`/influencer/${aff.referral_code}/create-content`} className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100">
+              + 새 콘텐츠
+            </a>
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {contents.slice(0, 10).map(c => {
+              const rev = (content_revenue || []).find(r => r.content_id === c.id);
+              return (
+                <div key={c.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <span className="text-lg">{PLATFORM_ICON[c.platform] || '📄'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {PLATFORM_LABEL[c.platform] || c.platform}
+                      <span className="ml-2 text-[10px] text-gray-400">{c.status}</span>
+                    </p>
+                    <p className="text-xs text-gray-400">{c.created_at?.slice(0, 10)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-green-600">+₩{(rev?.commission || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-gray-400">{rev?.bookings || 0}건 / 매출 ₩{(rev?.revenue || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── 월간 리더보드 (익명화) ── */}
       <Leaderboard anonymized title="이번달 TOP 인플루언서" />

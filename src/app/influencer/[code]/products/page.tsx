@@ -214,7 +214,7 @@ export default function InfluencerProducts() {
                 {/* 링크 영역 */}
                 {existingLink ? (
                   <div className="space-y-2">
-                    {/* 기존 링크 표시 */}
+                    {/* 기존 링크 표시 (정식 URL) */}
                     <div className="bg-gray-50 rounded-lg px-3 py-2 flex items-center gap-2">
                       <span className="text-xs text-gray-400 truncate flex-1 font-mono">{existingLink.short_url}</span>
                       <button
@@ -226,6 +226,34 @@ export default function InfluencerProducts() {
                         {isCopied ? '복사됨 ✓' : '복사'}
                       </button>
                     </div>
+
+                    {/* 추가 공유 옵션 — 단축링크 / 임베드 코드 */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => {
+                          const baseUrl = window.location.origin;
+                          const short = `${baseUrl}/r/${code}/${pkg.id}`;
+                          copyLink(short, pkg.id);
+                        }}
+                        className="px-2 py-1.5 bg-amber-50 text-amber-800 rounded text-[11px] font-medium hover:bg-amber-100 transition-colors"
+                        title="카톡/페북 공유 시 어필리에이터+여소남 OG 이미지 자동 노출"
+                      >
+                        🔗 단축링크 + OG
+                      </button>
+                      <button
+                        onClick={() => {
+                          const baseUrl = window.location.origin;
+                          const embed = `<iframe src="${baseUrl}/embed/pkg/${pkg.id}?ref=${code}" width="100%" height="300" frameborder="0" loading="lazy" style="border:0;border-radius:12px;"></iframe>`;
+                          copyLink(embed, pkg.id);
+                          setToast('임베드 코드가 복사되었습니다 (블로그 HTML에 붙여넣기)');
+                        }}
+                        className="px-2 py-1.5 bg-purple-50 text-purple-800 rounded text-[11px] font-medium hover:bg-purple-100 transition-colors"
+                        title="티스토리/네이버 블로그 HTML에 붙여넣어 상품 카드 임베드"
+                      >
+                        📋 임베드 코드
+                      </button>
+                    </div>
+
                     {/* 클릭/전환 통계 */}
                     <div className="flex gap-3 text-xs text-gray-400">
                       <span>클릭 <b className="text-gray-600">{existingLink.click_count}</b></span>

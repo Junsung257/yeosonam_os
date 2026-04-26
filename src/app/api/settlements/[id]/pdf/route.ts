@@ -30,7 +30,7 @@ export async function GET(
 
   const { data: bookings } = await supabaseAdmin
     .from('bookings')
-    .select('id, package_title, adult_count, adult_price, child_count, child_price, influencer_commission, return_date, departure_date')
+    .select('id, package_title, adult_count, adult_price, child_count, child_price, influencer_commission, applied_total_commission_rate, commission_breakdown, return_date, departure_date, dispute_flag')
     .eq('affiliate_id', settlement.affiliate_id)
     .in('status', ['confirmed', 'completed'])
     .gte('departure_date', periodStart)
@@ -39,6 +39,28 @@ export async function GET(
     .order('departure_date', { ascending: true });
 
   const qualifiedBookings = (bookings || []).filter((b: any) => !b.dispute_flag);
+
+  // 커미션 분해 합계 (스냅샷 기반)
+  const breakdownTotals = qualifiedBookings.reduce(
+    (acc: { base: number; tier: number; campaigns: number; capped: number }, b: any) => {
+      const bd = b.commission_breakdown as
+        | { base?: number; tier?: number; campaigns?: { rate?: number }[]; capped?: boolean }
+        | null;
+      const base = (b.adult_count || 0) * (b.adult_price || 0) + (b.child_count || 0) * (b.child_price || 0);
+      if (bd && typeof bd.base === 'number') {
+        acc.base += Math.round(base * bd.base);
+        acc.tier += Math.round(base * (bd.tier || 0));
+        const camp = (bd.campaigns || []).reduce((s: number, c) => s + (c.rate || 0), 0);
+        acc.campaigns += Math.round(base * camp);
+        if (bd.capped) acc.capped += 1;
+      } else {
+        // 스냅샷 없는 레거시 예약: 모두 base로 분류
+        acc.base += b.influencer_commission || 0;
+      }
+      return acc;
+    },
+    { base: 0, tier: 0, campaigns: 0, capped: 0 },
+  );
 
   // HTML 생성
   const html = `<!DOCTYPE html>
@@ -109,6 +131,37 @@ export async function GET(
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">커미션 구성 (가산식 분해)</div>
+    <table>
+      <thead>
+        <tr>
+          <th>구분</th>
+          <th class="right">합계</th>
+          <th>비고</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>상품 기본 커미션</td>
+          <td class="right">${breakdownTotals.base.toLocaleString()}원</td>
+          <td style="color:#666;font-size:11px;">상품별 고정율 (모든 어필리에이터 동일)</td>
+        </tr>
+        <tr>
+          <td>등급 보너스</td>
+          <td class="right">${breakdownTotals.tier.toLocaleString()}원</td>
+          <td style="color:#666;font-size:11px;">${aff.name}님 현재 등급 보너스 적용</td>
+        </tr>
+        <tr>
+          <td>캠페인 가산</td>
+          <td class="right">${breakdownTotals.campaigns.toLocaleString()}원</td>
+          <td style="color:#666;font-size:11px;">${breakdownTotals.capped > 0 ? `⚠️ ${breakdownTotals.capped}건 글로벌 캡 적용` : '활성 캠페인 합산'}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:10px;color:#999;margin-top:6px;">* 각 예약은 예약 시점 정책으로 동결 (정책 변경 영향 없음)</p>
   </div>
 
   <div class="section">

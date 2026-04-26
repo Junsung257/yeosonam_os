@@ -16,6 +16,10 @@ export interface SettlementDraft {
   booking_ids: string[];
   payout_type: string;
   qualified: boolean;
+  /** 이번 정산에 적용된 조정액 (clawback 음수 + bonus 양수) */
+  adjustment_amount: number;
+  /** 적용된 commission_adjustments.id 배열 (정산 승인 시 status='applied'로 일괄 업데이트) */
+  adjustment_ids: string[];
 }
 
 export function resolvePreviousPeriod(today = new Date()): {
@@ -78,8 +82,22 @@ export async function calculateDraftForAffiliate(
     .maybeSingle();
   const prevCarryover = (prevSettlement as any)?.carryover_balance ?? 0;
 
+  // ── pending 커미션 조정(clawback / bonus) 합산 ──
+  // 환불/취소로 발생한 음수 entry, 수기 보너스 양수 entry가 다음 정산에 자동 반영됨.
+  const { data: pendingAdjustments } = await supabaseAdmin
+    .from('commission_adjustments')
+    .select('id, amount')
+    .eq('affiliate_id', affiliate.id)
+    .eq('status', 'pending');
+  const adjustmentSum = (pendingAdjustments || []).reduce(
+    (s: number, a: any) => s + (Number(a.amount) || 0),
+    0,
+  );
+  const adjustmentIds = (pendingAdjustments || []).map((a: any) => a.id);
+
   const isQualified = count >= SETTLEMENT_MIN_BOOKINGS && totalAmount >= SETTLEMENT_MIN_AMOUNT;
-  const finalTotal = totalAmount + prevCarryover;
+  // 조정액(음수=clawback)을 finalTotal에 반영. carryover는 이미 prev 잔액 + 이번달 미달분 처리.
+  const finalTotal = totalAmount + prevCarryover + adjustmentSum;
   const taxDeduction =
     isQualified && affiliate.payout_type === 'PERSONAL'
       ? Math.round(finalTotal * PERSONAL_TAX_RATE)
@@ -92,13 +110,17 @@ export async function calculateDraftForAffiliate(
     period,
     qualified_booking_count: count,
     total_amount: totalAmount,
-    carryover_balance: isQualified ? prevCarryover : prevCarryover + totalAmount,
+    carryover_balance: isQualified
+      ? prevCarryover + adjustmentSum
+      : prevCarryover + totalAmount + adjustmentSum,
     final_total: isQualified ? finalTotal : 0,
     tax_deduction: taxDeduction,
     final_payout: finalPayout,
     booking_ids: qualifiedBookings.map((b: any) => b.id),
     payout_type: affiliate.payout_type,
     qualified: isQualified,
+    adjustment_amount: adjustmentSum,
+    adjustment_ids: adjustmentIds,
   };
 }
 
@@ -144,6 +166,18 @@ export async function applySettlementApproval(draft: SettlementDraft): Promise<v
       },
       { onConflict: 'affiliate_id,settlement_period' },
     );
+  }
+
+  // pending adjustments 를 'applied'로 일괄 전환 (이중 적용 방지)
+  if (draft.adjustment_ids.length > 0) {
+    await supabaseAdmin
+      .from('commission_adjustments')
+      .update({
+        status: 'applied',
+        applied_to_period: draft.period,
+        applied_at: new Date().toISOString(),
+      })
+      .in('id', draft.adjustment_ids);
   }
 
   await supabaseAdmin.from('audit_logs').insert({

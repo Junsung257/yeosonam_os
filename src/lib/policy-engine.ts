@@ -281,3 +281,160 @@ export async function getRefundRate(daysBefore: number): Promise<{ rate: number;
 
   return { rate: 0, policyName: '환불 정책 없음' };
 }
+
+// ─────────────────────────────────────────────────────────
+// 어필리에이터 커미션 엔진 (가산식 + 글로벌 캡)
+// ─────────────────────────────────────────────────────────
+//
+// 최종_커미션율 = product.affiliate_commission_rate
+//              + affiliates.bonus_rate (등급 보너스)
+//              + Σ commission_campaign_bonus (활성 캠페인)
+//              ↓ min( commission_cap )
+//
+// action_type:
+//   - commission_campaign_bonus  { rate: 0.01 }   ← 가산
+//   - commission_cap             { max_rate: 0.07 } ← 최종 캡(필터링·하한)
+//
+// scope (target_scope):
+//   - { all: true }
+//   - { product_ids: [...] }       ← 특정 상품에만
+//   - { destination: '다낭' }       ← 특정 목적지에만
+//   - { affiliate_grade_min: 3 }   ← 골드 이상에만
+//   - { affiliate_ids: [...] }     ← 특정 어필리에이터에만
+//
+// flag (action_config):
+//   - exclusive: true              ← 이 캠페인만 단독 적용 (다른 캠페인 무시)
+
+export interface CommissionContext {
+  product_id?: string;
+  destination?: string;
+  affiliate_id?: string;
+  affiliate_grade?: number;
+  days_since_signup?: number;
+  base_rate: number;          // products.affiliate_commission_rate
+  tier_bonus: number;         // affiliates.bonus_rate
+}
+
+export interface CommissionCampaign {
+  policy_id: string;
+  name: string;
+  rate: number;
+  exclusive: boolean;
+}
+
+export interface CommissionBreakdown {
+  base: number;
+  tier: number;
+  campaigns: CommissionCampaign[];
+  raw_total: number;
+  cap: number | null;
+  cap_policy_name: string | null;
+  final_rate: number;
+  capped: boolean;
+  computed_at: string;
+}
+
+function matchesAffiliateScope(policy: Policy, ctx: CommissionContext): boolean {
+  const scope = policy.target_scope || {};
+  if (scope.all === true) return true;
+
+  if (scope.destination && ctx.destination !== scope.destination) return false;
+
+  if (scope.product_ids && Array.isArray(scope.product_ids)) {
+    if (!ctx.product_id || !scope.product_ids.includes(ctx.product_id)) return false;
+  }
+  if (scope.affiliate_ids && Array.isArray(scope.affiliate_ids)) {
+    if (!ctx.affiliate_id || !scope.affiliate_ids.includes(ctx.affiliate_id)) return false;
+  }
+  if (typeof scope.affiliate_grade_min === 'number') {
+    // 등급 미부여(null/undefined) 어필리에이터는 최저(1)로 간주.
+    // affiliate_grade_min=2(실버) 이상 정책은 신규 미심사 어필리에이터에 적용되지 않음.
+    const grade = typeof ctx.affiliate_grade === 'number' && ctx.affiliate_grade > 0
+      ? ctx.affiliate_grade
+      : 1;
+    if (grade < (scope.affiliate_grade_min as number)) return false;
+  }
+
+  return true;
+}
+
+export async function applyCommissionPolicies(ctx: CommissionContext): Promise<CommissionBreakdown> {
+  const policies = await getActivePolicies('commission');
+  const base = Math.max(0, ctx.base_rate || 0);
+  const tier = Math.max(0, ctx.tier_bonus || 0);
+
+  const eligibleCampaigns: CommissionCampaign[] = [];
+  let cap: number | null = null;
+  let capName: string | null = null;
+
+  for (const p of policies) {
+    if (!matchesAffiliateScope(p, ctx)) continue;
+    if (!matchesTrigger(p, ctx as unknown as Record<string, unknown>)) continue;
+
+    const cfg = p.action_config || {};
+
+    if (p.action_type === 'commission_cap') {
+      const r = Number(cfg.max_rate);
+      if (Number.isFinite(r) && r >= 0) {
+        if (cap === null || r < cap) {
+          cap = r;
+          capName = p.name;
+        }
+      }
+    } else if (p.action_type === 'commission_campaign_bonus') {
+      const rate = Number(cfg.rate);
+      if (!Number.isFinite(rate) || rate <= 0) continue;
+      eligibleCampaigns.push({
+        policy_id: p.id,
+        name: p.name,
+        rate,
+        exclusive: cfg.exclusive === true,
+      });
+    }
+  }
+
+  // exclusive 캠페인 우선: 하나라도 있으면 가장 높은 rate 단독 적용
+  let campaigns: CommissionCampaign[];
+  const exclusives = eligibleCampaigns.filter(c => c.exclusive);
+  if (exclusives.length > 0) {
+    const top = exclusives.reduce((a, b) => (b.rate > a.rate ? b : a));
+    campaigns = [top];
+  } else {
+    campaigns = eligibleCampaigns;
+  }
+
+  const campaignSum = campaigns.reduce((s, c) => s + c.rate, 0);
+  const rawTotal = base + tier + campaignSum;
+  const finalRate = cap !== null ? Math.min(rawTotal, cap) : rawTotal;
+  const capped = cap !== null && rawTotal > cap;
+
+  // 소수 4자리로 라운드 (NUMERIC(5,4) 호환)
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+  return {
+    base: round4(base),
+    tier: round4(tier),
+    campaigns: campaigns.map(c => ({ ...c, rate: round4(c.rate) })),
+    raw_total: round4(rawTotal),
+    cap,
+    cap_policy_name: capName,
+    final_rate: round4(finalRate),
+    capped,
+    computed_at: new Date().toISOString(),
+  };
+}
+
+// 어드민 미리보기용: 활성 어필리에이터 N명 평균 커미션 변화 시뮬레이션 — 향후 확장
+export function summarizeBreakdown(b: CommissionBreakdown): string {
+  const parts = [
+    `상품 ${(b.base * 100).toFixed(2)}%`,
+    `등급 +${(b.tier * 100).toFixed(2)}%`,
+  ];
+  if (b.campaigns.length > 0) {
+    const cs = b.campaigns.map(c => `${c.name} +${(c.rate * 100).toFixed(2)}%`).join(', ');
+    parts.push(`캠페인 [${cs}]`);
+  }
+  parts.push(`= ${(b.final_rate * 100).toFixed(2)}%`);
+  if (b.capped && b.cap_policy_name) parts.push(`(${b.cap_policy_name} ${(b.cap! * 100).toFixed(2)}% 적용)`);
+  return parts.join(' ');
+}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
 // ── 타입 ─────────────────────────────────────────────────
-type PolicyCategory = 'pricing' | 'mileage' | 'booking' | 'notification' | 'display' | 'product' | 'operations' | 'marketing' | 'saas';
+type PolicyCategory = 'pricing' | 'mileage' | 'booking' | 'notification' | 'display' | 'product' | 'operations' | 'marketing' | 'saas' | 'commission';
 
 interface Policy {
   id: string;
@@ -35,6 +35,7 @@ const CATEGORIES: { key: PolicyCategory | 'all'; label: string; color: string }[
   { key: 'operations', label: '운영/CS', color: 'bg-slate-100 text-slate-700' },
   { key: 'marketing', label: '마케팅', color: 'bg-orange-50 text-orange-700' },
   { key: 'saas', label: 'SaaS', color: 'bg-indigo-50 text-indigo-700' },
+  { key: 'commission', label: '어필리에이트', color: 'bg-rose-50 text-rose-700' },
 ];
 
 const ACTION_LABELS: Record<string, string> = {
@@ -46,6 +47,7 @@ const ACTION_LABELS: Record<string, string> = {
   deactivate_expired: '만료 비활성화', lock_stock: '재고 락', sort_bottom: '하단 정렬',
   set_holiday: '휴무 설정', block_user: '유저 차단', slack_notify: '슬랙 알림',
   pause_campaign: '캠페인 정지', scale_budget: '예산 증액', boost_keyword: '키워드 부스트',
+  commission_campaign_bonus: '커미션 캠페인 가산(+%)', commission_cap: '커미션 글로벌 캡',
 };
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -68,10 +70,36 @@ export default function ControlTowerPage() {
   const [search, setSearch] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Partial<Policy> | null>(null);
+  const [editReason, setEditReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+
+  // ── 커미션 정책 미리보기 (저장 전 영향 시뮬레이션) ────
+  const [previewing, setPreviewing] = useState(false);
+  const handlePreview = useCallback(async () => {
+    setPreviewing(true);
+    try {
+      const res = await fetch('/api/policies/preview?sample=20');
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || '미리보기 실패');
+        return;
+      }
+      const lines = [
+        `📊 활성 어필리에이터: ${data.affiliate_count}명`,
+        `📦 활성 상품: ${data.product_count}개`,
+        `📈 평균 커미션율: ${data.avg_final_pct}`,
+        data.capped_count > 0 ? `⚠️ 캡 적용: ${data.capped_count}건/${data.sample_size}` : '✅ 캡 적용 없음',
+      ];
+      window.alert(['[정책 활성화 시뮬레이션]', '', ...lines, '', '저장 전 사장님 확인용. 활성화는 별도 토글에서.'].join('\n'));
+    } catch {
+      showToast('미리보기 서버 오류');
+    } finally {
+      setPreviewing(false);
+    }
+  }, []);
 
   // ── 로드 ───────────────────────────────────────────────
   const fetchPolicies = useCallback(async () => {
@@ -110,14 +138,22 @@ export default function ControlTowerPage() {
   // ── 토글 ───────────────────────────────────────────────
   const toggleActive = useCallback(async (policy: Policy) => {
     const prev = policy.is_active;
-    setPolicies(ps => ps.map(p => p.id === policy.id ? { ...p, is_active: !prev } : p));
+    const nowActive = !prev;
+    // 어필리에이트 정책 토글은 사유 필수 (커미션 영향 큼)
+    let reason = '관제탑 토글';
+    if (policy.category === 'commission') {
+      const r = window.prompt(`'${policy.name}' ${nowActive ? '활성화' : '비활성화'} 사유를 입력하세요 (감사 로그)`);
+      if (!r || !r.trim()) { showToast('변경 취소됨'); return; }
+      reason = r.trim();
+    }
+    setPolicies(ps => ps.map(p => p.id === policy.id ? { ...p, is_active: nowActive } : p));
     try {
       const res = await fetch('/api/policies', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: policy.id, is_active: !prev }),
+        body: JSON.stringify({ id: policy.id, is_active: nowActive, _reason: reason }),
       });
       if (!res.ok) throw new Error();
-      showToast(`${policy.name} ${!prev ? '활성화' : '비활성화'}`);
+      showToast(`${policy.name} ${nowActive ? '활성화' : '비활성화'}`);
     } catch {
       setPolicies(ps => ps.map(p => p.id === policy.id ? { ...p, is_active: prev } : p));
       showToast('변경 실패');
@@ -127,21 +163,26 @@ export default function ControlTowerPage() {
   // ── 저장 (생성/수정) ───────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!editTarget?.name || !editTarget?.action_type) return;
+    if (!editReason.trim()) {
+      showToast('변경 사유를 입력해주세요 (감사 로그용)');
+      return;
+    }
     setSaving(true);
     try {
       const isNew = !editTarget.id;
       const res = await fetch('/api/policies', {
         method: isNew ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editTarget),
+        body: JSON.stringify({ ...editTarget, _reason: editReason.trim() }),
       });
       if (!res.ok) throw new Error();
       showToast(isNew ? '정책 생성 완료' : '정책 수정 완료');
       setEditOpen(false);
+      setEditReason('');
       fetchPolicies();
     } catch { showToast('저장 실패'); }
     finally { setSaving(false); }
-  }, [editTarget, fetchPolicies]);
+  }, [editTarget, editReason, fetchPolicies]);
 
   // ── 삭제 ───────────────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
@@ -199,10 +240,16 @@ export default function ControlTowerPage() {
           <h1 className="text-[16px] font-semibold text-slate-800">OS 관제탑</h1>
           <p className="text-[11px] text-slate-500 mt-0.5">가격, 마일리지, 알림, 노출 등 OS 전체 정책을 한 곳에서 관리</p>
         </div>
-        <button onClick={() => { setEditTarget({ ...EMPTY_POLICY }); setEditOpen(true); }}
-          className="px-4 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 transition font-medium">
-          + 새 정책
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handlePreview} disabled={previewing}
+            className="px-3 py-1.5 bg-rose-50 text-rose-700 text-[13px] rounded hover:bg-rose-100 transition font-medium border border-rose-200 disabled:opacity-50">
+            {previewing ? '시뮬레이션 중...' : '🔍 커미션 영향 미리보기'}
+          </button>
+          <button onClick={() => { setEditTarget({ ...EMPTY_POLICY }); setEditOpen(true); }}
+            className="px-4 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 transition font-medium">
+            + 새 정책
+          </button>
+        </div>
       </div>
 
       {/* ── KPI ────────────────────────────────────────── */}
@@ -466,6 +513,34 @@ export default function ControlTowerPage() {
                       className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
                   </div>
                 )}
+                {editTarget.action_type === 'commission_campaign_bonus' && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[10px] text-slate-400">가산 커미션율 (예: 0.01 = +1%)</label>
+                      <input type="number" step="0.001" min="0" max="0.10"
+                        value={(editTarget.action_config as Record<string, number>)?.rate ?? 0}
+                        onChange={e => updateJsonField('action_config', 'rate', parseFloat(e.target.value) || 0)}
+                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                    </div>
+                    <label className="flex items-center gap-2 text-[12px] text-slate-600">
+                      <input type="checkbox"
+                        checked={(editTarget.action_config as Record<string, boolean>)?.exclusive === true}
+                        onChange={e => updateJsonField('action_config', 'exclusive', e.target.checked)} />
+                      단독 적용 (다른 캠페인 무시 — exclusive)
+                    </label>
+                    <p className="text-[10px] text-amber-600">⚠️ 종료일이 비어있으면 무기한입니다. 캠페인은 반드시 종료일 설정 권장.</p>
+                  </div>
+                )}
+                {editTarget.action_type === 'commission_cap' && (
+                  <div>
+                    <label className="text-[10px] text-slate-400">최대 커미션율 (예: 0.07 = 7% 상한)</label>
+                    <input type="number" step="0.001" min="0" max="0.30"
+                      value={(editTarget.action_config as Record<string, number>)?.max_rate ?? 0.07}
+                      onChange={e => updateJsonField('action_config', 'max_rate', parseFloat(e.target.value) || 0.07)}
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                    <p className="text-[10px] text-slate-500 mt-1">상품률 + 등급 + 캠페인 합산 후 이 값 이하로 클램핑됩니다.</p>
+                  </div>
+                )}
               </div>
 
               {/* 대상 범위 */}
@@ -505,6 +580,16 @@ export default function ControlTowerPage() {
                       className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px]" />
                   </div>
                 </div>
+              </div>
+
+              {/* 변경 사유 (감사 로그) */}
+              <div className="border-t border-slate-100 pt-4">
+                <label className="text-[11px] font-semibold text-rose-600 uppercase block mb-1">변경 사유 * (감사 로그)</label>
+                <textarea value={editReason} onChange={e => setEditReason(e.target.value)}
+                  rows={2}
+                  placeholder="예: 동남아 비수기 부스터 1.5%로 상향"
+                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px] resize-none" />
+                <p className="text-[10px] text-slate-400 mt-1">os_policy_audit_log에 누가/언제/왜를 남깁니다.</p>
               </div>
             </div>
 

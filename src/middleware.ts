@@ -65,6 +65,10 @@ const PUBLIC_PATHS = [
   // 인플루언서 포털 (자체 PIN 인증)
   '/influencer',
   '/api/influencer',
+  // 어필리에이터 단축링크 + 임베드 위젯 + 동적 OG 이미지
+  '/r',
+  '/embed',
+  '/api/og',
   // 파트너 신청 (공개)
   '/partner-apply',
   '/api/partner-apply',
@@ -131,17 +135,26 @@ export function middleware(request: NextRequest) {
   }
 
   // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
-  // 리다이렉트 없이 쿠키만 설정 (URL 그대로 유지)
+  // PIPA 2026-09 대응: 마케팅 쿠키 동의 없으면 30분 세션, 동의 후 30일.
   const ref = request.nextUrl.searchParams.get('ref');
   if (ref) {
     const res = getResponse();
+    const hasMarketingConsent = request.cookies.get('ys_marketing_consent')?.value === 'true';
     res.cookies.set('aff_ref', ref, {
       httpOnly: false,
       secure: isSecure,
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7일
+      maxAge: hasMarketingConsent ? 30 * 24 * 60 * 60 : 30 * 60, // 동의 시 30일, 미동의 시 30분
       path: '/',
     });
+  }
+
+  // ── 2-2. 임베드 위젯: iframe 허용 (외부 사이트 게재용) ─────
+  if (pathname.startsWith('/embed/')) {
+    const res = getResponse();
+    // X-Frame-Options 제거 (Next.js 기본값이 SAMEORIGIN 이라 외부 iframe 차단됨)
+    res.headers.delete('X-Frame-Options');
+    res.headers.set('Content-Security-Policy', "frame-ancestors *");
   }
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
