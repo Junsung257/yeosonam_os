@@ -148,5 +148,50 @@
     "id": "040d85b1-61e9-455a-8acb-f0384b332420",
     "title": "[VN] 베트남 하노이/사파 3박5일 ☑노팁노옵션",
     "product": "tb-han-05-05"
+  },
+  {
+    "id": "16ca09f9-d2f9-40c2-ad5b-1f65877fb59b",
+    "title": "7C 부산-보홀 헤난 알로나·코스트 스팟특가 3박5일",
+    "product": "id-bho-05-03"
+  },
+  {
+    "id": "e5bb7479-da1b-4379-8a7e-b40daf1faca8",
+    "title": "7C 부산-보홀 헤난 타왈라 스팟특가 3박5일",
+    "product": "id-bho-05-02"
+  },
+  {
+    "id": "c334c6f3-5121-4cac-a8b5-e1ab3dca8a7d",
+    "title": "7C 부산-보홀 돌핀베이 스팟특가 3박5일",
+    "product": "id-bho-05-01"
+  },
+  {
+    "id": "396f91f0-0287-4ea1-9d9b-7627b3597469",
+    "title": "7C 부산-보홀 돌핀베이 스팟특가 4박6일",
+    "product": "id-bho-06-01"
+  },
+  {
+    "id": "4e4d085f-b392-48e0-8eee-3a6cb97ae312",
+    "title": "7C 부산-보홀 헤난 알로나·코스트 스팟특가 4박6일",
+    "product": "id-bho-06-03"
+  },
+  {
+    "id": "ecb62ece-d118-4dc3-8ac2-df4a407c4715",
+    "title": "7C 부산-보홀 헤난 타왈라 스팟특가 4박6일",
+    "product": "id-bho-06-02"
+  },
+  {
+    "id": "98fbab1e-11bf-4801-b27b-b2b24204174f",
+    "title": "BX 부산-세부 슬림팩 5일 (알테라 OR 티샤인)",
+    "product": "tp-ceb-05-04"
+  },
+  {
+    "id": "e59a28f9-8c3b-4dc7-bf4a-fd68628522db",
+    "title": "BX 부산-세부 슬림팩 5일 (솔레아)",
+    "product": "tp-ceb-05-05"
+  },
+  {
+    "id": "4fc58814-e77b-4df3-ad26-d3def80e5e1e",
+    "title": "BX 부산-세부 슬림팩 5일 (두짓타니)",
+    "product": "tp-ceb-05-06"
   }
 ]
