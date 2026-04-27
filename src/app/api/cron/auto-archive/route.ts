@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
- * 자동 아카이브 크론 — 매일 0시 실행
+ * 자동 아카이브 크론 — 매일 새벽 1시 실행
  *
  * 조건 (OR):
  * 1. 발권기한(ticketing_deadline)이 지난 상품
- * 2. 마지막 출발일(price_tiers 내 departure_dates)이 모두 지난 상품
+ * 2. 등록 후 30일 이상 경과한 상품 (created_at + 30d < today) — 사장님 정책 2026-04-27
+ * 3. 마지막 출발일(price_dates / price_tiers)이 모두 지난 상품
  *
- * 대상: status가 approved, active, pending인 상품만
+ * 대상: status가 approved, active, pending, pending_review, draft 인 상품만
  */
 export async function GET() {
   if (!isSupabaseConfigured) {
@@ -40,13 +41,20 @@ export async function GET() {
         shouldArchive = true;
       }
 
-      // 조건 2: 모든 출발일이 지남 — price_dates 우선, price_tiers 폴백
+      // 조건 2: 등록 후 30일 이상 경과 (모든 상품 무조건 적용 — 사장님 정책 2026-04-27)
+      if (!shouldArchive && pkg.created_at) {
+        const created = new Date(pkg.created_at);
+        const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
+        if (expiry.toISOString().split('T')[0] < today) {
+          shouldArchive = true;
+        }
+      }
+
+      // 조건 3: 모든 출발일이 지남 — price_dates 우선, price_tiers 폴백
       if (!shouldArchive) {
         const priceDates = (pkg.price_dates || []) as { date: string }[];
-        let hasDateData = false;
 
         if (priceDates.length > 0) {
-          hasDateData = true;
           const latestDate = priceDates.map(pd => pd.date).sort().pop()!;
           if (latestDate < today) {
             shouldArchive = true;
@@ -63,20 +71,10 @@ export async function GET() {
           const allRelevantDates = [...allDates, ...allEndDates];
 
           if (allRelevantDates.length > 0) {
-            hasDateData = true;
             const latestDate = allRelevantDates.sort().pop()!;
             if (latestDate < today) {
               shouldArchive = true;
             }
-          }
-        }
-
-        // 조건 3: 발권기한 없고 + 출발일 데이터도 없고 + 등록 후 30일 경과
-        if (!shouldArchive && !pkg.ticketing_deadline && !hasDateData && pkg.created_at) {
-          const created = new Date(pkg.created_at);
-          const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
-          if (expiry.toISOString().split('T')[0] < today) {
-            shouldArchive = true;
           }
         }
       }

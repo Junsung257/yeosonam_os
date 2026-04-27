@@ -291,6 +291,24 @@ function getDDayInfo(pkg: Package): { label: string; className: string } | null 
   return null;
 }
 
+// 등록 후 30일 자동 archive 정책 D-day (사장님 정책 2026-04-27)
+// - D+0~D+22: 표시 안 함 (여유)
+// - D+23~D+26 (archive D-7~D-4): 주황 경고
+// - D+27~D+29 (archive D-3~D-1): 빨강 경고
+// - D+30+: cron 이 자동 archive 하므로 표시 안 함 (목록에서 사라짐)
+function getArchiveDDayInfo(pkg: Package): { label: string; className: string } | null {
+  if (!pkg.created_at) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const created = new Date(pkg.created_at);
+  const archiveDate = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
+  archiveDate.setHours(0, 0, 0, 0);
+  const diff = Math.round((archiveDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0 || diff > 7) return null;
+  if (diff <= 3) return { label: `archive D-${diff}`, className: 'bg-red-50 text-red-700 font-bold' };
+  return { label: `archive D-${diff}`, className: 'bg-orange-50 text-orange-700' };
+}
+
 function isExpired(pkg: Package): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -298,12 +316,15 @@ function isExpired(pkg: Package): boolean {
   if (pkg.ticketing_deadline) {
     const deadline = new Date(pkg.ticketing_deadline);
     deadline.setHours(0, 0, 0, 0);
-    return deadline < today;
+    if (deadline < today) return true;
   }
-  const created = new Date(pkg.created_at);
-  const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
-  expiry.setHours(0, 0, 0, 0);
-  return expiry < today;
+  if (pkg.created_at) {
+    const created = new Date(pkg.created_at);
+    const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
+    expiry.setHours(0, 0, 0, 0);
+    if (expiry < today) return true;
+  }
+  return false;
 }
 
 function isDeadlineSoon(pkg: Package): boolean {
@@ -561,13 +582,28 @@ const PackageRow = React.memo(function PackageRow({
         ) : '-'}
       </td>
       <td className="px-3 py-2 text-center cursor-pointer" onClick={handleRowClick}>
-        {dday ? (
-          <span className={`px-2 py-0.5 rounded text-[11px] ${dday.className}`}>{dday.label}</span>
-        ) : pkg.ticketing_deadline ? (
-          <span className="text-[11px] text-slate-400">{pkg.ticketing_deadline}</span>
-        ) : (
-          <span className="text-[11px] text-slate-300">-</span>
-        )}
+        <div className="flex flex-col items-center gap-0.5">
+          {dday ? (
+            <span className={`px-2 py-0.5 rounded text-[11px] ${dday.className}`}>{dday.label}</span>
+          ) : pkg.ticketing_deadline ? (
+            <span className="text-[11px] text-slate-400">{pkg.ticketing_deadline}</span>
+          ) : (
+            <span className="text-[11px] text-slate-300">-</span>
+          )}
+          {pkg.created_at && (
+            <span className="text-[10px] text-slate-400" title={`등록일: ${pkg.created_at.slice(0,10)}`}>
+              등록 {pkg.created_at.slice(5,10)}
+            </span>
+          )}
+          {(() => {
+            const archiveDday = getArchiveDDayInfo(pkg);
+            return archiveDday ? (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] ${archiveDday.className}`} title="등록 후 30일 자동 archive">
+                {archiveDday.label}
+              </span>
+            ) : null;
+          })()}
+        </div>
       </td>
       <td className="px-3 py-2 text-center cursor-pointer" onClick={handleRowClick}>
         <div className="flex flex-col items-center gap-1">
