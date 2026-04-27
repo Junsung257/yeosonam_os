@@ -104,18 +104,39 @@ export async function recommendPublishSlots(
 }
 
 /**
- * 폴백 — 다음 평일(월~금) 19:00 KST.
- * KST = UTC+9. Date 는 UTC 보존.
+ * 폴백 — `after` 이후 가장 가까운 평일(월~금) 19:00 KST 반환.
+ *
+ * 구현: Intl.DateTimeFormat 으로 KST 시각 포맷 → 요일·시각 판정 →
+ * 19시 미달이면 오늘, 지났으면 +1일. 토(6)/일(0) 이면 다음 평일.
+ * KST 19:00 은 UTC 10:00 (DST 없음, KST 고정 +9).
  */
 function nextWeekday19KST(after: Date): Date {
-  // KST 기준 19:00
-  const kstOffset = 9 * 60 * 60 * 1000;
-  const kstNow = new Date(after.getTime() + kstOffset);
-  const candidate = new Date(kstNow);
-  candidate.setUTCHours(19, 0, 0, 0);
-  if (candidate <= kstNow) candidate.setUTCDate(candidate.getUTCDate() + 1);
-  while ([0, 6].includes(candidate.getUTCDay())) {
-    candidate.setUTCDate(candidate.getUTCDate() + 1);
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  // KST 자정 기준의 yyyy-mm-dd 와 시간을 한 번에 추출
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
+  });
+  const parts = fmt.formatToParts(after).reduce<Record<string, string>>((acc, p) => {
+    acc[p.type] = p.value;
+    return acc;
+  }, {});
+  const kstHour = parseInt(parts.hour, 10);
+  const kstMinute = parseInt(parts.minute, 10);
+  const today19InUtc = new Date(`${parts.year}-${parts.month}-${parts.day}T19:00:00+09:00`);
+
+  // 오늘 19시가 아직 안 지났으면 오늘 19시 후보, 아니면 +1일
+  let candidate = (kstHour > 19 || (kstHour === 19 && kstMinute > 0))
+    ? new Date(today19InUtc.getTime() + ONE_DAY_MS)
+    : today19InUtc;
+
+  // 평일 보장 (KST 기준 요일 판정)
+  for (let i = 0; i < 7; i += 1) {
+    const dow = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', weekday: 'short' })
+      .format(candidate);
+    if (dow !== 'Sat' && dow !== 'Sun') break;
+    candidate = new Date(candidate.getTime() + ONE_DAY_MS);
   }
-  return new Date(candidate.getTime() - kstOffset);
+  return candidate;
 }

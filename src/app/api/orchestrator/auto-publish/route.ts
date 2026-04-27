@@ -2,25 +2,21 @@
  * One-Stop Auto-Publish Orchestrator
  *
  * POST /api/orchestrator/auto-publish
- * Body: { product_id: UUID, tenant_id?: UUID, platforms?: Platform[], dryRun?: boolean }
+ * Body: {
+ *   product_id: UUID,
+ *   tenant_id?: UUID,
+ *   platforms?: Platform[],
+ *   dryRun?: boolean,
+ *   publishNow?: boolean,    // Best Time 무시 즉시 발행
+ *   triggerCardNewsVariants?: boolean
+ * }
  *
- * 동작 (사용자 1회 트리거 → 끝까지 자동):
- *   1. travel_packages 로드 + ContentBrief 생성 (product 모드)
- *   2. 5종 에이전트 병렬 호출:
- *      - instagram_caption
- *      - threads_post
- *      - meta_ads
- *      - kakao_channel
- *      - google_ads_rsa
- *   3. 각 결과를 content_distributions 에 status='scheduled' 로 INSERT
- *      scheduled_for = recommend_publish_slot RPC (Best Time to Post)
- *   4. blog_topic_queue 에 product 토픽 추가 (다음 blog-publisher 사이클이 처리)
- *   5. 카드뉴스 5변형 생성 트리거 (generate-variants 위임, 백그라운드)
- *   6. 응답: 모든 distribution_id + scheduled_at 표 (사용자가 한 화면 확인)
- *
- * 멀티테넌시:
- *   - tenant_id 가 모든 INSERT 행에 전파됨
- *   - 미지정 시 NULL = 여소남 본사
+ * 멱등성: 5분 내 같은 product_id 재트리거 시 duplicate_warning 응답에 표시.
+ * 응답 status:
+ *   201 — 정상 (distribution 1건 이상 생성)
+ *   207 — 모든 agent 실패 (ok:false)
+ *   404 — 상품 없음
+ *   503 — DB/AI 키 미설정
  *
  * 외부 SaaS 의존성: 0 (Gemini + Supabase + 자체 cron 만 사용)
  */
@@ -59,6 +55,7 @@ interface RequestBody {
   tenant_id?: string | null;
   platforms?: Platform[];
   dryRun?: boolean;
+  publishNow?: boolean;
   triggerCardNewsVariants?: boolean;
 }
 
@@ -85,6 +82,25 @@ export async function POST(request: NextRequest) {
   const tenantId = body.tenant_id ?? null;
   const platforms = body.platforms?.length ? body.platforms : DEFAULT_PLATFORMS;
   const dryRun = body.dryRun ?? false;
+  const publishNow = body.publishNow ?? false;
+
+  // 0) 멱등성 가드 — 같은 product_id 5분 내 트리거 이력 조회 (중복 발행 방지 경고용)
+  let duplicateWarning: { recent_count: number; last_at: string } | null = null;
+  try {
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: recent } = await supabaseAdmin
+      .from('content_distributions')
+      .select('id, created_at')
+      .eq('product_id', body.product_id)
+      .gte('created_at', fiveMinAgo)
+      .order('created_at', { ascending: false });
+    if (recent && recent.length > 0) {
+      duplicateWarning = {
+        recent_count: recent.length,
+        last_at: (recent[0] as { created_at: string }).created_at,
+      };
+    }
+  } catch { /* 멱등성 체크 실패해도 발행은 진행 */ }
 
   // 1) 상품 로드 (실 스키마: price, photos/photo_urls — base_price/hero_image_url 없음)
   const { data: pkg, error: pkgErr } = await supabaseAdmin
@@ -122,13 +138,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3) 에이전트 병렬 실행 + Best Time slot 사전 계산
-  const slotPromises = platforms.map((p) =>
-    recommendPublishSlot({
+  // 3) 에이전트 병렬 실행 + 발행 슬롯 사전 계산
+  const slotPromises = platforms.map((p) => {
+    if (publishNow) {
+      // 즉시 발행: 다음 cron 실행을 보장하기 위해 1분 뒤로 (publish-scheduled 주기 = 1h)
+      return Promise.resolve({
+        scheduledFor: new Date(Date.now() + 60 * 1000),
+        source: 'now' as const,
+      });
+    }
+    return recommendPublishSlot({
       platform: p === 'blog_body' ? 'blog_body' : p,
       tenantId,
-    }).catch(() => ({ scheduledFor: nextHour(), source: 'fallback_default' as const, reason: 'rpc fail' })),
-  );
+    }).catch(() => ({
+      scheduledFor: nextHour(),
+      source: 'fallback_default' as const,
+      reason: 'rpc fail',
+    }));
+  });
 
   const agentJobs: Array<Promise<{ platform: Platform; payload: Record<string, unknown> | null; error?: string }>> = [];
 
@@ -186,19 +213,31 @@ export async function POST(request: NextRequest) {
       generation_config: { brief_h1: brief.h1, slot_source: slotByPlatform.get(r.platform)?.source ?? 'unknown' },
     }));
 
-  let insertedDistributions: Array<{ id: string; platform: string; scheduled_for: string | null }> = [];
+  let insertedDistributions: Array<{ id: string; platform: string; scheduled_for: string | null; payload: Record<string, unknown> }> = [];
   if (distRows.length > 0) {
     const { data: insRows, error: insErr } = await supabaseAdmin
       .from('content_distributions')
       .insert(distRows)
-      .select('id, platform, scheduled_for');
+      .select('id, platform, scheduled_for, payload');
     if (insErr) {
       return NextResponse.json({
         error: `content_distributions INSERT 실패: ${insErr.message}`,
         agentResults: agentResults.map(r => ({ platform: r.platform, ok: !r.error, error: r.error })),
       }, { status: 500 });
     }
-    insertedDistributions = (insRows ?? []) as Array<{ id: string; platform: string; scheduled_for: string | null }>;
+    insertedDistributions = (insRows ?? []) as Array<{ id: string; platform: string; scheduled_for: string | null; payload: Record<string, unknown> }>;
+  }
+
+  // 모든 에이전트가 실패한 경우 207 (다중 상태) + ok:false
+  if (insertedDistributions.length === 0 && agentResults.length > 0) {
+    return NextResponse.json({
+      ok: false,
+      error: '모든 에이전트 실패',
+      agent_failures: agentResults.map((r) => ({ platform: r.platform, error: r.error })),
+      duplicate_warning: duplicateWarning,
+      brief_h1: brief.h1,
+      elapsed_ms: Date.now() - t0,
+    }, { status: 207 });
   }
 
   // 5) 블로그 토픽 큐 (blog-publisher 매시간 사이클이 처리)
@@ -229,18 +268,20 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 6) 카드뉴스 5변형 백그라운드 트리거 (옵션, 응답 차단 X)
+  // 6) 카드뉴스 5변형 백그라운드 트리거.
+  // Note: Next 14.2 의 `after()` 가 unstable 이라 fire-and-forget 사용.
+  // Vercel Fluid Compute 환경에서는 dangling promise 가 안전하게 완료됨.
+  // Traditional serverless 환경에서 끊길 가능성을 대비해 응답 후에도 실행 시도.
   let cardNewsVariantTrigger: { triggered: boolean; group_id?: string; reason?: string } = { triggered: false };
   if (body.triggerCardNewsVariants !== false && !dryRun) {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
-      // fire-and-forget. 본 응답은 차단하지 않음.
       const rawText = [
         product.title,
         product.product_summary ?? '',
         ...(product.product_highlights as string[] ?? []),
       ].filter(Boolean).join('\n\n');
-      fetch(`${baseUrl}/api/card-news/generate-variants`, {
+      const variantPromise = fetch(`${baseUrl}/api/card-news/generate-variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +291,11 @@ export async function POST(request: NextRequest) {
           count: 5,
           skipCritic: false,
         }),
-      }).catch(() => { /* fire-and-forget */ });
+      });
+      // 응답 차단 X. 단 실패 로깅은 보장.
+      variantPromise
+        .then((r) => { if (!r.ok) console.warn('[orchestrator] 카드뉴스 변형 트리거 응답 비정상:', r.status); })
+        .catch((e) => console.warn('[orchestrator] 카드뉴스 변형 트리거 실패:', e instanceof Error ? e.message : e));
       cardNewsVariantTrigger = { triggered: true };
     } catch (e) {
       cardNewsVariantTrigger = { triggered: false, reason: e instanceof Error ? e.message : String(e) };
@@ -260,6 +305,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     dryRun,
+    publishNow,
     product_id: product.id,
     product_title: product.title,
     tenant_id: tenantId,
@@ -269,11 +315,13 @@ export async function POST(request: NextRequest) {
       platform: d.platform,
       scheduled_for: d.scheduled_for,
       slot_source: slotByPlatform.get(d.platform)?.source ?? 'unknown',
+      payload: d.payload,
     })),
     blog_queue_id: blogQueueId,
     blog_scheduled_for: slotByPlatform.get('blog_body')?.scheduledFor.toISOString() ?? null,
     card_news_variants: cardNewsVariantTrigger,
     agent_failures: agentResults.filter((r) => r.error).map((r) => ({ platform: r.platform, error: r.error })),
+    duplicate_warning: duplicateWarning,
     brief_h1: brief.h1,
   }, { status: 201 });
 }
