@@ -805,6 +805,12 @@ export function parseCityFromActivity(activity?: string | null): string | null {
  * flight 타입 activity 문자열 파싱.
  * 입력 예 1: "BX792 타이페이 출발 → 부산(김해) 도착 19:55"
  * 입력 예 2: "BX148 김해국제공항 출발 → 후쿠오카국제공항 08:25 도착"
+ *
+ * 매칭 전략 — 2단 (strict → loose) 폴백:
+ *   1) "공항" 키워드 포함: "김해국제공항 출발" → depCity="김해" (capture non-greedy)
+ *   2) "공항" 없는 평문: "타이페이 출발" → depCity="타이페이"
+ * 이전 단일 정규식 `공항?` 는 "공" 만 필수로 인식해서 (a) "타이페이 출발" 은 매칭 실패,
+ * (b) "후쿠오카국제공항" 도착은 "후쿠오카국제" 까지 over-capture 되던 한계가 있었음.
  */
 export function parseFlightActivity(activity?: string | null): {
   depCity: string | null;
@@ -816,11 +822,21 @@ export function parseFlightActivity(activity?: string | null): {
   if (arrowIdx < 0) return { depCity: null, arrCity: null, arrTime: null };
   const before = activity.slice(0, arrowIdx);
   const after = activity.slice(arrowIdx + 1);
-  // 출발: "BX792 타이페이 출발" → "타이페이" / "김해국제공항 출발" → "김해"
-  const depMatch = before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()\s]+?)\s*(?:국제)?공항?\s*출발/)
-    || before.match(/([가-힣A-Za-z()]+)\s*(?:국제)?공항?\s*출발/);
-  // 도착: "후쿠오카국제공항 08:25 도착" / "부산(김해) 도착 19:55"
-  const arrMatch = after.match(/^\s*([가-힣A-Za-z()]+(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항?\s*(?:\d{1,2}:\d{2}\s*)?도착/);
+
+  // 출발: 공항 키워드 strict 매칭 → 없으면 평문 매칭
+  const depMatch =
+    // "BX148 김해국제공항 출발" / "김해국제공항 출발" → "김해"
+    before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항\s*출발/)
+    // "BX792 타이페이 출발" / "타이페이 출발" → "타이페이"
+    || before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*출발/);
+
+  // 도착: 동일 2단 폴백
+  const arrMatch =
+    // "후쿠오카국제공항 08:25 도착" → "후쿠오카"
+    after.match(/^\s*([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항\s*(?:\d{1,2}:\d{2}\s*)?도착/)
+    // "부산(김해) 도착 19:55" → "부산(김해)"
+    || after.match(/^\s*([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*(?:\d{1,2}:\d{2}\s*)?도착/);
+
   // 도착 시간: "도착 HH:MM" 또는 "HH:MM 도착" 양방향 지원
   const arrTimeMatch = after.match(/도착\s+(\d{1,2}:\d{2})/) || after.match(/(\d{1,2}:\d{2})\s*도착/);
   return {

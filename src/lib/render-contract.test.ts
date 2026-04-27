@@ -74,25 +74,19 @@ describe('parseFlightActivity', () => {
     expect(parseFlightActivity('BX792 비행기 탑승')).toEqual({ depCity: null, arrCity: null, arrTime: null });
   });
 
-  it('도착 시각 추출: "도착 19:55"', () => {
+  it('"BX792 타이페이 출발 → 부산(김해) 도착 19:55" — 공항 키워드 없는 평문', () => {
+    // 이전 정규식(`공항?`)은 "공" 필수로 매칭 실패 → 2단 폴백으로 정상 추출.
     const r = parseFlightActivity('BX792 타이페이 출발 → 부산(김해) 도착 19:55');
+    expect(r.depCity).toBe('타이페이');
+    expect(r.arrCity).toBe('부산(김해)');
     expect(r.arrTime).toBe('19:55');
   });
 
-  it('"공항" 키워드가 있는 표준 포맷에서 출발지/시간 추출', () => {
+  it('"BX148 김해국제공항 출발 → 후쿠오카국제공항 08:25 도착" — 공항 strict 매칭', () => {
     const r = parseFlightActivity('BX148 김해국제공항 출발 → 후쿠오카국제공항 08:25 도착');
     expect(r.depCity).toBe('김해');
+    expect(r.arrCity).toBe('후쿠오카'); // non-greedy + 공항 strict 로 over-capture 차단
     expect(r.arrTime).toBe('08:25');
-    // arrCity 정규식이 "(?:국제)?공항?" 의 greedy 매칭으로 "후쿠오카국제" 까지 캡처 — 현 동작 락인
-    expect(r.arrCity).toBe('후쿠오카국제');
-  });
-
-  it('"공항" 단어가 없으면 depCity 캡처 실패 (현 정규식 한계)', () => {
-    // 코드 주석 예시 "BX792 타이페이 출발 → 부산(김해) 도착" 은 사실 매치 안 됨.
-    // 정규식 `공항?` 가 "공항" 전체를 옵셔널로 만들지 않고 "항" 만 옵셔널 → "공" 없으면 fail.
-    // 잠재 개선 후보지만 현 prod 동작 보존.
-    const r = parseFlightActivity('BX792 타이페이 출발 → 부산(김해) 도착 19:55');
-    expect(r.depCity).toBeNull();
   });
 });
 
