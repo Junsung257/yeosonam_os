@@ -302,6 +302,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 비용 estimate (에이전트 cost 반환 미구현 → 평균 토큰 기준 추정)
+  // Gemini 2.5 Flash: input $0.075/1M, output $0.30/1M
+  // ContentBrief 1콜 ~ $0.0008, 에이전트 1콜 ~ $0.0004 평균
+  // Anthropic Sonnet 4.6 (카드뉴스 5변형): input $3/1M, output $15/1M ~ $0.42 (Critic 포함)
+  const successAgentCount = insertedDistributions.length;
+  const briefCostUsd = 0.0008;
+  const perAgentCostUsd = 0.0004;
+  const agentsCostUsd = successAgentCount * perAgentCostUsd;
+  const cardNewsCostUsd = cardNewsVariantTrigger.triggered ? 0.42 : 0;
+  const estimatedCostUsd = +(briefCostUsd + agentsCostUsd + cardNewsCostUsd).toFixed(4);
+
   return NextResponse.json({
     ok: true,
     dryRun,
@@ -323,6 +334,15 @@ export async function POST(request: NextRequest) {
     agent_failures: agentResults.filter((r) => r.error).map((r) => ({ platform: r.platform, error: r.error })),
     duplicate_warning: duplicateWarning,
     brief_h1: brief.h1,
+    cost_estimate: {
+      total_usd: estimatedCostUsd,
+      breakdown: {
+        content_brief_usd: briefCostUsd,
+        agents_usd: +agentsCostUsd.toFixed(4),
+        card_news_variants_usd: cardNewsCostUsd,
+      },
+      note: '추정치. 카드뉴스 변형의 정확한 비용은 card_news.html_usage 참고.',
+    },
   }, { status: 201 });
 }
 

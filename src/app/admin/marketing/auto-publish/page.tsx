@@ -34,6 +34,15 @@ interface AutoPublishResult {
   agent_failures: Array<{ platform: string; error: string }>;
   brief_h1: string;
   duplicate_warning?: { recent_count: number; last_at: string } | null;
+  cost_estimate?: {
+    total_usd: number;
+    breakdown: {
+      content_brief_usd: number;
+      agents_usd: number;
+      card_news_variants_usd: number;
+    };
+    note: string;
+  };
 }
 
 interface ProductSuggestion {
@@ -226,9 +235,27 @@ export default function AutoPublishPage() {
 
       {result && (
         <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-5">
-          <h2 className="text-lg font-semibold">완료 ({(result.elapsed_ms / 1000).toFixed(1)}s)</h2>
-          <p className="mt-1 text-sm text-neutral-600">{result.product_title}</p>
-          <p className="mt-1 text-xs text-neutral-500">brief: {result.brief_h1}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold">완료 ({(result.elapsed_ms / 1000).toFixed(1)}s)</h2>
+              <p className="mt-1 text-sm text-neutral-600">{result.product_title}</p>
+              <p className="mt-1 text-xs text-neutral-500">brief: {result.brief_h1}</p>
+            </div>
+            {result.cost_estimate && (
+              <div className="rounded bg-neutral-50 px-3 py-2 text-right">
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500">예상 비용</div>
+                <div className="text-base font-bold text-emerald-700">${result.cost_estimate.total_usd}</div>
+                <div className="mt-0.5 text-[10px] text-neutral-400">
+                  brief ${result.cost_estimate.breakdown.content_brief_usd} ·
+                  agents ${result.cost_estimate.breakdown.agents_usd} ·
+                  변형 ${result.cost_estimate.breakdown.card_news_variants_usd}
+                </div>
+              </div>
+            )}
+          </div>
+          <a href="/admin/marketing/published" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
+            → 발행 결과 모니터링 보기
+          </a>
 
           {result.duplicate_warning && (
             <div className="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-800">
