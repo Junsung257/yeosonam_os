@@ -46,10 +46,12 @@ interface ScheduledRow {
   id: string;
   product_id: string | null;
   card_news_id: string | null;
+  blog_post_id: string | null;
   platform: string;
   payload: Record<string, unknown>;
   scheduled_for: string;
   engagement: Record<string, unknown>;
+  tenant_id: string | null;
 }
 
 async function runPublishScheduled(request: NextRequest) {
@@ -90,7 +92,7 @@ async function runPublishScheduled(request: NextRequest) {
     const nowIso = new Date().toISOString();
     const { data, error } = await supabaseAdmin
       .from('content_distributions')
-      .select('id, product_id, card_news_id, platform, payload, scheduled_for, engagement')
+      .select('id, product_id, card_news_id, blog_post_id, platform, payload, scheduled_for, engagement, tenant_id')
       .eq('status', 'scheduled')
       .lte('scheduled_for', nowIso)
       .limit(20);
@@ -232,7 +234,50 @@ async function publishOne(row: ScheduledRow): Promise<{
   }
 
   if (row.platform === 'blog_body') {
-    return { status: 'skipped', reason: '블로그는 수동 발행' };
+    // 1) 이미 발행된 blog_post_id 가 있으면 게시 처리 (이중 INSERT 방지)
+    if (row.blog_post_id) {
+      const { data: existing } = await supabaseAdmin
+        .from('content_creatives')
+        .select('id, slug, status')
+        .eq('id', row.blog_post_id)
+        .limit(1);
+      const existingRow = existing?.[0];
+      if (existingRow) {
+        if (existingRow.status !== 'published') {
+          await supabaseAdmin
+            .from('content_creatives')
+            .update({ status: 'published', published_at: new Date().toISOString() })
+            .eq('id', row.blog_post_id);
+        }
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';
+        return {
+          status: 'published',
+          external_id: row.blog_post_id,
+          external_url: `${baseUrl}/blog/${existingRow.slug}`,
+        };
+      }
+    }
+    // 2) blog_topic_queue 항목으로 즉시 큐잉 (다음 blog-publisher 사이클이 처리)
+    try {
+      const queuePayload = (row.payload ?? {}) as Record<string, unknown>;
+      await supabaseAdmin.from('blog_topic_queue').insert({
+        tenant_id: row.tenant_id,
+        topic: (queuePayload.topic as string) ?? '자동 생성 블로그',
+        destination: (queuePayload.destination as string) ?? null,
+        category: (queuePayload.category as string) ?? null,
+        angle_type: (queuePayload.angle_type as string) ?? 'value',
+        product_id: row.product_id,
+        card_news_id: row.card_news_id,
+        source: row.card_news_id ? 'card_news' : (row.product_id ? 'product' : 'distribution'),
+        status: 'queued',
+        priority: 80,
+        target_publish_at: new Date().toISOString(),
+        meta: { from_distribution_id: row.id, ...queuePayload },
+      });
+      return { status: 'published', external_id: 'queued_to_blog_publisher' };
+    } catch (e) {
+      return { status: 'failed', error: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   return { status: 'skipped', reason: `알 수 없는 플랫폼 ${row.platform}` };

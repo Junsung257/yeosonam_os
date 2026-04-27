@@ -28,6 +28,8 @@ const PUBLIC_PATHS = [
   '/api/share',
   '/api/packages',
   '/api/attractions',
+  // Programmatic SEO (Booking.com 패턴 — 공개)
+  '/things-to-do',
   // Phase 1.5 IR 파이프 (Canary) — 내부 admin CLI/Agent 호출용
   '/api/register-via-ir',
   '/api/audit-pkg-to-ir',

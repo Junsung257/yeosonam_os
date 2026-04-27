@@ -1,39 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { runQualityGates } from '@/lib/blog-quality-gate';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateBlogPost, generateBlogSeo, AngleType } from '@/lib/content-generator';
 import { notifyIndexing } from '@/lib/indexing';
+import { withCronLogging } from '@/lib/cron-observability';
 
 /**
- * 블로그 발행 크론 — 매시간 정각 실행
+ * 블로그 자동 발행 크론 — 매시간 정각 실행 (vercel.json: 0 * * * *)
  *
  * 로직:
- *   1) blog_topic_queue 에서 target_publish_at <= NOW() AND status='queued' 스캔 (최대 10개)
+ *   1) blog_topic_queue WHERE target_publish_at <= NOW() AND status='queued' 스캔 (최대 10개)
  *   2) 각 항목:
- *      a. status='generating' 전환 (동시성 방지)
+ *      a. status='generating' 락 (동시성 방지)
  *      b. source 에 따라 생성:
- *         - product      → content-generator.generateBlogPost + generateBlogSeo
- *         - seasonal/coverage_gap/user_seed → Gemini 2.5 Flash (style-guide 주입)
- *      c. 3-Gate 검증
- *      d. Pass → content_creatives insert(status='published') + 색인 알림
+ *         - pillar       → /destinations/[city] 허브 (장문 AI)
+ *         - card_news    → from-card-news API 위임 (PNG 삽입 블로그)
+ *         - product      → content-generator.generateBlogPost (템플릿)
+ *         - 나머지       → Gemini 2.5 Flash + style guide
+ *      c. 4-Gate 검증 (length·cliche·duplicate·keyword_density)
+ *      d. Pass → content_creatives insert(status='published') + 색인 알림 + ISR revalidate
  *         Fail → attempts++ / 2회 초과 시 status='failed'
- *   3) 발행 실패 사유는 error_patterns RAG 에 자동 기록 (자기학습)
+ *   3) 실패 사유는 error_patterns RAG 에 자동 기록 (자기학습)
+ *
+ * 멀티테넌시: blog_topic_queue.tenant_id 그대로 content_creatives 에 전파
  */
+
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = 10;
 const MAX_ATTEMPTS = 2;
 
-export async function GET(request: NextRequest) {
+async function runBlogPublisher(request: NextRequest) {
+  // CRON_SECRET 검증 (vercel cron 요청만 통과)
+  const authHeader = request.headers.get('authorization');
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
   const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
+  const errors: string[] = [];
 
   try {
-    // 대상 토픽 조회 — priority 높은 것 먼저
     const nowIso = new Date().toISOString();
     const { data: queue } = await supabaseAdmin
       .from('blog_topic_queue')
@@ -45,40 +60,48 @@ export async function GET(request: NextRequest) {
       .limit(MAX_BATCH);
 
     if (!queue || queue.length === 0) {
-      return NextResponse.json({ processed: 0, message: '발행할 토픽 없음' });
+      return { processed: 0, message: '발행할 토픽 없음', errors };
     }
 
     for (const item of queue) {
-      const r = await processQueueItem(item);
-      results.push(r);
+      try {
+        const r = await processQueueItem(item);
+        results.push(r);
+        if (r.status !== 'published') {
+          errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
+        }
+      } catch (err) {
+        errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
-    // 색인 알림 (백그라운드)
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
     for (const r of results) {
       if (r.status === 'published') {
         const slug = r.reason;
         if (slug) {
           notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl).catch(() => { /* noop */ });
+          try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
         }
       }
     }
-
     try { revalidatePath('/blog'); } catch { /* noop */ }
+    try { revalidateTag('blog-list'); } catch { /* noop */ }
 
-    return NextResponse.json({
+    return {
       processed: results.length,
+      published: results.filter(r => r.status === 'published').length,
       results,
+      errors,
       ranAt: new Date().toISOString(),
-    });
+    };
   } catch (err) {
-    console.error('[blog-publisher] 치명적 오류:', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '발행 실패' },
-      { status: 500 },
-    );
+    errors.push(`fatal: ${err instanceof Error ? err.message : String(err)}`);
+    return { processed: 0, errors, results };
   }
 }
+
+export const GET = withCronLogging('blog-publisher', runBlogPublisher);
 
 async function processQueueItem(item: any): Promise<{ id: string; topic: string; status: string; reason?: string }> {
   // 동시성 방지 — generating 락
@@ -134,6 +157,7 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
     const { data: inserted, error: insErr } = await supabaseAdmin
       .from('content_creatives')
       .insert({
+        tenant_id: item.tenant_id ?? null,                  // 멀티테넌트 격리
         blog_html: generated.blog_html,
         slug: generated.slug,
         seo_title: generated.seo_title,
@@ -150,7 +174,7 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
         destination: item.destination ?? null,
         content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
         pillar_for: item.source === 'pillar' ? item.destination : null,
-        landing_enabled: !!item.product_id,                 // 상품 블로그는 기본 랜딩 모드 on
+        landing_enabled: !!item.product_id,
         target_ad_keywords: item.meta?.keywords ?? [],
         generation_meta: { queue_item_id: item.id, ...(item.meta || {}) },
       })
