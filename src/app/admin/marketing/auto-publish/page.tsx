@@ -30,7 +30,7 @@ interface AutoPublishResult {
   distributions: DistRow[];
   blog_queue_id: string | null;
   blog_scheduled_for: string | null;
-  card_news_variants: { triggered: boolean; reason?: string };
+  card_news_variants: { triggered: boolean; payload?: Record<string, unknown> | null; reason?: string };
   agent_failures: Array<{ platform: string; error: string }>;
   brief_h1: string;
   duplicate_warning?: { recent_count: number; last_at: string } | null;
@@ -74,6 +74,8 @@ export default function AutoPublishPage() {
   const [result, setResult] = useState<AutoPublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [cardNewsTriggering, setCardNewsTriggering] = useState(false);
+  const [cardNewsResult, setCardNewsResult] = useState<{ ok: boolean; group_id?: string; error?: string } | null>(null);
 
   // 디바운스된 상품 검색
   useEffect(() => {
@@ -138,7 +140,32 @@ export default function AutoPublishPage() {
     setResult(null);
     setError(null);
     setExpandedRow(null);
+    setCardNewsResult(null);
   };
+
+  // 카드뉴스 5변형 — 어드민 클라이언트 fetch (쿠키 자동 첨부).
+  const triggerCardNewsVariants = useCallback(async () => {
+    if (!result?.card_news_variants?.payload) return;
+    setCardNewsTriggering(true);
+    setCardNewsResult(null);
+    try {
+      const res = await fetch('/api/card-news/generate-variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.card_news_variants.payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCardNewsResult({ ok: false, error: data.error ?? `오류 (${res.status})` });
+      } else {
+        setCardNewsResult({ ok: true, group_id: data.variant_group_id });
+      }
+    } catch (e) {
+      setCardNewsResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setCardNewsTriggering(false);
+    }
+  }, [result]);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -318,11 +345,32 @@ export default function AutoPublishPage() {
             </tbody>
           </table>
 
-          {result.card_news_variants.triggered && (
-            <p className="mt-3 text-xs text-neutral-600">
-              ✓ 카드뉴스 5변형 백그라운드 생성 시작 (1~3분 소요) ·
-              {' '}<a href="/admin/marketing/card-news" className="text-blue-600 hover:underline">결과 보기</a>
-            </p>
+          {result.card_news_variants.payload && (
+            <div className="mt-3 rounded border border-neutral-200 p-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span>🎴 카드뉴스 5변형 생성 (1~3분 소요, ~$0.42)</span>
+                {!cardNewsResult?.ok && (
+                  <button
+                    onClick={triggerCardNewsVariants}
+                    disabled={cardNewsTriggering}
+                    className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-neutral-300"
+                  >
+                    {cardNewsTriggering ? '생성 중...' : '생성 시작'}
+                  </button>
+                )}
+              </div>
+              {cardNewsResult?.ok && (
+                <p className="mt-2 text-xs text-emerald-700">
+                  ✓ 5변형 생성 완료 ·
+                  {' '}<a href={`/admin/marketing/card-news?group_id=${cardNewsResult.group_id}`} className="underline">
+                    결과 보기
+                  </a>
+                </p>
+              )}
+              {cardNewsResult && !cardNewsResult.ok && (
+                <p className="mt-2 text-xs text-red-700">실패: {cardNewsResult.error}</p>
+              )}
+            </div>
           )}
 
           {result.agent_failures.length > 0 && (

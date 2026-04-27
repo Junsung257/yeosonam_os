@@ -200,18 +200,22 @@ export async function POST(request: NextRequest) {
   platforms.forEach((p, i) => slotByPlatform.set(p, slots[i]));
 
   // 4) content_distributions INSERT (블로그는 별도 큐 — 5단계에서)
+  // tenant_id 가 NULL 이면 키 자체를 빼서 INSERT (마이그레이션 미적용 컬럼 없는 환경 안전성).
   const distRows = agentResults
     .filter((r) => r.payload && !r.error)
-    .map((r) => ({
-      tenant_id: tenantId,
-      product_id: product.id,
-      platform: r.platform,
-      payload: r.payload!,
-      status: dryRun ? 'draft' : 'scheduled',
-      scheduled_for: dryRun ? null : (slotByPlatform.get(r.platform)?.scheduledFor.toISOString() ?? new Date(Date.now() + 60 * 60 * 1000).toISOString()),
-      generation_agent: `${r.platform}-orchestrator-v1`,
-      generation_config: { brief_h1: brief.h1, slot_source: slotByPlatform.get(r.platform)?.source ?? 'unknown' },
-    }));
+    .map((r) => {
+      const base: Record<string, unknown> = {
+        product_id: product.id,
+        platform: r.platform,
+        payload: r.payload!,
+        status: dryRun ? 'draft' : 'scheduled',
+        scheduled_for: dryRun ? null : (slotByPlatform.get(r.platform)?.scheduledFor.toISOString() ?? new Date(Date.now() + 60 * 60 * 1000).toISOString()),
+        generation_agent: `${r.platform}-orchestrator-v1`,
+        generation_config: { brief_h1: brief.h1, slot_source: slotByPlatform.get(r.platform)?.source ?? 'unknown' },
+      };
+      if (tenantId) base.tenant_id = tenantId;
+      return base;
+    });
 
   let insertedDistributions: Array<{ id: string; platform: string; scheduled_for: string | null; payload: Record<string, unknown> }> = [];
   if (distRows.length > 0) {
@@ -245,21 +249,22 @@ export async function POST(request: NextRequest) {
   if (platforms.includes('blog_body') && !dryRun) {
     try {
       const blogSlot = slotByPlatform.get('blog_body')?.scheduledFor ?? new Date(Date.now() + 30 * 60 * 1000);
+      const blogRow: Record<string, unknown> = {
+        topic: `${product.destination ?? ''} ${product.title}`.trim(),
+        destination: product.destination,
+        category: 'product_intro',
+        angle_type: 'value',
+        product_id: product.id,
+        source: 'product',
+        status: 'queued',
+        priority: 90,
+        target_publish_at: blogSlot.toISOString(),
+        meta: { triggered_by: 'auto-publish-orchestrator' },
+      };
+      if (tenantId) blogRow.tenant_id = tenantId;
       const { data: bq } = await supabaseAdmin
         .from('blog_topic_queue')
-        .insert({
-          tenant_id: tenantId,
-          topic: `${product.destination ?? ''} ${product.title}`.trim(),
-          destination: product.destination,
-          category: 'product_intro',
-          angle_type: 'value',
-          product_id: product.id,
-          source: 'product',
-          status: 'queued',
-          priority: 90,
-          target_publish_at: blogSlot.toISOString(),
-          meta: { triggered_by: 'auto-publish-orchestrator' },
-        })
+        .insert(blogRow)
         .select('id')
         .single();
       blogQueueId = bq?.id ?? null;
@@ -268,38 +273,29 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 6) 카드뉴스 5변형 백그라운드 트리거.
-  // Note: Next 14.2 의 `after()` 가 unstable 이라 fire-and-forget 사용.
-  // Vercel Fluid Compute 환경에서는 dangling promise 가 안전하게 완료됨.
-  // Traditional serverless 환경에서 끊길 가능성을 대비해 응답 후에도 실행 시도.
-  let cardNewsVariantTrigger: { triggered: boolean; group_id?: string; reason?: string } = { triggered: false };
+  // 6) 카드뉴스 5변형 트리거 페이로드 — 클라이언트(어드민)가 직접 호출하도록 변경.
+  // Note: 이전 버전은 서버→서버 fetch 였으나 middleware 가 sb-access-token 강제 →
+  // 쿠키 forward 안 되어 항상 401. 클라이언트 fetch 는 쿠키 자동 첨부되어 정상 통과.
+  let cardNewsVariantTrigger: { triggered: false; payload: Record<string, unknown> | null } = {
+    triggered: false,
+    payload: null,
+  };
   if (body.triggerCardNewsVariants !== false && !dryRun) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
-      const rawText = [
-        product.title,
-        product.product_summary ?? '',
-        ...(product.product_highlights as string[] ?? []),
-      ].filter(Boolean).join('\n\n');
-      const variantPromise = fetch(`${baseUrl}/api/card-news/generate-variants`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rawText,
-          productMeta: { title: product.title, destination: product.destination },
-          package_id: product.id,
-          count: 5,
-          skipCritic: false,
-        }),
-      });
-      // 응답 차단 X. 단 실패 로깅은 보장.
-      variantPromise
-        .then((r) => { if (!r.ok) console.warn('[orchestrator] 카드뉴스 변형 트리거 응답 비정상:', r.status); })
-        .catch((e) => console.warn('[orchestrator] 카드뉴스 변형 트리거 실패:', e instanceof Error ? e.message : e));
-      cardNewsVariantTrigger = { triggered: true };
-    } catch (e) {
-      cardNewsVariantTrigger = { triggered: false, reason: e instanceof Error ? e.message : String(e) };
-    }
+    const rawText = [
+      product.title,
+      product.product_summary ?? '',
+      ...(product.product_highlights as string[] ?? []),
+    ].filter(Boolean).join('\n\n');
+    cardNewsVariantTrigger = {
+      triggered: false,
+      payload: {
+        rawText,
+        productMeta: { title: product.title, destination: product.destination },
+        package_id: product.id,
+        count: 5,
+        skipCritic: false,
+      },
+    };
   }
 
   // 비용 estimate (에이전트 cost 반환 미구현 → 평균 토큰 기준 추정)

@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     if (tenantFilter) distQuery = distQuery.eq('tenant_id', tenantFilter);
 
     // 2) card_news 직접 큐 (IG / Threads)
-    let cardQuery = supabaseAdmin
+    const cardQuery = supabaseAdmin
       .from('card_news')
       .select('id, title, package_id, ig_publish_status, ig_post_id, ig_published_at, ig_scheduled_for, threads_publish_status, threads_post_id, threads_published_at, threads_scheduled_for, created_at')
       .or('ig_publish_status.in.(queued,publishing,published,failed),threads_publish_status.in.(queued,publishing,published,failed)')
