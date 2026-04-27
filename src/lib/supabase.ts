@@ -40,7 +40,11 @@ export function getSupabase() {
 // API 라우트에서 DB 직접 조작 시 사용
 let supabaseAdminClient: ReturnType<typeof createClient> | null = null;
 
-function getSupabaseAdmin() {
+/**
+ * 서비스 롤 키 기반 Admin 클라이언트 (lazy init).
+ * 환경 미설정 시 anon 클라이언트로 fallback. 도메인 분할 모듈(db/*)에서 직접 사용 가능하도록 export.
+ */
+export function getSupabaseAdmin() {
   if (!supabaseAdminClient) {
     if (!isValidUrl(supabaseUrl)) return getSupabase(); // fallback
     const key = supabaseServiceKey || supabaseKey;
@@ -1057,146 +1061,10 @@ export {
 } from './db/ads';
 
 // ─────────────────────────────────────────────────────────────────
-// 카드뉴스 헬퍼 함수
+// 카드뉴스 — 본문은 ./db/card-news.ts 로 분리
 // ─────────────────────────────────────────────────────────────────
-
-export interface TextStyle {
-  fontFamily?: string;
-  fontSize?: number;
-  color?: string;
-  fontWeight?: 'normal' | 'bold';
-  textAlign?: 'left' | 'center' | 'right';
-}
-
-export interface CardNewsSlide {
-  id: string;
-  position: number;
-  headline: string;
-  body: string;
-  bg_image_url: string;
-  pexels_keyword: string;
-  overlay_style: 'dark' | 'light' | 'gradient-bottom' | 'gradient-top';
-  headline_style?: TextStyle;
-  body_style?: TextStyle;
-  // V1 디자인 시스템
-  template_id?: string;
-  role?: string;
-  badge?: string | null;
-  brief_section_position?: number;
-  // V2 슬롯 (Atom 기반 템플릿에서 사용)
-  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold';
-  template_version?: string;
-  eyebrow?: string | null;
-  tip?: string | null;
-  warning?: string | null;
-  price_chip?: string | null;
-  trust_row?: string[] | null;
-  accent_color?: string | null;
-  photo_hint?: string | null;
-}
-
-export interface CardNews {
-  id: string;
-  package_id: string | null;
-  campaign_id: string | null;
-  title: string;
-  status: 'DRAFT' | 'CONFIRMED' | 'LAUNCHED' | 'ARCHIVED';
-  slides: CardNewsSlide[];
-  meta_creative_id: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-  // 조인 필드
-  package_title?: string;
-  package_destination?: string;
-  // 블로그 생성 시 업로드된 슬라이드 PNG URL (from-card-news 라우트가 저장)
-  slide_image_urls?: string[] | null;
-  linked_blog_id?: string | null;
-  // 인스타그램 자동 발행 (20260414130000 migration)
-  ig_post_id?: string | null;
-  ig_published_at?: string | null;
-  ig_scheduled_for?: string | null;
-  ig_publish_status?: 'queued' | 'publishing' | 'published' | 'failed' | null;
-  ig_caption?: string | null;
-  ig_error?: string | null;
-  ig_slide_urls?: string[] | null;
-  // V2 컬럼 (20260423010000 migration)
-  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold' | 'html' | null;
-  template_version?: string | null;
-  brand_kit_id?: string | null;
-  // brief 스냅샷 (LLM ContentBrief V2 원본)
-  generation_config?: { brief?: unknown; html_mode?: unknown } | null;
-  // 기타 메타
-  card_news_type?: 'product' | 'info';
-  topic?: string | null;
-  category_id?: string | null;
-  // HTML 모드 (20260427100000 migration · Claude Sonnet 4.6 + Puppeteer)
-  html_raw?: string | null;
-  html_generated?: string | null;
-  html_thinking?: string | null;
-  html_usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
-    costUsd?: number;
-    model?: string;
-    durationMs?: number;
-    generatedAt?: string;
-  } | null;
-}
-
-export async function getCardNewsList(filters?: {
-  status?: string;
-  packageId?: string;
-  limit?: number;
-}): Promise<CardNews[]> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return [];
-
-  let query = admin
-    .from('card_news')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (filters?.status) query = query.eq('status', filters.status);
-  if (filters?.packageId) query = query.eq('package_id', filters.packageId);
-  if (filters?.limit) query = query.limit(filters.limit);
-
-  const { data, error } = await query;
-  if (error) { console.error('getCardNewsList error:', error.message); return []; }
-  return (data ?? []) as unknown as CardNews[];
-}
-
-export async function getCardNewsById(id: string): Promise<CardNews | null> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return null;
-
-  const { data, error } = await admin
-    .from('card_news')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error || !data) return null;
-  return data as unknown as CardNews;
-}
-
-export async function upsertCardNews(
-  data: Partial<CardNews> & { title: string }
-): Promise<CardNews | null> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return null;
-
-  const { data: result, error } = await admin
-    .from('card_news')
-    .upsert({ ...data, updated_at: new Date().toISOString() } as never)
-    .select()
-    .single();
-
-  if (error) throw new Error(`카드뉴스 저장 실패: ${error.message}`);
-  return result as unknown as CardNews;
-}
+export { getCardNewsList, getCardNewsById, upsertCardNews } from './db/card-news';
+export type { CardNews, CardNewsSlide, TextStyle } from './db/card-news';
 
 // ─────────────────────────────────────────────────────────────────
 // Booking Void 연쇄 처리
@@ -1555,155 +1423,14 @@ export type {
 } from './db/ads';
 
 // ═══════════════════════════════════════════════════════════════
-// 안심 중개 채팅 (SecureChat) & 여소남 표준 확정서 (Voucher)
+// SecureChat / Voucher — 본문은 ./db/voucher.ts 로 분리
 // ═══════════════════════════════════════════════════════════════
-
-import type { VoucherData } from './voucher-generator';
-
-export interface SecureChat {
-  id: string;
-  booking_id?: string | null;
-  rfq_id?: string | null;
-  sender_type: 'customer' | 'land_agency' | 'system';
-  sender_id: string;
-  receiver_type: 'customer' | 'land_agency' | 'admin';
-  raw_message: string;
-  masked_message: string;
-  is_filtered: boolean;
-  filter_detail?: string | null;
-  is_unmasked: boolean;
-  unmasked_at?: string | null;
-  created_at: string;
-}
-
-export interface Voucher {
-  id: string;
-  booking_id?: string | null;
-  rfq_id?: string | null;
-  customer_id?: string | null;
-  land_agency_id?: string | null;
-  parsed_data: VoucherData;
-  upsell_data: unknown[];
-  pdf_url?: string | null;
-  status: 'draft' | 'issued' | 'sent' | 'cancelled';
-  issued_at?: string | null;
-  sent_at?: string | null;
-  end_date?: string | null;
-  review_notified: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-// ── SecureChat CRUD ─────────────────────────────────────────────
-
-export async function createSecureChat(
-  data: Omit<SecureChat, 'id' | 'created_at'>
-): Promise<SecureChat | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('secure_chats')
-    .insert(data as never)
-    .select()
-    .single();
-  if (error) { console.error('createSecureChat', error); return null; }
-  return row as SecureChat;
-}
-
-export async function getSecureChats(params: {
-  bookingId?: string;
-  rfqId?: string;
-  receiverType: 'customer' | 'land_agency' | 'admin';
-}): Promise<SecureChat[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  let q = sb
-    .from('secure_chats')
-    .select('*')
-    .eq('receiver_type', params.receiverType);
-  if (params.bookingId) q = q.eq('booking_id', params.bookingId);
-  if (params.rfqId)     q = q.eq('rfq_id', params.rfqId);
-  const { data } = await q.order('created_at', { ascending: true });
-  return (data ?? []) as SecureChat[];
-}
-
-/** 결제 완료 후 해당 booking의 채팅 마스킹 일괄 해제 */
-export async function unmaskChatsForBooking(bookingId: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb
-    .from('secure_chats')
-    .update({ is_unmasked: true, unmasked_at: new Date().toISOString() } as never)
-    .eq('booking_id', bookingId)
-    .eq('is_unmasked', false);
-}
-
-// ── Voucher CRUD ────────────────────────────────────────────────
-
-export async function createVoucher(
-  data: Omit<Voucher, 'id' | 'created_at' | 'updated_at'>
-): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('vouchers')
-    .insert({ ...data, updated_at: new Date().toISOString() } as never)
-    .select()
-    .single();
-  if (error) { console.error('createVoucher', error); return null; }
-  return row as Voucher;
-}
-
-export async function getVoucher(id: string): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb.from('vouchers').select('*').eq('id', id).single();
-  return data ? (data as unknown as Voucher) : null;
-}
-
-export async function getVoucherByBooking(bookingId: string): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('vouchers')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-  return data ? (data as unknown as Voucher) : null;
-}
-
-export async function updateVoucher(
-  id: string,
-  patch: Partial<Omit<Voucher, 'id' | 'created_at'>>
-): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data, error } = await sb
-    .from('vouchers')
-    .update({ ...patch, updated_at: new Date().toISOString() } as never)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) { console.error('updateVoucher', error); return null; }
-  return data as Voucher;
-}
-
-/** 여행 종료일 +1일이 지났고 만족도 조사를 아직 보내지 않은 확정서 목록 */
-export async function getVouchersForReviewNotification(): Promise<Voucher[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const { data } = await sb
-    .from('vouchers')
-    .select('*')
-    .eq('status', 'sent')
-    .eq('review_notified', false)
-    .lte('end_date', yesterday.toISOString().slice(0, 10));
-  return (data ?? []) as Voucher[];
-}
+export {
+  createSecureChat, getSecureChats, unmaskChatsForBooking,
+  createVoucher, getVoucher, getVoucherByBooking, updateVoucher,
+  getVouchersForReviewNotification,
+} from './db/voucher';
+export type { SecureChat, Voucher } from './db/voucher';
 
 // ═══════════════════════════════════════════════════════════════
 // AdAccount / KeywordPerformance — 본문은 ./db/ads.ts 로 분리
