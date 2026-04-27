@@ -356,110 +356,8 @@ export async function approvePackage(packageId: string) {
   }
 }
 
-// Q&A 저장
-export async function saveInquiry(data: {
-  question: string;
-  inquiryType: string;
-  relatedPackages?: string[];
-  customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
-}) {
-  try {
-    const { data: result, error } = await supabase
-      .from('qa_inquiries')
-      .insert([
-        {
-          question: data.question,
-          inquiry_type: data.inquiryType,
-          related_packages: data.relatedPackages || [],
-          customer_name: data.customerName,
-          customer_email: data.customerEmail,
-          customer_phone: data.customerPhone,
-          status: 'pending',
-        },
-      ])
-      .select();
-
-    if (error) {
-      throw error;
-    }
-
-    return result?.[0];
-  } catch (error) {
-    console.error('문의 저장 실패:', error);
-    throw error;
-  }
-}
-
-// Q&A 조회
-export async function getInquiries(status?: string) {
-  try {
-    let query = supabase
-      .from('qa_inquiries')
-      .select(
-        `
-        *,
-        ai_responses (
-          id,
-          response_text,
-          ai_model,
-          created_at,
-          approved
-        )
-      `
-      )
-      .order('created_at', { ascending: false });
-
-    if (status) {
-      query = query.eq('status', status);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('문의 조회 실패:', error);
-    return [];
-  }
-}
-
-// AI 응답 저장
-export async function saveAIResponse(data: {
-  inquiryId: string;
-  responseText: string;
-  aiModel: string;
-  confidence: number;
-  usedPackages?: string[];
-}) {
-  try {
-    const { data: result, error } = await supabase
-      .from('ai_responses')
-      .insert([
-        {
-          inquiry_id: data.inquiryId,
-          response_text: data.responseText,
-          ai_model: data.aiModel,
-          confidence: data.confidence,
-          used_packages: data.usedPackages || [],
-        },
-      ])
-      .select();
-
-    if (error) {
-      throw error;
-    }
-
-    return result?.[0];
-  } catch (error) {
-    console.error('AI 응답 저장 실패:', error);
-    throw error;
-  }
-}
+// Q&A Inquiry / AI Response — 본문은 ./db/inquiry.ts 로 분리
+export { saveInquiry, getInquiries, saveAIResponse } from './db/inquiry';
 
 // god module 분할 — applyCommission 은 @/lib/package-pricing 로 이전.
 export { applyCommission } from './package-pricing';
@@ -994,55 +892,8 @@ export async function updateBooking(id: string, data: {
   } catch (error) { console.error('예약 수정 실패:', error); throw error; }
 }
 
-// 대시보드 통계
-export async function getDashboardStats() {
-  try {
-    const thisMonthStart = new Date();
-    thisMonthStart.setDate(1); thisMonthStart.setHours(0,0,0,0);
-
-    const [allBookingsRes, pendingRes, customersRes] = await Promise.all([
-      // 이번 달 출발일 기준 전체 예약 (삭제 안 된 것)
-      supabaseAdmin
-        .from('bookings')
-        .select('total_cost,total_price,paid_amount,status')
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .neq('status', 'cancelled')
-        .gte('departure_date', thisMonthStart.toISOString().split('T')[0]),
-      supabaseAdmin.from('bookings').select('id').in('status',['pending','confirmed']).or('is_deleted.is.null,is_deleted.eq.false').gte('departure_date', thisMonthStart.toISOString().split('T')[0]),
-      supabaseAdmin.from('customers').select('mileage,passport_expiry'),
-    ]);
-
-    const allBookings = allBookingsRes.data || [];
-    // 이번 달 총 판매가 (출발일 기준)
-    const totalSales = allBookings.reduce((s: number, b: any) => s + (b.total_price || 0), 0);
-    // 이번 달 원가 (결제완료 건만)
-    const completedBookings = allBookings.filter((b: any) => b.status === 'completed');
-    const totalCost = completedBookings.reduce((s: number, b: any) => s + (b.total_cost || 0), 0);
-    // 이번 달 총 입금액
-    const totalPaid = allBookings.reduce((s: number, b: any) => s + (b.paid_amount || 0), 0);
-    // 미수금 (잔금) = 총 판매가 - 입금액
-    const totalOutstanding = totalSales - totalPaid;
-
-    const customers = customersRes.data || [];
-    const totalMileage = customers.reduce((s: number, c: any) => s + (c.mileage || 0), 0);
-    const sixMonthsLater = new Date(); sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    const expiringPassports = customers.filter((c: any) =>
-      c.passport_expiry && new Date(c.passport_expiry) <= sixMonthsLater
-    ).length;
-
-    return {
-      totalSales,       // 이번 달 총 판매가
-      totalCost,        // 이번 달 원가 (결제완료)
-      totalPaid,        // 이번 달 입금 완료액
-      totalOutstanding, // 이번 달 미수금
-      margin: completedBookings.reduce((s: number, b: any) => s + ((b.total_price || 0) - (b.total_cost || 0)), 0),
-      activeBookings: pendingRes.data?.length || 0,
-      totalMonthBookings: allBookings.length,
-      totalMileage,
-      expiringPassports,
-    };
-  } catch (error) { console.error('대시보드 통계 실패:', error); return null; }
-}
+// 대시보드 V1 — 본문은 ./db/dashboard.ts 로 분리
+export { getDashboardStats } from './db/dashboard';
 
 // ────────────────────────────────────────────────────────────
 // 어필리에이트 ERP — 본문은 ./db/affiliate.ts 로 분리
@@ -1149,153 +1000,16 @@ export async function voidBooking(bookingId: string, reason?: string): Promise<v
 }
 
 // ─────────────────────────────────────────────────────────────────
-// 통합 대시보드 V3 (광고비 + 순마진 포함)
+// Dashboard V3 (광고비+순마진) — 본문은 ./db/dashboard.ts 로 분리
 // ─────────────────────────────────────────────────────────────────
-
-export interface MonthlyChartDataV3 {
-  month: string;
-  direct_sales: number;
-  affiliate_sales: number;
-  direct_margin: number;
-  affiliate_margin: number;
-  total_commission: number;
-  ad_spend_krw: number;   // 신규
-  net_margin: number;     // 신규: margins - commission - ad_spend
-}
-
-export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV3[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  try {
-    // 전체 기간 계산 (단 2개 쿼리로 통합)
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-    const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const fromStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
-    const toStr = `${endMonth.getFullYear()}-${String(endMonth.getMonth() + 1).padStart(2, '0')}-${endMonth.getDate()}`;
-
-    // 2개 쿼리 병렬 실행 (기존 12개 → 2개)
-    const [{ data: bookings }, { data: snapshots }] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('departure_date, total_price, margin, influencer_commission, booking_type')
-        .gte('departure_date', fromStr)
-        .lte('departure_date', toStr)
-        .neq('status', 'cancelled')
-        .eq('is_deleted', false),
-      supabase
-        .from('ad_performance_snapshots')
-        .select('snapshot_date, spend_krw')
-        .gte('snapshot_date', fromStr)
-        .lte('snapshot_date', toStr),
-    ]);
-
-    // 월별로 그룹핑 (클라이언트 사이드)
-    const bookingList = bookings ?? [];
-    const snapshotList = snapshots ?? [];
-
-    const result: MonthlyChartDataV3[] = [];
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
-      const monthBookings = bookingList.filter((b: any) => (b.departure_date ?? '').slice(0, 7) === monthLabel);
-      const direct = monthBookings.filter((b: any) => b.booking_type !== 'AFFILIATE');
-      const affiliate = monthBookings.filter((b: any) => b.booking_type === 'AFFILIATE');
-
-      const directMargin = direct.reduce((s: number, b: any) => s + (b.margin || 0), 0);
-      const affiliateMargin = affiliate.reduce((s: number, b: any) => s + (b.margin || 0), 0);
-      const totalCommission = affiliate.reduce((s: number, b: any) => s + (b.influencer_commission || 0), 0);
-
-      const adSpend = snapshotList
-        .filter((r: any) => (r.snapshot_date ?? '').slice(0, 7) === monthLabel)
-        .reduce((s: number, r: any) => s + (r.spend_krw || 0), 0);
-
-      const netMargin = directMargin + affiliateMargin - totalCommission - adSpend;
-
-      result.push({
-        month: monthLabel,
-        direct_sales: direct.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        affiliate_sales: affiliate.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        direct_margin: directMargin,
-        affiliate_margin: affiliateMargin,
-        total_commission: totalCommission,
-        ad_spend_krw: adSpend,
-        net_margin: netMargin,
-      });
-    }
-
-    return result;
-  } catch (error) {
-    console.error('V3 차트 통계 조회 실패:', error);
-    return [];
-  }
-}
+export { getDashboardStatsV3 } from './db/dashboard';
+export type { MonthlyChartDataV3 } from './db/dashboard';
 
 // ─────────────────────────────────────────────────────────────────
-// 고객 여정 타임라인 — message_logs
+// MessageLog — 본문은 ./db/message-log.ts 로 분리
 // ─────────────────────────────────────────────────────────────────
-
-export interface MessageLog {
-  id: string;
-  booking_id: string;
-  log_type: 'system' | 'kakao' | 'mock' | 'scheduler' | 'manual';
-  event_type: string;
-  title: string;
-  content?: string | null;
-  is_mock: boolean;
-  created_by: string;
-  created_at: string;
-}
-
-export async function getMessageLogs(bookingId: string): Promise<MessageLog[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data, error } = await sb
-    .from('message_logs')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: true });
-  if (error) {
-    // message_logs 테이블 미생성 시 조용히 빈 배열 반환 (PGRST205 방어)
-    console.warn('[message_logs] 조회 실패 (테이블 없음 가능성):', error.message);
-    return [];
-  }
-  return (data ?? []) as MessageLog[];
-}
-
-export async function createMessageLog(data: {
-  booking_id: string;
-  log_type: 'system' | 'kakao' | 'mock' | 'scheduler' | 'manual';
-  event_type: string;
-  title: string;
-  content?: string;
-  is_mock?: boolean;
-  created_by?: string;
-}): Promise<MessageLog | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('message_logs')
-    .insert({
-      booking_id: data.booking_id,
-      log_type:   data.log_type,
-      event_type: data.event_type,
-      title:      data.title,
-      content:    data.content ?? null,
-      is_mock:    data.is_mock ?? false,
-      created_by: data.created_by ?? 'system',
-    } as never)
-    .select()
-    .single();
-  if (error) {
-    // message_logs 테이블 미생성 시 null 반환 (앱 중단 없음)
-    console.warn('[message_logs] 생성 실패 (테이블 없음 가능성):', error.message);
-    return null;
-  }
-  return row as MessageLog;
-}
+export { getMessageLogs, createMessageLog } from './db/message-log';
+export type { MessageLog } from './db/message-log';
 
 // ============================================================
 // AI 컨시어지 — Cart / Transaction / ApiOrder / MockConfig
@@ -1337,65 +1051,11 @@ export type {
 
 
 // ============================================================
-// 공유 일정 (shared_itineraries)
 // ============================================================
-
-export interface SharedItinerary {
-  id:            string;
-  share_code:    string;
-  share_type:    'DYNAMIC' | 'FIXED';
-  // DYNAMIC
-  items?:        CartItem[];
-  search_query?: string;
-  // FIXED
-  product_id?:   string;
-  product_name?: string;
-  review_text?:  string;
-  // 공통
-  creator_name:  string;
-  view_count:    number;
-  expires_at:    string;
-  created_at:    string;
-}
-
-function generateShareCode(): string {
-  const part = () => Math.random().toString(36).slice(2, 6).toUpperCase();
-  return part() + part();
-}
-
-export async function createSharedItinerary(
-  data: Omit<SharedItinerary, 'id' | 'share_code' | 'view_count' | 'created_at' | 'expires_at'>
-): Promise<SharedItinerary | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const share_code = generateShareCode();
-  const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: row, error } = await sb
-    .from('shared_itineraries')
-    .insert([{ ...data, share_code, expires_at }] as never)
-    .select()
-    .single();
-  if (error) { console.error('공유 일정 생성 실패:', error); return null; }
-  return row as SharedItinerary;
-}
-
-export async function getSharedItinerary(code: string): Promise<SharedItinerary | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row } = await sb
-    .from('shared_itineraries')
-    .select('*')
-    .eq('share_code', code)
-    .gt('expires_at', new Date().toISOString())
-    .single();
-  if (!row) return null;
-  // view_count 증가 (fire-and-forget)
-  sb.from('shared_itineraries')
-    .update({ view_count: (row as SharedItinerary).view_count + 1 } as never)
-    .eq('share_code', code)
-    .then(() => {});
-  return row as SharedItinerary;
-}
+// 공유 일정 (shared_itineraries) — 본문은 ./db/shared-itinerary.ts
+// ============================================================
+export { createSharedItinerary, getSharedItinerary } from './db/shared-itinerary';
+export type { SharedItinerary } from './db/shared-itinerary';
 
 // ============================================================
 // Group RFQ — AI 단체여행 무인 중개 & 선착순 입찰 엔진
