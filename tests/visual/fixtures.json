@@ -203,5 +203,25 @@
     "id": "be961285-f2ed-43e1-9478-c8bce65e22f1",
     "title": "[힐링 리조트팩] 오키나와 4일 PKG",
     "product": "tp-oka-04-01"
+  },
+  {
+    "id": "e8a52d5f-cad6-4c55-a790-9f4f559ee341",
+    "title": "[카멜리아] 후쿠오카 시내숙박 2박3일 PKG",
+    "product": "tb-fuk-03-01"
+  },
+  {
+    "id": "75cf51fa-e43e-4cdc-abdb-710032ae413e",
+    "title": "[카멜리아] 정통 북큐슈 3박4일 PKG",
+    "product": "tb-fuk-04-01"
+  },
+  {
+    "id": "0c3da5c1-05e8-40a6-b540-61f00dc7913c",
+    "title": "[카멜리아] 큐슈 온천 2박3일 PKG",
+    "product": "tb-fuk-03-02"
+  },
+  {
+    "id": "a947d7c0-952c-4def-9285-0ff267bc6019",
+    "title": "[카멜리아] 소도시+후쿠오카 3박4일 PKG",
+    "product": "tb-fuk-04-02"
   }
 ]
