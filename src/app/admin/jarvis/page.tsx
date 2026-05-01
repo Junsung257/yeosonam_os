@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ActionCard } from './components/ActionCard'
 import AgentActionsPanel from './components/AgentActionsPanel'
+import JarvisRagStatusCard from '@/components/admin/JarvisRagStatusCard'
 
 const AGENT_LABELS: Record<string, string> = {
   operations: '운영',
@@ -140,6 +141,10 @@ export default function JarvisPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
+      {/* RAG 색인 상태 */}
+      <div className="mb-4">
+        <JarvisRagStatusCard />
+      </div>
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center text-white font-bold text-sm">J</div>

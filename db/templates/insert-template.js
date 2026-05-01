@@ -72,6 +72,16 @@ function meal(b, l, d, bn, ln, dn) {
 //   처럼 **중간에** 괄호로 묶인 콤마 항목 + 괄호 뒤 추가 텍스트가 있으면, 단순 콤마 split이 괄호를 깨뜨려
 //   "▶호이안 구시가지 (풍흥의 집" / "▶관운장사당 등) 유네스코 지정 전통거리 관광" 같은 손상된 항목을 만든다.
 //   해결: 괄호 위치에 관계없이 (...) 내부의 콤마와 외부 콤마를 분리해서 처리.
+// W30 (확장 — 2026-04-28): 서술/체험/연혁 키워드. 괄호 안/밖 동일 적용.
+//   - 단위·연도: "234M", "2000년"
+//   - 명소 수식: "A급", "최고", "유명한", "신을 모신", "단장한", "자리잡은", "꽃놀이 명소"
+//   - 체험·감상 동사: "체험", "관람", "포함", "맛보기", "감상"
+//   - 관계절/서술 어미: "~한 ", "~된 ", "~는 ", "~의 " 가 콤마 직전에 오면 서술문 가능성 高
+const DESCRIPTIVE_KW = /(\d+\s*년|\d+\s*[Mm](?![a-zA-Z])|A급|최고|불리는|상징|역사|시대|높이|체험|관람|포함|맛보기|감상|중\s*한\s*명|단장한|단장된|모신|자리잡은|위치한|유명한|이루어진|꾸며진|꽃놀이|명소|풍경|배경)/;
+
+// 콤마 직전이 서술 어미 (한/된/는/의 등) 인지 — 명사 종결이면 OK 분리
+const HAS_VERB_ENDING_BEFORE_COMMA = /(?:[한된는의이가을를에로]|단장한|단장된|모신|이루어진|꾸며진|위치한)\s*[,，]/;
+
 function splitScheduleItems(scheduleItems) {
   const result = [];
   for (const item of scheduleItems) {
@@ -100,11 +110,6 @@ function splitScheduleItems(scheduleItems) {
 
       // ─── W30 ERR-HET-render-over-split@2026-04-21: 과다 분리 방어 ───
       // 괄호 안이 "서브 관광지 리스트" 가 아니라 "체험 리스트 / 부연 설명 / 연혁" 이면 분리 skip.
-      // 판정:
-      //   (a) suffix 가 비어 있으면 → 설명/체험 가능성 高 (호이안 케이스는 괄호 뒤에 "유네스코 지정 전통거리 관광" 같은 suffix 가 있음)
-      //   (b) 괄호 안에 서술/체험/연혁 키워드 감지 (년 역사, M 높이, A급, 체험, 관람 등)
-      // 둘 중 하나라도 해당되면 activity 통째 유지.
-      const DESCRIPTIVE_KW = /(\d+\s*년|\d+\s*[Mm](?![a-zA-Z])|A급|불리는|상징|역사|시대|높이|체험|관람|포함|맛보기|감상|중\s*한\s*명)/;
       const hasDescriptive = DESCRIPTIVE_KW.test(innerCSV);
       if (!suffix || hasDescriptive) {
         result.push(item);
@@ -122,7 +127,18 @@ function splitScheduleItems(scheduleItems) {
       continue;
     }
 
-    // 2) 괄호 없는 일반 콤마 분리 (기존 동작)
+    // 2) 괄호 없는 일반 콤마 분리
+    // ─── W31 (ERR-FUK-camellia-overcorrect@2026-04-28): 괄호 없는 서술 콤마 보호 ───
+    //   원문 "▶높이 234M, 8000장의 유리로 단장한 후쿠오카 타워 관광" 같은 단일 명소 서술문이
+    //   "▶높이 234M" / "▶8000장의 유리로 단장한 후쿠오카 타워 관광" 으로 잘못 분리되던 사고 방지.
+    //   휴리스틱:
+    //     (a) DESCRIPTIVE_KW 가 activity 전체에 매칭 → 단일 명소 서술 가능성 高 → 분리 skip
+    //     (b) 콤마 직전이 서술 어미 (~한,/~된,/~의, 등) → 분리 skip
+    if (DESCRIPTIVE_KW.test(body) || HAS_VERB_ENDING_BEFORE_COMMA.test(body)) {
+      result.push(item);
+      continue;
+    }
+
     const parts = body.split(/[,，]\s*/);
     if (parts.length <= 1) { result.push(item); continue; }
     for (const partText of parts) {
@@ -133,22 +149,74 @@ function splitScheduleItems(scheduleItems) {
   return result;
 }
 
-// ─── display_title 자동 생성 ─────────────────────────────────
+// ─── display_title / hero_tagline 자동 생성 ─────────────────────────────────
+//
+// 디자인 결정 (2026-04-29): 모바일 hero 영역의 클릭률·스캔성을 위해
+// 단일 `display_title`(+로 잇는 monolith)을 두 필드로 분리.
+//
+//   ① display_title  → 짧은 헤드라인 (8~14자, h1 큰 글씨)
+//                      예: "프리미엄 호화호특 4박5일"
+//   ② hero_tagline   → 한 줄 후킹 (≤40자, h1 아래 sub)
+//                      예: "부산 직항 전세기 · 기사·가이드팁 전부 포함"
+//
+// 셀링포인트 칩은 product_highlights 그대로 재활용 → 중복 노출 제거.
+// 레퍼런스: Klook / GetYourGuide / Airbnb / Schema.org TouristTrip(name vs description)
+//
 function generateDisplayTitle(pkg) {
   const type = (pkg.product_type || '').toLowerCase();
   let prefix = '';
-  if (type.includes('노쇼핑') && type.includes('노팁') && type.includes('노옵션')) prefix = '추가비용 없는';
+  if (type.includes('노쇼핑') && type.includes('노팁') && type.includes('노옵션')) prefix = '추가비용 ZERO';
   else if (type.includes('노팁') && type.includes('노옵션')) prefix = '팁·옵션 걱정없는';
   else if (type.includes('노쇼핑')) prefix = '쇼핑 걱정없는';
   else if (type.includes('고품격')) prefix = '프리미엄';
-  else if (type.includes('품격')) prefix = '5성급 검증된';
+  else if (type.includes('품격')) prefix = '5성급 검증';
   else if (type.includes('실속')) prefix = '핵심만 담은';
+
+  const dur = (pkg.nights && pkg.duration) ? `${pkg.nights}박${pkg.duration}일`
+            : pkg.duration ? `${Math.max(0, pkg.duration - 1)}박${pkg.duration}일`
+            : '';
+  return [prefix, pkg.destination, dur].filter(Boolean).join(' ');
+}
+
+// 셀링포인트 칩에서 가장 강한 1~2개를 골라 한 줄 후킹으로 합성.
+// 규칙:
+//  - 노쇼핑/노팁/노옵션 등 product_type 중복 노이즈 스킵
+//  - 한 칩이 길면 (a) 끝의 괄호 부속절 제거 → (b) ' + '의 첫 절만 → (c) ' — '·'/' 다음 절만
+//    (괄호 안쪽 가운뎃점 "·"은 보존)
+//  - 두 개를 ' · '로 잇되, 합쳐서 50자 넘으면 첫 칩만 사용
+//  - 최종 길이 60자 초과 시 50자 + '…' 절단
+function generateHeroTagline(pkg) {
   const skipWords = ['노쇼핑', '노팁', '노옵션', '노팁노옵션'];
-  const points = (pkg.product_highlights || [])
-    .filter(h => !skipWords.some(w => h.includes(w)))
-    .slice(0, 3);
-  const base = [prefix, pkg.destination, `${pkg.nights}박${pkg.duration}일`].filter(Boolean).join(' ');
-  return points.length ? `${base} — ${points.join(' + ')}` : base;
+  const raw = (pkg.product_highlights || [])
+    .filter(h => h && typeof h === 'string')
+    .filter(h => !skipWords.some(w => h.includes(w)));
+
+  const TARGET = 30; // 한 칩 목표 길이 (모바일 1줄 ≈ 한국어 16~20자라서 보수적)
+  const trim = (s) => {
+    let t = s.trim();
+    // (a) 끝의 괄호 부속절 제거 ("… (품격 대비 업그레이드)" → "…")
+    if (t.length > TARGET) {
+      t = t.replace(/\s*[\(（][^\)）]*[\)）]\s*$/, '').trim();
+    }
+    // (b) " + " 로 나뉜 첫 절만 (highlights에서 자주 쓰는 concatenator)
+    if (t.length > TARGET && / \+ /.test(t)) {
+      t = t.split(' + ')[0].trim();
+    }
+    // (c) 대시(— – 「  ─) 또는 어퍼-스페이스 dot(' · ') 이후 절단 — 괄호 안 "·"는 영향 없음
+    if (t.length > TARGET) {
+      const m = t.match(/^(.{8,}?)\s*[—–─·]\s+/);
+      if (m) t = m[1].trim();
+    }
+    return t;
+  };
+
+  const parts = raw.slice(0, 2).map(trim).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let line = parts.join(' · ');
+  if (line.length > 50 && parts.length > 1) line = parts[0];
+  if (line.length > 60) line = line.slice(0, 50).trim() + '…';
+  return line || null;
 }
 
 // ─── price_tiers → price_dates 변환 ─────────────────────────
@@ -348,7 +416,8 @@ function validatePackage(pkg) {
   // W10. product_highlights 비어있음
   if (!pkg.product_highlights || pkg.product_highlights.length === 0) warnings.push('product_highlights 비어있음 — 포스터 셀링포인트 없음');
 
-  // W11. 콤마 포함 관광지 activity (매칭 저하 — splitScheduleItems가 자동 처리하지만 원본 기록)
+  // W11. 콤마 포함 ▶ activity (안내성 — splitScheduleItems 가 자동 분리하거나 W31 휴리스틱이 단일 명소로 보호)
+  // [W11] 접두사: post-audit 의 INFO_RULES 가 INFO 로 분류 (audit_status='info' → 자동 승인)
   if (Array.isArray(days)) {
     let commaCount = 0;
     days.forEach(d => {
@@ -358,7 +427,50 @@ function validatePackage(pkg) {
         }
       });
     });
-    if (commaCount > 0) warnings.push(`콤마 포함 관광지 activity ${commaCount}건 감지 → splitScheduleItems()가 자동 분리합니다`);
+    if (commaCount > 0) warnings.push(`[W11] 콤마 포함 ▶ activity ${commaCount}건 — splitScheduleItems 가 자동 분리하거나 W31 휴리스틱이 단일 명소로 보호 (안내성)`);
+  }
+
+  // ── 원문 대조 검증 (Semantic Validation) — rawText 사전 선언 ────
+  // (W13 이하 룰들과 공유. raw_text가 있을 때만 의미적 룰 실행. Error Registry의 ERR ID로 추적.)
+  const rawText = pkg.raw_text || '';
+
+  // W32 — ERR-FUK-camellia-overcorrect@2026-04-28: schedule + inclusions verbatim substring 검증
+  // 환각 변환 (예: "태재부" → "다자이후") + 환각 보강 (예: "왕복훼리비" → "왕복 훼리비 (카멜리아)") 자동 검출.
+  // 휴리스틱: 활동/포함 텍스트의 공백 제거 normalize 가 raw_text 의 공백 제거 normalize 의 substring 인지 검사.
+  // 띄어쓰기 차이는 흡수, 단어 추가/변환은 검출. notices_parsed 는 의역 허용 (검증 제외 — false-positive 회피).
+  if (rawText && rawText.length >= 50) {
+    const normalize = (s) => (s || '').replace(/\s+/g, '');
+    const rawN = normalize(rawText);
+    const violations = [];
+
+    // schedule ▶ activity 검증
+    if (Array.isArray(days)) {
+      for (const d of days) {
+        for (const s of (d.schedule || [])) {
+          if (s.type !== 'normal' || !s.activity?.startsWith('▶')) continue;
+          const actBody = s.activity.slice(1).trim();
+          const actN = normalize(actBody);
+          if (actN.length < 4) continue;  // 너무 짧으면 false-positive 위험
+          if (!rawN.includes(actN)) {
+            violations.push(`Day${d.day} schedule "${actBody.slice(0, 60)}${actBody.length > 60 ? '…' : ''}"`);
+          }
+        }
+      }
+    }
+
+    // inclusions 검증 (한국어 토큰 포함된 항목만)
+    for (const inc of (pkg.inclusions || [])) {
+      if (typeof inc !== 'string' || inc.length < 2) continue;
+      if (!/[가-힣]/.test(inc)) continue;  // 영문/숫자 only 는 false-positive 위험
+      const incN = normalize(inc);
+      if (!rawN.includes(incN)) {
+        violations.push(`inclusions "${inc}"`);
+      }
+    }
+
+    if (violations.length > 0) {
+      warnings.push(`[W32] verbatim 위반 의심 ${violations.length}건 (raw_text substring 매칭 실패) — 환각 변환·보강 검출. ${violations.slice(0, 3).join(' / ')}${violations.length > 3 ? ` (외 ${violations.length - 3}건)` : ''}`);
+    }
   }
 
   // W12. itinerary_data.highlights와 top-level inclusions/excludes 불일치
@@ -367,9 +479,7 @@ function validatePackage(pkg) {
     warnings.push(`itinerary_data.highlights.inclusions(${hlInc.length}건) ≠ top-level inclusions(${pkg.inclusions.length}건) — 불일치`);
   }
 
-  // ── 원문 대조 검증 (Semantic Validation) ───────────────────
-  // raw_text가 있을 때만 실행. Error Registry의 ERR ID로 추적.
-  const rawText = pkg.raw_text || '';
+  // (rawText 는 위에서 W32 와 함께 선언됨)
 
   // W13 — ERR-20260418-01 (min_participants 10→4 조작 방지)
   // 원문에 "N명 이상"이 있으면 pkg.min_participants와 대조
@@ -885,6 +995,116 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
         continue;
       }
 
+      // ─── P2-#4-C + Step 2 (Per-field confidence): Pre-INSERT 교차검증 gate ─────────
+      //   Sonnet 정규화 결과를 Gemini Flash 가 비판적으로 검토 → 환각 의심 시 INSERT 차단/강등.
+      //   추가: 의심 필드별 confidence 점수를 field_confidences jsonb 에 저장 → 어드민 빨간색 highlight.
+      //   비용: ~$0.0003/건 (Gemini Flash). 사고 방지 ROI 100x+.
+      //   SKIP_PRE_INSERT_GATE=1 로 우회 가능 (테스트/긴급 등록).
+      if (!process.env.SKIP_PRE_INSERT_GATE && pkg.raw_text && pkg.raw_text.length >= 50) {
+        try {
+          const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+          if (geminiKey) {
+            const { GoogleGenerativeAI } = require('@google/generative-ai');
+            const genAI = new GoogleGenerativeAI(geminiKey);
+            const judge = genAI.getGenerativeModel({
+              model: 'gemini-2.5-flash',
+              systemInstruction: `너는 여행 상품 정규화 결과 감사관이다. 다른 LLM 추출 결과를 원문과 대조해 환각/축약을 찾아라. CRITICAL=금액·인원·날짜·항공편 환각, HIGH=축약·verbatim 위반.`,
+              generationConfig: {
+                responseMimeType: 'application/json', temperature: 0.0,
+                responseSchema: {
+                  type: 'object',
+                  properties: {
+                    recommendation: { type: 'string', enum: ['pass', 'review', 'reject'] },
+                    overall_confidence: { type: 'number' },
+                    suspicious_critical: { type: 'integer' },
+                    suspicious_fields: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          field_path: { type: 'string' },
+                          score: { type: 'number' },
+                          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+                          reason: { type: 'string' },
+                        },
+                        required: ['field_path', 'score', 'severity', 'reason'],
+                      },
+                    },
+                    reasoning: { type: 'string' },
+                  },
+                  required: ['recommendation', 'overall_confidence', 'suspicious_critical', 'reasoning'],
+                },
+              },
+            });
+
+            // 핵심 필드만 비교 (토큰 절약)
+            const normalizedSummary = {
+              title: pkg.title,
+              destination: pkg.destination,
+              duration: pkg.duration,
+              min_participants: pkg.min_participants,
+              ticketing_deadline: pkg.ticketing_deadline,
+              inclusions: pkg.inclusions,
+              excludes: pkg.excludes,
+              accommodations: pkg.accommodations,
+              flight_out: pkg.itinerary_data?.meta?.flight_out,
+              flight_in: pkg.itinerary_data?.meta?.flight_in,
+              surcharges: pkg.surcharges,
+            };
+
+            const judgeRes = await judge.generateContent([
+              `## 원문\n${pkg.raw_text.slice(0, 8000)}`,
+              `\n## 추출 결과 핵심 필드\n${JSON.stringify(normalizedSummary).slice(0, 6000)}`,
+              '\n위 추출 결과의 환각·축약·verbatim 위반을 평가하라.',
+            ].join('\n'));
+            const verdict = JSON.parse(judgeRes.response.text());
+
+            const conf = Number(verdict.overall_confidence) || 0;
+            const crit = Number(verdict.suspicious_critical) || 0;
+
+            // Per-field confidence 저장 (Step 2) — INSERT payload 에 첨부
+            const fieldsObj = {};
+            for (const sf of (verdict.suspicious_fields || [])) {
+              if (!sf?.field_path) continue;
+              fieldsObj[sf.field_path] = {
+                score: Number(sf.score) || 0,
+                severity: sf.severity || 'medium',
+                reason: sf.reason || '',
+              };
+            }
+            pkg.field_confidences = {
+              overall_confidence: conf,
+              fields: fieldsObj,
+              recommendation: verdict.recommendation || 'pass',
+              reasoning: verdict.reasoning || '',
+              validated_at: new Date().toISOString(),
+              validator: 'gemini-2.5-flash',
+            };
+
+            if (verdict.recommendation === 'reject' || crit >= 1 || conf < 0.5) {
+              console.error(`\n🚨 [Pre-INSERT Gate] REJECT: ${pkg.title}`);
+              console.error(`   confidence=${conf.toFixed(2)} CRITICAL=${crit}`);
+              console.error(`   ${verdict.reasoning}`);
+              console.error('   → 이 상품은 INSERT 차단됩니다 (사장님 검토 후 SKIP_PRE_INSERT_GATE=1 로 강제 등록 가능).\n');
+              skipped.push({ title: pkg.title, reason: `Pre-INSERT 교차검증 차단 (conf ${conf.toFixed(2)})` });
+              continue;
+            }
+            if (verdict.recommendation === 'review' || conf < 0.7) {
+              console.log(`\n⚠️  [Pre-INSERT Gate] REVIEW: ${pkg.title} — confidence=${conf.toFixed(2)}`);
+              console.log(`   ${verdict.reasoning}`);
+              console.log('   → INSERT 진행하되 audit_status=warnings 강등.');
+              // pkg.audit_status 는 post-audit 단계에서 설정됨. 여기서는 표식만.
+              pkg._pre_insert_review = true;
+            } else {
+              console.log(`✅ [Pre-INSERT Gate] PASS: ${pkg.title} (conf ${conf.toFixed(2)})`);
+            }
+          }
+        } catch (eGate) {
+          // gate 실패는 INSERT 막지 않음 (안전 fallback)
+          console.warn(`⚠️  [Pre-INSERT Gate] 호출 실패 — 게이트 무시: ${eGate.message}`);
+        }
+      }
+
       const dup = findDuplicate(pkg, existingPkgs);
 
       if (dup) {
@@ -935,6 +1155,7 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
       toInsert.push({
         title: pkg.title,
         display_title: pkg.display_title || generateDisplayTitle(pkg),
+        hero_tagline: pkg.hero_tagline || generateHeroTagline(pkg),
         destination: pkg.destination,
         country: pkg.country,
         category: pkg.category || 'package',
@@ -975,6 +1196,8 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
         parser_version: pkg.parser_version || PARSER_VERSION,
         // W-final F1 — Agent self-audit 결과 (있으면 저장, 없으면 null → post-audit 에서 채워짐)
         agent_audit_report: pkg.agent_audit_report || null,
+        // Step 2 (Per-field confidence) — Pre-INSERT cross-validate 결과
+        field_confidences: pkg.field_confidences || null,
         filename: pkg.filename || 'manual',
         file_type: pkg.file_type || 'manual',
         confidence: pkg.confidence ?? 0.9,
@@ -1094,6 +1317,209 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
             console.log(`   npm run dev (다른 터미널) → node db/generate_visual_baseline.js ${insertedIds.join(' ')}`);
           }
         }
+
+        // 🗺️ 7-F. unmatched_activities 자동 적재 — 등록 직후 서버사이드
+        //   기존: 랜딩 페이지 로드 시 사용자 브라우저에서 적재 (지연 + 사용자 의존)
+        //   개선: 등록 직후 schedule activity 추출 → attractions 매칭 → 미매칭만 unmatched_activities INSERT
+        //   효과: 사장님이 /admin/attractions/unmatched 페이지에서 즉시 1클릭 alias 적립 가능 (Compound improvement 가속)
+        //   비용: 0 (DB 호출만)
+        //   SKIP_UNMATCHED_INGEST=1 로 우회
+        if (!process.env.SKIP_UNMATCHED_INGEST) {
+          try {
+            console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('  🗺️ Step 7-F: unmatched_activities 자동 적재');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+            // 1) 모든 등록된 패키지의 ▶ activity 수집
+            const activityRecords = [];
+            for (const pkg of toInsert) {
+              const days = Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : (pkg.itinerary_data?.days || []);
+              const insertedRow = (await sb
+                .from('travel_packages')
+                .select('id, title')
+                .eq('short_code', pkg.short_code)
+                .limit(1)).data?.[0];
+              if (!insertedRow) continue;
+
+              for (const day of days) {
+                for (const item of (day?.schedule || [])) {
+                  if (!item || item.type !== 'normal' && item.type !== 'optional') continue;
+                  const act = String(item.activity || '').trim();
+                  // ▶ 마커가 있는 관광지·체험·투어만 매칭 시도
+                  if (!act.startsWith('▶') || act.length < 4) continue;
+                  activityRecords.push({
+                    activity: act,
+                    package_id: insertedRow.id,
+                    package_title: insertedRow.title,
+                    day_number: day.day || null,
+                    country: pkg.country || null,
+                    region: pkg.destination || null,
+                  });
+                }
+              }
+            }
+
+            if (activityRecords.length === 0) {
+              console.log('  ℹ️  ▶ 마커 activity 없음 — skip');
+            } else {
+              // 2) attractions 전체 조회 (이번 패키지들의 destination/country 범위)
+              const regions = [...new Set(activityRecords.map(r => r.region).filter(Boolean))];
+              const countries = [...new Set(activityRecords.map(r => r.country).filter(Boolean))];
+              let attrQuery = sb.from('attractions').select('id, name, aliases, region, country');
+              if (regions.length > 0 || countries.length > 0) {
+                const orParts = [
+                  ...regions.map(r => `region.eq.${r}`),
+                  ...countries.map(c => `country.eq.${c}`),
+                ];
+                attrQuery = attrQuery.or(orParts.join(','));
+              }
+              const { data: attractions } = await attrQuery.limit(2000);
+              const candidates = attractions || [];
+
+              // 3) 매칭 시도 — name 또는 aliases 의 부분 일치
+              const cleanText = (t) => String(t || '')
+                .replace(/^[▶☆※♣*]+\s*/, '')
+                .replace(/[(\[].*?[)\]]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .toLowerCase()
+                .trim();
+
+              const matchAttr = (act) => {
+                const clean = cleanText(act);
+                if (!clean) return null;
+                for (const a of candidates) {
+                  const terms = [a.name, ...(a.aliases || [])].filter(Boolean);
+                  for (const t of terms) {
+                    const tc = String(t).toLowerCase().trim();
+                    if (tc.length < 2) continue;
+                    if (clean.includes(tc) || tc.includes(clean)) return a;
+                  }
+                }
+                return null;
+              };
+
+              // 4) 미매칭 항목만 추출 (중복 activity 제거 + occurrence_count 누적)
+              const unmatchedMap = new Map();
+              for (const r of activityRecords) {
+                const matched = matchAttr(r.activity);
+                if (matched) continue; // 매칭 성공 → unmatched 큐 적재 안 함
+                const key = r.activity;
+                if (unmatchedMap.has(key)) {
+                  unmatchedMap.get(key).occurrence_count += 1;
+                } else {
+                  unmatchedMap.set(key, { ...r, occurrence_count: 1, status: 'pending' });
+                }
+              }
+
+              if (unmatchedMap.size === 0) {
+                console.log(`  ✅ ${activityRecords.length}개 activity 모두 attractions 매칭 성공`);
+              } else {
+                // 5) RPC 우선, 실패 시 fallback upsert
+                const items = [...unmatchedMap.values()];
+                let saved = 0;
+                for (const it of items) {
+                  try {
+                    const { error: rpcErr } = await sb.rpc('upsert_unmatched_activity', {
+                      p_activity: it.activity,
+                      p_package_id: it.package_id,
+                      p_package_title: it.package_title,
+                      p_day_number: it.day_number,
+                      p_country: it.country,
+                      p_region: it.region,
+                    }).single();
+                    if (rpcErr) throw rpcErr;
+                    saved++;
+                  } catch {
+                    const { error: e2 } = await sb
+                      .from('unmatched_activities')
+                      .upsert(it, { onConflict: 'activity' });
+                    if (!e2) saved++;
+                  }
+                }
+                console.log(`  📊 매칭 ${activityRecords.length - unmatchedMap.size}/${activityRecords.length}건 / 미매칭 ${saved}건 unmatched_activities 적재`);
+                console.log(`  → /admin/attractions/unmatched 에서 1클릭 alias 적립 (다음 등록부터 자동 매칭)`);
+              }
+            }
+          } catch (eIngest) {
+            console.warn(`⚠️  Step 7-F 실패 (무시 — 랜딩 페이지가 백필): ${eIngest.message}`);
+          }
+        }
+
+        // 🧠 7-E. EPR few-shot 풀에 즉시 합류 — raw_text 임베딩 자동 생성
+        //   Rubin et al. NAACL 2022 (arXiv 2112.08633) — 등록할수록 다음 추출이 똑똑해짐.
+        //   travel_packages.embedding(vector 1536d) 컬럼 + HNSW 인덱스 + Gemini gemini-embedding-001.
+        //   실패해도 cron(/api/cron/embed-products) 이 백필하므로 프로세스 막지 않음.
+        if (!process.env.SKIP_EPR_EMBEDDING) {
+          try {
+            const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+            if (geminiKey) {
+              console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+              console.log('  🧠 Step 7-E: EPR few-shot 풀 합류 (raw_text 임베딩)');
+              console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+              const EMBED_DIM = 1536;
+              const EMBED_MODEL = 'gemini-embedding-001';
+
+              for (const pkg of (toInsert || [])) {
+                if (!pkg.raw_text || pkg.raw_text.length < 50) continue;
+                const insertedRow = (await sb
+                  .from('travel_packages')
+                  .select('id, embedding')
+                  .eq('short_code', pkg.short_code)
+                  .limit(1)).data?.[0];
+                if (!insertedRow || insertedRow.embedding) continue;
+
+                const text = [
+                  pkg.title,
+                  pkg.destination ? `목적지: ${pkg.destination}` : null,
+                  pkg.country ? `국가: ${pkg.country}` : null,
+                  pkg.duration ? `기간: ${pkg.duration}일` : null,
+                  pkg.airline ? `항공사: ${pkg.airline}` : null,
+                  pkg.product_summary || null,
+                  pkg.raw_text.slice(0, 2500),
+                ].filter(Boolean).join('\n');
+
+                const res = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent?key=${geminiKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      model: `models/${EMBED_MODEL}`,
+                      content: { parts: [{ text: text.slice(0, 8000) }] },
+                      taskType: 'RETRIEVAL_DOCUMENT',
+                      outputDimensionality: EMBED_DIM,
+                    }),
+                  }
+                );
+                if (!res.ok) {
+                  console.log(`  ⚠️  ${pkg.short_code} 임베딩 실패 (HTTP ${res.status})`);
+                  continue;
+                }
+                const json = await res.json();
+                const values = json?.embedding?.values;
+                if (!Array.isArray(values) || values.length !== EMBED_DIM) {
+                  console.log(`  ⚠️  ${pkg.short_code} 임베딩 응답 형식 오류`);
+                  continue;
+                }
+                const { error: embErr } = await sb
+                  .from('travel_packages')
+                  .update({ embedding: values })
+                  .eq('id', insertedRow.id);
+                if (embErr) {
+                  console.log(`  ⚠️  ${pkg.short_code} 임베딩 UPDATE 실패: ${embErr.message}`);
+                } else {
+                  console.log(`  ✅ ${pkg.short_code} 임베딩 저장 (다음 등록 시 EPR demo 풀 합류)`);
+                }
+                await new Promise(r => setTimeout(r, 200)); // Rate limit 방어
+              }
+            } else {
+              console.log('\nℹ️  Step 7-E 건너뜀: GOOGLE_AI_API_KEY 미설정');
+            }
+          } catch (eEpr) {
+            console.log(`⚠️  Step 7-E 임베딩 실패 (무시 — cron 이 백필): ${eEpr.message}`);
+          }
+        }
       } catch (e) {
         console.log(`⚠️  감사/승인/덤프/baseline 실행 실패: ${e.message}`);
       }
@@ -1107,6 +1533,7 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
     // 외부에서도 사용 가능하도록 유틸 노출
     helpers: { flight, normal, optional, shopping, train, meal },
     generateDisplayTitle,
+    generateHeroTagline,
     tiersToDatePrices,
     findDuplicate,
     isSamePriceDates,
@@ -1114,4 +1541,4 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
   };
 }
 
-module.exports = { createInserter, initSupabase, loadOperators, tiersToDatePrices, generateDisplayTitle, extractDatesFromTiers, checkDateOverlap, findDuplicate, isSamePriceDates, isSameDeadline, validatePackage, splitScheduleItems };
+module.exports = { createInserter, initSupabase, loadOperators, tiersToDatePrices, generateDisplayTitle, generateHeroTagline, extractDatesFromTiers, checkDateOverlap, findDuplicate, isSamePriceDates, isSameDeadline, validatePackage, splitScheduleItems, computeRawHash };

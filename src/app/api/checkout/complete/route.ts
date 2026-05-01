@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { earnMileage } from '@/lib/mileage-service';
+import { signGuidebookToken } from '@/lib/guidebook-token';
 
 /**
  * POST /api/checkout/complete
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── STEP 3. Voucher 생성 (원시 데이터 제공 시) ────────────────
 
   let voucherId: string | null = null;
+  let guidebookUrl: string | null = null;
 
   if (body.raw_voucher_data && isSupabaseConfigured) {
     try {
@@ -137,6 +139,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  const guideToken = signGuidebookToken({
+    bookingId: booking_id,
+    voucherId,
+    sessionId: session_id,
+  });
+  guidebookUrl = `${request.nextUrl.origin}/m/guide/${guideToken}`;
+
   // ── 응답 — 원가(base_cost) 절대 미포함 ───────────────────────
 
   return NextResponse.json({
@@ -147,6 +156,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? { earned: mileageResult.earned, transaction_id: mileageResult.transaction_id }
       : null,
     voucher_id: voucherId,
+    guidebook_url: guidebookUrl,
     // net_profit, base_cost, allocated_ad_spend → 클라이언트 응답 미포함 (서버 내부 전용)
   });
 }

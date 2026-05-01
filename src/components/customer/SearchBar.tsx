@@ -49,11 +49,11 @@ export default function SearchBar({ initialQ = '', initialMonth = '', initialPri
   return (
     <form
       onSubmit={submit}
-      className="bg-white border border-gray-200 rounded-2xl md:rounded-full shadow-sm hover:shadow-md transition-shadow p-2 md:p-1.5 flex flex-col md:flex-row gap-2 md:gap-0 md:items-center"
+      className="bg-white border border-[#E5E7EB] rounded-[16px] md:rounded-full shadow-card hover:shadow-card-hover transition-shadow p-2 md:p-1.5 flex flex-col md:flex-row gap-2 md:gap-0 md:items-center"
     >
       {/* 자유 검색 */}
-      <label className="flex-1 flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 md:border-r md:border-gray-200">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
+      <label className="flex-1 flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 md:border-r md:border-[#F2F4F6]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#8B95A1] shrink-0">
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -63,18 +63,18 @@ export default function SearchBar({ initialQ = '', initialMonth = '', initialPri
           value={q}
           onChange={e => setQ(e.target.value)}
           placeholder="목적지 검색 (예: 장가계, 다낭)"
-          className="flex-1 min-w-0 outline-none text-sm md:text-base placeholder:text-gray-400 bg-transparent"
+          className="flex-1 min-w-0 outline-none text-[14px] md:text-[14px] text-[#191F28] placeholder:text-[#8B95A1] bg-transparent tracking-[-0.02em]"
         />
       </label>
 
       {/* 출발월 */}
-      <label className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 md:border-r md:border-gray-200">
-        <span className="text-xs md:text-sm font-medium text-gray-500 shrink-0">출발월</span>
+      <label className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 md:border-r md:border-[#F2F4F6]">
+        <span className="text-[12px] md:text-[13px] font-medium text-[#8B95A1] shrink-0">출발월</span>
         <select
           name="month"
           value={month}
           onChange={e => setMonth(e.target.value)}
-          className="flex-1 min-w-0 outline-none text-sm md:text-base bg-transparent appearance-none cursor-pointer"
+          className="flex-1 min-w-0 outline-none text-[14px] text-[#191F28] bg-transparent appearance-none cursor-pointer tracking-[-0.02em]"
         >
           <option value="">전체</option>
           {MONTHS.map(m => (
@@ -85,12 +85,12 @@ export default function SearchBar({ initialQ = '', initialMonth = '', initialPri
 
       {/* 가격대 */}
       <label className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5">
-        <span className="text-xs md:text-sm font-medium text-gray-500 shrink-0">가격</span>
+        <span className="text-[12px] md:text-[13px] font-medium text-[#8B95A1] shrink-0">가격</span>
         <select
           name="priceMax"
           value={priceMax}
           onChange={e => setPriceMax(e.target.value)}
-          className="flex-1 min-w-0 outline-none text-sm md:text-base bg-transparent appearance-none cursor-pointer"
+          className="flex-1 min-w-0 outline-none text-[14px] text-[#191F28] bg-transparent appearance-none cursor-pointer tracking-[-0.02em]"
         >
           {PRICE_OPTIONS.map(p => (
             <option key={p.value} value={p.value}>{p.label}</option>
@@ -98,10 +98,10 @@ export default function SearchBar({ initialQ = '', initialMonth = '', initialPri
         </select>
       </label>
 
-      {/* 검색 버튼 */}
+      {/* 검색 버튼 — 48px 터치 타겟 보장 */}
       <button
         type="submit"
-        className="bg-[#340897] text-white text-sm md:text-base font-bold px-5 md:px-7 py-2.5 md:py-3 rounded-xl md:rounded-full active:scale-[0.98] transition-all shrink-0"
+        className="bg-[#3182F6] text-white text-[14px] font-bold px-5 md:px-7 h-[48px] rounded-[12px] md:rounded-full card-touch shrink-0 min-w-[48px]"
       >
         검색
       </button>

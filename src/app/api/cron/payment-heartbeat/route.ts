@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
     const staleRows = (stale || []) as Array<{ id: string; amount: number; counterparty_name: string; hours_stale: number; match_status: string }>;
 
     summary.stale_count = staleRows.length;
-    summary.stale_total_amount = staleRows.reduce((s, r) => s + (r.amount || 0), 0);
+    summary.stale_total_amount = staleRows.reduce((s: number, r: Record<string, unknown>) => s + (Number(r.amount) || 0), 0);
 
     // 매일 1회만 알림 (매 실행마다 보내면 스팸) — KST 09:30~10:00 범위에서만
     const h = getKSTHour();

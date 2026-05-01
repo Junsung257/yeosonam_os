@@ -22,7 +22,7 @@ export async function GET() {
 
   const { data, error } = await sb
     .from('land_operators')
-    .select('id, name, contact, regions, is_active')
+    .select('id, name, contact, regions, is_active, aliases')
     .order('name');
 
   if (error) {

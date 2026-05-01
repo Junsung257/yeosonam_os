@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
+import { runQualityGates } from '@/lib/blog-quality-gate';
 
 /**
  * 공개 블로그 API — 발행된(published) 블로그 글만 반환
@@ -203,9 +204,45 @@ export async function PATCH(request: NextRequest) {
     if (category !== undefined) updateData.category = category;
 
     // 상태 변경
+    let qaReport: Awaited<ReturnType<typeof runQualityGates>> | null = null;
     if (reqStatus === 'published') {
       updateData.status = 'published';
       updateData.published_at = new Date().toISOString();
+
+      // v1.5 quality gate — 수동 발행도 cron 발행과 동일 게이트 통과 검증.
+      // 실패해도 차단하지 않음 (어드민의 의도적 발행 존중) — 결과만 quality_gate 컬럼에 저장 + 응답 warnings.
+      try {
+        const { data: existing } = await supabaseAdmin
+          .from('content_creatives')
+          .select('blog_html, slug, destination, angle_type, product_id, travel_packages(destination)')
+          .eq('id', id)
+          .limit(1);
+        const row = existing?.[0] as {
+          blog_html?: string | null;
+          slug?: string | null;
+          destination?: string | null;
+          angle_type?: string | null;
+          product_id?: string | null;
+          travel_packages?: { destination?: string | null } | null;
+        } | undefined;
+        const finalHtml = (blog_html as string | undefined) ?? row?.blog_html ?? '';
+        const finalSlugForQa = (updateData.slug as string | undefined) ?? row?.slug ?? '';
+        const dest = row?.travel_packages?.destination ?? row?.destination ?? null;
+        if (finalHtml && finalSlugForQa) {
+          qaReport = await runQualityGates({
+            blog_html: finalHtml,
+            slug: finalSlugForQa,
+            destination: dest,
+            angle_type: row?.angle_type ?? null,
+            blog_type: row?.product_id ? 'product' : 'info',
+            primary_keyword: dest,
+            excludeContentCreativeId: id,
+          });
+          updateData.quality_gate = qaReport;
+        }
+      } catch (qaErr) {
+        console.warn('[blog PATCH] quality gate 실행 실패 (무시):', qaErr);
+      }
     } else if (reqStatus === 'draft') {
       updateData.status = 'draft';
     }
@@ -232,7 +269,14 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ post: data?.[0], success: true });
+    return NextResponse.json({
+      post: data?.[0],
+      success: true,
+      // v1.5 게이트 실패 시 어드민 UI에 경고 표시용
+      quality_warnings: qaReport && !qaReport.passed
+        ? qaReport.gates.filter(g => !g.passed).map(g => ({ gate: g.gate, reason: g.reason }))
+        : null,
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '수정 실패' }, { status: 500 });
   }

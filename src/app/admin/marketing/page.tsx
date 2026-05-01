@@ -5,6 +5,8 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { getRoasGrade } from '@/lib/roas-calculator';
 import type { AdCampaign, MonthlyAdStats } from '@/types/meta-ads';
+import KPIBasisToggle from '@/components/admin/KPIBasisToggle';
+import { getBasisMeta, type KPIBasis } from '@/lib/kpi-basis';
 
 const LineChart = dynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
 const Line = dynamic(() => import('recharts').then(m => ({ default: m.Line })), { ssr: false });
@@ -43,12 +45,18 @@ export default function MarketingDashboardPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeResult, setOptimizeResult] = useState<string | null>(null);
 
+  // KPI 산식 기준 토글 (2026-04-28)
+  // marketing 의 default 는 accounting (snapshot의 attributed_margin = departure_date 기반)
+  // commission 으로 토글 시 bookings 의 created_at 기준으로 마진 재계산
+  const [basis, setBasis] = useState<KPIBasis>('accounting');
+  const basisMeta = getBasisMeta(basis);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [campRes, perfRes] = await Promise.all([
         fetch('/api/meta/campaigns'),
-        fetch('/api/meta/performance?type=monthly&months=6'),
+        fetch(`/api/meta/performance?type=monthly&months=6&basis=${basis}`),
       ]);
 
       if (campRes.ok) {
@@ -70,7 +78,7 @@ export default function MarketingDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [basis]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -115,12 +123,18 @@ export default function MarketingDashboardPage() {
   return (
     <div className="space-y-6">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-[16px] font-bold text-slate-800">마케팅 센터</h1>
-          <p className="text-[13px] text-slate-500 mt-1">Meta Ads 성과 분석 / 캠페인 링크 & QR 빌더</p>
+          <p className="text-[13px] text-slate-500 mt-1">
+            Meta Ads 성과 분석 / 캠페인 링크 & QR 빌더
+            <span className="ml-2 text-[11px] text-slate-400">· {basisMeta.description}</span>
+          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {mainTab === 'meta' && (
+            <KPIBasisToggle value={basis} onChange={setBasis} size="sm" />
+          )}
           {mainTab === 'links' ? (
             <button
               onClick={() => setBuilderOpen(true)}
@@ -154,6 +168,12 @@ export default function MarketingDashboardPage() {
                 className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] font-medium rounded-lg hover:bg-slate-50"
               >
                 카드뉴스
+              </Link>
+              <Link
+                href="/admin/marketing/brand-kits"
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] font-medium rounded-lg hover:bg-slate-50"
+              >
+                브랜드킷
               </Link>
             </>
           )}
@@ -197,24 +217,27 @@ export default function MarketingDashboardPage() {
         </div>
       )}
 
-      {/* KPI 카드 4종 */}
+      {/* KPI 카드 4종 — basis-aware (귀속 마진 산식이 토글에 따라 변경) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: '총 광고비 지출', value: `${(totalSpend / 10000).toFixed(0)}만원`, color: 'text-red-600' },
-          { label: '귀속 마진 합계', value: `${(totalAttributedMargin / 10000).toFixed(0)}만원`, color: 'text-emerald-600' },
-          { label: '평균 Net ROAS', value: `${avgRoas}%`, color: avgRoas >= 200 ? 'text-emerald-600' : avgRoas >= 100 ? 'text-amber-600' : 'text-red-600' },
-          { label: '활성 캠페인', value: `${activeCnt}개`, color: 'text-blue-700' },
-        ].map(({ label, value, color }) => (
+          { label: '총 광고비 지출', value: `${(totalSpend / 10000).toFixed(0)}만원`, color: 'text-red-600', sub: '캠페인 합계' },
+          { label: `귀속 마진 · ${basisMeta.shortLabel} 기준`, value: `${(totalAttributedMargin / 10000).toFixed(0)}만원`, color: 'text-emerald-600', sub: basis === 'accounting' ? '출발 완료' : '예약 생성' },
+          { label: `평균 Net ROAS · ${basisMeta.shortLabel} 기준`, value: `${avgRoas}%`, color: avgRoas >= 200 ? 'text-emerald-600' : avgRoas >= 100 ? 'text-amber-600' : 'text-red-600', sub: '마진/광고비' },
+          { label: '활성 캠페인', value: `${activeCnt}개`, color: 'text-blue-700', sub: 'ACTIVE' },
+        ].map(({ label, value, color, sub }) => (
           <div key={label} className="bg-white rounded-lg border border-slate-200 p-4">
             <p className="text-[13px] text-slate-500">{label}</p>
             <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>
           </div>
         ))}
       </div>
 
       {/* 월별 광고비 vs 마진 LineChart */}
       <div className="bg-white rounded-lg border border-slate-200 p-6">
-        <h2 className="text-[14px] font-semibold text-slate-800 mb-4">월별 광고비 vs 귀속 마진 (6개월)</h2>
+        <h2 className="text-[14px] font-semibold text-slate-800 mb-4">
+          월별 광고비 vs 귀속 마진 (6개월) <span className="text-[11px] text-slate-400">· {basisMeta.shortLabel} 기준</span>
+        </h2>
         {monthlyStats.length === 0 ? (
           <p className="text-[13px] text-slate-400 text-center py-10">성과 데이터가 없습니다.</p>
         ) : (

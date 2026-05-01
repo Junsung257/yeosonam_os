@@ -1,8 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { OPERATIONS_PROMPT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
-import { runGeminiAgentLoop } from '../gemini-agent-loop'
-import { convertTools } from '../gemini-tool-format'
+import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 
 const OPERATIONS_TOOLS_RAW = [
   {
@@ -174,7 +173,7 @@ const OPERATIONS_TOOLS_RAW = [
   },
 ]
 
-const OPERATIONS_TOOLS = convertTools(OPERATIONS_TOOLS_RAW)
+const OPERATIONS_TOOLS = OPERATIONS_TOOLS_RAW
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -378,7 +377,7 @@ export const OPERATIONS_CONTEXT_EXTRACTOR = (toolName: string, result: any) => {
 }
 
 export async function runOperationsAgent(params: AgentRunParams): Promise<AgentRunResult> {
-  return runGeminiAgentLoop({
+  return runDeepSeekAgentLoop({
     agentType: 'operations',
     systemPrompt: OPERATIONS_PROMPT,
     tools: OPERATIONS_TOOLS,

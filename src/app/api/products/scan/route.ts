@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
 import * as XLSX from 'xlsx';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -138,15 +138,13 @@ interface AIExtracted {
   ai_tags: string[];
 }
 
-async function analyzeWithClaude(
+async function analyzeWithDeepSeek(
   rawText: string,
   hints: FilenameHints,
 ): Promise<AIExtracted> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY가 설정되지 않았습니다.');
-  }
-
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
+  const client = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 
   const systemPrompt = `당신은 여행사 내부 ERP용 상품 파일 분석 전문가입니다.
 문서에서 상품 정보를 추출하여 순수 JSON으로만 응답하세요 (마크다운 코드블록 없이).
@@ -179,17 +177,35 @@ ${rawText.slice(0, 3000)}
   "ai_tags": ["노팁노옵션", "소규모"]
 }`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 512,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userContent }],
+  // tool_use 로 schema 강제 → 파싱 에러 0. systemPrompt cache_control → 비용 90% 절감 (5분 TTL)
+  // 모델: Opus 4.6 → Haiku 4.5 (간단한 메타데이터 추출은 Haiku 충분, Cursor "Apply 모델" 패턴)
+  const extractSchema = {
+    type: 'object',
+    properties: {
+      destination: { type: 'string', description: '목적지 한국어 전체명' },
+      destination_code: { type: 'string', description: 'IATA 도시코드 3자리' },
+      departure_region: { type: 'string', description: '출발지 한국어' },
+      departure_region_code: { type: 'string', description: '출발 공항코드 3자리' },
+      duration_days: { type: 'integer', minimum: 1, maximum: 30 },
+      display_name: { type: 'string', description: '고객 노출용 상품명' },
+      net_price: { type: ['integer', 'null'], description: '원가 원화. 없으면 null' },
+      departure_date: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+      ai_tags: { type: 'array', items: { type: 'string' }, description: '상품 특징 태그' },
+    },
+    required: ['destination', 'destination_code', 'departure_region', 'departure_region_code', 'duration_days', 'display_name', 'ai_tags'],
+  };
+
+  const response = await client.chat.completions.create({
+    model: 'deepseek-v4-flash',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    response_format: { type: 'json_object' },
   });
 
-  const raw = (message.content[0] as { text: string }).text.trim();
-  // 혹시 코드블록이 붙었을 경우 제거
-  const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-  const parsed = JSON.parse(jsonStr) as AIExtracted;
+  const raw = response.choices?.[0]?.message?.content || '{}';
+  const parsed = JSON.parse(raw) as AIExtracted;
 
   // ─ 매핑 테이블 보완: AI가 잘못된 코드를 반환했을 때 fallback
   if (!parsed.destination_code || parsed.destination_code.length !== 3) {
@@ -272,8 +288,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '파일에서 텍스트를 추출할 수 없습니다.' }, { status: 422 });
     }
 
-    // Step 3. Claude AI 분석
-    const ai = await analyzeWithClaude(rawText, hints);
+    // Step 3. DeepSeek AI 분석
+    const ai = await analyzeWithDeepSeek(rawText, hints);
 
     // Step 4. 코드 구성에 필요한 값 최종 결정
     //   - 랜드사: 파일명 힌트 우선, 없으면 'XX'

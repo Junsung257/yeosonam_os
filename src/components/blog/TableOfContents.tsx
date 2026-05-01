@@ -44,26 +44,26 @@ export default function TableOfContents({ items, variant = 'both' }: Props) {
 
   return (
     <>
-      {/* 모바일 — 아코디언 */}
+      {/* 모바일 — 아코디언, Jiwonnote 미니멀 */}
       {showMobile && (
-      <div className="md:hidden mb-6 rounded-xl border border-gray-200 bg-gray-50">
+      <div className="md:hidden mb-8 border border-slate-200 bg-white">
         <button
           type="button"
           onClick={() => setMobileOpen(o => !o)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700"
+          className="w-full flex items-center justify-between px-4 py-3.5 text-sm font-bold text-slate-900"
           aria-expanded={mobileOpen}
         >
-          <span>📑 목차 ({items.length})</span>
+          <span>목차 ({items.length})</span>
           <ChevronDown size={16} className={`transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
         </button>
         {mobileOpen && (
-          <ul className="px-4 pb-3 space-y-2">
+          <ul className="px-4 pb-4 pt-1 space-y-2 border-t border-slate-100">
             {items.map(item => (
-              <li key={item.id} className={item.level === 3 ? 'pl-3' : ''}>
+              <li key={item.id} className={item.level === 3 ? 'pl-4' : ''}>
                 <a
                   href={`#${item.id}`}
                   onClick={() => setMobileOpen(false)}
-                  className="block text-sm text-gray-600 hover:text-indigo-600 transition leading-snug"
+                  className="block text-sm text-slate-600 hover:text-slate-900 transition leading-relaxed"
                 >
                   {item.text}
                 </a>
@@ -75,11 +75,11 @@ export default function TableOfContents({ items, variant = 'both' }: Props) {
 
       )}
 
-      {/* 데스크톱 — sticky 사이드바 */}
+      {/* 데스크톱 — sticky 사이드바, Jiwonnote 들여쓴 plain 리스트 */}
       {showDesktop && (
-      <nav className="hidden md:block sticky top-24 self-start text-sm" aria-label="목차">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">목차</p>
-        <ul className="space-y-2 border-l border-gray-200 pl-4">
+      <nav className="hidden md:block sticky top-24 self-start text-[13px]" aria-label="목차">
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">목차</p>
+        <ul className="space-y-2.5">
           {items.map(item => {
             const isActive = item.id === activeId;
             return (
@@ -88,8 +88,8 @@ export default function TableOfContents({ items, variant = 'both' }: Props) {
                   href={`#${item.id}`}
                   className={`block leading-snug transition ${
                     isActive
-                      ? 'text-indigo-600 font-semibold'
-                      : 'text-gray-500 hover:text-gray-900'
+                      ? 'text-slate-900 font-bold'
+                      : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
                   {item.text}

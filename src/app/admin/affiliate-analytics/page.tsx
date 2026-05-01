@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
+import KPIBasisToggle from '@/components/admin/KPIBasisToggle';
+import { DEFAULT_KPI_BASIS, getBasisMeta, type KPIBasis } from '@/lib/kpi-basis';
 
 interface KPI {
   totalClicks: number;
@@ -45,16 +47,26 @@ export default function AffiliateAnalyticsPage() {
   const [monthly, setMonthly] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // KPI 산식 기준 토글 — 예약(생성일, 수수료 정산) ↔ 매출 인식(출발일, IFRS 15)
+  // 어필리에이트 정산 정책은 commission(생성일) 기준이 default. 회계용 비교는 accounting.
+  const [basis, setBasis] = useState<KPIBasis>(DEFAULT_KPI_BASIS);
+  const [refetching, setRefetching] = useState(false);
+  const basisMeta = getBasisMeta(basis);
+
   useEffect(() => {
-    fetch('/api/admin/affiliate-analytics')
+    // 초기 로드는 loading, basis 변경은 refetching (토글 유지)
+    const isInitial = kpi === null;
+    if (isInitial) setLoading(true); else setRefetching(true);
+    fetch(`/api/admin/affiliate-analytics?basis=${basis}`)
       .then(r => r.json())
       .then(data => {
         setKpi(data.kpi || null);
         setPartners(data.partners || []);
         setMonthly(data.monthly || []);
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { setLoading(false); setRefetching(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basis]);
 
   if (loading) {
     return (
@@ -69,15 +81,34 @@ export default function AffiliateAnalyticsPage() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <h1 className="text-lg font-bold text-gray-900">어필리에이트 퍼널 분석</h1>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">어필리에이트 퍼널 분석</h1>
+            <p className="text-[11px] text-gray-400 mt-0.5">{basisMeta.description}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {refetching && <span className="text-[11px] text-gray-400">갱신 중…</span>}
+            <KPIBasisToggle value={basis} onChange={setBasis} />
+          </div>
+        </div>
 
-        {/* KPI 카드 */}
+        {/* KPI 카드 — basis 표기로 정의 명확화 */}
         {kpi && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard label="총 클릭수" value={kpi.totalClicks.toLocaleString()} sub={`${kpi.activeCount}/${kpi.partnerCount} 파트너 활성`} />
             <KpiCard label="총 전환수" value={kpi.totalConversions.toLocaleString()} sub={`전환율 ${kpi.conversionRate}%`} color="text-green-600" />
-            <KpiCard label="누적 기여 매출" value={`₩${(kpi.totalRevenue / 10000).toFixed(0)}만`} sub="어필리에이트 경유" color="text-blue-600" />
-            <KpiCard label="누적 커미션" value={`₩${(kpi.totalCommission / 10000).toFixed(0)}만`} sub="지급 총액" color="text-purple-600" />
+            <KpiCard
+              label={`기여 매출 · ${basisMeta.shortLabel} 기준`}
+              value={`₩${(kpi.totalRevenue / 10000).toFixed(0)}만`}
+              sub={basisMeta.dateField === 'departure_date' ? '출발 완료 비취소' : '예약 생성일 기준'}
+              color="text-blue-600"
+            />
+            <KpiCard
+              label={`커미션 · ${basisMeta.shortLabel} 기준`}
+              value={`₩${(kpi.totalCommission / 10000).toFixed(0)}만`}
+              sub="지급 총액"
+              color="text-purple-600"
+            />
           </div>
         )}
 

@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
     commissionRate?: number;
     ticketingDeadline?: string | null;
     dryRun?: boolean;
-    /** Phase 1.5 — 엔진 선택: 'claude' (Sonnet API, 기본), 'gemini' (Flash, 저렴), 'direct' (이미 완성된 IR 사용) */
-    engine?: 'claude' | 'gemini' | 'direct';
+    /** Phase 1.5 — 엔진 선택: 'deepseek' (V4-Pro, 기본), 'gemini' (Flash, 폴백), 'claude' (레거시), 'direct' (이미 완성된 IR 사용) */
+    engine?: 'deepseek' | 'gemini' | 'claude' | 'direct';
     /** engine=direct 일 때: Claude Code 세션·어드민이 직접 작성한 NormalizedIntake JSON */
     ir?: NormalizedIntake;
   };
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
     }
     ir = validation.data;
   } else {
-    // ── LLM 모드 (Claude/Gemini) ──
+    // ── LLM 모드 (DeepSeek/Gemini/Claude) ──
     if (!rawText || rawText.length < 50) {
       return NextResponse.json({ ok: false, error: 'rawText 누락 또는 50자 미만 (Rule Zero)' }, { status: 400 });
     }
@@ -149,15 +149,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'landOperator·commissionRate 필수' }, { status: 400 });
     }
 
+    const engineMap: Record<string, 'deepseek' | 'gemini' | 'claude'> = {
+      deepseek: 'deepseek', gemini: 'gemini', claude: 'claude',
+    };
     const normResult = await normalizeWithLlm({
       rawText,
       landOperator,
       commissionRate,
-    }, { engine: engine === 'gemini' ? 'gemini' : 'claude' });
+    }, { engine: engineMap[engine || 'deepseek'] || 'deepseek' });
 
     if (!normResult.success || !normResult.ir) {
       return NextResponse.json(
-        { ok: false, step: 'normalize', engine: engine || 'claude', errors: normResult.errors, retryCount: normResult.retryCount },
+        { ok: false, step: 'normalize', engine: engine || 'deepseek', errors: normResult.errors, retryCount: normResult.retryCount },
         { status: 422 },
       );
     }
@@ -206,7 +209,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       dryRun: true,
-      engine: engine || 'claude',
+      engine: engine || 'deepseek',
       intakeId,
       ir,
       pkg: conversion.pkg,
@@ -279,7 +282,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    engine: engine || 'claude',
+    engine: engine || 'deepseek',
     intakeId,
     packageId: inserted.id,
     shortCode: inserted.short_code,

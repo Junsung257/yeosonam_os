@@ -5,6 +5,7 @@ import {
   isInstagramConfigured,
   getInstagramConfig,
 } from '@/lib/instagram-publisher';
+import { updateFactoryJobStep } from '@/lib/content-factory-step';
 
 export const maxDuration = 120;  // Meta 컨테이너 폴링까지 최대 90초 + 마진
 
@@ -147,6 +148,7 @@ export async function POST(
         })
         .eq('id', id);
       if (error) throw error;
+      updateFactoryJobStep(id, 'ig_publish', 'queued');
       return NextResponse.json({
         ok: true,
         mode: 'scheduled',
@@ -195,6 +197,7 @@ export async function POST(
           ig_error: `[${result.step}] ${result.error}`,
         })
         .eq('id', id);
+      updateFactoryJobStep(id, 'ig_publish', 'failed', `[${result.step}] ${result.error}`);
       return NextResponse.json(
         { ok: false, step: result.step, error: result.error },
         { status: 500 },
@@ -211,6 +214,7 @@ export async function POST(
         ig_error: null,
       })
       .eq('id', id);
+    updateFactoryJobStep(id, 'ig_publish', 'done');
 
     return NextResponse.json({ ok: true, mode: 'now', post_id: result.postId });
   } catch (err) {

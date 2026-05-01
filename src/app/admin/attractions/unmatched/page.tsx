@@ -76,6 +76,47 @@ export default function UnmatchedPage() {
   const [linkResults, setLinkResults] = useState<{ id: string; name: string; country: string | null; region: string | null }[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
 
+  // 🤖 자동 추천 (suggest API) — Senzing/Tamr ER pattern
+  interface Suggestion {
+    id: string;
+    name: string;
+    aliases: string[];
+    region: string | null;
+    country: string | null;
+    category: string | null;
+    emoji: string | null;
+    short_desc: string | null;
+    score: number;
+    matched_via: string;
+    matched_term: string;
+  }
+  const [suggestingId, setSuggestingId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
+  const loadSuggestions = async (unmatchedId: string) => {
+    if (suggestingId === unmatchedId) {
+      setSuggestingId(null);
+      setSuggestions([]);
+      return;
+    }
+    setSuggestingId(unmatchedId);
+    setLinkingId(null);
+    setAddingId(null);
+    setSuggestLoading(true);
+    setSuggestions([]);
+    try {
+      const res = await fetch(`/api/unmatched/suggest?id=${encodeURIComponent(unmatchedId)}`);
+      const json = await res.json();
+      setSuggestions(Array.isArray(json.suggestions) ? json.suggestions : []);
+    } catch (err) {
+      console.error('자동 추천 실패', err);
+      setSuggestions([]);
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
   // 검색 debounce
   useEffect(() => {
     if (!linkSearch || linkSearch.length < 2) { setLinkResults([]); return; }
@@ -210,11 +251,15 @@ export default function UnmatchedPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setLinkingId(linkingId === item.id ? null : item.id); setAddingId(null); setLinkSearch(''); setLinkResults([]); }}
+                  <button onClick={() => loadSuggestions(item.id)}
+                    className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 font-medium">
+                    {suggestingId === item.id ? '접기' : '🤖 자동 추천'}
+                  </button>
+                  <button onClick={() => { setLinkingId(linkingId === item.id ? null : item.id); setAddingId(null); setSuggestingId(null); setLinkSearch(''); setLinkResults([]); }}
                     className="px-3 py-1.5 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700">
                     {linkingId === item.id ? '접기' : '별칭 연결'}
                   </button>
-                  <button onClick={() => { setAddingId(addingId === item.id ? null : item.id); setLinkingId(null); setAddForm(f => ({ ...f, country: item.country || '', region: item.region || '' })); }}
+                  <button onClick={() => { setAddingId(addingId === item.id ? null : item.id); setLinkingId(null); setSuggestingId(null); setAddForm(f => ({ ...f, country: item.country || '', region: item.region || '' })); }}
                     className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">
                     {addingId === item.id ? '접기' : 'DB 추가'}
                   </button>
@@ -222,6 +267,57 @@ export default function UnmatchedPage() {
                     className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200">무시</button>
                 </div>
               </div>
+
+              {/* 🤖 자동 추천 패널 */}
+              {suggestingId === item.id && (
+                <div className="mt-3 pt-3 border-t border-amber-100 bg-amber-50/50 rounded-lg p-3">
+                  <p className="text-xs text-amber-700 mb-2 font-medium">
+                    🤖 attractions DB 에서 유사 후보 자동 검색 — 클릭 한 번으로 alias 적립
+                  </p>
+                  {suggestLoading ? (
+                    <p className="text-xs text-amber-500">분석 중…</p>
+                  ) : suggestions.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      유사 후보 없음. <button onClick={() => { setSuggestingId(null); setLinkingId(item.id); }} className="text-violet-600 underline">수동 검색</button> 또는 <button onClick={() => { setSuggestingId(null); setAddingId(item.id); setAddForm(f => ({ ...f, country: item.country || '', region: item.region || '' })); }} className="text-blue-600 underline">신규 DB 추가</button>.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {suggestions.map(s => (
+                        <button key={s.id}
+                          onClick={() => linkAlias(item.id, s.id)}
+                          className="w-full text-left bg-white hover:bg-amber-50 border border-amber-200 rounded-lg p-3 transition flex items-center justify-between gap-3"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{s.emoji || '📍'}</span>
+                              <span className="font-bold text-slate-800">{s.name}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-mono">
+                                {s.matched_via} {Math.round(s.score)}점
+                              </span>
+                            </div>
+                            {s.short_desc && <p className="text-xs text-slate-500 mt-1 ml-6">{s.short_desc}</p>}
+                            <div className="flex gap-2 mt-1 ml-6 text-[10px] text-slate-400">
+                              {s.country && <span>🌍 {s.country}</span>}
+                              {s.region && <span>📍 {s.region}</span>}
+                              {s.category && <span>·{s.category}</span>}
+                              {s.aliases.length > 0 && <span>· aliases {s.aliases.length}개</span>}
+                            </div>
+                            {s.matched_term !== s.name && (
+                              <p className="text-[10px] text-amber-600 mt-1 ml-6">
+                                ⤷ 매칭 근거: <span className="font-mono">"{s.matched_term}"</span>
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-amber-600 text-lg flex-shrink-0">→</span>
+                        </button>
+                      ))}
+                      <p className="text-[10px] text-slate-400 text-center pt-1">
+                        클릭 → "{item.activity}" 가 해당 관광지의 alias 로 영구 적립됨 (다음 등록부터 자동 매칭)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 별칭 연결 패널 */}
               {linkingId === item.id && (

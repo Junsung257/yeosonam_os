@@ -9,6 +9,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { RoasResult, MonthlyAdStats } from '@/types/meta-ads';
+import { type KPIBasis, bookingMonthByBasis, bookingPassesBasis } from './kpi-basis';
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -119,51 +120,105 @@ export async function getRolling7DayRoas(campaignId: string): Promise<{
 
 /**
  * 월별 광고 통계 집계 (대시보드 LineChart용)
- * 최근 N개월
+ *
+ * basis (2026-04-28 추가):
+ *  - 'accounting' (default, 기존 동작): snapshot 기반. snapshot 의 attributed_margin 은
+ *    이미 departure_date 기준으로 계산되어 있음 (POST handler 참조). 회계 표준.
+ *  - 'commission': spend는 snapshot, margin은 bookings 를 created_at 기준으로 재계산.
+ *    어필리에이트/마케팅 KPI 와 같은 시간축으로 광고 효율 비교 가능.
+ *
+ * 두 basis 모두 src/lib/kpi-basis.ts 의 단일 정의를 따른다.
  */
-export async function getMonthlyAdStats(months = 6): Promise<MonthlyAdStats[]> {
+export async function getMonthlyAdStats(
+  months = 6,
+  basis: KPIBasis = 'accounting',
+): Promise<MonthlyAdStats[]> {
   const supabase = getSupabase();
 
   const fromDate = new Date();
   fromDate.setMonth(fromDate.getMonth() - months + 1);
   fromDate.setDate(1);
+  const fromIso = fromDate.toISOString().slice(0, 10);
 
-  const { data: snapshots } = await supabase
-    .from('ad_performance_snapshots')
-    .select('campaign_id, snapshot_date, spend_krw, attributed_margin, impressions, clicks')
-    .gte('snapshot_date', fromDate.toISOString().slice(0, 10))
-    .order('snapshot_date', { ascending: true });
+  // accounting: 기존 동작 (snapshot의 attributed_margin = departure_date 기준)
+  if (basis === 'accounting') {
+    const { data: snapshots } = await supabase
+      .from('ad_performance_snapshots')
+      .select('campaign_id, snapshot_date, spend_krw, attributed_margin, impressions, clicks')
+      .gte('snapshot_date', fromIso)
+      .order('snapshot_date', { ascending: true });
 
-  const rows = snapshots ?? [];
+    const rows = snapshots ?? [];
+    const byMonth = new Map<
+      string,
+      { spend: number; margin: number; impressions: number; clicks: number }
+    >();
+    for (const row of rows) {
+      const month = (row.snapshot_date as string).slice(0, 7);
+      const existing = byMonth.get(month) ?? { spend: 0, margin: 0, impressions: 0, clicks: 0 };
+      byMonth.set(month, {
+        spend: existing.spend + (row.spend_krw ?? 0),
+        margin: existing.margin + (row.attributed_margin ?? 0),
+        impressions: existing.impressions + (row.impressions ?? 0),
+        clicks: existing.clicks + (row.clicks ?? 0),
+      });
+    }
+    return Array.from(byMonth.entries()).map(([month, stats]) => ({
+      month,
+      total_spend_krw: stats.spend,
+      total_attributed_margin: stats.margin,
+      net_roas_pct: stats.spend > 0 ? Math.round((stats.margin / stats.spend) * 10000) / 100 : 0,
+      total_impressions: stats.impressions,
+      total_clicks: stats.clicks,
+    }));
+  }
 
-  // 월별 집계
+  // commission: spend는 snapshot, margin은 bookings(created_at) 재계산
+  const fromIsoUtc = new Date(fromDate.getTime() - 9 * 60 * 60 * 1000).toISOString();
+  const [{ data: snapshots }, { data: bookings }] = await Promise.all([
+    supabase
+      .from('ad_performance_snapshots')
+      .select('snapshot_date, spend_krw, impressions, clicks')
+      .gte('snapshot_date', fromIso),
+    supabase
+      .from('bookings')
+      .select('created_at, departure_date, margin, status')
+      .not('utm_attributed_campaign_id', 'is', null)
+      .gte('created_at', fromIsoUtc)
+      .or('is_deleted.is.null,is_deleted.eq.false'),
+  ]);
+
   const byMonth = new Map<
     string,
     { spend: number; margin: number; impressions: number; clicks: number }
   >();
-
-  for (const row of rows) {
-    const month = row.snapshot_date.slice(0, 7); // "2026-03"
-    const existing = byMonth.get(month) ?? { spend: 0, margin: 0, impressions: 0, clicks: 0 };
-    byMonth.set(month, {
-      spend: existing.spend + (row.spend_krw ?? 0),
-      margin: existing.margin + (row.attributed_margin ?? 0),
-      impressions: existing.impressions + (row.impressions ?? 0),
-      clicks: existing.clicks + (row.clicks ?? 0),
-    });
+  for (const row of snapshots ?? []) {
+    const month = (row.snapshot_date as string).slice(0, 7);
+    const e = byMonth.get(month) ?? { spend: 0, margin: 0, impressions: 0, clicks: 0 };
+    e.spend += row.spend_krw ?? 0;
+    e.impressions += row.impressions ?? 0;
+    e.clicks += row.clicks ?? 0;
+    byMonth.set(month, e);
+  }
+  for (const b of (bookings ?? []) as any[]) {
+    if (!bookingPassesBasis(b, 'commission')) continue;
+    const month = bookingMonthByBasis(b, 'commission');
+    if (!month) continue;
+    const e = byMonth.get(month) ?? { spend: 0, margin: 0, impressions: 0, clicks: 0 };
+    e.margin += b.margin ?? 0;
+    byMonth.set(month, e);
   }
 
-  return Array.from(byMonth.entries()).map(([month, stats]) => ({
-    month,
-    total_spend_krw: stats.spend,
-    total_attributed_margin: stats.margin,
-    net_roas_pct:
-      stats.spend > 0
-        ? Math.round((stats.margin / stats.spend) * 10000) / 100
-        : 0,
-    total_impressions: stats.impressions,
-    total_clicks: stats.clicks,
-  }));
+  return Array.from(byMonth.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, stats]) => ({
+      month,
+      total_spend_krw: stats.spend,
+      total_attributed_margin: stats.margin,
+      net_roas_pct: stats.spend > 0 ? Math.round((stats.margin / stats.spend) * 10000) / 100 : 0,
+      total_impressions: stats.impressions,
+      total_clicks: stats.clicks,
+    }));
 }
 
 /**

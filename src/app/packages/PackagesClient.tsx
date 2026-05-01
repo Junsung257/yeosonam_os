@@ -2,18 +2,21 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { getMinPriceFromDates } from '@/lib/price-dates';
-import { getAirlineName } from '@/lib/render-contract';
 import SearchBar from '@/components/customer/SearchBar';
+import GlobalNav from '@/components/customer/GlobalNav';
+import PackageCard from '@/components/customer/PackageCard';
+import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 
 interface Package {
   id: string;
   title: string;
   destination?: string;
+  country?: string | null;
   duration?: number;
+  nights?: number | null;
   price?: number;
   price_tiers?: { period_label?: string; departure_dates?: string[]; adult_price?: number }[];
   price_dates?: { date: string; price: number; confirmed: boolean }[];
@@ -25,6 +28,11 @@ interface Package {
   itinerary_data?: any;
   is_airtel?: boolean;
   display_title?: string;
+  hero_tagline?: string | null;
+  hero_image_url?: string | null;
+  thumbnail_urls?: string[] | null;
+  avg_rating?: number | null;
+  review_count?: number | null;
   products?: { display_name?: string; internal_code?: string };
   seats_held?: number;
   seats_confirmed?: number;
@@ -36,28 +44,33 @@ interface AttractionInfo {
 }
 
 // 항공사 매핑 SSOT: getAirlineName() in @/lib/render-contract (CRC). 인라인 dict 제거.
+// 지역 매칭 SSOT: REGIONS in @/lib/regions. 인라인 정규식 제거.
 
-const FILTER_OPTIONS = ['전체', '중국', '일본', '동남아', '마카오/홍콩', '인천출발'] as const;
 const SORT_OPTIONS = [
   { label: '추천순', value: 'recommended' },
   { label: '가격 낮은순', value: 'price_asc' },
   { label: '가격 높은순', value: 'price_desc' },
 ] as const;
 
-const REGION_MAP: Record<string, (pkg: Package) => boolean> = {
-  '중국': (pkg) => /장가계|청도|서안|상해|연길|백두산|구채구|심천/.test(pkg.destination || ''),
-  '일본': (pkg) => /시즈오카|후쿠오카|오사카|도쿄|큐슈|토야마|후지노미야|나라|교토|이즈/.test(pkg.destination || ''),
-  '동남아': (pkg) => /나트랑|달랏|다낭|푸꾸옥|보홀|세부|치앙마이|치앙라이|코타키나발루|방콕|발리|마나도|호치민|하노이/.test(pkg.destination || ''),
-  '마카오/홍콩': (pkg) => /마카오|홍콩/.test(pkg.destination || ''),
-  '인천출발': (pkg) => /인천/.test(pkg.departure_airport || ''),
-};
+// 필터: 전체 + REGIONS (featuredCities 가 있는 region 만 — 즉 실제 패키지가 있는 곳) + 인천출발
+const REGION_FILTERS = REGIONS.filter(r => r.featuredCities.length > 0);
+const FILTER_OPTIONS = ['전체', ...REGION_FILTERS.map(r => r.label), '인천출발'] as const;
 
 function matchesFilter(pkg: Package, filter: string): boolean {
-  if (filter === '전체') return true;
-  const regionFn = REGION_MAP[filter];
-  if (regionFn) return regionFn(pkg);
+  const resolved = resolveLegacyFilterLabel(filter); // "마카오/홍콩" → "마카오·홍콩"
+  if (resolved === '전체') return true;
+  if (resolved === '인천출발') return /인천/.test(pkg.departure_airport || '');
+  const region = REGION_FILTERS.find(r => r.label === resolved);
+  if (region) return matchesRegion(pkg as { country?: string | null; destination?: string | null }, region.slug);
   return false;
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  honeymoon: '💍 허니문',
+  golf: '⛳ 해외골프',
+  cruise: '🚢 크루즈',
+  theme: '🎯 테마여행',
+};
 
 interface ClientProps {
   initialPackages: Package[];
@@ -67,13 +80,34 @@ interface ClientProps {
   q?: string;
   month?: string;
   priceMax?: string;
+  urgency?: string;
+  category?: string;
+  recommendedIds?: string[];
+  recommendedReasonMap?: Record<string, string[]>;
 }
 
-export default function PackagesClient({ initialPackages, initialAttractions, destination, filter, q = '', month = '', priceMax = '' }: ClientProps) {
+export default function PackagesClient({ initialPackages, initialAttractions, destination, filter, q = '', month = '', priceMax = '', urgency = '', category = '', recommendedIds = [], recommendedReasonMap = {} }: ClientProps) {
+  const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
+  const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
+
+  // 클릭 시그널 (LTR 학습 데이터) — silent fail
+  const trackClick = (packageId: string) => {
+    try {
+      fetch('/api/tracking/score-signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package_id: packageId,
+          signal_type: 'click',
+        }),
+        keepalive: true,
+      }).catch(() => { /* silent */ });
+    } catch { /* silent */ }
+  };
   const destParam = destination || q;
   const packages = initialPackages;
   const attractions = initialAttractions;
-  const [activeFilter, setActiveFilter] = useState(filter || '전체');
+  const [activeFilter, setActiveFilter] = useState(resolveLegacyFilterLabel(filter || '전체'));
   const [sortBy, setSortBy] = useState('recommended');
   const priceMaxNum = priceMax ? Number(priceMax) : 0;
 
@@ -172,41 +206,18 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
 
   return (
     <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
-      {/* 데스크톱 전용 상단 네비 */}
-      <nav className="hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-gray-100 px-8 py-4 items-center justify-between">
-        <Link href="/" className="text-xl font-black tracking-tight text-[#340897]">여소남</Link>
-        <div className="flex items-center gap-6 text-sm font-medium text-gray-700">
-          <Link href="/packages" className="text-[#340897]">전체 상품</Link>
-          <Link href="/blog" className="hover:text-[#340897] transition">여행 정보</Link>
-          <Link href="/group-inquiry" className="hover:text-[#340897] transition">단체 문의</Link>
-          <a href="tel:051-000-0000" className="text-gray-500 hover:text-gray-900 transition">📞 051-000-0000</a>
-          <a
-            href="https://pf.kakao.com/_xcFxkBG/chat"
-            target="_blank"
-            rel="noopener"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="bg-[#FEE500] text-[#3C1E1E] font-bold text-sm px-4 py-2 rounded-full hover:shadow-md transition"
-          >
-            💬 카카오톡 상담
-          </a>
-        </div>
-      </nav>
+      <GlobalNav />
 
-      {/* 모바일 헤더 */}
-      <div className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
-          <span className="text-lg">←</span>
-        </Link>
-        <div>
-          <h1 className="text-base font-bold text-gray-900">{destParam || '전체 상품'}</h1>
-          <p className="text-xs text-gray-500">{filteredPackages.length}개 상품</p>
-        </div>
+      {/* 모바일 페이지 타이틀 */}
+      <div className="md:hidden bg-white border-b border-gray-100 px-4 py-4">
+        <h1 className="text-2xl font-black text-gray-900 tracking-tight">{destParam || '전체 상품'}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{filteredPackages.length}개 상품</p>
       </div>
 
       {/* 데스크톱 페이지 타이틀 */}
-      <div className="hidden md:block md:max-w-7xl md:mx-auto md:px-8 md:pt-10 md:pb-2">
-        <h1 className="text-3xl font-black text-gray-900">{destParam || '전체 상품'}</h1>
-        <p className="text-sm text-gray-500 mt-1">{filteredPackages.length}개 상품</p>
+      <div className="hidden md:block md:max-w-7xl md:mx-auto md:px-8 md:pt-12 md:pb-3">
+        <h1 className="text-4xl lg:text-5xl font-black text-gray-900 tracking-tight">{destParam || '전체 상품'}</h1>
+        <p className="text-base text-gray-500 mt-2">{filteredPackages.length}개 상품</p>
       </div>
 
       {/* 검색바 */}
@@ -214,8 +225,29 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
         <SearchBar initialQ={q} initialMonth={month} initialPriceMax={priceMax} initialDestination={destination} />
       </div>
 
+      {/* 마감특가 / 카테고리 활성 배지 */}
+      {(urgency === '1' || category) && (
+        <div className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8">
+          <div className="flex items-center gap-2">
+            {urgency === '1' && (
+              <span className="inline-flex items-center gap-1.5 bg-[#FFF1F2] text-[#F04452] text-[13px] font-semibold px-3 py-1.5 rounded-full">
+                🔥 마감특가 모아보기
+              </span>
+            )}
+            {category && CATEGORY_LABELS[category] && (
+              <span className="inline-flex items-center gap-1.5 bg-[#EBF3FE] text-[#3182F6] text-[13px] font-semibold px-3 py-1.5 rounded-full">
+                {CATEGORY_LABELS[category]}
+              </span>
+            )}
+            <Link href="/packages" className="text-[12px] text-[#8B95A1] hover:text-[#3182F6] transition ml-1">
+              전체 보기 →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* 필터 + 정렬 */}
-      <div className="sticky top-[52px] md:top-[65px] z-20 bg-white border-b border-gray-100 px-4 py-2 md:max-w-7xl md:mx-auto md:px-8 md:py-4 md:bg-transparent md:border-b-0">
+      <div className="sticky top-14 md:top-16 z-20 bg-white border-b border-gray-100 px-4 py-2 md:max-w-7xl md:mx-auto md:px-8 md:py-4 md:bg-transparent md:border-b-0">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide md:flex-wrap md:gap-3">
           <select
             aria-label="정렬 순서"
@@ -232,8 +264,8 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
               key={filter}
               className={`flex-shrink-0 text-sm md:px-4 md:py-2 px-3 py-1.5 rounded-full border transition ${
                 activeFilter === filter
-                  ? 'bg-[#340897] text-white border-[#340897]'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'
+                  ? 'bg-[#3182F6] text-white border-[#3182F6]'
+                  : 'bg-white text-gray-600 border-gray-200 hover:shadow-card-hover'
               }`}
               onClick={() => setActiveFilter(filter)}
             >
@@ -245,107 +277,43 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
 
       {/* 상품 카드 리스트 */}
       {filteredPackages.length === 0 ? (
-        <div className="text-center py-20">
-          <p className="text-gray-500 text-base mb-2">{activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '상품이 없습니다'}</p>
-          {activeFilter !== '전체' ? (
-            <button onClick={() => setActiveFilter('전체')} className="text-violet-600 text-sm underline">전체 보기</button>
+        <div className="text-center py-20 px-6">
+          {urgency === '1' ? (
+            <>
+              <p className="text-[32px] mb-3">🔥</p>
+              <p className="text-[#191F28] font-bold text-[17px] mb-1">현재 마감특가 상품이 모두 매진되었습니다</p>
+              <p className="text-[#8B95A1] text-[14px] mb-6">아래 인기 패키지를 확인해 보세요</p>
+              <Link href="/packages" className="inline-block bg-[#3182F6] text-white font-semibold text-[14px] px-6 py-3 rounded-full hover:bg-[#1B64DA] transition">
+                전체 인기 패키지 보기
+              </Link>
+            </>
           ) : (
-            <Link href="/" className="text-violet-600 text-sm underline">홈으로</Link>
+            <>
+              <p className="text-gray-500 text-base mb-2">{activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '상품이 없습니다'}</p>
+              {activeFilter !== '전체' ? (
+                <button onClick={() => setActiveFilter('전체')} className="text-[#3182F6] text-sm underline">전체 보기</button>
+              ) : (
+                <Link href="/" className="text-[#3182F6] text-sm underline">홈으로</Link>
+              )}
+            </>
           )}
         </div>
       ) : (
         <div className="px-4 py-4 space-y-3 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-          {filteredPackages.map(pkg => {
-            const minPrice = minPriceByPkgId.get(pkg.id) ?? 0;
-            const image = imageByPkgId.get(pkg.id) ?? null;
-            const airlineName = getAirlineName(pkg.airline) ?? pkg.airline;
-
-            return (
-              <Link key={pkg.id} href={`/packages/${pkg.id}`} prefetch={true} className="md:block md:rounded-2xl md:overflow-hidden md:border md:border-gray-100 md:hover:border-violet-300 md:hover:shadow-lg md:transition-all">
-                <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-gray-100 last:border-b-0">
-                  {/* 이미지 — 항공사 배지 포함 */}
-                  <div className="relative flex-shrink-0 w-[110px] h-[88px] md:w-full md:h-52 lg:h-56 rounded-xl md:rounded-none overflow-hidden bg-gray-100">
-                    {image ? (
-                      <Image src={image} alt={pkg.title} fill className="object-cover md:hover:scale-105 md:transition-transform md:duration-300" sizes="(max-width: 768px) 110px, (max-width: 1024px) 50vw, 33vw" />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-2xl md:text-5xl">🌍</div>
-                    )}
-                    {airlineName && (
-                      <div className="absolute bottom-1.5 left-1.5 md:bottom-2.5 md:left-2.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-white/90 text-[#340897]">
-                        {airlineName}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 텍스트 영역 */}
-                  <div className="flex-1 min-w-0 md:p-4">
-                    {/* 배지 행 — 상품 타입 + 에어텔 */}
-                    <div className="flex gap-1 mb-1 flex-wrap">
-                      {pkg.product_type && (
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                          pkg.product_type.includes('실속') ? 'bg-orange-50 text-orange-700' :
-                          pkg.product_type.includes('프리미엄') || pkg.product_type.includes('고품격') ? 'bg-purple-50 text-purple-700' :
-                          pkg.product_type.includes('노팁') ? 'bg-emerald-50 text-emerald-700' :
-                          'bg-violet-50 text-violet-700'
-                        }`}>
-                          {pkg.product_type.split('|')[0]}
-                        </span>
-                      )}
-                      {pkg.is_airtel && (
-                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
-                          에어텔
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 상품명 — 2줄 클램프 */}
-                    <h2 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
-                      {pkg.display_title || pkg.products?.display_name || pkg.title}
-                    </h2>
-
-                    {/* 하이라이트 태그 */}
-                    {pkg.product_highlights && pkg.product_highlights.length > 0 && (
-                      <div className="flex gap-1 mt-1.5 flex-wrap">
-                        {pkg.product_highlights.slice(0, 3).map((tag, i) => (
-                          <span key={i} className="text-xs text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* 가격 + 잔여석 */}
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex items-baseline gap-0.5">
-                        {minPrice > 0 ? (
-                          <>
-                            <span className="text-lg font-bold text-gray-900">₩{minPrice.toLocaleString()}</span>
-                            <span className="text-sm text-gray-500">~</span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-gray-500">가격 문의</span>
-                        )}
-                      </div>
-                      {(() => {
-                        const remaining = (pkg.seats_held || 0) - (pkg.seats_confirmed || 0);
-                        if (pkg.seats_held && remaining === 0) {
-                          return <span className="text-xs font-semibold text-gray-400 line-through">예약 마감</span>;
-                        }
-                        if (pkg.seats_held && remaining > 0 && remaining <= 5) {
-                          return (
-                            <span className="text-xs font-bold text-red-600 animate-pulse">
-                              잔여 {remaining}석
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+          {filteredPackages.map(pkg => (
+            <PackageCard
+              key={pkg.id}
+              pkg={pkg as any}
+              variant="horizontal"
+              image={imageByPkgId.get(pkg.id) ?? null}
+              precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
+              isRecommended={recommendedSet.has(pkg.id)}
+              recommendedReasons={recommendedReasonMap[pkg.id] ?? []}
+              isReasonOpen={activeReasonId === pkg.id}
+              onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
+              onClick={trackClick}
+            />
+          ))}
         </div>
       )}
 

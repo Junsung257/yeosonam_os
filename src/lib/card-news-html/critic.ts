@@ -2,13 +2,13 @@
  * @file critic.ts — 카드뉴스 HTML 6장 전체 비평기 (Performance Predictor)
  *
  * AdCreative.ai / Pencil AI 의 Score 시스템 모방.
- * Claude Haiku 4.5 사용 (저비용 + 빠른 응답) — 6장 전체 평가에 최적.
+ * V3 (2026-05-01): DeepSeek V4-Flash 사용 (초저비용 + 빠른 응답)
  *
  * 입력: 6장 carousel HTML + 원문
  * 출력: 카드별 점수 + 종합 점수 + 발행 권장 verdict
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 export interface CardCritique {
   index: number;            // 0-5
@@ -42,14 +42,13 @@ export interface FullCritique {
   durationMs: number;
 }
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'deepseek-v4-flash';
 
-// Haiku 4.5 가격 (USD per Million tokens)
+// DeepSeek V4-Flash 가격 (USD per Million tokens)
 const PRICE = {
-  input: 1,
-  output: 5,
-  cacheWrite5m: 1.25,
-  cacheRead: 0.10,
+  input: 0.14,
+  output: 0.28,
+  cacheHit: 0.014,
 };
 
 const SYSTEM_PROMPT = `당신은 인스타그램 carousel 광고 성과 예측 전문가입니다.
@@ -112,9 +111,14 @@ function calcCost(usage: FullCritique['usage']): number {
   return (
     (usage.input_tokens / 1_000_000) * PRICE.input +
     (usage.output_tokens / 1_000_000) * PRICE.output +
-    (usage.cache_creation_input_tokens / 1_000_000) * PRICE.cacheWrite5m +
-    (usage.cache_read_input_tokens / 1_000_000) * PRICE.cacheRead
+    (usage.cache_read_input_tokens / 1_000_000) * PRICE.cacheHit
   );
+}
+
+function getDeepSeek(): OpenAI {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
+  return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
 function extractJson(text: string): unknown {
@@ -134,7 +138,7 @@ export async function critiqueHtmlCarousel(input: {
   rawText?: string;
   productMeta?: { title?: string; angle?: string };
 }): Promise<FullCritique> {
-  const client = new Anthropic();
+  const client = getDeepSeek();
   const startedAt = Date.now();
 
   const userMessage = [
@@ -146,19 +150,19 @@ export async function critiqueHtmlCarousel(input: {
     .filter(Boolean)
     .join('\n\n');
 
-  const response = await client.messages.create({
+  const response = await client.chat.completions.create({
     model: MODEL,
     max_tokens: 2500,
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    temperature: 0.1,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userMessage },
     ],
-    messages: [{ role: 'user', content: userMessage }],
+    response_format: { type: 'json_object' },
   });
 
-  let textOut = '';
-  for (const block of response.content) {
-    if (block.type === 'text') textOut += block.text;
-  }
+  const textOut = response.choices?.[0]?.message?.content || '';
+  const respUsage = response.usage;
 
   const parsed = extractJson(textOut) as {
     cards?: CardCritique[];
@@ -169,10 +173,10 @@ export async function critiqueHtmlCarousel(input: {
   };
 
   const usage = {
-    input_tokens: response.usage.input_tokens,
-    output_tokens: response.usage.output_tokens,
-    cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
-    cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+    input_tokens: respUsage?.prompt_tokens || 0,
+    output_tokens: respUsage?.completion_tokens || 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: (respUsage as any)?.prompt_cache_hit_tokens || 0,
   };
 
   return {

@@ -68,42 +68,10 @@ async function loadActiveBookings(): Promise<BookingCandidate[]> {
   }));
 }
 
-/** JS fallback: RPC 없을 때 순수 JS로 재계산 */
-async function resyncFallback(): Promise<{ updated: number; errors?: string[] }> {
-  const { data: matched } = await supabaseAdmin
-    .from('bank_transactions')
-    .select('booking_id, transaction_type, amount, is_refund, is_fee')
-    .in('match_status', ['auto', 'manual'])
-    .not('booking_id', 'is', null);
-
-  if (!matched || matched.length === 0) return { updated: 0 };
-
-  const bookingMap = new Map<string, { paidIn: number; paidOut: number }>();
-  for (const tx of matched as any[]) {
-    if (!tx.booking_id || tx.is_fee) continue;
-    if (!bookingMap.has(tx.booking_id)) bookingMap.set(tx.booking_id, { paidIn: 0, paidOut: 0 });
-    const e = bookingMap.get(tx.booking_id)!;
-    if (tx.transaction_type === '입금' && !tx.is_refund) e.paidIn += tx.amount;
-    else if (tx.transaction_type === '출금' && !tx.is_refund) e.paidOut += tx.amount;
-    else if (tx.is_refund) e.paidIn = Math.max(0, e.paidIn - tx.amount);
-  }
-
-  const errors: string[] = [];
-  let updated = 0;
-  for (const [bookingId, { paidIn, paidOut }] of bookingMap.entries()) {
-    const paidAmount   = Math.max(0, paidIn);
-    const totalPaidOut = Math.max(0, paidOut);
-
-    const { error } = await supabaseAdmin
-      .from('bookings')
-      .update({ paid_amount: paidAmount, total_paid_out: totalPaidOut, updated_at: new Date().toISOString() })
-      .eq('id', bookingId);
-
-    if (error) errors.push(`${bookingId}: ${error.message}`);
-    else updated++;
-  }
-  return { updated, ...(errors.length > 0 ? { errors } : {}) };
-}
+// Phase 2a — JS fallback 제거.
+//   기존: RPC 미존재 시 bookings.paid_amount 를 JS 에서 직접 UPDATE (ledger 우회 → drift 유발).
+//   이제: resync 는 ledger 가 함께 보정되는 resync_paid_amounts_with_ledger RPC 만 호출.
+//        RPC 에러 시 사용자에게 명시적으로 알리고 fallback 안 함.
 
 /**
  * 예약 원장 갱신 — update_booking_ledger RPC 호출 + 타임라인 로그
@@ -120,7 +88,7 @@ async function applyToBooking(
   amount: number,
   isRefund: boolean,
   delta: number = 1,
-  meta?: { counterpartyName?: string },
+  meta?: { counterpartyName?: string; bankTxId?: string; createdBy?: string },
 ) {
   const sign = delta;
 
@@ -135,10 +103,25 @@ async function applyToBooking(
     payoutDelta = amount * sign;
   }
 
+  // Phase 2a — ledger 이중쓰기 인자.
+  //   bankTxId 가 주어지면 idempotency_key 로 사용 (재시도 시 ledger 중복 INSERT 방지).
+  //   delta=-1 (롤백) 인 경우 ':rollback' 접미를 붙여 별도 entry 로 기록.
+  const baseIdem = meta?.bankTxId ? `bktx:${meta.bankTxId}` : null;
+  const idem = baseIdem
+    ? (delta < 0 ? `${baseIdem}:rollback` : baseIdem)
+    : null;
+
   const { data, error: rpcErr } = await supabaseAdmin.rpc('update_booking_ledger', {
     p_booking_id: bookingId,
     p_paid_delta: paidDelta,
     p_payout_delta: payoutDelta,
+    p_source: 'bank_tx_manual_match',
+    p_source_ref_id: meta?.bankTxId ?? null,
+    p_idempotency_key: idem,
+    p_memo: delta < 0
+      ? `bank-tx unmatch (${txType}${isRefund ? ' refund' : ''})`
+      : `bank-tx match (${txType}${isRefund ? ' refund' : ''})`,
+    p_created_by: meta?.createdBy ?? null,
   });
 
   if (rpcErr) {
@@ -329,7 +312,11 @@ export async function PUT(request: NextRequest) {
         })
         .eq('id', tx.id);
 
-      await applyToBooking(best.booking.id, tx.transaction_type, tx.amount, tx.is_refund, 1, { counterpartyName: tx.counterparty_name });
+      await applyToBooking(best.booking.id, tx.transaction_type, tx.amount, tx.is_refund, 1, {
+        counterpartyName: tx.counterparty_name,
+        bankTxId: tx.id,
+        createdBy: 'auto',
+      });
       matched++;
     }
 
@@ -444,7 +431,10 @@ export async function PATCH(request: NextRequest) {
       if (tx) {
         const t = tx as any;
         if (t.booking_id) {
-          await applyToBooking(t.booking_id, t.transaction_type, t.amount, t.is_refund, -1);
+          await applyToBooking(t.booking_id, t.transaction_type, t.amount, t.is_refund, -1, {
+            bankTxId: transactionId,
+            createdBy: 'undo',
+          });
         }
       }
 
@@ -557,7 +547,7 @@ export async function PATCH(request: NextRequest) {
       const isRefund       = (txData as any)?.is_refund || false;
       const counterpartyName = (txData as any)?.counterparty_name ?? undefined;
 
-      const splitTotal = splits.reduce((s, r) => s + r.amount, 0);
+      const splitTotal = splits.reduce((s: number, r: Record<string, unknown>) => s + Number(r.amount), 0);
       const diff = splitTotal - txAmount;
 
       // [하드닝] 초과 분할은 무조건 거부 (장부 조작 방어)
@@ -574,7 +564,13 @@ export async function PATCH(request: NextRequest) {
       }
 
       for (const split of splits) {
-        await applyToBooking(split.bookingId, txType, split.amount, isRefund, 1, { counterpartyName });
+        // Phase 2a — split 매칭은 1 tx → N booking. idempotency_key 에 split.bookingId 까지 포함해야
+        // 같은 거래 재실행 시 중복 INSERT 방지하면서 split 별 entry 분리.
+        await applyToBooking(split.bookingId, txType, split.amount, isRefund, 1, {
+          counterpartyName,
+          bankTxId: `${transactionId}:${split.bookingId}`,
+          createdBy: 'multi',
+        });
         // 다중 매칭도 학습 대상 — 모든 split 예약 고객에 대해 alias 저장
         if (txType === '입금' && !isRefund) {
           learnAliasForMatch(split.bookingId, counterpartyName).catch(() => {});
@@ -597,14 +593,17 @@ export async function PATCH(request: NextRequest) {
 
     // ── resync: 전체 예약 입금액 재계산 (기존 매칭 기준) ────────────────
     if (action === 'resync') {
-      // DB 함수로 원자적 재계산 (JS 클라이언트 우회)
-      const { data, error } = await supabaseAdmin.rpc('resync_paid_amounts');
+      // Phase 2a — ledger 도 함께 보정하는 resync_paid_amounts_with_ledger 만 호출.
+      // 이 RPC 는 bookings 갱신 + 기존 ledger 합계와의 차이를 manual_adjust 로 보정 INSERT 까지 atomic.
+      const { data, error } = await supabaseAdmin.rpc('resync_paid_amounts_with_ledger');
       if (error) {
-        // RPC 없으면 JS fallback
-        console.warn('[resync] RPC 실패, JS fallback 실행:', error.message);
-        return NextResponse.json(await resyncFallback());
+        console.error('[resync] RPC 실패:', error.message);
+        return NextResponse.json(
+          { error: `재동기화 RPC 실패: ${error.message}. 마이그레이션 적용 상태를 확인하세요.` },
+          { status: 500 },
+        );
       }
-      return NextResponse.json({ updated: data ?? 0 });
+      return NextResponse.json(data ?? { updated: 0 });
     }
 
     // ── match (기본): 양방향 단일 매칭 ───────────────────────────────────
@@ -631,7 +630,11 @@ export async function PATCH(request: NextRequest) {
     const isRefund         = (txData as any)?.is_refund || false;
     const counterpartyName = (txData as any)?.counterparty_name ?? undefined;
 
-    await applyToBooking(bookingId, txType, txAmount, isRefund, 1, { counterpartyName });
+    await applyToBooking(bookingId, txType, txAmount, isRefund, 1, {
+      counterpartyName,
+      bankTxId: transactionId,
+      createdBy: 'manual',
+    });
 
     // Alias 학습 — 다음 같은 입금자가 오면 자동 매칭 신뢰도 +0.3
     if (txType === '입금' && !isRefund) {
@@ -787,15 +790,17 @@ export async function POST(request: NextRequest) {
       if (insertError) { results.push({ ...previewRow, status: 'error', error: insertError.message }); continue; }
 
       if (matchStatus === 'auto' && matchedBooking) {
-        const b = matchedBooking as any;
-        let pa = b.paid_amount || 0, po = b.total_paid_out || 0;
-        if (txType === '입금') pa += amount; else po += amount;
-        const tp = b.total_price || 0;
-        await supabaseAdmin.from('bookings').update({
-          paid_amount: pa, total_paid_out: po,
-          payment_status: pa >= tp && tp > 0 ? '완납' : pa > 0 ? '일부입금' : '미입금',
-          updated_at: new Date().toISOString(),
-        }).eq('id', matchedBooking.id);
+        // Phase 2a — bulk insert auto-match. update_booking_ledger RPC 로 atomic + ledger 이중쓰기.
+        await supabaseAdmin.rpc('update_booking_ledger', {
+          p_booking_id: matchedBooking.id,
+          p_paid_delta: txType === '입금' ? amount : 0,
+          p_payout_delta: txType === '출금' ? amount : 0,
+          p_source: 'bank_tx_manual_match',
+          p_source_ref_id: (inserted as any)?.id ?? null,
+          p_idempotency_key: (inserted as any)?.id ? `bulk:${(inserted as any).id}` : null,
+          p_memo: `bulk insert auto-match ${txType}`,
+          p_created_by: 'bulk_retroactive',
+        });
       }
 
       results.push({ ...previewRow, status: 'inserted', txId: (inserted as any)?.id });

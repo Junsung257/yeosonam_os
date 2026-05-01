@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured, supabase, createMessageLog } from '@/lib/supabase';
+import { isSupabaseConfigured, supabaseAdmin, createMessageLog } from '@/lib/supabase';
 
 export async function POST(
   request: NextRequest,
@@ -15,11 +15,15 @@ export async function POST(
     const cancelReason  = (body.reason as string) || '관리자 취소';
 
     // 현재 예약 조회 (이미 취소된 경우 방지)
-    const { data: current } = await supabase
+    const { data: current, error: selectErr } = await supabaseAdmin
       .from('bookings')
       .select('id, booking_no, status')
       .eq('id', params.id)
       .single();
+    if (selectErr) {
+      console.error('[cancel] select error:', selectErr);
+      return NextResponse.json({ error: `예약 조회 실패: ${selectErr.message}` }, { status: 500 });
+    }
 
     if (!current) {
       return NextResponse.json({ error: '예약을 찾을 수 없습니다.' }, { status: 404 });
@@ -29,7 +33,7 @@ export async function POST(
     }
 
     // bookings 업데이트
-    const { data: booking, error: updateErr } = await supabase
+    const { data: booking, error: updateErr } = await supabaseAdmin
       .from('bookings')
       .update({
         status:       'cancelled',
@@ -44,7 +48,8 @@ export async function POST(
       .single();
 
     if (updateErr) {
-      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      console.error('[cancel] update error:', updateErr);
+      return NextResponse.json({ error: `취소 처리 실패: ${updateErr.message}` }, { status: 500 });
     }
 
     // CANCELLATION 로그 생성
@@ -92,8 +97,9 @@ export async function POST(
 
     return NextResponse.json({ booking });
   } catch (error) {
+    console.error('[cancel] unexpected error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '취소 처리 실패' },
+      { error: error instanceof Error ? `${error.name}: ${error.message}` : '취소 처리 실패' },
       { status: 500 }
     );
   }

@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
     // ── 중복 감지 (신규 생성 시에만 — body.id 없을 때) ──────────────────────
     // skipDedup: true 시 스킵 (병합 승인 후 강제 신규 생성 등 예외 경로)
     if (!body.id && !body.skipDedup) {
-      const phone = normalizePhone(body.phone);
-      const dup = await findDuplicateCustomers({ name: body.name, phone: phone ?? undefined });
+      // rawPhone 원본(대시 포함 가능) 그대로 전달 → findDuplicateCustomers 내부에서 양쪽 형식 모두 검색
+      const dup = await findDuplicateCustomers({ name: body.name, phone: body.phone ?? undefined });
 
       // 전화번호 정확 일치 → 기존 고객 재사용 (자동 병합)
       if (dup.exact) {

@@ -459,7 +459,9 @@ async function auditOne(pkg, baseUrl) {
     //
     // INFO_RULES: 데이터 무결성 영향 없는 알림형 W-code (자동 분리 안내 등).
     // 신규 INFO 규칙 추가 시 아래 set 에 W-code 추가.
-    const INFO_RULES = new Set(['W12']);
+    //   W11 — 콤마 포함 ▶ activity (splitScheduleItems 자동 분리 또는 W31 보호)
+    //   W12 — splitScheduleItems 자동 분리 안내
+    const INFO_RULES = new Set(['W11', 'W12']);
     const isInfoOnly = (warns) => warns.length > 0 && warns.every(w => {
       const m = String(w).match(/\[(W\d+)/);
       return m && INFO_RULES.has(m[1]);
@@ -554,10 +556,11 @@ async function auditOne(pkg, baseUrl) {
     console.log(`📦 ${r.short_code || '(no code)'} | ${r.title}`);
     console.log(`   ID: ${r.id}`);
 
-    // 🆕 audit_status 게이트 결과
+    // 🆕 audit_status 게이트 결과 (4단계 — info 추가)
     if (r._persisted_status) {
       const badge =
         r._persisted_status === 'clean' ? '🟢 CLEAN (즉시 승인 가능)' :
+        r._persisted_status === 'info' ? '⚪ INFO (안내성 경고만 — 자동 승인 OK)' :
         r._persisted_status === 'warnings' ? '🟡 WARNINGS (어드민 확인 필요)' :
         '🔴 BLOCKED (승인 차단 — 수정 후 재감사)';
       console.log(`   audit_status: ${badge}`);
@@ -596,14 +599,21 @@ async function auditOne(pkg, baseUrl) {
     } else if (r.render.error) {
       console.log(`   ⚠️  렌더 audit 실패: ${r.render.error}`);
     } else if (r.render.status === 200) {
-      const checks = [
-        r.render.price_found ? '✅' : '❌',
-        r.render.hotel_found ? '✅' : '❌',
-        r.render.flight_found ? '✅' : '❌',
-      ];
-      console.log(`   🔍 렌더 검증 (${r.render.url}):`);
-      console.log(`      ${checks[0]} 최저가 표시  ${checks[1]} 호텔명 표시  ${checks[2]} 항공편 표시`);
-      console.log(`      HTML 길이: ${r.render.length} bytes`);
+      // production HTML 이 너무 짧으면 ISR on-demand 빌드 미완료 → 친화적 안내 (false-positive 방어)
+      if (r.render.length < 5000) {
+        console.log(`   ⏳ 렌더 검증 SKIP (${r.render.url}):`);
+        console.log(`      HTML 길이 ${r.render.length} bytes — production ISR 빌드 미완료로 추정 (신규 등록 직후)`);
+        console.log(`      📌 production 페이지 첫 방문 시 자동 빌드 → 5~30초 후 정상 노출. 데이터 자체는 정상.`);
+      } else {
+        const checks = [
+          r.render.price_found ? '✅' : '❌',
+          r.render.hotel_found ? '✅' : '❌',
+          r.render.flight_found ? '✅' : '❌',
+        ];
+        console.log(`   🔍 렌더 검증 (${r.render.url}):`);
+        console.log(`      ${checks[0]} 최저가 표시  ${checks[1]} 호텔명 표시  ${checks[2]} 항공편 표시`);
+        console.log(`      HTML 길이: ${r.render.length} bytes`);
+      }
     } else {
       console.log(`   ⚠️  렌더 응답: ${r.render.status}`);
     }

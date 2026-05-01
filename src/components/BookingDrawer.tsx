@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import Link from 'next/link';
 import {
   JOURNEY_STEPS, ALLOWED_TRANSITIONS, getStepIndex,
   getStatusLabel, getStatusBadgeClass,
 } from '@/lib/booking-state-machine';
+import LedgerViewer from './LedgerViewer';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ function AmountRow({
 //   C. cash        — 장부 비어있고 통장만 매칭됨 → 현금 기준 실현수익 노출
 //   D. confirmed   — settlement_confirmed_at 有 → 책 덮음 (어느 기준이든)
 
-function DualControlTower({
+const DualControlTower = React.memo(function DualControlTower({
   totalSale,
   effectiveNet,
   netOverride,
@@ -386,12 +387,12 @@ function DualControlTower({
       </div>
     </div>
   );
-}
+});
 
 // ─── Dynamic Quote Builder ────────────────────────────────────────────────────
 // 역할: 좌측 '장부상 계획(Blueprint)' 수치를 설정하는 예산안 도구
 
-function DynamicQuoteBuilder({
+const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
   rows, setRows, isDirty, setIsDirty,
   netOverride, setNetOverride,
   overrideMemo, setOverrideMemo,
@@ -764,7 +765,7 @@ function DynamicQuoteBuilder({
       </div>
     </div>
   );
-}
+});
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -795,6 +796,9 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   // 랜드사 커미션 (rate ↔ amount 상호 자동 계산, UI에서만 연동)
   const [commissionRate, setCommissionRate]     = useState<number | null>(null);
   const [commissionAmount, setCommissionAmount] = useState<number | null>(null);
+
+  // Phase 2a — append-only 원장 보기 모달
+  const [showLedger, setShowLedger] = useState(false);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const visible = !!bookingId;
@@ -1283,18 +1287,28 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
                   🏦 통장 매칭 내역
                 </h3>
-                {txs.length > 0 && (
-                  <div className="flex items-center gap-3 text-[12px] tabular-nums">
-                    <span className="text-blue-600 font-semibold">
-                      📥 {reality.actualIncome.toLocaleString()}원
-                    </span>
-                    {reality.actualExpense > 0 && (
-                      <span className="text-red-500 font-semibold">
-                        📤 {reality.actualExpense.toLocaleString()}원
+                <div className="flex items-center gap-3 text-[12px] tabular-nums">
+                  {txs.length > 0 && (
+                    <>
+                      <span className="text-blue-600 font-semibold">
+                        📥 {reality.actualIncome.toLocaleString()}원
                       </span>
-                    )}
-                  </div>
-                )}
+                      {reality.actualExpense > 0 && (
+                        <span className="text-red-500 font-semibold">
+                          📤 {reality.actualExpense.toLocaleString()}원
+                        </span>
+                      )}
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowLedger(true)}
+                    className="text-[11px] px-2 py-0.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                    title="원장(append-only) 거래 흐름 보기"
+                  >
+                    📒 원장 보기
+                  </button>
+                </div>
               </div>
               {txLoading ? (
                 <div className="space-y-2">
@@ -1310,36 +1324,42 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {txs.map(tx => (
-                    <div key={tx.id} className={`rounded-xl p-3 ${
-                      tx.transaction_type === '입금' && !tx.is_refund
-                        ? 'bg-blue-50'
-                        : tx.transaction_type === '출금'
-                          ? 'bg-red-50/60'
-                          : 'bg-orange-50/60'
-                    }`}>
+                  {txs.map(tx => {
+                    // 4-사분면 분류: (입금/출금) × (정상/환불)
+                    //  ↓ 입금(정상) — 고객→우리 (계약금/잔금)
+                    //  ↩ 입금(환불) — 랜드사→우리 (환불받음)
+                    //  ↑ 출금(정상) — 우리→랜드사 (송금)
+                    //  ↪ 출금(환불) — 우리→고객 (환불해줌)
+                    const kind: 'in_normal' | 'in_refund' | 'out_normal' | 'out_refund' =
+                      tx.transaction_type === '입금'
+                        ? (tx.is_refund ? 'in_refund' : 'in_normal')
+                        : (tx.is_refund ? 'out_refund' : 'out_normal');
+                    const meta = ({
+                      in_normal:  { bg: 'bg-blue-50',     iconCls: 'bg-blue-500 text-white',          icon: '↓', label: '입금 (고객)',     amountCls: 'text-blue-600',   sign: '+' },
+                      in_refund:  { bg: 'bg-emerald-50',  iconCls: 'bg-emerald-100 text-emerald-700', icon: '↩', label: '환불받음 (랜드사)', amountCls: 'text-emerald-700', sign: '+' },
+                      out_normal: { bg: 'bg-red-50/60',   iconCls: 'bg-red-100 text-red-600',         icon: '↑', label: '송금 (랜드사)',    amountCls: 'text-red-600',    sign: '−' },
+                      out_refund: { bg: 'bg-orange-50/60',iconCls: 'bg-orange-100 text-orange-700',   icon: '↪', label: '환불해줌 (고객)',  amountCls: 'text-orange-700', sign: '−' },
+                    } as const)[kind];
+                    return (
+                    <div key={tx.id} className={`rounded-xl p-3 ${meta.bg}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[14px] font-bold flex-shrink-0 ${
-                            tx.transaction_type === '입금'
-                              ? tx.is_refund ? 'bg-orange-100 text-orange-600' : 'bg-blue-500 text-white'
-                              : 'bg-red-100 text-red-600'
-                          }`}>
-                            {tx.transaction_type === '입금' ? (tx.is_refund ? '↩' : '↓') : '↑'}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[14px] font-bold flex-shrink-0 ${meta.iconCls}`}>
+                            {meta.icon}
                           </div>
                           <div>
                             <p className="text-[13px] font-semibold text-gray-800">{tx.counterparty_name || '—'}</p>
                             <p className="text-[11px] text-gray-400">
+                              <span className="font-medium text-gray-500">{meta.label}</span>
+                              {' · '}
                               {new Date(tx.received_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                               {tx.memo && ` · ${tx.memo}`}
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className={`text-[15px] font-extrabold tabular-nums ${
-                            tx.transaction_type === '입금' && !tx.is_refund ? 'text-blue-600' : 'text-red-600'
-                          }`}>
-                            {tx.transaction_type === '출금' ? '−' : '+'}{tx.amount.toLocaleString()}원
+                          <p className={`text-[15px] font-extrabold tabular-nums ${meta.amountCls}`}>
+                            {meta.sign}{tx.amount.toLocaleString()}원
                           </p>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded mt-0.5 inline-block font-semibold ${
                             tx.match_status === 'auto'   ? 'bg-green-100 text-green-700'  :
@@ -1351,7 +1371,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1432,6 +1453,11 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             ${toast.type === 'err' ? 'bg-red-600' : 'bg-gray-900'}`}>
             {toast.type === 'err' ? '🚨' : '✅'} {toast.msg}
           </div>
+        )}
+
+        {/* ── Phase 2a 원장 보기 모달 ──────────────────────────────── */}
+        {showLedger && booking?.id && (
+          <LedgerViewer bookingId={booking.id} onClose={() => setShowLedger(false)} />
         )}
       </div>
     </>

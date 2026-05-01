@@ -3,8 +3,8 @@
  *
  * 역할:
  *   1) routeMessage() 로 agent type 결정
- *   2) agent type 에 맞는 GeminiAgentV2Config 조립 (tool 정의·executeTool·systemPrompt)
- *   3) runGeminiAgentLoopV2() 호출
+ *   2) agent type 에 맞는 DeepSeekAgentV2Config 조립 (tool 정의·executeTool·systemPrompt)
+ *   3) runDeepSeekAgentLoopV2() 호출
  *
  * 구현 상태 (Phase 2 초기):
  *   ✅ operations — 완전 V2 연결
@@ -14,8 +14,8 @@
  */
 
 import { routeMessage } from './claude-router'
-import type { GeminiAgentV2Config, V2RunParams } from './gemini-agent-loop-v2'
-import { runGeminiAgentLoopV2 } from './gemini-agent-loop-v2'
+import type { DeepSeekAgentV2Config, V2RunParams } from './deepseek-agent-loop-v2'
+import { runDeepSeekAgentLoopV2 } from './deepseek-agent-loop-v2'
 import type { StreamEvent } from './stream-encoder'
 import type { AgentRunResult, AgentType, JarvisContext } from './types'
 
@@ -55,7 +55,7 @@ import {
  *       · surface='customer' → concierge (RAG 상품 검색 + 고객 톤)
  *       · surface='admin'    → products agent (관리자용 상품 CRUD)
  */
-function buildConfig(agentType: AgentType, ctx: JarvisContext): GeminiAgentV2Config | null {
+function buildConfig(agentType: AgentType, ctx: JarvisContext): DeepSeekAgentV2Config | null {
   switch (agentType) {
     case 'operations':
       return {
@@ -121,7 +121,7 @@ export interface DispatchResult {
   agentType: AgentType
   routerConfidence: number
   supported: boolean            // false = V1 폴백 필요
-  config: GeminiAgentV2Config | null
+  config: DeepSeekAgentV2Config | null
 }
 
 /** 라우팅 + config 조립만 먼저 반환 (SSE 라우트가 agent_picked 이벤트 먼저 보낼 수 있게) */
@@ -137,11 +137,10 @@ export async function prepareDispatch(input: DispatchInput): Promise<DispatchRes
   }
 }
 
-/** dispatch 후 실제 agent loop 실행 (stream generator 반환) */
 export async function* runV2(
   dispatch: DispatchResult,
   params: V2RunParams,
 ): AsyncGenerator<StreamEvent, AgentRunResult | null> {
   if (!dispatch.supported || !dispatch.config) return null
-  return yield* runGeminiAgentLoopV2(dispatch.config, params)
+  return yield* runDeepSeekAgentLoopV2(dispatch.config, params)
 }

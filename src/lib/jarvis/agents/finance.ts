@@ -1,8 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { FINANCE_PROMPT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
-import { runGeminiAgentLoop } from '../gemini-agent-loop'
-import { convertTools } from '../gemini-tool-format'
+import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 
 const FINANCE_TOOLS_RAW = [
   {
@@ -104,7 +103,7 @@ const FINANCE_TOOLS_RAW = [
   },
 ]
 
-const FINANCE_TOOLS = convertTools(FINANCE_TOOLS_RAW)
+const FINANCE_TOOLS = FINANCE_TOOLS_RAW
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -243,7 +242,7 @@ export { FINANCE_TOOLS, FINANCE_TOOLS_RAW }
 export { executeTool as executeFinanceTool }
 
 export async function runFinanceAgent(params: AgentRunParams): Promise<AgentRunResult> {
-  return runGeminiAgentLoop({
+  return runDeepSeekAgentLoop({
     agentType: 'finance',
     systemPrompt: FINANCE_PROMPT,
     tools: FINANCE_TOOLS,

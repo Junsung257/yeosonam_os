@@ -17,6 +17,8 @@ export interface ExtractedKeyword {
   tier: KeywordTier;
   suggestedBid: number;
   category: string;
+  monthlySearchVolume?: number;
+  competitionLevel?: 'low' | 'medium' | 'high';
 }
 
 export interface SearchAdKeyword extends ExtractedKeyword {
@@ -182,6 +184,56 @@ export function extractKeywords(pkg: {
   }
 
   return keywords;
+}
+
+/**
+ * Naver DataLab + 캐시 기반 실제 검색량/경쟁도 결합.
+ * 키 미설정 시 tier 휴리스틱으로 폴백 (랜덤 X — 결정론적).
+ */
+export async function enrichKeywordsWithNaverVolume(keywords: ExtractedKeyword[]): Promise<ExtractedKeyword[]> {
+  if (keywords.length === 0) return keywords;
+
+  // 동적 import — 서버 환경에서만 실행 (이 모듈은 클라이언트에서도 쓰임)
+  const researchMap: Map<string, { monthly_search_volume: number | null; competition_level: 'low' | 'medium' | 'high' | null }> = new Map();
+  try {
+    if (typeof window === 'undefined') {
+      const { researchKeywordsBatch } = await import('./keyword-research');
+      const targets = keywords.filter(k => k.tier !== 'negative').map(k => k.keyword);
+      const results = await researchKeywordsBatch(targets);
+      for (const [kw, r] of results) {
+        researchMap.set(kw, {
+          monthly_search_volume: r.monthly_search_volume,
+          competition_level: r.competition_level,
+        });
+      }
+    }
+  } catch {
+    // 리서치 실패 시 휴리스틱으로 폴백
+  }
+
+  return keywords.map(k => {
+    const real = researchMap.get(k.keyword);
+    if (real?.monthly_search_volume) {
+      return {
+        ...k,
+        monthlySearchVolume: real.monthly_search_volume,
+        competitionLevel: real.competition_level || undefined,
+      };
+    }
+    // 결정론적 휴리스틱 폴백 (tier 기준 중앙값)
+    const fallback: Record<KeywordTier, { volume: number; comp: 'low' | 'medium' | 'high' }> = {
+      core:     { volume: 8000,  comp: 'high'   },
+      mid:      { volume: 1500,  comp: 'medium' },
+      longtail: { volume: 300,   comp: 'low'    },
+      negative: { volume: 0,     comp: 'low'    },
+    };
+    const f = fallback[k.tier];
+    return {
+      ...k,
+      monthlySearchVolume: f.volume,
+      competitionLevel: f.comp,
+    };
+  });
 }
 
 // ── 빅데이터 아카이브 ────────────────────────────────────

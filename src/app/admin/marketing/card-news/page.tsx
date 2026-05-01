@@ -102,7 +102,7 @@ export default function CardNewsListPage() {
       });
       const data = await res.json();
       if (res.ok && data.card_news?.id) {
-        router.push(`/admin/marketing/card-news/${data.card_news.id}`);
+        router.push(`/admin/marketing/content-hub/${data.card_news.id}?source=new`);
       } else {
         alert(data.error ?? '생성 실패');
       }
@@ -214,8 +214,14 @@ export default function CardNewsListPage() {
 
                   <div className="flex gap-2 mt-3">
                     <Link
+                      href={`/admin/marketing/content-hub/${cn.id}`}
+                      className="flex-1 text-center text-xs py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    >
+                      Content Hub
+                    </Link>
+                    <Link
                       href={`/admin/marketing/card-news/${cn.id}`}
-                      className="flex-1 text-center text-xs py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium"
+                      className="text-xs px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium"
                     >
                       편집
                     </Link>

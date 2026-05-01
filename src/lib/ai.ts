@@ -1,9 +1,7 @@
 import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// AI 모델 타입
-export type AIModel = 'openai' | 'claude' | 'gemini';
+// AI 모델 타입 (V3: DeepSeek 전면 전환, 레거시 호환 유지)
+export type AIModel = 'openai' | 'claude' | 'gemini' | 'deepseek';
 
 // 여행 상품 데이터 인터페이스
 export interface TravelPackage {
@@ -24,91 +22,35 @@ export interface TravelPackage {
   };
 }
 
-// AI 클라이언트 lazy 초기화
-function getOpenAI() {
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// AI 클라이언트 lazy 초기화 (V3: DeepSeek primary)
+function getDeepSeek() {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
+  return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
-function getAnthropic() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-}
-
-function getGenAI() {
-  return new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
-}
-
-// OpenAI로 콘텐츠 생성
-async function generateWithOpenAI(packageData: TravelPackage, contentType: string): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OpenAI API 키가 설정되지 않았습니다. .env.local 파일을 확인해주세요.');
-  }
-
+// DeepSeek V4-Flash로 콘텐츠 생성 (V3: 모든 모델 호출을 DeepSeek로 통합)
+async function generateWithDeepSeek(packageData: TravelPackage, contentType: string): Promise<string> {
   const prompt = createPrompt(packageData, contentType);
-
   try {
-    const completion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o',
+    const completion = await getDeepSeek().chat.completions.create({
+      model: 'deepseek-v4-flash',
       messages: [
-        {
-          role: 'system',
-          content: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
+        { role: 'system', content: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.' },
+        { role: 'user', content: prompt },
       ],
       max_tokens: 2000,
       temperature: 0.7,
     });
-
     return completion.choices[0]?.message?.content || '';
   } catch (error) {
-    throw new Error(`OpenAI API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+    throw new Error(`DeepSeek API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
 
-// Claude로 콘텐츠 생성
-async function generateWithClaude(packageData: TravelPackage, contentType: string): Promise<string> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('Claude API 키가 설정되지 않았습니다. .env.local 파일을 확인해주세요.');
-  }
-
-  const prompt = createPrompt(packageData, contentType);
-
-  try {
-    const message = await getAnthropic().messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 2000,
-      temperature: 0.7,
-      // cache_control: 동일 시스템 프롬프트 반복 호출 시 read=write의 10% 비용
-      system: [
-        {
-          type: 'text',
-          text: '당신은 전문 여행 상품 마케팅 전문가입니다. 매력적이고 설득력 있는 여행 상품 설명을 작성해주세요.',
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-    });
-
-    if (message.usage) {
-      console.log('[Claude cache]', {
-        cache_read: message.usage.cache_read_input_tokens,
-        cache_write: message.usage.cache_creation_input_tokens,
-        input: message.usage.input_tokens,
-      });
-    }
-    return message.content[0]?.type === 'text' ? message.content[0].text : '';
-  } catch (error) {
-    throw new Error(`Claude API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-  }
-}
+// 레거시 호환: Claude/OpenAI 호출도 DeepSeek로 라우팅
+const generateWithClaude = generateWithDeepSeek;
+const generateWithOpenAI = generateWithDeepSeek;
 
 // Gemini로 콘텐츠 생성
 // 더미 콘텐츠 생성 (API 키 없을 때 테스트용)
@@ -200,39 +142,8 @@ ${packageData.destination}로의 여행은 새로운 문화, 아름다운 자연
   }
 }
 
-// Gemini로 콘텐츠 생성
-async function generateWithGemini(packageData: TravelPackage, contentType: string): Promise<string> {
-  if (!process.env.GOOGLE_AI_API_KEY) {
-    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 파일을 확인해주세요.');
-  }
-
-  const prompt = createPrompt(packageData, contentType);
-
-  try {
-    // 여러 모델 순서대로 시도
-    const models = ['gemini-2.5-flash', 'gemini-1.5-flash-001', 'gemini-pro'];
-    let lastError = null;
-
-    for (const modelName of models) {
-      try {
-        const model = getGenAI().getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        return text;
-      } catch (error) {
-        lastError = error;
-        continue;
-      }
-    }
-
-    // 모든 모델 실패 시 더미 콘텐츠 반환
-    console.warn('Gemini 모델 사용 불가, 샘플 콘텐츠 생성');
-    return generateDummyContent(packageData, contentType);
-  } catch (error) {
-    throw new Error(`Gemini API 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-  }
-}
+// 레거시 호환: Gemini 호출도 DeepSeek로 라우팅
+const generateWithGemini = generateWithDeepSeek;
 
 // 프롬프트 생성 함수
 function createPrompt(packageData: TravelPackage, contentType: string): string {
@@ -277,21 +188,13 @@ ${packageData.parsedData ? Object.entries(packageData.parsedData).map(([key, val
 export async function generateContent(
   packageData: TravelPackage,
   contentType: string = 'description',
-  model: AIModel = 'openai'
+  _model: AIModel = 'deepseek'
 ): Promise<string> {
+  // V3: 모든 모델을 DeepSeek로 통합 라우팅
   try {
-    switch (model) {
-      case 'openai':
-        return await generateWithOpenAI(packageData, contentType);
-      case 'claude':
-        return await generateWithClaude(packageData, contentType);
-      case 'gemini':
-        return await generateWithGemini(packageData, contentType);
-      default:
-        throw new Error(`지원하지 않는 AI 모델: ${model}`);
-    }
+    return await generateWithDeepSeek(packageData, contentType);
   } catch (error) {
-    console.error(`AI 콘텐츠 생성 실패 (${model}):`, error);
+    console.error(`AI 콘텐츠 생성 실패 (deepseek):`, error);
     throw new Error(`콘텐츠 생성에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
@@ -371,89 +274,41 @@ function parseAdVariantsFromText(text: string): AdVariant[] {
 export async function generateAdVariants(
   pkg: AdPackageInput,
   platform: 'thread' | 'instagram' | 'blog',
-  model: AIModel = 'openai'
+  _model: AIModel = 'deepseek'
 ): Promise<AdVariant[]> {
+  // V3: 모든 광고 카피 생성을 DeepSeek V4-Flash로 통합
   const systemPrompt = buildAdSystemPrompt(platform);
   const userPrompt = buildAdUserPrompt(pkg, platform);
 
-  let rawText = '';
-
   try {
-    switch (model) {
-      case 'openai': {
-        const completion = await getOpenAI().chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: 3000,
-          temperature: 0.7,
-        });
-        rawText = completion.choices[0]?.message?.content ?? '';
-        break;
-      }
-      case 'claude': {
-        const msg = await getAnthropic().messages.create({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 3000,
-          temperature: 0.7,
-          // 플랫폼별 systemPrompt 반복 재사용 → caching 실효
-          system: [
-            { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
-          ],
-          messages: [{ role: 'user', content: userPrompt }],
-        });
-        if (msg.usage) {
-          console.log('[Claude cache ad-variants]', {
-            cache_read: msg.usage.cache_read_input_tokens,
-            cache_write: msg.usage.cache_creation_input_tokens,
-            input: msg.usage.input_tokens,
-          });
-        }
-        rawText = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
-        break;
-      }
-      case 'gemini': {
-        const models = ['gemini-2.5-flash', 'gemini-1.5-flash-001', 'gemini-pro'];
-        for (const m of models) {
-          try {
-            const genModel = getGenAI().getGenerativeModel({ model: m });
-            const result = await genModel.generateContent(`${systemPrompt}\n\n${userPrompt}`);
-            rawText = result.response.text();
-            break;
-          } catch { continue; }
-        }
-        break;
-      }
-    }
+    const completion = await getDeepSeek().chat.completions.create({
+      model: 'deepseek-v4-flash',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 3000,
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+    });
+    const rawText = completion.choices[0]?.message?.content ?? '';
+    return parseAdVariantsFromText(rawText);
   } catch (error) {
-    throw new Error(`광고 카피 생성 실패 (${model}/${platform}): ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+    throw new Error(`광고 카피 생성 실패 (deepseek/${platform}): ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
-
-  return parseAdVariantsFromText(rawText);
 }
 
-// 여러 모델로 동시에 생성 (비교용)
+// V3: 비교 생성 — DeepSeek 단일 모델이므로 1회만 호출
 export async function generateContentComparison(
   packageData: TravelPackage,
   contentType: string = 'description'
-): Promise<Record<AIModel, string>> {
-  const results: Partial<Record<AIModel, string>> = {};
-
-  const models: AIModel[] = ['openai', 'claude', 'gemini'];
-
-  await Promise.allSettled(
-    models.map(async (model) => {
-      try {
-        results[model] = await generateContent(packageData, contentType, model);
-      } catch (error) {
-        results[model] = `생성 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`;
-      }
-    })
-  );
-
-  return results as Record<AIModel, string>;
+): Promise<Record<string, string>> {
+  try {
+    const result = await generateWithDeepSeek(packageData, contentType);
+    return { deepseek: result };
+  } catch (error) {
+    return { deepseek: `생성 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}` };
+  }
 }
 
 // ─── 마케팅 카피 자동 생성 (Human-in-the-loop 승인 시스템용) ─────────────────
@@ -539,20 +394,24 @@ function fallbackCopies(destination: string): MarketingCopy[] {
 export async function generateMarketingCopies(
   params: MarketingCopyParams,
 ): Promise<MarketingCopy[]> {
-  if (!process.env.GOOGLE_AI_API_KEY) {
-    console.warn('[generateMarketingCopies] GOOGLE_AI_API_KEY 미설정 — 기본 카피 반환');
+  if (!process.env.DEEPSEEK_API_KEY) {
+    console.warn('[generateMarketingCopies] DEEPSEEK_API_KEY 미설정 — 기본 카피 반환');
     return fallbackCopies(params.destination);
   }
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
     const prompt = MARKETING_SYSTEM_PROMPT + '\n\n' + buildMarketingUserPrompt(params);
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text()
-      .replace(/```json\s*/g, '')
-      .replace(/```\s*/g, '')
-      .trim();
-
+    const completion = await getDeepSeek().chat.completions.create({
+      model: 'deepseek-v4-flash',
+      messages: [
+        { role: 'system', content: MARKETING_SYSTEM_PROMPT },
+        { role: 'user', content: buildMarketingUserPrompt(params) },
+      ],
+      max_tokens: 1500,
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+    });
+    const raw = completion.choices[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw) as { marketing_copies?: MarketingCopy[] };
     const copies = parsed.marketing_copies;
 
@@ -560,7 +419,6 @@ export async function generateMarketingCopies(
       throw new Error('marketing_copies 배열이 없거나 비어있습니다.');
     }
 
-    // 타입 안전 필터링 (필수 필드 보장)
     return copies
       .filter((c): c is MarketingCopy =>
         typeof c.type === 'string' &&
@@ -656,16 +514,21 @@ ${p.specialNotes ? `[유의사항]\n${p.specialNotes.slice(0, 300)}` : ''}`;
  * 카톡방용 마케팅 문구 생성 (Gemini)
  */
 export async function generateKakaoCopy(params: KakaoCopyParams): Promise<string> {
-  if (!process.env.GOOGLE_AI_API_KEY) {
+  if (!process.env.DEEPSEEK_API_KEY) {
     return fallbackKakaoCopy(params);
   }
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const prompt = KAKAO_COPY_SYSTEM + '\n\n' + buildKakaoCopyUserPrompt(params);
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    // 코드블록 제거
+    const completion = await getDeepSeek().chat.completions.create({
+      model: 'deepseek-v4-flash',
+      messages: [
+        { role: 'system', content: KAKAO_COPY_SYSTEM },
+        { role: 'user', content: buildKakaoCopyUserPrompt(params) },
+      ],
+      max_tokens: 2000,
+      temperature: 0.7,
+    });
+    const text = completion.choices[0]?.message?.content?.trim() || '';
     return text.replace(/```[\s\S]*?```/g, '').trim();
   } catch (err) {
     console.error('[generateKakaoCopy] 생성 실패:', err instanceof Error ? err.message : err);

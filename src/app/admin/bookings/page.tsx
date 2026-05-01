@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import BookingDrawer from '@/components/BookingDrawer';
 import CommandPalette from '@/components/CommandPalette';
 import { useVendors } from '@/hooks/useVendors';
@@ -27,6 +28,7 @@ interface Booking {
   total_price?: number;
   paid_amount?: number;
   total_paid_out?: number;
+  margin?: number;
   payment_status?: string;
   status: string;
   cancelled_at?: string | null;
@@ -64,7 +66,8 @@ const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-status-successBg text-status-successFg',
   cancelled: 'bg-status-neutralBg text-admin-textSubtle line-through',
 };
-const DATE_RANGE_RE = /^(\d{6})(?:\s*~\s*(\d{6}))?$/;
+// YYMMDD(6자리) 또는 MMDD(4자리, 올해 자동 추론) 둘 다 매칭
+const DATE_RANGE_RE = /^(\d{6}|\d{4})(?:\s*~\s*(\d{6}|\d{4}))?$/;
 
 // [1] DB에 실제 존재하는 컬럼 화이트리스트 — 없는 필드 전송 차단
 // ⚠️ total_price는 DB Generated Column이므로 절대 PATCH 페이로드에 포함 금지
@@ -82,9 +85,12 @@ const DB_FIELD_MAP: Partial<Record<string, string>> = {
   land_operator_contact: 'manager_name',
 };
 
+// 컬럼 순서 (left-fixed): 체크박스(0) · 예약일(1) · 출발일(2) · 고객명(3) · 랜드사(4)
+//                        scroll: 상품명(5) · 예약번호(6) · 출발지역(7) · 담당자(8) · 인원(9) · 1인 판매가(10) ...
+//                        right-fixed: 잔금(16) · 상태(17) · 액션(18)
 const COL_FIELD: Record<number, keyof Booking> = {
-  3: 'departure_date',       6: 'departing_location_id',
-  7: 'land_operator_id',     8: 'manager_name',
+  2: 'departure_date',       4: 'land_operator_id',
+  7: 'departing_location_id', 8: 'manager_name',
   9: 'adult_count',         10: 'adult_price',
   14: 'status',
 };
@@ -105,7 +111,11 @@ function fmtK(n?: number | null) {
 }
 function fmtDate(s?: string | null) { return s ? s.slice(0, 10) : '-'; }
 function parseShortDate(s: string) {
-  return `20${s.slice(0, 2)}-${s.slice(2, 4)}-${s.slice(4, 6)}`;
+  // 6자리: YYMMDD → 20YY-MM-DD
+  if (s.length === 6) return `20${s.slice(0, 2)}-${s.slice(2, 4)}-${s.slice(4, 6)}`;
+  // 4자리: MMDD → 올해의 MM-DD
+  const yy = String(new Date().getFullYear()).slice(2);
+  return `20${yy}-${s.slice(0, 2)}-${s.slice(2, 4)}`;
 }
 
 const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
@@ -506,7 +516,7 @@ function SmartProductSelect({
       {dropPos && createPortal(
         <div
           style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
-          className="bg-white border border-slate-200 rounded-lg max-h-[360px] overflow-y-auto py-1"
+          className="bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] max-h-[360px] overflow-y-auto py-1"
           onMouseDown={e => e.stopPropagation()}
         >
           {loading && (
@@ -727,17 +737,46 @@ export default function BookingsPage() {
   bookingsRef.current = bookings; // 렌더마다 동기 갱신
 
   // ── 필터/탭 ────────────────────────────────────────────────────────────────
-  const [lifecycleTab, setLifecycleTab] = useState<'active' | 'done' | 'cancelled' | 'trash'>('active');
+  // 대시보드 KPI 카드에서 drilldown으로 진입 시 ?mode= / ?filter= 쿼리파라미터로 초기 상태 설정
+  // - ?mode=recognized → lifecycleTab='done' (출발 완료, IFRS 15 매출 인식)
+  // - ?mode=new        → lifecycleTab='active' + 생성일 desc 정렬 (신규예약, 영업)
+  // - ?filter=outstanding → activeTab='unpaid_risk' (잔금 미납 D-7)
+  // - ?status=pending,confirmed → lifecycleTab='active' (진행 예약)
+  // - ?id=<uuid>       → 해당 예약 drawer 자동 오픈
+  // - ?dq=missing_total_price|missing_total_cost|missing_operator|missing_region|missing_margin_calc|payment_status_mismatch
+  //                    → 데이터 품질 모니터 drilldown
+  const searchParams = useSearchParams();
+  const initialLifecycle: 'active' | 'done' | 'cancelled' | 'trash' = (() => {
+    const mode = searchParams?.get('mode');
+    if (mode === 'recognized') return 'done';
+    if (searchParams?.get('dq')) return 'active'; // 데이터 품질은 진행 중 예약에서 주로 발견
+    return 'active';
+  })();
+  const initialActiveTab = (() => {
+    const f = searchParams?.get('filter');
+    if (f === 'outstanding') return 'unpaid_risk' as const;
+    return '' as const;
+  })();
+  const dqFilter = searchParams?.get('dq') ?? null; // 데이터 품질 모니터 진입점
+
+  const [lifecycleTab, setLifecycleTab] = useState<'active' | 'done' | 'cancelled' | 'trash'>(initialLifecycle);
   const [activeTab, setActiveTab] = useState<
     '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'over_cost' | 'refund_pending' | 'settlement_pending'
-  >('');
+  >(initialActiveTab);
+  // 완료/지난 행사 탭 내 sub-필터: '' | 'settled' | 'unsettled'
+  const [doneSubTab, setDoneSubTab] = useState<'' | 'settled' | 'unsettled'>('');
   const [rawSearch, setRawSearch]       = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
   const [searchTarget, setSearchTarget] = useState<'all' | 'departure' | 'booking'>('all');
 
   // ── 정렬 ────────────────────────────────────────────────────────────────────
-  const [sortField, setSortField] = useState<string | null>(null);
-  const [sortDir, setSortDir]     = useState<'asc' | 'desc' | null>(null);
+  // ?mode=new 진입 시 생성일 desc로 시작 (신규예약 KPI drilldown 의도)
+  const [sortField, setSortField] = useState<string | null>(
+    searchParams?.get('mode') === 'new' ? 'created_at' : null,
+  );
+  const [sortDir, setSortDir]     = useState<'asc' | 'desc' | null>(
+    searchParams?.get('mode') === 'new' ? 'desc' : null,
+  );
 
   // ── 인라인 편집 ─────────────────────────────────────────────────────────────
   const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
@@ -759,8 +798,28 @@ export default function BookingsPage() {
   const undoTimerRef                = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ctxMenu, setCtxMenu]       = useState<{ x: number; y: number; b: Booking } | null>(null);
 
+  // ── 예약 취소 모달 (state만; handler는 showToast 선언 후) ─────────────────────
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [cancelForm, setCancelForm]     = useState<{ refund: string; penalty: string; reason: string }>({
+    refund: '', penalty: '', reason: '',
+  });
+  const [cancelling, setCancelling]     = useState(false);
+
+  const openCancelModal = useCallback((b: Booking) => {
+    // 기본값: 환불액=입금액 (전액 환불 가정), 위약금=0, 사유 비움
+    setCancelForm({
+      refund:  String(b.paid_amount ?? 0),
+      penalty: '0',
+      reason:  '',
+    });
+    setCancelTarget(b);
+  }, []);
+
   // ── Drawer / 가상화 ──────────────────────────────────────────────────────────
-  const [drawerBookingId, setDrawerBookingId] = useState<string | null>(null);
+  // ?id=<uuid> 진입 시 해당 예약 drawer 자동 오픈 (Cmd+K / 대시보드 drilldown 진입점)
+  const [drawerBookingId, setDrawerBookingId] = useState<string | null>(
+    searchParams?.get('id') ?? null,
+  );
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop]   = useState(0);
   const [containerH, setContainerH] = useState(600);
@@ -775,6 +834,142 @@ export default function BookingsPage() {
     setToast({ msg, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
+
+  // 일괄 취소: 1건이면 모달, 다건이면 공통 사유 prompt + 각 예약 paid_amount 만큼 자동 환불
+  const handleBulkCancel = useCallback(async () => {
+    const targets = bookings.filter(b => selected.has(b.id) && b.status !== 'cancelled');
+    if (targets.length === 0) {
+      showToast('취소 대상 없음 (이미 모두 취소 상태)', 'err');
+      return;
+    }
+    if (targets.length === 1) {
+      // 단건 → 정밀 모달로 (환불·위약금 정확 입력 가능)
+      openCancelModal(targets[0]);
+      return;
+    }
+    const reason = window.prompt(
+      `${targets.length}건 일괄 취소\n\n각 예약은 다음과 같이 처리됩니다:\n  · 환불액 = 해당 예약의 입금액 (전액 환불 가정)\n  · 위약금 = 0원\n  · 공통 사유 = (아래 입력)\n\n개별 환불·위약금이 다르면 한 건씩 처리하세요.\n\n취소 사유를 입력하세요:`,
+      '관리자 일괄 취소'
+    );
+    if (reason === null) return;
+    if (!confirm(`${targets.length}건을 정말 취소 처리하시겠습니까?`)) return;
+
+    setProcessing('bulk-cancel');
+    let ok = 0, fail = 0;
+    for (const b of targets) {
+      try {
+        const res = await fetch(`/api/bookings/${b.id}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            refund_amount: b.paid_amount ?? 0,
+            penalty_fee:   0,
+            reason:        reason.trim() || '관리자 일괄 취소',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          ok++;
+          setBookings(prev => prev.map(x => x.id === b.id
+            ? { ...x, ...(data.booking || {}), status: 'cancelled' as const }
+            : x));
+        } else { fail++; }
+      } catch { fail++; }
+    }
+    setProcessing(null);
+    setSelected(new Set());
+    showToast(`일괄 취소 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
+  }, [bookings, selected, openCancelModal, showToast]);
+
+  // 일괄 복구
+  const handleBulkRestore = useCallback(async () => {
+    const targets = bookings.filter(b => selected.has(b.id) && b.status === 'cancelled');
+    if (targets.length === 0) {
+      showToast('복구 대상 없음 (선택한 예약 중 취소 상태가 없음)', 'err');
+      return;
+    }
+    if (!confirm(`${targets.length}건의 취소된 예약을 복구하시겠습니까?\n\n취소 사유·환불액 이력은 그대로 보존되며,\nstatus만 입금액 유무에 따라 자동 결정됩니다.`)) return;
+
+    setProcessing('bulk-restore');
+    let ok = 0, fail = 0;
+    for (const b of targets) {
+      try {
+        const res = await fetch(`/api/bookings/${b.id}/restore`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: '관리자 일괄 복구' }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          ok++;
+          setBookings(prev => prev.map(x => x.id === b.id
+            ? { ...x, ...(data.booking || {}), status: data.restored_to ?? 'pending' }
+            : x));
+        } else { fail++; }
+      } catch { fail++; }
+    }
+    setProcessing(null);
+    setSelected(new Set());
+    showToast(`일괄 복구 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
+  }, [bookings, selected, showToast]);
+
+  const handleRestoreBooking = useCallback(async (b: Booking) => {
+    if (!confirm(`'${b.customers?.name ?? b.booking_no}' 예약을 복구하시겠습니까?\n\n복구 시 status는 입금액 유무에 따라 자동 결정되며,\n취소 사유·환불액·위약금 이력은 그대로 보존됩니다.`)) return;
+    setProcessing(b.id);
+    try {
+      const res = await fetch(`/api/bookings/${b.id}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: '관리자 복구' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? '복구 실패', 'err');
+        return;
+      }
+      const newStatus = data.restored_to ?? 'pending';
+      setBookings(prev => prev.map(x => x.id === b.id
+        ? { ...x, ...(data.booking || {}), status: newStatus }
+        : x));
+      showToast(`복구 완료 — ${newStatus}`);
+    } catch {
+      showToast('네트워크 오류 — 다시 시도해주세요', 'err');
+    } finally {
+      setProcessing(null);
+    }
+  }, [showToast]);
+
+  const handleCancelBooking = useCallback(async () => {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/bookings/${cancelTarget.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          refund_amount: Number(cancelForm.refund) || 0,
+          penalty_fee:   Number(cancelForm.penalty) || 0,
+          reason:        cancelForm.reason.trim() || '관리자 취소',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? '취소 실패', 'err');
+        return;
+      }
+      // 로컬 상태 즉시 갱신 (낙관적) — 정식 cancel API는 voidBooking까지 처리
+      setBookings(prev => prev.map(b => b.id === cancelTarget.id
+        ? { ...b, ...(data.booking || {}), status: 'cancelled' as const }
+        : b));
+      setCancelTarget(null);
+      showToast(`예약 취소 완료 — ${cancelTarget.customers?.name ?? cancelTarget.booking_no ?? ''}`);
+    } catch (e) {
+      console.error('[cancel] client error:', e);
+      showToast(`취소 실패 — ${e instanceof Error ? e.message : '알 수 없는 오류'}`, 'err');
+    } finally {
+      setCancelling(false);
+    }
+  }, [cancelTarget, cancelForm, showToast]);
 
   // [1] 안정적 cancelEdit
   const cancelEdit = useCallback(() => setEditingCell(null), []);
@@ -1172,6 +1367,9 @@ export default function BookingsPage() {
         if (b.status === 'completed') return true;
         return !!(b.departure_date && new Date(b.departure_date).getTime() < today.getTime());
       });
+      // sub-필터: 정산완료 / 정산대기
+      if (doneSubTab === 'settled')   list = list.filter(b => !!b.settlement_confirmed_at);
+      else if (doneSubTab === 'unsettled') list = list.filter(b => !b.settlement_confirmed_at);
     } else if (lifecycleTab === 'cancelled') {
       list = list.filter(b => !b.is_deleted && b.status === 'cancelled');
     }
@@ -1192,6 +1390,23 @@ export default function BookingsPage() {
         if (!b.departure_date) return false;
         const daysAfter = (now - new Date(b.departure_date).getTime()) / 86400000;
         return daysAfter >= 7;
+      });
+    }
+
+    // 데이터 품질 모니터 drilldown 필터 (?dq=...)
+    if (dqFilter) {
+      list = list.filter(b => {
+        switch (dqFilter) {
+          case 'missing_total_price': return !b.total_price || b.total_price === 0;
+          case 'missing_total_cost':  return !b.total_cost || b.total_cost === 0;
+          case 'missing_operator':    return !b.land_operator_id;
+          case 'missing_region':      return !b.departure_region;
+          case 'missing_margin_calc':
+            return (!b.margin || b.margin === 0) && (b.total_price || 0) > 0 && (b.total_cost || 0) > 0;
+          case 'payment_status_mismatch':
+            return (b.paid_amount || 0) > 0 && b.payment_status === '미입금';
+          default: return true;
+        }
       });
     }
 
@@ -1237,7 +1452,7 @@ export default function BookingsPage() {
     }
     return list;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookings, lifecycleTab, activeTab, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today]);
+  }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today]);
 
   const footerStats = useMemo(() => ({
     totalSales:    filtered.reduce((s, b) => s + (b.total_price||0), 0),
@@ -1332,7 +1547,7 @@ export default function BookingsPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           <Link href="/admin/customers" className="text-[13px] text-slate-700 border border-slate-300 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 whitespace-nowrap">고객 관리</Link>
-          <Link href="/admin/bookings/new" className="bg-[#001f3f] text-white text-[13px] px-4 py-2 rounded-lg hover:bg-blue-900 transition whitespace-nowrap font-semibold">+ 예약 등록</Link>
+          <Link href="/admin/bookings/new" className="bg-[#3182F6] text-white text-[13px] px-4 py-2 rounded-lg hover:bg-[#1B64DA] transition whitespace-nowrap font-semibold">+ 예약 등록</Link>
         </div>
       </div>
 
@@ -1356,14 +1571,14 @@ export default function BookingsPage() {
       {/* 통합 검색바 */}
       <div className="flex items-center gap-2 mb-2.5 shrink-0">
         <select value={searchTarget} onChange={e => setSearchTarget(e.target.value as typeof searchTarget)}
-          className="border border-slate-200 rounded-lg px-2 py-2 text-[13px] text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 shrink-0 cursor-pointer">
+          className="rounded-[10px] border border-[#E5E7EB] px-2 py-2 text-[13px] text-[#191F28] bg-white focus:outline-none focus:ring-2 focus:ring-[#EBF3FE] focus:border-[#3182F6] shrink-0 cursor-pointer">
           <option value="all">전체</option>
           <option value="departure">출발일</option>
           <option value="booking">예약일</option>
         </select>
         <div className="relative flex-1">
           <input type="text" value={rawSearch} onChange={e => setRawSearch(e.target.value)}
-            placeholder="고객명, 상품명, 예약번호, 출발지역 / 날짜: 260320 또는 260101~260331"
+            placeholder="고객명, 상품명, 예약번호, 출발지역 / 날짜: 0426 · 260426 · 0426~0501"
             className="w-full pl-3 pr-8 py-2 border-2 border-admin-border rounded-lg text-admin-base focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface text-admin-text transition-colors" />
           {rawSearch && (
             <button onClick={() => setRawSearch('')}
@@ -1379,6 +1594,18 @@ export default function BookingsPage() {
 
       {/* 라이프사이클 파이프라인 탭 */}
       <div className="flex items-center border-b border-slate-200 shrink-0">
+        {/* DQ 진입 인디케이터 배너 */}
+        {dqFilter && (
+          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-[12px] text-amber-800 flex items-center justify-between gap-3 flex-wrap">
+            <span>
+              <span className="font-semibold">데이터 품질 진단 모드</span>
+              {' · '}
+              <code className="text-[11px] bg-amber-100 px-1 py-0.5 rounded">{dqFilter}</code>
+              {' '}예약만 표시 중
+            </span>
+            <a href="/admin/bookings" className="text-[11px] text-amber-700 hover:text-amber-900 underline">필터 해제</a>
+          </div>
+        )}
         {([
           { id: 'active'    as const, label: '진행 중',         cntFn: () => bookings.filter(b => !b.is_deleted && ['pending','confirmed'].includes(b.status) && (!b.departure_date || new Date(b.departure_date) >= today)).length },
           { id: 'done'      as const, label: '완료/지난 행사',  cntFn: () => bookings.filter(b => !b.is_deleted && (b.status === 'completed' || (!!b.departure_date && new Date(b.departure_date) < today))).length },
@@ -1389,12 +1616,12 @@ export default function BookingsPage() {
           const isActive = lifecycleTab === tab.id;
           return (
             <button key={tab.id}
-              onClick={() => { setLifecycleTab(tab.id); setActiveTab(''); }}
+              onClick={() => { setLifecycleTab(tab.id); setActiveTab(''); setDoneSubTab(tab.id === 'done' ? 'unsettled' : ''); }}
               className={`px-5 py-2.5 text-[13px] font-semibold border-b-2 transition-colors whitespace-nowrap -mb-px
-                ${isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}>
+                ${isActive ? 'border-[#3182F6] text-[#3182F6]' : 'border-transparent text-[#8B95A1] hover:text-[#191F28] hover:border-[#E5E7EB]'}`}>
               {tab.label}
               {cnt > 0 && (
-                <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#EBF3FE] text-[#3182F6]' : 'bg-[#F2F4F6] text-[#8B95A1]'}`}>
                   {cnt}
                 </span>
               )}
@@ -1430,13 +1657,38 @@ export default function BookingsPage() {
             </button>
           ))}
         </div>
+      ) : lifecycleTab === 'done' ? (
+        <div className="flex gap-1.5 mb-2 flex-wrap items-center shrink-0 mt-2">
+          {(() => {
+            const doneList = bookings.filter(b => !b.is_deleted && (b.status === 'completed' || (!!b.departure_date && new Date(b.departure_date) < today)));
+            const unsettledCnt = doneList.filter(b => !b.settlement_confirmed_at).length;
+            const settledCnt   = doneList.filter(b => !!b.settlement_confirmed_at).length;
+            return ([
+              ['unsettled', '⏳ 정산대기', unsettledCnt, 'amber'],
+              ['settled',   '✅ 정산완료', settledCnt,   'slate'],
+            ] as [string, string, number, string][]).map(([tab, label, cnt, color]) => (
+              <button key={tab} onClick={() => setDoneSubTab(prev => prev === tab ? '' : tab as typeof doneSubTab)}
+                className={`px-3 py-1 rounded-full text-[11px] font-medium transition flex items-center gap-1 whitespace-nowrap
+                  ${doneSubTab === tab
+                    ? `bg-${color}-600 text-white`
+                    : `bg-${color}-50 text-${color}-700 border border-${color}-200 hover:bg-${color}-100`}`}>
+                {label}
+                {cnt > 0 && (
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${doneSubTab === tab ? `bg-${color}-700` : `bg-${color}-200 text-${color}-800`}`}>
+                    {cnt}
+                  </span>
+                )}
+              </button>
+            ));
+          })()}
+        </div>
       ) : (
         <div className="mb-2 shrink-0" />
       )}
 
       {/* 테이블 */}
       {isLoading ? (
-        <div className="flex-1 min-h-0 bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
           <table className="w-full"><tbody>
             {[...Array(10)].map((_, i) => (
               <tr key={i} style={{ height: ROW_H }} className="border-b border-slate-200">
@@ -1448,7 +1700,7 @@ export default function BookingsPage() {
           </tbody></table>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex-1 min-h-0 bg-white border border-slate-200 rounded-lg flex items-center justify-center">
+        <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center justify-center">
           <div className="text-center">
             <p className="text-slate-500 font-medium text-[14px]">{isTrash ? '삭제된 예약 없음' : rawSearch ? '검색 결과 없음' : '예약 없음'}</p>
             {!rawSearch && !isTrash && <Link href="/admin/bookings/new" className="mt-4 inline-block text-blue-600 text-[14px] hover:underline">첫 예약 등록 →</Link>}
@@ -1456,7 +1708,7 @@ export default function BookingsPage() {
         </div>
       ) : (
         <div ref={tableContainerRef}
-          className="flex-1 min-h-0 bg-white border border-slate-200 rounded-lg overflow-x-auto overflow-y-auto relative"
+          className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-x-auto overflow-y-auto relative"
           onKeyDown={handleTableKeyDown}
           onScroll={e => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}>
 
@@ -1466,13 +1718,13 @@ export default function BookingsPage() {
                 <th className="sticky left-0 z-30 bg-white px-3 py-2 w-12 min-w-[52px]">
                   <input type="checkbox" checked={allSel} onChange={toggleAll} className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer" />
                 </th>
-                <th className="sticky left-[52px] z-30 bg-white text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">예약번호</th>
-                <SortTh label="예약일"     field="booking_date"   sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                <SortTh label="출발일"     field="departure_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortTh label="예약일"     field="booking_date"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[52px] z-30 bg-white min-w-[130px]" />
+                <SortTh label="출발일"     field="departure_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[182px] z-30 bg-white min-w-[150px]" />
+                <th className="sticky left-[332px] z-30 bg-white text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">고객명</th>
+                <th className="sticky left-[492px] z-30 bg-white text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[180px]">랜드사</th>
                 <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[200px]">상품명</th>
-                <th className="sticky left-[196px] z-30 bg-white text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">고객명</th>
+                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">예약번호</th>
                 <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">출발지역</th>
-                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[180px]">랜드사</th>
                 <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">담당자</th>
                 <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">인원</th>
                 <SortTh label="1인 판매가" field="adult_price"    sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[170px]" />
@@ -1481,9 +1733,9 @@ export default function BookingsPage() {
                 <th className="text-center px-3 py-2 text-[13px] font-semibold text-slate-800 whitespace-nowrap min-w-[110px]">마진율</th>
                 <SortTh label="입금액"      field="paid_amount"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
-                <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
-                <th className="text-center px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
-                <th className="px-3 py-2 min-w-[140px]" />
+                <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
+                <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
+                <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]" />
               </tr>
             </thead>
 
@@ -1541,9 +1793,95 @@ export default function BookingsPage() {
                         className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer" />
                     </td>
 
-                    {/* 예약번호 */}
+                    {/* 예약일 (sticky) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 1)} onFocus={() => setFocusedCell({ row: ri, col: 1 })}
-                      className={`sticky left-[52px] z-10 bg-inherit px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(1)}`}
+                      className={`sticky left-[52px] z-10 bg-inherit px-3 min-w-[130px] whitespace-nowrap outline-none ${focusCls(1)}`}>
+                      <span className="text-[13px] font-medium text-slate-500">{fmtDate(b.booking_date || b.created_at)}</span>
+                    </td>
+
+                    {/* 출발일 — Full-Cell Hitbox (sticky) */}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 2)} onFocus={() => setFocusedCell({ row: ri, col: 2 })}
+                      className={`sticky left-[182px] z-10 bg-inherit p-0 min-w-[150px] whitespace-nowrap outline-none ${focusCls(2)}`}
+                      onClick={e => e.stopPropagation()}>
+                      {isEditing('departure_date') ? (
+                        <div className="w-full h-[88px] flex items-center px-3">
+                          <DateInputCell
+                            initialValue={b.departure_date || ''}
+                            onCommit={v => commitCell(b.id, 'departure_date', v)}
+                            onCancel={cancelEdit}
+                          />
+                        </div>
+                      ) : (
+                        <div onClick={() => { setEditingCell({ id: b.id, field: 'departure_date' }); setCellValue(b.departure_date || ''); }}
+                          className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-1.5">
+                          <span className={`font-mono tabular-nums ${isRisk ? 'text-[13px] font-bold text-red-700' : 'text-[13px] font-semibold text-slate-800'} ${!b.departure_date ? 'text-slate-300 font-normal' : ''}`}>
+                            {fmtDateKo(b.departure_date)}
+                          </span>
+                          {dDiff !== null && dDiff >= 0 && dDiff <= 14 && (
+                            <span className={`text-[11px] font-bold ${dDiff <= 7 ? 'text-red-500' : 'text-amber-500'}`}>D-{dDiff}</span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* 고객명 (sticky) */}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 3)} onFocus={() => setFocusedCell({ row: ri, col: 3 })}
+                      className={`sticky left-[332px] z-10 bg-inherit px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(3)}`}
+                      onClick={e => e.stopPropagation()}>
+                      {b.customers?.id
+                        ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-[14px] text-slate-800 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
+                        : <span className="font-bold text-[14px] text-slate-800">{b.customers?.name || '-'}</span>}
+                      {b.customers?.phone
+                        ? <p className="text-[13px] text-slate-500 mt-0.5">{b.customers.phone}</p>
+                        : <p className="text-[13px] text-amber-400 mt-0.5">번호 없음</p>}
+                    </td>
+
+                    {/* 랜드사 — FK 기반 인라인 선택 (sticky left) */}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 4)} onFocus={() => setFocusedCell({ row: ri, col: 4 })}
+                      className={`sticky left-[492px] z-10 bg-inherit p-0 min-w-[180px] whitespace-nowrap outline-none ${focusCls(4)}`}
+                      style={getCellStyle(`${b.id}-land_operator_id`)}
+                      onClick={e => e.stopPropagation()}>
+                      {isEditing('land_operator_id') ? (
+                        <div className="w-full h-[88px] flex items-center px-3">
+                          <VendorSelectCell
+                            initialId={b.land_operator_id ?? null}
+                            vendors={activeVendors}
+                            onCommit={id => handleVendorChange(b.id, id)}
+                            onCancel={cancelEdit}
+                          />
+                        </div>
+                      ) : (() => {
+                        const op = allVendors.find(v => v.id === b.land_operator_id);
+                        const displayName = op?.name ?? b.land_operator;
+                        return (
+                          <div onClick={() => setEditingCell({ id: b.id, field: 'land_operator_id' })}
+                            className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-2">
+                            <span className={`text-[13px] font-semibold ${displayName ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
+                              {displayName || '+ 선택'}
+                            </span>
+                            {op && !op.is_active && (
+                              <span className="text-[11px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+
+                    {/* 상품명 — SKU 복붙 방식 (ProductSkuCell) */}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 5)} onFocus={() => setFocusedCell({ row: ri, col: 5 })}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`px-3 min-w-[200px] max-w-[280px] outline-none transition-colors ${focusCls(5)}`}
+                      style={getCellStyle(`${b.id}-package_title`)}>
+                      <ProductSkuCell
+                        booking={b}
+                        onCommit={patch => handleSkuCommit(b.id, patch)}
+                        onError={msg => showToast(msg, 'err')}
+                      />
+                    </td>
+
+                    {/* 예약번호 */}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 6)} onFocus={() => setFocusedCell({ row: ri, col: 6 })}
+                      className={`px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(6)}`}
                       onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <Link href={`/admin/bookings/${b.id}`} className="font-mono text-[13px] text-blue-600 hover:underline font-bold">
@@ -1576,64 +1914,9 @@ export default function BookingsPage() {
                       </div>
                     </td>
 
-                    {/* 예약일 */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 2)} onFocus={() => setFocusedCell({ row: ri, col: 2 })}
-                      className={`px-3 min-w-[140px] whitespace-nowrap outline-none ${focusCls(2)}`}>
-                      <span className="text-[13px] font-medium text-slate-500">{fmtDate(b.booking_date || b.created_at)}</span>
-                    </td>
-
-                    {/* 출발일 — Full-Cell Hitbox */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 3)} onFocus={() => setFocusedCell({ row: ri, col: 3 })}
-                      className={`p-0 min-w-[150px] whitespace-nowrap outline-none ${focusCls(3)}`}
-                      onClick={e => e.stopPropagation()}>
-                      {isEditing('departure_date') ? (
-                        <div className="w-full h-[88px] flex items-center px-3">
-                          <DateInputCell
-                            initialValue={b.departure_date || ''}
-                            onCommit={v => commitCell(b.id, 'departure_date', v)}
-                            onCancel={cancelEdit}
-                          />
-                        </div>
-                      ) : (
-                        <div onClick={() => { setEditingCell({ id: b.id, field: 'departure_date' }); setCellValue(b.departure_date || ''); }}
-                          className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-1.5">
-                          <span className={`font-mono tabular-nums ${isRisk ? 'text-[13px] font-bold text-red-700' : 'text-[13px] font-semibold text-slate-800'} ${!b.departure_date ? 'text-slate-300 font-normal' : ''}`}>
-                            {fmtDateKo(b.departure_date)}
-                          </span>
-                          {dDiff !== null && dDiff >= 0 && dDiff <= 14 && (
-                            <span className={`text-[11px] font-bold ${dDiff <= 7 ? 'text-red-500' : 'text-amber-500'}`}>D-{dDiff}</span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* 상품명 — SKU 복붙 방식 (ProductSkuCell) */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 4)} onFocus={() => setFocusedCell({ row: ri, col: 4 })}
-                      onClick={(e) => e.stopPropagation()}
-                      className={`px-3 min-w-[200px] max-w-[280px] outline-none transition-colors ${focusCls(4)}`}
-                      style={getCellStyle(`${b.id}-package_title`)}>
-                      <ProductSkuCell
-                        booking={b}
-                        onCommit={patch => handleSkuCommit(b.id, patch)}
-                        onError={msg => showToast(msg, 'err')}
-                      />
-                    </td>
-
-                    {/* 고객명 */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 5)} onFocus={() => setFocusedCell({ row: ri, col: 5 })}
-                      className={`sticky left-[196px] z-10 bg-inherit px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(5)}`}
-                      onClick={e => e.stopPropagation()}>
-                      {b.customers?.id
-                        ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-[14px] text-slate-800 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
-                        : <span className="font-bold text-[14px] text-slate-800">{b.customers?.name || '-'}</span>}
-                      {b.customers?.phone
-                        ? <p className="text-[13px] text-slate-500 mt-0.5">{b.customers.phone}</p>
-                        : <p className="text-[13px] text-amber-400 mt-0.5">번호 없음</p>}
-                    </td>
-
                     {/* 출발지역 — FK 기반 인라인 선택 */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 6)} onFocus={() => setFocusedCell({ row: ri, col: 6 })}
-                      className={`px-3 min-w-[140px] whitespace-nowrap transition-colors outline-none ${focusCls(6)}`}
+                    <td tabIndex={0} ref={el => regRef(el, ri, 7)} onFocus={() => setFocusedCell({ row: ri, col: 7 })}
+                      className={`px-3 min-w-[140px] whitespace-nowrap transition-colors outline-none ${focusCls(7)}`}
                       style={getCellStyle(`${b.id}-departing_location_id`)}
                       onClick={e => e.stopPropagation()}>
                       {isEditing('departing_location_id') ? (
@@ -1657,37 +1940,6 @@ export default function BookingsPage() {
                                 <span className="text-[11px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
                               )}
                             </div>
-                          </div>
-                        );
-                      })()}
-                    </td>
-
-                    {/* 랜드사 — FK 기반 인라인 선택 */}
-                    <td tabIndex={0} ref={el => regRef(el, ri, 7)} onFocus={() => setFocusedCell({ row: ri, col: 7 })}
-                      className={`p-0 min-w-[180px] whitespace-nowrap outline-none ${focusCls(7)}`}
-                      style={getCellStyle(`${b.id}-land_operator_id`)}
-                      onClick={e => e.stopPropagation()}>
-                      {isEditing('land_operator_id') ? (
-                        <div className="w-full h-[88px] flex items-center px-3">
-                          <VendorSelectCell
-                            initialId={b.land_operator_id ?? null}
-                            vendors={activeVendors}
-                            onCommit={id => handleVendorChange(b.id, id)}
-                            onCancel={cancelEdit}
-                          />
-                        </div>
-                      ) : (() => {
-                        const op = allVendors.find(v => v.id === b.land_operator_id);
-                        const displayName = op?.name ?? b.land_operator;
-                        return (
-                          <div onClick={() => setEditingCell({ id: b.id, field: 'land_operator_id' })}
-                            className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-2">
-                            <span className={`text-[13px] font-semibold ${displayName ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
-                              {displayName || '+ 선택'}
-                            </span>
-                            {op && !op.is_active && (
-                              <span className="text-[11px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
-                            )}
                           </div>
                         );
                       })()}
@@ -1801,9 +2053,9 @@ export default function BookingsPage() {
                       {fmt(b.total_paid_out)}
                     </td>
 
-                    {/* 잔금 / 취소건은 순현금 */}
+                    {/* 잔금 / 취소건은 순현금 (sticky right) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 14)} onFocus={() => setFocusedCell({ row: ri, col: 14 })}
-                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(14)}`}>
+                      className={`sticky right-[280px] z-10 bg-inherit px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(14)}`}>
                       {isCancelled ? (
                         <div>
                           <span className={`font-bold text-[13px] ${
@@ -1861,9 +2113,9 @@ export default function BookingsPage() {
                       </div>
                     </td>
 
-                    {/* 상태 뱃지 */}
+                    {/* 상태 뱃지 (sticky right) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 15)} onFocus={() => setFocusedCell({ row: ri, col: 15 })}
-                      className={`px-3 min-w-[140px] text-center whitespace-nowrap outline-none ${focusCls(15)}`}
+                      className={`sticky right-[140px] z-10 bg-inherit px-3 min-w-[140px] text-center whitespace-nowrap outline-none ${focusCls(15)}`}
                       onClick={e => e.stopPropagation()}>
                       {isEditing('status') ? (
                         <select autoFocus value={cellValue}
@@ -1878,8 +2130,8 @@ export default function BookingsPage() {
                       )}
                     </td>
 
-                    {/* 액션 */}
-                    <td className="px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                    {/* 액션 (sticky right) */}
+                    <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                         {!isTrash && b.status === 'pending' && (
                           <button onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
@@ -1887,12 +2139,22 @@ export default function BookingsPage() {
                         )}
                         {!isTrash && b.status === 'confirmed' && (
                           <button onClick={() => patchStatus(b.id, 'completed')} disabled={processing === b.id}
-                            className="text-[11px] bg-[#001f3f] text-white px-2.5 py-1.5 rounded-lg hover:bg-blue-900 disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
+                            className="text-[11px] bg-[#3182F6] text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1B64DA] disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
                         )}
                         {!isTrash ? (
                           <>
                             <button onClick={() => window.open(`/admin/bookings/${b.id}`, '_blank')}
                               className="text-[11px] text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 whitespace-nowrap">수정</button>
+                            {!isCancelled && (
+                              <button onClick={() => openCancelModal(b)} disabled={processing === b.id}
+                                title="예약 취소 — 환불/위약금/사유를 입력하고 정식 취소 처리"
+                                className="text-[11px] text-amber-700 border border-amber-200 bg-amber-50 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap font-semibold">취소</button>
+                            )}
+                            {isCancelled && (
+                              <button onClick={() => handleRestoreBooking(b)} disabled={processing === b.id}
+                                title="예약 복구 — 취소 이력은 보존하고 활성 상태로 되돌림"
+                                className="text-[11px] text-emerald-700 border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap font-semibold">↺ 복구</button>
+                            )}
                             <button onClick={() => triggerUndoDelete([b])} disabled={processing === b.id}
                               className="text-[11px] text-red-400 border border-red-100 px-2.5 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 whitespace-nowrap">삭제</button>
                           </>
@@ -1909,8 +2171,8 @@ export default function BookingsPage() {
             </tbody>
 
             <tfoot className="sticky bottom-0 z-10">
-              <tr className="bg-[#001f3f] text-white text-[13px] font-semibold border-t border-slate-200">
-                <td className="sticky left-0 bg-[#001f3f] px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
+              <tr className="bg-[#3182F6] text-white text-[13px] font-semibold border-t border-[#F2F4F6]">
+                <td className="sticky left-0 bg-[#3182F6] px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
                 <td colSpan={9} />
                 <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap tabular-nums font-bold">{footerStats.totalSales.toLocaleString()}원</td>
                 {/* 예상마진 합계 (입금 − 출금) */}
@@ -1960,15 +2222,36 @@ export default function BookingsPage() {
               </select>
               <button onClick={() => setBulkField(null)} className="text-white/50 hover:text-white">×</button>
             </div>
-          ) : (
+          ) : (() => {
+            const selectedBookings = bookings.filter(b => selected.has(b.id));
+            const cancelableCnt = selectedBookings.filter(b => b.status !== 'cancelled').length;
+            const restorableCnt = selectedBookings.filter(b => b.status === 'cancelled').length;
+            return (
             <>
               <button onClick={() => setBulkField('departing_location_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">출발지역</button>
               <button onClick={() => setBulkField('land_operator_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">랜드사</button>
               <div className="w-px h-4 bg-white/20 mx-1" />
+              {cancelableCnt > 0 && (
+                <button onClick={handleBulkCancel} disabled={processing === 'bulk-cancel'}
+                  title="환불액·위약금·사유를 입력하고 정식 취소 처리 (status=cancelled, 데이터 보존)"
+                  className="text-[11px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold disabled:opacity-50">
+                  취소 {cancelableCnt > 1 && `(${cancelableCnt})`}
+                </button>
+              )}
+              {restorableCnt > 0 && (
+                <button onClick={handleBulkRestore} disabled={processing === 'bulk-restore'}
+                  title="취소된 예약을 활성으로 복구 (취소 이력 보존, status 자동 결정)"
+                  className="text-[11px] bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold disabled:opacity-50">
+                  ↺ 복구 {restorableCnt > 1 && `(${restorableCnt})`}
+                </button>
+              )}
+              <div className="w-px h-4 bg-white/20 mx-1" />
               <button onClick={() => { const targets = bookings.filter(b => selected.has(b.id)); if (targets.length) { triggerUndoDelete(targets); setSelected(new Set()); setBulkField(null); } }}
+                title="휴지통으로 이동 (soft delete) — 취소와 다름. 30일 후 영구 삭제 정책 적용"
                 className="text-[11px] bg-red-500/20 hover:bg-red-500/40 text-red-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold">삭제</button>
             </>
-          )}
+            );
+          })()}
           <div className="w-px h-4 bg-white/20 mx-1" />
           <button onClick={() => { setSelected(new Set()); setBulkField(null); }} className="text-[11px] text-white/50 hover:text-white transition">× 해제</button>
         </div>
@@ -1976,7 +2259,7 @@ export default function BookingsPage() {
 
       {/* 컨텍스트 메뉴 */}
       {ctxMenu && (
-        <div className="fixed z-[100] bg-white border border-slate-200 rounded-lg py-1 w-48"
+        <div className="fixed z-[100] bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-1 w-48"
           style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <button onClick={() => { copyText(ctxMenu.b.booking_no || ctxMenu.b.id.slice(0, 8)); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">예약번호 복사</button>
@@ -1985,10 +2268,106 @@ export default function BookingsPage() {
           <button onClick={() => { window.open(`/admin/bookings/${ctxMenu.b.id}`, '_blank'); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">새 탭에서 열기</button>
           <div className="border-t border-slate-200 my-1" />
-          <button onClick={() => { patchStatus(ctxMenu.b.id, 'cancelled'); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-[13px] text-red-600 hover:bg-red-50 flex items-center gap-2.5">예약 취소</button>
+          {ctxMenu.b.status !== 'cancelled' ? (
+            <button onClick={() => { openCancelModal(ctxMenu.b); setCtxMenu(null); }}
+              className="w-full text-left px-4 py-2 text-[13px] text-red-600 hover:bg-red-50 flex items-center gap-2.5">예약 취소…</button>
+          ) : (
+            <button onClick={() => { handleRestoreBooking(ctxMenu.b); setCtxMenu(null); }}
+              className="w-full text-left px-4 py-2 text-[13px] text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5">↺ 예약 복구</button>
+          )}
         </div>
       )}
+
+      {/* 취소 처리 모달 — 환불액·위약금·사유 입력 후 /api/bookings/:id/cancel 호출 */}
+      {cancelTarget && (() => {
+        const refundN  = Number(cancelForm.refund) || 0;
+        const penaltyN = Number(cancelForm.penalty) || 0;
+        const paid     = cancelTarget.paid_amount ?? 0;
+        const paidOut  = cancelTarget.total_paid_out ?? 0;
+        const netCash  = paid - paidOut - refundN;
+        return (
+          <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-4"
+            onClick={() => !cancelling && setCancelTarget(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[16px] font-bold text-slate-900">예약 취소 처리</h2>
+                <button onClick={() => !cancelling && setCancelTarget(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 text-[16px]">✕</button>
+              </div>
+
+              {/* 컨텍스트 — 누구의 어떤 예약인지 */}
+              <div className="bg-slate-50 rounded-lg p-3 text-[13px] space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">예약번호</span>
+                  <span className="font-mono font-semibold text-slate-800">{cancelTarget.booking_no || cancelTarget.id.slice(0, 8)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">고객</span>
+                  <span className="font-semibold text-slate-800">{cancelTarget.customers?.name || '-'}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">출발일</span>
+                  <span className="font-mono tabular-nums text-slate-800">{cancelTarget.departure_date?.slice(0, 10) || '-'}</span>
+                </div>
+                <div className="flex justify-between gap-2 pt-1 border-t border-slate-200 mt-1">
+                  <span className="text-slate-500">입금 / 출금</span>
+                  <span className="font-mono tabular-nums text-slate-800">
+                    +{paid.toLocaleString()} / -{paidOut.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* 환불 / 위약금 입력 */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-[12px] font-semibold text-slate-700 mb-1 block">환불액 (고객에게 돌려줄 금액)</span>
+                  <input type="number" min={0}
+                    value={cancelForm.refund}
+                    onChange={e => setCancelForm(f => ({ ...f, refund: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </label>
+                <label className="block">
+                  <span className="text-[12px] font-semibold text-slate-700 mb-1 block">위약금 (랜드사 차감액)</span>
+                  <input type="number" min={0}
+                    value={cancelForm.penalty}
+                    onChange={e => setCancelForm(f => ({ ...f, penalty: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </label>
+              </div>
+
+              {/* 순현금 미리보기 */}
+              <div className={`text-[12px] rounded-md px-3 py-2 ${
+                netCash >= 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'
+              }`}>
+                <span className="font-semibold">순현금 영향: </span>
+                <span className="font-mono tabular-nums font-bold">{netCash >= 0 ? '+' : ''}{netCash.toLocaleString()}원</span>
+                <span className="text-slate-500 ml-2">(입금 {paid.toLocaleString()} − 출금 {paidOut.toLocaleString()} − 환불 {refundN.toLocaleString()})</span>
+              </div>
+
+              {/* 사유 */}
+              <label className="block">
+                <span className="text-[12px] font-semibold text-slate-700 mb-1 block">취소 사유</span>
+                <textarea rows={3}
+                  value={cancelForm.reason}
+                  onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
+                  placeholder="예: 고객 일정 변경 / 항공편 결항 / 단순 변심"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              </label>
+
+              {/* 액션 */}
+              <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
+                <button onClick={() => !cancelling && setCancelTarget(null)}
+                  className="px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-100 rounded-lg">닫기</button>
+                <button onClick={handleCancelBooking} disabled={cancelling}
+                  className="px-4 py-2 text-[13px] bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
+                  {cancelling ? '처리 중...' : '취소 처리 확정'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (

@@ -7,8 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { isAdminRequest } from '@/lib/admin-guard';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -35,6 +39,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -55,30 +62,21 @@ export async function PATCH(request: NextRequest) {
 
     if (paymentError) throw paymentError;
 
-    // 해당 예약의 paid_amount 누적 + payment_status 갱신
+    // Phase 2a — paid_amount 누적은 update_booking_ledger RPC 로 atomic + ledger 이중쓰기
     const depositAmount = payment?.amount || 0;
     if (depositAmount > 0) {
-      const { data: booking } = await supabase
-        .from('bookings')
-        .select('paid_amount, total_price')
-        .eq('id', bookingId)
-        .single();
-
-      if (booking) {
-        const newPaidAmount = (booking.paid_amount || 0) + depositAmount;
-        const newPaymentStatus = newPaidAmount >= (booking.total_price || 0) && (booking.total_price || 0) > 0
-          ? '완납'
-          : '일부입금';
-
-        await supabase
-          .from('bookings')
-          .update({
-            paid_amount: newPaidAmount,
-            payment_status: newPaymentStatus,
-            ...(newPaymentStatus === '완납' ? { status: 'completed' } : {}),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', bookingId);
+      const { error: rpcErr } = await supabase.rpc('update_booking_ledger', {
+        p_booking_id: bookingId,
+        p_paid_delta: depositAmount,
+        p_payout_delta: 0,
+        p_source: 'sms_payment',
+        p_source_ref_id: paymentId,
+        p_idempotency_key: `sms:manual:${paymentId}`,
+        p_memo: 'SMS manual confirm',
+        p_created_by: 'admin',
+      });
+      if (rpcErr) {
+        return NextResponse.json({ error: rpcErr.message }, { status: 500 });
       }
     }
 

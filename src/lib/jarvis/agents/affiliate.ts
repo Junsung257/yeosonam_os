@@ -1,7 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { AgentRunParams, AgentRunResult } from '../types';
-import { runGeminiAgentLoop } from '../gemini-agent-loop';
-import { convertTools } from '../gemini-tool-format';
+import { runDeepSeekAgentLoop } from '../deepseek-agent-loop';
 
 const AFFILIATE_PROMPT = `
 ## 어필리에이터/인플루언서 전용 규칙
@@ -145,7 +144,7 @@ const AFFILIATE_TOOLS_RAW = [
   },
 ];
 
-const AFFILIATE_TOOLS = convertTools(AFFILIATE_TOOLS_RAW);
+const AFFILIATE_TOOLS = AFFILIATE_TOOLS_RAW;
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -397,7 +396,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
 }
 
 export async function runAffiliateAgent(params: AgentRunParams): Promise<AgentRunResult> {
-  return runGeminiAgentLoop(
+  return runDeepSeekAgentLoop(
     {
       agentType: 'finance',
       systemPrompt: AFFILIATE_PROMPT,

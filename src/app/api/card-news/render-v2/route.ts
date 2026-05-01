@@ -190,11 +190,11 @@ export async function POST(request: NextRequest) {
       // 슬라이드 레벨에서 이미지 실패 한번 만나면 다음 format 에도 이미지 제외 — 성능 최적화
       let slideImageDisabled = false;
 
-      for (const fk of formats) {
+      // 슬라이드 내 각 포맷을 병렬(Promise.all)로 처리하여 Vercel Timeout 방지
+      const formatResults = await Promise.all(formats.map(async (fk) => {
         const format = FORMATS[fk];
         if (!format) {
-          results.push({ slide_index: i, format: fk, url: null, error: `알 수 없는 format: ${fk}` });
-          continue;
+          return { slide_index: i, format: fk, url: null as string | null, error: `알 수 없는 format: ${fk}` };
         }
 
         const renderPng = async (slideForRender: SlideV2): Promise<Buffer> => {
@@ -228,7 +228,6 @@ export async function POST(request: NextRequest) {
             pngBuffer = await renderPng(retrySlide);
           }
 
-          // 결정적 path
           stage = 'upload';
           const storagePath = `${body.card_news_id}/v2-${templateVersion}-${fk}-slide-${i + 1}.png`;
           const { error: uploadError } = await supabaseAdmin.storage
@@ -255,20 +254,22 @@ export async function POST(request: NextRequest) {
               storage_path: storagePath,
             }, { onConflict: 'card_news_id,slide_index,format,template_version' });
 
-          results.push({ slide_index: i, format: fk, url: publicUrl });
+          return { slide_index: i, format: fk, url: publicUrl };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
           console.error(`[render-v2] slide ${i + 1}/${fk} 실패 (stage=${stage}):`, msg, '\n', stack);
-          results.push({
+          return {
             slide_index: i,
             format: fk,
             url: null,
             error: `[${stage}] ${msg}`,
             stack,
-          });
+          };
         }
-      }
+      }));
+
+      results.push(...formatResults);
     }
 
     // 가능한 경우 slides 배열/카드 레코드 둘 다 template_family 동기화
@@ -286,6 +287,39 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.warn('[render-v2] family 동기화 실패 (렌더 결과는 OK):', err instanceof Error ? err.message : err);
       }
+    }
+
+    // content_factory_jobs.steps.satori_render 업데이트
+    try {
+      const hasAnySuccess = results.some(r => r.url !== null);
+      const stepStatus = hasAnySuccess ? 'done' : 'failed';
+      const failCount = results.filter(r => r.url === null).length;
+      const stepError = failCount > 0 ? `${failCount}슬라이드 렌더 실패` : null;
+      const now = new Date().toISOString();
+
+      const { data: jobRow } = await supabaseAdmin
+        .from('content_factory_jobs')
+        .select('steps, completed_steps, failed_steps')
+        .eq('card_news_id', body.card_news_id)
+        .maybeSingle();
+
+      if (jobRow) {
+        const steps = { ...(jobRow.steps as Record<string, unknown>) };
+        const prevStatus = (steps.satori_render as Record<string, unknown> | undefined)?.status;
+        steps.satori_render = { status: stepStatus, updated_at: now, error: stepError };
+        const isNewlyDone = stepStatus === 'done' && prevStatus !== 'done';
+        const isNewlyFailed = stepStatus === 'failed' && prevStatus !== 'failed';
+        await supabaseAdmin
+          .from('content_factory_jobs')
+          .update({
+            steps,
+            ...(isNewlyDone ? { completed_steps: (jobRow.completed_steps ?? 0) + 1 } : {}),
+            ...(isNewlyFailed ? { failed_steps: (jobRow.failed_steps ?? 0) + 1 } : {}),
+          })
+          .eq('card_news_id', body.card_news_id);
+      }
+    } catch {
+      // 스텝 업데이트 실패는 렌더 결과에 영향 없음
     }
 
     return NextResponse.json({ renders: results });

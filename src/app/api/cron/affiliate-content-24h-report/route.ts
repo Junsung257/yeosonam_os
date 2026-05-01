@@ -92,9 +92,9 @@ export async function GET(_request: NextRequest) {
 
     const drafted: string[] = [];
     for (const [affiliate_id, rows] of byAff.entries()) {
-      const totalBookings = rows.reduce((s, r) => s + r.bookings, 0);
-      const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
-      const totalCommission = rows.reduce((s, r) => s + r.commission, 0);
+      const totalBookings = rows.reduce((s: number, r: Record<string, unknown>) => s + Number(r.bookings), 0);
+      const totalRevenue = rows.reduce((s: number, r: Record<string, unknown>) => s + Number(r.revenue), 0);
+      const totalCommission = rows.reduce((s: number, r: Record<string, unknown>) => s + Number(r.commission), 0);
 
       const { data: action } = await supabaseAdmin
         .from('agent_actions')

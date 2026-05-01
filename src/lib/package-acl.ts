@@ -105,10 +105,10 @@ export function normalizeOptionalTour(raw: unknown): PackageCore['optional_tours
     name: t.name,
     region: (inferred as PackageCore['optional_tours'][number]['region']) || null,
     price: typeof t.price === 'string' ? t.price : (t.price != null ? String(t.price) : null),
-    price_usd: typeof t.price_usd === 'number' ? t.price_usd : null,
-    price_krw: typeof t.price_krw === 'number' ? t.price_krw : null,
+    price_usd: t.price_usd != null && !isNaN(Number(t.price_usd)) ? Number(t.price_usd) : null,
+    price_krw: t.price_krw != null && !isNaN(Number(t.price_krw)) ? Number(t.price_krw) : null,
     note: t.note || null,
-    day: typeof t.day === 'number' ? t.day : null,
+    day: t.day != null && !isNaN(Number(t.day)) ? Number(t.day) : null,
   };
 }
 

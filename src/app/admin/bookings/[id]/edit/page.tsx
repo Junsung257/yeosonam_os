@@ -89,6 +89,10 @@ export default function EditBookingPage({ params }: { params: { id: string } }) 
   const [selectedPassengers, setSelectedPassengers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [passengerSearch, setPassengerSearch] = useState('');
+  const [customerMode, setCustomerMode] = useState<'view' | 'edit-info' | 'switch'>('view');
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState('');
+  const [savingCustomer, setSavingCustomer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -157,6 +161,70 @@ export default function EditBookingPage({ params }: { params: { id: string } }) 
   const filteredCustomers = customerSearch.length >= 1
     ? customers.filter(c => c.name.includes(customerSearch) || (c.phone || '').includes(customerSearch))
     : [];
+
+  // 현재 선택된 대표 고객 (form.leadCustomerId 기준)
+  const currentLeadCustomer = customers.find(c => c.id === form.leadCustomerId)
+    ?? (booking?.customers && booking.customers.id === form.leadCustomerId ? booking.customers : null);
+
+  // 고객 정보 정정 (오기입 등): customers 테이블 자체를 PATCH
+  const handleCustomerInfoSave = async () => {
+    if (!form.leadCustomerId) return;
+    if (!editCustomerName.trim()) { setError('이름은 비울 수 없습니다.'); return; }
+    setSavingCustomer(true);
+    setError('');
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: form.leadCustomerId,
+          name: editCustomerName.trim(),
+          phone: editCustomerPhone.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '고객 정보 수정 실패');
+      // 로컬 customers 목록 갱신 + booking 화면 표시 갱신
+      setCustomers(prev => prev.map(c => c.id === form.leadCustomerId
+        ? { ...c, name: editCustomerName.trim(), phone: editCustomerPhone.trim() || undefined }
+        : c));
+      setBooking(b => b && b.customers && b.customers.id === form.leadCustomerId
+        ? { ...b, customers: { ...b.customers, name: editCustomerName.trim(), phone: editCustomerPhone.trim() || undefined } }
+        : b);
+      setCustomerSearch(editCustomerName.trim());
+      setCustomerMode('view');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '고객 정보 수정 실패');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  // 검색어로 새 고객 즉시 생성 + 즉시 대표 지정
+  const handleCreateCustomer = async () => {
+    const name = customerSearch.trim();
+    if (!name) return;
+    setSavingCustomer(true);
+    setError('');
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, skipDedup: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.customer) throw new Error(data.error || '고객 추가 실패');
+      const c: Customer = data.customer;
+      setCustomers(prev => [...prev, c]);
+      setForm(f => ({ ...f, leadCustomerId: c.id }));
+      setCustomerSearch(c.name);
+      setCustomerMode('view');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '고객 추가 실패');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
 
   const filteredPassengers = passengerSearch.length >= 1
     ? customers.filter(c =>
@@ -329,26 +397,95 @@ export default function EditBookingPage({ params }: { params: { id: string } }) 
           {/* 대표 예약자 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
             <h2 className="font-semibold text-gray-900 mb-4">대표 예약자</h2>
-            <input
-              type="text"
-              value={customerSearch}
-              onChange={e => setCustomerSearch(e.target.value)}
-              placeholder="이름 또는 전화번호 검색"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-            />
-            {filteredCustomers.length > 0 && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {filteredCustomers.slice(0, 5).map(c => (
-                  <button key={c.id} type="button"
-                    onClick={() => { setForm(f => ({ ...f, leadCustomerId: c.id })); setCustomerSearch(c.name); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition ${form.leadCustomerId === c.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
-                    {c.name} {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}
+
+            {/* 현재 선택 칩 */}
+            {currentLeadCustomer && customerMode === 'view' && (
+              <div className="flex items-center justify-between gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                <div className="min-w-0">
+                  <p className="font-bold text-gray-900 text-sm truncate">{currentLeadCustomer.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{currentLeadCustomer.phone || '연락처 없음'}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button type="button"
+                    onClick={() => {
+                      setEditCustomerName(currentLeadCustomer.name || '');
+                      setEditCustomerPhone(currentLeadCustomer.phone || '');
+                      setCustomerMode('edit-info');
+                    }}
+                    className="text-[12px] text-blue-700 border border-blue-200 bg-white px-2.5 py-1 rounded-md hover:bg-blue-100 transition">
+                    이름·연락처 정정
                   </button>
-                ))}
+                  <button type="button"
+                    onClick={() => { setCustomerSearch(''); setCustomerMode('switch'); }}
+                    className="text-[12px] text-gray-700 border border-gray-200 bg-white px-2.5 py-1 rounded-md hover:bg-gray-50 transition">
+                    다른 고객으로 변경
+                  </button>
+                </div>
               </div>
             )}
-            {form.leadCustomerId && (
-              <p className="mt-2 text-xs text-green-600">✓ 대표예약자 선택됨</p>
+
+            {/* 정보 정정 모드 (오기입 정정 — 같은 사람의 이름/전화 수정) */}
+            {customerMode === 'edit-info' && (
+              <div className="p-3 border border-amber-200 bg-amber-50 rounded-lg space-y-2">
+                <p className="text-[11px] text-amber-800 font-medium">
+                  ⚠️ 이 작업은 <b>customers 테이블의 고객 레코드 자체</b>를 수정합니다 — 이 고객이 등록된 모든 예약·블로그·자료에 동일하게 반영됩니다.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" value={editCustomerName}
+                    onChange={e => setEditCustomerName(e.target.value)}
+                    placeholder="이름"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  <input type="text" value={editCustomerPhone}
+                    onChange={e => setEditCustomerPhone(e.target.value)}
+                    placeholder="010-0000-0000"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div className="flex gap-1.5 justify-end">
+                  <button type="button" onClick={() => setCustomerMode('view')}
+                    className="text-[12px] text-gray-600 px-3 py-1.5 rounded-md hover:bg-gray-100">취소</button>
+                  <button type="button" onClick={handleCustomerInfoSave} disabled={savingCustomer}
+                    className="text-[12px] bg-amber-600 text-white px-3 py-1.5 rounded-md hover:bg-amber-700 disabled:opacity-50">
+                    {savingCustomer ? '저장 중...' : '고객 정보 저장'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 변경 모드 (다른 고객으로 교체) */}
+            {(customerMode === 'switch' || !currentLeadCustomer) && (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  autoFocus={customerMode === 'switch'}
+                  value={customerSearch}
+                  onChange={e => setCustomerSearch(e.target.value)}
+                  placeholder="이름 또는 전화번호로 기존 고객 검색"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {filteredCustomers.length > 0 && (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    {filteredCustomers.slice(0, 5).map(c => (
+                      <button key={c.id} type="button"
+                        onClick={() => { setForm(f => ({ ...f, leadCustomerId: c.id })); setCustomerSearch(c.name); setCustomerMode('view'); }}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition ${form.leadCustomerId === c.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
+                        {c.name} {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {customerSearch.trim().length >= 1 && filteredCustomers.length === 0 && (
+                  <button type="button" onClick={handleCreateCustomer} disabled={savingCustomer}
+                    className="w-full text-left px-4 py-2.5 text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50">
+                    {savingCustomer ? '추가 중...' : `+ "${customerSearch.trim()}" 신규 고객으로 추가하고 대표여행자로 지정`}
+                  </button>
+                )}
+                {currentLeadCustomer && (
+                  <button type="button" onClick={() => { setCustomerSearch(currentLeadCustomer.name); setCustomerMode('view'); }}
+                    className="text-[11px] text-gray-500 hover:text-gray-700 underline">
+                    ← 변경 취소 (현재 대표: {currentLeadCustomer.name})
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

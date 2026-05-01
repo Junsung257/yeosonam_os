@@ -17,6 +17,11 @@ interface QueueItem {
   last_error: string | null;
   content_creative_id: string | null;
   created_at: string;
+  primary_keyword: string | null;
+  keyword_tier: 'head' | 'mid' | 'longtail' | null;
+  monthly_search_volume: number | null;
+  competition_level: 'low' | 'medium' | 'high' | null;
+  trend_score: number | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -32,6 +37,14 @@ const SOURCE_LABELS: Record<string, string> = {
   coverage_gap: '🧩 갭 분석',
   user_seed: '👤 수동',
   product: '🧳 상품',
+  trend: '🔥 트렌드',
+  pillar: '🏛️ 필러',
+};
+
+const TIER_BADGES: Record<string, { label: string; cls: string }> = {
+  head:     { label: 'HEAD',     cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  mid:      { label: 'MID',      cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  longtail: { label: 'LONGTAIL', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
 };
 
 const STATUS_TABS = [
@@ -155,22 +168,30 @@ export default function BlogQueuePage() {
       )}
 
       {/* 컨트롤 패널 */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <button
           onClick={() => trigger('run_scheduler')}
           disabled={running !== null}
           className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
         >
-          {running === 'run_scheduler' ? '실행중...' : '🗓️ 스케줄러 즉시 실행'}
-          <p className="text-[10px] text-slate-400 mt-0.5">큐 충전 + 슬롯 배정</p>
+          {running === 'run_scheduler' ? '실행중...' : '🗓️ 스케줄러'}
+          <p className="text-[10px] text-slate-400 mt-0.5">큐 충전 + 슬롯</p>
+        </button>
+        <button
+          onClick={() => trigger('run_trend_miner')}
+          disabled={running !== null}
+          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
+        >
+          {running === 'run_trend_miner' ? '실행중...' : '🔥 트렌드 마이너'}
+          <p className="text-[10px] text-slate-400 mt-0.5">최신 검색 트렌드</p>
         </button>
         <button
           onClick={() => trigger('run_publisher')}
           disabled={running !== null}
           className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
         >
-          {running === 'run_publisher' ? '실행중...' : '✍️ 발행자 즉시 실행'}
-          <p className="text-[10px] text-slate-400 mt-0.5">지금 발행 대상 처리</p>
+          {running === 'run_publisher' ? '실행중...' : '✍️ 발행자'}
+          <p className="text-[10px] text-slate-400 mt-0.5">지금 발행 처리</p>
         </button>
         <button
           onClick={() => trigger('run_lifecycle')}
@@ -178,7 +199,7 @@ export default function BlogQueuePage() {
           className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
         >
           {running === 'run_lifecycle' ? '실행중...' : '🗄️ 라이프사이클'}
-          <p className="text-[10px] text-slate-400 mt-0.5">만료 상품 글 아카이브</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">만료 글 아카이브</p>
         </button>
       </div>
 
@@ -237,6 +258,26 @@ export default function BlogQueuePage() {
                   </td>
                   <td className="px-3 py-2.5">
                     <p className="text-[12px] text-slate-800 truncate max-w-md">{it.topic}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {it.keyword_tier && TIER_BADGES[it.keyword_tier] && (
+                        <span className={`px-1.5 py-0.5 text-[9px] rounded border font-mono ${TIER_BADGES[it.keyword_tier].cls}`}>
+                          {TIER_BADGES[it.keyword_tier].label}
+                        </span>
+                      )}
+                      {it.primary_keyword && (
+                        <span className="text-[10px] text-slate-500">🔑 {it.primary_keyword}</span>
+                      )}
+                      {it.monthly_search_volume != null && it.monthly_search_volume > 0 && (
+                        <span className="text-[10px] text-slate-400">
+                          {it.monthly_search_volume.toLocaleString()}/mo
+                        </span>
+                      )}
+                      {it.trend_score != null && it.trend_score > 0 && (
+                        <span className="text-[10px] text-orange-600 font-mono">
+                          🔥 {it.trend_score}
+                        </span>
+                      )}
+                    </div>
                     {it.last_error && (
                       <p className="text-[10px] text-rose-600 truncate mt-0.5">⚠ {it.last_error}</p>
                     )}

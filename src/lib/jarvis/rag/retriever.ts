@@ -56,6 +56,7 @@ async function embedQuery(query: string): Promise<number[] | null> {
       body: JSON.stringify({
         content: { parts: [{ text: query }] },
         taskType: 'RETRIEVAL_QUERY',
+        outputDimensionality: 1536,  // v4 fix: DB schema 와 일치 (default 3072)
       }),
     })
     if (!res.ok) {

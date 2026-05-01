@@ -3,6 +3,7 @@ import { isSupabaseConfigured, getAdPerformance, upsertAdPerformanceSnapshot } f
 import { fetchCampaignInsights, isMetaConfigured } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { getMonthlyAdStats } from '@/lib/roas-calculator';
+import { parseBasis, getBasisMeta } from '@/lib/kpi-basis';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -18,8 +19,10 @@ export async function GET(request: NextRequest) {
   try {
     if (type === 'monthly') {
       const months = parseInt(searchParams.get('months') ?? '6');
-      const stats = await getMonthlyAdStats(months);
-      return NextResponse.json({ stats });
+      // marketing 페이지의 default 는 accounting (snapshot 기반, 기존 동작 유지)
+      const basis = parseBasis(searchParams.get('basis') ?? 'accounting');
+      const stats = await getMonthlyAdStats(months, basis);
+      return NextResponse.json({ stats, basis, basisMeta: getBasisMeta(basis) });
     }
 
     if (!campaignId) {

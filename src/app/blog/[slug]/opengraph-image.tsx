@@ -48,7 +48,7 @@ export default async function OgImage({ params }: { params: { slug: string } }) 
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          background: 'linear-gradient(135deg, #340897 0%, #6b21a8 50%, #7c3aed 100%)',
+          background: 'linear-gradient(135deg, #3182F6 0%, #1B64DA 50%, #191F28 100%)',
           padding: '80px 90px',
           color: 'white',
         }}

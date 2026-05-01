@@ -607,6 +607,14 @@ export function generateBlogPost(
   };
   sections.push(`# ${h1Options[angle] || `${dest} ${dur} ${angleLabel} 여행`}`);
 
+  // ── Above-fold CTA (3-tier 첫 번째 — 도입부 직후 카카오 1분 상담) ──
+  // 본문 첫 200자 안에 액션 트리거 배치. 모바일 70% 이탈자 방어.
+  const baseUrlForCta = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+  const productUrlTop = product.id ? `${baseUrlForCta}/packages/${product.id}?utm=blog_top` : baseUrlForCta;
+  sections.push(
+    `\n> 💬 같은 ${dest} 패키지 즉시 비교가 필요하시면 [카카오톡 1분 상담](${productUrlTop})으로 편하게 물어봐 주세요. 영업일 평균 7분 내 응답해 드립니다.`,
+  );
+
   // ── TL;DR (핵심 요약 — GEO 인용률 상승 패턴) ────────
   const tldrLines: string[] = [];
   if (dest && dur) tldrLines.push(`- ${dest} ${dur} ${angleLabel} 여행 (여소남 엄선)`);
@@ -619,6 +627,50 @@ export function generateBlogPost(
   if (tldrLines.length >= 2) {
     sections.push(`\n## 핵심 요약`);
     sections.push(tldrLines.join('\n'));
+  }
+
+  // ── 가격 앵커링 (P0 — 시중가 vs 패키지가 비교) ────────
+  // 데이터가 충분할 때만 출력 (없으면 거짓 추정 X)
+  if (price > 0 && nights > 0) {
+    // 시중가 추정: 호텔 1박 평균 + 항공 왕복 시세
+    // (정확치 아님 — 본문에 "추정" 표기 의무)
+    // 호텔 단가는 동남아 저가권에서 25만원이 과대평가라 권역별 분기 도입.
+    const hotelPerNight = dest.match(/유럽|런던|파리|로마|모스크바|이탈리아|스위스|프랑스|독일|스페인/)
+      ? 350000
+      : dest.match(/미국|뉴욕|LA|샌프란|캐나다|호주|뉴질랜드/)
+        ? 300000
+        : dest.match(/일본|도쿄|오사카|후쿠오카|홍콩|대만|싱가포르/)
+          ? 220000
+          : dest.match(/베트남|태국|필리핀|인도네시아|발리|세부|보홀|다낭|나트랑|방콕/)
+            ? 130000
+            : 200000; // 기본 (중국·중동 등)
+    const flightEstimate = dest.match(/유럽|런던|파리|로마|모스크바|이탈리아|스위스|프랑스|독일|스페인/)
+      ? 1_500_000
+      : dest.match(/미국|뉴욕|LA|샌프란|캐나다|호주|뉴질랜드/)
+        ? 1_200_000
+        : dest.match(/베트남|태국|필리핀|인도네시아|발리|세부|보홀|다낭|나트랑|방콕|일본|홍콩|대만|싱가포르/)
+          ? 500_000
+          : 800_000; // 기본 (중국·중동·몽골 등)
+    const hotelEstimate = nights * hotelPerNight;
+    const marketEstimate = hotelEstimate + flightEstimate;
+    const savings = marketEstimate - price;
+    const savingsPct = Math.round((savings / marketEstimate) * 100);
+
+    if (savings > 0 && savingsPct >= 5 && savingsPct <= 60) {
+      sections.push(`\n## 같은 일정 직접 잡으면 얼마?`);
+      const hotelPerNightStr = `${Math.round(hotelPerNight / 10000)}만원`;
+      const lines = [
+        `${dest} ${dur} 일정을 단품으로 직접 잡을 때 시세를 추정해 보면 다음과 같아요 (확정가 아닌 추정).`,
+        ``,
+        `- 호텔 ${nights}박 (현지 평균 1박 ${hotelPerNightStr} 가정): 약 ${hotelEstimate.toLocaleString()}원`,
+        `- 왕복 항공 시세 (${product.departure_airport || '국내 출발'}): 약 ${flightEstimate.toLocaleString()}원`,
+        `- 합계 추정: 약 ${marketEstimate.toLocaleString()}원`,
+        ``,
+        `이번 패키지 가격은 ${priceStr}~ — 추정 시세 대비 약 ${savings.toLocaleString()}원 (약 ${savingsPct}%) 저렴한 구성입니다.`,
+        `여기에 일정표상 식사·기사·가이드 경비까지 포함되어 있어, 실제 체감 절감폭은 더 커집니다.`,
+      ];
+      sections.push(lines.join('\n'));
+    }
   }
 
   // ── 여행 개요 ──────────────────────────────────────────
@@ -688,6 +740,12 @@ export function generateBlogPost(
     } else {
       sections.push(itinerary.slice(0, 8).map(i => `- ${i}`).join('\n'));
     }
+
+    // ── 중간 CTA (3-tier 두 번째 — 일정표 직후 출발일 보기) ────────
+    const productUrlMid = product.id ? `${baseUrlForCta}/packages/${product.id}?utm=blog_mid` : baseUrlForCta;
+    sections.push(
+      `\n> 📅 일정이 마음에 드신다면 [출발일별 잔여석 실시간 보기](${productUrlMid}) — 출발 확정일 기준으로 비교해 보세요.`,
+    );
   }
 
   // ── 포함사항 ──────────────────────────────────────────
@@ -756,14 +814,15 @@ export function generateBlogPost(
     }
   }
 
-  // ── CTA (친근한 존댓말, 상품 상세 페이지 연결) ────────────────
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
-  const productUrl = product.id ? `${baseUrl}/packages/${product.id}` : baseUrl;
+  // ── 하단 CTA (3-tier 세 번째 — 상품 상세 + 같은 목적지 비교 내부링크) ──
+  const productUrlBottom = product.id ? `${baseUrlForCta}/packages/${product.id}?utm=blog_bottom` : baseUrlForCta;
+  const destCompareUrl = `${baseUrlForCta}/packages?destination=${encodeURIComponent(dest)}`;
   sections.push(`\n## [지금 상품 살펴보기]`);
   sections.push(
     `여소남에서 ${dest} ${angleLabel} 여행 중 가치 있는 상품만 골라 두었어요.\n` +
+      `다른 일정도 같이 비교하시려면 [같은 ${dest} 출발일 모음](${destCompareUrl})에서 한눈에 볼 수 있어요.\n` +
       `일정이 몸에 맞는지 일정표만 한 번 훑어 주세요. 고민되시면 카카오톡 상담으로 편하게 물어보셔도 돼요.\n\n` +
-      `**[👉 ${dest} ${dur} ${angleLabel} 상품 상세 보기](${productUrl})**`,
+      `**[👉 ${dest} ${dur} ${angleLabel} 상품 상세 보기](${productUrlBottom})**`,
   );
 
   return sections.join('\n');

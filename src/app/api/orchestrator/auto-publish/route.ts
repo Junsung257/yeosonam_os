@@ -273,29 +273,40 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 6) 카드뉴스 5변형 트리거 페이로드 — 클라이언트(어드민)가 직접 호출하도록 변경.
-  // Note: 이전 버전은 서버→서버 fetch 였으나 middleware 가 sb-access-token 강제 →
-  // 쿠키 forward 안 되어 항상 401. 클라이언트 fetch 는 쿠키 자동 첨부되어 정상 통과.
-  let cardNewsVariantTrigger: { triggered: false; payload: Record<string, unknown> | null } = {
+  // 6) 카드뉴스 5변형 트리거 — agent_actions 테이블에 백그라운드 잡으로 적재 (어드민 클라이언트 의존성 제거)
+  let cardNewsVariantTrigger: { triggered: boolean; payload: Record<string, unknown> | null } = {
     triggered: false,
     payload: null,
   };
+  
   if (body.triggerCardNewsVariants !== false && !dryRun) {
     const rawText = [
       product.title,
       product.product_summary ?? '',
       ...(product.product_highlights as string[] ?? []),
     ].filter(Boolean).join('\n\n');
-    cardNewsVariantTrigger = {
-      triggered: false,
-      payload: {
-        rawText,
-        productMeta: { title: product.title, destination: product.destination },
-        package_id: product.id,
-        count: 5,
-        skipCritic: false,
-      },
+    
+    const payload = {
+      rawText,
+      productMeta: { title: product.title, destination: product.destination },
+      package_id: product.id,
+      count: 5,
+      skipCritic: false,
     };
+    
+    const { error: actionErr } = await supabaseAdmin.from('agent_actions').insert({
+      agent_type: 'marketing_orchestrator',
+      action_type: 'generate_card_news_variants',
+      payload,
+      status: 'approved', // 바로 실행되도록
+    });
+
+    if (!actionErr) {
+      cardNewsVariantTrigger = {
+        triggered: true,
+        payload,
+      };
+    }
   }
 
   // 비용 estimate (에이전트 cost 반환 미구현 → 평균 토큰 기준 추정)

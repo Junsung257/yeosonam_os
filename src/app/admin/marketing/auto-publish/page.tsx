@@ -1,15 +1,7 @@
 'use client';
 
 /**
- * /admin/marketing/auto-publish — One-stop 자동 발행 패널
- *
- * 사용법: 상품 검색 → 선택 → 옵션 → "🚀 자동 발행 시작" → 결과 카피 검토
- *
- * 백엔드: POST /api/orchestrator/auto-publish
- *   - 5종 에이전트 병렬 (IG/Threads/Meta Ads/Kakao/Google Ads)
- *   - 카드뉴스 5변형 백그라운드 트리거
- *   - 블로그 토픽 큐 등록
- *   - 발행 시각: Best Time RPC 또는 즉시
+ * /admin/marketing/auto-publish — One-stop 자동 발행 패널 (Premium UX/UI)
  */
 import { Fragment, useState, useCallback, useEffect } from 'react';
 
@@ -57,12 +49,13 @@ const PLATFORM_LABEL: Record<string, string> = {
   instagram_caption: 'Instagram',
   threads_post: 'Threads',
   meta_ads: 'Meta Ads',
-  kakao_channel: '카카오 채널',
+  kakao_channel: '카카오톡',
   google_ads_rsa: 'Google Ads',
-  blog_body: '블로그',
+  blog_body: '네이버 블로그',
 };
 
 export default function AutoPublishPage() {
+  const [step, setStep] = useState(1); // 1: 상품선택, 2: 옵션구성, 3: 발행결과
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
   const [selected, setSelected] = useState<ProductSuggestion | null>(null);
@@ -74,12 +67,10 @@ export default function AutoPublishPage() {
   const [result, setResult] = useState<AutoPublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [cardNewsTriggering, setCardNewsTriggering] = useState(false);
-  const [cardNewsResult, setCardNewsResult] = useState<{ ok: boolean; group_id?: string; error?: string } | null>(null);
 
   // 디바운스된 상품 검색
   useEffect(() => {
-    if (selected) return; // 이미 선택했으면 검색 안 함
+    if (selected) return;
     const q = query.trim();
     if (q.length < 2) {
       setSuggestions([]);
@@ -107,7 +98,6 @@ export default function AutoPublishPage() {
       return;
     }
     setError(null);
-    setResult(null);
     setLoading(true);
     try {
       const res = await fetch('/api/orchestrator/auto-publish', {
@@ -125,6 +115,7 @@ export default function AutoPublishPage() {
         setError(data.error ?? `오류 (${res.status})`);
       } else {
         setResult(data as AutoPublishResult);
+        setStep(3);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -140,251 +131,276 @@ export default function AutoPublishPage() {
     setResult(null);
     setError(null);
     setExpandedRow(null);
-    setCardNewsResult(null);
+    setStep(1);
   };
 
-  // 카드뉴스 5변형 — 어드민 클라이언트 fetch (쿠키 자동 첨부).
-  const triggerCardNewsVariants = useCallback(async () => {
-    if (!result?.card_news_variants?.payload) return;
-    setCardNewsTriggering(true);
-    setCardNewsResult(null);
-    try {
-      const res = await fetch('/api/card-news/generate-variants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(result.card_news_variants.payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setCardNewsResult({ ok: false, error: data.error ?? `오류 (${res.status})` });
-      } else {
-        setCardNewsResult({ ok: true, group_id: data.variant_group_id });
-      }
-    } catch (e) {
-      setCardNewsResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setCardNewsTriggering(false);
-    }
-  }, [result]);
-
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold">🚀 원스톱 자동 발행</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          상품 1개 → 5개 플랫폼 (Instagram · Threads · Meta Ads · 카카오 · Google Ads) 자동 카피 + Best Time 예약 발행 + 카드뉴스 5변형 + 블로그 큐.
-          외부 SaaS 0원 · Gemini + Supabase + 자체 cron만 사용.
-        </p>
-      </header>
+    <main className="min-h-screen bg-slate-900 text-slate-100 px-6 py-12 flex flex-col items-center">
+      <div className="max-w-4xl w-full space-y-8">
+        
+        {/* Header */}
+        <header className="text-center space-y-2">
+          <h1 className="text-4xl font-black tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+            여소남 자동화 오케스트레이터
+          </h1>
+          <p className="text-slate-400 text-sm max-w-md mx-auto">
+            한 번의 클릭으로 마케팅 콘텐츠를 5개 플랫폼에 즉시 생성하고 최적의 시간대에 자동 발행합니다.
+          </p>
+        </header>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-5">
-        {/* 상품 검색 또는 선택된 상품 표시 */}
-        {selected ? (
-          <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="font-semibold truncate">{selected.title}</div>
-                <div className="mt-0.5 text-xs text-neutral-600">
-                  {selected.destination ?? '—'} · {selected.short_code ?? '코드 없음'}
-                  <span className="ml-2 rounded bg-white px-1.5 py-0.5 text-[10px]">{selected.status ?? 'unknown'}</span>
-                </div>
-                <div className="mt-1 font-mono text-[10px] text-neutral-400">{selected.id}</div>
-              </div>
-              <button onClick={reset} className="text-xs text-neutral-500 hover:text-neutral-700">변경</button>
+        {/* Stepper */}
+        <div className="flex justify-between items-center max-w-xl mx-auto relative">
+          <div className="absolute h-0.5 bg-slate-800 top-1/2 left-0 right-0 -z-10" />
+          {[1, 2, 3].map((num) => (
+            <div
+              key={num}
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-all duration-300 ${
+                step >= num
+                  ? 'bg-emerald-500 border-emerald-400 text-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                  : 'bg-slate-800 border-slate-700 text-slate-500'
+              }`}
+            >
+              {num}
             </div>
-          </div>
-        ) : (
-          <div className="relative">
-            <label className="block">
-              <span className="text-sm font-medium text-neutral-700">상품 검색</span>
+          ))}
+        </div>
+
+        {/* Step 1: 상품 선택 */}
+        {step === 1 && (
+          <section className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 rounded-2xl p-8 shadow-2xl transition-all">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-emerald-400">01.</span> 홍보할 여행 상품을 선택하세요
+            </h2>
+            
+            <div className="relative">
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="제목 / 목적지 / 상품코드 (2자 이상)"
-                className="mt-1 w-full rounded border border-neutral-300 px-3 py-2 text-sm"
+                placeholder="상품명, 목적지 또는 상품코드 입력..."
+                className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none shadow-inner"
               />
-            </label>
-            {searching && <div className="mt-1 text-xs text-neutral-400">검색 중...</div>}
-            {suggestions.length > 0 && (
-              <ul className="mt-1 max-h-72 overflow-auto rounded border border-neutral-200 bg-white shadow-sm">
-                {suggestions.map((s) => (
-                  <li
-                    key={s.id}
-                    onClick={() => { setSelected(s); setQuery(s.title); setSuggestions([]); }}
-                    className="cursor-pointer border-b border-neutral-100 px-3 py-2 text-sm hover:bg-neutral-50 last:border-b-0"
-                  >
-                    <div className="font-medium truncate">{s.title}</div>
-                    <div className="mt-0.5 text-xs text-neutral-500">
-                      {s.destination ?? '—'} · {s.short_code ?? '—'} · <span className="text-neutral-400">{s.status}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        <label className="mt-3 block">
-          <span className="text-sm font-medium text-neutral-700">테넌트 ID (선택, 비우면 본사)</span>
-          <input
-            type="text"
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
-            placeholder="(선택)"
-            className="mt-1 w-full rounded border border-neutral-300 px-3 py-2 font-mono text-sm"
-          />
-        </label>
-
-        <div className="mt-3 flex flex-col gap-2">
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} disabled={publishNow} />
-            <span className="text-sm">Dry-run (생성만, 발행 큐잉 안 함)</span>
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} disabled={dryRun} />
-            <span className="text-sm">⚡ 지금 발행 (Best Time 무시, 즉시 큐 적재)</span>
-          </label>
-        </div>
-
-        <button
-          onClick={submit}
-          disabled={loading || !selected}
-          className="mt-5 w-full rounded bg-orange-600 py-3 text-base font-semibold text-white hover:bg-orange-700 disabled:bg-neutral-300"
-        >
-          {loading ? '생성 중... (30~90초)' : '🚀 자동 발행 시작'}
-        </button>
-
-        {error && (
-          <div className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div>
-        )}
-      </section>
-
-      {result && (
-        <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-5">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-semibold">완료 ({(result.elapsed_ms / 1000).toFixed(1)}s)</h2>
-              <p className="mt-1 text-sm text-neutral-600">{result.product_title}</p>
-              <p className="mt-1 text-xs text-neutral-500">brief: {result.brief_h1}</p>
+              {searching && (
+                <span className="absolute right-4 top-4 text-xs text-slate-400 animate-pulse">
+                  검색 중...
+                </span>
+              )}
+              
+              {suggestions.length > 0 && (
+                <ul className="absolute z-10 mt-2 w-full bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-800">
+                  {suggestions.map((s) => (
+                    <li
+                      key={s.id}
+                      onClick={() => {
+                        setSelected(s);
+                        setStep(2);
+                      }}
+                      className="px-4 py-3 hover:bg-slate-800 cursor-pointer transition-colors flex flex-col"
+                    >
+                      <span className="font-semibold text-slate-200">{s.title}</span>
+                      <span className="text-xs text-slate-400 mt-1">
+                        {s.destination || '미지정'} · {s.short_code || '코드없음'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {result.cost_estimate && (
-              <div className="rounded bg-neutral-50 px-3 py-2 text-right">
-                <div className="text-[10px] uppercase tracking-wide text-neutral-500">예상 비용</div>
-                <div className="text-base font-bold text-emerald-700">${result.cost_estimate.total_usd}</div>
-                <div className="mt-0.5 text-[10px] text-neutral-400">
-                  brief ${result.cost_estimate.breakdown.content_brief_usd} ·
-                  agents ${result.cost_estimate.breakdown.agents_usd} ·
-                  변형 ${result.cost_estimate.breakdown.card_news_variants_usd}
-                </div>
+          </section>
+        )}
+
+        {/* Step 2: 옵션 구성 */}
+        {step === 2 && selected && (
+          <section className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 rounded-2xl p-8 shadow-2xl space-y-6 animate-fade-in">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <span className="text-emerald-400">02.</span> 발행 옵션 구성
+            </h2>
+
+            <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-slate-200">{selected.title}</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  {selected.destination} | {selected.short_code}
+                </p>
+              </div>
+              <button
+                onClick={() => setStep(1)}
+                className="text-xs text-slate-400 hover:text-emerald-400 transition-colors underline"
+              >
+                상품 변경
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm text-slate-300">테넌트 아이디 (필요시 입력)</span>
+                <input
+                  type="text"
+                  value={tenantId}
+                  onChange={(e) => setTenantId(e.target.value)}
+                  placeholder="tenant-xxxx"
+                  className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2 text-slate-100 text-sm font-mono outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <label className="flex items-center gap-3 bg-slate-900/30 border border-slate-800 hover:border-slate-700 rounded-xl p-4 cursor-pointer transition-all">
+                  <input
+                    type="checkbox"
+                    checked={dryRun}
+                    onChange={(e) => {
+                      setDryRun(e.target.checked);
+                      if (e.target.checked) setPublishNow(false);
+                    }}
+                    className="w-4 h-4 accent-emerald-500 text-emerald-500 rounded"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-200">Dry-Run 테스트 모드</div>
+                    <div className="text-xs text-slate-400">콘텐츠 생성만 수행하고 실제 발행 큐에 넣지 않습니다.</div>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 bg-slate-900/30 border border-slate-800 hover:border-slate-700 rounded-xl p-4 cursor-pointer transition-all">
+                  <input
+                    type="checkbox"
+                    checked={publishNow}
+                    onChange={(e) => {
+                      setPublishNow(e.target.checked);
+                      if (e.target.checked) setDryRun(false);
+                    }}
+                    className="w-4 h-4 accent-emerald-500 text-emerald-500 rounded"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-200">⚡ 즉시 발행</div>
+                    <div className="text-xs text-slate-400">최적의 시간 예측(Best Time)을 건너뛰고 즉시 큐를 적재합니다.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <button
+              onClick={submit}
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold py-4 rounded-xl hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-emerald-500/20"
+            >
+              {loading ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+                  <span>생성 중... (약 30~90초 소요)</span>
+                </>
+              ) : (
+                <span>🚀 자동 마케팅 파이프라인 가동</span>
+              )}
+            </button>
+
+            {error && (
+              <div className="bg-red-900/30 border border-red-800 text-red-200 px-4 py-3 rounded-xl text-sm">
+                {error}
               </div>
             )}
-          </div>
-          <a href="/admin/marketing/published" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
-            → 발행 결과 모니터링 보기
-          </a>
+          </section>
+        )}
 
-          {result.duplicate_warning && (
-            <div className="mt-3 rounded bg-amber-50 p-3 text-xs text-amber-800">
-              ⚠️ 최근 5분 내 같은 상품이 {result.duplicate_warning.recent_count}회 트리거됨
-              (마지막 {new Date(result.duplicate_warning.last_at).toLocaleString('ko-KR')})
-              — 중복 발행에 주의하세요.
+        {/* Step 3: 발행 결과 */}
+        {step === 3 && result && (
+          <section className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 rounded-2xl p-8 shadow-2xl space-y-6 animate-fade-in">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-700 pb-6 gap-4">
+              <div>
+                <h2 className="text-2xl font-black flex items-center gap-2 text-emerald-400">
+                  처리 완료
+                </h2>
+                <p className="text-sm text-slate-300 mt-1">{result.product_title}</p>
+              </div>
+              {result.cost_estimate && (
+                <div className="bg-slate-900/80 border border-slate-700 px-4 py-2 rounded-xl text-right shadow-inner min-w-[140px]">
+                  <div className="text-[10px] text-slate-400 font-semibold tracking-wide uppercase">AI 추정 비용</div>
+                  <div className="text-xl font-black text-cyan-400">${result.cost_estimate.total_usd.toFixed(2)}</div>
+                </div>
+              )}
             </div>
-          )}
 
-          <h3 className="mt-4 mb-2 text-sm font-semibold">예약 발행 큐 ({result.distributions.length}건)</h3>
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-50">
-              <tr>
-                <th className="px-2 py-1 text-left">플랫폼</th>
-                <th className="px-2 py-1 text-left">발행 시각</th>
-                <th className="px-2 py-1 text-left">시각 결정</th>
-                <th className="px-2 py-1 text-left">카피</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.distributions.map((d) => (
-                <Fragment key={d.id}>
-                  <tr className="border-t border-neutral-100">
-                    <td className="px-2 py-1">{PLATFORM_LABEL[d.platform] ?? d.platform}</td>
-                    <td className="px-2 py-1 font-mono text-xs">
-                      {d.scheduled_for ? new Date(d.scheduled_for).toLocaleString('ko-KR') : '—'}
-                    </td>
-                    <td className="px-2 py-1 text-xs">
-                      {d.slot_source === 'data_driven' ? '📊 engagement' : d.slot_source === 'now' ? '⚡ 즉시' : '⏰ 19시 폴백'}
-                    </td>
-                    <td className="px-2 py-1 text-xs">
+            {result.duplicate_warning && (
+              <div className="bg-amber-900/30 border border-amber-800 text-amber-200 px-4 py-3 rounded-xl text-xs">
+                ⚠️ 최근 5분 내 동일 상품이 {result.duplicate_warning.recent_count}회 트리거되었습니다.
+                (마지막: {new Date(result.duplicate_warning.last_at).toLocaleTimeString('ko-KR')})
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-bold text-slate-200">플랫폼별 예약 현황</h3>
+              <div className="grid grid-cols-1 gap-3">
+                {result.distributions.map((d) => (
+                  <div
+                    key={d.id}
+                    className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col space-y-2 hover:border-slate-700 transition-all"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-slate-100">{PLATFORM_LABEL[d.platform] ?? d.platform}</span>
+                      <span className="text-xs font-mono bg-slate-800 text-emerald-400 px-2 py-1 rounded-md border border-slate-700/50">
+                        {d.scheduled_for ? new Date(d.scheduled_for).toLocaleString('ko-KR') : '즉시 실행'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-slate-400">
+                      <span>
+                        {d.slot_source === 'data_driven' ? '📊 데이터 기반 Best Time' : '⏰ 기본 시간대 스케줄링'}
+                      </span>
                       {d.payload && (
                         <button
                           onClick={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
-                          className="text-blue-600 hover:underline"
+                          className="text-cyan-400 hover:underline font-semibold flex items-center gap-1"
                         >
-                          {expandedRow === d.id ? '접기' : '미리보기'}
+                          {expandedRow === d.id ? '접기' : '생성된 카피 미리보기'}
                         </button>
                       )}
-                    </td>
-                  </tr>
-                  {expandedRow === d.id && d.payload && (
-                    <tr className="bg-neutral-50">
-                      <td colSpan={4} className="px-2 py-2">
+                    </div>
+                    {expandedRow === d.id && d.payload && (
+                      <div className="mt-2 bg-slate-950/60 rounded-lg p-3 text-xs text-slate-300 border border-slate-800/80 max-h-60 overflow-y-auto">
                         <PayloadPreview platform={d.platform} payload={d.payload} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-              {result.blog_queue_id && (
-                <tr className="border-t border-neutral-100 bg-blue-50">
-                  <td className="px-2 py-1">블로그</td>
-                  <td className="px-2 py-1 font-mono text-xs">
-                    {result.blog_scheduled_for ? new Date(result.blog_scheduled_for).toLocaleString('ko-KR') : '—'}
-                  </td>
-                  <td className="px-2 py-1 text-xs" colSpan={2}>매시간 blog-publisher cron</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
 
-          {result.card_news_variants.payload && (
-            <div className="mt-3 rounded border border-neutral-200 p-3 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span>🎴 카드뉴스 5변형 생성 (1~3분 소요, ~$0.42)</span>
-                {!cardNewsResult?.ok && (
-                  <button
-                    onClick={triggerCardNewsVariants}
-                    disabled={cardNewsTriggering}
-                    className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-neutral-300"
-                  >
-                    {cardNewsTriggering ? '생성 중...' : '생성 시작'}
-                  </button>
+                {/* 블로그 큐 표기 */}
+                {result.blog_queue_id && (
+                  <div className="bg-emerald-950/30 border border-emerald-800/50 rounded-xl p-4 flex flex-col space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-emerald-400">네이버 블로그 (Pillar-Cluster)</span>
+                      <span className="text-xs font-mono bg-emerald-900/50 text-emerald-300 px-2 py-1 rounded-md border border-emerald-800">
+                        {result.blog_scheduled_for ? new Date(result.blog_scheduled_for).toLocaleString('ko-KR') : '—'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-200/80">
+                      ✓ SEO 최적화 상품 정보성 글 큐 적재 완료. 크론 작업을 통해 자동 품질 게이트 검증 후 발행됩니다.
+                    </p>
+                  </div>
+                )}
+
+                {/* 카드뉴스 5변형 백그라운드 적재 알림 */}
+                {result.card_news_variants?.triggered && (
+                  <div className="bg-cyan-950/30 border border-cyan-800/50 rounded-xl p-4 flex flex-col space-y-2 animate-pulse">
+                    <div className="flex items-center gap-2 text-cyan-400 font-bold">
+                      🎴 카드뉴스 5변형 백그라운드 생성 가동 중
+                    </div>
+                    <p className="text-xs text-cyan-200/80">
+                      다양한 소구점(luxury, value 등)을 갖춘 Multi-Variant 카드뉴스가 생성 큐에 적재되었습니다. (약 1~3분 소요)
+                    </p>
+                  </div>
                 )}
               </div>
-              {cardNewsResult?.ok && (
-                <p className="mt-2 text-xs text-emerald-700">
-                  ✓ 5변형 생성 완료 ·
-                  {' '}<a href={`/admin/marketing/card-news?group_id=${cardNewsResult.group_id}`} className="underline">
-                    결과 보기
-                  </a>
-                </p>
-              )}
-              {cardNewsResult && !cardNewsResult.ok && (
-                <p className="mt-2 text-xs text-red-700">실패: {cardNewsResult.error}</p>
-              )}
             </div>
-          )}
 
-          {result.agent_failures.length > 0 && (
-            <div className="mt-3 rounded bg-amber-50 p-3 text-xs">
-              <strong>일부 실패:</strong>
-              <ul className="mt-1 ml-4 list-disc">
-                {result.agent_failures.map((f, i) => (
-                  <li key={i}>{f.platform}: {f.error}</li>
-                ))}
-              </ul>
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={reset}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all"
+              >
+                새로운 작업 시작
+              </button>
             </div>
-          )}
-        </section>
-      )}
+          </section>
+        )}
+      </div>
     </main>
   );
 }
@@ -395,8 +411,8 @@ function PayloadPreview({ platform, payload }: { platform: string; payload: Reco
     const tags = (payload.hashtags as string[]) ?? [];
     return (
       <div>
-        <pre className="whitespace-pre-wrap text-xs leading-relaxed">{cap}</pre>
-        {tags.length > 0 && <div className="mt-2 text-[10px] text-neutral-500">{tags.join(' ')}</div>}
+        <pre className="whitespace-pre-wrap font-sans leading-relaxed">{cap}</pre>
+        {tags.length > 0 && <div className="mt-2 text-cyan-400 font-semibold">{tags.join(' ')}</div>}
       </div>
     );
   }
@@ -405,9 +421,9 @@ function PayloadPreview({ platform, payload }: { platform: string; payload: Reco
     const thread = (payload.thread as string[]) ?? [];
     return (
       <div className="space-y-2">
-        <pre className="whitespace-pre-wrap text-xs leading-relaxed">{main}</pre>
+        <pre className="whitespace-pre-wrap font-sans leading-relaxed">{main}</pre>
         {thread.map((t, i) => (
-          <pre key={i} className="ml-4 whitespace-pre-wrap text-xs leading-relaxed text-neutral-700 border-l-2 border-neutral-300 pl-2">{t}</pre>
+          <pre key={i} className="ml-4 whitespace-pre-wrap font-sans leading-relaxed text-slate-400 border-l-2 border-slate-700 pl-2">{t}</pre>
         ))}
       </div>
     );
@@ -416,25 +432,25 @@ function PayloadPreview({ platform, payload }: { platform: string; payload: Reco
     const heads = (payload.headlines as string[]) ?? [];
     const texts = (payload.primary_texts as string[]) ?? [];
     return (
-      <div className="text-xs">
-        <div className="font-semibold">Headlines ({heads.length})</div>
-        <ul className="ml-4 list-disc">{heads.slice(0, 3).map((h, i) => <li key={i}>{h}</li>)}</ul>
-        <div className="mt-2 font-semibold">Primary text ({texts.length})</div>
-        <ul className="ml-4 list-disc">{texts.slice(0, 2).map((t, i) => <li key={i}>{t}</li>)}</ul>
+      <div className="space-y-2">
+        <div className="font-bold text-slate-200">광고 제목 (Headlines)</div>
+        <ul className="list-disc pl-4 space-y-1">{heads.slice(0, 3).map((h, i) => <li key={i}>{h}</li>)}</ul>
+        <div className="font-bold text-slate-200 mt-2">광고 본문 (Primary text)</div>
+        <ul className="list-disc pl-4 space-y-1">{texts.slice(0, 2).map((t, i) => <li key={i}>{t}</li>)}</ul>
       </div>
     );
   }
   if (platform === 'kakao_channel') {
-    return <pre className="whitespace-pre-wrap text-xs leading-relaxed">{(payload.message_text as string) ?? ''}</pre>;
+    return <pre className="whitespace-pre-wrap font-sans leading-relaxed">{(payload.message_text as string) ?? ''}</pre>;
   }
   if (platform === 'google_ads_rsa') {
     const heads = (payload.headlines as string[]) ?? [];
     return (
-      <div className="text-xs">
-        <div className="font-semibold">Headlines ({heads.length})</div>
-        <ul className="ml-4 list-disc">{heads.slice(0, 5).map((h, i) => <li key={i}>{h}</li>)}</ul>
+      <div>
+        <div className="font-bold text-slate-200">확장 검색 제목</div>
+        <ul className="list-disc pl-4 space-y-1 mt-1">{heads.slice(0, 5).map((h, i) => <li key={i}>{h}</li>)}</ul>
       </div>
     );
   }
-  return <pre className="text-xs">{JSON.stringify(payload, null, 2).slice(0, 500)}</pre>;
+  return <pre className="font-mono text-[10px] opacity-80">{JSON.stringify(payload, null, 2)}</pre>;
 }

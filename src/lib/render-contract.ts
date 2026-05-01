@@ -191,6 +191,10 @@ export interface CanonicalFlight {
   arrTime: string | null;        // "11:50"
   /** 렌더 라벨: "부산 김해 출발 → 황산 툰시 도착 11:50" */
   label: string;
+  /** MRT 실시간 스케줄 (getFlightSchedule 결과 주입 시 채워짐 — 우선 표시) */
+  realtimeDepTime?: string;
+  realtimeArrTime?: string;
+  realtimeDate?:    string;
 }
 
 /** 호텔 카드 — 하드코딩 헤더 제거용 구조화 출력 */
@@ -201,6 +205,9 @@ export interface CanonicalHotelCard {
   note: string | null;     // 호텔 note + activity에서 추출한 추가 메모(* 로 시작)
   /** activity에서 호텔 블록으로 흡수된 원문 (감사/복구용) */
   absorbedActivities: string[];
+  /** MRT 리뷰 데이터 — attractions 테이블 mrt_rating/mrt_review_count 기반 (선택) */
+  mrtRating?:       number;
+  mrtReviewCount?:  number;
 }
 
 /** 정규화된 단일 일차 */
@@ -275,6 +282,10 @@ const AIRLINE_MAP: Record<string, string> = {
   MU: '중국동방항공', CA: '중국국제항공', CZ: '중국남방항공',
   D7: '에어아시아', OD: '바틱에어', '5J': '세부퍼시픽', VN: '베트남항공',
   SC: '산동항공',
+  // 페리 (선박) — 카멜리아·부관훼리 등
+  // ERR-PackageCard-ferry-airline@2026-04-29: 카멜리아 패키지 카드에 "선박" 만 노출되던 버그 방어.
+  // getAirlineName("카멜리아 (선박)") → 이전: "선박" (parenMatch fallback) / 이후: "카멜리아"
+  '카멜리아': '카멜리아', '부관훼리': '부관훼리', '뉴카멜리아': '뉴카멜리아',
 };
 
 /**

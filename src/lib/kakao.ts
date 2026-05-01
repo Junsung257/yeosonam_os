@@ -264,3 +264,32 @@ export async function sendReviewRequestAlimtalk(params: {
     },
   });
 }
+
+
+/** 자유여행 견적 리타게팅 알림톡 (Abandoned Cart)
+ * 템플릿 예시:
+ * #{고객명}님, #{목적지} 여행 견적이 아직 남아있어요!
+ * 항공·호텔·액티비티 최저가 견적을 다시 확인하고 예약을 완료해보세요.
+ * 👉 견적 보기: #{플래너링크}
+ */
+export async function sendFreeTravelRetarget(params: {
+  phone: string;
+  name?: string;
+  destination: string;
+  plannerUrl: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_FREE_TRAVEL_RETARGET || '';
+  if (!templateId) {
+    console.log('[자유여행 리타게팅] KAKAO_TEMPLATE_FREE_TRAVEL_RETARGET 미설정 — 수기 모드', params.phone, params.destination);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '목적지': params.destination,
+      '플래너링크': params.plannerUrl,
+    },
+  });
+}

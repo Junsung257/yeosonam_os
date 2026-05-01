@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import GlobalNav from '@/components/customer/GlobalNav';
+import SectionHeader from '@/components/customer/SectionHeader';
 
 export const revalidate = 600;
 
@@ -89,19 +91,20 @@ export default async function DestinationsIndexPage() {
         }}
       />
 
-      <main className="min-h-screen bg-[#faf6f0]">
+      <GlobalNav />
+      <main className="min-h-screen bg-white">
         <header className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
-          <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
-            <Link href="/" className="text-[13px] text-slate-300 hover:text-white">
+          <div className="mx-auto max-w-6xl px-4 md:px-6 py-14 md:py-20">
+            <Link href="/" className="text-[13px] md:text-sm text-slate-300 hover:text-white">
               ← 여소남 홈
             </Link>
-            <h1 className="mt-2 text-[32px] md:text-[44px] font-extrabold tracking-tight">
+            <h1 className="mt-3 text-[40px] md:text-[60px] font-black tracking-tight leading-[1.05]">
               여행지 완벽 가이드
             </h1>
-            <p className="mt-2 text-[14px] md:text-[15px] text-slate-300 max-w-2xl">
+            <p className="mt-4 text-base md:text-lg text-slate-300 max-w-2xl leading-relaxed">
               여소남 운영팀이 직접 답사·검증한 목적지별 정보 허브 — 관광지, 일정, 준비물, 비용까지 한곳에서 확인하세요.
             </p>
-            <div className="mt-5 flex gap-3 text-[12px] text-slate-200">
+            <div className="mt-6 md:mt-8 flex gap-3 text-[13px] md:text-sm text-slate-200">
               <span>🌏 {stats.length}개 여행지</span>
               <span>·</span>
               <span>🧳 {stats.reduce((s, d) => s + d.package_count, 0)}개 엄선 패키지</span>
@@ -110,50 +113,53 @@ export default async function DestinationsIndexPage() {
         </header>
 
         {/* Grid */}
-        <section className="mx-auto max-w-6xl px-4 py-10 md:py-14">
+        <section className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
           {stats.length === 0 ? (
             <p className="py-20 text-center text-slate-400">활성 여행지가 없습니다.</p>
           ) : (
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              {stats.map(d => {
-                const attr = attractionsByDest[d.destination];
-                const img = attr?.photos?.[0]?.src_medium;
-                return (
-                  <Link
-                    key={d.destination}
-                    href={`/destinations/${encodeURIComponent(d.destination)}`}
-                    className="group relative h-64 md:h-72 rounded-xl overflow-hidden border border-slate-200 bg-slate-200"
-                  >
-                    {img ? (
-                      <img
-                        src={img}
-                        alt={`${d.destination} 여행지 대표 사진`}
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-indigo-300 to-purple-400 flex items-center justify-center text-5xl">
-                        🌍
+            <>
+              <SectionHeader title="전체 여행지" subtitle="패키지가 많은 순으로 정렬" />
+              <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {stats.map(d => {
+                  const attr = attractionsByDest[d.destination];
+                  const img = attr?.photos?.[0]?.src_medium;
+                  return (
+                    <Link
+                      key={d.destination}
+                      href={`/destinations/${encodeURIComponent(d.destination)}`}
+                      className="group relative h-72 md:h-80 rounded-xl overflow-hidden border border-slate-200 bg-slate-200"
+                    >
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={`${d.destination} 여행지 대표 사진`}
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-300 to-purple-400 flex items-center justify-center text-5xl">
+                          🌍
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5 text-white">
+                        <h2 className="text-xl md:text-2xl font-black leading-tight tracking-tight">
+                          {d.destination}
+                        </h2>
+                        <div className="mt-2 flex gap-2 text-xs md:text-[13px] text-slate-200">
+                          <span>🧳 {d.package_count}개</span>
+                          {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
+                          {d.avg_rating && <span>· ⭐ {Number(d.avg_rating).toFixed(1)}</span>}
+                        </div>
+                        <div className="mt-2 text-xs md:text-[13px] text-amber-300 font-bold opacity-90">
+                          완벽 가이드 보기 →
+                        </div>
                       </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
-                    <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                      <h2 className="text-[18px] md:text-[20px] font-bold leading-tight">
-                        {d.destination}
-                      </h2>
-                      <div className="mt-1 flex gap-2 text-[11px] text-slate-200">
-                        <span>🧳 {d.package_count}개</span>
-                        {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
-                        {d.avg_rating && <span>· ⭐ {Number(d.avg_rating).toFixed(1)}</span>}
-                      </div>
-                      <div className="mt-2 text-[11px] text-amber-300 font-semibold opacity-90">
-                        완벽 가이드 보기 →
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
           )}
         </section>
       </main>

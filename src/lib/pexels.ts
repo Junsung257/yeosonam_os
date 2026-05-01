@@ -108,4 +108,69 @@ export function isPexelsConfigured(): boolean {
   return !!process.env.PEXELS_API_KEY;
 }
 
+/**
+ * 한글 도시/지역명 → Pexels 영어 검색 키워드 변환
+ * 멀티시티("나트랑/호치민") 지원 — 첫 매칭 토큰 기준
+ */
+const KOREAN_TO_EN_DEST: Record<string, string> = {
+  '나트랑': 'Nha Trang Vietnam beach',
+  '다낭': 'Da Nang Vietnam coast',
+  '호치민': 'Ho Chi Minh City Vietnam',
+  '하노이': 'Hanoi Vietnam',
+  '푸꾸옥': 'Phu Quoc Vietnam island',
+  '달랏': 'Da Lat Vietnam mountains',
+  '하롱베이': 'Ha Long Bay Vietnam',
+  '사파': 'Sapa Vietnam rice terraces',
+  '오사카': 'Osaka Japan city',
+  '도쿄': 'Tokyo Japan skyline',
+  '교토': 'Kyoto Japan temple',
+  '후쿠오카': 'Fukuoka Japan',
+  '큐슈': 'Kyushu Japan nature',
+  '북해도': 'Hokkaido Japan snow',
+  '삿포로': 'Sapporo Japan winter',
+  '오키나와': 'Okinawa Japan beach',
+  '시즈오카': 'Shizuoka Japan Mount Fuji',
+  '장가계': 'Zhangjiajie China mountains',
+  '서안': 'Xian China ancient city',
+  '상해': 'Shanghai China skyline',
+  '북경': 'Beijing China',
+  '청도': 'Qingdao China coast',
+  '칭다오': 'Qingdao China coast',
+  '연길': 'Yanbian China',
+  '구채구': 'Jiuzhaigou China',
+  '방콕': 'Bangkok Thailand temple',
+  '치앙마이': 'Chiang Mai Thailand',
+  '푸켓': 'Phuket Thailand beach',
+  '파타야': 'Pattaya Thailand',
+  '발리': 'Bali Indonesia rice terrace',
+  '코타키나발루': 'Kota Kinabalu Malaysia',
+  '쿠알라룸푸르': 'Kuala Lumpur Malaysia',
+  '싱가포르': 'Singapore skyline marina bay',
+  '세부': 'Cebu Philippines beach',
+  '보홀': 'Bohol Philippines ocean',
+  '마닐라': 'Manila Philippines',
+  '마카오': 'Macau cityscape night',
+  '홍콩': 'Hong Kong skyline victoria harbour',
+  '타이베이': 'Taipei Taiwan night market',
+  '울란바토르': 'Mongolia steppe grassland',
+  '테를지': 'Terelj Mongolia landscape',
+  '제주': 'Jeju Island Korea coastal',
+  '부산': 'Busan Korea seaside',
+  '경주': 'Gyeongju Korea heritage',
+  '파리': 'Paris France Eiffel Tower',
+  '로마': 'Rome Italy Colosseum',
+  '이스탄불': 'Istanbul Turkey',
+  '프라하': 'Prague Czech Republic',
+};
+
+export function destToEnKeyword(dest: string): string {
+  const tokens = dest.split(/[\/,·\s]+/).map(s => s.trim()).filter(Boolean);
+  for (const token of tokens) {
+    for (const [kr, en] of Object.entries(KOREAN_TO_EN_DEST)) {
+      if (token.includes(kr) || kr.includes(token)) return en;
+    }
+  }
+  return `${dest} travel destination landscape`;
+}
+
 export { getBrandPlaceholder, BRAND_PLACEHOLDERS } from '@/lib/card-news/placeholders';

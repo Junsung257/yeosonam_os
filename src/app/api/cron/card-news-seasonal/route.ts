@@ -26,7 +26,7 @@ import { getSeasonalContext } from '@/lib/card-news-html/seasonal';
 import { getPackageRawText } from '@/lib/packages/raw-text';
 
 export const runtime = 'nodejs';
-export const maxDuration = 800; // 2 그룹 × ~3분 + 여유
+export const maxDuration = 300; // Hobby plan 상한(300s). 2 그룹 처리는 MAX_GROUPS_PER_RUN로 분할.
 
 const MAX_GROUPS_PER_RUN = 2;
 const SAME_DESTINATION_LOOKBACK_DAYS = 14;
@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
     .from('travel_packages')
     .select('id, title, destination, duration, nights, departure_dates, products(selling_price)')
     .or('status.eq.approved,status.eq.active')
+    .not('departure_dates', 'is', null)  // 출발일 없는 상품 DB 단계 제외
     .order('created_at', { ascending: false })
     .limit(50);
 

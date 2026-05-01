@@ -9,7 +9,7 @@ async function getBookingInfo(bookingId: string) {
 
   const { data } = await supabaseAdmin
     .from('bookings')
-    .select('id, product_id, lead_customer_id, status, travel_packages(title, destination, hero_image_url)')
+    .select('id, product_id, lead_customer_id, status, travel_packages(title, destination)')
     .eq('id', bookingId)
     .limit(1);
 
@@ -64,9 +64,6 @@ export default async function ReviewPage({ params }: { params: Promise<{ booking
 
         {pkg && (
           <div className="mt-5 p-4 bg-white border border-slate-200 rounded-xl flex items-center gap-4">
-            {pkg.hero_image_url && (
-              <img src={pkg.hero_image_url} alt={pkg.title} className="w-20 h-20 object-cover rounded-lg" />
-            )}
             <div>
               <p className="text-[11px] text-slate-400">{pkg.destination}</p>
               <h2 className="text-[14px] font-bold text-slate-800 line-clamp-2">{pkg.title}</h2>

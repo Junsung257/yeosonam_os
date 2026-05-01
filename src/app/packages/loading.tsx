@@ -3,7 +3,7 @@ export default function Loading() {
     <div className="min-h-screen bg-gray-50">
       <div className="animate-pulse">
         {/* 헤더 */}
-        <div className="bg-gradient-to-br from-violet-600 to-purple-700 px-4 pt-12 pb-8">
+        <div className="bg-gradient-to-br from-[#3182F6] to-[#1B64DA] px-4 pt-12 pb-8">
           <div className="h-6 bg-white/20 rounded w-40 mx-auto mb-2" />
           <div className="h-4 bg-white/15 rounded w-56 mx-auto" />
         </div>

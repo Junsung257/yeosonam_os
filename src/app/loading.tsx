@@ -1,26 +1,21 @@
+// 루트 loading.tsx 는 전체 페이지를 가리는 스켈레톤이 아니라
+// Naver/Voyager 식 상단 1px progress strip 으로 — 클릭 직후 페이지 레이아웃이
+// 잠깐 딴 모양으로 바뀌는 (보라색 hero 카드 그리드) 느낌을 제거.
+//
+// 각 라우트는 자체 loading.tsx 에서 더 풍부한 skeleton 을 정의할 수 있음.
 export default function Loading() {
   return (
-    <div className="min-h-screen bg-white max-w-lg mx-auto">
-      <div className="bg-gradient-to-b from-[#340897] to-[#4b2ead] px-5 pt-10 pb-8 text-center">
-        <div className="h-8 w-40 bg-white/20 rounded-full mx-auto mb-3 animate-pulse" />
-        <div className="h-8 w-24 bg-white/30 rounded mx-auto mb-1 animate-pulse" />
-        <div className="h-4 w-44 bg-white/15 rounded mx-auto animate-pulse" />
-      </div>
-      <div className="px-4 -mt-6">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4">
-          <div className="h-5 w-24 bg-gray-200 rounded mb-3 animate-pulse" />
-          <div className="grid grid-cols-2 gap-3">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-                <div className="h-28 bg-gray-200 animate-pulse" />
-                <div className="px-2.5 py-2">
-                  <div className="h-5 w-20 bg-gray-200 rounded animate-pulse" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div
+      aria-label="페이지 로딩 중"
+      className="fixed top-0 left-0 right-0 h-[3px] z-[9999] overflow-hidden bg-transparent pointer-events-none"
+    >
+      <div className="h-full w-1/3 bg-gradient-to-r from-[#3182F6] via-[#3182F6] to-[#1B64DA] animate-[loading-bar_1.2s_ease-in-out_infinite]" />
+      <style>{`
+        @keyframes loading-bar {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(400%); }
+        }
+      `}</style>
     </div>
   );
 }

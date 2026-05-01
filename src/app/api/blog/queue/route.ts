@@ -71,6 +71,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ triggered: 'lifecycle', result: data });
     }
 
+    if (action === 'run_trend_miner') {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/trend-topic-miner`);
+      const data = await res.json();
+      return NextResponse.json({ triggered: 'trend_miner', result: data });
+    }
+
     // 카드뉴스로부터 블로그 큐에 투입 (linked_blog_id 없는 CONFIRMED 카드뉴스만)
     if (action === 'enqueue_from_card_news') {
       const { card_news_id, target_publish_at } = body;

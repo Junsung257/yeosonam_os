@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
+import ScoringKpiWidget from '@/components/admin/ScoringKpiWidget';
 
 const ComposedChart = nextDynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
 const Bar = nextDynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
@@ -19,6 +20,7 @@ const Cell = nextDynamic(() => import('recharts').then(m => ({ default: m.Cell }
 interface DashboardStats {
   totalSales: number; totalCost: number; totalPaid: number;
   totalOutstanding: number; margin: number; activeBookings: number;
+  unpaidD7: number;       // D-7 이내 출발 & 잔금 미납 실제 건수
   totalMonthBookings: number; totalMileage: number; expiringPassports: number;
 }
 
@@ -26,6 +28,53 @@ interface MonthlyChartData {
   month: string; direct_sales: number; affiliate_sales: number;
   direct_margin: number; affiliate_margin: number;
   total_commission: number; ad_spend_krw: number; net_margin: number;
+}
+
+// V4: 매출 인식 분리 (IFRS 15 / ASC 606) — 2026-04-28
+interface RecognizedRevenueMonth {
+  month: string; recognized_bookings: number; gmv: number; margin: number;
+  paid: number; outstanding: number; commission: number;
+}
+interface NewBookingsMonth {
+  month: string; total_bookings: number; live_bookings: number;
+  cancelled_bookings: number; gmv_live: number; gmv_total: number;
+  avg_lead_time: number | null; cancellation_rate: number;
+}
+interface BookingPaceBucket {
+  bucket: 'D-7' | 'D-30' | 'D-90' | 'D-180' | 'D+';
+  bookings: number; gmv: number;
+}
+interface Cancellation90d {
+  total_in_window: number; cancelled_in_window: number; rate: number;
+}
+interface AIUsageStats {
+  total_usd_7d: number; total_usd_30d: number; total_calls_30d: number;
+  daily: { date: string; cost_usd: number; calls: number }[];
+  by_model: { model: string; cost_usd: number; calls: number }[];
+}
+interface SettlementBalances {
+  payable: { total: number; aging: { bucket: string; amount: number }[] };
+  receivable: { total: number; aging: { bucket: string; amount: number }[] };
+}
+interface OperatorTakeRate {
+  operator_id: string | null;
+  operator_name: string;
+  bookings: number;
+  gmv: number;
+  margin: number;
+  take_rate: number | null;
+}
+interface RepeatBookingStats {
+  total_customers: number; repeat_customers: number; repeat_rate: number;
+  repeat_revenue_share: number; top_customer_ltv: number;
+  one_time: number; two_time: number; three_plus: number;
+}
+interface DataQualityIssue {
+  id: string; label: string; severity: 'critical' | 'warning' | 'info';
+  affected: number; total: number; pct: number; hint: string; drilldown: string;
+}
+interface DataQualityReport {
+  total_live: number; issues: DataQualityIssue[]; health_score: number;
 }
 
 interface TravelPackage {
@@ -46,36 +95,96 @@ interface Booking {
 const fmt만 = (n: number) => `${(n / 10000).toFixed(0)}만`;
 const fmtComma = (n: number) => n.toLocaleString();
 
-// ── 서브 컴포넌트: TwoTrackKPI ────────────────────────────
+// ── 서브 컴포넌트: TwoTrackKPI (V4 — IFRS 15 매출 인식 분리) ─────────────
+//
+// [확정매출] 출발일 기준 = 이미 확정된 우리 수익 (취소 불가)
+// [신규예약] 생성일 기준 = 단순 등록 카운트 (취소 가능)
+//
+// 두 지표를 절대 섞지 않는다 (사장님 정책 2026-04-28).
 
-function TwoTrackKPI({ stats, prevMonthGrowth }: { stats: DashboardStats | null; prevMonthGrowth: number }) {
+function MiniSpark({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * 100},${100 - (v / max) * 100}`).join(' ');
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-8 mt-1.5">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function TwoTrackKPI({
+  recognized, newBookings,
+}: {
+  recognized: RecognizedRevenueMonth[];
+  newBookings: NewBookingsMonth[];
+}) {
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+  const thisRecognized = recognized.find(r => r.month === thisMonthKey);
+  const thisBookings = newBookings.find(r => r.month === thisMonthKey);
+
+  // 전월 대비 — 배열 인덱스가 아닌 월 키로 정확히 비교
+  const prevRecognized = recognized.find(r => r.month === prevMonthKey) ?? null;
+  const recognizedGrowth = prevRecognized && prevRecognized.gmv > 0
+    ? Math.round(((thisRecognized?.gmv ?? 0) - prevRecognized.gmv) / prevRecognized.gmv * 100)
+    : 0;
+  const prevBookings = newBookings.find(r => r.month === prevMonthKey) ?? null;
+  const bookingsGrowth = prevBookings && prevBookings.live_bookings > 0
+    ? Math.round(((thisBookings?.live_bookings ?? 0) - prevBookings.live_bookings) / prevBookings.live_bookings * 100)
+    : 0;
+
+  const recognizedSpark = recognized.map(r => r.gmv);
+  const bookingsSpark = newBookings.map(r => r.live_bookings);
+
   return (
     <div className="grid grid-cols-2 gap-3">
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase">예약 지표 (당월)</span>
-          {prevMonthGrowth !== 0 && (
-            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${prevMonthGrowth >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-              {prevMonthGrowth >= 0 ? '+' : ''}{prevMonthGrowth}%
+      {/* 카드 1: 출발일 기준 확정매출 (회계, IFRS 15) */}
+      <Link href="/admin/bookings?mode=recognized" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">확정매출 · 출발일 기준</span>
+          {recognizedGrowth !== 0 && (
+            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${recognizedGrowth >= 0 ? 'bg-[#E9FAF4] text-[#04C584]' : 'bg-[#FFF1F2] text-[#F04452]'}`}>
+              {recognizedGrowth >= 0 ? '+' : ''}{recognizedGrowth}%
             </span>
           )}
         </div>
-        <p className="text-[28px] font-bold text-[#001f3f] tabular-nums">
-          {stats ? `₩${fmt만(stats.totalSales)}` : '—'}
+        <p className="text-[28px] font-bold text-[#04C584] tabular-nums leading-none">
+          {thisRecognized ? `₩${fmt만(thisRecognized.gmv)}` : '—'}
         </p>
-        <p className="text-[12px] text-slate-500 mt-1">
-          {stats?.totalMonthBookings ?? 0}건 신규 예약
+        <p className="text-[11px] text-slate-500 mt-1">
+          {thisRecognized?.recognized_bookings ?? 0}건 출발 완료 · 마진 ₩{thisRecognized ? fmt만(thisRecognized.margin) : 0}
         </p>
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase block mb-2">출발 확정 (당월)</span>
-        <p className="text-[28px] font-bold text-emerald-700 tabular-nums">
-          {stats ? `₩${fmt만(stats.totalPaid)}` : '—'}
+        <MiniSpark data={recognizedSpark} color="#059669" />
+      </Link>
+
+      {/* 카드 2: 생성일 기준 신규예약 (영업, 취소 가능) */}
+      <Link href="/admin/bookings?mode=new" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">신규예약 · 생성일 기준</span>
+          {bookingsGrowth !== 0 && (
+            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${bookingsGrowth >= 0 ? 'bg-[#E9FAF4] text-[#04C584]' : 'bg-[#FFF1F2] text-[#F04452]'}`}>
+              {bookingsGrowth >= 0 ? '+' : ''}{bookingsGrowth}%
+            </span>
+          )}
+        </div>
+        <p className="text-[28px] font-bold text-[#191F28] tabular-nums leading-none">
+          {thisBookings?.live_bookings ?? 0}<span className="text-[18px] text-slate-400 ml-1">건</span>
         </p>
-        <p className="text-[12px] text-slate-500 mt-1">
-          입금률 {stats && stats.totalSales > 0 ? Math.round((stats.totalPaid / stats.totalSales) * 100) : 0}%
+        <p className="text-[11px] text-slate-500 mt-1">
+          ₩{thisBookings ? fmt만(thisBookings.gmv_live) : 0}
+          {thisBookings && thisBookings.cancellation_rate > 0 && (
+            <span className="text-red-500 ml-2">취소율 {Math.round(thisBookings.cancellation_rate * 100)}%</span>
+          )}
+          {thisBookings?.avg_lead_time != null && (
+            <span className="text-slate-400 ml-2">리드 D-{thisBookings.avg_lead_time}</span>
+          )}
         </p>
-      </div>
+        <MiniSpark data={bookingsSpark} color="#3b82f6" />
+      </Link>
     </div>
   );
 }
@@ -85,26 +194,361 @@ function TwoTrackKPI({ stats, prevMonthGrowth }: { stats: DashboardStats | null;
 function CashflowChart({ chartData }: { chartData: MonthlyChartData[] }) {
   if (chartData.length === 0) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4">
-      <h2 className="text-[14px] font-semibold text-slate-800 mb-3">캐시플로우 예측 (6개월)</h2>
+    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-[14px] font-semibold text-[#191F28]">캐시플로우 (6개월)</h2>
+        <span className="text-[10px] text-slate-400">출발일 기준 / 직접·제휴 합산</span>
+      </div>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
           <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={v => v.slice(5) + '월'} />
           <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={v => fmt만(Number(v))} />
-          <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} />
+          <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={v => fmt만(Number(v))} />
           <Tooltip
             formatter={(value: unknown, name: unknown) => [
-              name === 'cancel_rate' ? `${value}%` : `₩${fmtComma(Number(value ?? 0))}`,
-              name === 'direct_sales' ? '출발 예정 총액' :
-              name === 'direct_margin' ? '잔금 완료액' :
-              name === 'cancel_rate' ? '예상 취소율' : String(name),
+              `₩${fmtComma(Number(value ?? 0))}`,
+              name === 'direct_sales' ? '직접 매출' :
+              name === 'affiliate_sales' ? '제휴 매출' :
+              name === 'net_margin' ? '순마진 (광고·수수료 차감)' : String(name),
             ] as [string, string]}
           />
-          <Bar yAxisId="left" dataKey="direct_sales" fill="#cbd5e1" radius={[3, 3, 0, 0]} name="direct_sales" />
-          <Bar yAxisId="left" dataKey="direct_margin" fill="#3b82f6" radius={[3, 3, 0, 0]} name="direct_margin" />
-          <Line yAxisId="right" type="monotone" dataKey="net_margin" stroke="#ef4444" strokeWidth={2} dot={{ r: 2 }} name="cancel_rate" />
+          <Bar yAxisId="left" dataKey="direct_sales" fill="#EBF3FE" radius={[4, 4, 0, 0]} name="direct_sales" />
+          <Bar yAxisId="left" dataKey="affiliate_sales" fill="#3182F6" radius={[4, 4, 0, 0]} name="affiliate_sales" />
+          <Line yAxisId="right" type="monotone" dataKey="net_margin" stroke="#059669" strokeWidth={2} dot={{ r: 2 }} name="net_margin" />
         </ComposedChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── 서브 컴포넌트: BookingPaceWidget ─────────────────────────
+//
+// 향후 출발 D-N 버킷 + 90일 취소율 (Booking.com Partner Extranet 표준).
+// 영업 건강성 + 운영 위험 조기 감지.
+
+function BookingPaceWidget({
+  pace, cancellation90d,
+}: {
+  pace: BookingPaceBucket[];
+  cancellation90d: Cancellation90d | null;
+}) {
+  const totalBookings = pace.reduce((s, p) => s + p.bookings, 0);
+  const totalGmv = pace.reduce((s, p) => s + p.gmv, 0);
+  const maxBucket = Math.max(1, ...pace.map(p => p.bookings));
+  const cancelPct = cancellation90d ? Math.round(cancellation90d.rate * 1000) / 10 : 0;
+  const cancelColor = cancelPct >= 10 ? 'text-red-600' : cancelPct >= 5 ? 'text-amber-600' : 'text-emerald-700';
+
+  const bucketLabels: Record<BookingPaceBucket['bucket'], string> = {
+    'D-7': '~7일', 'D-30': '~30일', 'D-90': '~90일', 'D-180': '~180일', 'D+': '180일+',
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Booking Pace — 향후 출발 분포 */}
+      <Link href="/admin/bookings?mode=upcoming" className="md:col-span-2 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[14px] font-semibold text-[#191F28]">Booking Pace · 향후 출발</h2>
+          <span className="text-[11px] text-slate-500 tabular-nums">
+            {totalBookings}건 · ₩{(totalGmv / 10000).toFixed(0)}만
+          </span>
+        </div>
+        <div className="grid grid-cols-5 gap-2">
+          {pace.map(p => {
+            const ratio = p.bookings / maxBucket;
+            const heightPct = Math.max(8, ratio * 100);
+            // 비율에 따라 막대 색상 강도 차별화
+            const barColor = ratio >= 0.8 ? 'bg-[#3182F6]' : ratio >= 0.5 ? 'bg-[#5B9EF8]' : ratio >= 0.2 ? 'bg-[#93BFF9]' : 'bg-[#EBF3FE]';
+            return (
+              <div key={p.bucket} className="flex flex-col items-center" title={`GMV: \u20a9${(p.gmv / 10000).toFixed(0)}\ub9cc`}>
+                <div className="h-12 w-full flex items-end mb-1">
+                  <div
+                    className={`w-full ${barColor} rounded-sm transition-all`}
+                    style={{ height: `${heightPct}%` }}
+                  />
+                </div>
+                <p className="text-[11px] font-bold text-slate-700 tabular-nums">{p.bookings}</p>
+                <p className="text-[10px] text-slate-400">{bucketLabels[p.bucket]}</p>
+              </div>
+            );
+          })}
+        </div>
+      </Link>
+
+      {/* 90일 Cancellation Rate */}
+      <Link href="/admin/bookings?lifecycle=cancelled" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">취소율 (최근 90일)</h2>
+          <span className="text-[10px] text-slate-400">Booking.com 표준</span>
+        </div>
+        <p className={`text-[28px] font-bold tabular-nums leading-none ${cancelColor}`}>
+          {cancelPct}<span className="text-[16px] ml-0.5">%</span>
+        </p>
+        <p className="text-[11px] text-slate-500 mt-1">
+          {cancellation90d
+            ? `${cancellation90d.cancelled_in_window} / ${cancellation90d.total_in_window}건`
+            : '데이터 없음'}
+        </p>
+        <p className="text-[10px] text-slate-400 mt-1">
+          ≥10% 위험 · 5~10% 주의 · &lt;5% 양호
+        </p>
+      </Link>
+    </div>
+  );
+}
+
+// ── 서브 컴포넌트: OperationsKPI (AI 비용 + 정산 잔여) ─────────────
+//
+// OS 유기적 통합 — 메인 대시보드에서 두 모듈로 직접 drilldown.
+//   - AI 비용 → /admin/jarvis (자비스 V2 cost ledger)
+//   - 정산 잔여 → /admin/payments + /admin/land-settlements
+
+const fmt만KRW = (n: number) => `₩${(n / 10000).toFixed(0)}만`;
+const fmt천원 = (n: number) => `₩${(n / 1000).toFixed(0)}천`;
+// USD → KRW 환산 (대시보드 표시용 근사 — 정확한 회계용 아님)
+const KRW_PER_USD = 1380;
+
+function OperationsKPI({
+  aiUsage, settlement,
+}: {
+  aiUsage: AIUsageStats | null;
+  settlement: SettlementBalances | null;
+}) {
+  const aiSpark = aiUsage?.daily.map(d => d.cost_usd) ?? [];
+  const aiKrw30d = aiUsage ? Math.round(aiUsage.total_usd_30d * KRW_PER_USD) : 0;
+  const aiKrw7d = aiUsage ? Math.round(aiUsage.total_usd_7d * KRW_PER_USD) : 0;
+
+  const payable = settlement?.payable.total ?? 0;
+  const receivable = settlement?.receivable.total ?? 0;
+  // 90d+ 비중 (위험 신호)
+  const recvOverdue = settlement?.receivable.aging.find(a => a.bucket === '90d+')?.amount ?? 0;
+  const payOverdue = settlement?.payable.aging.find(a => a.bucket === '90d+')?.amount ?? 0;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* 정산 잔여 — Payable (랜드사 미지급) */}
+      <Link href="/admin/land-settlements" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">랜드사 미지급</span>
+          <span className="text-[10px] text-slate-400">payable</span>
+        </div>
+        <p className="text-[24px] font-bold text-amber-700 tabular-nums leading-none">
+          {settlement ? fmt만KRW(payable) : '—'}
+        </p>
+        <div className="mt-2 flex gap-1 text-[10px]">
+          {(settlement?.payable.aging ?? []).map(a => (
+            <div key={a.bucket} className={`flex-1 px-1.5 py-1 rounded text-center ${
+              a.bucket === '90d+' && a.amount > 0 ? 'bg-red-50 text-red-700' :
+              a.bucket === '60-90d' && a.amount > 0 ? 'bg-amber-50 text-amber-700' :
+              'bg-slate-50 text-slate-500'
+            }`}>
+              <p className="font-medium">{a.bucket}</p>
+              <p className="tabular-nums">{a.amount > 0 ? fmt만KRW(a.amount).replace('₩', '') : '—'}</p>
+            </div>
+          ))}
+        </div>
+        {payOverdue > 0 && (
+          <p className="text-[10px] text-red-600 mt-1.5">⚠ 90일+ 미지급 {fmt만KRW(payOverdue)}</p>
+        )}
+      </Link>
+
+      {/* 정산 잔여 — Receivable (고객 미입금) */}
+      <Link href="/admin/payments?filter=outstanding" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">고객 미입금</span>
+          <span className="text-[10px] text-slate-400">receivable</span>
+        </div>
+        <p className="text-[24px] font-bold text-red-600 tabular-nums leading-none">
+          {settlement ? fmt만KRW(receivable) : '—'}
+        </p>
+        <div className="mt-2 flex gap-1 text-[10px]">
+          {(settlement?.receivable.aging ?? []).map(a => (
+            <div key={a.bucket} className={`flex-1 px-1.5 py-1 rounded text-center ${
+              a.bucket === '90d+' && a.amount > 0 ? 'bg-red-50 text-red-700' :
+              a.bucket === '60-90d' && a.amount > 0 ? 'bg-amber-50 text-amber-700' :
+              'bg-slate-50 text-slate-500'
+            }`}>
+              <p className="font-medium">{a.bucket}</p>
+              <p className="tabular-nums">{a.amount > 0 ? fmt만KRW(a.amount).replace('₩', '') : '—'}</p>
+            </div>
+          ))}
+        </div>
+        {recvOverdue > 0 && (
+          <p className="text-[10px] text-red-600 mt-1.5">⚠ 90일+ 미입금 {fmt만KRW(recvOverdue)}</p>
+        )}
+      </Link>
+
+      {/* AI 비용 추이 */}
+      <Link href="/admin/jarvis" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">AI 비용 (30일)</span>
+          <span className="text-[10px] text-slate-400">자비스 V2 ledger</span>
+        </div>
+        <p className="text-[24px] font-bold text-purple-700 tabular-nums leading-none">
+          {aiUsage ? fmt천원(aiKrw30d) : '—'}
+        </p>
+        <p className="text-[11px] text-slate-500 mt-1">
+          7일 {fmt천원(aiKrw7d)} · {aiUsage?.total_calls_30d ?? 0}회
+          {aiUsage && aiUsage.by_model.length > 0 && (
+            <span className="text-slate-400 ml-2">top: {aiUsage.by_model[0].model.replace(/^claude-/, '').replace(/^gpt-/, '').slice(0, 18)}</span>
+          )}
+        </p>
+        <MiniSpark data={aiSpark} color="#a855f7" />
+      </Link>
+    </div>
+  );
+}
+
+// ── 서브 컴포넌트: OperatorTakeRates (랜드사별 GMV/Take Rate) ─────────
+//
+// Tufte Small Multiples — 랜드사 단위 비교를 한 화면에. 정렬: GMV desc.
+// Take Rate가 0인 행은 데이터 결측(margin 미계산) 표시.
+
+function OperatorTakeRatesWidget({ rows }: { rows: OperatorTakeRate[] }) {
+  if (rows.length === 0) return null;
+  const maxGmv = Math.max(1, ...rows.map(r => r.gmv));
+  return (
+    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-[14px] font-semibold text-[#191F28]">랜드사별 GMV · Take Rate</h2>
+        <span className="text-[10px] text-slate-400">최근 6개월 출발 완료 기준</span>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map(r => {
+          const widthPct = Math.max(2, (r.gmv / maxGmv) * 100);
+          const takePct = r.take_rate != null ? Math.round(r.take_rate * 1000) / 10 : null;
+          const takeColor = takePct == null ? 'text-slate-300' : takePct >= 30 ? 'text-emerald-700' : takePct >= 15 ? 'text-blue-700' : 'text-amber-700';
+          return (
+            <Link
+              key={r.operator_id ?? 'unknown'}
+              href={r.operator_id ? `/admin/land-operators?id=${r.operator_id}` : '/admin/land-operators'}
+              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 group hover:bg-slate-50 px-1.5 py-1 rounded transition"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[12px] text-slate-700 font-medium truncate w-20 shrink-0">{r.operator_name}</span>
+                <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-400 group-hover:bg-blue-500 transition-colors" style={{ width: `${widthPct}%` }} />
+                </div>
+              </div>
+              <span className="text-[11px] text-slate-500 tabular-nums w-12 text-right">{r.bookings}건</span>
+              <span className="text-[11px] text-slate-700 tabular-nums w-16 text-right">{fmt만KRW(r.gmv)}</span>
+              <span className={`text-[11px] tabular-nums font-semibold w-14 text-right ${takeColor}`}>
+                {takePct != null ? `${takePct}%` : '—'}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+      <p className="text-[9px] text-slate-400 mt-2">Take Rate ≥30% 우수 · 15~30% 표준 · &lt;15% 마진 점검 · — 데이터 결측</p>
+    </div>
+  );
+}
+
+// ── 서브 컴포넌트: RepeatBookingCard (Retention KPI) ─────────────────
+
+function RepeatBookingCard({ stats }: { stats: RepeatBookingStats | null }) {
+  if (!stats) return null;
+  const repeatPct = Math.round(stats.repeat_rate * 1000) / 10;
+  const repeatRevPct = Math.round(stats.repeat_revenue_share * 1000) / 10;
+  const repeatColor = repeatPct >= 20 ? 'text-emerald-700' : repeatPct >= 10 ? 'text-blue-700' : 'text-slate-700';
+
+  return (
+    <Link href="/admin/customers?sort=mileage" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">재방문 고객</span>
+        <span className="text-[10px] text-slate-400">retention</span>
+      </div>
+      <p className={`text-[24px] font-bold tabular-nums leading-none ${repeatColor}`}>
+        {repeatPct}<span className="text-[16px] ml-0.5">%</span>
+      </p>
+      <p className="text-[11px] text-slate-500 mt-1">
+        {stats.repeat_customers} / {stats.total_customers}명 · 매출비중 {repeatRevPct}%
+      </p>
+      <div className="mt-2 grid grid-cols-3 gap-1 text-[10px]">
+        <div className="bg-slate-50 px-1.5 py-1 rounded text-center">
+          <p className="text-slate-400">1회</p>
+          <p className="text-slate-700 font-medium tabular-nums">{stats.one_time}</p>
+        </div>
+        <div className="bg-blue-50 px-1.5 py-1 rounded text-center">
+          <p className="text-blue-500">2회</p>
+          <p className="text-blue-700 font-medium tabular-nums">{stats.two_time}</p>
+        </div>
+        <div className="bg-emerald-50 px-1.5 py-1 rounded text-center">
+          <p className="text-emerald-500">3회+</p>
+          <p className="text-emerald-700 font-medium tabular-nums">{stats.three_plus}</p>
+        </div>
+      </div>
+      {stats.top_customer_ltv > 0 && (
+        <p className="text-[10px] text-slate-400 mt-1.5">Top LTV {fmt만KRW(stats.top_customer_ltv)}</p>
+      )}
+    </Link>
+  );
+}
+
+// ── 서브 컴포넌트: DataQualityMonitor ────────────────────────
+//
+// 다른 KPI 신뢰성의 전제. 결측·모순 데이터가 누적되면 모든 산식이 신호를 잃는다.
+// 건강도 점수 + 항목별 drilldown URL 제공 — 클릭하면 해당 결측 예약만 필터링되어 표시.
+
+function DataQualityMonitor({ report }: { report: DataQualityReport | null }) {
+  // Supabase 미연결 = null → 숨김
+  if (!report) return null;
+  // 이슈 없음 = 건강 양호 배너 표시
+  if (report.issues.length === 0) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 flex items-center gap-2">
+        <span className="text-emerald-600 text-[14px]">✅</span>
+        <span className="text-[12px] text-emerald-700 font-medium">
+          데이터 품질 양호 · live {report.total_live}건 모두 정상
+        </span>
+        <span className="ml-auto text-[11px] text-emerald-600 font-bold">건강도 {report.health_score}/100</span>
+      </div>
+    );
+  }
+  const score = report.health_score;
+  const scoreColor = score >= 80 ? 'text-emerald-700' : score >= 60 ? 'text-amber-700' : 'text-red-600';
+  const scoreBg    = score >= 80 ? 'bg-emerald-50 border-emerald-200' : score >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+  const sevColor: Record<DataQualityIssue['severity'], string> = {
+    critical: 'text-red-600 bg-red-50 border-red-200',
+    warning: 'text-amber-700 bg-amber-50 border-amber-200',
+    info: 'text-slate-600 bg-slate-50 border-slate-200',
+  };
+  const sevLabel: Record<DataQualityIssue['severity'], string> = {
+    critical: '심각', warning: '주의', info: '참고',
+  };
+
+  return (
+    <div className={`border rounded-lg p-4 ${scoreBg}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[14px] font-semibold text-[#191F28]">데이터 품질 모니터</h2>
+          <span className="text-[10px] text-slate-500">live 예약 {report.total_live}건 기준</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500">건강도</span>
+          <span className={`text-[20px] font-bold tabular-nums ${scoreColor}`}>{score}</span>
+          <span className="text-[11px] text-slate-400">/ 100</span>
+        </div>
+      </div>
+      <p className="text-[11px] text-slate-500 mb-2">
+        모든 KPI 신뢰성의 전제. 클릭하면 해당 결측 예약만 필터링.
+      </p>
+      <div className="space-y-1.5">
+        {report.issues.map(issue => (
+          <Link
+            key={issue.id}
+            href={issue.drilldown}
+            className={`flex items-center gap-2 p-2 rounded border transition hover:opacity-90 ${sevColor[issue.severity]}`}
+          >
+            <span className="text-[10px] font-bold uppercase w-10 shrink-0">
+              {sevLabel[issue.severity]}
+            </span>
+            <span className="text-[12px] flex-1 min-w-0 truncate">{issue.label}</span>
+            <span className="text-[12px] tabular-nums font-bold shrink-0">{issue.affected}건</span>
+            <span className="text-[10px] tabular-nums opacity-70 w-12 text-right shrink-0">{issue.pct}%</span>
+            <span className="text-[10px] opacity-60 truncate hidden md:block w-44 shrink-0">→ {issue.hint}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
@@ -112,28 +556,102 @@ function CashflowChart({ chartData }: { chartData: MonthlyChartData[] }) {
 // ── 서브 컴포넌트: ActionBoard ─────────────────────────────
 
 function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; unmatchedCount: number | null }) {
-  const actions = [
-    { label: 'D-7 잔금 미납', count: stats?.activeBookings ?? 0, color: 'text-red-600 bg-red-50 border-red-200', href: '/admin/bookings', btnLabel: '알림톡 발송' },
-    { label: '여권 만료 임박', count: stats?.expiringPassports ?? 0, color: 'text-amber-600 bg-amber-50 border-amber-200', href: '/admin/customers', btnLabel: '확인' },
-    { label: '미매칭 입금', count: unmatchedCount ?? 0, color: 'text-blue-600 bg-blue-50 border-blue-200', href: '/admin/payments', btnLabel: '매칭하기' },
-    { label: '미수금', count: stats ? Math.round(stats.totalOutstanding / 10000) : 0, color: 'text-red-600 bg-red-50 border-red-200', href: '/admin/payments', btnLabel: '독촉', unit: '만원' },
+  const outstanding만 = stats ? Math.round(stats.totalOutstanding / 10000) : 0;
+  const isHighOutstanding = stats ? stats.totalOutstanding > 1000000 : false;
+
+  const cards = [
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      ),
+      label: 'D-7 잔금 미납',
+      desc: '7일 내 출발, 잔금 미납',
+      count: stats?.unpaidD7 ?? 0,
+      unit: '건',
+      severity: 'red' as const,
+      href: '/admin/bookings?mode=upcoming&filter=unpaid',
+      btnLabel: '알림톡 발송',
+    },
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
+        </svg>
+      ),
+      label: '미매칭 입금',
+      desc: '수동 매칭 필요',
+      count: unmatchedCount ?? 0,
+      unit: '건',
+      severity: 'blue' as const,
+      href: '/admin/payments?filter=unmatched',
+      btnLabel: '매칭하기',
+    },
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+      ),
+      label: '여권 만료 임박',
+      desc: '6개월 이내 만료',
+      count: stats?.expiringPassports ?? 0,
+      unit: '명',
+      severity: 'amber' as const,
+      href: '/admin/customers?filter=passport_expiry',
+      btnLabel: '고객 확인',
+    },
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+      ),
+      label: '이번달 미수금',
+      desc: '잔금 미납 합계',
+      count: outstanding만,
+      unit: '만원',
+      severity: isHighOutstanding ? 'red' as const : 'amber' as const,
+      href: '/admin/payments?filter=outstanding',
+      btnLabel: '독촉 발송',
+    },
   ];
 
+  const severityStyles = {
+    red:   { card: 'border-red-200 bg-red-50',    icon: 'text-red-500 bg-red-100',    count: 'text-red-600',   btn: 'bg-red-600 hover:bg-red-700 text-white' },
+    amber: { card: 'border-amber-200 bg-amber-50', icon: 'text-amber-500 bg-amber-100', count: 'text-amber-600', btn: 'bg-amber-500 hover:bg-amber-600 text-white' },
+    blue:  { card: 'border-blue-200 bg-blue-50',  icon: 'text-blue-500 bg-blue-100',  count: 'text-blue-600',  btn: 'bg-blue-600 hover:bg-blue-700 text-white' },
+  };
+
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4">
-      <h2 className="text-[14px] font-semibold text-slate-800 mb-3">실무자 경고판</h2>
-      <div className="space-y-2">
-        {actions.map((a, i) => (
-          <div key={i} className={`flex items-center justify-between p-2.5 rounded border ${a.color}`}>
-            <div className="flex items-center gap-3">
-              <span className="text-[18px] font-bold tabular-nums">{a.count}{a.unit ? '' : '건'}</span>
-              <span className="text-[13px] font-medium">{a.label}</span>
+    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+      <h2 className="text-[14px] font-semibold text-[#191F28] mb-3">실무자 경고판</h2>
+      <div className="grid grid-cols-2 gap-2.5">
+        {cards.map((c, i) => {
+          const s = severityStyles[c.severity];
+          return (
+            <div key={i} className={`rounded-xl border p-3.5 flex flex-col gap-2 ${s.card}`}>
+              <div className="flex items-start justify-between">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.icon}`}>
+                  {c.icon}
+                </div>
+                <span className={`text-[24px] font-black tabular-nums leading-none ${s.count}`}>
+                  {c.count.toLocaleString()}
+                  <span className="text-[12px] font-medium ml-0.5">{c.unit}</span>
+                </span>
+              </div>
+              <div>
+                <p className="text-[12px] font-semibold text-slate-700">{c.label}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{c.desc}</p>
+              </div>
+              <Link href={c.href}
+                className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${s.btn}`}>
+                {c.btnLabel}
+              </Link>
             </div>
-            <Link href={a.href} className="px-2.5 py-1 bg-white border border-slate-200 rounded text-[11px] text-slate-600 hover:bg-slate-50 transition">
-              {a.btnLabel}
-            </Link>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -205,9 +723,12 @@ function SocialMetricsWidget() {
   const COLORS = ['#3b82f6', '#8b5cf6', '#0ea5e9', '#ef4444'];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4">
+    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[14px] font-semibold text-slate-800">SNS 채널 현황</h2>
+        <h2 className="text-[14px] font-semibold text-[#191F28] flex items-center gap-1.5">
+          SNS 채널 현황
+          <span className="text-[10px] text-slate-300 font-normal" title="이 데이터는 이 브라우저에만 저장됩니다. 기기가 바뀌면 초기화됩니다.">⚠ 로컬</span>
+        </h2>
         <button onClick={() => { setShowForm(!showForm); setFormValues(channels.map(c => String(c.current))); }}
           className="px-2 py-1 bg-white border border-slate-300 rounded text-[11px] text-slate-600 hover:bg-slate-50 transition">
           지표 업데이트
@@ -276,7 +797,7 @@ function SocialMetricsWidget() {
           }} className="w-full py-1 border border-dashed border-slate-300 rounded text-[11px] text-slate-400 hover:text-slate-600 hover:border-slate-400 transition">
             + 채널 추가
           </button>
-          <button onClick={handleSave} className="w-full py-1.5 bg-[#001f3f] text-white rounded text-[12px] hover:bg-blue-900 transition">저장</button>
+          <button onClick={handleSave} className="w-full py-1.5 bg-[#3182F6] text-white rounded text-[12px] hover:bg-blue-900 transition">저장</button>
         </div>
       )}
     </div>
@@ -285,20 +806,31 @@ function SocialMetricsWidget() {
 
 // ── 서브 컴포넌트: AIInsights ──────────────────────────────
 
-function AIInsights({ packages }: { packages: TravelPackage[] }) {
-  const top3 = useMemo(() =>
-    packages
-      .filter(p => p.price && p.price > 0)
-      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0))
-      .slice(0, 3),
-  [packages]);
+function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartData: MonthlyChartData[] }) {
+  // 효자 상품: price 기준이 아닌 status 기반 판매중 상품 우선 표시
+  // 실제 예약 건수 데이터가 없으므로 → active 상태 우선, 그다음 approved 순
+  const top3 = useMemo(() => {
+    const active = packages.filter(p => p.status === 'active');
+    const approved = packages.filter(p => p.status === 'approved');
+    const combined = [...active, ...approved].slice(0, 3);
+    return combined.length > 0 ? combined : packages.slice(0, 3);
+  }, [packages]);
+
+  // BUG-2: ROAS = net_margin / ad_spend_krw (chartData에 이미 있음)
+  // 가장 최근 달 중 광고비 > 0인 달 기준
+  const roasData = useMemo(() => {
+    const recent = [...chartData].reverse().find(d => d.ad_spend_krw > 0);
+    if (!recent) return null;
+    const roas = recent.net_margin / recent.ad_spend_krw;
+    return { roas: Math.round(roas * 10) / 10, month: recent.month, spend: recent.ad_spend_krw };
+  }, [chartData]);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4">
-      <h2 className="text-[14px] font-semibold text-slate-800 mb-3">AI 인사이트</h2>
+    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+      <h2 className="text-[14px] font-semibold text-[#191F28] mb-3">AI 인사이트</h2>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">Top 3 효자 상품</p>
+          <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">판매중 상품 Top 3</p>
           {top3.length === 0 ? (
             <p className="text-[12px] text-slate-400">데이터 없음</p>
           ) : (
@@ -335,10 +867,21 @@ function AIInsights({ packages }: { packages: TravelPackage[] }) {
         </div>
         <div>
           <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">마케팅 ROAS</p>
-          <div className="text-center py-3">
-            <p className="text-[24px] font-bold text-[#001f3f]">—</p>
-            <p className="text-[10px] text-slate-400 mt-1">데이터 수집 중</p>
-          </div>
+          {roasData ? (
+            <div className="text-center py-3">
+              <p className={`text-[24px] font-bold tabular-nums ${roasData.roas >= 2 ? 'text-emerald-700' : roasData.roas >= 1 ? 'text-amber-700' : 'text-red-600'}`}>
+                {roasData.roas.toFixed(1)}x
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                광고비 {fmt만KRW(roasData.spend)} · {roasData.month.slice(5)}월
+              </p>
+            </div>
+          ) : (
+            <div className="text-center py-3">
+              <p className="text-[24px] font-bold text-slate-300">—</p>
+              <p className="text-[10px] text-slate-400 mt-1">광고 스냅샷 없음</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -426,6 +969,15 @@ function RecentFailuresWidget() {
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [chartData, setChartData] = useState<MonthlyChartData[]>([]);
+  const [recognized, setRecognized] = useState<RecognizedRevenueMonth[]>([]);
+  const [newBookings, setNewBookings] = useState<NewBookingsMonth[]>([]);
+  const [pace, setPace] = useState<BookingPaceBucket[]>([]);
+  const [cancellation90d, setCancellation90d] = useState<Cancellation90d | null>(null);
+  const [aiUsage, setAiUsage] = useState<AIUsageStats | null>(null);
+  const [settlement, setSettlement] = useState<SettlementBalances | null>(null);
+  const [takeRates, setTakeRates] = useState<OperatorTakeRate[]>([]);
+  const [repeat, setRepeat] = useState<RepeatBookingStats | null>(null);
+  const [dataQuality, setDataQuality] = useState<DataQualityReport | null>(null);
   const [packages, setPackages] = useState<TravelPackage[]>([]);
   const [pendingPackages, setPendingPackages] = useState<TravelPackage[]>([]);
   const [capitalTotal, setCapitalTotal] = useState<number | null>(null);
@@ -433,6 +985,11 @@ export default function AdminPage() {
   const [pendingActions, setPendingActions] = useState<any[]>([]);
   const [actionProcessingId, setActionProcessingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // UX-2: 새로고침 상태 추적
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  // BUG-4: fetch 실패 배너
+  const [fetchErrors, setFetchErrors] = useState<string[]>([]);
 
   // 상세 패널
   const [selectedPackage, setSelectedPackage] = useState<TravelPackage | null>(null);
@@ -440,12 +997,18 @@ export default function AdminPage() {
 
   const loadAll = async () => {
     setIsLoading(true);
+    setFetchErrors([]);
     try {
-      const [pendingRes, approvedRes, statsRes] = await Promise.all([
+      // BUG-5: capital + bank-transactions를 첫 Promise.all에 포함 → isLoading 해제 전에 완료
+      const [pendingRes, approvedRes, statsRes, capRes, unmatchedRes] = await Promise.all([
         fetch('/api/packages?status=pending'),
         fetch('/api/packages'),
         fetch('/api/dashboard'),
+        fetch('/api/capital').catch(() => null),
+        // BUG-1: 서버에서 필터 완료 (기존: 500건 limit → client filter, 신규: 전체 기간 unmatched만)
+        fetch('/api/bank-transactions?match_status=unmatched').catch(() => null),
       ]);
+
       const pendingData = await pendingRes.json();
       const approvedData = await approvedRes.json();
       const statsData = await statsRes.json();
@@ -453,27 +1016,58 @@ export default function AdminPage() {
       setPackages(approvedData.packages || []);
       if (statsData.stats) setStats(statsData.stats);
 
-      fetch('/api/dashboard/chart').then(r => r.ok ? r.json() : null).then(d => {
-        if (d?.data) setChartData(d.data);
-      }).catch(() => {});
-
-      fetch('/api/agent-actions?status=pending&limit=6').then(r => r.ok ? r.json() : null).then(d => {
-        if (d?.actions) setPendingActions(d.actions);
-      }).catch(() => {});
-
-      Promise.all([
-        fetch('/api/capital').then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch('/api/bank-transactions').then(r => r.ok ? r.json() : null).catch(() => null),
-      ]).then(([capData, txData]) => {
+      if (capRes && (capRes as Response).ok) {
+        const capData = await (capRes as Response).json().catch(() => null);
         if (capData?.total != null) setCapitalTotal(capData.total);
-        if (txData?.transactions) {
-          setUnmatchedCount((txData.transactions as { match_status: string }[]).filter(t => t.match_status === 'unmatched').length);
-        }
-      });
+      }
+      if (unmatchedRes && (unmatchedRes as Response).ok) {
+        const txData = await (unmatchedRes as Response).json().catch(() => null);
+        if (txData?.transactions) setUnmatchedCount((txData.transactions as any[]).length);
+      }
+
+      // 차트 (fire-and-forget — 느려도 초기 렌더 블록 안 함)
+      fetch('/api/dashboard/chart')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.data) setChartData(d.data); })
+        .catch(() => { setFetchErrors(prev => [...new Set([...prev, '차트'])]); });
+
+      // V4: 매출 인식 분리 + Booking Pace + 90일 취소율
+      fetch('/api/dashboard/revenue-recognition?months=6')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || d.error) { setFetchErrors(prev => [...new Set([...prev, '매출인식'])]); return; }
+          if (d.recognized) setRecognized(d.recognized);
+          if (d.newBookings) setNewBookings(d.newBookings);
+          if (d.pace) setPace(d.pace);
+          if (d.cancellation_90d) setCancellation90d(d.cancellation_90d);
+        })
+        .catch(() => { setFetchErrors(prev => [...new Set([...prev, '매출인식'])]); });
+
+      // V4: 운영 KPI — BUG-3: 에러 응답 방어 추가
+      fetch('/api/dashboard/operations')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || d.error) { setFetchErrors(prev => [...new Set([...prev, '운영KPI'])]); return; }
+          if (d.aiUsage) setAiUsage(d.aiUsage);
+          if (d.settlement) setSettlement(d.settlement);
+          if (d.takeRates) setTakeRates(d.takeRates);
+          if (d.repeat) setRepeat(d.repeat);
+          if (d.dataQuality) setDataQuality(d.dataQuality);
+        })
+        .catch(() => { setFetchErrors(prev => [...new Set([...prev, '운영KPI'])]); });
+
+      fetch('/api/agent-actions?status=pending&limit=6')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.actions) setPendingActions(d.actions); })
+        .catch(() => {});
+
     } catch (err) {
       console.error('대시보드 로드 실패:', err);
+      setFetchErrors(['초기로드']);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
+      setLastRefreshed(new Date());
     }
   };
 
@@ -494,68 +1088,102 @@ export default function AdminPage() {
     } finally { setProcessingId(null); }
   };
 
-  const prevMonthGrowth = useMemo(() => {
-    if (chartData.length < 2) return 0;
-    const last = chartData[chartData.length - 1];
-    const prev = chartData[chartData.length - 2];
-    const lastTotal = last.direct_sales + last.affiliate_sales;
-    const prevTotal = prev.direct_sales + prev.affiliate_sales;
-    return prevTotal > 0 ? Math.round(((lastTotal - prevTotal) / prevTotal) * 100) : 0;
-  }, [chartData]);
-
   if (isLoading) {
     return (
       <div className="space-y-4">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white border border-slate-200 rounded-lg p-6 animate-pulse">
-            <div className="h-6 bg-slate-100 rounded w-1/3 mb-3" />
-            <div className="h-10 bg-slate-100 rounded w-1/2" />
+        {/* 헤더 스켈레톤 */}
+        <div className="flex items-center justify-between animate-pulse">
+          <div className="space-y-1.5">
+            <div className="h-5 bg-slate-100 rounded w-36" />
+            <div className="h-3 bg-slate-100 rounded w-48" />
           </div>
-        ))}
+          <div className="h-8 bg-slate-100 rounded w-24" />
+        </div>
+        {/* ActionBoard 스켈레톤 */}
+        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 animate-pulse">
+          <div className="h-4 bg-slate-100 rounded w-24 mb-3" />
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-slate-100 rounded" />)}
+          </div>
+        </div>
+        {/* TwoTrackKPI 스켈레톤 — 2열 */}
+        <div className="grid grid-cols-2 gap-3 animate-pulse">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+              <div className="h-3 bg-slate-100 rounded w-32 mb-2" />
+              <div className="h-8 bg-slate-100 rounded w-24 mb-1" />
+              <div className="h-3 bg-slate-100 rounded w-40" />
+            </div>
+          ))}
+        </div>
+        {/* 재무 카드 스켈레톤 — 4열 */}
+        <div className="grid grid-cols-4 gap-2 animate-pulse">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3">
+              <div className="h-3 bg-slate-100 rounded w-16 mb-2" />
+              <div className="h-5 bg-slate-100 rounded w-20" />
+            </div>
+          ))}
+        </div>
+        {/* 차트 스켈레톤 */}
+        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 animate-pulse">
+          <div className="h-4 bg-slate-100 rounded w-32 mb-3" />
+          <div className="h-[200px] bg-slate-100 rounded" />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* 0. 자비스 실패 위젯 (실패 0건이면 자동 숨김) */}
+      {/* BUG-4: fetch 실패 배너 */}
+      {fetchErrors.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-center justify-between">
+          <span className="text-[12px] text-amber-800">
+            일부 데이터 로드 실패 ({fetchErrors.join(', ')}) — 새로고침 후 재시도
+          </span>
+          <button onClick={() => setFetchErrors([])} className="text-amber-600 text-[11px] hover:underline ml-4">닫기</button>
+        </div>
+      )}
+
+      {/* UX-2 + E: sticky frosted-glass 헤더 + 새로고침 버튼 */}
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between">
+        <div>
+          <h1 className="text-[16px] font-bold text-[#191F28]">어드민 대시보드</h1>
+          {lastRefreshed && (
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              마지막 새로고침: {lastRefreshed.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => { setIsRefreshing(true); loadAll(); }}
+          disabled={isRefreshing || isLoading}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-[10px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-[12px] text-[#4E5968] hover:bg-[#F9FAFB] disabled:opacity-50 transition-shadow"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            className={isRefreshing ? 'animate-spin' : ''}>
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+            <path d="M3 16v5h5"/>
+          </svg>
+          {isRefreshing ? '새로고침 중...' : '새로고침'}
+        </button>
+      </div>
+
+      {/* ── Zone 1: 긴급 액션 (스크롤 없이 바로 처리) ─────────────────── */}
+
+      {/* 자비스 실패 위젯 (실패 0건이면 자동 숨김) */}
       <RecentFailuresWidget />
 
-      {/* A. 예약 vs 출발 KPI */}
-      <TwoTrackKPI stats={stats} prevMonthGrowth={prevMonthGrowth} />
-
-      {/* 재무 미니 카드 */}
-      <div className="grid grid-cols-4 gap-2">
-        {[
-          { label: '순 마진', value: stats ? `₩${fmt만(stats.margin)}` : '—', color: 'text-slate-800', href: '/admin/ledger' },
-          { label: '가용 자산', value: capitalTotal !== null && stats ? `₩${fmt만((stats.totalPaid || 0) + capitalTotal - (stats.totalSales - stats.totalOutstanding || 0))}` : '—', color: 'text-emerald-700', href: '/admin/ledger' },
-          { label: '미수금', value: stats ? `₩${fmt만(stats.totalOutstanding)}` : '—', color: 'text-red-600', href: '/admin/payments' },
-          { label: '진행 예약', value: `${stats?.activeBookings ?? 0}건`, color: 'text-[#001f3f]', href: '/admin/bookings' },
-        ].map((kpi, i) => (
-          <Link key={i} href={kpi.href} className="bg-white border border-slate-200 rounded-lg p-3 hover:border-slate-300 transition block">
-            <p className="text-[10px] text-slate-400 uppercase">{kpi.label}</p>
-            <p className={`text-[16px] font-bold tabular-nums ${kpi.color}`}>{kpi.value}</p>
-          </Link>
-        ))}
-      </div>
-
-      {/* B. 캐시플로우 차트 */}
-      <CashflowChart chartData={chartData} />
-
-      {/* C + D 중단 2열 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <ActionBoard stats={stats} unmatchedCount={unmatchedCount} />
-        <SocialMetricsWidget />
-      </div>
-
-      {/* E. AI 인사이트 */}
-      <AIInsights packages={packages} />
+      {/* 실무자 경고판 — D-7 미납·미매칭·미수금 즉시 처리 */}
+      <ActionBoard stats={stats} unmatchedCount={unmatchedCount} />
 
       {/* 자비스 결재 대기 */}
       {pendingActions.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[14px] font-semibold text-slate-800 flex items-center gap-2">
+            <h2 className="text-[14px] font-semibold text-[#191F28] flex items-center gap-2">
               자비스 결재 대기
               <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingActions.length}</span>
             </h2>
@@ -563,7 +1191,7 @@ export default function AdminPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingActions.slice(0, 6).map((act: any) => (
-              <div key={act.id} className="border border-slate-200 rounded-lg p-3 hover:border-slate-300 transition">
+              <div key={act.id} className="rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-shadow">
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
                     { operations: 'bg-blue-50 text-blue-600', sales: 'bg-purple-50 text-purple-600',
@@ -594,7 +1222,7 @@ export default function AdminPage() {
                       } catch {} finally { setActionProcessingId(null); }
                     }}
                     disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-[#001f3f] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition"
+                    className="flex-1 bg-[#3182F6] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition"
                   >
                     승인
                   </button>
@@ -620,14 +1248,14 @@ export default function AdminPage() {
 
       {/* 승인 대기 상품 */}
       {pendingPackages.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[14px] font-semibold text-slate-800">승인 대기 ({pendingPackages.length})</h2>
+            <h2 className="text-[14px] font-semibold text-[#191F28]">승인 대기 ({pendingPackages.length})</h2>
             <Link href="/admin/packages" className="text-[12px] text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingPackages.slice(0, 6).map(pkg => (
-              <div key={pkg.id} className="border border-slate-200 rounded-lg p-3 hover:border-slate-300 cursor-pointer transition"
+              <div key={pkg.id} className="rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] cursor-pointer transition-shadow"
                 onClick={() => setSelectedPackage(pkg)}>
                 <p className="text-[13px] font-medium text-slate-800 truncate">{pkg.title}</p>
                 <div className="flex items-center gap-2 mt-1">
@@ -640,7 +1268,7 @@ export default function AdminPage() {
                 </div>
                 <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
                   <button onClick={() => handleAction(pkg.id, 'approve')} disabled={processingId === pkg.id}
-                    className="flex-1 bg-[#001f3f] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition">
+                    className="flex-1 bg-[#3182F6] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition">
                     승인
                   </button>
                   <button onClick={() => handleAction(pkg.id, 'reject')} disabled={processingId === pkg.id}
@@ -654,9 +1282,112 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ── Zone 2: 현황 KPI (오늘 비즈니스 상태) ──────────────────────── */}
+
+      {/* 매출 인식 분리 KPI (IFRS 15 / ASC 606) */}
+      <TwoTrackKPI recognized={recognized} newBookings={newBookings} />
+
+      {/* 재무 미니 카드 — 모두 drilldown 가능 (Stripe 패턴) */}
+      {(() => {
+        const prevMargin = recognized.length >= 2 ? recognized[recognized.length - 2].margin : null;
+        const curMargin = recognized.length >= 1 ? recognized[recognized.length - 1].margin : null;
+        const marginMoM = prevMargin != null && prevMargin !== 0 && curMargin != null
+          ? ((curMargin - prevMargin) / Math.abs(prevMargin)) * 100 : null;
+        const prevBk = newBookings.length >= 2 ? newBookings[newBookings.length - 2].total_bookings : null;
+        const curBk = newBookings.length >= 1 ? newBookings[newBookings.length - 1].total_bookings : null;
+        const bkMoM = prevBk != null && prevBk !== 0 && curBk != null
+          ? ((curBk - prevBk) / prevBk) * 100 : null;
+        const Badge = ({ pct }: { pct: number | null }) => pct == null ? null : (
+          <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded ${
+            pct >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+          }`}>
+            {pct >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+          </span>
+        );
+        return (
+          <div className="grid grid-cols-4 gap-2">
+            {/* B: 이번달 마진 — featured navy card */}
+            <Link href="/admin/ledger"
+              className="bg-[#3182F6] rounded-xl p-3 shadow-[0_8px_24px_rgba(0,31,63,0.25)] hover:bg-[#1B64DA] transition block">
+              <p className="text-[10px] text-blue-200 uppercase font-medium">이번달 마진</p>
+              <p className={`text-[16px] font-bold tabular-nums mt-0.5 ${
+                stats && stats.margin < 0 ? 'text-red-300' : 'text-white'
+              }`}>{stats ? `₩${fmt만(stats.margin)}` : '—'}</p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-[9px] text-blue-300">출발일 기준 전체 예약</p>
+                <Badge pct={marginMoM} />
+              </div>
+            </Link>
+            {/* 자본 잔액 */}
+            <Link href="/admin/ledger"
+              className="bg-white border border-slate-200 rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-300 transition block">
+              <p className="text-[10px] text-slate-400 uppercase">자본 잔액</p>
+              <p className="text-[16px] font-bold tabular-nums mt-0.5 text-emerald-700">
+                {capitalTotal !== null ? `₩${fmt만(capitalTotal)}` : '—'}
+              </p>
+              <p className="text-[9px] text-slate-400 mt-1">자본 관리 → 장부</p>
+            </Link>
+            {/* 미수금 */}
+            <Link href="/admin/payments?filter=outstanding"
+              className="bg-white border border-slate-200 rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-300 transition block">
+              <p className="text-[10px] text-slate-400 uppercase">미수금</p>
+              <p className={`text-[16px] font-bold tabular-nums mt-0.5 ${
+                stats && stats.totalOutstanding > 0 ? 'text-red-600' : 'text-emerald-700'
+              }`}>{stats ? `₩${fmt만(stats.totalOutstanding)}` : '—'}</p>
+              <p className="text-[9px] text-slate-400 mt-1">이번달 잔금 미납</p>
+            </Link>
+            {/* 진행 예약 */}
+            <Link href="/admin/bookings?status=pending,confirmed"
+              className="bg-white border border-slate-200 rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-300 transition block">
+              <p className="text-[10px] text-slate-400 uppercase">진행 예약</p>
+              <p className="text-[16px] font-bold tabular-nums mt-0.5 text-[#191F28]">
+                {stats?.activeBookings ?? 0}건
+              </p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-[9px] text-slate-400">이번달 총 {stats?.totalMonthBookings ?? 0}건 중</p>
+                <Badge pct={bkMoM} />
+              </div>
+            </Link>
+          </div>
+        );
+      })()}
+
+      {/* Booking Pace + 90일 취소율 */}
+      {(pace.length > 0 || cancellation90d) && (
+        <BookingPaceWidget pace={pace} cancellation90d={cancellation90d} />
+      )}
+
+      {/* 캐시플로우 차트 */}
+      <CashflowChart chartData={chartData} />
+
+      {/* 운영 KPI — 정산 잔여(payable/receivable) + AI 비용 */}
+      <OperationsKPI aiUsage={aiUsage} settlement={settlement} />
+
+      {/* ── Zone 3: 분석 (주간·월간 리뷰) ─────────────────────────────── */}
+
+      {/* Retention + Take Rate (Tufte Small Multiples) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="lg:col-span-2">
+          <OperatorTakeRatesWidget rows={takeRates} />
+        </div>
+        <RepeatBookingCard stats={repeat} />
+      </div>
+
+      {/* AI 인사이트 (ROAS 포함) */}
+      <AIInsights packages={packages} chartData={chartData} />
+
+      {/* SNS 채널 현황 */}
+      <SocialMetricsWidget />
+
+      {/* 추천 시스템 헬스 (점수 v3) */}
+      <ScoringKpiWidget />
+
+      {/* 데이터 품질 모니터 (issues=0이면 자동 숨김) */}
+      <DataQualityMonitor report={dataQuality} />
+
       {/* 바로가기 */}
       <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4">
-        <h2 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">바로가기</h2>
+        <h2 className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide tracking-wide mb-3">바로가기</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { title: '운영', links: [
@@ -685,7 +1416,7 @@ export default function AdminPage() {
             ]},
           ].map(group => (
             <div key={group.title} className="space-y-1">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase">{group.title}</p>
+              <p className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">{group.title}</p>
               {group.links.map(l => (
                 <Link key={l.href} href={l.href}
                   className="block text-[12px] px-2 py-1 text-slate-500 rounded hover:bg-slate-50 hover:text-slate-700 truncate">
@@ -789,7 +1520,7 @@ export default function AdminPage() {
               {selectedPackage.status === 'pending' && (
                 <>
                   <button onClick={() => handleAction(selectedPackage.id, 'approve')} disabled={processingId === selectedPackage.id}
-                    className="flex-1 bg-[#001f3f] text-white py-2 rounded text-[13px] hover:bg-blue-900 disabled:bg-slate-300 transition">승인</button>
+                    className="flex-1 bg-[#3182F6] text-white py-2 rounded text-[13px] hover:bg-blue-900 disabled:bg-slate-300 transition">승인</button>
                   <button onClick={() => handleAction(selectedPackage.id, 'reject')} disabled={processingId === selectedPackage.id}
                     className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-[13px] hover:bg-slate-50 transition">반려</button>
                 </>

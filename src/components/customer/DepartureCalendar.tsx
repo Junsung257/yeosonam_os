@@ -93,11 +93,11 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
                 onClick={() => setViewMonth(ym)}
                 className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
                   isActive
-                    ? 'bg-violet-600 text-white border-violet-600 font-bold shadow-sm'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300 hover:bg-violet-50'
+                    ? 'bg-[#3182F6] text-white border-[#3182F6] font-bold shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-[#3182F6] hover:bg-[#EBF3FE]'
                 }`}
               >
-                {mm}월 <span className={isActive ? 'text-violet-100' : 'text-gray-400'}>({count})</span>
+                {mm}월 <span className={isActive ? 'text-white/70' : 'text-gray-400'}>({count})</span>
               </button>
             );
           })}
@@ -163,15 +163,15 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           let bg = '';
           let border = 'border border-transparent';
           if (isSelected) {
-            bg = 'bg-[#340897] text-white';
-            border = 'border border-[#340897]';
+            bg = 'bg-[#3182F6] text-white';
+            border = 'border border-[#3182F6]';
           } else if (isAvailable && !isPast) {
             if (isConfirmed) {
               bg = 'bg-emerald-50 hover:bg-emerald-100';
               border = 'border border-emerald-300';
             } else {
-              bg = 'bg-violet-50 hover:bg-violet-100';
-              border = 'border border-violet-200';
+              bg = 'bg-[#EBF3FE] hover:bg-[#d6e8fd]';
+              border = 'border border-[#3182F6]/30';
             }
           }
 
@@ -217,7 +217,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
       {/* 범례 */}
       <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-gray-500">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 border border-emerald-300 inline-block" /> 출발확정</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-violet-50 border border-violet-200 inline-block" /> 선택가능</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[#EBF3FE] border border-[#3182F6]/30 inline-block" /> 선택가능</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" /> 최저가</span>
       </div>
     </div>

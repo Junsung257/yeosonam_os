@@ -58,6 +58,37 @@ export async function PATCH(
       .select()
       .single();
     if (error) throw error;
+
+    // CONFIRMED 전환 시 블로그 큐 자동 insert (fire-and-forget, 30분 버퍼)
+    if (patch.status === 'CONFIRMED' && data) {
+      try {
+        const { count } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .select('id', { count: 'exact', head: true })
+          .eq('card_news_id', params.id)
+          .neq('status', 'failed');
+        if (count === 0) {
+          const cn = data as any;
+          const targetAt = new Date();
+          targetAt.setMinutes(targetAt.getMinutes() + 30);
+          await supabaseAdmin.from('blog_topic_queue').insert({
+            source: 'card_news',
+            card_news_id: params.id,
+            topic: cn.title || '카드뉴스 블로그',
+            priority: 90,
+            category: 'card_news',
+            primary_keyword: (cn.title || '').substring(0, 30),
+            keyword_tier: 'mid',
+            target_publish_at: targetAt.toISOString(),
+            status: 'queued',
+            meta: { auto_queued_by: 'card_news_confirm_hook' },
+          });
+        }
+      } catch (hookErr) {
+        console.error(`[CardNews Hook] blog_topic_queue insert 실패 card_news_id=${params.id}:`, hookErr);
+      }
+    }
+
     return NextResponse.json({ card_news: data });
   } catch (error) {
     console.error('카드뉴스 수정 실패:', error);

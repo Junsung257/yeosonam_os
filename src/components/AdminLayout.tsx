@@ -5,11 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   LayoutDashboard, Inbox, BookOpenCheck, Users, Wallet, FileText,
-  Package, ClipboardCheck, Upload, Building2, ScrollText, MapPinned, Mountain,
-  Handshake, BarChart3, UserPlus, FileQuestion, Headset, Layers,
+  Package, ClipboardCheck, Upload, Building2, ScrollText, MapPinned, Mountain, Globe,
+  Handshake, BarChart3, UserPlus, FileQuestion, Headset, Layers, Compass,
   BookCopy, Coins, Calculator,
   Megaphone, Sparkles as Sparkle, Newspaper, FolderKanban, ListChecks, TrendingUp, AlertTriangle, Search as SearchIcon, BookOpen,
-  Bot, Wand2, MessageCircle,
+  Bot, Wand2, MessageCircle, MessageSquare, FilePlus2,
   Activity, Siren,
   LogOut, Star, StarOff, Menu as MenuIcon,
   type LucideIcon,
@@ -26,6 +26,7 @@ import {
   useShortcuts,
 } from '@/components/admin/ui';
 import type { AdminCommand } from '@/lib/admin-commands/registry';
+import AlertsBadge from './admin/AlertsBadge';
 
 // ── 카테고리 그룹핑 사이드바 메뉴 ─────────────────────────────
 interface NavItem {
@@ -48,6 +49,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/admin',                label: '대시보드',     icon: LayoutDashboard, exact: true },
       { href: '/admin/inbox',          label: 'Inbox 액션',   icon: Inbox },
+      { href: '/admin/kakao-import',   label: '카톡 임포트',  icon: MessageSquare },
       { href: '/admin/bookings',       label: '예약 관리',    icon: BookOpenCheck },
       { href: '/admin/customers',      label: '고객 관리',    icon: Users },
       { href: '/admin/payments',       label: '입금 관리',    icon: Wallet },
@@ -59,12 +61,14 @@ const navGroups: NavGroup[] = [
     icon: Package,
     items: [
       { href: '/admin/packages',             label: '상품 관리',    icon: Package },
+      { href: '/admin/products/stub',        label: 'Stub 등록',    icon: FilePlus2 },
       { href: '/admin/products/review',      label: '상품 검수',    icon: ClipboardCheck },
       { href: '/admin/upload',               label: '업로드',       icon: Upload },
       { href: '/admin/land-operators',       label: '랜드사 관리',  icon: Building2 },
       { href: '/admin/terms-templates',      label: '약관 템플릿',  icon: ScrollText },
       { href: '/admin/departing-locations',  label: '출발지 관리',  icon: MapPinned },
       { href: '/admin/attractions',          label: '관광지 관리',  icon: Mountain },
+      { href: '/admin/destinations',         label: '여행지 관리',  icon: Globe },
     ],
   },
   {
@@ -76,6 +80,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/applications',         label: '파트너 신청',     icon: UserPlus },
       { href: '/admin/rfqs',                 label: '단체 RFQ',        icon: FileQuestion },
       { href: '/admin/concierge',            label: '컨시어지',        icon: Headset },
+      { href: '/admin/free-travel',          label: '자유여행 플래너', icon: Compass },
       { href: '/admin/tenants',              label: '테넌트 관리',     icon: Layers },
     ],
   },
@@ -101,15 +106,20 @@ const navGroups: NavGroup[] = [
       { href: '/admin/content-gaps',              label: '콘텐츠 갭',     icon: AlertTriangle },
       { href: '/admin/search-ads',                label: '검색광고',      icon: SearchIcon },
       { href: '/admin/blog',                      label: '블로그',        icon: BookOpen },
+      { href: '/admin/blog/queue',                label: '발행 큐',       icon: ListChecks },
+      { href: '/admin/blog/rankings',             label: '순위 대시보드', icon: TrendingUp },
+      { href: '/admin/blog/topical',              label: '토픽 권위',     icon: Layers },
+      { href: '/admin/blog/policy',               label: '발행 정책',     icon: Activity },
     ],
   },
   {
     title: 'AI',
     icon: Bot,
     items: [
-      { href: '/admin/jarvis',    label: '자비스 AI',  icon: Bot },
-      { href: '/admin/generate',  label: 'AI 생성',    icon: Wand2 },
-      { href: '/admin/qa',        label: 'Q&A 챗봇',   icon: MessageCircle },
+      { href: '/admin/jarvis',     label: '자비스 AI',  icon: Bot },
+      { href: '/admin/jarvis/rag', label: 'RAG 검색',   icon: SearchIcon },
+      { href: '/admin/generate',   label: 'AI 생성',    icon: Wand2 },
+      { href: '/admin/qa',         label: 'Q&A 챗봇',   icon: MessageCircle },
     ],
   },
   {
@@ -118,6 +128,10 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/admin/control-tower',  label: 'OS 관제탑',     icon: Activity },
       { href: '/admin/escalations',    label: '에스컬레이션',  icon: Siren },
+      { href: '/admin/scoring',         label: '점수 정책',     icon: Star },
+      { href: '/admin/scoring/funnel',  label: '추천 깔때기',   icon: TrendingUp },
+      { href: '/admin/scoring/trends',  label: '순위 변동',     icon: Activity },
+      { href: '/admin/alerts',          label: '운영 알림',     icon: AlertTriangle },
     ],
   },
 ];
@@ -184,17 +198,16 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge }: SidebarIt
     <div className="group relative">
       <Link
         href={item.href}
-        prefetch
-        className={`flex items-center gap-2.5 pl-3 pr-2 py-2 rounded-md text-admin-sm transition-colors relative ${
+        className={`flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-admin-sm transition-colors relative ${
           active
-            ? 'bg-blue-500/20 text-white font-semibold border-l-[3px] border-blue-400 pl-[9px]'
-            : 'text-blue-100/70 hover:text-white hover:bg-white/5'
+            ? 'bg-[#EBF3FE] text-[#3182F6] font-semibold'
+            : 'text-[#8B95A1] hover:bg-[#F9FAFB] hover:text-[#191F28]'
         }`}
       >
         <Icon size={15} strokeWidth={2.1} className="shrink-0" />
         <span className="truncate">{item.label}</span>
         {badge != null && badge > 0 && (
-          <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+          <span className="ml-auto bg-[#F04452] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
             {badge}
           </span>
         )}
@@ -209,8 +222,8 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge }: SidebarIt
         title={isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
         className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded transition ${
           isFavorite
-            ? 'text-yellow-300 opacity-90'
-            : 'text-blue-100/30 opacity-0 group-hover:opacity-100 hover:text-yellow-300'
+            ? 'text-[#F59E0B] opacity-90'
+            : 'text-[#8B95A1]/30 opacity-0 group-hover:opacity-100 hover:text-[#F59E0B]'
         }`}
       >
         {isFavorite ? <Star size={12} fill="currentColor" /> : <StarOff size={12} />}
@@ -320,25 +333,25 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-admin-bg flex">
+    <div className="min-h-screen bg-admin-bg flex" style={{ backgroundColor: '#F9FAFB' }}>
       {/* ── 사이드바 ─────────────────────────────────── */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-admin-accent text-white z-40 transition-all duration-200 flex flex-col ${
-          sidebarOpen ? 'w-56' : 'w-0 -translate-x-full'
+        className={`fixed top-0 left-0 h-full bg-white border-r border-[#F2F4F6] z-40 transition-all duration-200 flex flex-col ${
+          sidebarOpen ? 'w-52' : 'w-0 -translate-x-full'
         }`}
       >
         {/* 로고 */}
-        <div className="px-4 py-4 flex items-center gap-2 border-b border-white/10">
-          <span className="text-admin-md font-bold tracking-tight">Yeosonam OS</span>
-          <span className="text-admin-xs text-blue-300/60 font-medium">ERP</span>
+        <div className="px-4 py-4 flex items-center gap-2 border-b border-[#F2F4F6]">
+          <span className="text-admin-md font-bold tracking-tight text-[#3182F6]">여소남 OS</span>
+          <span className="text-admin-xs text-[#8B95A1] font-medium">ERP</span>
         </div>
 
         {/* 메뉴 */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
           {/* 즐겨찾기 */}
           {favoriteItems.length > 0 && (
-            <div className="pb-2 mb-2 border-b border-white/10">
-              <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-yellow-200/70 uppercase tracking-[0.08em]">
+            <div className="pb-2 mb-2 border-b border-[#F2F4F6]">
+              <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-[#F59E0B] uppercase tracking-[0.08em]">
                 <Star size={11} fill="currentColor" />
                 즐겨찾기
               </div>
@@ -363,9 +376,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             return (
               <div
                 key={group.title}
-                className={gi > 0 ? 'pt-2 mt-2 border-t border-white/10' : ''}
+                className={gi > 0 ? 'pt-2 mt-2 border-t border-[#F2F4F6]' : ''}
               >
-                <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-blue-300/60 uppercase tracking-[0.08em]">
+                <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-[#8B95A1] uppercase tracking-[0.08em]">
                   <GroupIcon size={11} />
                   {group.title}
                 </div>
@@ -387,13 +400,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* 하단 — Density Toggle + 로그아웃 */}
-        <div className="px-3 py-3 border-t border-white/10 space-y-1.5">
+        <div className="px-3 py-3 border-t border-[#F2F4F6] space-y-1.5">
           <div className="px-1">
-            <DensityToggle className="!text-blue-100/70 hover:!text-white hover:!bg-white/10 w-full justify-center" />
+            <DensityToggle className="!text-[#8B95A1] hover:!text-[#191F28] hover:!bg-[#F9FAFB] w-full justify-center" />
           </div>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-admin-sm text-blue-100/60 hover:text-white hover:bg-white/5 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-admin-sm text-[#8B95A1] hover:text-[#191F28] hover:bg-[#F9FAFB] transition-colors"
           >
             <LogOut size={14} />
             로그아웃
@@ -404,25 +417,26 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       {/* ── 메인 영역 ────────────────────────────────── */}
       <div
         className={`flex-1 flex flex-col min-h-screen transition-all duration-200 ${
-          sidebarOpen ? 'ml-56' : 'ml-0'
+          sidebarOpen ? 'ml-52' : 'ml-0'
         }`}
       >
         {/* 상단바 */}
-        <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-admin-border px-4 py-2.5 flex items-center justify-between">
+        <header className="sticky top-0 z-30 bg-white border-b border-[#F2F4F6] px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1.5 rounded hover:bg-slate-100 text-admin-textMuted hover:text-admin-text transition-colors"
+              className="p-1.5 rounded-[8px] hover:bg-[#F2F4F6] text-[#8B95A1] hover:text-[#191F28] transition-colors"
               aria-label="사이드바 토글"
             >
               <MenuIcon size={18} />
             </button>
-            <h1 className="text-admin-lg font-bold tracking-tight text-admin-text">
+            <h1 className="text-admin-lg font-bold tracking-tight text-[#191F28]">
               {currentPage}
             </h1>
           </div>
 
           <div className="flex items-center gap-2">
+            <AlertsBadge />
             <SearchInput
               variant="topbar"
               placeholder="통합검색..."

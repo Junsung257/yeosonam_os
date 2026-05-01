@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 
 // GET /api/attractions — 전체 관광지 목록
 export async function GET(request: NextRequest) {
@@ -86,7 +87,40 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
-    return NextResponse.json({ attraction: data }, { status: 201 });
+
+    // 🆕 ERR-unmatched-stale-after-alias@2026-04-29 — 신규 attraction 추가 후 unmatched 자동 정리
+    let sweep = null;
+    try {
+      sweep = await resweepUnmatchedActivities([data.id]);
+    } catch (e) {
+      console.warn('[Attractions API] resweep 실패 (등록은 성공):', e instanceof Error ? e.message : e);
+    }
+
+    // 🆕 Pexels 자동 사진 fetch — photos 없이 등록된 경우 비동기로 채움 (등록을 블로킹하지 않음)
+    if (!body.photos?.length && process.env.PEXELS_API_KEY) {
+      void (async () => {
+        try {
+          const { searchPexelsPhotos, destToEnKeyword } = await import('@/lib/pexels');
+          const keyword = destToEnKeyword(data.destination || data.region || data.name);
+          const photos = await searchPexelsPhotos(`${keyword} travel`, 5);
+          if (photos.length > 0) {
+            const photoData = photos.map(p => ({
+              pexels_id: p.id,
+              src_large2x: p.src.large2x,
+              src_large: p.src.large,
+              src_medium: p.src.medium,
+              photographer: p.photographer,
+              alt: p.alt,
+            }));
+            await supabaseAdmin.from('attractions').update({ photos: photoData }).eq('id', data.id);
+          }
+        } catch (e) {
+          console.warn('[Attractions API] Pexels 자동 사진 실패 (등록은 성공):', e instanceof Error ? e.message : e);
+        }
+      })();
+    }
+
+    return NextResponse.json({ attraction: data, sweep }, { status: 201 });
   } catch (error) {
     console.error('[Attractions API] 등록 오류:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '등록 실패' }, { status: 500 });
@@ -108,7 +142,18 @@ export async function PATCH(request: NextRequest) {
       .eq('id', id);
 
     if (error) throw error;
-    return NextResponse.json({ success: true });
+
+    // 🆕 ERR-unmatched-stale-after-alias@2026-04-29 — name/aliases 변경 시 unmatched 자동 재매칭
+    // 다른 필드 (short_desc·photos 등) 변경에도 트리거 — 비용 미미 (단일 attraction 좁은 sweep)
+    let sweep = null;
+    if ('aliases' in updates || 'name' in updates) {
+      try {
+        sweep = await resweepUnmatchedActivities([id]);
+      } catch (e) {
+        console.warn('[Attractions API] resweep 실패 (수정은 성공):', e instanceof Error ? e.message : e);
+      }
+    }
+    return NextResponse.json({ success: true, sweep });
   } catch (error) {
     console.error('[Attractions API] 수정 오류:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '수정 실패' }, { status: 500 });

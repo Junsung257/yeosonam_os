@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { applySettlementApproval, type SettlementDraft } from '@/lib/affiliate/settlement-calc'
+import { executeGenerateVariantsJob } from '@/lib/card-news-html/variant-job'
 
 // ── 실행 결과 타입 ──────────────────────────────────────────────────
 export interface ExecutionResult {
@@ -12,6 +13,9 @@ export interface ExecutionResult {
 // 기존 /api/jarvis/approve/route.ts의 executeApprovedAction()에서 추출
 // agent_actions, jarvis_pending_actions 양쪽에서 공통 사용
 const handlers: Record<string, (args: any) => Promise<any>> = {
+  generate_card_news_variants: async (args) => {
+    return await executeGenerateVariantsJob(args);
+  },
   // 프롬프트 개선 제안 승인 → prompt_versions 에 새 버전 등록 + 활성화
   // analysis.suggested_prompt_changes 를 기존 style_guide 내용에 appendix 로 붙여서 새 버전 생성.
   // blog-publisher 가 매 발행 시 is_active=true 버전을 읽기 때문에 자동 반영됨.

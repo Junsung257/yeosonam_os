@@ -45,14 +45,15 @@ const A4_USABLE_H = 1055; // 1123px - 34px*2 padding
 const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
 export function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + n));
+  return date.toISOString().split('T')[0];
 }
 
 export function formatKoDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return `${d.getMonth() + 1}/${d.getDate()}(${DAYS_KO[d.getDay()]})`;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return `${m}/${d}(${DAYS_KO[date.getUTCDay()]})`;
 }
 
 function renderBold(text: string): React.ReactNode {

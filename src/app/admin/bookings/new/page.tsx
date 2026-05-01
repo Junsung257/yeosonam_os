@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -133,6 +133,8 @@ function NewBookingForm() {
   const totalPrice = form.adultCount * form.adultPrice + form.childCount * form.childPrice + form.fuelSurcharge + surchargeTotal;
   const margin = totalPrice - totalCost;
 
+  const idempotencyKey = useRef(crypto.randomUUID());
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.leadCustomerId) { setError('대표 예약자를 선택해주세요.'); return; }
@@ -144,6 +146,7 @@ function NewBookingForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          idempotencyKey: idempotencyKey.current,
           passengerIds: selectedPassengers.map(p => p.id),
           affiliateId: selectedAffiliateId || undefined,
           bookingType: selectedAffiliateId ? 'AFFILIATE' : 'DIRECT',

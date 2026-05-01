@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { TEMPLATE_META, TEMPLATE_IDS } from '@/lib/card-news/tokens';
@@ -21,14 +21,18 @@ const ANGLES: { key: string; label: string; description: string }[] = [
 
 export default function CardNewsNewWizardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // 블로그 편집 → "이 글로 카드뉴스 만들기" 진입 시 prefill
+  const prefilledPackageId = searchParams.get('package_id') || '';
+  const prefilledAngle = searchParams.get('angle') || '';
 
   // ── 단계 ─────────────────────────────────────────────
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // ── Step 1 입력 ──────────────────────────────────────
   const [mode, setMode] = useState<'product' | 'info'>('product');
-  const [packageId, setPackageId] = useState('');
-  const [angle, setAngle] = useState('value');
+  const [packageId, setPackageId] = useState(prefilledPackageId);
+  const [angle, setAngle] = useState(prefilledAngle || 'value');
   const [topic, setTopic] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [slideCount, setSlideCount] = useState(6);
@@ -177,7 +181,7 @@ export default function CardNewsNewWizardPage() {
         );
       }
       if (!res.ok || !data?.card_news?.id) throw new Error(data?.error || `카드뉴스 생성 실패 (HTTP ${res.status})`);
-      router.push(`/admin/marketing/card-news/${data.card_news.id}`);
+      router.push(`/admin/marketing/content-hub/${data.card_news.id}?source=new`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err));
       setStep(2);
@@ -236,24 +240,56 @@ export default function CardNewsNewWizardPage() {
             {mode === 'product' ? (
               <>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">상품 선택 *</label>
-                  <input
-                    type="text"
-                    value={pkgFilter}
-                    onChange={e => setPkgFilter(e.target.value)}
-                    placeholder="상품명/지역 검색"
-                    className="w-full border border-slate-200 rounded px-3 py-2 text-sm mb-2"
-                  />
-                  <select
-                    value={packageId}
-                    onChange={e => setPackageId(e.target.value)}
-                    className="w-full border border-slate-200 rounded px-3 py-2 text-sm"
-                    size={Math.min(8, Math.max(4, filteredPackages.length))}
-                  >
-                    {filteredPackages.map(p => (
-                      <option key={p.id} value={p.id}>{p.title} ({p.destination})</option>
-                    ))}
-                  </select>
+                  <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">
+                    상품 선택 *
+                    {prefilledPackageId && (
+                      <span className="ml-2 normal-case font-normal text-emerald-600">
+                        (블로그에서 진입 — 잠금)
+                      </span>
+                    )}
+                  </label>
+                  {prefilledPackageId ? (
+                    // 블로그 편집 → "이 글로 카드뉴스" 진입 시 다른 상품으로 실수 변경 방지
+                    <div className="border border-emerald-200 bg-emerald-50 rounded px-3 py-2 text-sm flex items-center justify-between">
+                      <span className="text-slate-700">
+                        {packages.find(p => p.id === packageId)?.title || '(상품 정보 로딩 중)'}
+                        <span className="text-slate-400 ml-2">
+                          ({packages.find(p => p.id === packageId)?.destination || '-'})
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm('블로그에서 지정한 상품에서 변경하시겠습니까?\n다른 상품의 카드뉴스가 만들어집니다.')) {
+                            router.replace('/admin/marketing/card-news/new');
+                          }
+                        }}
+                        className="text-xs text-slate-500 hover:text-slate-700 underline"
+                      >
+                        변경
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={pkgFilter}
+                        onChange={e => setPkgFilter(e.target.value)}
+                        placeholder="상품명/지역 검색"
+                        className="w-full border border-slate-200 rounded px-3 py-2 text-sm mb-2"
+                      />
+                      <select
+                        value={packageId}
+                        onChange={e => setPackageId(e.target.value)}
+                        className="w-full border border-slate-200 rounded px-3 py-2 text-sm"
+                        size={Math.min(8, Math.max(4, filteredPackages.length))}
+                      >
+                        {filteredPackages.map(p => (
+                          <option key={p.id} value={p.id}>{p.title} ({p.destination})</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                 </div>
 
                 <div>

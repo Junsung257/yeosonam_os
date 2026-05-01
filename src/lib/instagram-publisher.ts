@@ -20,6 +20,8 @@
  */
 
 import { resolveMetaToken } from './meta-token-resolver';
+import { supabaseAdmin, isSupabaseConfigured } from './supabase';
+import { decrypt } from './encryption';
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
 
@@ -46,10 +48,36 @@ export function isInstagramConfigured(): boolean {
 }
 
 /**
- * 토큰 해석 우선순위: env META_ACCESS_TOKEN → DB system_secrets.META_ACCESS_TOKEN.
- * Phase 7 자동 refresh 크론이 DB 에 최신 값을 써둠 → env 만료돼도 동작.
+ * 토큰 해석 우선순위:
+ *   1. tenantId 지정 시 → instagram_accounts 테이블 (테넌트별 계정)
+ *   2. env META_ACCESS_TOKEN → DB system_secrets.META_ACCESS_TOKEN (플랫폼 공용 계정)
  */
-export async function getInstagramConfig(): Promise<{ igUserId: string; accessToken: string } | null> {
+export async function getInstagramConfig(
+  tenantId?: string | null,
+): Promise<{ igUserId: string; accessToken: string } | null> {
+  if (tenantId && isSupabaseConfigured) {
+    try {
+      const { data } = await supabaseAdmin
+        .from('instagram_accounts')
+        .select('ig_user_id, access_token')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (data?.ig_user_id && data?.access_token) {
+        let token: string;
+        try {
+          token = decrypt(data.access_token);
+        } catch {
+          token = data.access_token; // 암호화 전 레거시 레코드 폴백
+        }
+        return { igUserId: data.ig_user_id, accessToken: token };
+      }
+    } catch (err) {
+      console.warn('[ig-config] tenant 계정 조회 실패, 공용 계정으로 폴백:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 공용 계정 (env → DB system_secrets)
   const userId = process.env.META_IG_USER_ID;
   if (!userId) return null;
   const token = await resolveMetaToken('META_ACCESS_TOKEN');

@@ -100,7 +100,7 @@ async function main() {
     console.log(`    ${p.product_summary || '(null)'}`);
 
     console.log('\n📋 notices_parsed:');
-    (p.notices_parsed || []).forEach(n => console.log(`    [${n.type}] ${n.title}`));
+    (p.notices_parsed || []).forEach(n => console.log(`    [${n.type || 'INFO'}] ${n.text || n.title || '(empty)'}`));
 
     if (Array.isArray(p.optional_tours) && p.optional_tours.length > 0) {
       console.log('\n💎 optional_tours:');
