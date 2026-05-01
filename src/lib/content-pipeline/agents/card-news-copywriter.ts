@@ -13,11 +13,10 @@
  *   - trust_row, price_chip, social_proof, tip, warning
  *   - 토스 CTR + AIDA + Senior 7대 원칙 내재화
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { CardSlideV2Schema } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS } from '@/lib/card-news/tokens';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import type { StructureOutput, StructureInput } from './structure-designer';
 
@@ -39,31 +38,18 @@ export async function writeCardCopy(
   structure: StructureOutput,
   input: StructureInput,
 ): Promise<CardCopyOutput> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[card-copy] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[card-copy] AI API 키 없음 → fallback');
     return fallbackCopy(structure, input);
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.75, responseMimeType: 'application/json' },
-  });
-
   const prompt = buildCopywriterPrompt(structure, input);
 
-  // W3 Pivot C — Zod 위반 시 LLM 에 구체 피드백 전달 → 자기수정 (instructor-js 패턴)
-  // 이전: 단순 1회 재시도 (fixed feedback). 새로: 최대 3회, 매 시도마다 Zod 에러 상세 전달.
   const result = await callWithZodValidation({
     label: 'card-news-copywriter',
     schema: CardCopyOutputSchema,
     maxAttempts: 3,
-    fn: async (feedback) => {
-      const fullPrompt = prompt + (feedback ?? '');
-      const r = await model.generateContent(fullPrompt);
-      return r.response.text();
-    },
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75 }),
   });
 
   if (result.success) return result.value;
@@ -126,7 +112,7 @@ ${sectionBrief}
 - contrarian: eyebrow=[반전] 또는 [실화] / headline=상식 정면 반박 ("보홀은 비싸다는 거짓말") / body=근거 1줄
 
 ### C. 슬라이드 유형별 카피
-- benefit: "이 가격에 이게 다?" 놀람 프레이밍 + trust_row 3~4개
+- benefit: "이 가격에 이게 다?" 놀람 프레이밍 + trust_row 3~4개. **반드시 FAB 변환** — 단순 특징 나열 X, "고객이 얻는 것"으로 (예: ❌"올인클루시브" → ✅"4박 지갑 0회")
 - tourist_spot: "[감성 수식어] 장소명" (시간·온도·색 중 1개) 예: "해질녘 팡라오 해변"
 - inclusion: "[0원] 포함" + 아이템 쉼표 나열
 - detail: 호텔/항공/주의/차량 중 1개 subtype 고정
@@ -134,15 +120,16 @@ ${sectionBrief}
 - warning: eyebrow=WATCH OUT, warning 필드에 80자 주의
 - objection (V4): eyebrow=[의심 해소] / headline=고객 속내 ("이거 싼 게 비지떡?") / body=약관·포함사항 근거 1줄 방어
 - save_hook (V4): eyebrow=[체크리스트] / headline="저장해두고 보는 OOO N" / body=4~5개 항목 쉼표 나열 / badge="SAVE"
+- price_anchor (NEW): role=benefit 또는 objection 에서 **시중가 대비 절감액**이 명시 가능할 때만 사용. eyebrow="[직접 잡으면]" / headline 예시: "단품 70만원" / body 예시: "패키지 50만원, 20만원 차이". 실제 N·M·차이 자리에 입력 데이터에서 계산한 숫자를 직접 채워 넣어야 한다 (placeholder 문자나 변수 표기 금지). 절감액 계산 근거를 입력에서 찾을 수 없으면 절대 만들지 말고 다른 슬라이드 유형 사용.
 - cta: eyebrow=[오늘만] 긴급성, body=**DM 마이크로 커밋먼트** (결제 강요 금지. "댓글 'O' 남기면 일정표 DM" 형식)
 
 ### D. 작성 제약
 - headline ≤ 15자
 - body ≤ 40자
 - eyebrow ≤ 20자 (대괄호 포함)
-- trust_row 각 ≤ 12자, 배열 3~4개 (benefit/inclusion 섹션 필수)
+- trust_row 각 ≤ 12자, 배열 3~4개 (benefit/inclusion 섹션 필수). **항목은 입력 inclusions/highlights 에서 추출만 — "노팁/노옵션/5성급" 등 입력에 근거 없으면 빈 배열**
 - price_chip = "${priceChip}" (hook/benefit/cta 필수, 나머지 null)
-- social_proof = "★ 4.9 · 예약 N건" 같은 수치 (benefit/detail 에 추천)
+- social_proof = **입력에 명시된 수치만 사용** ("★ 4.9", "예약 N건" 등). 임의 별점·예약수 창작 시 전체 재작성. 근거 없으면 null.
 - photo_hint 한국어 1줄 (100자)
 
 ### E. V4 글로벌 베스트프랙티스 (필수 준수)

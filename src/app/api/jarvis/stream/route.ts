@@ -17,15 +17,14 @@
 
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { prepareDispatch } from '@/lib/jarvis/v2-dispatch'
-import { runGeminiAgentLoopV2 } from '@/lib/jarvis/gemini-agent-loop-v2'
+import { prepareDispatch, runV2 } from '@/lib/jarvis/v2-dispatch'
 import { encodeSSE, encodeKeepalive, SSE_HEADERS } from '@/lib/jarvis/stream-encoder'
 import { resolveJarvisContext } from '@/lib/jarvis/context'
 import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
 import type { AgentRunResult } from '@/lib/jarvis/types'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
 
 export async function POST(req: NextRequest) {
   if (process.env.JARVIS_STREAM_ENABLED === 'false') {
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
           try { controller.enqueue(encodeKeepalive()) } catch { /* closed */ }
         }, 15_000)
 
-        const generator = runGeminiAgentLoopV2(dispatch.config!, { message, session, ctx })
+        const generator = runV2(dispatch, { message, session, ctx }) as AsyncGenerator<StreamEvent, AgentRunResult>
         while (true) {
           const step = await generator.next()
           if (step.done) {

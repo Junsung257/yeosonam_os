@@ -10,11 +10,10 @@
  *   - 줄바꿈 2~3번으로 시각적 리듬
  *   - CTA 1개 (댓글·DM·저장·공유 중 하나 명확)
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const InstagramCaptionSchema = z.object({
@@ -43,17 +42,10 @@ export interface InstagramCaptionInput {
 }
 
 export async function generateInstagramCaption(input: InstagramCaptionInput): Promise<InstagramCaption> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[instagram-caption] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[instagram-caption] API 키 없음 → fallback');
     return fallbackCaption(input);
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.85, responseMimeType: 'application/json' },
-  });
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'instagram_caption');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildCaptionPrompt(input);
@@ -63,10 +55,7 @@ export async function generateInstagramCaption(input: InstagramCaptionInput): Pr
     label: 'instagram-caption',
     schema: InstagramCaptionSchema,
     maxAttempts: 3,
-    fn: async (feedback) => {
-      const r = await model.generateContent(prompt + (feedback ?? ''));
-      return r.response.text();
-    },
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.85 }),
   });
 
   if (result.success) return result.value;

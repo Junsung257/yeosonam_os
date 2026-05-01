@@ -1,8 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ContentBrief, parseAndValidateBrief, HookType } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS, TEMPLATE_META } from '@/lib/card-news/tokens';
 import { ANGLE_PRESETS } from '@/lib/content-generator';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { designBriefStructure, type StructureInput } from './agents/structure-designer';
 import { writeCardCopy } from './agents/card-news-copywriter';
 
@@ -299,16 +297,18 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
 // ──────────────────────────────────────────────────────
 function reorderH1WithPriceFront(h1: string, priceChip: string | null): string {
   if (!priceChip) return h1;
-  // 가격 + 선택적 suffix (부터/~/특가) 까지 한 덩어리로 매칭
-  const pricePattern = /(\d+만(?:\d+천)?원|\d{1,3}(?:,\d{3})+원|\d+,?\d{3,6}원)\s*(부터|~|특가)?/;
-  const match = h1.match(pricePattern);
-  if (!match) return h1;
-  const priceIdx = h1.indexOf(match[0]);
-  if (priceIdx < 20) return h1;
+  // 가격 + 선택적 suffix (부터|~|특가) 까지 한 덩어리로 매칭
+  const pricePattern = /(\d+만(?:\d+천)?원|\d{1,3}(?:,\d{3})+원|\d+,?\d{3,6}원)\s*(부터|~|특가)?/g;
+  const matchArr = h1.match(pricePattern);
+  if (!matchArr) return h1;
+  const matchStr = matchArr[0];
+  const priceIdx = h1.indexOf(matchStr);
+  if (priceIdx < 15) return h1; // 이미 15자 이내(앞쪽)에 있으면 무시
 
   const beforePrice = h1.slice(0, priceIdx).replace(/[,\s·!?]+$/, '').trim();
-  const afterPrice = h1.slice(priceIdx + match[0].length).replace(/^[,\s·!?]+/, '').trim();
-  const priceBlock = match[0].trim();
+  const afterPrice = h1.slice(priceIdx + matchStr.length).replace(/^[,\s·!?]+/, '').trim();
+  const priceBlock = matchStr.trim();
+  
   const reordered = `${priceBlock} ${beforePrice}${afterPrice ? ' ' + afterPrice : ''}`.trim();
   return reordered.slice(0, 70);
 }

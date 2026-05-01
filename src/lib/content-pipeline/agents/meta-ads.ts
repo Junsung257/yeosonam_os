@@ -13,11 +13,10 @@
  *   - Meta A/B 테스트는 다수 변형 조합 필요 (5×5×5 = 125 조합 자동 생성)
  *   - 최적 조합을 Meta 알고리즘이 학습
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
 import { getCompetitorPromptBlock } from './competitor-ad-analyzer';
 
@@ -58,14 +57,7 @@ export interface MetaAdsInput {
 }
 
 export async function generateMetaAds(input: MetaAdsInput): Promise<MetaAds> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return fallbackMetaAds(input);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.8, responseMimeType: 'application/json' },
-  });
+  if (!hasBlogApiKey()) return fallbackMetaAds(input);
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'meta_ads');
   const destHints = input.product?.destination ? [input.product.destination] : [];
@@ -77,10 +69,7 @@ export async function generateMetaAds(input: MetaAdsInput): Promise<MetaAds> {
     label: 'meta-ads',
     schema: MetaAdsSchema,
     maxAttempts: 3,
-    fn: async (feedback) => {
-      const r = await model.generateContent(prompt + (feedback ?? ''));
-      return r.response.text();
-    },
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.8 }),
   });
 
   if (result.success) return result.value;

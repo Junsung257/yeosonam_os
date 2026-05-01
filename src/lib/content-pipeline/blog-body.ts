@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/prompt-version';
+import { BLOG_AI_TEMPERATURE } from '@/lib/prompt-version';
+import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 import { FEW_SHOT_EXAMPLES } from '@/prompts/blog/few-shot-examples';
 import { pickBlogVariations } from '@/prompts/blog/variations';
@@ -46,12 +46,9 @@ export interface BlogBodyInput {
 export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
   const { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl } = input;
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
+  if (!hasBlogApiKey()) {
     return buildFallbackBlog(input);
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
 
   const productUrl = productContext?.product_id && baseUrl
     ? `${baseUrl}/packages/${productContext.product_id}`
@@ -70,18 +67,28 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
 
   // 섹션별 이미지 사전 매핑 (중복/누락 방지)
   const h1Image = slideImageMap[1] || null;
-  const sectionImageMap: { position: number; h2: string; image_url: string | null }[] = brief.sections.map(s => ({
-    position: s.position,
-    h2: s.h2,
-    // 카드뉴스 PNG 우선, 없으면 Pexels. 동일 이미지 H1에 사용됐으면 스킵
-    image_url: (slideImageMap[s.position] && slideImageMap[s.position] !== h1Image)
-      ? slideImageMap[s.position]
-      : (pexelsImageMap[s.position] || null),
-  }));
-  const ctaPosition = brief.sections.length + 1;
-  const ctaImage = slideImageMap[ctaPosition] && slideImageMap[ctaPosition] !== h1Image
-    ? slideImageMap[ctaPosition]
+  const slideKeys = Object.keys(slideImageMap).map(Number).sort((a, b) => a - b);
+  const lastKey = slideKeys.length > 0 ? slideKeys[slideKeys.length - 1] : 0;
+
+  const ctaImage = (lastKey > 1 && slideImageMap[lastKey] && slideImageMap[lastKey] !== h1Image)
+    ? slideImageMap[lastKey]
     : null;
+
+  const sectionImageMap: { position: number; h2: string; image_url: string | null }[] = brief.sections.map((s, index) => {
+    // 1번은 표지, 마지막은 CTA이므로, 본문 H2는 2번부터 (index + 2) 순차 할당
+    const imgPos = index + 2;
+    // imgPos가 lastKey(CTA)와 겹치거나 초과하면 카드뉴스 이미지가 소진된 것으로 간주
+    const cardImgUrl = (imgPos < lastKey && slideImageMap[imgPos]) ? slideImageMap[imgPos] : null;
+
+    return {
+      position: s.position,
+      h2: s.h2,
+      // 카드뉴스 PNG 우선, 없으면 Pexels. 동일 이미지 H1에 사용됐으면 스킵 (방어 코드)
+      image_url: (cardImgUrl && cardImgUrl !== h1Image)
+        ? cardImgUrl
+        : (pexelsImageMap[s.position] || null),
+    };
+  });
 
   // Few-shot 예시: 상품 모드면 product_* 예시 우선
   const relevantExamples = productContext
@@ -213,13 +220,8 @@ ${ctaImage ? `![${productContext?.destination || '여소남'}](${ctaImage})` : '
   // (Gemini가 한 번에 짧게 자르는 케이스 방어 — Backlinko 본문 길이 분석 기반)
   const callOnce = async (extraSystem: string, temp: number): Promise<string> => {
     const finalPrompt = extraSystem ? `${extraSystem}\n\n---\n\n${prompt}` : prompt;
-    const localModel = genAI.getGenerativeModel({
-      model: BLOG_AI_MODEL,
-      generationConfig: { temperature: temp },
-    });
-    const r = await localModel.generateContent(finalPrompt);
-    return r.response.text()
-      .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const text = await generateBlogText(finalPrompt, { temperature: temp });
+    return text.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
   };
 
   try {
@@ -269,9 +271,9 @@ ${ctaImage ? `![${productContext?.destination || '여소남'}](${ctaImage})` : '
 
     // FAQ 섹션 누락 방어 — CTA 이전에 최소 Q&A 3개 자동 삽입
     if (!/##\s*\[?자주\s*묻는\s*질문\]?/i.test(text) && !/\*\*Q\.\s/.test(text)) {
-      const destTag = productContext?.destination || '여행지';
-      const dep = productContext?.departure_airport?.replace(/\(.*?\)/g, '').trim() || '출발 공항';
-      const airline = productContext?.airline || '이용 항공사';
+      const destTag = (productContext?.destination || '여행지').trim() || '여행지';
+      const dep = (productContext?.departure_airport?.replace(/\(.*?\)/g, '').trim() || '출발 공항').trim() || '출발 공항';
+      const airline = (productContext?.airline || '이용 항공사').trim() || '이용 항공사';
       const fallbackFaq = `\n## [자주 묻는 질문]\n\n**Q. ${dep} 공항 몇 시간 전에 도착해야 하나요?**\n\nA. 국제선이라 출발 2시간 30분 전 도착을 권장합니다. ${airline} 카운터 위치는 출국장 전광판에서 확인하실 수 있고, 여소남 예약 확정서에도 표기해 드립니다.\n\n**Q. ${destTag} 여행에 비자가 필요한가요?**\n\nA. 여소남은 예약 확정 시 비자 정책과 여권 유효기간(보통 6개월 이상)을 안내해 드립니다. 단수·복수 여부나 도착비자 운영은 변동될 수 있어 출발 전 재확인이 원칙입니다.\n\n**Q. 현지 사정으로 일정이 변경될 수 있나요?**\n\nA. 기상·항공 스케줄·현지 운영 사정에 따라 순서 조정이 있을 수 있으며, 동급 대체 일정으로 진행됩니다. 여소남 OP가 출발 전 최종 일정을 재확인해 드립니다.\n`;
       // CTA(마지막 H2) 직전에 삽입
       const lastCtaMatch = text.match(/\n##\s*\[?[^\n]*?(?:예약|지금\s*확인|상담|바로)[^\n]*\]?/);
@@ -282,22 +284,28 @@ ${ctaImage ? `![${productContext?.destination || '여소남'}](${ctaImage})` : '
       }
     }
 
-    // 금지 표현 자동 치환 (AI 클리셰 하드 제거)
-    // 규칙: 형용사만 붙인 단어는 수식어 제거, 감탄/클리셰는 삭제 또는 안전 치환
+    // 금지 표현 자동 치환 (AI 클리셰 하드 제거 및 거짓 경험 치환)
     text = applyForbiddenReplacements(text);
 
-    // 거짓 경험 표현은 치환 대신 경고 (법적 리스크라 문장 맥락 인지 필요)
+    // 거짓 경험 표현은 치환 대신 경고 및 자동 순화 처리
     const experienceLies = ['다녀왔', '가봤', '경험해보니', '직접 체크', '제가 확인'];
     const lieHits = experienceLies.filter((w) => text.includes(w));
     if (lieHits.length > 0) {
-      console.warn(`[blog-body] 거짓 경험 표현 감지 (수동 확인 필요): ${lieHits.join(', ')}`);
+      console.warn(`[blog-body] 거짓 경험 표현 감지 (자동 치환됨): ${lieHits.join(', ')}`);
+      // AI가 실수로 쓴 문장을 시스템적으로 순화 치환
+      experienceLies.forEach(lie => {
+        const regex = new RegExp(`([^.?!\\n]*${lie}[^.?!\\n]*[.?!])`, 'g');
+        text = text.replace(regex, (match) => {
+          return match.replace(new RegExp(lie, 'g'), '여소남 OP가 철저히 검증했');
+        });
+      });
     }
 
     // 선택적 2차 품질 리뷰 (ENV: BLOG_QUALITY_REVIEW=true)
     // 토큰 비용 약 2배 — 중요 상품에만 활성화 권장
-    if (process.env.BLOG_QUALITY_REVIEW === 'true' && apiKey) {
+    if (process.env.BLOG_QUALITY_REVIEW === 'true') {
       try {
-        text = await runQualityReviewPass(text, productContext, apiKey);
+        text = await runQualityReviewPass(text, productContext);
       } catch (reviewErr) {
         console.warn(
           '[blog-body] 2차 품질 리뷰 실패 (원본 사용):',
@@ -315,7 +323,7 @@ ${ctaImage ? `![${productContext?.destination || '여소남'}](${ctaImage})` : '
     if (text.length >= MIN_BODY_CHARS) return text;
     console.warn(`[blog-body] 최종 ${text.length}자 < ${MIN_BODY_CHARS}자 → fallback 사용`);
   } catch (err) {
-    console.warn('[blog-body] Gemini 실패:', err instanceof Error ? err.message : err);
+    console.warn('[blog-body] AI 호출 실패:', err instanceof Error ? err.message : err);
   }
 
   return buildFallbackBlog(input);
@@ -380,9 +388,9 @@ function injectEeatBox(
 function applyForbiddenReplacements(input: string): string {
   let text = input;
   // ── 코드블록/이미지 alt 보호: 치환은 "본문 평문"에만 적용해야 안전.
-  //    대략적으로 마크다운 이미지 alt `![...]` 안쪽은 보호.
+  //    마크다운 이미지 `![alt](url)` 전체를 보호하여 URL 파손 방어.
   const PROTECTED: string[] = [];
-  text = text.replace(/!\[[^\]]*\]/g, (m) => {
+  text = text.replace(/!\[[^\]]*\]\([^)]+\)/g, (m) => {
     PROTECTED.push(m);
     return `__IMG_ALT_${PROTECTED.length - 1}__`;
   });
@@ -444,13 +452,7 @@ function applyForbiddenReplacements(input: string): string {
 async function runQualityReviewPass(
   text: string,
   productContext: BlogBodyInput['productContext'] | undefined,
-  apiKey: string,
 ): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.4 },
-  });
 
   const prompt = `아래는 여소남 여행 블로그 초안이다. "여소남 에디터" 스타일에 맞게 다시 다듬어라.
 
@@ -491,9 +493,7 @@ async function runQualityReviewPass(
 
 ${text}`;
 
-  const result = await model.generateContent(prompt);
-  const revised = result.response
-    .text()
+  const revised = (await generateBlogText(prompt, { temperature: 0.4 }))
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -556,9 +556,9 @@ function buildFallbackBlog(input: BlogBodyInput): string {
   }
 
   // FAQ (fallback — FAQPage JSON-LD 자동 추출 대상)
-  const destTag = productContext?.destination || '여행지';
-  const dep = productContext?.departure_airport?.replace(/\(.*?\)/g, '').trim() || '공항';
-  const airline = productContext?.airline || '이용 항공사';
+  const destTag = (productContext?.destination || '여행지').trim() || '여행지';
+  const dep = (productContext?.departure_airport?.replace(/\(.*?\)/g, '').trim() || '공항').trim() || '공항';
+  const airline = (productContext?.airline || '이용 항공사').trim() || '이용 항공사';
   sections.push(`\n## [자주 묻는 질문]`);
   sections.push(`\n**Q. ${dep} 공항 몇 시간 전에 도착해야 하나요?**\n\nA. 국제선이라 출발 2시간 30분 전 도착을 권장합니다. ${airline} 카운터 위치는 출국장 전광판에서 확인하실 수 있고, 여소남 예약 확정서에도 표기해 드립니다.`);
   sections.push(`\n**Q. ${destTag} 여행에 비자가 필요한가요?**\n\nA. 여소남은 예약 확정 시 비자 정책과 여권 유효기간(보통 6개월 이상)을 안내해 드립니다. 단수·복수 여부나 도착비자 운영은 변동될 수 있어 출발 전 재확인이 원칙입니다.`);

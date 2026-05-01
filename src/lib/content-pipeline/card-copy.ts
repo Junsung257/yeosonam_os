@@ -1,7 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ContentBrief } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS, truncateHeadline, truncateBody } from '@/lib/card-news/tokens';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 
 /**
  * Call 2: 카드뉴스 카피라이터
@@ -86,16 +85,9 @@ export async function generateCardCopy(brief: ContentBrief): Promise<CardSlideCo
     s => s.headline.length > 15 || s.body.length > 40
   );
 
-  // 초과 있으면 Gemini에게 재작성 요청 (해당 항목만)
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (overflowItems.length > 0 && apiKey) {
+  // 초과 있으면 AI에게 재작성 요청 (해당 항목만)
+  if (overflowItems.length > 0 && hasBlogApiKey()) {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: BLOG_AI_MODEL,
-        generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
-      });
-
       const prompt = `다음 카드뉴스 슬라이드들의 headline과 body가 글자 수 제한을 초과한다. 의미를 유지하면서 더 짧게 다시 써라.
 
 ## 엄격 규칙
@@ -120,8 +112,7 @@ ${JSON.stringify(overflowItems.map(s => ({
 
 반드시 입력된 position만 포함하고, headline/body만 반환하라.`;
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text()
+      const text = (await generateBlogJSON(prompt, { temperature: 0.3 }))
         .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
       let fixes: Array<{ position: number; headline: string; body: string }> = [];

@@ -11,11 +11,10 @@
  *   - 이모지 적당히
  *   - 알고리즘이 "참여 유도 질문" 선호
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const ThreadsPostSchema = z.object({
@@ -42,17 +41,10 @@ export interface ThreadsPostInput {
 }
 
 export async function generateThreadsPost(input: ThreadsPostInput): Promise<ThreadsPost> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[threads-post] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[threads-post] API 키 없음 → fallback');
     return fallbackThreadsPost(input);
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.9, responseMimeType: 'application/json' },
-  });
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'threads_post');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildThreadsPrompt(input);
@@ -61,10 +53,7 @@ export async function generateThreadsPost(input: ThreadsPostInput): Promise<Thre
     label: 'threads-post',
     schema: ThreadsPostSchema,
     maxAttempts: 3,
-    fn: async (feedback) => {
-      const r = await model.generateContent(prompt + (feedback ?? ''));
-      return r.response.text();
-    },
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.9 }),
   });
 
   if (result.success) return result.value;

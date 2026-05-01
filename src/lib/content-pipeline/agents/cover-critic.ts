@@ -12,9 +12,9 @@
  *
  * 모델: Gemini 2.5 Flash (GOOGLE_AI_API_KEY) — 컨텐츠 파이프 공통 convention
  */
-import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import { z } from 'zod';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import type { SlideV2 } from '@/lib/card-news/v2/types';
 
 export const CoverCritiqueSchema = z.object({
@@ -68,109 +68,33 @@ export interface CoverCriticInput {
 }
 
 export async function critiqueCover(input: CoverCriticInput): Promise<CoverCritique> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[cover-critic] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[cover-critic] AI API 키 없음 → fallback');
     return fallbackCritique(input, 'no_api_key');
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  // Gemini Structured Outputs — JSON Schema 강제로 parse_failed 경로 제거
-  const responseSchema: ResponseSchema = {
-    type: SchemaType.OBJECT,
-    properties: {
-      overall_score: { type: SchemaType.INTEGER },
-      dimensions: {
-        type: SchemaType.OBJECT,
-        properties: {
-          hook_strength:       { type: SchemaType.INTEGER },
-          self_relevance:      { type: SchemaType.INTEGER },
-          specificity:         { type: SchemaType.INTEGER },
-          urgency:             { type: SchemaType.INTEGER },
-          visual_text_balance: { type: SchemaType.INTEGER },
-        },
-        required: ['hook_strength', 'self_relevance', 'specificity', 'urgency', 'visual_text_balance'],
-      },
-      issues: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            severity:   { type: SchemaType.STRING, format: 'enum', enum: ['critical', 'major', 'minor'] },
-            slot:       { type: SchemaType.STRING },
-            problem:    { type: SchemaType.STRING },
-            suggestion: { type: SchemaType.STRING },
-          },
-          required: ['severity', 'slot', 'problem', 'suggestion'],
-        },
-      },
-      rewritten_cover: {
-        type: SchemaType.OBJECT,
-        properties: {
-          headline: { type: SchemaType.STRING, nullable: true },
-          body:     { type: SchemaType.STRING, nullable: true },
-          eyebrow:  { type: SchemaType.STRING, nullable: true },
-        },
-        nullable: true,
-      },
-      rewritten_variants: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            angle:    { type: SchemaType.STRING, format: 'enum', enum: ['price', 'loss_aversion', 'target_call', 'number_stat', 'question', 'contrarian'] },
-            headline: { type: SchemaType.STRING },
-            body:     { type: SchemaType.STRING },
-            eyebrow:  { type: SchemaType.STRING },
-          },
-          required: ['angle', 'headline', 'body', 'eyebrow'],
-        },
-        nullable: true,
-      },
-      verdict: { type: SchemaType.STRING, format: 'enum', enum: ['ship_as_is', 'minor_polish', 'regenerate'] },
-    },
-    required: ['overall_score', 'dimensions', 'issues', 'verdict'],
-  };
+  const prompt = buildCriticPrompt(input);
 
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: {
-      temperature: 0.3,
-      responseMimeType: 'application/json',
-      responseSchema,
+  const result = await callWithZodValidation({
+    label: 'cover-critic',
+    schema: CoverCritiqueSchema,
+    maxAttempts: 3,
+    fn: async (feedback) => {
+      const raw = await generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.3 });
+      // 길이 제한 초과 값을 Zod 검증 전에 선제 트렁케이트 (카드 UI 고정 제약)
+      try {
+        const parsed = JSON.parse(raw);
+        coerceCritiqueLengths(parsed);
+        return JSON.stringify(parsed);
+      } catch {
+        return raw;
+      }
     },
   });
 
-  const prompt = buildCriticPrompt(input);
-
-  try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text()
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim();
-
-    const match = text.match(/\{[\s\S]*\}/);
-    const jsonStr = match ? match[0] : text;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(jsonStr);
-    } catch (parseErr) {
-      console.warn('[cover-critic] JSON 파싱 실패:', parseErr instanceof Error ? parseErr.message : parseErr);
-      return fallbackCritique(input, 'parse_failed');
-    }
-    // Gemini 가 길이 제한을 무시하는 경우가 잦음 — Zod 검증 전 보수적으로 트렁케이트.
-    // (20~50자 기준은 카드 UI 고정 제약이라 넘는 값은 어차피 렌더 시 잘림)
-    coerceCritiqueLengths(parsed);
-    const checked = CoverCritiqueSchema.safeParse(parsed);
-    if (checked.success) return { ...checked.data, source: 'llm' };
-    console.warn('[cover-critic] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-    return fallbackCritique(input, 'schema_failed');
-  } catch (err) {
-    console.warn('[cover-critic] 호출 실패:', err instanceof Error ? err.message : err);
-    return fallbackCritique(input, 'api_failed');
-  }
+  if (result.success) return { ...result.value, source: 'llm' };
+  console.warn('[cover-critic] callWithZodValidation 실패 → fallback');
+  return fallbackCritique(input, 'schema_failed');
 }
 
 /**

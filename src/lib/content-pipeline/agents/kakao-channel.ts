@@ -10,11 +10,10 @@
  *
  * 우리 출력: 친구톡 기준. main_text + buttons[2~4] + image_hint
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const KakaoChannelMessageSchema = z.object({
@@ -45,14 +44,7 @@ export interface KakaoChannelInput {
 }
 
 export async function generateKakaoChannelMessage(input: KakaoChannelInput): Promise<KakaoChannelMessage> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return fallbackKakao(input);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.7, responseMimeType: 'application/json' },
-  });
+  if (!hasBlogApiKey()) return fallbackKakao(input);
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'kakao_channel');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildKakaoPrompt(input);
@@ -61,10 +53,7 @@ export async function generateKakaoChannelMessage(input: KakaoChannelInput): Pro
     label: 'kakao-channel',
     schema: KakaoChannelMessageSchema,
     maxAttempts: 3,
-    fn: async (feedback) => {
-      const r = await model.generateContent(prompt + (feedback ?? ''));
-      return r.response.text();
-    },
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.7 }),
   });
 
   if (result.success) return result.value;

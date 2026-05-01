@@ -8,10 +8,9 @@
  *   const summary = await analyzeCompetitorAds(['보홀','다낭']);
  *   → Meta Ads 프롬프트 앞에 "## 경쟁사 패턴\n...\n\n" 삽입
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
 
 export const CompetitorPatternSchema = z.object({
@@ -53,15 +52,8 @@ export async function analyzeCompetitorAds(
   const { data, error } = await query;
   if (error || !data || data.length === 0) return null;
 
-  // 2. AI 패턴 분석 (Gemini Flash)
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return fallbackPattern(data as never[]);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
-  });
+  // 2. AI 패턴 분석
+  if (!hasBlogApiKey()) return fallbackPattern(data as never[]);
 
   const sample = (data as Array<Record<string, unknown>>).slice(0, 10)
     .map((r, i) => `[${i + 1}] ${r.brand} · ${r.destination_hint ?? '-'} · ${r.active_days ?? '?'}일
@@ -95,10 +87,7 @@ JSON만 출력.`;
     label: 'competitor-ad-analyzer',
     schema: CompetitorPatternSchema,
     maxAttempts: 3,
-    fn: async (feedback) => {
-      const r = await model.generateContent(prompt + (feedback ?? ''));
-      return r.response.text();
-    },
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.3 }),
   });
 
   if (result.success) return result.value;
