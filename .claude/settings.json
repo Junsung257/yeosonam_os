@@ -3,7 +3,27 @@
     "allow": [
       "Bash(node -e \":*)",
       "Read(//c/Users/admin/Downloads/**)",
-      "Bash(node db/batch_pexels_photos.js --force)"
+      "Bash(node db/batch_pexels_photos.js --force)",
+      "Bash(git status)",
+      "Bash(git status --short)",
+      "Bash(git diff)",
+      "Bash(git diff --stat)",
+      "Bash(git diff HEAD)",
+      "Bash(git diff HEAD -- *)",
+      "Bash(git log --oneline -20)",
+      "Bash(git log --oneline -10)",
+      "Bash(git log --oneline -5)",
+      "Bash(git log --format=* -20)",
+      "Bash(git branch)",
+      "Bash(git branch -a)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(node db/post_register_audit.js*)",
+      "Bash(node db/audit_schema_drift.js*)",
+      "Bash(node db/audit_api_field_drift.js*)",
+      "Bash(node db/cove_audit.js*)",
+      "Bash(node db/dump_package_result.js*)",
+      "Bash(node db/rag_reindex_all.js*)",
+      "Bash(node db/resync_paid_amounts.js*)"
     ]
   },
   "hooks": {

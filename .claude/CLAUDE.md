@@ -338,3 +338,78 @@ await adapter.send(payload);
 3. **수정 후 변경된 파일 목록을 명시합니다.**
 4. **확신이 없으면 먼저 질문합니다.**
 5. **코드를 생략(`...`)하지 않습니다.** SQL, 컴포넌트 코드를 제공할 때 전체를 작성합니다.
+
+---
+
+## 11. Claude Code 토큰 효율 — 자동 최적화 규칙 (필수 준수)
+
+> 이 섹션은 Claude Code 자신의 컨텍스트 창과 외부 AI API 비용을 자동으로 아끼는 규칙입니다.
+> 매 세션 설정 없이 **항상** 아래 규칙을 따릅니다.
+
+### 11-1. 탐색 위임 — 직접 스캔 금지 기준
+
+| 상황 | 처리 방법 |
+|------|---------|
+| 파일 3개 이상 조회 | `Explore` 서브에이전트에 위임 (직접 Read 금지) |
+| "이 기능이 구현됐는지 모름" | `Explore` 서브에이전트에 위임 |
+| LLM 호출 패턴·API 라우트 전수조사 | `Explore` 서브에이전트에 위임 |
+| 알고 있는 파일 1~2개 수정 | 직접 Read → Edit |
+| 특정 심볼 1개 검색 | `Grep` 직접 사용 |
+
+**금지**: 탐색 목적으로 5개 이상 파일을 내 컨텍스트에 직접 로드하는 행위.
+
+### 11-2. 작업 복잡도별 접근 방식 자동 결정
+
+```
+단순 (파일 1~2개, 명확한 요구사항)
+  → 직접 Read + Edit. Plan/Agent 불필요.
+
+중간 (파일 3~5개 연관, 도메인 파악 필요)
+  → Explore 에이전트로 파악 → 내가 직접 수정.
+
+복잡 (멀티파일 설계 변경, 아키텍처 결정)
+  → Plan 모드 진입 → 사용자 승인 → 실행.
+
+병렬 독립 작업 (서로 의존성 없는 작업 2개+)
+  → 단일 메시지에 Agent 여러 개 동시 실행.
+```
+
+### 11-3. 큰 파일 읽기 규칙
+
+- 300줄 이상 파일: `offset + limit` 파라미터로 필요한 범위만 Read.
+- 방금 Edit 한 파일: 다시 Read 하지 않음 (Edit 성공 = 반영됨).
+- 서브에이전트 결과: 핵심 요약만 메인 컨텍스트에 가져옴 (전체 출력 X).
+
+### 11-4. 외부 AI API 모델 선택 자동 기준
+
+새 AI 호출 코드를 작성할 때 아래 기준을 자동 적용:
+
+| 작업 | 모델 | 이유 |
+|------|------|------|
+| 라우팅·분류·메타 추출 | `claude-haiku-4-5-20251001` 또는 `gemini-2.5-flash` | 단순, 속도 우선 |
+| 블로그·카드뉴스·카피 생성 | `gemini-2.5-flash` | 창작, 비용 우선 |
+| 상품 정규화 (복잡) | `claude-sonnet-4-6` (Prompt Cache 필수) | 정확도, 규칙 복잡 |
+| 환각 교차검증 | `gemini-2.5-flash` | 감사 전용, 저비용 |
+| JARVIS 에이전트 루프 | `gemini-2.5-flash` executor + `gemini-2.5-pro` advisor (막힐 때 1회) | Advisor 패턴 |
+| RAG 컨텍스트 생성·인덱싱 | `claude-haiku-4-5-20251001` + system cache | 반복 호출, 캐시 필수 |
+| 고객 실시간 상담 | `gemini-3.1-flash-lite-preview` | 스트리밍, 최저비용 |
+
+**절대 금지**: 단순 분류·추출·라우팅에 Sonnet/Pro 사용.
+**신규 Claude 호출 시 필수**: `cache_control: { type: 'ephemeral' }` system + tools에 항상 적용.
+
+### 11-5. llm-gateway.ts 사용 강제
+
+`src/lib/` 에서 AI를 새로 호출할 때:
+- `llmCall({ task: '...' })` 를 먼저 찾아 맞는 task 타입 있으면 재사용.
+- 없으면 새 task 타입을 `llm-gateway.ts`의 `ROUTING` 테이블에 추가 후 사용.
+- 직접 `new Anthropic()` / `new GoogleGenerativeAI()` 인스턴스 생성은 전문 모듈(normalize-with-llm, gemini-agent-loop-v2 등)에서만 허용.
+
+### 11-6. 반복 허가 요청 자동 해결
+
+아래 명령은 `.claude/settings.json` 에 이미 허가되어 있으므로 즉시 실행:
+- `git status`, `git diff`, `git log` (읽기 전용 git)
+- `node db/post_register_audit.js` (감사 스크립트)
+- `npx tsc --noEmit` (타입 체크)
+- `node -e "..."` (인라인 Node.js)
+
+새 반복 패턴이 3회 이상 허가 요청되면: settings.json `permissions.allow` 에 추가 제안.

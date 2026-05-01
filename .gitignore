@@ -24,6 +24,14 @@ yarn-error.log*
 # Local env files
 .env*.local
 
+# Google Service Account 키 / 기타 cloud credentials — 절대 git에 들어가면 안 됨
+*-service-account*.json
+service-account*.json
+gen-lang-client-*.json
+google-credentials*.json
+*credentials*.json
+*.serviceaccount.json
+
 # Vercel
 .vercel
 

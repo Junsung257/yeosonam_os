@@ -25,6 +25,14 @@
       "schedule": "0 1 * * *"
     },
     {
+      "path": "/api/cron/resweep-unmatched",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/fill-attraction-photos",
+      "schedule": "0 3 * * *"
+    },
+    {
       "path": "/api/cron/agent-executor",
       "schedule": "0 0 * * *"
     },
@@ -66,7 +74,23 @@
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "0 * * * *"
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/trend-topic-miner",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/rank-tracking",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/topical-rebuild",
+      "schedule": "0 18 * * 0"
+    },
+    {
+      "path": "/api/cron/blog-daily-summary",
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/sync-engagement",
@@ -95,6 +119,58 @@
     {
       "path": "/api/cron/card-news-seasonal",
       "schedule": "0 0 * * 1"
+    },
+    {
+      "path": "/api/cron/scoring-recompute",
+      "schedule": "30 19 * * *"
+    },
+    {
+      "path": "/api/cron/land-operator-reliability",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/payment-rules-learn",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/payment-stale-alert",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-seasonal",
+      "schedule": "0 4 1 * *"
+    },
+    {
+      "path": "/api/cron/ltr-funnel-report",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/policy-ab-compare",
+      "schedule": "0 10 * * 6"
+    },
+    {
+      "path": "/api/cron/ledger-reconcile",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/rag-incremental",
+      "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/api/cron/setup-new-destinations",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/free-travel-retarget",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/mrt-revenue-sync",
+      "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/cron/mrt-hotel-ranking",
+      "schedule": "0 2 * * 1"
     }
   ]
 }
