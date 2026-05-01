@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import GlobalNav from '@/components/customer/GlobalNav';
+import SectionHeader from '@/components/customer/SectionHeader';
 
 export const revalidate = 3600;
 
@@ -98,70 +101,74 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
         }}
       />
 
+      <GlobalNav />
       <main className="min-h-screen bg-white">
-        <header className="border-b bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-          <div className="mx-auto max-w-5xl px-4 py-12">
-            <div className="flex items-center gap-2 text-sm text-indigo-200 mb-4">
+        <header className="border-b bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white">
+          <div className="mx-auto max-w-6xl px-4 md:px-6 py-14 md:py-20">
+            <div className="flex items-center gap-2 text-[13px] md:text-sm text-indigo-200 mb-4">
               <Link href="/" className="hover:text-white">홈</Link>
               <span>/</span>
               <Link href="/blog" className="hover:text-white">블로그</Link>
               <span>/</span>
               <span className="text-white">{destination}</span>
             </div>
-            <h1 className="text-3xl font-bold md:text-4xl">{destination} 여행 가이드</h1>
-            <p className="mt-2 text-indigo-100">{destination} 여행의 모든 것 · {posts.length}편의 가이드</p>
+            <h1 className="text-[40px] md:text-[60px] font-black tracking-tight leading-[1.05]">{destination} 여행 가이드</h1>
+            <p className="mt-4 text-base md:text-lg text-indigo-100 leading-relaxed">{destination} 여행의 모든 것 · {posts.length}편의 가이드</p>
           </div>
         </header>
 
-        <div className="mx-auto max-w-5xl px-4 py-10">
+        <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16 space-y-12 md:space-y-16">
           {/* 관련 상품 CTA */}
           {packages.length > 0 && (
-            <div className="mb-8 rounded-xl border border-indigo-100 bg-indigo-50/50 p-5">
-              <h2 className="text-sm font-semibold text-indigo-700 mb-3">{destination} 추천 패키지</h2>
-              <div className="grid gap-2 sm:grid-cols-3">
+            <section>
+              <SectionHeader title={`${destination} 추천 패키지`} />
+              <div className="grid gap-4 md:gap-6 sm:grid-cols-3">
                 {packages.map(pkg => (
                   <Link key={pkg.id} href={`/packages/${pkg.id}`}
-                    className="rounded-lg border border-indigo-100 bg-white p-3 hover:shadow-sm transition">
-                    <p className="text-sm font-medium text-gray-900 line-clamp-1">{pkg.title}</p>
-                    {pkg.price && <p className="text-xs text-indigo-600 font-semibold mt-1">{pkg.price.toLocaleString()}원~</p>}
+                    className="rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-[#3182F6] transition">
+                    <p className="text-base font-bold text-slate-900 line-clamp-2 leading-snug tracking-tight">{pkg.title}</p>
+                    {pkg.price && <p className="mt-2 text-lg md:text-xl font-black text-slate-900 tabular-nums">{pkg.price.toLocaleString()}원~</p>}
                   </Link>
                 ))}
               </div>
-            </div>
+            </section>
           )}
 
           {/* 블로그 글 목록 */}
-          {posts.length === 0 ? (
-            <p className="py-20 text-center text-gray-400">{destination} 관련 가이드가 준비 중입니다.</p>
-          ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {posts.map(post => (
-                <Link key={post.id} href={`/blog/${post.slug}`}
-                  className="group overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md">
-                  {post.og_image_url ? (
-                    <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
-                      <img src={post.og_image_url} alt={post.seo_title || ''} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
-                    </div>
-                  ) : (
-                    <div className="flex aspect-[16/9] items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
-                      <span className="text-4xl">✈️</span>
-                    </div>
-                  )}
-                  <div className="p-4">
-                    <span className="rounded-full bg-gray-50 px-2.5 py-0.5 text-xs text-gray-500 mb-2 inline-block">
-                      {ANGLE_LABELS[post.angle_type] || post.angle_type}
-                    </span>
-                    <h2 className="line-clamp-2 text-base font-semibold text-gray-900 group-hover:text-indigo-600">
-                      {post.seo_title || '여행 가이드'}
-                    </h2>
-                    {post.seo_description && (
-                      <p className="mt-1.5 line-clamp-2 text-sm text-gray-500">{post.seo_description}</p>
+          <section>
+            <SectionHeader title={`${destination} 가이드`} subtitle="운영팀이 직접 작성한 여행 매거진" />
+            {posts.length === 0 ? (
+              <p className="py-20 text-center text-slate-400 text-base">{destination} 관련 가이드가 준비 중입니다.</p>
+            ) : (
+              <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {posts.map(post => (
+                  <Link key={post.id} href={`/blog/${post.slug}`}
+                    className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
+                    {post.og_image_url ? (
+                      <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
+                        <Image src={post.og_image_url} alt={post.seo_title || ''} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover transition group-hover:scale-105" />
+                      </div>
+                    ) : (
+                      <div className="flex aspect-[16/9] items-center justify-center bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
+                        <span className="text-4xl">✈️</span>
+                      </div>
                     )}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+                    <div className="p-5">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 mb-3 inline-block">
+                        {ANGLE_LABELS[post.angle_type] || post.angle_type}
+                      </span>
+                      <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-[#3182F6] tracking-tight leading-snug">
+                        {post.seo_title || '여행 가이드'}
+                      </h2>
+                      {post.seo_description && (
+                        <p className="mt-2 line-clamp-2 text-sm md:text-[15px] text-slate-500 leading-relaxed">{post.seo_description}</p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </main>
     </>

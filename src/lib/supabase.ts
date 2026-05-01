@@ -530,12 +530,36 @@ export async function upsertCustomer(data: Record<string, unknown>) {
     for (const [k, v] of Object.entries(data)) {
       payload[k] = (NULLABLE.includes(k) && v === '') ? null : v;
     }
+    // 전화번호 DB 트리거와 동일한 010-XXXX-XXXX 형식으로 정규화
+    if (payload.phone != null) {
+      const digits = String(payload.phone).replace(/\D/g, '');
+      payload.phone = digits.length === 11
+        ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+        : null;
+    }
 
-    const { data: result, error } = data.id
-      ? await supabaseAdmin.from('customers').update(payload).eq('id', data.id as string).select()
-      : await supabaseAdmin.from('customers').insert([payload]).select();
-    if (error) throw error;
-    return result?.[0];
+    if (data.id) {
+      const { data: result, error } = await supabaseAdmin
+        .from('customers').update(payload).eq('id', data.id as string).select();
+      if (error) throw error;
+      return result?.[0];
+    }
+
+    const { data: result, error } = await supabaseAdmin
+      .from('customers').insert([payload]).select();
+    if (!error) return result?.[0];
+
+    // 23505: 전화번호 중복 → 기존 고객 반환 (병렬 등록 race 또는 재임포트 시)
+    if ((error as { code?: string }).code === '23505' && payload.phone) {
+      const { data: existing } = await supabaseAdmin
+        .from('customers')
+        .select('*')
+        .eq('phone', payload.phone as string)
+        .is('deleted_at', null)
+        .limit(1);
+      if (existing?.[0]) return existing[0];
+    }
+    throw error;
   } catch (error) { console.error('고객 저장 실패:', error); throw error; }
 }
 
@@ -546,12 +570,14 @@ export async function findOrCreateCustomerByPhone(
 ): Promise<string | null> {
   const digits = (rawPhone ?? '').replace(/\D/g, '');
   if (digits.length !== 11) return null;
+  // DB 트리거가 010-XXXX-XXXX 형식으로 저장하므로 동일 형식으로 조회
+  const dbPhone = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 
   // 1차 조회 (phone은 UNIQUE NULLABLE — 빈 문자열은 null로 정규화되어 저장됨)
   const existing = await supabaseAdmin
     .from('customers')
     .select('id')
-    .eq('phone', digits)
+    .eq('phone', dbPhone)
     .limit(1);
 
   if (existing.data?.[0]?.id) return existing.data[0].id as string;
@@ -570,7 +596,7 @@ export async function findOrCreateCustomerByPhone(
     const retry = await supabaseAdmin
       .from('customers')
       .select('id')
-      .eq('phone', digits)
+      .eq('phone', dbPhone)
       .limit(1);
     if (retry.data?.[0]?.id) return retry.data[0].id as string;
   }
@@ -588,15 +614,17 @@ export async function findDuplicateCustomers(input: { name?: string; phone?: str
   candidates: Array<{ id: string; name: string; phone: string | null; similarity: number }>;
 }> {
   const { normalizePhone, normalizeName, nameSimilarity, NAME_MATCH_THRESHOLD } = await import('./customer-name');
-  const phone = normalizePhone(input.phone);
+  const rawPhone = input.phone?.trim() ?? null;
+  const phone = normalizePhone(rawPhone);
   const name = input.name?.trim() ?? '';
 
-  // 1) 전화번호 정확 일치 우선
+  // 1) 전화번호 정확 일치 우선 — 정규화·비정규화 양쪽 모두 검색 (레거시 대시 포함 레코드 대응)
   if (phone) {
+    const phonesToSearch = Array.from(new Set([phone, ...(rawPhone && rawPhone !== phone ? [rawPhone] : [])]));
     const { data } = await supabaseAdmin
       .from('customers')
       .select('id, name, phone')
-      .eq('phone', phone)
+      .in('phone', phonesToSearch)
       .is('deleted_at', null)
       .limit(1);
     const row = data?.[0] as { id: string; name: string; phone: string | null } | undefined;
@@ -649,7 +677,8 @@ export async function getBookings(
     let query = supabaseAdmin
       .from('bookings')
       .select('*, customers!lead_customer_id(id,name,phone)')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(1000); // 안전 상한선 — 이상 시 서버사이드 필터+페이지네이션 도입 필요
 
     // 소프트 삭제 필터
     if (opts?.includeDeleted === 'only') {
@@ -783,6 +812,22 @@ export async function createBooking(data: {
     if (error) throw error;
     const bookingId = booking?.[0]?.id;
 
+    // Phase 2a — 신규 booking 이 paid_amount > 0 으로 시작하면 ledger seed entry 가 필요.
+    //   기본 0 인 경우 record_ledger_entry 가 0 amount 면 NULL 반환하므로 자동 skip.
+    if (bookingId && (data.paidAmount ?? 0) > 0) {
+      await supabaseAdmin.rpc('record_ledger_entry', {
+        p_booking_id: bookingId,
+        p_account: 'paid_amount',
+        p_entry_type: 'manual_adjust',
+        p_amount: data.paidAmount,
+        p_source: 'admin_manual_edit',
+        p_source_ref_id: bookingId,
+        p_idempotency_key: `create:${bookingId}:paid`,
+        p_memo: 'createBooking initial paid_amount',
+        p_created_by: 'admin',
+      });
+    }
+
     // companions 원시 데이터 → upsertCustomer → UUID 수집
     const companionUUIDs: string[] = [];
     if (data.companions && data.companions.length > 0) {
@@ -868,7 +913,8 @@ export async function updateBooking(id: string, data: {
     if (data.departureRegion !== undefined) payload.departure_region = data.departureRegion;
     if (data.landOperator !== undefined) payload.land_operator = data.landOperator;
     if (data.bookingDate !== undefined) payload.booking_date = data.bookingDate;
-    if (data.paidAmount !== undefined) payload.paid_amount = data.paidAmount;
+    // Phase 2a — paid_amount 는 record_manual_paid_amount_change RPC 경로로 분리 (ledger 이중쓰기 보장)
+    const hasPaidAmount = data.paidAmount !== undefined;
     if (data.notes !== undefined) payload.notes = data.notes;
     if (data.status !== undefined) {
       payload.status = data.status;
@@ -877,6 +923,20 @@ export async function updateBooking(id: string, data: {
 
     const { data: booking, error } = await supabaseAdmin.from('bookings').update(payload).eq('id', id).select();
     if (error) throw error;
+
+    if (hasPaidAmount) {
+      const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
+        p_booking_id: id,
+        p_new_paid_amount: data.paidAmount as number,
+        p_new_total_paid_out: null,
+        p_source: 'admin_manual_edit',
+        p_source_ref_id: id,
+        p_idempotency_key: `manual:${id}:${Date.now()}`,
+        p_memo: 'updateBooking() paid_amount edit',
+        p_created_by: 'admin',
+      });
+      if (rpcErr) throw rpcErr;
+    }
 
     // 동행자 업데이트
     if (data.passengerIds !== undefined) {
@@ -1004,6 +1064,12 @@ export async function voidBooking(bookingId: string, reason?: string): Promise<v
 // ─────────────────────────────────────────────────────────────────
 export { getDashboardStatsV3 } from './db/dashboard';
 export type { MonthlyChartDataV3 } from './db/dashboard';
+
+// ─────────────────────────────────────────────────────────────────
+// Dashboard V4 (매출 인식 분리, IFRS 15/ASC 606) — 2026-04-28
+// ─────────────────────────────────────────────────────────────────
+export { getRecognizedRevenueMonthly, getNewBookingsMonthly, getBookingPaceAndCancellation, getAIUsageStats, getSettlementBalances, getOperatorTakeRates, getRepeatBookingStats, getDataQualityIssues } from './db/dashboard';
+export type { RecognizedRevenueMonth, NewBookingsMonth, BookingPaceBucket, PaceAndCancellation, AIUsageStats, SettlementBalances, OperatorTakeRate, RepeatBookingStats, DataQualityIssue, DataQualityIssueId, DataQualityReport } from './db/dashboard';
 
 // ─────────────────────────────────────────────────────────────────
 // MessageLog — 본문은 ./db/message-log.ts 로 분리

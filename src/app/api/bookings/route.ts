@@ -73,11 +73,25 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
       })
       .eq('id', tx.id);
 
+    // Phase 2a — bookings.paid_amount += tx.amount + ledger 이중쓰기 (per tx, atomic)
+    //   tx 1건 단위로 ledger entry 를 남겨 감사 시 어느 거래에서 얼마 들어왔는지 추적 가능.
+    await supabaseAdmin.rpc('update_booking_ledger', {
+      p_booking_id: bookingId,
+      p_paid_delta: tx.amount,
+      p_payout_delta: 0,
+      p_source: 'booking_create_softmatch',
+      p_source_ref_id: tx.id,
+      p_idempotency_key: `retroactive:${bookingId}:${tx.id}`,
+      p_memo: `retroactive softmatch ${best.confidence.toFixed(2)}`,
+      p_created_by: 'retroactive',
+    });
+
     totalMatchedAmount += tx.amount;
   }
 
-  // 소급 매칭된 금액이 있으면 예약 정산 상태 업데이트
   if (totalMatchedAmount > 0) {
+    // 자동 status 갱신은 update_booking_ledger RPC 안에서 처리됨 (payment_status/booking.status 모두).
+    // 여기는 로깅만.
     const paidAmount = ((booking as any).paid_amount || 0) + totalMatchedAmount;
     const newStatus  = calcPaymentStatus({
       total_price:    (booking as any).total_price,
@@ -85,12 +99,6 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
       paid_amount:    paidAmount,
       total_paid_out: (booking as any).total_paid_out || 0,
     });
-
-    await supabase
-      .from('bookings')
-      .update({ paid_amount: paidAmount, payment_status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', bookingId);
-
     console.log(`[소급매칭] ${booking.booking_no} — ${totalMatchedAmount.toLocaleString()}원 자동 연결, 상태: ${newStatus}`);
   }
 }
@@ -147,35 +155,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 어필리에이트 자동 귀속: 쿠키 또는 body에서 referral_code 확인
+    // 어필리에이트 + 상품 병렬 조회 (순차 → 동시 실행으로 최대 300-500ms 절감)
     const affRef = body.affiliateRef || request.cookies.get('aff_ref')?.value;
-    let affData: { id: string; grade: number | null; bonus_rate: number; created_at: string | null } | null = null;
-    if (affRef && !body.affiliateId) {
-      try {
-        const { data: aff } = await supabaseAdmin
-          .from('affiliates')
-          .select('id, grade, bonus_rate, created_at')
-          .eq('referral_code', affRef)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (aff) {
-          affData = aff;
-          body.affiliateId = aff.id;
-          body.bookingType = 'AFFILIATE';
-          console.log(`[Affiliate] 자동 귀속: ${affRef} → ${aff.id}`);
-        }
-      } catch { /* 귀속 실패해도 예약은 진행 */ }
-    } else if (body.affiliateId) {
-      // body에 직접 affiliateId만 들어온 경우에도 등급 정보 확보
-      try {
-        const { data: aff } = await supabaseAdmin
-          .from('affiliates')
-          .select('id, grade, bonus_rate, created_at')
-          .eq('id', body.affiliateId)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (aff) affData = aff;
-      } catch { /* */ }
+    type AffRow = { id: string; grade: number | null; bonus_rate: number; created_at: string | null };
+    let affData: AffRow | null = null;
+
+    const affQuery = affRef && !body.affiliateId
+      ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
+      : body.affiliateId
+        ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
+        : null;
+
+    const pkgQuery = body.packageId
+      ? supabaseAdmin.from('travel_packages').select('affiliate_commission_rate, destination').eq('id', body.packageId).maybeSingle()
+      : null;
+
+    // 두 쿼리가 있으면 동시에 실행
+    const [affResult, pkgResult] = await Promise.all([
+      affQuery ? affQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      pkgQuery ? pkgQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+    ]);
+
+    if (affResult.data) {
+      affData = affResult.data as AffRow;
+      if (affRef && !body.affiliateId) {
+        body.affiliateId = affData.id;
+        body.bookingType = 'AFFILIATE';
+        console.log(`[Affiliate] 자동 귀속: ${affRef} → ${affData.id}`);
+      }
     }
 
     // 커미션 자동계산 — 가산식 정책 엔진 + 예약 시점 스냅샷 (ERR-방지)
@@ -184,22 +191,13 @@ export async function POST(request: NextRequest) {
     if (body.affiliateId && affData) {
       const { applyCommissionPolicies } = await import('@/lib/policy-engine');
 
-      // 상품 기본 커미션율 + 메타 조회 (목적지 필터용)
       let baseRate = 0.02;
       let destination: string | undefined;
-      if (body.packageId) {
-        try {
-          const { data: pkg } = await supabaseAdmin
-            .from('travel_packages')
-            .select('affiliate_commission_rate, destination')
-            .eq('id', body.packageId)
-            .maybeSingle();
-          if (pkg) {
-            const r = Number(pkg.affiliate_commission_rate);
-            if (Number.isFinite(r) && r >= 0) baseRate = r;
-            destination = pkg.destination as string | undefined;
-          }
-        } catch { /* fallback to default 2% */ }
+      const pkg = pkgResult.data as { affiliate_commission_rate: number | null; destination: string | null } | null;
+      if (pkg) {
+        const r = Number(pkg.affiliate_commission_rate);
+        if (Number.isFinite(r) && r >= 0) baseRate = r;
+        destination = pkg.destination ?? undefined;
       }
 
       const daysSinceSignup = affData.created_at
@@ -438,8 +436,11 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    // paid_amount 변경 시 payment_status 자동 계산 및 완납이면 status도 completed로
+    // paid_amount 변경 시 — Phase 2a: record_manual_paid_amount_change RPC 로 위임 (ledger 이중쓰기)
+    // 이전 payment_status 자동 계산은 admin UI 가 직접 PATCH 시 별도 필드로 보내거나,
+    // 다른 경로에서 호출 시 calcPaymentStatus 가 처리. 여기서는 ledger 정합성을 우선.
     if (typeof body.paid_amount === 'number') {
+      const newPaidAmount = body.paid_amount;
       const { data: current } = await supabase
         .from('bookings')
         .select('total_price, status')
@@ -447,7 +448,6 @@ export async function PATCH(request: NextRequest) {
         .single();
 
       const totalPrice = (current as { total_price?: number } | null)?.total_price ?? 0;
-      const newPaidAmount = body.paid_amount;
       const newPaymentStatus =
         newPaidAmount >= totalPrice && totalPrice > 0 ? '완납'
         : newPaidAmount > 0 ? '일부입금'
@@ -456,18 +456,26 @@ export async function PATCH(request: NextRequest) {
         newPaidAmount >= totalPrice && totalPrice > 0 ? 'completed'
         : (current as { status?: string } | null)?.status;
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .update({
-          paid_amount: newPaidAmount,
-          payment_status: newPaymentStatus,
-          ...(newStatus ? { status: newStatus } : {}),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
+        p_booking_id: id,
+        p_new_paid_amount: newPaidAmount,
+        p_new_total_paid_out: null,
+        p_source: 'admin_manual_edit',
+        p_source_ref_id: id,
+        p_idempotency_key: `manual:${id}:${Date.now()}`,
+        p_memo: 'PUT /api/bookings paid_amount manual edit',
+        p_created_by: 'admin',
+      });
+      if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+
+      // payment_status / status 자동 후처리 (RPC 가 손대지 않으므로 여기서)
+      await supabaseAdmin.from('bookings').update({
+        payment_status: newPaymentStatus,
+        ...(newStatus ? { status: newStatus } : {}),
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+
+      const { data } = await supabase.from('bookings').select().eq('id', id).single();
       return NextResponse.json({ booking: data });
     }
 

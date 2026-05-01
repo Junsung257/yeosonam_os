@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = [
+// 정확히 일치하는 공개 경로 — O(1) Set 조회
+const PUBLIC_EXACT = new Set([
   '/',
   '/login',
   '/packages',
@@ -15,39 +15,35 @@ const PUBLIC_PATHS = [
   '/api/notify/alimtalk',
   '/api/slack-webhook',
   '/api/exchange-rate',
+  // Programmatic SEO
+  '/things-to-do',
+  // Phase 1.5 IR 파이프 (Canary)
+  '/api/register-via-ir',
+  '/api/audit-pkg-to-ir',
+  '/api/register-via-assembler',
+  // 단체여행 RFQ
+  '/group-inquiry',
+  // Meta webhook
+  '/api/webhooks/instagram',
+  '/api/webhooks/threads',
+  // 카카오 웹훅
+  '/api/webhooks/kakao',
+  // 블로그
+  '/api/rss',
+  '/api/blog-engagement',
+  // ISR 캐시 무효화
+  '/api/revalidate',
+  // 크론 (서버-to-서버)
   '/api/cron/meta-optimize',
   '/api/cron/visual-baseline-monitor',
   '/api/cron/journey-scheduler',
   '/api/cron/rfq-timeout',
-  '/api/concierge/search',
-  '/api/concierge/cart',
-  '/api/concierge/checkout',
-  '/concierge',
-  '/tenant',
-  '/share',
-  '/api/share',
-  '/api/packages',
-  '/api/attractions',
-  // Programmatic SEO (Booking.com 패턴 — 공개)
-  '/things-to-do',
-  // Phase 1.5 IR 파이프 (Canary) — 내부 admin CLI/Agent 호출용
-  '/api/register-via-ir',
-  '/api/audit-pkg-to-ir',
-  '/api/register-via-assembler',
-  // 단체여행 RFQ (고객 인터뷰 → 공고 → 채팅 → 계약)
-  '/group',
-  '/group-inquiry',
-  '/rfq',
-  '/api/rfq',
-  '/api/tenant/rfqs',
-  // 광고 트래킹 (비회원 이벤트 수집 필요)
-  '/api/tracking',
-  // 크론 (서버-to-서버 호출)
   '/api/cron/post-travel',
   '/api/cron/ad-optimizer',
   '/api/cron/settlement-auto',
   '/api/cron/sync-creative-performance',
   '/api/cron/auto-archive',
+  '/api/cron/resweep-unmatched',
   '/api/cron/embed-products',
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
@@ -61,42 +57,78 @@ const PUBLIC_PATHS = [
   '/api/cron/dlq-replay',
   '/api/cron/payment-heartbeat',
   '/api/cron/booking-tasks-runner',
-  // Meta webhook (GET verify + POST event). 서명 검증 내부에서 수행.
-  '/api/webhooks/instagram',
-  '/api/webhooks/threads',
-  // 인플루언서 포털 (자체 PIN 인증)
-  '/influencer',
-  '/api/influencer',
-  // 어필리에이터 단축링크 + 임베드 위젯 + 동적 OG 이미지
-  '/r',
-  '/embed',
-  '/api/og',
-  // 파트너 신청 (공개)
-  '/partner-apply',
-  '/api/partner-apply',
-  // 고객용 상품 페이지 (공개)
-  '/products',
-  // 추천 API (비회원도 사용)
-  '/api/recommendations',
-  // 카카오 웹훅 (외부 수신)
-  '/api/webhooks/kakao',
-  // 블로그 (공개 콘텐츠)
-  '/blog',
-  '/blog/destination',
-  '/api/blog',
-  '/api/rss',
-  '/api/blog-engagement',
-  // 여행지 허브 (공개 Pillar)
-  '/destinations',
-  // 리뷰 수집 + 조회 (고객용, booking_id 기반 인증)
-  '/review',
-  '/api/reviews',
-  // ISR 캐시 무효화 (시크릿 기반 인증)
-  '/api/revalidate',
+  '/api/cron/scoring-recompute',
+  '/api/cron/land-operator-reliability',
+  '/api/cron/payment-rules-learn',
+  '/api/cron/payment-stale-alert',
+  '/api/cron/refresh-seasonal',
+  '/api/cron/ltr-funnel-report',
+  '/api/cron/policy-ab-compare',
+  '/api/cron/rag-incremental',
+  // concierge 개별 엔드포인트
+  '/api/concierge/search',
+  '/api/concierge/cart',
+  '/api/concierge/checkout',
+  // 기타
+  '/api/tenant/rfqs',
+  '/api/tracking/recommendation',
+]);
+
+// 하위 경로까지 공개가 필요한 prefix — 짧은 배열, 정확 일치 실패 시에만 검사
+const PUBLIC_PREFIXES = [
+  '/packages/',
+  '/blog/',
+  '/api/blog/',
+  '/products/',
+  '/concierge/',
+  '/tenant/',
+  '/share/',
+  '/api/share/',
+  '/api/attractions/',
+  '/things-to-do/',
+  '/group/',
+  '/rfq/',
+  '/api/rfq/',
+  '/api/tracking/',
+  '/api/og/',
+  '/influencer/',
+  '/api/influencer/',
+  '/r/',
+  '/embed/',
+  '/partner-apply/',
+  '/api/partner-apply/',
+  '/api/recommendations/',
+  '/destinations/',
+  '/review/',
+  '/api/reviews/',
+  '/free-travel/',
+  '/api/free-travel/',
+  '/blog/destination/',
 ];
 
-function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'));
+// 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
+const PUBLIC_EXACT_SHORT = new Set([
+  '/blog', '/api/blog', '/products', '/concierge', '/tenant', '/share',
+  '/api/share', '/api/attractions', '/group', '/rfq', '/api/rfq',
+  '/api/tracking', '/api/og', '/influencer', '/api/influencer',
+  '/r', '/embed', '/partner-apply', '/api/partner-apply',
+  '/api/recommendations', '/destinations', '/review', '/api/reviews',
+  '/free-travel', '/api/free-travel', '/blog/destination',
+]);
+
+function isPublicPath(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // /api/packages는 GET 요청만 PUBLIC 허용
+  if (pathname === '/api/packages' || pathname.startsWith('/api/packages/')) {
+    return request.method === 'GET';
+  }
+
+  // O(1) 정확 일치
+  if (PUBLIC_EXACT.has(pathname) || PUBLIC_EXACT_SHORT.has(pathname)) return true;
+
+  // prefix 매칭 (정확 일치 실패 시에만 실행, 배열 크기 ~27개)
+  return PUBLIC_PREFIXES.some(p => pathname.startsWith(p));
 }
 
 // JWT 페이로드를 로컬에서 디코딩해 만료 여부 확인 (네트워크 콜 없음)
@@ -160,7 +192,7 @@ export function middleware(request: NextRequest) {
   }
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
-  if (isPublicPath(pathname)) {
+  if (isPublicPath(request)) {
     return response || NextResponse.next();
   }
 
