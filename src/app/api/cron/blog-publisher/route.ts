@@ -6,6 +6,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateBlogPost, generateBlogSeo, AngleType } from '@/lib/content-generator';
 import { notifyIndexing } from '@/lib/indexing';
 import { withCronLogging } from '@/lib/cron-observability';
+import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
+import { appendInterlinkSection } from '@/lib/topical-authority';
+import { computeReadability } from '@/lib/blog-readability';
+import { indexBlog } from '@/lib/jarvis/rag/indexer';
 
 /**
  * 블로그 자동 발행 크론 — 매시간 정각 실행 (vercel.json: 0 * * * *)
@@ -31,7 +35,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-const MAX_BATCH = 10;
+const MAX_BATCH = 3; // 10건×20초=200s → Vercel 300s 한계 근접, 3건으로 안전마진 확보
 const MAX_ATTEMPTS = 2;
 
 async function runBlogPublisher(request: NextRequest) {
@@ -80,8 +84,38 @@ async function runBlogPublisher(request: NextRequest) {
       if (r.status === 'published') {
         const slug = r.reason;
         if (slug) {
-          notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl).catch(() => { /* noop */ });
+          // 색인 요청 + 결과를 DB에 저장 (auto-pilot 모니터링)
+          notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
+            .then(report => {
+              return supabaseAdmin.from('indexing_reports').insert({
+                url: report.url,
+                google_status: report.google,
+                google_error: report.google_error ?? null,
+                indexnow_status: report.indexnow,
+                indexnow_error: report.indexnow_error ?? null,
+                sitemap_pings: report.sitemap_pings,
+                duration_ms: report.duration_ms,
+              });
+            })
+            .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ });
           try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
+
+          // 🆕 자비스 RAG 자동 인덱싱 (v5, 2026-04-30) — 발행 즉시 자비스 학습
+          (async () => {
+            try {
+              const { data: cc } = await supabaseAdmin
+                .from('content_creatives')
+                .select('id')
+                .eq('slug', slug)
+                .eq('status', 'published')
+                .order('published_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (cc?.id) await indexBlog(cc.id);
+            } catch (e) {
+              console.warn('[blog-publisher] RAG 인덱싱 실패 (비중단):', e instanceof Error ? e.message : e);
+            }
+          })().catch(() => {});
         }
       }
     }
@@ -132,11 +166,36 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
       generated = await generateFromTopic(item);
     }
 
+    // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
+    try {
+      generated.blog_html = await appendInterlinkSection(generated.blog_html, generated.slug, item.destination);
+    } catch { /* interlink 실패는 발행을 막지 않음 */ }
+
+    // Cold-start safety: AI가 internal link / CTA를 빠뜨렸을 때 표준 CTA 블록을 주입
+    // links-gate(내부링크 ≥1) + cta-gate(링크 ≥2) 동시 통과
+    const internalLinkCount = (generated.blog_html.match(/\[([^\]]+)\]\(\/[^)]*\)/g) || []).length;
+    const mdLinkCount = (generated.blog_html.match(/\[([^\]]+)\]\((?:\/|https?:\/\/)[^)]*\)/g) || []).length;
+    if ((internalLinkCount < 1 || mdLinkCount < 2) && item.destination) {
+      const dest = encodeURIComponent(item.destination);
+      generated.blog_html += `\n\n---\n\n> **여소남 ${item.destination} 패키지 보기** — [항공+호텔+일정 한번에 확인](/packages?destination=${dest}) | [카카오톡 무료 상담](https://pf.kakao.com/_xfxnFj/chat)\n`;
+    }
+
+    // 🆕 가독성 점수 계산 (한국어 휴리스틱)
+    const readability = computeReadability(generated.blog_html);
+
     // 4-Gate (length · cliche · duplicate · keyword_density)
     const blogType: 'product' | 'info' = item.product_id ? 'product' : 'info';
-    const primaryKeyword = item.destination
-      || (item.meta?.keywords as string[] | undefined)?.[0]
-      || null;
+    // Pillar posts: skip keyword density (destination name dominates by design)
+    // Compound destinations (X/Y/Z): use only first city to avoid inflated density
+    const rawKeyword = item.source === 'pillar'
+      ? null
+      : (item.primary_keyword
+          || item.destination
+          || (item.meta?.keywords as string[] | undefined)?.[0]
+          || null);
+    const primaryKeyword = rawKeyword?.includes('/')
+      ? rawKeyword.split('/')[0].trim()
+      : rawKeyword;
 
     const qa = await runQualityGates({
       blog_html: generated.blog_html,
@@ -176,6 +235,8 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
         pillar_for: item.source === 'pillar' ? item.destination : null,
         landing_enabled: !!item.product_id,
         target_ad_keywords: item.meta?.keywords ?? [],
+        readability_score: readability.score,
+        readability_issues: readability.issues,
         generation_meta: { queue_item_id: item.id, ...(item.meta || {}) },
       })
       .select('id')
@@ -211,18 +272,21 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
       return { id: item.id, topic: item.topic, status: 'published', reason: creativeId };
     }
 
-    await handleFailure(item, msg, null);
+    // 컨텍스트 부족(관광지+상품 0)은 재시도해도 동일 결과 → 즉시 permanently failed
+    const isUnrecoverable = msg.includes('컨텍스트 부족');
+    await handleFailure(item, msg, null, isUnrecoverable);
     return { id: item.id, topic: item.topic, status: 'error', reason: msg };
   }
 }
 
-async function handleFailure(item: any, reason: string, qa: any) {
+async function handleFailure(item: any, reason: string, qa: any, forceFailure = false) {
   const attempts = (item.attempts || 0) + 1;
-  const finalStatus = attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
+  const finalStatus = forceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
 
   await supabaseAdmin.from('blog_topic_queue')
     .update({
       status: finalStatus,
+      attempts,
       last_error: reason,
       // 재시도 시 2시간 뒤로 미룸
       target_publish_at: finalStatus === 'queued'
@@ -343,8 +407,18 @@ async function generatePillar(item: any): Promise<GeneratedBlog> {
     generationConfig: { temperature: 0.65 },
   });
 
-  const prompt = `${styleGuide}
+  // Pillar는 head tier — SERP 경쟁 분석 주입 (7일 캐시 활용)
+  let serpBlock = '';
+  const serpKw = item.primary_keyword || item.destination;
+  if (serpKw) {
+    try {
+      const serp = await analyzeSerp(serpKw, 'naver_blog');
+      serpBlock = buildSerpPromptBlock(serp);
+    } catch { /* SERP 실패 시 미주입 — 발행 계속 */ }
+  }
 
+  const prompt = `${styleGuide}
+${serpBlock ? `\n${serpBlock}\n` : ''}
 ---
 
 ## Pillar Page 작성 지시 (이건 정보성 최상위 허브)
@@ -447,10 +521,12 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
 
   const blog_html = generateBlogPost(product, angle, attractions);
   const seo = generateBlogSeo(product, angle);
+  // Append product ID suffix to prevent slug collisions between same-destination products
+  const slug = `${seo.slug}-${product.id.slice(-6)}`;
 
   return {
     blog_html,
-    slug: seo.slug,
+    slug,
     seo_title: seo.seoTitle,
     seo_description: seo.seoDescription,
     og_image_url: product.hero_image_url || attractions[0]?.photos?.[0]?.src_medium || null,
@@ -480,6 +556,53 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     generationConfig: { temperature: 0.7 },
   });
 
+  // 키워드 tier 기반 SEO 분기
+  const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
+  const primaryKw = item.primary_keyword || item.destination || item.topic.split(' ')[0];
+  const volume = item.monthly_search_volume;
+  const trendScore = item.trend_score;
+
+  const tierGuidance: Record<string, string> = {
+    head: `
+## SEO Tier: HEAD (고경쟁 · 검색량 ${volume ?? '?'})
+- 본문 2,500~3,500자 (Pillar 수준 장문)
+- H2 7~9개 (목차로 구조화 — TOC 자동 생성됨)
+- 첫 H2 안에 ${primaryKw} 정의/위치/한 줄 요약
+- 내부링크 ≥3 (관련 longtail 글로 분산)
+- E-E-A-T 강화: "여소남이 직접 검토한", "운영팀이 ${new Date().getFullYear()}년 ${new Date().getMonth() + 1}월 확인" 1회 이상
+- FAQ schema 호환 H2 1개 ("자주 묻는 질문")
+`,
+    mid: `
+## SEO Tier: MID (중경쟁 · 검색량 ${volume ?? '?'})
+- 본문 1,800~2,500자
+- H2 5~7개
+- 검색 의도 직답 — 첫 200자 안에 ${primaryKw}의 핵심 답 제시
+- 비교/리스트형 구조 권장 (월별 표·체크리스트·Top N)
+- 내부링크 ≥2 (head 글 + 다른 mid 글)
+`,
+    longtail: `
+## SEO Tier: LONGTAIL (저경쟁 · 검색량 ${volume ?? '?'})
+- 본문 1,500자 이상
+- H2 5개
+- 매우 구체적 사용자 시나리오에 1:1 답변 (예: "${primaryKw} 검색하는 사람의 1순위 궁금증 = 가격/일정/포함")
+- 상품 랜딩(/packages?destination=...)으로 강한 CTA
+- 내부링크 ≥1 (head pillar로)
+`,
+  };
+
+  const trendBlock = trendScore && trendScore > 30
+    ? `\n## ⚡ 트렌드 신호\n- 트렌드 점수: ${trendScore}/100 — "지금 검색되는" 토픽\n- 도입부에 "최근 ${new Date().getMonth() + 1}월 검색 급증", "지금 한국인이 가장 많이 묻는" 같은 신선도 트리거 포함\n- 데이터 출처 추정 → 출처 한 줄 명시 ("트렌드 분석 기준")\n` : '';
+
+  // SERP 분석 (HEAD/MID tier만 — longtail은 SERP 가치 낮음 + API 쿼터 절약)
+  let serpBlock = '';
+  let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
+  if ((tier === 'head' || tier === 'mid') && primaryKw) {
+    try {
+      serpData = await analyzeSerp(primaryKw, 'naver_blog');
+      serpBlock = buildSerpPromptBlock(serpData);
+    } catch { /* SERP 실패 시 미주입 — 발행은 계속 */ }
+  }
+
   const prompt = `${styleGuide}
 
 ---
@@ -489,16 +612,23 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 **주제**: ${item.topic}
 ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **카테고리**: ${item.category || 'travel_tips'}
-**키워드**: ${(item.meta?.keywords || []).join(', ')}
+**Primary Keyword**: ${primaryKw}
+**부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
-## 출력
+${tierGuidance[tier]}
+${trendBlock}
+${serpBlock}
+
+## 공통 출력 규칙
 - 마크다운 형식만 (코드블록 감싸지 말 것)
-- H1 첫 줄에 주제 키워드 포함
-- H2 5~7개
-- 전체 1500자 이상
+- H1 첫 줄에 ${primaryKw} 포함
 - 핵심 문장은 ==...== 로 감싸 하이라이트 처리 (H2당 1개)
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
-- 마지막에 CTA: "여소남에서 안심 여행 준비하세요 — [yeosonam.com](https://yeosonam.com)"`;
+- 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
+- 3-Tier CTA 분산:
+  - 도입부: [관련 패키지 보기](/packages?destination=${encodeURIComponent(item.destination || '')}?utm=blog_top)
+  - 중간: [여소남 큐레이터에게 문의](https://yeosonam.com?utm=blog_mid)
+  - 마지막: [여소남에서 안심 여행 준비하세요](https://yeosonam.com?utm=blog_bottom)`;
 
   const result = await model.generateContent(prompt);
   const raw = result.response.text();
@@ -512,8 +642,10 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
   const expected = item.meta?.expected_slug;
   const slug = expected || slugifyTopic(item.topic);
 
-  const year = new Date().getFullYear();
-  const seo_title = item.topic.substring(0, 55);
+  // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
+  const seo_title = serpData
+    ? buildOptimalTitle(item.topic, serpData, tier)
+    : item.topic.substring(0, 55);
   const seo_description = `${item.topic} · 여소남이 정리한 실전 가이드. 준비물·비용·일정까지 꼼꼼하게.`.substring(0, 160);
 
   return {

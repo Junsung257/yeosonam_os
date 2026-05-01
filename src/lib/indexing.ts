@@ -91,18 +91,35 @@ export async function notifyIndexing(
     report.indexnow_error = err instanceof Error ? err.message : String(err);
   }
 
-  // 3. Sitemap ping (Bing/네이버용 — 구글은 2023년 폐지됐지만 호환성 유지)
+  // 3. Sitemap ping (Bing) + WebSub/PubSubHubbub ping (Google Feedfetcher)
+  //    WebSub: Google이 구독하는 공개 허브에 RSS URL을 알려 즉시 재크롤링 유도.
+  //    Service Account 없이 Google에 새 글을 알리는 표준 방식 (WordPress/Blogger 동일 방식).
   if (pingSitemap) {
+    const rssUrl = `${baseUrl}/api/rss`;
     const pings = [
       { name: 'bing', url: `https://www.bing.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}` },
     ];
     for (const p of pings) {
       try {
-        const r = await fetch(p.url);
+        const r = await fetch(p.url, { method: 'GET' });
         report.sitemap_pings.push({ provider: p.name, ok: r.ok });
       } catch {
         report.sitemap_pings.push({ provider: p.name, ok: false });
       }
+    }
+
+    // Google WebSub/PubSubHubbub — form body 필수 (query param 방식은 411 에러)
+    try {
+      const body = `hub.mode=publish&hub.url=${encodeURIComponent(rssUrl)}`;
+      const r = await fetch('https://pubsubhubbub.appspot.com/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      // 204 No Content = 수락, 그 외는 실패
+      report.sitemap_pings.push({ provider: 'google_websub', ok: r.status === 204 });
+    } catch {
+      report.sitemap_pings.push({ provider: 'google_websub', ok: false });
     }
   }
 
