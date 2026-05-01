@@ -39,12 +39,13 @@ export default function GlobalNav() {
   useEffect(() => {
     if (drawerOpen) {
       const original = document.body.style.overflow;
+      const hamburgerEl = hamburgerBtnRef.current;
       document.body.style.overflow = 'hidden';
       const t = setTimeout(() => drawerCloseBtnRef.current?.focus(), 50);
       return () => {
         clearTimeout(t);
         document.body.style.overflow = original;
-        hamburgerBtnRef.current?.focus();
+        hamburgerEl?.focus();
       };
     }
   }, [drawerOpen]);

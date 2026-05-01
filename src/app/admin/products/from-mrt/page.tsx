@@ -80,7 +80,7 @@ export default function FromMrtPage() {
       setError(e instanceof Error ? e.message : '검색 실패');
     } finally {
       setLoading(false); }
-  }, [query, type, nights, destination, selectedCategory]);
+  }, [query, type, nights, selectedCategory]);
 
   const handleRegister = useCallback(async (r: SearchResult) => {
     const key = (r.item as StayResult).providerId ?? (r.item as ActivityResult).providerId;

@@ -115,7 +115,7 @@ export default async function PackagesPage({
     .limit(300);
 
   // 그룹 1위 패키지 ID + 추천 사유 (추천 뱃지 + 툴팁용)
-  const pkgIds = (packages ?? []).map(p => p.id).filter(Boolean);
+  const pkgIds = (packages ?? []).map((p: { id?: string }) => p.id).filter(Boolean) as string[];
   let recommendedIds: string[] = [];
   let recommendedReasonMap: Record<string, string[]> = {};
   if (pkgIds.length > 0) {

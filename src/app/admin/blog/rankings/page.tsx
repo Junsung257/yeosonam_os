@@ -6,7 +6,7 @@
  * - 미해결 이탈 경보
  * - Top movers (상승/하락)
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 
 interface TopRow {
@@ -42,7 +42,7 @@ export default function BlogRankingsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [running, setRunning] = useState(false);
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     const [sumRes, movRes, alertRes] = await Promise.all([
       fetch(`/api/admin/rank-dashboard?days=${days}`).then(r => r.json()),
       fetch(`/api/admin/rank-dashboard?view=top_movers&days=${days}`).then(r => r.json()),
@@ -51,9 +51,9 @@ export default function BlogRankingsPage() {
     setSummary(sumRes);
     setMovers(movRes);
     setAlerts(alertRes.alerts || []);
-  };
+  }, [days]);
 
-  useEffect(() => { fetchAll(); }, [days]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const triggerCron = async () => {
     setRunning(true);

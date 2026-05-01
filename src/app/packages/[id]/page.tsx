@@ -193,7 +193,7 @@ export default async function PackageDetailPage({
       sbAdmin
         .from('unmatched_activities')
         .upsert(upsertPayload, { onConflict: 'activity' })
-        .then(({ error }) => {
+        .then(({ error }: { error: { message: string } | null }) => {
           if (error) console.error('[unmatched upsert 실패]', error.message);
         });
     }
@@ -311,12 +311,12 @@ export default async function PackageDetailPage({
       sb.from('bookings').select('id', { count: 'exact', head: true })
         .eq('status', 'confirmed').gte('created_at', since)
         .in('package_id',
-          (await sb.from('travel_packages').select('id').eq('destination', pkg.destination)).data?.map(p => p.id) ?? []
+          (await sb.from('travel_packages').select('id').eq('destination', pkg.destination)).data?.map((p: { id: string }) => p.id) ?? []
         ),
       sb.from('package_score_signals').select('id', { count: 'exact', head: true })
         .gte('created_at', since)
         .in('package_id',
-          (await sb.from('travel_packages').select('id').eq('destination', pkg.destination)).data?.map(p => p.id) ?? []
+          (await sb.from('travel_packages').select('id').eq('destination', pkg.destination)).data?.map((p: { id: string }) => p.id) ?? []
         ),
     ]);
     socialProof = { bookings: bk.count ?? 0, interest: sg.count ?? 0 };
