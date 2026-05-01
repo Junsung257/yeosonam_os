@@ -4,7 +4,7 @@
  * ══════════════════════════════════════════════════════════
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getWinningPatterns } from './get-patterns';
 import type { ParsedProductData } from './parse-product';
 import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
@@ -93,8 +93,7 @@ async function generateOneCopy(
   template: string,
   patternExample?: any,
 ): Promise<{ primary_text: string; headline: string; description: string; pexels_keyword: string }> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
+  if (!hasBlogApiKey()) {
     return {
       primary_text: `${data.destination} ${data.nights}박${data.days}일 ${data.base_price.toLocaleString()}원`,
       headline: `${data.destination} 노팁 패키지`,
@@ -102,9 +101,6 @@ async function generateOneCopy(
       pexels_keyword: `${data.destination} beach resort`,
     };
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { temperature: 0.8 } });
 
   const templatePrompt = TEMPLATE_PROMPTS[template]?.(data) ?? '';
   const patternGuide = patternExample?.best_headline
@@ -114,9 +110,7 @@ async function generateOneCopy(
   const prompt = `${SYSTEM}\n\n상품:\n${JSON.stringify(data)}\n\n${templatePrompt}${patternGuide}`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text()
-      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const text = await generateBlogJSON(prompt, { temperature: 0.8 });
     return JSON.parse(text);
   } catch {
     return {

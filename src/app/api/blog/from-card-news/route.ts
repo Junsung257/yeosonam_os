@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { updateFactoryJobStep } from '@/lib/content-factory-step';
+import { generateBlogJSON, generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, ANGLE_PRESETS } from '@/lib/content-generator';
 import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
 import { calculateSeoScore } from '@/lib/seo-scorer';
@@ -9,6 +10,7 @@ import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/p
 import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { ContentBrief } from '@/lib/validators/content-brief';
+import { pickMarketingPrice } from '@/lib/marketing-price';
 
 export const maxDuration = 60;
 
@@ -56,8 +58,7 @@ export async function POST(request: NextRequest) {
       ? slide_image_urls
       : [];
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
+    if (!hasBlogApiKey()) {
       return NextResponse.json({ error: 'AI API 키 미설정' }, { status: 503 });
     }
 
@@ -194,7 +195,7 @@ export async function POST(request: NextRequest) {
         const attractions: any[] = attrData || [];
         const baseBlog = generateBlogPost(productData, angleType as any, attractions);
         blogHtml = await geminiRewriteWithHybridImages({
-          baseBlog, cardNewsImages, pkg: productData, angle: angleType, apiKey, isProduct: true,
+          baseBlog, cardNewsImages, pkg: productData, angle: angleType, isProduct: true,
         });
         const seo = generateBlogSeo(productData, angleType as any);
         slug = seo.slug + '-cn';
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest) {
             .limit(1);
           if (cat?.[0]) categoryLabel = cat[0].label;
         }
-        blogHtml = await generateInfoBlog({ topic, categoryLabel, cardNewsImages, apiKey });
+        blogHtml = await generateInfoBlog({ topic, categoryLabel, cardNewsImages });
         const slugBase = topic.toLowerCase().replace(/[^a-z0-9가-힣\s]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
         slug = `${slugBase}-cn`;
         const year = new Date().getFullYear();
@@ -280,6 +281,9 @@ export async function POST(request: NextRequest) {
 
     revalidatePath('/blog');
 
+    // blog_generate 스텝 완료 마킹 (fire-and-forget)
+    updateFactoryJobStep(card_news_id, 'blog_generate', 'done');
+
     return NextResponse.json({
       blog: creative,
       seo_score: seoScore,
@@ -300,21 +304,16 @@ async function geminiRewriteWithHybridImages(opts: {
   cardNewsImages: string[];
   pkg: any;
   angle: string;
-  apiKey: string;
   isProduct: boolean;
 }): Promise<string> {
-  const { baseBlog, cardNewsImages, pkg, angle, apiKey } = opts;
+  const { baseBlog, cardNewsImages, pkg, angle } = opts;
   const angleLabel = (ANGLE_PRESETS as any)[angle]?.label || angle;
   const dest = pkg.destination || '여행지';
   const nightsVal = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
   const dur = pkg.duration ? `${nightsVal}박${pkg.duration}일` : '';
-  const price = pkg.price ? `${pkg.price.toLocaleString()}원` : '';
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: BLOG_AI_TEMPERATURE },
-  });
+  // v3.2 마케팅 단일가격 fix
+  const marketingPrice = pickMarketingPrice(pkg);
+  const price = marketingPrice ? `${marketingPrice.toLocaleString()}원` : '';
 
   const cardImgList = cardNewsImages.map((u, i) => `  슬라이드${i+1}: ${u}`).join('\n');
 
@@ -357,8 +356,7 @@ ${baseBlog.substring(0, 3500)}
 - 상품 예약 URL 변경 금지`;
 
   try {
-    const result = await model.generateContent(prompt);
-    let aiText = result.response.text()
+    let aiText = (await generateBlogText(prompt, { temperature: BLOG_AI_TEMPERATURE }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     // 이미지 URL 오타 자동 복구
@@ -394,15 +392,8 @@ async function generateInfoBlog(opts: {
   topic: string;
   categoryLabel: string;
   cardNewsImages: string[];
-  apiKey: string;
 }): Promise<string> {
-  const { topic, categoryLabel, cardNewsImages, apiKey } = opts;
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: BLOG_AI_TEMPERATURE },
-  });
+  const { topic, categoryLabel, cardNewsImages } = opts;
 
   const cardImgList = cardNewsImages.map((u, i) => `  슬라이드${i+1}: ${u}`).join('\n');
 
@@ -426,8 +417,7 @@ ${categoryLabel || '여행 정보'}
 
   let outline: { h2: string; pexels_keyword: string }[] = [];
   try {
-    const outlineResult = await model.generateContent(outlinePrompt);
-    const outlineText = outlineResult.response.text()
+    const outlineText = (await generateBlogJSON(outlinePrompt, { temperature: BLOG_AI_TEMPERATURE }))
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
     try {
       outline = JSON.parse(outlineText);
@@ -531,8 +521,7 @@ ${lastImage && lastImage !== h1Image ? `![${topic} 여소남](${lastImage})` : '
 - 브랜드명: 여소남 (여행 플랫폼)`;
 
   try {
-    const result = await model.generateContent(bodyPrompt);
-    let aiText = result.response.text()
+    let aiText = (await generateBlogText(bodyPrompt, { temperature: BLOG_AI_TEMPERATURE }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     aiText = aiText
@@ -583,18 +572,19 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
     .replace(/[^a-z0-9가-힣-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-    .substring(0, 180);
+    .substring(0, 180) || 'article';
 
   const { data } = await supabaseAdmin
     .from('content_creatives')
     .select('slug')
     .like('slug', `${sanitized}%`)
-    .not('slug', 'is', null);
+    .not('slug', 'is', null)
+    .limit(1000);
 
   const existing = new Set((data || []).map((r: { slug: string }) => r.slug));
   if (!existing.has(sanitized)) return sanitized;
 
   let i = 2;
-  while (existing.has(`${sanitized}-${i}`)) i++;
+  while (existing.has(`${sanitized}-${i}`) && i < 1000) i++;
   return `${sanitized}-${i}`;
 }

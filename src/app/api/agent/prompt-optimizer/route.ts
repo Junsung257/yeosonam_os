@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 
 /**
  * 블로그 프롬프트 자동 개선 엔진 (스켈레톤)
@@ -86,8 +86,7 @@ export async function POST(_request: NextRequest) {
     const bottomPosts = scored.slice(-topN);
 
     // AI 분석
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
+    if (!hasBlogApiKey()) {
       return NextResponse.json({ error: 'AI API 미설정' }, { status: 503 });
     }
 
@@ -105,11 +104,6 @@ export async function POST(_request: NextRequest) {
       score: Math.round(p.score),
     });
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { temperature: 0.3 },  // 분석용이므로 낮은 temp
-    });
 
     const prompt = `너는 블로그 SEO 및 전환율 최적화 전문가다.
 아래는 우리 여행 플랫폼 여소남의 블로그 성과 데이터다.
@@ -140,8 +134,7 @@ ${JSON.stringify(bottomPosts.map(summarize), null, 2)}
 
 반드시 위 JSON 형식만 출력하라. 마크다운 코드블록 금지.`;
 
-    const result = await model.generateContent(prompt);
-    const analysisText = result.response.text()
+    const analysisText = (await generateBlogJSON(prompt, { temperature: 0.3 }))
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     let analysis: any = null;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { runQualityGates } from '@/lib/blog-quality-gate';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, AngleType } from '@/lib/content-generator';
 import { notifyIndexing } from '@/lib/indexing';
 import { withCronLogging } from '@/lib/cron-observability';
@@ -71,7 +71,7 @@ async function runBlogPublisher(request: NextRequest) {
       try {
         const r = await processQueueItem(item);
         results.push(r);
-        if (r.status !== 'published') {
+        if (r.status !== 'published' && r.status !== 'done') {
           errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
@@ -159,6 +159,19 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
     if (item.source === 'pillar' && item.destination) {
       generated = await generatePillar(item);
     } else if (item.card_news_id) {
+      // 어드민 직접 생성과 중복 방지: linked_blog_id 이미 있으면 done 처리
+      const { data: cnCheck } = await supabaseAdmin
+        .from('card_news')
+        .select('linked_blog_id')
+        .eq('id', item.card_news_id)
+        .limit(1);
+      if (cnCheck?.[0]?.linked_blog_id) {
+        await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({ status: 'done', meta: { ...(item.meta || {}), skip_reason: 'already_generated_by_admin' } })
+          .eq('id', item.id);
+        return { id: item.id, topic: item.topic, status: 'done', reason: 'already_generated_by_admin' };
+      }
       generated = await generateFromCardNews(item);
     } else if (item.source === 'product' && item.product_id) {
       generated = await generateFromProduct(item);
@@ -382,8 +395,7 @@ async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
  * 결과는 content_type='pillar', pillar_for=destination 으로 저장됨 (publisher가 처리)
  */
 async function generatePillar(item: any): Promise<GeneratedBlog> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY 없음 — pillar 생성 불가');
+  if (!hasBlogApiKey()) throw new Error('AI API 키 없음 — pillar 생성 불가');
 
   const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
   const ctx = await buildPillarContext(item.destination);
@@ -399,13 +411,6 @@ async function generatePillar(item: any): Promise<GeneratedBlog> {
 
   const styleGuide = promptRow?.[0]?.content || '';
   const promptVersion = promptRow?.[0]?.version || 'v1.0';
-
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: { temperature: 0.65 },
-  });
 
   // Pillar는 head tier — SERP 경쟁 분석 주입 (7일 캐시 활용)
   let serpBlock = '';
@@ -461,8 +466,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
 
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text();
+  const raw = await generateBlogText(prompt, { temperature: 0.65 });
   const blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -534,9 +538,8 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
 }
 
 async function generateFromTopic(item: any): Promise<GeneratedBlog> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GOOGLE_AI_API_KEY 미설정 — 정보성 블로그 생성 불가');
+  if (!hasBlogApiKey()) {
+    throw new Error('AI API 키 미설정 — 정보성 블로그 생성 불가');
   }
 
   // 활성 스타일 가이드 로드 (prompt_versions 에서 active 버전)
@@ -549,12 +552,6 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 
   const styleGuide = promptRow?.[0]?.content || '';
   const promptVersion = promptRow?.[0]?.version || 'v1.0';
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: { temperature: 0.7 },
-  });
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -630,8 +627,7 @@ ${serpBlock}
   - 중간: [여소남 큐레이터에게 문의](https://yeosonam.com?utm=blog_mid)
   - 마지막: [여소남에서 안심 여행 준비하세요](https://yeosonam.com?utm=blog_bottom)`;
 
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text();
+  const raw = await generateBlogText(prompt, { temperature: 0.7 });
   const blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')

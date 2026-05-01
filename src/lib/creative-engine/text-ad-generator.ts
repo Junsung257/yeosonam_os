@@ -4,7 +4,7 @@
  * ══════════════════════════════════════════════════════════
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import type { ParsedProductData } from './parse-product';
 
 // ── 키워드 그룹 정의 ───────────────────────────────────────
@@ -97,11 +97,7 @@ async function generateTextCopies(
   group: typeof KEYWORD_GROUPS[string],
   channel: string,
 ): Promise<{ title1: string; title2: string; description: string }[]> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return buildFallbackCopies(data, groupKey);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { temperature: 0.7 } });
+  if (!hasBlogApiKey()) return buildFallbackCopies(data, groupKey);
 
   const prompt = `당신은 ${channel === 'naver' ? '네이버' : '구글'} 검색광고 카피라이터입니다.
 검색 의도: ${group.intent}
@@ -123,9 +119,7 @@ async function generateTextCopies(
 [{"title1":"...","title2":"...","description":"..."}]`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text()
-      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const text = await generateBlogJSON(prompt, { temperature: 0.7 });
     return JSON.parse(text);
   } catch {
     return buildFallbackCopies(data, groupKey);

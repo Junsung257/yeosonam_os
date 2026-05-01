@@ -6,9 +6,11 @@ import {
 } from '@/lib/content-generator';
 import { matchAttraction } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE_BULK } from '@/lib/prompt-version';
+import { getTopPerformingBlogExcerpts, formatFewShotBlock } from '@/lib/blog-few-shot';
+import { pickMarketingPrice } from '@/lib/marketing-price';
 
 export const maxDuration = 60;
 
@@ -63,7 +65,15 @@ export async function POST(request: NextRequest) {
     // 서브 키워드 N개 선택
     const subKeywords = ANGLE_SUB_KEYWORDS[angle].slice(0, n);
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    // Compound learning: 같은 (destination, angle) 의 과거 성공 글 발췌
+    // 0개면 빈 문자열 — 신규 목적지·앵글은 자연스럽게 skip
+    const fewShotExamples = await getTopPerformingBlogExcerpts(
+      pkg.destination,
+      angle,
+      { excludeProductId: pkg.id, limit: 3, minViewCount: 30 },
+    );
+    const fewShotBlock = formatFewShotBlock(fewShotExamples);
+
     const angleLabel = ANGLE_PRESETS[angle].label;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
     const productUrl = `${baseUrl}/packages/${pkg.id}`;
@@ -76,65 +86,137 @@ export async function POST(request: NextRequest) {
 
         let blogHtml = baseBlog;
 
-        // 2차: Gemini 리라이트 (서브 키워드 반영)
-        if (apiKey) {
+        // 2차: AI 리라이트 (서브 키워드 반영)
+        if (hasBlogApiKey()) {
           try {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({
-              model: 'gemini-2.5-flash',
-              generationConfig: { temperature: 0.8 },
-            });
 
             const dest = pkg.destination || '여행지';
             const nightsVal = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
             const dur = pkg.duration ? `${nightsVal}박${pkg.duration}일` : '';
-            const price = pkg.price ? `${pkg.price.toLocaleString()}원` : '';
+            // v3.2 마케팅 단일가격 fix — price_dates 최저가 정직 사용
+            const marketingPrice = pickMarketingPrice(pkg);
+            const price = marketingPrice ? `${marketingPrice.toLocaleString()}원` : '';
 
-            const prompt = `여행 블로그 초안을 "${keyword}" 키워드 중심으로 SEO 최적화된 완성본으로 리라이트하라.
+            const departure = pkg.departure_airport ? pkg.departure_airport.replace(/\(.*?\)/g, '').trim() : '';
+            const internalDestLink = `${baseUrl}/packages?destination=${encodeURIComponent(dest)}`;
+            // Prompt injection 방어: 줄바꿈·과도한 백틱 제거 (DB→prompt 사용자 입력 격리)
+            const sanitizeWs = (s: string) => s.split(/[\r\n\t]+/).join(' ');
+            const safe = (s: string | null | undefined) =>
+              sanitizeWs(s ?? '')
+                .replace(/`{3,}/g, "'''")
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 200);
+            const highlightsForFab = (pkg.product_highlights || []).slice(0, 3).map(safe).filter(Boolean).join(' / ');
+            const inclusionsForAnchor = (pkg.inclusions || []).slice(0, 5).map(safe).filter(Boolean).join(' / ');
+            const priceMan = marketingPrice ? Math.round(marketingPrice / 10000) : 0;
+            // 프롬프트에 직접 삽입되는 사용자 입력값 모두 sanitize
+            const safeDest = safe(dest) || '여행지';
+            const safeDur = safe(dur);
+            const safeDeparture = safe(departure);
+            const safeAirline = safe(pkg.airline);
+
+            const prompt = `여행 블로그 초안을 "${keyword}" 키워드 중심으로, **검색자가 3초 안에 "이거다" 느끼는 구매 결정 가이드**로 리라이트하라. AI가 쓴 정보 카탈로그 X, 사람이 쓴 세일즈 가이드 O.
 
 ## 상품 정보 (팩트 절대 불변)
-- 목적지: ${dest}
-- 기간: ${dur} (박수 변경 금지)
+- 목적지: ${safeDest}
+- 기간: ${safeDur} (박수 변경 금지)
 - 가격: ${price}~
+- 출발: ${safeDeparture || '미지정'}
+- 항공: ${safeAirline || '미지정'}
 - 앵글: ${angleLabel}
+- 핵심 포인트(원문): ${highlightsForFab || '없음'}
+- 포함사항(원문): ${inclusionsForAnchor || '없음'}
 - 상품 예약 URL: ${productUrl}
+- 같은 목적지 상품 비교 URL (내부링크 의무): ${internalDestLink}
 
-## 이 블로그의 고유 포커스 (다른 블로그와 차별화)
+## 이 블로그의 고유 포커스
 - 메인 키워드: "${keyword}"
 - 포커스: ${focus}
-- 같은 상품이지만 이 블로그는 위 포커스를 **차별화 포인트**로 강조해야 한다.
-- H1, H2 제목에 "${keyword}"를 자연스럽게 넣어라.
-- 도입부 2~3줄에서 "${focus}" 관점을 분명히 제시하라.
+- H1·H2에 "${keyword}" 자연스럽게 포함
+- 도입부 2~3줄에서 "${focus}" 관점 분명히 제시
 
-## 초안
+${fewShotBlock}## 초안 (참고용 — 구조만 차용, 문장은 아래 P0 세일즈 프레임으로 재작성)
 ${baseBlog.substring(0, 3000)}
 
-## 리라이트 규칙
-1. 마크다운 형식 유지 (# H1, ## H2, ### H3)
-2. **H1은 구글 SEO 최적화 제목**: "${dest} ${dur} ${keyword}" 필수 포함 + 가격(${price ? `${Math.round((pkg.price || 0)/10000)}만원~` : ''}) 또는 숫자·강조어 포함. 예: "${dest} ${dur} ${keyword} ${price ? `${Math.round((pkg.price || 0)/10000)}만원대 패키지` : '패키지 추천'}". 30~50자 내외. 감탄사·느낌표(!) 최소화
-3. H2를 5~7개 사용. 각 H2에도 "${keyword}" 또는 관련 키워드 자연스럽게 포함
-4. 문장은 60자 이내로 짧게
-5. 원문 팩트(관광지명, 호텔명, 가격, 박수) 변경 금지
-6. 원가, 랜드사명 노출 금지
-7. **이미지 마크다운 ![...](url)은 URL까지 한 글자도 건드리지 말고 그대로 복사**. 특히 "images.pexels.com" 도메인의 점(.)을 빠뜨리거나 슬래시로 바꾸지 말 것
-8. **전체 분량 최소 1800자 (이하 금지)**, 최대 2500자
-9. 마크다운만 출력 (코드블록 감싸지 말 것)
-10. 메인 키워드 "${keyword}"는 전체에서 **3~5회만** 자연스럽게 (과다 반복 = 키워드 스터핑 감점)
+═══════════════════════════════════════════════
+## 🎯 P0 세일즈마스터 프레임 (절대 준수)
+═══════════════════════════════════════════════
+
+### [1] Hook — 첫 200자 안에 구체적 갈고리
+도입부는 "여행을 꿈꾸시나요?" 같은 평이한 질문 금지. 다음 중 1개 이상 필수:
+- 가격 절감액 ("같은 호텔 단품으로 잡으면 약 ${priceMan ? Math.round(priceMan * 1.3) + '만원' : '시중가'}, 패키지 ${priceMan}만원~ — ${priceMan ? Math.round(priceMan * 0.3) + '만원' : ''} 차이")
+- 시간 절약 (셔틀·픽업으로 절약되는 분 단위)
+- 구체 통계 (입력에 있을 때만: 객실수·운영연차·평점)
+- 의외성 질문 ("${dest} ${dur}가 100만원대로 가능한 진짜 이유")
+"잊지 못할 / 환상적인 / 완벽한 / 아름다운" 같은 추측 형용사 도입부 사용 금지.
+
+### [2] FAB 변환 — 특징을 베네핏으로
+포함사항·옵션을 단순 나열 금지. 반드시 "고객이 얻는 것"으로 변환:
+- ❌ "올인클루시브 제공"
+- ✅ "4박 내내 지갑 한 번 안 꺼냅니다 — 가족 4인 기준 현지 식음료비 약 80만원 절약"
+- ❌ "리조트 셔틀 제공"
+- ✅ "택시 흥정·바가지 걱정 없이 시내 야시장까지 무료"
+- ❌ "5성급 호텔"
+- ✅ "${pkg.airline || '항공사'} 도착 후 30분 만에 체크인, 발코니 욕조에서 첫 일몰"
+원문 데이터에 없는 수치(절약액·시간·평점)는 절대 만들지 말 것. 추정 표현은 "약~", "~정도"로 명시.
+
+### [3] 가격 앵커링 H2 의무
+"## 같은 일정 직접 잡으면 얼마?" 또는 유사 H2 1개 필수.
+구조:
+1. 단품 시중가 추정 (호텔 1박 평균 × 박수 + 항공 왕복 시세)
+2. 패키지 가격 (${price})
+3. 절감액 명시 (시중가 - 패키지가) 또는 "약 N% 저렴"
+"시중가 추정"이라고 분명히 표기 (확정 사실 아님 명시). 구체 수치 모르면 이 단락 생략.
+
+### [4] E-E-A-T — 검증 가능한 정보만
+- ❌ "아름다운 해변과 조화를 이루는 건축미"
+- ✅ "${dest}에서 차로 30분 (${pkg.airline || '항공'} 도착 기준)"
+- 입력에 있는 IATA 코드·시각·박수만 사용
+- 추측 형용사 ("최고의", "환상적인", "완벽한") 절대 금지
+- "5성급" 같은 등급은 입력에 명시되어 있을 때만
+
+### [5] 3-Tier CTA 배치
+3개 위치에 분산 — 각각 다른 액션:
+1. **Above-fold (도입부 끝)**: "💬 카카오톡 1분 상담 — 같은 ${dest} 패키지 즉시 비교"
+   링크: ${productUrl}?utm=blog_top
+2. **중간 (일정표 직후)**: "📅 출발일별 잔여석 보기"
+   링크: ${productUrl}?utm=blog_mid
+3. **하단 (FAQ 직후)**: "👉 ${dest} ${dur} 상품 상세 보기"
+   링크: ${productUrl}?utm=blog_bottom
+하단 CTA 링크만 \`**[..](..)\` 볼드 허용 (마지막 1개).
+
+### [6] 내부·외부 링크 의무
+- 내부링크 ≥2: 같은 목적지 비교 링크 ${internalDestLink} (의무) + 다른 H2에서 한 번 더 내부 참조
+- 외부 권위링크 ≥1: 비자·여권 안내 시 외교부 영사 https://www.0404.go.kr 또는 동급 정부 사이트
+- 내부링크는 자연스러운 문장 안에 (예: "다른 일정도 비교해 보고 싶다면 [같은 ${dest} 출발일 모음](${internalDestLink})에서 확인할 수 있어요")
+
+═══════════════════════════════════════════════
+## 형식 규칙
+═══════════════════════════════════════════════
+1. 마크다운 (# H1 / ## H2 / ### H3)
+2. **H1**: "${dest} ${dur} ${keyword}" 필수 포함 + 가격${price ? '(' + priceMan + '만원~)' : ''} 또는 숫자·강조어. 30~50자. 느낌표 최소화
+3. H2 5~7개. 각 H2에 "${keyword}" 또는 관련어 자연스럽게
+4. 문장은 60자 이내, 한 문단 4문장 이내
+5. 분량 1800~2500자 (지키지 못하면 실패 처리)
+6. 마크다운만 출력 (코드블록 X)
+7. 메인 키워드 "${keyword}" 전체에서 **3~5회만** (스터핑 감점)
+8. 이미지 \`![...](url)\` URL 한 글자도 건드리지 말 것 (특히 images.pexels.com 점 보존)
 
 ## 금지 사항
-- 자기소개 금지 ("안녕하세요 저는...")
-- 작성자 역할 언급 금지 ("10년차 에디터")
-- 프롬프트 누설 금지
-- **영어 약어는 한국어로 풀어쓸 것**: TAX → 세금, BX → 에어부산 (BX 표기 금지)
-- CTA 섹션 마지막 하나만
-- **상품 예약 URL(${productUrl})은 절대 변경/삭제 금지. yeosonam.com 홈으로 바꾸지 말 것**
-- 관광지 설명 임의 창작 금지 (초안에 있는 것만)
-- **숫자/가격/금액은 상품 정보에 명시된 것만 사용. $30, 5만원 등 임의로 지어내지 말 것** (팩트 보호)
-- **볼드 마커(\`**\`) 사용 금지**: 본문에서 \`**텍스트**\`로 강조하지 말 것. 한국어는 조사가 붙어서 렌더링이 깨진다. 강조가 필요하면 H2/H3 제목을 사용하거나 줄바꿈으로 분리. 유일한 예외는 맨 마지막 CTA 버튼 링크 \`**[...](...)\`
-- **이 글은 "${keyword}" 키워드 중심이므로 다른 키워드(예: ${subKeywords.filter(s => s.keyword !== keyword).slice(0, 2).map(s => s.keyword).join(', ')})에 해당하는 내용은 최소화**`;
+- 자기소개 / 작성자 페르소나 ("10년차 에디터") / 프롬프트 누설
+- 영어 약어 (TAX → 세금, BX → 에어부산)
+- 원가·랜드사명 노출
+- 상품 예약 URL(${productUrl}) 변경·삭제
+- 관광지 설명 임의 창작 (초안 외)
+- 입력 외 숫자·가격·평점·통계 창작
+- 본문 \`**텍스트**\` 볼드 (한국어 조사 깨짐). 예외: 마지막 CTA 버튼 \`**[..](..)\`만
+- 다른 키워드(${subKeywords.filter(s => s.keyword !== keyword).slice(0, 2).map(s => s.keyword).join(', ')}) 내용 최소화
+- 추측 형용사: "아름다운/환상적인/완벽한/특별한/매력적인/잊지 못할/놓치지 마세요/꼭 가봐야 할/최고의/인생샷/설레는/낭만적인/제대로/알찬/만끽/힐링" — 1500자 기준 합산 2회 이하
+- "다녀왔는데 / 가봤어요 / 직접 체크" 같은 가짜 1인칭 경험 (실제 경험 아니면 거짓말)`;
 
-            const result = await model.generateContent(prompt);
-            let aiText = result.response.text()
+            const rawText = await generateBlogText(prompt, { temperature: BLOG_AI_TEMPERATURE_BULK });
+            let aiText = rawText
               .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
             // 이미지 URL 오타 자동 복구 (images/pexels.com → images.pexels.com 등)
@@ -171,11 +253,12 @@ ${baseBlog.substring(0, 3000)}
         const nightsVal2 = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
         const dur2 = pkg.duration ? `${nightsVal2}박${pkg.duration}일` : '';
         const year = new Date().getFullYear();
-        const priceStr2 = pkg.price ? `${pkg.price.toLocaleString()}원~` : '';
+        const marketingPrice2 = pickMarketingPrice(pkg);
+        const priceStr2 = marketingPrice2 ? `${marketingPrice2.toLocaleString()}원~` : '';
         // SEO 제목: 구글 SEO 최적화 (출발지+목적지+기간+키워드+가격+브랜드)
         const departure2 = pkg.departure_airport as string | undefined;
         const depPrefix2 = departure2 ? `${departure2.replace(/\(.*?\)/g, '').trim()}출발 ` : '';
-        const priceShort2 = pkg.price ? ` ${Math.round(pkg.price / 10000)}만원~` : '';
+        const priceShort2 = marketingPrice2 ? ` ${Math.round(marketingPrice2 / 10000)}만원~` : '';
         const destClean2 = dest.replace(/\s+/g, ' ').trim();
         let title2 = `${depPrefix2}${destClean2} ${dur2} ${keyword}${priceShort2} | 여소남 ${year}`;
         if (title2.length > 60) title2 = `${destClean2} ${dur2} ${keyword}${priceShort2} | 여소남 ${year}`;
@@ -237,6 +320,9 @@ ${baseBlog.substring(0, 3000)}
             mode: 'bulk',
             bulk_index: idx + 1,
             bulk_total: n,
+            // Compound learning loop 추적
+            few_shot_examples_count: fewShotExamples.length,
+            few_shot_total_views: fewShotExamples.reduce((sum, ex) => sum + ex.viewCount, 0),
           },
         };
         if (ogImage) insertData.og_image_url = ogImage;

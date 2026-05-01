@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 
 /**
  * 블로그 AI 초안 생성 API
@@ -15,8 +15,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'topic은 필수입니다.' }, { status: 400 });
     }
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
+    if (!hasBlogApiKey()) {
       // AI 키 없으면 템플릿 반환
       return NextResponse.json({
         blog_html: `# ${topic}\n\n안녕하세요, 여소남입니다.\n\n${topic}에 대해 알려드립니다.\n\n## 본문\n\n여기에 내용을 작성하세요.\n\n## 마무리\n\n여소남에서 안심하고 여행을 준비하세요.\n[yeosonam.com](https://yeosonam.com)`,
@@ -37,11 +36,6 @@ export async function POST(request: NextRequest) {
     };
     const catName = categoryLabel[category] || '여행 정보';
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { temperature: 0.7 },
-    });
 
     const prompt = `너는 10년차 여행 블로그 전문 에디터다.
 아래 주제로 SEO 최적화된 한국어 블로그 글을 작성해라.
@@ -63,8 +57,7 @@ ${catName}
 8. 마크다운만 출력 (코드블록 감싸지 말 것)
 9. 브랜드: 여소남`;
 
-    const result = await model.generateContent(prompt);
-    const blogHtml = result.response.text()
+    const blogHtml = (await generateBlogText(prompt, { temperature: 0.7 }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     // slug 자동 생성

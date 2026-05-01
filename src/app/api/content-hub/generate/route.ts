@@ -6,7 +6,7 @@ import {
 } from '@/lib/content-generator';
 import { matchAttraction, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/prompt-version';
 
@@ -89,14 +89,8 @@ export async function POST(request: NextRequest) {
       const baseBlog = generateBlogPost(pkg, angle, attractions);
 
       // 2차: Gemini AI로 SEO 최적화 리라이트
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
-      if (!blogHtmlOverride && apiKey) {
+      if (!blogHtmlOverride && hasBlogApiKey()) {
         try {
-          const genAI = new GoogleGenerativeAI(apiKey);
-          const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: { temperature: 0.7 },
-          });
 
           const dest = pkg.destination || '여행지';
           const nightsVal = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
@@ -151,8 +145,7 @@ ${baseBlog.substring(0, 3000)}
 - **볼드 마커(\`**\`) 사용 금지**: 본문에서 \`**텍스트**\`로 강조하지 말 것. 한국어는 조사가 붙어서 렌더링이 깨진다. 강조가 필요하면 H2/H3 제목을 사용하거나 줄바꿈으로 분리. 유일한 예외는 맨 마지막 CTA 버튼 링크 \`**[...](...)\`
 - 전체 분량 최소 1800자 이상`;
 
-          const result = await model.generateContent(prompt);
-          let aiText = result.response.text()
+          let aiText = (await generateBlogText(prompt, { temperature: BLOG_AI_TEMPERATURE }))
             .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
           // 이미지 URL 오타 자동 복구

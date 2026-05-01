@@ -7,7 +7,7 @@
  * - 전체 소재 품질의 70%를 좌우하는 핵심 엔진
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { createHash } from 'crypto';
 
 // ── 타입 정의 ──────────────────────────────────────────────
@@ -142,22 +142,12 @@ export async function parseProduct(productId: string): Promise<ParsedProductData
   }
 
   // Gemini AI 파싱
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
   let parsed: ParsedProductData;
 
-  if (apiKey) {
+  if (hasBlogApiKey()) {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: { temperature: 0.2 },
-      });
-
       const prompt = PARSE_PROMPT.replace('{RAW_TEXT}', rawText);
-      const result = await model.generateContent(prompt);
-      const text = result.response.text()
-        .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-
+      const text = await generateBlogJSON(prompt, { temperature: 0.2 });
       parsed = JSON.parse(text);
     } catch (err) {
       console.warn('[parseProduct] Gemini 파싱 실패, fallback 사용:', err instanceof Error ? err.message : err);
