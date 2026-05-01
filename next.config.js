@@ -32,10 +32,10 @@ const nextConfig = {
       'react-icons',
       'recharts',
     ],
-    // RSC와 클라이언트 컴파일을 병렬화 — 첫 컴파일 30s대 → 절반대로 단축 기대.
-    // (webpackBuildWorker는 production build 전용이라 dev에서 부작용 — 제외)
-    parallelServerCompiles: true,
-    parallelServerBuildTraces: true,
+    // 주의: parallelServerCompiles + parallelServerBuildTraces 는 webpackBuildWorker 와
+    // 한 세트로만 동작한다. worker 없이 둘만 켜면 production build가 즉시 실패.
+    // (Vercel deploy 실패 원인이었음.) webpackBuildWorker 단독은 안전 — 빌드 병렬화만 담당.
+    webpackBuildWorker: true,
   },
   images: {
     formats: ['image/avif', 'image/webp'],
