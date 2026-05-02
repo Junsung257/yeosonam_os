@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { encrypt, decrypt, maskBankInfo } from '@/lib/encryption';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-function getSupabase() {
-  return createClient(supabaseUrl, supabaseKey);
-}
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 const GRADE_LABELS: Record<number, string> = {
   1: '브론즈', 2: '실버', 3: '골드', 4: '플래티넘', 5: '다이아',
@@ -15,11 +9,14 @@ const GRADE_LABELS: Record<number, string> = {
 
 // GET: 어필리에이트 목록 또는 단건 조회
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
   const showBankInfo = searchParams.get('showBankInfo') === 'true';
 
-  const supabase = getSupabase();
+  const supabase = supabaseAdmin;
 
   try {
     if (id) {
@@ -55,15 +52,19 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from('affiliates')
       .select('id, name, phone, email, referral_code, grade, bonus_rate, payout_type, booking_count, total_commission, memo, created_at')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(200);
 
     if (error) throw error;
 
+    type Row = { grade?: number | null } & Record<string, unknown>;
     return NextResponse.json({
-      affiliates: (data || []).map(a => ({
-        ...a,
-        grade_label: GRADE_LABELS[a.grade] || '브론즈',
-      })),
+      affiliates: ((data ?? []) as Row[]).map((a) => {
+        const g = a.grade;
+        const gradeLabel =
+          typeof g === 'number' && g >= 1 && g <= 5 ? GRADE_LABELS[g] : undefined;
+        return { ...a, grade_label: gradeLabel || '브론즈' };
+      }),
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
@@ -72,7 +73,10 @@ export async function GET(request: NextRequest) {
 
 // POST: 어필리에이트 신규 등록
 export async function POST(request: NextRequest) {
-  const supabase = getSupabase();
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();
@@ -81,11 +85,14 @@ export async function POST(request: NextRequest) {
     if (!name) return NextResponse.json({ error: '이름은 필수입니다.' }, { status: 400 });
     if (!referral_code) return NextResponse.json({ error: '추천코드는 필수입니다.' }, { status: 400 });
 
+    const referralCanon = normalizeAffiliateReferralCode(referral_code);
+    if (!referralCanon) return NextResponse.json({ error: '추천코드가 비어 있습니다.' }, { status: 400 });
+
     // 추천코드 중복 확인
     const { data: existing } = await supabase
       .from('affiliates')
       .select('id')
-      .eq('referral_code', referral_code)
+      .eq('referral_code', referralCanon)
       .single();
 
     if (existing) return NextResponse.json({ error: '이미 사용 중인 추천코드입니다.' }, { status: 400 });
@@ -99,7 +106,7 @@ export async function POST(request: NextRequest) {
         name,
         phone: phone || null,
         email: email || null,
-        referral_code,
+        referral_code: referralCanon,
         payout_type: payout_type || 'PERSONAL',
         encrypted_bank_info,
         memo: memo || null,
@@ -121,13 +128,44 @@ export async function POST(request: NextRequest) {
   }
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function sanitizeLandingPickIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== 'string' || !UUID_RE.test(x)) continue;
+    if (!out.includes(x)) out.push(x);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 // PATCH: 어필리에이트 정보 수정
 export async function PATCH(request: NextRequest) {
-  const supabase = getSupabase();
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();
-    const { id, name, phone, email, payout_type, bank_info, memo, booking_count } = body;
+    const {
+      id,
+      name,
+      phone,
+      email,
+      payout_type,
+      bank_info,
+      memo,
+      booking_count,
+      commission_rate,
+      business_number,
+      is_active,
+      landing_intro,
+      landing_pick_package_ids,
+    } = body;
 
     if (!id) return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
 
@@ -139,6 +177,19 @@ export async function PATCH(request: NextRequest) {
     if (memo !== undefined) payload.memo = memo;
     if (bank_info !== undefined) payload.encrypted_bank_info = bank_info ? encrypt(bank_info) : null;
     if (booking_count !== undefined) payload.booking_count = booking_count; // 트리거로 grade 자동 갱신
+    if (commission_rate !== undefined) {
+      const n = Number(commission_rate);
+      if (Number.isFinite(n) && n >= 0 && n <= 0.5) payload.commission_rate = n;
+    }
+    if (business_number !== undefined) payload.business_number = business_number || null;
+    if (is_active !== undefined) payload.is_active = !!is_active;
+    if (landing_intro !== undefined) {
+      const t = typeof landing_intro === 'string' ? landing_intro.trim() : '';
+      payload.landing_intro = t.length > 0 ? t.slice(0, 4000) : null;
+    }
+    if (landing_pick_package_ids !== undefined) {
+      payload.landing_pick_package_ids = sanitizeLandingPickIds(landing_pick_package_ids);
+    }
 
     const { data, error } = await supabase
       .from('affiliates')

@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import PackagesPageClient from './PackagesPageClient';
 
 export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+export const revalidate = 30;
 
 export default async function PackagesPage() {
   const { data } = await supabaseAdmin

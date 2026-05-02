@@ -671,14 +671,18 @@ export async function getBookings(
     departureFrom?: string;   // 출발일 시작 (YYYY-MM-DD)
     departureTo?: string;     // 출발일 종료 (YYYY-MM-DD)
     includeDeleted?: string;  // 'only' = 휴지통만, 'all' = 전체, 미지정 = 정상만
+    limit?: number;           // 페이지 크기 (기본 100)
+    offset?: number;          // 페이지 오프셋 (기본 0)
   }
 ) {
   try {
+    const pageLimit = opts?.limit ?? 100;
+    const pageOffset = opts?.offset ?? 0;
     let query = supabaseAdmin
       .from('bookings')
       .select('*, customers!lead_customer_id(id,name,phone)')
       .order('created_at', { ascending: false })
-      .limit(1000); // 안전 상한선 — 이상 시 서버사이드 필터+페이지네이션 도입 필요
+      .range(pageOffset, pageOffset + pageLimit - 1);
 
     // 소프트 삭제 필터
     if (opts?.includeDeleted === 'only') {

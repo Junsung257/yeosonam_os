@@ -75,7 +75,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const emptyResult = { data: null } as { data: null };
   const [attrsRes, pkgsRes, blogRes] = await Promise.all([
     dests.length > 0
-      ? supabaseAdmin.from('attractions').select('destination, photos').in('destination', dests).not('photos', 'is', null).limit(200)
+      ? supabaseAdmin.from('attractions').select('region, photos').in('region', dests).not('photos', 'is', null).limit(200)
       : Promise.resolve(emptyResult),
     dests.length > 0
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
@@ -104,10 +104,11 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
-  ((attrs as Array<{ destination: string; photos: Array<{ src_medium?: string }> | null }> | null) ?? []).forEach(a => {
-    if (a.destination && !imgByDest[a.destination]) {
+  ((attrs as Array<{ region: string; photos: Array<{ src_medium?: string }> | null }> | null) ?? []).forEach(a => {
+    const key = a.region;
+    if (key && !imgByDest[key]) {
       const u = a.photos?.[0]?.src_medium;
-      if (u) imgByDest[a.destination] = u;
+      if (u) imgByDest[key] = u;
     }
   });
 

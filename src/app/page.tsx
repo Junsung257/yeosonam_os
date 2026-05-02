@@ -51,11 +51,11 @@ export default async function HomePage() {
       .select('destination, price, price_tiers, price_dates, country')
       .in('status', ['active', 'approved']),
     sb.from('attractions')
-      .select('name, photos, country, region, destination, mention_count')
+      .select('name, photos, country, region, mention_count')
       .not('photos', 'is', null)
       .limit(300),
     sb.from('travel_packages')
-      .select('id, title, display_title, destination, price, price_tiers, price_dates, country, hero_image_url, thumbnail_urls, duration, nights')
+      .select('id, title, display_title, destination, price, price_tiers, price_dates, country, duration, nights')
       .in('status', ['active', 'approved'])
       .order('created_at', { ascending: false })
       .limit(30),
@@ -154,21 +154,22 @@ export default async function HomePage() {
     .slice(0, 4);
 
   const topDestNames = topDestsRaw.map(d => d.destination);
-  const [{ data: topDestAttrs }, { data: pillarExists }] = topDestNames.length > 0
+  const [{ data: pillarExists }] = topDestNames.length > 0
     ? await Promise.all([
-        sb.from('attractions').select('destination, name, photos').in('destination', topDestNames).not('photos', 'is', null).limit(50),
         sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
       ])
-    : [{ data: null }, { data: null }];
+    : [{ data: null }];
 
   const attrImageByDest: Record<string, string> = {};
-  ((topDestAttrs as Array<{ destination: string; photos: Array<{ src_medium?: string; src_large?: string }> | null }>) || [])
-    .forEach(a => {
-      if (a.destination && !attrImageByDest[a.destination]) {
-        const img = a.photos?.[0]?.src_large || a.photos?.[0]?.src_medium;
-        if (img) attrImageByDest[a.destination] = img;
-      }
-    });
+  (attractions as any[]).forEach((a: any) => {
+    if (!a.photos?.length) return;
+    const region = a.region || '';
+    const match = topDestNames.find(d => d === region || d.includes(region) || region.includes(d));
+    if (match && !attrImageByDest[match]) {
+      const img = a.photos[0]?.src_large || a.photos[0]?.src_medium;
+      if (img) attrImageByDest[match] = img;
+    }
+  });
 
   const pillarSet = new Set(
     ((pillarExists as Array<{ pillar_for: string | null }>) || [])
