@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -729,15 +730,13 @@ export default async function BlogDetailPage({
         {!isLanding && post.og_image_url && (
           <figure className="mx-auto mb-4 max-w-3xl px-4">
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-gray-100">
-              <img
+              <Image
                 src={post.og_image_url}
                 alt={title}
-                width={1600}
-                height={900}
-                className="h-full w-full object-cover"
-                fetchPriority="high"
-                loading="eager"
-                decoding="async"
+                fill
+                className="object-cover"
+                priority
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
               />
             </div>
           </figure>
@@ -933,13 +932,13 @@ export default async function BlogDetailPage({
                       className="group overflow-hidden rounded-md border border-slate-200 bg-white transition hover:shadow-md"
                     >
                       {rp.og_image_url ? (
-                        <div className="aspect-[16/9] overflow-hidden bg-gray-100">
-                          <img
+                        <div className="relative aspect-[16/9] overflow-hidden bg-gray-100">
+                          <Image
                             src={rp.og_image_url}
                             alt={rpTitle}
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                            loading="lazy"
-                            decoding="async"
+                            fill
+                            className="object-cover transition duration-300 group-hover:scale-105"
+                            sizes="(max-width: 640px) 100vw, 33vw"
                           />
                         </div>
                       ) : (

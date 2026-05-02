@@ -1,8 +1,9 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabaseAdmin } from '@/lib/supabase';
-import SearchBar from '@/components/customer/SearchBar';
+import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
 import GlobalNav from '@/components/customer/GlobalNav';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import CategoryIcons from '@/components/customer/CategoryIcons';
 import HeroBanner from '@/components/customer/HeroBanner';
@@ -280,6 +281,59 @@ export default async function HomePage() {
     .slice(0, 7)
     .map(toRankingItem);
 
+  /** 메인 랭킹 카드 소셜 프루프(초기 트래픽: 임계값 미만이면 미노출) */
+  const RANK_BOOKING_MIN = 3;
+  const RANK_INTEREST_MIN = 8;
+  const rankingIds = [...new Set([...overseas, ...domestic].map((p) => p.id))];
+  const socialByPackage: Record<string, { bookings: number; interest: number }> = {};
+  if (rankingIds.length > 0) {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [bkRes, sgRes] = await Promise.all([
+      sb
+        .from('bookings')
+        .select('package_id')
+        .eq('status', 'confirmed')
+        .gte('created_at', since)
+        .in('package_id', rankingIds),
+      sb
+        .from('package_score_signals')
+        .select('package_id')
+        .gte('created_at', since)
+        .in('package_id', rankingIds),
+    ]);
+    for (const row of bkRes.data ?? []) {
+      const pid = (row as { package_id: string | null }).package_id;
+      if (!pid) continue;
+      if (!socialByPackage[pid]) socialByPackage[pid] = { bookings: 0, interest: 0 };
+      socialByPackage[pid].bookings += 1;
+    }
+    for (const row of sgRes.data ?? []) {
+      const pid = (row as { package_id: string | null }).package_id;
+      if (!pid) continue;
+      if (!socialByPackage[pid]) socialByPackage[pid] = { bookings: 0, interest: 0 };
+      socialByPackage[pid].interest += 1;
+    }
+  }
+  function withSocialBadge(item: RankingItem): RankingItem {
+    const s = socialByPackage[item.id];
+    if (!s) return item;
+    if (s.bookings >= RANK_BOOKING_MIN) {
+      return {
+        ...item,
+        socialBadge: { kind: 'bookings' as const, text: `최근 30일 예약 · ${s.bookings}건` },
+      };
+    }
+    if (s.interest >= RANK_INTEREST_MIN) {
+      return {
+        ...item,
+        socialBadge: { kind: 'interest' as const, text: '최근 조회 · 활발' },
+      };
+    }
+    return item;
+  }
+  const overseasRanked = overseas.map(withSocialBadge);
+  const domesticRanked = domestic.map(withSocialBadge);
+
   const ratingAgg = ratingResult.data;
   const totalReviews = ((ratingAgg as Array<{ review_count: number }>) || [])
     .reduce((s, r) => s + (r.review_count || 0), 0);
@@ -346,7 +400,7 @@ export default async function HomePage() {
       {/* ── 검색바 — 히어로 하단 오버랩 ── */}
       <div className="px-4 md:px-6 -mt-7 md:-mt-10 relative z-10 pb-3 md:pb-5">
         <div className="max-w-[768px] mx-auto">
-          <SearchBar />
+          <HomeHeroSearchCluster />
         </div>
       </div>
 
@@ -363,7 +417,7 @@ export default async function HomePage() {
             actionLabel="전체 보기"
             className="px-5"
           />
-          <RankingSection domestic={domestic} overseas={overseas} />
+          <RankingSection domestic={domesticRanked} overseas={overseasRanked} />
         </section>
       )}
 
@@ -389,11 +443,13 @@ export default async function HomePage() {
                   className="group relative h-52 md:h-64 rounded-[16px] overflow-hidden bg-[#F2F4F6] shadow-card hover:shadow-card-hover transition-shadow card-touch"
                 >
                   {d.image ? (
-                    <img
+                    <Image
                       src={d.image}
                       alt={`${d.destination} 여행`}
-                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      loading={idx < 2 ? 'eager' : 'lazy'}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      priority={idx < 2}
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
                     />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#3182F6]/20 flex items-center justify-center text-5xl">🌍</div>
@@ -437,18 +493,18 @@ export default async function HomePage() {
                     className="group rounded-[16px] overflow-hidden shadow-card hover:shadow-card-hover transition-shadow card-touch bg-white"
                   >
                     <div className="relative h-36 md:h-52 lg:h-56 bg-[#F2F4F6]">
-                      {dest.image ? (
-                        <Image
-                          src={dest.image}
-                          alt={dest.destination}
-                          fill
-                          sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                          className="object-cover group-hover:scale-105 transition-transform duration-300"
-                          {...(index < 4 ? { priority: true } : { loading: 'lazy' as const })}
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl md:text-5xl">{emoji}</div>
-                      )}
+                      <SafeCoverImg
+                        src={dest.image}
+                        alt={dest.destination}
+                        className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        loading={index < 4 ? 'eager' : 'lazy'}
+                        fetchPriority={index < 4 ? 'high' : undefined}
+                        fallback={
+                          <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl md:text-5xl">
+                            {emoji}
+                          </div>
+                        }
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent pointer-events-none" />
                       {/* 여행지명 오버레이 */}
                       <div className="absolute bottom-3 left-3">
