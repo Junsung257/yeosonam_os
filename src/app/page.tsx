@@ -45,8 +45,8 @@ export default async function HomePage() {
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
 
-  // 4개 쿼리 동시 실행 (active_destinations를 기존 3개와 합쳐 왕복 1회 절감)
-  const [pkgResult, attrResult, rankingResult, activeDestsResult] = await Promise.all([
+  // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
+  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = await Promise.all([
     sb.from('travel_packages')
       .select('destination, price, price_tiers, price_dates, country')
       .in('status', ['active', 'approved']),
@@ -63,6 +63,10 @@ export default async function HomePage() {
       .select('*')
       .order('package_count', { ascending: false })
       .limit(20),
+    sb.from('travel_packages')
+      .select('avg_rating, review_count')
+      .not('avg_rating', 'is', null)
+      .gte('review_count', 1),
   ]);
 
   const allPkgs = pkgResult.data ?? [];
@@ -275,13 +279,7 @@ export default async function HomePage() {
     .slice(0, 7)
     .map(toRankingItem);
 
-  // 평점 집계 (Schema.org용)
-  const { data: ratingAgg } = await sb
-    .from('travel_packages')
-    .select('avg_rating, review_count')
-    .not('avg_rating', 'is', null)
-    .gte('review_count', 1);
-
+  const ratingAgg = ratingResult.data;
   const totalReviews = ((ratingAgg as Array<{ review_count: number }>) || [])
     .reduce((s, r) => s + (r.review_count || 0), 0);
   const weightedSum = ((ratingAgg as Array<{ avg_rating: number; review_count: number }>) || [])
