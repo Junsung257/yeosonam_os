@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
@@ -13,13 +13,6 @@ import type { RankingItem } from '@/components/customer/RankingSection';
 // ISR 5분 / Windows 로컬은 force-dynamic (chunk race 회피)
 export const revalidate = process.platform === 'win32' ? 0 : 300;
 export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
-
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-}
 
 const COUNTRY_EMOJI: Record<string, string> = {
   '베트남': '🇻🇳', '중국': '🇨🇳', '일본': '🇯🇵', '필리핀': '🇵🇭',
@@ -49,7 +42,7 @@ interface Destination {
 }
 
 export default async function HomePage() {
-  const sb = getSupabase();
+  const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
 
   // 4개 쿼리 동시 실행 (active_destinations를 기존 3개와 합쳐 왕복 1회 절감)

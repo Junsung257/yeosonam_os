@@ -65,6 +65,20 @@ const nextConfig = {
   // /tour/[id] 와 /products/[id] 는 영구 리다이렉트(308)
   // 추가: 정식 도메인은 www.yeosonam.com. non-www 는 SEO 신호 통합을 위해 영구 리다이렉트(308).
   // (Vercel 기본 도메인 alias 는 307 임시 리다이렉트라 PageRank 가 통합되지 않음)
+  async headers() {
+    return [
+      {
+        // 정적 자산 — 1년 불변 캐시 (Next.js 빌드 해시로 bust)
+        source: '/_next/static/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        // 공개 읽기 전용 API — Vercel Edge CDN 5분 캐시, stale-while-revalidate 10분
+        source: '/api/destinations/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=600' }],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: '/tour/:id', destination: '/packages/:id', permanent: true },
