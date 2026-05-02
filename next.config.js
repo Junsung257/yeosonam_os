@@ -39,6 +39,13 @@ const nextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'],
+    // 기본 7개 deviceSizes → 3개로 축소: Vercel Image Transformation 횟수를 1/2 이상 절감.
+    // 모바일(640) + 태블릿(1080) + 데스크톱(1920) 세 구간이면 충분.
+    deviceSizes: [640, 1080, 1920],
+    // 기본 8개 imageSizes → 3개로 축소 (아이콘·썸네일·카드 세 구간).
+    imageSizes: [64, 128, 256],
+    // 최소 캐시 TTL 7일 — 같은 이미지 재변환 횟수를 대폭 줄임 (기본값 60초는 매우 짧음).
+    minimumCacheTTL: 604800,
     remotePatterns: [
       {
         protocol: 'https',
@@ -47,6 +54,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'ixaxnvbmhzjvupissmly.supabase.co',
+      },
+      {
+        protocol: 'https',
+        hostname: 'dry7pvlp22cox.cloudfront.net', // MRT CDN (attractions.mrt_image_url)
       },
     ],
   },

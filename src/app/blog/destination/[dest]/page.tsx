@@ -146,7 +146,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
                     className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
                     {post.og_image_url ? (
                       <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
-                        <Image src={post.og_image_url} alt={post.seo_title || ''} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover transition group-hover:scale-105" />
+                        <Image src={post.og_image_url} alt={post.seo_title || ''} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover transition group-hover:scale-105" unoptimized />
                       </div>
                     ) : (
                       <div className="flex aspect-[16/9] items-center justify-center bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">

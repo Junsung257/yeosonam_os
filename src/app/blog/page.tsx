@@ -151,6 +151,7 @@ function HeroCard({ post }: { post: BlogPost }) {
             sizes="(max-width: 768px) 100vw, 66vw"
             className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
             priority
+            unoptimized
           />
         </div>
       ) : (
@@ -194,6 +195,7 @@ function SideCard({ post }: { post: BlogPost }) {
             fill
             sizes="112px"
             className="object-cover group-hover:scale-105 transition-transform duration-300"
+            unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -241,6 +243,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+            unoptimized
           />
         </div>
       ) : (
