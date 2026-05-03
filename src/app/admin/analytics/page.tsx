@@ -44,6 +44,7 @@ export default function AnalyticsPage() {
   const [cohorts, setCohorts] = useState<CohortRow[]>([]);
   const [total, setTotal]     = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/analytics/ltv')
@@ -52,7 +53,7 @@ export default function AnalyticsPage() {
         setCohorts(d.cohorts ?? []);
         setTotal(d.totalCustomers ?? 0);
       })
-      .catch(() => {})
+      .catch(() => setFetchError('데이터를 불러오지 못했습니다.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -69,6 +70,8 @@ export default function AnalyticsPage() {
 
       {loading ? (
         <div className="text-center py-20 text-slate-400 text-[14px]">분석 중...</div>
+      ) : fetchError ? (
+        <div className="text-center py-20 text-red-500 text-[14px]">{fetchError}</div>
       ) : cohorts.length === 0 ? (
         <div className="text-center py-20 text-slate-400 text-[14px]">
           UTM 데이터가 없습니다
