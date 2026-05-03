@@ -1,4 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+
+function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: string, isSecure: boolean) {
+  const maxAge = getAffiliateRefCookieMaxAgeSec(request);
+  res.cookies.set('aff_ref', value, {
+    httpOnly: false,
+    secure: isSecure,
+    sameSite: 'lax',
+    path: '/',
+    ...(maxAge !== undefined ? { maxAge } : {}),
+  });
+}
 
 // 정확히 일치하는 공개 경로 — O(1) Set 조회
 const PUBLIC_EXACT = new Set([
@@ -93,6 +107,7 @@ const PUBLIC_PREFIXES = [
   '/api/og/',
   '/influencer/',
   '/api/influencer/',
+  '/with/',
   '/r/',
   '/embed/',
   '/partner-apply/',
@@ -104,14 +119,15 @@ const PUBLIC_PREFIXES = [
   '/free-travel/',
   '/api/free-travel/',
   '/blog/destination/',
+  '/legal/',
 ];
 
 // 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
 const PUBLIC_EXACT_SHORT = new Set([
   '/blog', '/api/blog', '/products', '/concierge', '/tenant', '/share',
   '/api/share', '/api/attractions', '/group', '/rfq', '/api/rfq',
-  '/api/tracking', '/api/og', '/influencer', '/api/influencer',
-  '/r', '/embed', '/partner-apply', '/api/partner-apply',
+  '/api/tracking', '/api/og',   '/influencer', '/api/influencer',
+  '/with', '/r', '/embed', '/partner-apply', '/api/partner-apply',
   '/api/recommendations', '/destinations', '/review', '/api/reviews',
   '/free-travel', '/api/free-travel', '/blog/destination',
 ]);
@@ -131,19 +147,12 @@ function isPublicPath(request: NextRequest) {
   return PUBLIC_PREFIXES.some(p => pathname.startsWith(p));
 }
 
-// JWT 페이로드를 로컬에서 디코딩해 만료 여부 확인 (네트워크 콜 없음)
-function isTokenValid(token: string): boolean {
-  try {
-    const payloadBase64 = token.split('.')[1];
-    if (!payloadBase64) return false;
-    const payload = JSON.parse(atob(payloadBase64));
-    return typeof payload.exp === 'number' && payload.exp > Date.now() / 1000;
-  } catch {
-    return false;
-  }
+async function accessTokenAllowsRequest(token: string): Promise<boolean> {
+  const v = await verifySupabaseAccessToken(token);
+  return v.ok;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
 
@@ -169,18 +178,24 @@ export function middleware(request: NextRequest) {
   }
 
   // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
-  // 사장님 결정(2026-04-26): 동의 배너 미노출 → 추적 쿠키는 암묵 동의로 30일 발급.
-  // PIPA 2026-09 시행 시 동의 검사 재도입 검토. (consent.ts 의 hasMarketingConsent 함수는 보존)
+  // 기본: aff_ref 30일. PIPA 대비: AFFILIATE_REF_STRICT_MARKETING_CONSENT=true + ys_marketing_consent 쿠키일 때만 30일.
   const ref = request.nextUrl.searchParams.get('ref');
   if (ref) {
-    const res = getResponse();
-    res.cookies.set('aff_ref', ref, {
-      httpOnly: false,
-      secure: isSecure,
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60, // 30일
-      path: '/',
-    });
+    const canon = normalizeAffiliateReferralCode(ref);
+    if (looksLikeReferralCode(canon)) {
+      const res = getResponse();
+      setAffiliateRefCookie(res, request, canon, isSecure);
+    }
+  }
+
+  // ── 2-1. 코브랜딩 랜딩 /with/[slug] → 추천 코드 쿠키 (?ref= 과 동일 정책) ──
+  const withMatch = pathname.match(/^\/with\/([^/]+)\/?$/);
+  if (withMatch) {
+    const slug = normalizeAffiliateReferralCode(decodeURIComponent(withMatch[1]));
+    if (looksLikeReferralCode(slug)) {
+      const res = getResponse();
+      setAffiliateRefCookie(res, request, slug, isSecure);
+    }
   }
 
   // ── 2-2. 임베드 위젯: iframe 허용 (외부 사이트 게재용) ─────
@@ -196,23 +211,40 @@ export function middleware(request: NextRequest) {
     return response || NextResponse.next();
   }
 
-  // 디자인 미리보기 바이패스 (?preview=1)
-  if (request.nextUrl.searchParams.get('preview') === '1') {
+  // ── 3-1. 정산 PDF GET — 라우트에서 어드민 세션 또는 파트너 PIN 헤더로 검증 (비로그인 파트너용)
+  if (request.method === 'GET' && /^\/api\/settlements\/[^/]+\/pdf$/.test(pathname)) {
     return response || NextResponse.next();
+  }
+
+  // 개발 전용: 세션 진단 API — 인증 전 통과 (응답에 비밀·전체 JWT 미포함)
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (pathname === '/api/debug/auth-session' || pathname === '/api/debug/auth-session-edge')
+  ) {
+    return response || NextResponse.next();
+  }
+
+  // 디자인 미리보기: 프로덕션은 DESIGN_PREVIEW_SECRET 일치 시에만, 개발은 ?preview=1 만으로 허용
+  const previewOn = request.nextUrl.searchParams.get('preview') === '1';
+  if (previewOn) {
+    const secret = process.env.DESIGN_PREVIEW_SECRET;
+    if (secret && request.nextUrl.searchParams.get('preview_secret') === secret) {
+      return response || NextResponse.next();
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      return response || NextResponse.next();
+    }
   }
 
   // ── 4. 인증 검사 (비공개 경로만) ───────────────────────────
   const token = request.cookies.get('sb-access-token')?.value;
   const refreshToken = request.cookies.get('sb-refresh-token')?.value;
 
-  // access token 이 유효하면 통과
-  if (token && isTokenValid(token)) {
+  if (token && (await accessTokenAllowsRequest(token))) {
     return response || NextResponse.next();
   }
 
-  // access token 이 만료되었더라도 refresh token 이 있으면 통과.
-  // 클라이언트 훅(useAutoRefreshSession) 이 백그라운드로 /api/auth/refresh 를 호출해 갱신한다.
-  // API 라우트 요청이라면 client-side 훅이 동작하지 않으므로 401 을 반환해 재시도 유도.
+  // access 만료 시에도 refresh 가 있으면 페이지는 통과(클라이언트가 /api/auth/refresh 로 갱신)
   if (refreshToken) {
     const isApi = pathname.startsWith('/api/');
     if (!isApi) {
@@ -231,7 +263,8 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 제외)
-    '/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
+    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 + Next.js 데이터 fetch 제외)
+    // _next/data: 클라이언트 사이드 페이지 이동 시 Next.js가 자동 fetch — 미들웨어 통과 시 Edge Request 2배
+    '/((?!_next/static|_next/data|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
   ],
 };
