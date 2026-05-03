@@ -57,6 +57,8 @@ interface DashboardData {
   recent_bookings: Booking[];
   contents?: ContentItem[];
   content_revenue?: ContentRevenue[];
+  co_brand?: { path: string; full_url: string; landing_views_30d: number };
+  attribution_notice?: string;
 }
 
 // ── 등급 진행률 계산 ──
@@ -71,42 +73,92 @@ function getGradeProgress(grade: number, bookingCount: number) {
 export default function InfluencerDashboard() {
   const params = useParams();
   const code = params.code as string;
-  const { affiliate: authAffiliate, authenticated, setAuth } = useInfluencerAuth();
+  const { affiliate: authAffiliate, authenticated, setAuth, clearAuth } = useInfluencerAuth();
 
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [settlementPdfErr, setSettlementPdfErr] = useState('');
+  const [coBrandCopied, setCoBrandCopied] = useState(false);
 
   const fetchDashboard = useCallback(async (withPin?: string) => {
     setLoading(true);
     setPinError('');
+    let pinToSend = withPin;
+    if (pinToSend === undefined && typeof window !== 'undefined') {
+      try {
+        pinToSend = sessionStorage.getItem(`inf_pin_${code}`) ?? undefined;
+      } catch {
+        pinToSend = undefined;
+      }
+    }
     try {
       const res = await fetch('/api/influencer/dashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referral_code: code, pin: withPin || undefined }),
+        body: JSON.stringify({ referral_code: code, pin: pinToSend }),
       });
       const json = await res.json();
 
       if (!res.ok) {
+        if (res.status === 401) clearAuth();
         setPinError(json.error || '인증 실패');
         return;
       }
 
       setData(json);
-      if (withPin && json.affiliate) {
+      if (json.affiliate) {
         setAuth(json.affiliate);
-        // PIN을 sessionStorage에 저장하여 후속 LLM 비용 발생 endpoint(/api/influencer/content)에서 본인확인 가능.
-        // 평문 4자리 — XSS 시 노출 위험 있으나 PIN은 본인 명의 콘텐츠 생성에만 사용되며 정산/계좌 변경에는 사용 불가.
-        try { sessionStorage.setItem(`inf_pin_${code}`, withPin); } catch { /* */ }
+        if (pinToSend) {
+          try {
+            sessionStorage.setItem(`inf_pin_${code}`, pinToSend);
+          } catch {
+            /* ignore */
+          }
+        }
       }
     } catch {
       setPinError('서버 연결 실패');
     } finally {
       setLoading(false);
     }
-  }, [code, setAuth]);
+  }, [code, setAuth, clearAuth]);
+
+  const openSettlementPdf = useCallback(
+    async (settlementId: string, referralCode: string) => {
+      setSettlementPdfErr('');
+      const storedPin = (() => {
+        try {
+          return sessionStorage.getItem(`inf_pin_${referralCode}`) || pin || '';
+        } catch {
+          return pin || '';
+        }
+      })();
+      try {
+        const res = await fetch(`/api/settlements/${settlementId}/pdf`, {
+          headers: {
+            'x-referral-code': referralCode,
+            'x-pin': storedPin.replace(/\D/g, '').slice(0, 4),
+          },
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setSettlementPdfErr((j as { error?: string }).error || `열기 실패 (${res.status})`);
+          return;
+        }
+        const html = await res.text();
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!w) setSettlementPdfErr('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
+        else setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } catch {
+        setSettlementPdfErr('네트워크 오류');
+      }
+    },
+    [pin],
+  );
 
   // 인증 완료 상태면 자동 로드
   useEffect(() => {
@@ -171,7 +223,7 @@ export default function InfluencerDashboard() {
     );
   }
 
-  const { affiliate: aff, stats, settlements, recent_bookings, contents, content_revenue } = data;
+  const { affiliate: aff, stats, settlements, recent_bookings, contents, content_revenue, co_brand, attribution_notice } = data;
   const PLATFORM_ICON: Record<string, string> = {
     blog_body: '📝',
     instagram_caption: '📷',
@@ -196,6 +248,7 @@ export default function InfluencerDashboard() {
     HOLD: { label: '보류', color: 'bg-orange-100 text-orange-700' },
     COMPLETED: { label: '지급완료', color: 'bg-green-100 text-green-700' },
     VOID: { label: '무효', color: 'bg-gray-100 text-gray-500' },
+    CANCELLED: { label: '취소', color: 'bg-gray-100 text-gray-500' },
   };
 
   // 누적 이월 잔액 계산
@@ -208,6 +261,56 @@ export default function InfluencerDashboard() {
 
   return (
     <div className="space-y-6">
+      {attribution_notice && (
+        <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 leading-relaxed">
+          {attribution_notice}
+        </p>
+      )}
+
+      {/* 코브랜딩 랜딩 링크 (바이오용) */}
+      {co_brand && (
+        <div className="bg-gradient-to-r from-emerald-900 to-teal-900 rounded-xl p-5 text-white shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-lg">내 전용 랜딩</h2>
+              <p className="text-xs text-emerald-100 mt-1">SNS 프로필에 걸기 좋은 주소 · 최근 30일 방문 {co_brand.landing_views_30d}회</p>
+              <p className="text-[11px] font-mono mt-2 break-all opacity-90">{co_brand.full_url || co_brand.path}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const t = co_brand.full_url || (typeof window !== 'undefined' ? `${window.location.origin}${co_brand.path}` : co_brand.path);
+                  void navigator.clipboard.writeText(t).then(() => {
+                    setCoBrandCopied(true);
+                    window.setTimeout(() => setCoBrandCopied(false), 2500);
+                  }).catch(() => {});
+                }}
+                className="px-3 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium border border-white/30"
+              >
+                {coBrandCopied ? '복사됨 ✓' : 'URL 복사'}
+              </button>
+              <a
+                href={co_brand.full_url || co_brand.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 bg-white text-emerald-900 rounded-lg text-sm font-bold hover:bg-emerald-50"
+              >
+                미리보기
+              </a>
+              <a
+                href="/legal/partner-attribution"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 text-sm text-emerald-100 underline hover:text-white"
+              >
+                추적 안내
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── KPI 카드 4개 ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard label="총 예약 건수" value={`${aff.booking_count}건`} icon="📦" sub={`커미션율 ${aff.grade_rate}`} />
@@ -281,7 +384,12 @@ export default function InfluencerDashboard() {
         {/* 정산 */}
         <div className="bg-white rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-gray-900">정산 내역</h2>
+            <div>
+              <h2 className="font-bold text-gray-900">정산 내역</h2>
+              {settlementPdfErr ? (
+                <p className="text-[11px] text-red-600 mt-1">{settlementPdfErr}</p>
+              ) : null}
+            </div>
             {(pendingBalance > 0 || readyBalance > 0) && (
               <div className="text-right">
                 {pendingBalance > 0 && (
@@ -305,8 +413,13 @@ export default function InfluencerDashboard() {
                       {STATUS_MAP[s.status]?.label || s.status}
                     </span>
                     {(s.status === 'COMPLETED' || s.status === 'READY') && (
-                      <a href={`/api/settlements/${s.id}/pdf`} target="_blank" rel="noopener noreferrer"
-                        className="ml-2 text-[10px] text-blue-500 hover:underline">내역서</a>
+                      <button
+                        type="button"
+                        onClick={() => openSettlementPdf(s.id, aff.referral_code)}
+                        className="ml-2 text-[10px] text-blue-500 hover:underline"
+                      >
+                        내역서
+                      </button>
                     )}
                   </div>
                   <span className="text-sm font-bold text-gray-900">₩{(s.net_payout || 0).toLocaleString()}</span>

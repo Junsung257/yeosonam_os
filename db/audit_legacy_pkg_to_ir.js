@@ -65,9 +65,13 @@ async function main() {
   for (let i = 0; i < pkgs.length; i++) {
     const pkg = pkgs[i];
     try {
+      const secret = process.env.CRON_SECRET;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+        },
         body: JSON.stringify({ pkg }),
       });
       const json = await res.json();

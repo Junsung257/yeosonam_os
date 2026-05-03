@@ -6,8 +6,10 @@ import type { TravelItinerary } from '@/types/itinerary';
 import type { PriceListItem } from '@/lib/parser';
 import PriceSectionCard from '@/components/lp/PriceSection';
 import ItineraryTableView from '@/components/itinerary/ItineraryTableView';
-import { matchAttraction } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { resolvePrimaryAttraction, type AttractionRefScheduleItem } from '@/lib/attraction-reference';
+import { pickAttractionPhotoUrl } from '@/lib/image-url';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 interface PriceTier {
   departure_day: string;
@@ -25,6 +27,19 @@ interface PackageData {
   price_list?: PriceListItem[] | null;
   single_supplement?: string | null;
   guide_tip?: string | null;
+}
+
+function collectAttractionIdsFromItinerary(itinerary: TravelItinerary | null | undefined): string[] {
+  const out = new Set<string>();
+  for (const day of itinerary?.days ?? []) {
+    for (const item of day.schedule ?? []) {
+      const ids = (item as unknown as { attraction_ids?: (string | null)[] }).attraction_ids ?? [];
+      for (const id of ids) {
+        if (typeof id === 'string' && id.trim()) out.add(id.trim());
+      }
+    }
+  }
+  return [...out];
 }
 
 /** Backward compat: price_tiers(구조) → PriceListItem[] 변환 */
@@ -84,15 +99,24 @@ export default function ItineraryPage() {
   useEffect(() => {
     fetch(`/api/packages?id=${id}`)
       .then(r => r.json())
-      .then(d => {
-        setPkg(d.package ?? null);
+      .then(async (d) => {
+        const nextPkg: PackageData | null = d.package ?? null;
+        setPkg(nextPkg);
+
+        const attractionIds = Array.isArray(d.attraction_ids)
+          ? d.attraction_ids.filter((x: unknown): x is string => typeof x === 'string' && x.trim().length > 0)
+          : collectAttractionIdsFromItinerary(nextPkg?.itinerary_data ?? null);
+        const attrUrl = attractionIds.length > 0
+          ? `/api/attractions?ids=${encodeURIComponent(attractionIds.join(','))}`
+          : '/api/attractions?detail=1';
+
+        await fetch(attrUrl)
+          .then(r => r.json())
+          .then(a => setAttractions(a.attractions || []))
+          .catch(() => {});
         setLoading(false);
       })
       .catch(() => setLoading(false));
-    fetch('/api/attractions?detail=1')
-      .then(r => r.json())
-      .then(d => setAttractions(d.attractions || []))
-      .catch(() => {});
   }, [id]);
 
   const handleGenerateImage = async () => {
@@ -434,15 +458,22 @@ export default function ItineraryPage() {
                   {/* 일정 항목 */}
                   <div className="divide-y divide-gray-50">
                     {day.schedule.map((item, j) => {
-                      const attr = matchAttraction(item.activity, attractions as AttractionData[], meta.destination);
-                      const hasPhotos = attr?.photos && attr.photos.length > 0;
+                      const refItem = item as unknown as AttractionRefScheduleItem;
+                      const attr = resolvePrimaryAttraction(refItem, attractions as AttractionData[], meta.destination);
+                      const attractionNote =
+                        (item as unknown as { attraction_note?: string | null }).attraction_note ?? null;
+                      const displayPhotoUrls = (attr?.photos ?? [])
+                        .slice(0, 3)
+                        .map(ph => pickAttractionPhotoUrl([ph]))
+                        .filter((u): u is string => u != null);
+                      const hasPhotos = displayPhotoUrls.length > 0;
                       const expandKey = `${day.day}-${j}`;
                       const isExpanded = expandedItems.has(expandKey);
                       const bulletColor =
                         attr?.badge_type === 'special' ? 'bg-violet-500' :
                         attr?.badge_type === 'shopping' ? 'bg-purple-500' :
                         attr?.badge_type === 'meal' || attr?.badge_type === 'restaurant' ? 'bg-orange-500' :
-                        attr?.badge_type === 'hotel' ? 'bg-indigo-500' :
+                        attr?.badge_type === 'hotel' ? 'bg-[#3182F6]/60' :
                         attr?.badge_type === 'golf' ? 'bg-emerald-500' :
                         item.type === 'flight' ? 'bg-blue-500' :
                         item.type === 'hotel' ? 'bg-green-500' :
@@ -483,15 +514,23 @@ export default function ItineraryPage() {
                             {/* 1. 관광지명 */}
                             <p className="font-bold text-[14px] text-blue-900">{attr.name}</p>
                             {/* 2. 한줄설명 */}
-                            {attr.short_desc && (
-                              <p className="text-[12px] text-gray-500 mt-0.5 leading-relaxed">{attr.short_desc}</p>
+                            {(attr.short_desc || attractionNote) && (
+                              <p className="text-[12px] text-gray-500 mt-0.5 leading-relaxed">
+                                {attr.short_desc || attractionNote}
+                              </p>
                             )}
                             {/* 3. 사진 3장 그리드 */}
                             {hasPhotos && (
                               <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden mt-2">
-                                {attr.photos!.slice(0, 3).map((photo, pIdx) => (
-                                  <img key={pIdx} src={photo.src_medium} alt={attr.name}
-                                    className="w-full h-24 object-cover" loading="lazy" />
+                                {displayPhotoUrls.map((url, pIdx) => (
+                                  <SafeCoverImg
+                                    key={`${url}-${pIdx}`}
+                                    src={url}
+                                    alt={attr.name}
+                                    className="w-full h-24 object-cover"
+                                    loading="lazy"
+                                    fallback={<div className="w-full h-24 bg-gray-100" aria-hidden />}
+                                  />
                                 ))}
                               </div>
                             )}
@@ -514,7 +553,7 @@ export default function ItineraryPage() {
                                 attr.badge_type === 'shopping' ? 'border-purple-300 text-purple-700 bg-purple-50' :
                                 attr.badge_type === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
                                 attr.badge_type === 'restaurant' ? 'border-orange-300 text-orange-700 bg-orange-50' :
-                                attr.badge_type === 'hotel' ? 'border-indigo-300 text-indigo-700 bg-indigo-50' :
+                                attr.badge_type === 'hotel' ? 'border-[#DBEAFE] text-[#1B64DA] bg-[#EBF3FE]' :
                                 attr.badge_type === 'golf' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
                                 'border-gray-300 text-gray-600 bg-gray-50'
                               }`}>{

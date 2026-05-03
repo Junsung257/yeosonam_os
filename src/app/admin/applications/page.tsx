@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import AdminLayout from '@/components/AdminLayout';
+import Link from 'next/link';
 
 interface Application {
   id: string;
@@ -40,6 +40,11 @@ export default function ApplicationsPage() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [approveSuccess, setApproveSuccess] = useState<{
+    referralCode: string;
+    affiliateId: string;
+    pin: string;
+  } | null>(null);
 
   const load = async () => {
     try {
@@ -66,7 +71,14 @@ export default function ApplicationsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      alert(`승인 완료! 추천코드: ${data.affiliate?.referral_code}`);
+      const aff = data.affiliate;
+      if (aff?.referral_code && aff?.id) {
+        setApproveSuccess({
+          referralCode: aff.referral_code,
+          affiliateId: aff.id,
+          pin: typeof aff.pin === 'string' ? aff.pin : '',
+        });
+      }
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : '처리 실패');
@@ -97,8 +109,42 @@ export default function ApplicationsPage() {
   };
 
   return (
-    <AdminLayout>
       <div className="space-y-4">
+        {approveSuccess && (
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold">승인 완료</p>
+              <p className="text-xs mt-1 font-mono">
+                추천코드 <span className="text-green-800">{approveSuccess.referralCode}</span>
+                {approveSuccess.pin ? (
+                  <> · PIN <span className="text-green-800">{approveSuccess.pin}</span></>
+                ) : null}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/admin/partner-preview?code=${encodeURIComponent(approveSuccess.referralCode)}`}
+                className="px-3 py-1.5 rounded-lg bg-green-700 text-white text-xs font-medium hover:bg-green-800"
+              >
+                프론트 미리보기 허브
+              </Link>
+              <Link
+                href={`/admin/affiliates/${approveSuccess.affiliateId}`}
+                className="px-3 py-1.5 rounded-lg bg-white border border-green-300 text-green-800 text-xs font-medium hover:bg-green-100/80"
+              >
+                제휴 상세
+              </Link>
+              <button
+                type="button"
+                onClick={() => setApproveSuccess(null)}
+                className="px-3 py-1.5 rounded-lg text-xs text-green-800 hover:bg-green-100/60"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold text-gray-900">파트너 신청 관리</h1>
           <div className="flex gap-2">
@@ -160,6 +206,16 @@ export default function ApplicationsPage() {
                   {app.reject_reason && (
                     <div className="col-span-2 text-red-600"><span className="text-red-400">거절 사유: </span>{app.reject_reason}</div>
                   )}
+                  {app.status === 'APPROVED' && (
+                    <div className="col-span-2 pt-1 flex flex-wrap gap-3 text-[11px]">
+                      <Link href="/admin/affiliates" className="text-blue-600 hover:underline font-medium">
+                        제휴 관리 (추천코드·미리보기)
+                      </Link>
+                      <Link href="/admin/partner-preview" className="text-blue-600 hover:underline">
+                        프론트 미리보기 허브
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -189,6 +245,5 @@ export default function ApplicationsPage() {
           </div>
         )}
       </div>
-    </AdminLayout>
   );
 }

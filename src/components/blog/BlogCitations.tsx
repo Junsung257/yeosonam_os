@@ -75,7 +75,7 @@ export default function BlogCitations({ destination, airline }: Props) {
               href={c.url}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="group inline-flex items-center gap-1.5 text-gray-600 hover:text-indigo-700"
+              className="group inline-flex items-center gap-1.5 text-gray-600 hover:text-[#3182F6]"
             >
               <ExternalLink
                 size={13}

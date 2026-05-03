@@ -440,11 +440,17 @@ export interface AIUsageStats {
   total_calls_30d: number;
   daily: { date: string; cost_usd: number; calls: number }[]; // 30일
   by_model: { model: string; cost_usd: number; calls: number }[]; // top 5
+  by_provider: {
+    provider: 'deepseek' | 'gemini' | 'anthropic' | 'unknown';
+    cost_usd: number;
+    calls: number;
+    cache_hit_rate: number; // cache_read_tokens / input_tokens
+  }[];
 }
 
 export async function getAIUsageStats(): Promise<AIUsageStats> {
   const supabase = getSupabase();
-  const empty: AIUsageStats = { total_usd_7d: 0, total_usd_30d: 0, total_calls_30d: 0, daily: [], by_model: [] };
+  const empty: AIUsageStats = { total_usd_7d: 0, total_usd_30d: 0, total_calls_30d: 0, daily: [], by_model: [], by_provider: [] };
   if (!supabase) return empty;
   try {
     const now = Date.now();
@@ -453,7 +459,7 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
 
     const { data, error } = await supabase
       .from('jarvis_cost_ledger')
-      .select('created_at, cost_usd, model')
+      .select('created_at, cost_usd, model, input_tokens, cache_read_tokens')
       .gte('created_at', since30);
     if (error) {
       // 테이블 미존재(jarvis V2 미설치) 시 조용히 빈값 반환
@@ -465,6 +471,16 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
     let total7 = 0, total30 = 0;
     const dailyMap = new Map<string, { cost_usd: number; calls: number }>();
     const modelMap = new Map<string, { cost_usd: number; calls: number }>();
+    type ProviderBucket = { cost_usd: number; calls: number; input_tokens: number; cache_read_tokens: number };
+    const providerMap = new Map<string, ProviderBucket>();
+
+    function detectProvider(model: string): 'deepseek' | 'gemini' | 'anthropic' | 'unknown' {
+      if (model.startsWith('deepseek')) return 'deepseek';
+      if (model.startsWith('gemini')) return 'gemini';
+      if (model.startsWith('claude')) return 'anthropic';
+      return 'unknown';
+    }
+
     for (const r of rows) {
       const t = new Date(r.created_at as string).getTime();
       const cost = Number(r.cost_usd) || 0;
@@ -482,6 +498,14 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
       m.cost_usd += cost;
       m.calls += 1;
       modelMap.set(model, m);
+      // 프로바이더별 집계
+      const provider = detectProvider(model);
+      const pb = providerMap.get(provider) ?? { cost_usd: 0, calls: 0, input_tokens: 0, cache_read_tokens: 0 };
+      pb.cost_usd += cost;
+      pb.calls += 1;
+      pb.input_tokens += Number(r.input_tokens) || 0;
+      pb.cache_read_tokens += Number(r.cache_read_tokens) || 0;
+      providerMap.set(provider, pb);
     }
     // 30일 빈 칸 채우기
     const daily: AIUsageStats['daily'] = [];
@@ -496,6 +520,14 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
       .map(([model, v]) => ({ model, ...v }))
       .sort((a, b) => b.cost_usd - a.cost_usd)
       .slice(0, 5);
+    const by_provider = [...providerMap.entries()]
+      .map(([provider, pb]) => ({
+        provider: provider as AIUsageStats['by_provider'][0]['provider'],
+        cost_usd: Math.round(pb.cost_usd * 1000000) / 1000000,
+        calls: pb.calls,
+        cache_hit_rate: pb.input_tokens > 0 ? Math.round((pb.cache_read_tokens / pb.input_tokens) * 1000) / 1000 : 0,
+      }))
+      .sort((a, b) => b.cost_usd - a.cost_usd);
 
     return {
       total_usd_7d: Math.round(total7 * 10000) / 10000,
@@ -503,6 +535,7 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
       total_calls_30d: rows.length,
       daily,
       by_model,
+      by_provider,
     };
   } catch (err) {
     console.error('AI 비용 추이 조회 실패:', err);

@@ -13,6 +13,7 @@ import {
   calculateDraftForAffiliate,
 } from '@/lib/affiliate/settlement-calc';
 
+export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

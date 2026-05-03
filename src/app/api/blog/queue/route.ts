@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
+/** 서버에서 자기 호스트 크론 URL 호출 시 CRON_SECRET 전달 (프로덕션에서 발행자·트렌드 마이너 401 방지) */
+async function fetchCronEndpoint(path: string): Promise<Response> {
+  const base = (process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const headers: Record<string, string> = {};
+  const secret = process.env.CRON_SECRET;
+  if (secret) headers.Authorization = `Bearer ${secret}`;
+  return fetch(`${base}${path}`, { headers });
+}
+
 /**
  * 블로그 자동 발행 큐 관리 API
  *   GET  /api/blog/queue              → 큐 목록 (status 필터)
@@ -60,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'run_publisher') {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/blog-publisher`);
+      const res = await fetchCronEndpoint('/api/cron/blog-publisher');
       const data = await res.json();
       return NextResponse.json({ triggered: 'publisher', result: data });
     }
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'run_trend_miner') {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/trend-topic-miner`);
+      const res = await fetchCronEndpoint('/api/cron/trend-topic-miner');
       const data = await res.json();
       return NextResponse.json({ triggered: 'trend_miner', result: data });
     }

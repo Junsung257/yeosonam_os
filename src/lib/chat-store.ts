@@ -2,13 +2,19 @@
 
 import { create } from 'zustand';
 
+export type EscalationButtonAction = 'phone' | 'kakao';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  type?: 'text' | 'product_cards' | 'buttons';
+  type?: 'text' | 'product_cards' | 'buttons' | 'cta_links';
   products?: { id: string; title: string; destination?: string; duration?: number; nights?: number; price?: number }[];
+  /** 레거시: 클릭 시 문자열을 다시 /api/qa/chat 으로 전송 */
   buttons?: string[];
+  /** 에스컬레이션 CTA — 클릭 시 전화·카톡 등 실제 채널 (buttons 보다 우선) */
+  buttonActions?: { action: EscalationButtonAction; label: string }[];
+  ctaLinks?: { label: string; href: string }[];
   timestamp: Date;
   isStreaming?: boolean;
 }

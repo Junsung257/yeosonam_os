@@ -13,12 +13,31 @@ export async function GET(request: NextRequest) {
     const badge_type = searchParams.get('badge_type');
     const search = searchParams.get('search'); // 이름 검색 (별칭 연결용)
     const limit = searchParams.get('limit');
+    const idsParam = searchParams.get('ids'); // comma-separated UUID list
 
     // photos_only=1: 홈페이지용 경량 쿼리 (사진 매칭에 필요한 최소 필드만)
     const photosOnly = searchParams.get('photos_only');
     const fields = photosOnly
       ? 'id, name, country, region, photos, mention_count'
       : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, created_at';
+
+    // ids 지정 조회: itinerary_data attraction_ids 기반 경량 조회
+    if (idsParam) {
+      const ids = idsParam
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (ids.length === 0) return NextResponse.json({ attractions: [] });
+      const { data, error } = await supabaseAdmin
+        .from('attractions')
+        .select(fields)
+        .in('id', ids)
+        .eq('is_active', true);
+      if (error) throw error;
+      return NextResponse.json({ attractions: data || [] }, {
+        headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' },
+      });
+    }
 
     // ⚠️ ERR-attractions-limit-1000@2026-04-21:
     //    Supabase PostgREST 기본 max-rows=1000 때문에 .limit(5000) 을 호출해도 서버에서 1000 에서 잘림.

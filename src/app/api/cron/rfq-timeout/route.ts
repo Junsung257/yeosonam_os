@@ -12,6 +12,7 @@ import {
 //   "crons": [{ "path": "/api/cron/rfq-timeout", "schedule": "*/10 * * * *" }]
 // }
 
+export const dynamic = 'force-dynamic';
 export async function GET(_request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json(

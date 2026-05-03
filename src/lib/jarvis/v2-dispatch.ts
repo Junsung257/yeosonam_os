@@ -18,6 +18,7 @@ import type { DeepSeekAgentV2Config, V2RunParams } from './deepseek-agent-loop-v
 import { runDeepSeekAgentLoopV2 } from './deepseek-agent-loop-v2'
 import type { StreamEvent } from './stream-encoder'
 import type { AgentRunResult, AgentType, JarvisContext } from './types'
+import { resolveSpecialist, type SpecialistPick } from './orchestration'
 
 // agent 공유 export (V1·V2 공용)
 import {
@@ -122,6 +123,8 @@ export interface DispatchResult {
   routerConfidence: number
   supported: boolean            // false = V1 폴백 필요
   config: DeepSeekAgentV2Config | null
+  /** 2단 오케스트레이션 — 도메인 내 서브 팀 (로그·UI·추후 프롬프트 분기) */
+  specialistPick: SpecialistPick
 }
 
 /** 라우팅 + config 조립만 먼저 반환 (SSE 라우트가 agent_picked 이벤트 먼저 보낼 수 있게) */
@@ -129,11 +132,13 @@ export async function prepareDispatch(input: DispatchInput): Promise<DispatchRes
   const routerResult = await routeMessage(input.message, input.session?.context ?? {})
   const agentType = routerResult.agent
   const config = buildConfig(agentType, input.ctx)
+  const specialistPick = resolveSpecialist(agentType, input.message, input.ctx)
   return {
     agentType,
     routerConfidence: routerResult.confidence,
     supported: !!config,
     config,
+    specialistPick,
   }
 }
 

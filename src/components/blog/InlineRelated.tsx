@@ -50,17 +50,17 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
 
   return (
     <aside
-      className="not-prose my-12 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-purple-50/30 p-5 md:p-6"
+      className="not-prose my-12 rounded-2xl border border-[#DBEAFE] bg-gradient-to-br from-[#EBF3FE]/50 to-[#F0F7FF]/30 p-5 md:p-6"
       aria-label="함께 보면 좋은 여행"
     >
       <div className="mb-4 flex items-center gap-2">
         <span
           aria-hidden="true"
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#3182F6] text-xs font-bold text-white"
         >
           +
         </span>
-        <h2 className="text-sm font-bold text-indigo-900">
+        <h2 className="text-sm font-bold text-[#191F28]">
           {destination ? `${destination} 더 살펴보기` : '함께 보면 좋아요'}
         </h2>
       </div>
@@ -79,16 +79,16 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
                 <li key={p.id}>
                   <Link
                     href={`/packages/${p.id}`}
-                    className="group flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 p-3 backdrop-blur transition hover:border-indigo-200 hover:shadow-sm"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 p-3 backdrop-blur transition hover:border-[#DBEAFE] hover:shadow-sm"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="line-clamp-1 text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
+                      <p className="line-clamp-1 text-sm font-semibold text-gray-900 group-hover:text-[#3182F6]">
                         {p.title}
                       </p>
                       {meta && <p className="mt-1 line-clamp-1 text-xs text-gray-500">{meta}</p>}
                     </div>
                     {p.price ? (
-                      <span className="shrink-0 text-sm font-bold text-indigo-600">
+                      <span className="shrink-0 text-sm font-bold text-[#3182F6]">
                         {(p.price / 10000).toFixed(0)}만원~
                       </span>
                     ) : (
@@ -117,9 +117,9 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
                 <li key={p.slug}>
                   <Link
                     href={`/blog/${p.slug}`}
-                    className="group inline-flex items-start gap-1.5 text-[13.5px] text-gray-700 hover:text-indigo-700"
+                    className="group inline-flex items-start gap-1.5 text-[13.5px] text-gray-700 hover:text-[#3182F6]"
                   >
-                    <span aria-hidden="true" className="mt-0.5 text-indigo-400 group-hover:text-indigo-600">
+                    <span aria-hidden="true" className="mt-0.5 text-[#3182F6]/60 group-hover:text-[#3182F6]">
                       →
                     </span>
                     <span className="line-clamp-1 group-hover:underline">{t}</span>

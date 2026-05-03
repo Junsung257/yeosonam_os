@@ -15,6 +15,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -62,6 +64,13 @@ interface PageData {
   attractionsByCategory: Record<string, AttractionRow[]>;
   packages: PackageRow[];
   totalAttractions: number;
+}
+
+function pickPackageCoverUrl(p: PackageRow): string | null {
+  const fromPhotos = pickAttractionPhotoUrl(p.photos);
+  if (fromPhotos) return fromPhotos;
+  const raw = p.photo_urls?.[0];
+  return isSafeImageSrc(raw) ? raw.trim() : null;
 }
 
 export async function generateStaticParams() {
@@ -177,13 +186,18 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
             </h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((a) => {
-                const photo = a.photos?.[0]?.src_medium ?? a.photos?.[0]?.src_large;
+                const photo = pickAttractionPhotoUrl(a.photos);
                 return (
                   <article key={a.id} className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-                    {photo && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={photo} alt={a.name} loading="lazy" className="h-40 w-full object-cover" />
-                    )}
+                    {photo ? (
+                      <SafeCoverImg
+                        src={photo}
+                        alt={a.name}
+                        loading="lazy"
+                        className="h-40 w-full object-cover"
+                        fallback={<div className="h-40 w-full bg-neutral-100" aria-hidden />}
+                      />
+                    ) : null}
                     <div className="p-4">
                       <h3 className="font-semibold">
                         {a.emoji && <span className="mr-1">{a.emoji}</span>}
@@ -218,10 +232,15 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
                 className="block overflow-hidden rounded-lg border border-neutral-200 bg-white hover:shadow-md transition-shadow"
               >
                 {(() => {
-                  const cover = p.photos?.[0]?.src_medium ?? p.photos?.[0]?.src_large ?? p.photo_urls?.[0];
+                  const cover = pickPackageCoverUrl(p);
                   return cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cover} alt={p.title} loading="lazy" className="h-32 w-full object-cover" />
+                    <SafeCoverImg
+                      src={cover}
+                      alt={p.title}
+                      loading="lazy"
+                      className="h-32 w-full object-cover"
+                      fallback={<div className="h-32 w-full bg-neutral-100" aria-hidden />}
+                    />
                   ) : null;
                 })()}
                 <div className="p-3">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface Inquiry {
   id: string;
@@ -13,14 +13,34 @@ interface Inquiry {
   customer_email?: string;
 }
 
+/** 담당자 연결 파이프라인에 해당하는 유형 */
+const ESCALATION_PIPELINE_TYPES = 'escalation,critic_blocked,escalation_cta';
+const CTA_ONLY_TYPE = 'escalation_cta';
+
+function inquiryTypeLabel(t: string): string {
+  switch (t) {
+    case 'escalation_cta':
+      return '전화·카톡 연결';
+    case 'critic_blocked':
+      return '검증 차단';
+    case 'escalation':
+      return '담당자 필요';
+    default:
+      return t;
+  }
+}
+
 export default function EscalationsPage() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState<'pipeline' | 'cta_only'>('pipeline');
 
-  async function load() {
+  const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/qa?status=pending');
+      const types = filter === 'cta_only' ? CTA_ONLY_TYPE : ESCALATION_PIPELINE_TYPES;
+      const q = new URLSearchParams({ status: 'pending', inquiryTypes: types });
+      const res = await fetch(`/api/qa?${q}`);
       const data = await res.json();
       setInquiries(data.inquiries ?? []);
     } catch (e) {
@@ -28,9 +48,11 @@ export default function EscalationsPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [filter]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function resolve(id: string) {
     await fetch('/api/qa', {
@@ -45,17 +67,32 @@ export default function EscalationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[16px] font-bold text-slate-800">담당자 연결 문의</h1>
-          <p className="text-[13px] text-slate-500 mt-1">AI가 처리하지 못한 문의 -- 직접 답변이 필요합니다</p>
+          <p className="text-[13px] text-slate-500 mt-1">
+            AI 에스컬레이션·검증 차단·고객이 전화/카톡 버튼을 누른 건만 표시합니다.
+          </p>
         </div>
-        <button
-          onClick={load}
-          className="text-[13px] bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
-        >
-          새로고침
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value as 'pipeline' | 'cta_only');
+            }}
+            className="text-[13px] border border-slate-300 rounded-lg px-2 py-1.5 bg-white text-slate-800"
+          >
+            <option value="pipeline">전체 (에스컬레이션 파이프라인)</option>
+            <option value="cta_only">전화·카톡 버튼만</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => load()}
+            className="text-[13px] bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
+          >
+            새로고침
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -73,11 +110,13 @@ export default function EscalationsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                      {inq.inquiry_type === 'escalation' ? '담당자 필요' : inq.inquiry_type}
+                      {inquiryTypeLabel(inq.inquiry_type)}
                     </span>
                     <span className="text-[11px] text-slate-400">{formatDate(inq.created_at)}</span>
                   </div>
-                  <p className="text-slate-800 text-[14px] leading-relaxed">{inq.question}</p>
+                  <p className="text-slate-800 text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+                    {inq.question}
+                  </p>
                   {inq.customer_name && (
                     <p className="text-[13px] text-slate-500 mt-2">
                       고객: {inq.customer_name} {inq.customer_email && `(${inq.customer_email})`}

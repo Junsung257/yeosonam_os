@@ -74,6 +74,7 @@ ${YEOSONAM_BUSINESS_RULES}
 사용 가능한 Tool:
 - search_packages: 패키지 검색 (목적지, 날짜, 인원, 예산 필터)
 - get_package_detail: 패키지 상세 및 일정표 조회
+- get_package_hotel_mrt_cache: DB에 캐시된 호텔 MRT 상세(어메니티·평·취소규정 요약·체크인 시간 등). "Wi‑Fi 돼요?", "조식 어디서?" 등 **동기화된 필드 범위 내**만 답변 — 없으면 추측 금지·상담 안내
 - recommend_package: 단순 조건 기반 상품 추천 (예산 필터만)
 - recommend_best_packages: ★ 그룹 내 점수 기반 베스트 추천 (Effective Price + TOPSIS + 신뢰도)
 - get_scoring_policy: 현재 점수 정책 조회 (사유 설명용)

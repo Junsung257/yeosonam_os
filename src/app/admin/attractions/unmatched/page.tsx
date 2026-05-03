@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 interface UnmatchedItem {
   id: string;
@@ -14,12 +14,59 @@ interface UnmatchedItem {
   created_at: string;
 }
 
+interface UnmatchedSummary {
+  counts: { pending: number; ignored: number; added: number; all: number };
+  pending_high_occurrence: number;
+  auto_alias_resolved_total: number;
+  manual_link_alias_total: number;
+  high_occurrence_threshold: number;
+  recent_auto_alias: Array<{
+    id: string;
+    activity: string;
+    resolved_at: string | null;
+    resolved_attraction_id: string | null;
+    occurrence_count: number | null;
+  }>;
+}
+
+interface BootstrapCandidate {
+  id: string;
+  activity: string;
+  occurrence_count: number | null;
+  region: string | null;
+  country: string | null;
+  suggestion: {
+    id: string;
+    name: string;
+    score: number;
+    matched_via: string;
+    matched_term: string;
+  } | null;
+}
+
 export default function UnmatchedPage() {
   const [items, setItems] = useState<UnmatchedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
+  const [summary, setSummary] = useState<UnmatchedSummary | null>(null);
+  const [highFreqOnly, setHighFreqOnly] = useState(false);
+  const [bootstrapOpen, setBootstrapOpen] = useState(false);
+  const [bootstrapLoading, setBootstrapLoading] = useState(false);
+  const [bootstrapCandidates, setBootstrapCandidates] = useState<BootstrapCandidate[]>([]);
+  const [bootstrapMeta, setBootstrapMeta] = useState<{
+    min_occurrences: number;
+    score_min: number;
+    score_max: number;
+  } | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [addForm, setAddForm] = useState({ short_desc: '', country: '', region: '', badge_type: 'tour', emoji: '📍' });
+
+  const occThreshold = summary?.high_occurrence_threshold ?? 3;
+
+  const displayedItems = useMemo(
+    () => (highFreqOnly ? items.filter(i => (i.occurrence_count ?? 0) >= occThreshold) : items),
+    [highFreqOnly, items, occThreshold],
+  );
 
   // 일괄 선택
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -31,8 +78,8 @@ export default function UnmatchedPage() {
     });
   };
   const toggleSelectAll = () => {
-    if (selectedIds.size === items.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(items.map(i => i.id)));
+    if (selectedIds.size === displayedItems.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(displayedItems.map(i => i.id)));
   };
 
   // 일괄 삭제 (ignored 처리)
@@ -52,7 +99,7 @@ export default function UnmatchedPage() {
 
   // CSV 다운로드 — attractions 업로드 형식 (name,short_desc,long_desc,country,region,badge_type,emoji)
   const downloadCSV = () => {
-    const targetItems = selectedIds.size > 0 ? items.filter(i => selectedIds.has(i.id)) : items;
+    const targetItems = selectedIds.size > 0 ? displayedItems.filter(i => selectedIds.has(i.id)) : displayedItems;
     // activity에서 관광지명 정리: ▶ 제거, 앞뒤 공백, 괄호 설명 유지
     const cleanName = (activity: string) => activity.replace(/^.*▶/, '').replace(/^☆\s*/, '').trim();
     const header = 'name,short_desc,long_desc,country,region,badge_type,emoji\n';
@@ -132,7 +179,7 @@ export default function UnmatchedPage() {
     return () => clearTimeout(timer);
   }, [linkSearch]);
 
-  const linkAlias = async (unmatchedId: string, attractionId: string) => {
+  const linkAlias = async (unmatchedId: string, attractionId: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/unmatched', {
         method: 'PATCH',
@@ -140,14 +187,56 @@ export default function UnmatchedPage() {
         body: JSON.stringify({ id: unmatchedId, action: 'link_alias', attractionId }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error); return; }
+      if (!res.ok) {
+        alert(data.error);
+        return false;
+      }
       alert(data.message);
       setLinkingId(null);
       setLinkSearch('');
       setLinkResults([]);
       load();
+      return true;
     } catch (err) {
       alert('연결 실패');
+      return false;
+    }
+  };
+
+  const loadSummary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/unmatched?summary=1');
+      const json = await res.json();
+      if (json.counts) {
+        setSummary({
+          ...json,
+          manual_link_alias_total: typeof json.manual_link_alias_total === 'number' ? json.manual_link_alias_total : 0,
+          high_occurrence_threshold: typeof json.high_occurrence_threshold === 'number' ? json.high_occurrence_threshold : 3,
+        } as UnmatchedSummary);
+      }
+    } catch {
+      setSummary(null);
+    }
+  }, []);
+
+  const loadBootstrap = async () => {
+    setBootstrapLoading(true);
+    setBootstrapOpen(true);
+    try {
+      const res = await fetch('/api/unmatched?bootstrap=1&limit=40');
+      const json = await res.json();
+      setBootstrapCandidates(Array.isArray(json.candidates) ? json.candidates : []);
+      if (typeof json.min_occurrences === 'number' && typeof json.score_min === 'number' && typeof json.score_max === 'number') {
+        setBootstrapMeta({
+          min_occurrences: json.min_occurrences,
+          score_min: json.score_min,
+          score_max: json.score_max,
+        });
+      }
+    } catch {
+      setBootstrapCandidates([]);
+    } finally {
+      setBootstrapLoading(false);
     }
   };
 
@@ -157,8 +246,11 @@ export default function UnmatchedPage() {
       const res = await fetch(`/api/unmatched?status=${statusFilter}`);
       const json = await res.json();
       setItems(json.items || []);
-    } finally { setLoading(false); }
-  }, [statusFilter]);
+    } finally {
+      setLoading(false);
+      void loadSummary();
+    }
+  }, [statusFilter, loadSummary]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -196,10 +288,18 @@ export default function UnmatchedPage() {
           <h1 className="text-2xl font-bold text-slate-800">🔍 미매칭 관광지</h1>
           <p className="text-sm text-slate-500 mt-1">랜딩페이지에서 DB에 매칭되지 않은 관광지 목록입니다.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <button
+            type="button"
+            onClick={() => void loadBootstrap()}
+            disabled={bootstrapLoading}
+            className="px-3 py-1.5 bg-amber-700 text-white text-sm rounded-lg hover:bg-amber-800 disabled:opacity-50"
+          >
+            {bootstrapLoading ? '후보 분석…' : '애매 후보(빈도≥3)'}
+          </button>
           <button onClick={downloadCSV}
             className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700">
-            CSV↓ {selectedIds.size > 0 ? `(${selectedIds.size}건)` : `(${items.length}건)`}
+            CSV↓ {selectedIds.size > 0 ? `(${selectedIds.size}건)` : `(${displayedItems.length}건)`}
           </button>
           {selectedIds.size > 0 && (
             <button onClick={bulkIgnore}
@@ -211,29 +311,123 @@ export default function UnmatchedPage() {
         </div>
       </div>
 
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-slate-800">{summary.counts.pending}</div>
+            <div className="text-xs text-slate-500">대기중</div>
+          </div>
+          <div className="bg-white border border-amber-200 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-amber-700">{summary.pending_high_occurrence}</div>
+            <div className="text-xs text-slate-500">대기 · 등장 {summary.high_occurrence_threshold}회+</div>
+          </div>
+          <div className="bg-white border border-emerald-200 rounded-xl p-3 text-center">
+            <div className="flex justify-center gap-5 items-baseline">
+              <div>
+                <div className="text-xl font-bold text-emerald-700">{summary.auto_alias_resolved_total}</div>
+                <div className="text-[10px] text-slate-500">자동(크론)</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-violet-700">{summary.manual_link_alias_total}</div>
+                <div className="text-[10px] text-slate-500">수동(UI)</div>
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 mt-1">누적 별칭 연결</div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-xl p-3 text-left text-xs text-slate-600">
+            <div className="font-semibold text-slate-700 mb-1">최근 자동 처리</div>
+            {summary.recent_auto_alias.length === 0 ? (
+              <span className="text-slate-400">아직 없음</span>
+            ) : (
+              <ul className="space-y-0.5 max-h-20 overflow-y-auto">
+                {summary.recent_auto_alias.map(r => (
+                  <li key={r.id} className="truncate" title={r.activity}>
+                    {r.activity.slice(0, 28)}
+                    {r.activity.length > 28 ? '…' : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {bootstrapOpen && (
+        <div className="mb-4 border border-amber-200 bg-amber-50/60 rounded-xl p-4">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-sm font-bold text-amber-900">
+              애매 매칭 후보 (빈도≥{bootstrapMeta?.min_occurrences ?? occThreshold}, 점수 {bootstrapMeta?.score_min ?? 75}~{bootstrapMeta?.score_max ?? 94})
+            </h2>
+            <button type="button" className="text-xs text-slate-500 hover:text-slate-700" onClick={() => setBootstrapOpen(false)}>닫기</button>
+          </div>
+          <p className="text-[11px] text-amber-800 mb-2">
+            크론 자동해결(기본 95점+)에 안 걸린 건입니다. Vercel 환경변수 <span className="font-mono">UNMATCHED_BOOTSTRAP_*</span>로 구간을 조정할 수 있습니다. 행의 「적용」으로 별칭을 한 번에 연결할 수 있습니다.
+          </p>
+          {bootstrapLoading ? (
+            <p className="text-xs text-amber-700 py-4 text-center">분석 중…</p>
+          ) : bootstrapCandidates.length === 0 ? (
+            <p className="text-xs text-slate-500 py-3 text-center">현재 조건에 맞는 후보가 없습니다.</p>
+          ) : (
+          <div className="max-h-56 overflow-y-auto space-y-1">
+            {bootstrapCandidates.map(c => (
+              <div key={c.id} className="flex flex-wrap items-center gap-2 bg-white border border-amber-100 rounded-lg px-2 py-1.5 text-xs">
+                <span className="font-medium text-slate-800 flex-1 min-w-[120px]">{c.activity}</span>
+                <span className="text-blue-600 font-bold">{c.occurrence_count ?? 0}회</span>
+                {c.suggestion ? (
+                  <>
+                    <span className="text-slate-600">→ {c.suggestion.name}</span>
+                    <span className="text-amber-700 font-mono">{Math.round(c.suggestion.score)}점</span>
+                    <button
+                      type="button"
+                      className="ml-auto px-2 py-0.5 bg-violet-600 text-white rounded hover:bg-violet-700"
+                      onClick={async () => {
+                        const ok = await linkAlias(c.id, c.suggestion!.id);
+                        if (ok) setBootstrapCandidates(prev => prev.filter(x => x.id !== c.id));
+                      }}
+                    >
+                      적용
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-slate-400">후보 없음</span>
+                )}
+              </div>
+            ))}
+          </div>
+          )}
+        </div>
+      )}
+
       {/* 필터 */}
-      <div className="flex gap-3 mb-4 items-center">
+      <div className="flex gap-3 mb-4 items-center flex-wrap">
         <label className="flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={selectedIds.size === items.length && items.length > 0}
+          <input type="checkbox" checked={selectedIds.size === displayedItems.length && displayedItems.length > 0}
             onChange={toggleSelectAll} className="rounded" />
           <span className="text-xs text-slate-500">전체</span>
         </label>
+        {statusFilter === 'pending' && (
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-600">
+            <input type="checkbox" checked={highFreqOnly} onChange={e => { setHighFreqOnly(e.target.checked); setSelectedIds(new Set()); }} className="rounded" />
+            등장 {occThreshold}회 이상만
+          </label>
+        )}
         {['pending', 'ignored', 'added', 'all'].map(s => (
-          <button key={s} onClick={() => { setStatusFilter(s); setSelectedIds(new Set()); }}
+          <button key={s} onClick={() => { setStatusFilter(s); setSelectedIds(new Set()); setHighFreqOnly(false); }}
             className={`px-3 py-1.5 text-sm rounded-lg ${statusFilter === s ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
             {s === 'pending' ? '대기중' : s === 'ignored' ? '무시됨' : s === 'added' ? '추가됨' : '전체'}
           </button>
         ))}
         <span className="text-sm text-slate-500 self-center ml-auto">
-          {selectedIds.size > 0 ? `${selectedIds.size}건 선택 / ` : ''}총 {items.length}건
+          {selectedIds.size > 0 ? `${selectedIds.size}건 선택 / ` : ''}표시 {displayedItems.length}건
+          {highFreqOnly ? ` (전체 ${items.length}건 중)` : ''}
         </span>
       </div>
 
-      {loading ? <p className="text-slate-400 py-10 text-center">로딩 중...</p> : items.length === 0 ? (
+      {loading ? <p className="text-slate-400 py-10 text-center">로딩 중...</p> : displayedItems.length === 0 ? (
         <p className="text-slate-400 py-10 text-center">미매칭 항목이 없습니다.</p>
       ) : (
         <div className="space-y-2">
-          {items.map(item => (
+          {displayedItems.map(item => (
             <div key={item.id} className={`bg-white border rounded-xl p-4 ${selectedIds.has(item.id) ? 'border-blue-400 bg-blue-50/30' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-start gap-3 flex-1">

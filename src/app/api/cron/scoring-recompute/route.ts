@@ -33,6 +33,14 @@ export async function GET(req: NextRequest) {
   try {
     // 0) 옵션 시장가 자동 학습 (점수 산출 전)
     const market = await learnMarketRates();
+    // 0b) MRT 호텔 인텔 — 일부만 갱신 (외부 MCP 부하 상한)
+    let mrtHotel: { attempted: number; synced: number } = { attempted: 0, synced: 0 };
+    try {
+      const { syncStaleMrtHotelIntel } = await import('@/lib/mrt-hotel-intel');
+      mrtHotel = await syncStaleMrtHotelIntel({ maxPackages: 30, freshWithinDays: 14 });
+    } catch (e) {
+      console.warn('[cron/scoring-recompute] mrt hotel sync:', e instanceof Error ? e.message : e);
+    }
     // 1) 1차 점수
     const first = await recomputeAllScores();
     // 2) 헤도닉 implicit price 학습
@@ -78,6 +86,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true, ms,
       market: { upserted: market.upserted, options_seen: market.options_seen },
+      mrt_hotel_intel: mrtHotel,
       first: { groups: first.groups, packages: first.packages },
       history: { inserted: history.inserted },
       feature_snapshots: featureSnap,

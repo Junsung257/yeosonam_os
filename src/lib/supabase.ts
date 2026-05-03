@@ -739,8 +739,11 @@ export async function createBooking(data: {
   conversationId?: string;
   companions?: { name: string; phone?: string; passport_no?: string; passport_expiry?: string }[];
   quickCreated?: boolean; quickCreatedTxId?: string;
+  /** 명시하지 않으면 BOOKING_AUTOMATION_TIER 에 따름 (assisted=true, full_auto=false) */
+  depositNoticeBlocked?: boolean;
 }) {
   try {
+    const { initialDepositNoticeBlockedForNewBooking } = await import('./booking-automation-policy');
     let selfReferralFlag = false;
     let selfReferralReason: string | null = null;
     if (data.affiliateId) {
@@ -812,6 +815,8 @@ export async function createBooking(data: {
       ...(data.conversationId ? { conversation_id: data.conversationId } : {}),
       ...(data.quickCreated ? { quick_created: true } : {}),
       ...(data.quickCreatedTxId ? { quick_created_tx_id: data.quickCreatedTxId } : {}),
+      deposit_notice_blocked:
+        data.depositNoticeBlocked ?? initialDepositNoticeBlockedForNewBooking(),
     }] as never).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;

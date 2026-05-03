@@ -1,33 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { applyCommissionPolicies, summarizeBreakdown } from '@/lib/policy-engine';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 // 어필리에이트 커미션 정책 미리보기:
 // 활성 어필리에이터 N명 + 활성 상품 M개에 대해 평균 커미션율과 월 정산 영향 추정.
 // 사장님이 정책 활성화 전에 "지금 켜면 무슨 일이?"를 5초 안에 확인할 수 있도록.
 //
 // ⚠️ 어필리에이터 이름·평균 커미션율 등 민감 데이터를 반환하므로 admin-only.
-//   middleware는 /api 경로를 인증 보호하지만(/api/policies/preview는 PUBLIC_PATHS 미등록),
-//   추가로 service-role 토큰 또는 admin 쿠키를 직접 검증한다.
-
-function isAdmin(req: NextRequest): boolean {
-  // middleware의 admin 인증을 통과하면 supabase admin 쿠키가 존재
-  const adminCookie = req.cookies.get('sb-admin')?.value
-    || req.cookies.get('admin_email')?.value;
-  if (adminCookie) return true;
-  // service role 헤더 (서버-to-서버 호출용)
-  const auth = req.headers.get('authorization') || '';
-  if (auth.startsWith('Bearer ') && process.env.SUPABASE_SERVICE_ROLE_KEY
-      && auth.slice(7) === process.env.SUPABASE_SERVICE_ROLE_KEY) return true;
-  return false;
-}
 
 export async function GET(request: NextRequest) {
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-  }
-  if (!isAdmin(request)) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
   try {
     const { supabaseAdmin } = await import('@/lib/supabase');

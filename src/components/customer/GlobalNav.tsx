@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { REGIONS, getDestinationUrl, getRegionUrl } from '@/lib/regions';
-
+import { getConsultTelHref } from '@/lib/consult-escalation';
 function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
   const next = e.relatedTarget as Node | null;
   if (!next) return true;
@@ -12,7 +12,6 @@ function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
 }
 
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
-const PHONE = '051-000-0000';
 
 type MenuKey = 'overseas' | 'theme' | null;
 
@@ -27,6 +26,7 @@ export default function GlobalNav() {
   const [openMenu, setOpenMenu] = useState<MenuKey>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openMobileRegion, setOpenMobileRegion] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drawerCloseBtnRef = useRef<HTMLButtonElement | null>(null);
   const hamburgerBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -35,6 +35,12 @@ export default function GlobalNav() {
     setDrawerOpen(false);
     setOpenMenu(null);
   }, [pathname]);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     if (drawerOpen) {
@@ -73,11 +79,14 @@ export default function GlobalNav() {
   const isOverseasActive = pathname?.includes('/destinations') || pathname?.includes('/packages');
   const isThemeActive = false;
 
+  const consultTelHref = getConsultTelHref();
+  const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
+
   return (
-    <>
+    <div className="sticky top-0 z-40">
       {/* ── 데스크톱 ── */}
       <nav
-        className="hidden md:block sticky top-0 z-40 bg-white border-b border-[#F2F4F6]"
+        className={`hidden md:block transition-all duration-200 ${scrolled ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-transparent' : 'bg-white border-b border-[#F2F4F6]'}`}
         aria-label="주 메뉴"
       >
         <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center justify-between">
@@ -255,7 +264,7 @@ export default function GlobalNav() {
 
       {/* ── 모바일 ── */}
       <nav
-        className="md:hidden sticky top-0 z-40 bg-white border-b border-[#F2F4F6] h-14 flex items-center justify-between px-5"
+        className={`md:hidden h-14 flex items-center justify-between px-5 transition-all duration-200 ${scrolled ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-transparent' : 'bg-white border-b border-[#F2F4F6]'}`}
         aria-label="주 메뉴"
       >
         <Link href="/" className="text-lg font-black tracking-tight text-[#3182F6]">여소남</Link>
@@ -387,16 +396,18 @@ export default function GlobalNav() {
               >
                 💬 카카오톡 상담
               </a>
-              <a
-                href={`tel:${PHONE}`}
-                className="w-full text-center text-sm text-gray-600 py-2"
-              >
-                📞 {PHONE}
-              </a>
+              {consultTelHref && consultPhoneLabel ? (
+                <a
+                  href={consultTelHref}
+                  className="w-full text-center text-sm text-gray-600 py-2"
+                >
+                  📞 {consultPhoneLabel}
+                </a>
+              ) : null}
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

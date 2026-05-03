@@ -10,7 +10,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { cardNewsId: string } }
 ) {
-  if (!isAdminRequest(request)) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const { cardNewsId } = params;

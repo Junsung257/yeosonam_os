@@ -16,6 +16,7 @@ const TIERS = ['luxury', 'mid'] as const;
 
 export const maxDuration = 300;
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? new URL(request.url).origin;
   const results: { city: string; tier: string; ok: boolean; slug?: string; error?: string }[] = [];

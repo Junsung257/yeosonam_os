@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
+import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,80 +12,56 @@ const supabaseAdmin = createClient(
 
 const { PIN_MAX_ATTEMPTS, PIN_WINDOW_MINUTES, PIN_LOCKOUT_MINUTES } = AFFILIATE_CONFIG;
 
-// PIN 인증 + 대시보드 데이터
+// PIN 인증 + 대시보드 데이터 (PIN 없이 민감 정보 반환 금지)
 export async function POST(req: NextRequest) {
   try {
     const { referral_code, pin } = await req.json();
-    if (!referral_code) return NextResponse.json({ error: '코드 필요' }, { status: 400 });
-
-    // ── PIN 시도 횟수 체크 (브루트포스 방어) ──
-    if (pin) {
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-      const identifier = `${referral_code}_${ip}`;
-      const windowStart = new Date(Date.now() - PIN_WINDOW_MINUTES * 60 * 1000).toISOString();
-
-      const { count: attemptCount } = await supabaseAdmin
-        .from('pin_attempts')
-        .select('*', { count: 'exact', head: true })
-        .eq('identifier', identifier)
-        .gte('attempted_at', windowStart);
-
-      if (attemptCount && attemptCount >= PIN_MAX_ATTEMPTS) {
-        return NextResponse.json(
-          { error: `PIN 시도 횟수를 초과했습니다. ${PIN_LOCKOUT_MINUTES}분 후 다시 시도해주세요.` },
-          { status: 429 }
-        );
-      }
-
-      // 시도 기록 저장 (성공/실패 무관)
-      await supabaseAdmin.from('pin_attempts').insert({ identifier });
-
-      // 어필리에이트 조회
-      const { data: affiliate, error } = await supabaseAdmin
-        .from('affiliates')
-        .select('id, name, referral_code, grade, grade_label, bonus_rate, booking_count, total_commission, payout_type, logo_url, pin, phone, created_at')
-        .eq('referral_code', referral_code)
-        .single();
-
-      if (error || !affiliate) {
-        return NextResponse.json({ error: '존재하지 않는 코드입니다' }, { status: 404 });
-      }
-
-      // PIN 검증
-      const storedPin = affiliate.pin || (affiliate.phone ? affiliate.phone.replace(/[^0-9]/g, '').slice(-4) : null);
-      if (!storedPin || pin !== storedPin) {
-        const remaining = PIN_MAX_ATTEMPTS - (attemptCount || 0) - 1;
-        return NextResponse.json(
-          { error: `PIN이 일치하지 않습니다. 남은 시도: ${remaining}회` },
-          { status: 401 }
-        );
-      }
-
-      // 성공 시 시도 기록 삭제
-      await supabaseAdmin.from('pin_attempts').delete().eq('identifier', identifier);
-
-      // 이하 대시보드 데이터 로드 (affiliate 변수 사용)
-      return await buildDashboardResponse(affiliate, true);
+    if (!referral_code) {
+      return NextResponse.json({ error: '코드 필요' }, { status: 400 });
     }
 
-    // PIN 없이 호출 (이미 인증된 세션) — 기존 로직 유지
-    const { data: affiliate, error } = await supabaseAdmin
-      .from('affiliates')
-      .select('id, name, referral_code, grade, grade_label, bonus_rate, booking_count, total_commission, payout_type, logo_url, pin, phone, created_at')
-      .eq('referral_code', referral_code)
-      .single();
-
-    if (error || !affiliate) {
-      return NextResponse.json({ error: '존재하지 않는 코드입니다' }, { status: 404 });
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const codeKey = normalizeAffiliateReferralCode(referral_code);
+    if (!codeKey) {
+      return NextResponse.json({ error: '코드 필요' }, { status: 400 });
     }
 
-    return await buildDashboardResponse(affiliate, false);
+    const identifier = `${codeKey}_${ip}`;
+    const windowStart = new Date(Date.now() - PIN_WINDOW_MINUTES * 60 * 1000).toISOString();
+
+    const { count: attemptCount } = await supabaseAdmin
+      .from('pin_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('identifier', identifier)
+      .gte('attempted_at', windowStart);
+
+    if (attemptCount && attemptCount >= PIN_MAX_ATTEMPTS) {
+      return NextResponse.json(
+        { error: `PIN 시도 횟수를 초과했습니다. ${PIN_LOCKOUT_MINUTES}분 후 다시 시도해주세요.` },
+        { status: 429 }
+      );
+    }
+
+    await supabaseAdmin.from('pin_attempts').insert({ identifier });
+
+    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, pin);
+    if (!auth.ok) {
+      const remaining = PIN_MAX_ATTEMPTS - (attemptCount || 0) - 1;
+      const msg =
+        auth.status === 401
+          ? `PIN이 일치하지 않습니다. 남은 시도: ${remaining}회`
+          : auth.message;
+      return NextResponse.json({ error: msg }, { status: auth.status });
+    }
+
+    await supabaseAdmin.from('pin_attempts').delete().eq('identifier', identifier);
+
+    return await buildDashboardResponse(auth.affiliate, true);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
   }
 }
 
-// ── 대시보드 데이터 조회 공통 함수 ──
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
   const GRADE_MAP: Record<number, { label: string; rate: string; next: string }> = {
@@ -95,19 +73,43 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
   };
   const gradeInfo = GRADE_MAP[affiliate.grade] || GRADE_MAP[1];
 
-  const { data: settlements } = await supabaseAdmin
+  const { data: settlementsRaw } = await supabaseAdmin
     .from('settlements')
-    .select('id, period, gross_amount, tax_amount, net_payout, status, settled_at')
+    .select(
+      'id, settlement_period, qualified_booking_count, total_amount, carryover_balance, final_total, tax_deduction, final_payout, status, settled_at, created_at',
+    )
     .eq('affiliate_id', affiliate.id)
-    .order('period', { ascending: false })
-    .limit(6);
+    .order('settlement_period', { ascending: false })
+    .limit(12);
 
-  const { data: recentBookings } = await supabaseAdmin
+  const settlements = (settlementsRaw || []).map((s: Record<string, unknown>) => ({
+    id: s.id as string,
+    period: s.settlement_period as string,
+    gross_amount: Number(s.total_amount) || 0,
+    tax_amount: Number(s.tax_deduction) || 0,
+    net_payout: Number(s.final_payout) || 0,
+    status: s.status as string,
+    settled_at: s.settled_at as string | undefined,
+    qualified_booking_count: Number(s.qualified_booking_count) || 0,
+    carryover_balance: Number(s.carryover_balance) || 0,
+    final_total: Number(s.final_total) || 0,
+  }));
+
+  const { data: recentBookingsRaw } = await supabaseAdmin
     .from('bookings')
-    .select('id, product_name, booking_date, status, influencer_commission, created_at')
+    .select('id, product_name, package_title, booking_date, status, influencer_commission, created_at')
     .eq('affiliate_id', affiliate.id)
     .order('created_at', { ascending: false })
     .limit(10);
+
+  const recent_bookings = (recentBookingsRaw || []).map((b: Record<string, unknown>) => ({
+    id: b.id as string,
+    product_name: (b.product_name as string) || (b.package_title as string) || undefined,
+    booking_date: b.booking_date as string | undefined,
+    status: b.status as string | undefined,
+    influencer_commission: Number(b.influencer_commission) || 0,
+    created_at: b.created_at as string,
+  }));
 
   const { data: linkStats } = await supabaseAdmin
     .from('influencer_links')
@@ -117,7 +119,6 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
   const totalClicks = linkStats?.reduce((sum, l) => sum + (l.click_count || 0), 0) || 0;
   const totalConversions = linkStats?.reduce((sum, l) => sum + (l.conversion_count || 0), 0) || 0;
 
-  // ── 콘텐츠별 매출 기여도 (어필리에이터가 만든 콘텐츠 → 예약 → 매출) ──
   const { data: contents } = await supabaseAdmin
     .from('content_distributions')
     .select('id, product_id, platform, status, generation_agent, created_at, published_at')
@@ -133,6 +134,16 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
     revenue: number;
     commission: number;
   }> = [];
+
+  const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+  const { count: landingViews30 } = await supabaseAdmin
+    .from('affiliate_touchpoints')
+    .select('id', { count: 'exact', head: true })
+    .eq('referral_code', affiliate.referral_code)
+    .eq('sub_id', 'co_brand_landing')
+    .gte('clicked_at', since30);
+
+  const siteBase = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '');
 
   if (contentIds.length > 0) {
     const { data: attributedBookings } = await supabaseAdmin
@@ -182,9 +193,16 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
       total_conversions: totalConversions,
       conversion_rate: totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(1) + '%' : '0%',
     },
-    settlements: settlements || [],
-    recent_bookings: recentBookings || [],
+    settlements,
+    recent_bookings,
     contents: contents || [],
     content_revenue: contentRevenue,
+    co_brand: {
+      path: `/with/${encodeURIComponent(affiliate.referral_code)}`,
+      full_url: siteBase ? `${siteBase}/with/${encodeURIComponent(affiliate.referral_code)}` : '',
+      landing_views_30d: landingViews30 ?? 0,
+    },
+    attribution_notice:
+      '정산은 여행 귀국일·예약 상태에 따라 월별로 반영됩니다. 아래 금액은 시스템 기록 기준이며, 미확정 건은 변동될 수 있습니다.',
   });
 }

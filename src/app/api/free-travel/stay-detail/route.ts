@@ -12,7 +12,8 @@ import { z } from 'zod';
 import { getStayDetail } from '@/lib/travel-providers/mrt';
 
 const QuerySchema = z.object({
-  gid: z.string().min(1),
+  /** MRT 숙소 gid는 숫자. 추정/폴백 숙소 ID는 상세 조회 불가 */
+  gid: z.string().regex(/^\d+$/),
   checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   adults: z.number().int().min(1).max(8),
@@ -30,7 +31,10 @@ export async function GET(request: NextRequest) {
   });
 
   if (!parsed.success) {
-    return NextResponse.json({ code: 'VALIDATION_ERROR', error: 'gid/checkIn/checkOut/adults/children 값을 확인해주세요.' }, { status: 400 });
+    return NextResponse.json({
+      code: 'VALIDATION_ERROR',
+      error: '숙소 상세는 마이리얼트립에서 조회된 숙소(숫자 ID)에서만 열립니다. 추정 호텔은 목적지·날짜로 마이리얼트립에서 직접 검색해 주세요.',
+    }, { status: 400 });
   }
   const { gid, checkIn, checkOut, adults, children } = parsed.data;
 

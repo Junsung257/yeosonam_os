@@ -42,6 +42,7 @@ import { sendReviewRequestAlimtalk } from '@/lib/kakao';
  * // TODO: C2C 공유 전환율 집계
  * // 알림톡 공유 링크 클릭 후 신규 예약 연결 → 추천인 보상(마일리지) 지급
  */
+export const dynamic = 'force-dynamic';
 export async function GET(): Promise<NextResponse> {
   // ── 간단한 Cron Secret 검증 (선택사항, 보안 강화 시 활성화) ──
   // const authHeader = request.headers.get('authorization');

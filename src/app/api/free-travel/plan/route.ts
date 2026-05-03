@@ -9,7 +9,7 @@
  *   activities → 액티비티 결과
  *   comparison → Decoy 패키지 비교
  *   summary  → AI 코멘트
- *   done     → 세션 ID + 만료 시각
+ *   done     → 세션 ID + 만료 시각 (공유 링크 복원용 TTL 7일)
  *   error    → 오류 메시지
  */
 
@@ -20,7 +20,12 @@ import { llmCall } from '@/lib/llm-gateway';
 import { aggregator } from '@/lib/travel-providers';
 import { buildMylinkUrl } from '@/lib/travel-providers/mrt';
 import type { FlightResult, StayResult, ActivityResult } from '@/lib/travel-providers/types';
-import { buildDayPlans } from '@/lib/free-travel/itinerary-schema';
+import { computeActivityEstimateFromDayPlans } from '@/lib/free-travel/itinerary-schema';
+import { loadReferenceAndScore } from '@/lib/free-travel/itinerary-composition-score';
+import { generateDayPlansWithLlmOrFallback } from '@/lib/free-travel/itinerary-llm';
+
+/** 견적 세션·공유 링크 유효 기간 (기존 15분 → 링크 복원·CS 대응용 7일) */
+const PLAN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ─── 요청 스키마 ──────────────────────────────────────────────────────────────
 
@@ -30,6 +35,14 @@ const RequestSchema = z.object({
   requestId:     z.string().uuid().optional(),
   customerPhone: z.string().optional(),
   customerName:  z.string().optional(),
+  /** 플래너 화면에서 고른 값(추출값보다 우선 저장·일정에 반영) */
+  plannerPreferences: z
+    .object({
+      companionType:   z.string().optional(),
+      hotelBudgetBand: z.string().optional(),
+      travelPace:      z.string().optional(),
+    })
+    .optional(),
 });
 
 // ─── AI 추출 스키마 ───────────────────────────────────────────────────────────
@@ -279,14 +292,24 @@ JSON 필드:
         }
 
         const params = paramsParsed.data;
+        const clientPref = req.plannerPreferences;
+        const effectiveCompanion =
+          clientPref?.companionType?.trim() || params.companionType || null;
+        const effectiveBudget =
+          clientPref?.hotelBudgetBand?.trim() || params.hotelBudgetBand || null;
+        const effectivePace =
+          clientPref?.travelPace?.trim() || params.travelPace || null;
         const fallback = parseMessageFallback(req.message);
         const normalizedDestination = fallback.destination ?? params.destination;
         const normalizedDateFrom = fallback.dateFrom ?? params.dateFrom;
         const normalizedDateTo = fallback.dateTo ?? params.dateTo;
-        const normalizedNights = Math.max(
-          1,
-          Math.round((new Date(normalizedDateTo).getTime() - new Date(normalizedDateFrom).getTime()) / 86400_000),
-        );
+        const fromMs = new Date(normalizedDateFrom).getTime();
+        const toMs = new Date(normalizedDateTo).getTime();
+        const diffNights = Math.round((toMs - fromMs) / 86400_000);
+        const normalizedNights =
+          Number.isFinite(diffNights) && diffNights > 0
+            ? diffNights
+            : Math.max(1, params.nights);
         const normalizedAdults = fallback.adults || params.adults;
         const normalizedChildren = fallback.children ?? params.children;
         const normalizedSkipFlights = params.skipFlights || fallback.skipFlights;
@@ -303,9 +326,9 @@ JSON 필드:
           adults:          normalizedAdults,
           children:        normalizedChildren,
           skipFlights:     normalizedSkipFlights,
-          companionType:   params.companionType ?? null,
-          hotelBudgetBand: params.hotelBudgetBand ?? null,
-          travelPace:      params.travelPace ?? null,
+          companionType:   effectiveCompanion,
+          hotelBudgetBand: effectiveBudget,
+          travelPace:      effectivePace,
         });
 
         // ── Step 2: 병렬 OTA 검색 (결과마다 즉시 push) ───────────────────────
@@ -388,25 +411,38 @@ JSON 필드:
 
         const hasAnyResults = flights.length > 0 || hotels.length > 0 || activities.length > 0;
 
+        type FallbackPkg = { id: string; title: string; price_adult: number | null; product_highlights: unknown };
+        const pkgs = fallbackPkgs as FallbackPkg[];
+
+        sendWithRequestId('status', { step: 'itinerary', message: 'DeepSeek로 일정표를 구성하는 중...' });
+        const itineraryBuilt = await generateDayPlansWithLlmOrFallback({
+          destination:       normalizedDestination,
+          dateFrom:          normalizedDateFrom,
+          nights:            normalizedNights,
+          hotels,
+          activities,
+          hotelBudgetBand: effectiveBudget,
+          travelPace:      effectivePace,
+          companionType:   effectiveCompanion,
+          userMessage:     req.message,
+        });
+        const dayPlans          = itineraryBuilt.dayPlans;
+        const itinerarySource   = itineraryBuilt.source;
+        const itineraryLlmError = itineraryBuilt.error;
+
+        const itineraryScore = await loadReferenceAndScore(
+          normalizedDestination,
+          dayPlans,
+          effectivePace,
+        );
+
+        const actEst     = computeActivityEstimateFromDayPlans(dayPlans, normalizedAdults);
         const flightMin  = (flights[0]?.price ?? 0) * (normalizedAdults + normalizedChildren);
         const hotelMin   = (hotels[0]?.pricePerNight ?? 0) * normalizedNights * Math.ceil((normalizedAdults + normalizedChildren) / 2);
-        const actEst     = activities.slice(0, 3).reduce((s, a) => s + a.price, 0) * normalizedAdults;
         const totalMin   = flightMin + hotelMin + actEst;
         const totalMax   = ((flights[4]?.price ?? flights[0]?.price ?? 0) * (normalizedAdults + normalizedChildren))
                          + ((hotels[4]?.pricePerNight ?? hotels[0]?.pricePerNight ?? 0) * normalizedNights * Math.ceil((normalizedAdults + normalizedChildren) / 2))
                          + actEst * 1.5;
-
-        type FallbackPkg = { id: string; title: string; price_adult: number | null; product_highlights: unknown };
-        const pkgs = fallbackPkgs as FallbackPkg[];
-        const dayPlans = buildDayPlans({
-          destination: normalizedDestination,
-          dateFrom: normalizedDateFrom,
-          nights: normalizedNights,
-          hotels,
-          activities,
-          hotelBudgetBand: params.hotelBudgetBand ?? null,
-          travelPace: params.travelPace ?? null,
-        });
 
         const comparison = !hasAnyResults
           ? { totalMin: 0, totalMax: 0, available: false, packages: [], message: '검색 결과가 없어 비교를 표시할 수 없습니다.' }
@@ -433,7 +469,12 @@ JSON 필드:
               },
             };
         sendWithRequestId('comparison', comparison as unknown as Record<string, unknown>);
-        sendWithRequestId('itinerary', { dayPlans });
+        sendWithRequestId('itinerary', {
+          dayPlans,
+          itineraryScore,
+          itinerarySource,
+          ...(itineraryLlmError ? { itineraryLlmError } : {}),
+        });
 
         // ── Step 4: AI 코멘트 ─────────────────────────────────────────────────
         sendWithRequestId('status', { step: 'ai', message: 'AI 맞춤 코멘트 작성 중...' });
@@ -445,8 +486,9 @@ JSON 필드:
 - 4~6문장, 이모지 1~2개 사용 가능
 - skipFlights가 true면 "항공권은 이미 확보하셨군요!"로 시작, 호텔·액티비티 위주로 추천
 - 항공편(skipFlights=false일 때)·호텔·액티비티 하이라이트 포함
-- 최소 1개의 "추천 일정(예: 1일차/2일차/3일차)"을 포함
-- 여소남 패키지가 있으면 마지막에 자연스럽게 언급`,
+- 최소 1개의 "추천 일정(일자별 코스·시장·랜드마크)"을 포함 — 투어 판매보다 일정 구성 조언이 우선
+- 여소남 패키지가 있으면 마지막에 자연스럽게 언급
+- 날씨·기후 이야기는 하지 마세요. 대신 일정 구성 만족도(itineraryComposition)가 있으면 한 문장으로만 언급 가능`,
           userPrompt: JSON.stringify({
             destination:      normalizedDestination,
             nights:           normalizedNights,
@@ -459,6 +501,11 @@ JSON 필드:
             activities:       activities.slice(0, 3).map(a => a.name),
             totalMin,
             packageAvailable: comparison.available,
+            itineraryComposition: {
+              score: itineraryScore.score,
+              label: itineraryScore.label,
+              referencePackagesUsed: itineraryScore.referencePackagesUsed,
+            },
           }),
           maxTokens: 400,
           temperature: 0.7,
@@ -471,7 +518,7 @@ JSON 필드:
         sendWithRequestId('summary', { text: aiSummary });
 
         // ── Step 5: 세션 저장 ─────────────────────────────────────────────────
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + PLAN_SESSION_TTL_MS).toISOString();
 
         if (isSupabaseConfigured && supabaseAdmin) {
           await supabaseAdmin.from('free_travel_sessions').upsert({
@@ -484,7 +531,22 @@ JSON 필드:
             date_to:         normalizedDateTo,
             pax_adults:      normalizedAdults,
             pax_children:    normalizedChildren,
-            plan_json:       { flights, hotels, activities, comparison, dayPlans, aiSummary },
+            plan_json:       {
+              flights,
+              hotels,
+              activities,
+              comparison,
+              dayPlans,
+              aiSummary,
+              itineraryScore,
+              itinerarySource,
+              plannerPreferences: {
+                companionType:   effectiveCompanion,
+                hotelBudgetBand: effectiveBudget,
+                travelPace:      effectivePace,
+              },
+              ...(itineraryLlmError ? { itineraryLlmError } : {}),
+            },
             plan_expires_at: expiresAt,
             source:          'web',
           }, { onConflict: 'id' });

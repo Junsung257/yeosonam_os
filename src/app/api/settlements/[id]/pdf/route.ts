@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { verifyInfluencerPinForReferral } from '@/lib/affiliate-influencer-auth';
 
 // GET /api/settlements/[id]/pdf — 정산 내역서 HTML (인쇄/PDF 변환용)
+// 인증: (1) 어드민 Supabase 세션 또는 (2) 헤더 x-referral-code + x-pin(4자리) + 정산 소유 파트너 일치
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -9,6 +12,24 @@ export async function GET(
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const { id } = params;
+
+  const guard = await requireAuthenticatedRoute(request);
+  const isAdmin = !(guard instanceof NextResponse);
+  let pinAffiliateId: string | null = null;
+
+  if (!isAdmin) {
+    const code = request.headers.get('x-referral-code')?.trim() || '';
+    const pin = request.headers.get('x-pin')?.trim() || '';
+    if (!code || !/^\d{4}$/.test(pin)) {
+      return NextResponse.json(
+        { error: '어드민 로그인 또는 파트너 인증이 필요합니다. (헤더: x-referral-code, x-pin)' },
+        { status: 401 },
+      );
+    }
+    const v = await verifyInfluencerPinForReferral(code, pin);
+    if (!v.ok) return NextResponse.json({ error: '파트너 인증 실패' }, { status: 401 });
+    pinAffiliateId = v.affiliateId;
+  }
 
   // 정산 + 어필리에이트 조회
   const { data: settlement, error } = await supabaseAdmin
@@ -19,6 +40,12 @@ export async function GET(
 
   if (error || !settlement) {
     return NextResponse.json({ error: '정산을 찾을 수 없습니다.' }, { status: 404 });
+  }
+
+  if (!isAdmin) {
+    if (!pinAffiliateId || (settlement as { affiliate_id: string }).affiliate_id !== pinAffiliateId) {
+      return NextResponse.json({ error: '권한 없음' }, { status: 403 });
+    }
   }
 
   const aff = settlement.affiliates as any;
@@ -32,7 +59,7 @@ export async function GET(
     .from('bookings')
     .select('id, package_title, adult_count, adult_price, child_count, child_price, influencer_commission, applied_total_commission_rate, commission_breakdown, return_date, departure_date, dispute_flag')
     .eq('affiliate_id', settlement.affiliate_id)
-    .in('status', ['confirmed', 'completed'])
+    .in('status', ['confirmed', 'completed', 'fully_paid'])
     .gte('departure_date', periodStart)
     .lte('departure_date', periodEnd)
     .or('is_deleted.is.null,is_deleted.eq.false')

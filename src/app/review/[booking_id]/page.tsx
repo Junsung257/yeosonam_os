@@ -44,7 +44,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ booking
           <p className="mt-2 text-[13px] text-slate-500">
             소중한 후기 감사합니다. 여소남 운영팀이 곧 승인 후 다른 고객님께 도움이 되도록 노출할게요.
           </p>
-          <a href="/" className="mt-5 inline-block text-[13px] text-indigo-600 hover:underline">
+          <a href="/" className="mt-5 inline-block text-[13px] text-[#3182F6] hover:underline">
             여소남 홈으로 →
           </a>
         </div>

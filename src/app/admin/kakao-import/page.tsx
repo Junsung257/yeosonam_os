@@ -365,6 +365,7 @@ export default function KakaoImportPage() {
           notes: draft?.notes ?? undefined,
           companions,
           idempotencyKey: bronzeId,
+          depositNoticeBlocked: false, // 운영자가 카톡 초안에서 이미 검수함 — 게이트 생략
         }),
       });
       const bkgData = await bkgRes.json();

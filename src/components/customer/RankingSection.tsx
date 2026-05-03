@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export interface RankingItem {
   id: string;
@@ -12,6 +12,8 @@ export interface RankingItem {
   minPrice?: number;
   duration?: string | null;
   isOverseas?: boolean;
+  /** 메인 등: 임계값 통과 시만 세팅 */
+  socialBadge?: { kind: 'bookings' | 'interest'; text: string };
 }
 
 interface Props {
@@ -54,17 +56,29 @@ export default function RankingSection({ domestic, overseas, className = '' }: P
           >
             {/* 이미지 + 랭킹 번호 오버레이 */}
             <div className="relative aspect-[4/3] bg-[#F2F4F6] overflow-hidden">
-              {item.image ? (
-                <Image
-                  src={item.image}
-                  alt={item.title}
-                  fill
-                  className="object-cover"
-                  sizes="190px"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl">🌍</div>
+              {item.socialBadge && (
+                <span
+                  className={`absolute top-2 left-2 z-10 max-w-[calc(100%-1rem)] truncate text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm ${
+                    item.socialBadge.kind === 'bookings'
+                      ? 'bg-rose-50 text-rose-900 border-rose-100'
+                      : 'bg-violet-50 text-violet-900 border-violet-100'
+                  }`}
+                >
+                  {item.socialBadge.kind === 'bookings' ? '🔥 ' : '⭐ '}
+                  {item.socialBadge.text}
+                </span>
               )}
+              <SafeCoverImg
+                src={item.image}
+                alt={item.title}
+                className="absolute inset-0 h-full w-full object-cover"
+                loading="lazy"
+                fallback={
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl">
+                    🌍
+                  </div>
+                }
+              />
               {/* 어두운 그라데이션 */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
               {/* 랭킹 번호 */}

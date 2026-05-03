@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
+import { revalidateLandingPagesForPackage } from '@/lib/revalidate-lp-package';
 import type { MarketingCopy } from '@/lib/ai';
 import { recomputeGroupForPackage } from '@/lib/scoring/recommend';
 import { indexPackage } from '@/lib/jarvis/rag/indexer';
@@ -41,7 +42,7 @@ export async function PATCH(
 
   const { data: pkg, error: fetchError } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, internal_code, marketing_copies, status, title, audit_status, audit_report')
+    .select('id, internal_code, short_code, marketing_copies, status, title, audit_status, audit_report')
     .eq('id', id)
     .single();
 
@@ -119,6 +120,22 @@ export async function PATCH(
       }
     }
 
+    // ── MRT 호텔 인텔 동기화 (일정 호텔만 — 점수·자비스 FAQ용 DB 캐시) ──
+    try {
+      const { syncPackageHotelIntelByPackageId } = await import('@/lib/mrt-hotel-intel');
+      await syncPackageHotelIntelByPackageId(id);
+    } catch (e) {
+      console.warn('[Approve API] MRT 호텔 동기화 실패 (비중단):', e instanceof Error ? e.message : e);
+    }
+
+    // ── MRT 호텔 인텔 동기화 (일정 호텔만 — 점수·자비스 FAQ용 DB 캐시) ──
+    try {
+      const { syncPackageHotelIntelByPackageId } = await import('@/lib/mrt-hotel-intel');
+      await syncPackageHotelIntelByPackageId(id);
+    } catch (e) {
+      console.warn('[Approve API] MRT 호텔 동기화 실패 (비중단):', e instanceof Error ? e.message : e);
+    }
+
     // ── 점수 그룹 자동 재계산 (신상품 등록 시 기존 상품 점수 자동 하락 보장) ──
     let scoreInfo: { group_size: number; group_key: string } | null = null;
     try {
@@ -142,6 +159,10 @@ export async function PATCH(
     try {
       revalidatePath('/packages');
       revalidatePath(`/packages/${id}`);
+      revalidateLandingPagesForPackage(
+        id,
+        (pkg as { short_code?: string | null }).short_code ?? null,
+      );
     } catch (e) {
       console.warn('[Approve API] revalidatePath 실패 (비중단):', e instanceof Error ? e.message : e);
     }
@@ -169,8 +190,8 @@ export async function PATCH(
       console.warn('[Approve API] multi-angle drip 실패 (비중단):', e instanceof Error ? e.message : e);
     }
 
-    // 2) 카드뉴스 자동 변형 (정책 ON 시 + ANTHROPIC_API_KEY 있을 때 — 건당 ~$0.05)
-    if (policy?.auto_trigger_card_news && process.env.ANTHROPIC_API_KEY) {
+    // 2) 카드뉴스 자동 변형 (정책 ON 시 + DEEPSEEK_API_KEY 있을 때)
+    if (policy?.auto_trigger_card_news && process.env.DEEPSEEK_API_KEY) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
         const res = await fetch(`${baseUrl}/api/card-news/generate-variants`, {
@@ -245,6 +266,10 @@ export async function PATCH(
   try {
     await supabaseAdmin.from('package_scores').delete().eq('package_id', id);
     revalidatePath('/packages');
+    revalidateLandingPagesForPackage(
+      id,
+      (pkg as { short_code?: string | null }).short_code ?? null,
+    );
   } catch (e) {
     console.warn('[Reject API] 점수 캐시 정리 실패 (비중단):', e instanceof Error ? e.message : e);
   }

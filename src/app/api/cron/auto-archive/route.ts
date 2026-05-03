@@ -11,6 +11,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *
  * 대상: status가 approved, active, pending, pending_review, draft 인 상품만
  */
+export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });

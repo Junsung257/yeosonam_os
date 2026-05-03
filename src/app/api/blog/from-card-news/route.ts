@@ -12,7 +12,16 @@ import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { ContentBrief } from '@/lib/validators/content-brief';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 
-export const maxDuration = 60;
+/** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
+export const maxDuration = 240;
+
+/** blog-publisher 크론만: 본문 생성만 하고 DB INSERT는 호출자(멱등 단일 커밋)가 담당 */
+function isPublisherBridge(request: NextRequest, body: { publisher_bridge?: boolean }): boolean {
+  if (!body.publisher_bridge) return false;
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  return request.headers.get('authorization') === `Bearer ${secret}`;
+}
 
 /**
  * 카드뉴스를 기반으로 블로그 자동 생성 (하이브리드 이미지)
@@ -20,24 +29,33 @@ export const maxDuration = 60;
  * 입력:
  *   - card_news_id: 기준 카드뉴스 ID
  *   - slide_image_urls: 클라이언트에서 캡처해 Storage에 업로드한 PNG URLs (길이 = 슬라이드 수)
+ *   - publisher_bridge: true + Authorization: Bearer CRON_SECRET → 생성 결과만 반환 (INSERT 없음, blog-publisher 전용)
  *
  * 흐름:
  *   1. 카드뉴스 조회 (mode, topic, category, package 또는 주제)
  *   2. 상품 모드: 기존 generateBlogPost + attractions 사진
  *   3. 정보성 모드: AI가 주제 기반 블로그 생성 + Pexels 맥락 이미지
  *   4. 카드뉴스 PNG를 주요 섹션에, Pexels/attractions는 관광지/맥락 섹션에 배치
- *   5. content_creatives 신규 INSERT (draft)
- *   6. card_news.linked_blog_id 업데이트
+ *   5. content_creatives 신규 INSERT (draft) — publisher_bridge 시 생략
+ *   6. card_news.linked_blog_id 업데이트 — publisher_bridge 시 생략
  */
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
-    const { card_news_id, slide_image_urls } = body as {
+    const { card_news_id, slide_image_urls, publisher_bridge } = body as {
       card_news_id: string;
       slide_image_urls?: string[];
+      publisher_bridge?: boolean;
     };
+
+    if (publisher_bridge && !isPublisherBridge(request, body)) {
+      return NextResponse.json(
+        { error: 'publisher_bridge는 CRON_SECRET Bearer 인증이 있을 때만 허용됩니다.' },
+        { status: 403 },
+      );
+    }
 
     if (!card_news_id) {
       return NextResponse.json({ error: 'card_news_id 필수' }, { status: 400 });
@@ -237,6 +255,27 @@ export async function POST(request: NextRequest) {
       metaDescription: seoDesc,
     });
 
+    // blog-publisher: 생성만 반환 — 단일 INSERT·품질 게이트·색인은 퍼블리셔가 처리 (중복 draft / 큐 stuck 방지)
+    if (publisher_bridge) {
+      return NextResponse.json(
+        {
+          publisher_bridge: true,
+          blog_html: blogHtml,
+          slug: finalSlug,
+          seo_title: seoTitle,
+          seo_description: seoDesc,
+          og_image_url: ogImage,
+          angle_type: angleType,
+          category: cardMode === 'product' ? 'product_intro' : 'info',
+          category_id: categoryId,
+          product_id: productId,
+          seo_score: seoScore,
+          card_news_id,
+        },
+        { status: 200 },
+      );
+    }
+
     // content_creatives에 저장 (draft)
     const insertData: Record<string, unknown> = {
       angle_type: angleType,
@@ -284,11 +323,20 @@ export async function POST(request: NextRequest) {
     // blog_generate 스텝 완료 마킹 (fire-and-forget)
     updateFactoryJobStep(card_news_id, 'blog_generate', 'done');
 
-    return NextResponse.json({
-      blog: creative,
-      seo_score: seoScore,
-      card_news_id,
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        blog: creative,
+        blog_id: (creative as { id: string }).id,
+        blog_html: blogHtml,
+        slug: finalSlug,
+        seo_title: seoTitle,
+        seo_description: seoDesc,
+        og_image_url: ogImage,
+        seo_score: seoScore,
+        card_news_id,
+      },
+      { status: 201 },
+    );
   } catch (err) {
     console.error('[blog/from-card-news] 오류:', err);
     return NextResponse.json(

@@ -65,9 +65,9 @@ function rainCopy(rainDays: number): string {
   const r = Math.round(rainDays);
   if (r <= 2) return '거의 비 안 와요 ☀️';
   if (r <= 5) return '비 오는 날은 손에 꼽아요';
-  if (r <= 9) return '한 달 중 사흘에 한 번꼴 — 우산 필수';
-  if (r <= 15) return '절반 가까이 비 — 방수 신발도';
-  return '거의 매일 비 — 우기 시즌';
+  if (r <= 9) return '한 달 중 사흘에 한 번꼴 — 우산 챙기기';
+  if (r <= 15) return '절반가량 비 — 우산·방수 신발 필수';
+  return '우기 시즌 — 짧은 스콜 자주, 실내 일정 병행하면 OK';
 }
 
 function humidityCopy(humidity: number): string {
@@ -75,7 +75,7 @@ function humidityCopy(humidity: number): string {
   if (humidity <= 55) return '한국보다 건조 — 피부 관리 신경';
   if (humidity <= 70) return '한국과 비슷한 쾌적도';
   if (humidity <= 80) return '약간 습함 — 땀이 잘 안 마름';
-  return '고습도 — 가벼운 옷·드라이어 필수';
+  return '열대 습도 — 통풍 좋은 얇은 옷 추천, 에어컨·수영장이 반가운 날씨';
 }
 
 function crowdCopy(month: number, popularity?: number): string {
@@ -100,7 +100,7 @@ function climateCaption(score: number, keyConcern: string | null): string {
     return keyConcern ? `대체로 좋은 날씨 (${keyConcern.replace(/ ?[☔☀️🥶💧]/g, '').trim()})` : '대체로 쾌적한 날씨';
   }
   if (score >= 55) {
-    return keyConcern ? `${keyConcern.replace(/ ?[☔☀️🥶💧]/g, '').trim()} 대비하면 무난해요` : '평범한 수준 — 챙겨가면 OK';
+    return keyConcern ? `${keyConcern.replace(/ ?[☔☀️🥶💧]/g, '').trim()} 대비만 하면 충분히 즐길 수 있어요` : '평범한 수준 — 챙겨가면 충분히 즐길 수 있어요';
   }
   if (score >= 40) {
     return keyConcern ? `${keyConcern.replace(/ ?[☔☀️🥶💧]/g, '').trim()} 주의 — 옷차림 신경` : '날씨 변동 주의';
@@ -152,7 +152,7 @@ function chartSummary(
   if (climate >= 70) {
     return `${MONTHS[representativeMonth - 1]} 출발 — 날씨 적합도가 좋은 시기.`;
   }
-  return `${MONTHS[representativeMonth - 1]} 출발 — 연중 가장 좋은 시기는 ${MONTHS[peakMonth - 1]} 입니다.`;
+  return `${MONTHS[representativeMonth - 1]} 출발 — 극성수기 피해 여유롭고 가격 합리적인 스마트 타이밍이에요.`;
 }
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────
@@ -177,7 +177,7 @@ export default function TravelFitnessCard({
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* 헤더 — 한 줄 컴팩트 */}
         <div className="flex items-center justify-between px-5 pt-4 pb-2 gap-2">
-          <h3 className="text-[15px] font-extrabold text-gray-900 truncate">
+          <h3 className="text-base font-extrabold text-gray-900 truncate">
             🌤️ {MONTHS[selectedMonth - 1]} 여행 적합도 — {displayCity}
           </h3>
           {!isRepMonth && (
@@ -199,11 +199,11 @@ export default function TravelFitnessCard({
               <span className={`text-[28px] font-black leading-none ${scoreTextColor(sel.score)}`}>{sel.score}</span>
             </div>
             <div className="flex-1 pb-0.5 min-w-0">
-              <p className="text-[10px] text-gray-400">날씨 적합도</p>
+              <p className="text-[11px] text-gray-500 font-medium">날씨 적합도</p>
               <p className={`text-sm font-bold ${scoreTextColor(sel.score)} leading-snug`}>
                 {sel.label}
               </p>
-              <p className="text-[11px] text-gray-500 leading-snug mt-0.5 break-keep">
+              <p className="text-[12px] text-gray-500 leading-snug mt-0.5 break-keep">
                 {climateCaption(sel.score, sel.key_concern)}
               </p>
             </div>
@@ -211,17 +211,17 @@ export default function TravelFitnessCard({
 
           {/* ② 한국인 인기도 */}
           {sig && (
-            <div className="flex items-end gap-3">
+            <div className="flex items-end gap-3 pt-2.5 border-t border-gray-50">
               <div className="flex items-baseline gap-1 w-24 flex-shrink-0">
                 <span className="text-xs text-gray-400 mr-1">🇰🇷</span>
                 <span className={`text-[28px] font-black leading-none ${scoreTextColor(sig.popularity_score)}`}>{sig.popularity_score}</span>
               </div>
               <div className="flex-1 pb-0.5 min-w-0">
-                <p className="text-[10px] text-gray-400">한국인 인기도</p>
+                <p className="text-[11px] text-gray-500 font-medium">한국인 인기도</p>
                 <p className={`text-sm font-bold ${scoreTextColor(sig.popularity_score)} leading-snug`}>
                   {sig.label}
                 </p>
-                <p className="text-[11px] text-gray-500 leading-snug mt-0.5 break-keep">
+                <p className="text-[12px] text-gray-500 leading-snug mt-0.5 break-keep">
                   {popularityCaption(sig.popularity_score)}
                 </p>
               </div>
@@ -300,8 +300,8 @@ export default function TravelFitnessCard({
 
           {/* 한 줄 자동 요약 */}
           {summary && (
-            <div className="mt-3 bg-gray-50 rounded-lg px-3 py-2">
-              <p className="text-[12px] text-gray-700 font-medium leading-snug">
+            <div className="mt-3 bg-[#EBF3FE] rounded-lg px-3 py-2.5">
+              <p className="text-[12px] text-[#1B64DA] font-semibold leading-snug">
                 💡 {summary}
               </p>
             </div>
@@ -313,6 +313,7 @@ export default function TravelFitnessCard({
             <Legend color="bg-rose-400" label="날씨 험함" />
             {seasonalSignals && <Legend color="bg-violet-500" label="한국인 인기" />}
           </div>
+
           <p className="text-[10px] text-gray-400 mt-2">
             ※ 날씨: Open-Meteo 10년 평균 / 한국인 인기도: Naver DataLab + Wikipedia 트래픽 (자동·매월 갱신)
           </p>
@@ -331,7 +332,7 @@ function MetricLine({ icon, label, value, copy }: { icon: string; label: string;
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-gray-900 tabular-nums leading-snug">{value}</p>
-        {copy && <p className="text-[11px] text-gray-500 leading-snug break-keep">{copy}</p>}
+        {copy && <p className="text-[12px] text-gray-500 leading-snug break-keep">{copy}</p>}
       </div>
     </div>
   );
@@ -339,7 +340,7 @@ function MetricLine({ icon, label, value, copy }: { icon: string; label: string;
 
 function Legend({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-gray-500">
+    <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
       <span className={`w-2 h-2 rounded-sm ${color}`} />{label}
     </span>
   );

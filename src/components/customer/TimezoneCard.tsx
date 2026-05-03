@@ -51,9 +51,9 @@ function timezoneTips(offsetMinutes: number): string[] {
   }
   if (absH <= 1) {
     return [
-      `한국보다 ${absH}시간 ${direction} — 시차 적응 거의 없음 👍`,
-      '도착 당일 저녁 일정도 무리 없음',
-      '귀국 후 바로 일상 복귀 가능',
+      '시차 적응 거의 없음 👍',
+      '도착 당일 저녁부터 꽉 찬 일정 가능',
+      '귀국 후 다음날 바로 업무 복귀 — 연차 아껴도 충분',
     ];
   }
   if (absH <= 3) {
@@ -124,17 +124,17 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
               <span className="text-base">📍</span>
               <span className="text-xs text-violet-700 font-medium">{displayCity}</span>
             </div>
-            <div className="text-lg font-extrabold text-violet-900 tabular-nums">{localTime}</div>
+            <div className="text-xl font-extrabold text-violet-900 tabular-nums">{localTime}</div>
             {localDate && <div className="text-[10px] text-violet-600 mt-0.5">{localDate}</div>}
           </div>
         </div>
 
         {/* 실용 팁 */}
-        <div className="bg-gradient-to-br from-violet-50/60 to-indigo-50/40 border border-violet-100 rounded-xl p-3.5">
-          <p className="text-[11px] font-bold text-violet-700 mb-2">💡 여행 팁</p>
+        <div className="bg-gradient-to-br from-[#F5F0FF]/60 to-[#EBF3FE]/40 border border-[#E9D5FF]/60 rounded-xl p-3.5">
+          <p className="text-[12px] font-bold text-violet-700 mb-2">💡 여행 팁</p>
           <ul className="space-y-1.5">
             {tips.map((t, i) => (
-              <li key={i} className="text-[12.5px] text-gray-700 leading-snug flex gap-1.5 break-keep">
+              <li key={i} className="text-[13px] text-gray-700 leading-snug flex gap-1.5 break-keep">
                 <span className="text-violet-400 flex-shrink-0">•</span>
                 <span>{t}</span>
               </li>

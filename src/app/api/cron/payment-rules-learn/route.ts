@@ -10,6 +10,7 @@ import { notifySlack } from '@/lib/slack-notifier';
  *
  * 향후 resolver 가 후보 점수 계산 시 룰 매치 가산 신호로 활용 (Phase 5).
  */
+export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });

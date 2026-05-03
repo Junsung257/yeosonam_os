@@ -82,6 +82,9 @@ export interface PackageFeatures {
   climate_score: number;           // 0-100, destination_climate.fitness_scores 출발월 (default 50)
   popularity_score: number;        // 0-100, seasonal_signals 한국인 인기도 (default 50)
 
+  /** MRT 동기화 DB 평균(0~100). 없으면 null — TOPSIS 호텔 축에 블렌딩 */
+  mrt_hotel_quality_score?: number | null;
+
   itinerary: TravelItinerary | null;
 }
 
@@ -102,6 +105,8 @@ export interface ScoreBreakdown {
   rank_in_group: number;
   group_size: number;
   why: string[];
+  /** 동기화된 MRT 호텔 신호 평균 (자비스·리포트용, null = 미동기화) */
+  mrt_hotel_quality_score?: number | null;
 }
 
 // ── 정책 검증 ───────────────────────────────────────────

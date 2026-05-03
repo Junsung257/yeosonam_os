@@ -10,9 +10,9 @@ import { processCustomerMessage, processTenantMessage } from '@/lib/rfq-ai';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: rfqId } = await params;
+  const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
     const mockMessages: RfqMessage[] = [
@@ -51,9 +51,9 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: rfqId } = await params;
+  const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
     const body = await request.json();

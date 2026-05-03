@@ -21,20 +21,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { runAllRules } from '@/lib/booking-tasks/runner';
 import { ALL_RULES } from '@/lib/booking-tasks/rules';
+import { requireCronBearer } from '@/lib/cron-auth';
 
 export const maxDuration = 60; // Vercel Pro 플랜 기준 상한
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
-  const isForce = request.nextUrl.searchParams.get('force') === 'true';
+  const authErr = requireCronBearer(request);
+  if (authErr) return authErr;
 
-  // Vercel Cron Secret 검증 (force=true 는 관리자 수동 실행용)
-  if (!isForce) {
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  const isForce = request.nextUrl.searchParams.get('force') === 'true';
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

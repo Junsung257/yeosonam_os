@@ -135,7 +135,7 @@ export default function ReviewForm({ bookingId }: Props) {
             onChange={e => setTitle(e.target.value)}
             maxLength={50}
             placeholder="한 줄로 표현한다면?"
-            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400"
+            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182F6]"
           />
         </div>
         <div>
@@ -148,7 +148,7 @@ export default function ReviewForm({ bookingId }: Props) {
             rows={5}
             maxLength={2000}
             placeholder="여행에서 좋았던 점, 아쉬웠던 점, 다른 분들께 도움될 팁 등을 자유롭게 적어주세요."
-            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400 resize-none"
+            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182F6] resize-none"
           />
           <p className="mt-1 text-[11px] text-slate-400">{body.length}/2,000자</p>
         </div>
@@ -160,7 +160,7 @@ export default function ReviewForm({ bookingId }: Props) {
             value={prosText}
             onChange={e => setProsText(e.target.value)}
             placeholder="예: 노팁, 친절한 가이드, 깨끗한 호텔"
-            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400"
+            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182F6]"
           />
         </div>
       </section>

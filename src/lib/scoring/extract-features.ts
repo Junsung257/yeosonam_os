@@ -210,13 +210,13 @@ export interface RawPackageRow {
   popularity_score?: number | null;
 }
 
-/** price_dates에서 가장 가까운 미래 출발일 (없으면 가장 빠른 출발일) */
-function pickRepresentativeDate(price_dates?: RawPackageRow['price_dates']): string | null {
+/** price_dates에서 가장 가까운 미래 출발일 (없으면 가장 빠른 출발일) — 점수·MRT 동기화 공통 */
+export function pickPackageRepresentativeDate(price_dates?: RawPackageRow['price_dates']): string | null {
   if (!Array.isArray(price_dates) || price_dates.length === 0) return null;
   const today = new Date().toISOString().slice(0, 10);
   const dates = price_dates.map(d => d?.date).filter((v): v is string => !!v).sort();
   if (dates.length === 0) return null;
-  return dates.find(d => d >= today) ?? dates[0];
+  return dates.find(d => d >= today) ?? dates[0] ?? null;
 }
 
 /** price_dates에서 최저가 (정해진 list_price가 없을 때 폴백) */
@@ -248,7 +248,7 @@ export function extractPackageFeatures(
     if (Number.isFinite(ms) && ms >= 0) daysSince = Math.floor(ms / 86400000);
   }
   // overrideDate가 주어지면 그 날의 가격, 아니면 representative
-  const usedDate = overrideDate ?? pickRepresentativeDate(pkg.price_dates);
+  const usedDate = overrideDate ?? pickPackageRepresentativeDate(pkg.price_dates);
   let listPrice = pkg.price ?? pickMinPrice(pkg.price_dates) ?? 0;
   if (overrideDate && Array.isArray(pkg.price_dates)) {
     const match = pkg.price_dates.find(d => d?.date === overrideDate);

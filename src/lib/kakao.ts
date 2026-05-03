@@ -12,6 +12,7 @@
  *   SOLAPI_API_SECRET=...
  *   KAKAO_CHANNEL_ID=_xxxxx   (pfId, 카카오 비즈채널 ID)
  *   KAKAO_SENDER_NUMBER=0212345678
+ *   KAKAO_TEMPLATE_DEPOSIT=템플릿ID_계약금안내
  *   KAKAO_TEMPLATE_BALANCE=템플릿ID_잔금안내
  *   KAKAO_TEMPLATE_PREPARATION=템플릿ID_준비물안내
  *   KAKAO_TEMPLATE_PASSPORT=템플릿ID_여권만료
@@ -31,6 +32,13 @@ async function sendAlimtalk(params: {
   templateId: string;
   variables: Record<string, string>;
 }) {
+  const emptyKeys = Object.entries(params.variables)
+    .filter(([, value]) => !String(value ?? '').trim())
+    .map(([key]) => key);
+  if (emptyKeys.length > 0) {
+    console.warn('[알림톡] 비어있는 템플릿 변수 감지:', emptyKeys.join(', '), params.templateId);
+  }
+
   if (!isSolapiConfigured()) {
     console.warn('[알림톡] Solapi 미설정 - 발송 건너뜀 (수기 관리 모드)', params);
     return { skipped: true };
@@ -79,24 +87,26 @@ export async function sendAffiliateBookingCelebration(params: {
   });
 }
 
-/** 잔금 안내 알림톡
+/** 계약금 안내 알림톡
  * 템플릿 예시:
- * 안녕하세요 #{고객명}님, 여소남 여행사입니다.
- * 예약하신 [#{상품명}] 잔금 안내드립니다.
- * 잔금: #{잔금액}원 / 납부기한: #{납부기한}
+ * #{고객명}님, [#{상품명}] 예약번호 #{예약번호} 계약금 안내입니다.
+ * 금액: #{계약금}원 / 납부기한: #{납부기한}
  * 계좌: #{계좌번호}
+ * 예약 확인: #{예약확인링크}
  */
-export async function sendBalanceNotice(params: {
+export async function sendDepositNoticeAlimtalk(params: {
   phone: string;
   name: string;
   packageTitle: string;
-  balance: number;
+  bookingNo: string;
+  depositAmount: number;
   dueDate: string;
   account: string;
+  portalUrl: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_BALANCE || '';
+  const templateId = process.env.KAKAO_TEMPLATE_DEPOSIT || '';
   if (!templateId) {
-    console.warn('[알림톡] KAKAO_TEMPLATE_BALANCE 환경변수 미설정');
+    console.warn('[알림톡] KAKAO_TEMPLATE_DEPOSIT 환경변수 미설정');
     return { skipped: true };
   }
   return sendAlimtalk({
@@ -105,10 +115,50 @@ export async function sendBalanceNotice(params: {
     variables: {
       '고객명': params.name,
       '상품명': params.packageTitle,
-      '잔금액': params.balance.toLocaleString(),
+      '예약번호': params.bookingNo,
+      '계약금': params.depositAmount.toLocaleString(),
       '납부기한': params.dueDate,
       '계좌번호': params.account,
+      '예약확인링크': params.portalUrl,
     },
+  });
+}
+
+/** 잔금 안내 알림톡
+ * 템플릿 예시:
+ * 안녕하세요 #{고객명}님, 여소남 여행사입니다.
+ * 예약하신 [#{상품명}] 잔금 안내드립니다.
+ * 잔금: #{잔금액}원 / 납부기한: #{납부기한}
+ * 계좌: #{계좌번호}
+ * (선택) #{예약확인링크}
+ */
+export async function sendBalanceNotice(params: {
+  phone: string;
+  name: string;
+  packageTitle: string;
+  balance: number;
+  dueDate: string;
+  account: string;
+  /** 템플릿에 변수 없으면 빈 문자열 전달 가능 */
+  portalUrl?: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_BALANCE || '';
+  if (!templateId) {
+    console.warn('[알림톡] KAKAO_TEMPLATE_BALANCE 환경변수 미설정');
+    return { skipped: true };
+  }
+  const vars: Record<string, string> = {
+    '고객명': params.name,
+    '상품명': params.packageTitle,
+    '잔금액': params.balance.toLocaleString(),
+    '납부기한': params.dueDate,
+    '계좌번호': params.account,
+  };
+  if (params.portalUrl) vars['예약확인링크'] = params.portalUrl;
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: vars,
   });
 }
 
@@ -191,6 +241,7 @@ export async function sendVoucherIssuedAlimtalk(params: {
   productTitle: string;
   departureDate: string;
   voucherId: string;
+  guidebookUrl?: string;
 }) {
   const templateId = process.env.KAKAO_TEMPLATE_VOUCHER_ISSUED || '';
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
@@ -203,6 +254,7 @@ export async function sendVoucherIssuedAlimtalk(params: {
       product: params.productTitle,
       departure: params.departureDate,
       link: `${baseUrl}/voucher/${params.voucherId}`,
+      guidebookUrl: params.guidebookUrl ?? null,
     });
     return { skipped: true, mode: 'manual' };
   }
@@ -215,6 +267,35 @@ export async function sendVoucherIssuedAlimtalk(params: {
       '상품명': params.productTitle,
       '출발일': params.departureDate,
       '확정서링크': `${baseUrl}/voucher/${params.voucherId}`,
+      '가이드북링크': params.guidebookUrl ?? `${baseUrl}/voucher/${params.voucherId}`,
+    },
+  });
+}
+
+/**
+ * 결제 완료 후 가이드북 링크 발송
+ */
+export async function sendGuidebookReadyAlimtalk(params: {
+  phone: string;
+  name: string;
+  productTitle: string;
+  departureDate: string;
+  guidebookUrl: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_GUIDEBOOK_READY || process.env.KAKAO_TEMPLATE_VOUCHER_ISSUED || '';
+  if (!templateId) {
+    console.warn('[알림톡] KAKAO_TEMPLATE_GUIDEBOOK_READY 미설정 — 수기 발송 필요');
+    console.log('[가이드북 알림톡 수기모드]', params);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name,
+      '상품명': params.productTitle,
+      '출발일': params.departureDate,
+      '가이드북링크': params.guidebookUrl,
     },
   });
 }
@@ -267,10 +348,12 @@ export async function sendReviewRequestAlimtalk(params: {
 
 
 /** 자유여행 견적 리타게팅 알림톡 (Abandoned Cart)
+ * #{플래너링크}: 개인화 URL (`…/free-travel?session={세션UUID}`) — 열면 저장된 견적·일정표가 그대로 복원됨.
+ *
  * 템플릿 예시:
  * #{고객명}님, #{목적지} 여행 견적이 아직 남아있어요!
- * 항공·호텔·액티비티 최저가 견적을 다시 확인하고 예약을 완료해보세요.
- * 👉 견적 보기: #{플래너링크}
+ * 링크를 누르면 아까 보신 항공·호텔·액티비티 견적 화면으로 바로 갈 수 있어요.
+ * 👉 이어서 보기: #{플래너링크}
  */
 export async function sendFreeTravelRetarget(params: {
   phone: string;

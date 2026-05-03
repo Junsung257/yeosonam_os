@@ -10,6 +10,8 @@ interface Affiliate {
   bonus_rate: number; payout_type: 'PERSONAL' | 'BUSINESS';
   booking_count: number; total_commission: number; memo?: string;
   bank_info?: string; // 마스킹된 계좌
+  landing_intro?: string | null;
+  landing_pick_package_ids?: string[] | null;
 }
 
 interface Settlement {
@@ -54,6 +56,17 @@ export default function AffiliateDetailPage() {
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', email: '', memo: '', payout_type: 'PERSONAL' as 'PERSONAL'|'BUSINESS', commission_rate: 0.09, business_number: '', is_active: true });
   const [saving, setSaving] = useState(false);
+  const [landingIntro, setLandingIntro] = useState('');
+  const [pickPackageIds, setPickPackageIds] = useState<string[]>([]);
+  const [pickTitles, setPickTitles] = useState<Record<string, string>>({});
+  const [pkgQuery, setPkgQuery] = useState('');
+  const [pkgResults, setPkgResults] = useState<Array<{ id: string; title?: string; display_title?: string; destination?: string; status?: string }>>([]);
+  const [savingLanding, setSavingLanding] = useState(false);
+
+  const [siteOrigin, setSiteOrigin] = useState('');
+  useEffect(() => {
+    setSiteOrigin(typeof window !== 'undefined' ? window.location.origin : '');
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,16 +80,19 @@ export default function AffiliateDetailPage() {
       setAffiliate(aJson.affiliate);
       setSettlements(sJson.settlements || []);
       if (aJson.affiliate) {
+        const a = aJson.affiliate as Affiliate & { commission_rate?: number; business_number?: string; is_active?: boolean };
         setForm({
-          name: aJson.affiliate.name,
-          phone: aJson.affiliate.phone || '',
-          email: aJson.affiliate.email || '',
-          memo: aJson.affiliate.memo || '',
-          payout_type: aJson.affiliate.payout_type,
-          commission_rate: aJson.affiliate.commission_rate ?? 0.09,
-          business_number: aJson.affiliate.business_number || '',
-          is_active: aJson.affiliate.is_active ?? true,
+          name: a.name,
+          phone: a.phone || '',
+          email: a.email || '',
+          memo: a.memo || '',
+          payout_type: a.payout_type,
+          commission_rate: a.commission_rate ?? 0.09,
+          business_number: a.business_number || '',
+          is_active: a.is_active ?? true,
         });
+        setLandingIntro((a.landing_intro as string | null | undefined) || '');
+        setPickPackageIds(Array.isArray(a.landing_pick_package_ids) ? [...a.landing_pick_package_ids] : []);
       }
     } finally {
       setLoading(false);
@@ -84,6 +100,53 @@ export default function AffiliateDetailPage() {
   }, [params.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (pickPackageIds.length === 0) {
+      setPickTitles({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        pickPackageIds.map(async id => {
+          try {
+            const r = await fetch(`/api/packages?id=${encodeURIComponent(id)}`);
+            const j = await r.json();
+            const p = j.package as { title?: string; display_title?: string } | undefined;
+            if (!p) return [id, ''] as const;
+            return [id, (p.display_title || p.title || id).slice(0, 120)] as const;
+          } catch {
+            return [id, ''] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      entries.forEach(([id, t]) => { if (t) next[id] = t; });
+      setPickTitles(next);
+    })();
+    return () => { cancelled = true; };
+  }, [pickPackageIds]);
+
+  useEffect(() => {
+    const q = pkgQuery.trim();
+    if (q.length < 1) {
+      setPkgResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/packages?q=${encodeURIComponent(q)}&limit=40`);
+        const j = await res.json();
+        const rows = (j.data || []) as Array<{ id: string; title?: string; display_title?: string; destination?: string; status?: string }>;
+        setPkgResults(rows.filter(p => ['active', 'approved'].includes(String(p.status || ''))));
+      } catch {
+        setPkgResults([]);
+      }
+    }, 320);
+    return () => clearTimeout(t);
+  }, [pkgQuery]);
 
   const toggleBankInfo = async () => {
     const res = await fetch(`/api/affiliates?id=${params.id}&showBankInfo=true`);
@@ -105,6 +168,51 @@ export default function AffiliateDetailPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveLanding = async () => {
+    setSavingLanding(true);
+    try {
+      const res = await fetch('/api/affiliates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: params.id,
+          landing_intro: landingIntro.trim() || null,
+          landing_pick_package_ids: pickPackageIds,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert((j as { error?: string }).error || '저장 실패');
+        return;
+      }
+      await load();
+    } finally {
+      setSavingLanding(false);
+    }
+  };
+
+  const addPick = (id: string) => {
+    if (pickPackageIds.includes(id)) return;
+    if (pickPackageIds.length >= 12) return;
+    setPickPackageIds(prev => [...prev, id]);
+  };
+
+  const removePick = (id: string) => {
+    setPickPackageIds(prev => prev.filter(x => x !== id));
+  };
+
+  const movePick = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= pickPackageIds.length) return;
+    setPickPackageIds(prev => {
+      const copy = [...prev];
+      const tmp = copy[idx];
+      copy[idx] = copy[j]!;
+      copy[j] = tmp!;
+      return copy;
+    });
   };
 
   // 이번 달 정산 예정액 계산
@@ -196,6 +304,16 @@ export default function AffiliateDetailPage() {
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
               </div>
             )}
+            <div className="flex items-start gap-3">
+              <label className="w-16 text-xs text-gray-500 shrink-0 pt-2">메모</label>
+              <textarea
+                value={form.memo}
+                onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
+                rows={3}
+                placeholder="내부 메모 (고객에게 노출되지 않음)"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
             <div className="flex items-center gap-3">
               <label className="w-16 text-xs text-gray-500">활성상태</label>
               <label className="flex items-center gap-2 cursor-pointer">
@@ -237,6 +355,112 @@ export default function AffiliateDetailPage() {
             {affiliate.memo && <div className="col-span-2 text-gray-500">{affiliate.memo}</div>}
           </div>
         )}
+      </div>
+
+      {/* 코브랜딩 랜딩 /with/[추천코드] */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-gray-900">코브랜딩 랜딩</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              고객용 URL — 인스타·유튜브 바이오에 걸기 좋은 전용 페이지입니다. (검색엔진 noindex)
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 shrink-0 text-sm font-medium">
+            <Link
+              href={`/admin/partner-preview?code=${encodeURIComponent(affiliate.referral_code)}`}
+              className="text-blue-700 hover:underline"
+            >
+              프론트 미리보기 허브
+            </Link>
+            <a
+              href={`/with/${encodeURIComponent(affiliate.referral_code)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-700 hover:underline"
+            >
+              코브랜딩만 새 탭 →
+            </a>
+          </div>
+        </div>
+        <p className="text-xs font-mono text-gray-600 break-all bg-gray-50 rounded-lg px-3 py-2">
+          {(siteOrigin || (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '') || '(배포 도메인)')}/with/{affiliate.referral_code}
+        </p>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">랜딩 인사말 · 소개</label>
+          <textarea
+            value={landingIntro}
+            onChange={e => setLandingIntro(e.target.value)}
+            rows={5}
+            maxLength={4000}
+            placeholder={`예: 안녕하세요, ${affiliate.name}입니다. 제가 다녀온 여행지를 여소남과 함께 엄선했습니다.`}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">비워 두면 랜딩 페이지에 기본 문구가 표시됩니다. HTML 대신 줄바꿈만 사용하세요.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Pick 상품 (순서대로 최대 12개)</label>
+          {pickPackageIds.length === 0 ? (
+            <p className="text-sm text-gray-400 py-2">선택된 상품 없음 — 아래 검색에서 추가하면 랜딩 상단에만 노출됩니다. 비우면 최신 상품 자동.</p>
+          ) : (
+            <ul className="space-y-2 mb-3">
+              {pickPackageIds.map((id, idx) => (
+                <li key={id} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                  <span className="text-gray-400 w-6 text-center">{idx + 1}</span>
+                  <span className="flex-1 truncate" title={pickTitles[id] || id}>
+                    {pickTitles[id] || id}
+                  </span>
+                  <button type="button" className="text-xs text-gray-500 hover:text-gray-800 px-1" onClick={() => movePick(idx, -1)} disabled={idx === 0}>
+                    ↑
+                  </button>
+                  <button type="button" className="text-xs text-gray-500 hover:text-gray-800 px-1" onClick={() => movePick(idx, 1)} disabled={idx === pickPackageIds.length - 1}>
+                    ↓
+                  </button>
+                  <button type="button" className="text-red-600 text-xs hover:underline" onClick={() => removePick(id)}>
+                    제거
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <input
+            type="search"
+            value={pkgQuery}
+            onChange={e => setPkgQuery(e.target.value)}
+            placeholder="상품명·코드 검색…"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2"
+          />
+          {pkgResults.length > 0 && (
+            <ul className="max-h-52 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+              {pkgResults.map(p => {
+                const title = p.display_title || p.title || p.id;
+                const on = pickPackageIds.includes(p.id);
+                return (
+                  <li key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
+                    <span className="flex-1 truncate" title={title}>{title}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{p.destination || ''}</span>
+                    <button
+                      type="button"
+                      disabled={on || pickPackageIds.length >= 12}
+                      onClick={() => addPick(p.id)}
+                      className="text-xs text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline shrink-0"
+                    >
+                      {on ? '추가됨' : '추가'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleSaveLanding}
+          disabled={savingLanding}
+          className="px-4 py-2 bg-emerald-700 text-white rounded-lg text-sm disabled:opacity-50"
+        >
+          {savingLanding ? '저장 중…' : '랜딩 설정 저장'}
+        </button>
       </div>
 
       {/* KPI 카드 3종 */}

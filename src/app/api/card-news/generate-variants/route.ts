@@ -42,14 +42,14 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; 
 
 export async function POST(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY 미설정' }, { status: 503 });
+  if (!process.env.DEEPSEEK_API_KEY) {
+    return NextResponse.json({ error: 'DEEPSEEK_API_KEY 미설정' }, { status: 503 });
   }
 
   let body: GenerateVariantsJobPayload;

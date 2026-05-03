@@ -1,8 +1,22 @@
-import pdfParse from 'pdf-parse';
+﻿import pdfParse from 'pdf-parse';
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
+import { llmCall } from '@/lib/llm-gateway';
 import type { TravelItinerary } from '@/types/itinerary';
+import type { CorrectionRecord } from '@/lib/reflection-memory';
 import { expandPriceTiersDateRanges, filterTiersByDepartureDays } from './expand-date-range';
 import { formatDepartureDays } from './admin-utils';
+import { classifyUploadDocumentComplexity } from './parser/document-router';
+import {
+  extractBalancedJsonArraySubstring,
+  extractBalancedJsonObjectSubstring,
+  splitCatalogByItineraryHeaders,
+} from './parser/catalog-pre-split';
+import { judgeCatalogProductCountConsistency } from './parser/upload-consistency-judge';
+
+export interface ParseOptions {
+  reflections?: CorrectionRecord[];
+  regionContext?: string;
+}
 
 // ── optional_tours.region 자동 추론 (등록 시점 방어) ──────────────────────
 // 이름에 "싱가포르", "쿠알라" 등 지역 키워드가 있으면 region 필드 자동 주입.
@@ -204,7 +218,7 @@ export interface ExtractedData {
 
 export interface ParsedDocument {
   filename: string;
-  fileType: 'pdf' | 'image' | 'hwp';
+  fileType: 'pdf' | 'image' | 'hwp' | 'hwpx';
   rawText: string;
   extractedData: ExtractedData;
   itineraryData?: TravelItinerary | null;  // 고객용 일정표 JSON
@@ -212,16 +226,35 @@ export interface ParsedDocument {
   confidence: number;
   // 복수 상품 추출 결과 (PDF에 여러 상품이 있을 때)
   multiProducts?: MultiProductResult[];
+  // AI 토큰 사용량 (provider별 비용 추적)
+  _tokenUsage?: {
+    provider: 'deepseek' | 'gemini';  // Phase 1 provider
+    input: number;
+    output: number;
+    cache_hit: number;
+    elapsed_ms?: number;
+    phase2Provider?: 'deepseek' | 'gemini';  // Phase 2 일정표 추출 provider (text=deepseek, image=gemini)
+    phase2Input?: number;
+    phase2Output?: number;
+    phase2CacheHit?: number;
+  };
 }
 
 // ─── Gemini API 호출 ────────────────────────────────────────
 
-function getGeminiModel(apiKey: string, schema?: ResponseSchema) {
+/** 입력 텍스트 길이 기반 Gemini output 토큰 동적 추정. 한국어 ~1.5자/토큰, JSON 오버헤드 0.7배, 안전 버퍼 1.2배 */
+function estimateRequiredOutputTokens(inputText: string): number {
+  const est = Math.ceil((inputText.length / 1.5) * 0.7 * 1.2);
+  return Math.min(65536, Math.max(16384, est));
+}
+
+function getGeminiModel(apiKey: string, schema?: ResponseSchema, maxOutputTokens = 8192) {
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
     generationConfig: {
       temperature: 0.1,
+      maxOutputTokens,
       ...(schema ? { responseMimeType: 'application/json', responseSchema: schema } : {}),
     },
   });
@@ -236,10 +269,30 @@ async function callGeminiVision(apiKey: string, base64Image: string, mimeType: s
   return result.response.text();
 }
 
-async function callGeminiText(apiKey: string, text: string, prompt: string, schema?: ResponseSchema): Promise<string> {
-  const model = getGeminiModel(apiKey, schema);
+async function callGeminiText(
+  apiKey: string,
+  text: string,
+  prompt: string,
+  schema?: ResponseSchema,
+  maxOutputTokens?: number,
+): Promise<string> {
+  const model = getGeminiModel(apiKey, schema, maxOutputTokens ?? (schema ? 16384 : 8192));
   const result = await model.generateContent(`${prompt}\n\n---\n\n${text}`);
   return result.response.text();
+}
+
+async function callGeminiTextTracked(apiKey: string, text: string, prompt: string, maxOutputTokens?: number): Promise<{ text: string; input: number; output: number }> {
+  const model = getGeminiModel(apiKey, undefined, maxOutputTokens ?? 16384);
+  const result = await model.generateContent(`${prompt}\n\n---\n\n${text}`);
+  const meta = result.response.usageMetadata;
+  return { text: result.response.text(), input: meta?.promptTokenCount ?? 0, output: meta?.candidatesTokenCount ?? 0 };
+}
+
+async function callGeminiVisionTracked(apiKey: string, base64Image: string, mimeType: string, prompt: string): Promise<{ text: string; input: number; output: number }> {
+  const model = getGeminiModel(apiKey);
+  const result = await model.generateContent([{ inlineData: { mimeType, data: base64Image } }, prompt]);
+  const meta = result.response.usageMetadata;
+  return { text: result.response.text(), input: meta?.promptTokenCount ?? 0, output: meta?.candidatesTokenCount ?? 0 };
 }
 
 // ─── ExtractedData용 Gemini 응답 스키마 ──────────────────────
@@ -397,7 +450,6 @@ const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확
   "optional_tours": [
     {"name": "발마사지", "region": "말레이시아", "price": "$30/인", "price_usd": 30, "price_krw": null, "note": null}
   ],
-  "// optional_tours 필수 규칙": "원문에 '[말레이시아 선택관광]' / '[싱가포르 선택관광]' 같은 섹션 헤더가 있으면, 해당 섹션의 모든 선택관광에 region 필드를 주입하라. 원문에 섹션 구분이 없어도 이름에 지역 키워드가 있으면(예: '쿠알라 야경투어') region 추론. '2층버스', '리버보트'처럼 지역 맥락 없이는 모호한 이름은 섹션 헤더 region을 반드시 따라야 한다.",
   "itinerary": ["제1일: 부산출발 → 서안도착", "제2일: 소안탑 → 회족거리"],
   "accommodations": ["천익호텔 또는 홀리데이인익스프레호텔(4성)"],
   "specialNotes": "주의사항, 여권유효기간, 취소규정 외 기타 안내 전체 (원문 보존용)",
@@ -412,6 +464,8 @@ const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확
   "product_summary": "이 상품을 2~3줄로 요약. 상품특성+출발정보+주요특이사항 포함. 예: '소규모 노팁노옵션 몽골 3박5일. 매주 화요일 부산출발. 4~7명 소규모 할증 $20~40/인. 발권마감 3/30.'",
   "fullText": "문서 전체 텍스트를 그대로 복사"
 }
+
+★ optional_tours.region: 원문에 '[말레이시아 선택관광]'·'[싱가포르 선택관광]' 같은 섹션 헤더가 있으면 해당 섹션 선택관광마다 region을 주입한다. 섹션 없으면 이름 속 지역 키워드로 추론. '2층버스'·'리버보트' 등 모호한 이름은 섹션 헤더 region을 따른다.
 
 ★ price_list 작성 규칙 (price_tiers와 별도로 반드시 채울 것):
 - 동일 기간 내 요일·날짜별 다른 가격 → rules[] 배열 분리 기재.
@@ -480,13 +534,52 @@ function normalizeSurcharges(parsed: {
 }
 
 function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
-  const jsonStr = raw
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-
-  const parsed = JSON.parse(jsonStr);
+  const jsonStr = stripCodeFences(raw);
+  // Gemini/DeepSeek JSON 형이 필드마다 달라 any로 수용 후 필드별로 사용 (기존 동작 유지)
+  let parsed: {
+    fullText?: string;
+    title?: string;
+    category?: ExtractedData['category'];
+    product_type?: string;
+    trip_style?: string;
+    destination?: string;
+    duration?: number | string;
+    departure_days?: string;
+    departure_airport?: string;
+    airline?: string;
+    min_participants?: number;
+    ticketing_deadline?: string;
+    guide_tip?: string;
+    single_supplement?: string;
+    small_group_surcharge?: string;
+    price?: number;
+    price_tiers?: PriceTier[];
+    price_list?: PriceListItem[];
+    surcharges?: Surcharge[];
+    excluded_dates?: string[];
+    inclusions?: string[];
+    excludes?: string[];
+    optional_tours?: OptionalTour[];
+    itinerary?: string[];
+    accommodations?: string[];
+    specialNotes?: string;
+    notices_parsed?: (string | NoticeItem)[];
+    cancellation_policy?: CancellationPolicy[];
+    category_attrs?: Record<string, unknown>;
+    land_operator?: string;
+    product_tags?: string[];
+    product_highlights?: string[];
+    product_summary?: string;
+  };
+  try {
+    parsed = JSON.parse(loosenJsonCommas(jsonStr));
+  } catch {
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch (e) {
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  }
 
   return {
     rawText: parsed.fullText || fallbackText,
@@ -495,7 +588,9 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     product_type: parsed.product_type || undefined,
     trip_style: parsed.trip_style || undefined,
     destination: parsed.destination || undefined,
-    duration: typeof parsed.duration === 'number' ? parsed.duration : (parsed.duration ? parseInt(parsed.duration) : undefined),
+    duration: typeof parsed.duration === 'number'
+      ? parsed.duration
+      : (parsed.duration ? parseInt(String(parsed.duration), 10) : undefined),
     // ERR-KUL-01 — JSON 배열 문자열(`["금"]`) 노출 방지: 저장 시점에 평문으로 정규화
     departure_days: formatDepartureDays(parsed.departure_days) || undefined,
     departure_airport: parsed.departure_airport || undefined,
@@ -505,7 +600,7 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     guide_tip: parsed.guide_tip || undefined,
     single_supplement: parsed.single_supplement || undefined,
     small_group_surcharge: parsed.small_group_surcharge || undefined,
-    normalized_surcharges: normalizeSurcharges(parsed),
+    normalized_surcharges: normalizeSurcharges(parsed as Parameters<typeof normalizeSurcharges>[0]),
     price: Array.isArray(parsed.price_tiers) && parsed.price_tiers.length > 0
       ? (parsed.price_tiers.find((t: PriceTier) => t.adult_price)?.adult_price ?? parsed.price ?? undefined)
       : (parsed.price ?? undefined),
@@ -539,9 +634,17 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
 
 export async function parsePDF(buffer: Buffer): Promise<string> {
   try {
-    console.log('[Parser] PDF 파싱 시작:', buffer.length, '바이트');
+    console.log('[Parser] PDF 파싱 시작 (kordoc):', buffer.length, '바이트');
+    const { parsePdf: kordocParsePdf } = await import('kordoc');
+    const result = await kordocParsePdf((buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer));
+    if (result.success) {
+      console.log('[Parser] PDF 파싱 완료 (kordoc):', result.markdown.length, '글자');
+      return result.markdown;
+    }
+    // kordoc 실패 시 pdf-parse fallback
+    console.warn('[Parser] kordoc PDF 실패 (code:', result.code, ') → pdf-parse fallback');
     const data = await pdfParse(buffer);
-    console.log('[Parser] PDF 파싱 완료:', data.text?.length || 0, '글자');
+    console.log('[Parser] pdf-parse fallback 완료:', data.text?.length || 0, '글자');
     return data.text || '';
   } catch (error) {
     throw new Error(`PDF 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
@@ -573,78 +676,98 @@ export async function parseImage(buffer: Buffer, mimeType = 'image/jpeg'): Promi
   }
 }
 
-// ─── PDF/텍스트 AI 구조화 추출 ──────────────────────────────
+// ─── PDF/텍스트 AI 구조화 추출 (DeepSeek via llm-gateway) ──────
 
-async function parseTextWithAI(text: string): Promise<ExtractedData> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return extractTravelInfo(text);
-
+async function parseTextWithAI(text: string, options?: ParseOptions): Promise<ExtractedData> {
   // 너무 짧은 텍스트는 AI 호출 무의미 → regex fallback으로 토큰 절약
-  // (실제 여행상품 문서는 보통 500자 이상)
   if (text.trim().length < 300) {
     console.log('[Parser] 짧은 텍스트(<300자) → regex fallback');
     return extractTravelInfo(text);
   }
 
-  // Gemini 2.5 Flash는 100만 토큰 지원 — 전체 텍스트 사용 (Jarvis 답변 품질 확보)
-  const truncated = text;
+  // Reflexion few-shot 블록 (과거 정정 사례 주입)
+  const reflectionBlock = options?.reflections?.length
+    ? `\n\n## 과거 정정 사례 (반드시 반영)\n${options.reflections.map(r =>
+        `- [${r.field_path}] "${r.before_value}" → "${r.after_value}": ${r.reflection ?? '정정 사항'}`
+      ).join('\n')}`
+    : '';
+  const regionBlock = options?.regionContext ?? '';
 
   try {
-    const raw = await callGeminiText(apiKey, truncated, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
-    console.log('[Parser] Gemini Text 응답:', raw.length, '글자');
-    const extractedData = parseGeminiResponse(raw, text);
-    extractedData.rawText = text; // 원본 전체 텍스트 보존
-    console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
-    return extractedData;
+    const result = await llmCall({
+      task: 'parse_travel_doc',
+      systemPrompt: EXTRACT_PROMPT + regionBlock + reflectionBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.',
+      userPrompt: text,
+      maxTokens: 4000,
+      temperature: 0.1,
+      enableCaching: true,
+    });
+
+    if (result.success && result.rawText) {
+      const provider = result.fallbackUsed ? 'Gemini(fallback)' : `DeepSeek${result.cacheHit ? '(캐시)' : ''}`;
+      console.log(`[Parser] ${provider} 응답:`, result.rawText.length, '글자');
+      const extractedData = parseGeminiResponse(result.rawText, text);
+      extractedData.rawText = text;
+      console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
+      return extractedData;
+    }
+
+    // llm-gateway 전체 실패 → Gemini 직접 fallback
+    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    if (apiKey) {
+      console.warn('[Parser] llm-gateway 실패, Gemini 직접 fallback');
+      const raw = await callGeminiText(apiKey, text, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
+      const extractedData = parseGeminiResponse(raw, text);
+      extractedData.rawText = text;
+      return extractedData;
+    }
+
+    console.warn('[Parser] AI 전체 실패, regex fallback');
+    return extractTravelInfo(text);
   } catch (err) {
     console.warn('[Parser] AI 텍스트 추출 실패, regex fallback:', err);
     return extractTravelInfo(text);
   }
 }
 
-// ─── HWP 파싱 ───────────────────────────────────────────────
+// ─── HWP / HWPX 파싱 (kordoc) ──────────────────────────────
 
 export async function parseHWP(buffer: Buffer, filename: string): Promise<string> {
-  // HWP는 OLE 바이너리 포맷 - 전용 라이브러리 없이 완전 파싱 불가
-  // UTF-16LE로 디코드해 한글/숫자/영문 문자열 최대한 추출
   try {
-    const utf16Text = buffer.toString('utf16le');
-    // 한글+숫자+영문+공백+특수문자가 3자 이상 연속된 문자열 추출
-    const matches = utf16Text.match(/[\uAC00-\uD7A3\u0020-\u007E]{3,}/g) || [];
-    const extracted = matches
-      .map(s => s.trim())
-      .filter(s => s.length >= 3 && /[\uAC00-\uD7A3]/.test(s)) // 한글 포함된 것만
-      .join('\n');
-
-    if (extracted.length >= 50) {
-      console.log('[Parser] HWP UTF-16LE 추출 성공:', extracted.length, '글자');
-      return extracted;
+    console.log('[Parser] HWP 파싱 시작 (kordoc):', buffer.length, '바이트');
+    const { parseHwp: kordocParseHwp } = await import('kordoc');
+    const result = await kordocParseHwp((buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer));
+    if (result.success) {
+      console.log('[Parser] HWP 파싱 완료 (kordoc):', result.markdown.length, '글자');
+      return result.markdown;
     }
-
-    // UTF-16LE 실패 시 Latin-1로 시도 (일부 HWP 구조)
-    const latin1Text = buffer.toString('latin1');
-    const latin1Matches = latin1Text.match(/[\uAC00-\uD7A3\u0020-\u007E]{3,}/g) || [];
-    const latin1Extracted = latin1Matches
-      .map(s => s.trim())
-      .filter(s => s.length >= 3)
-      .join('\n');
-
-    if (latin1Extracted.length >= 50) {
-      console.log('[Parser] HWP latin1 추출 성공:', latin1Extracted.length, '글자');
-      return latin1Extracted;
+    if (result.code === 'DRM_PROTECTED' || result.code === 'ENCRYPTED') {
+      const name = filename.replace(/\.hwp$/i, '').trim();
+      throw new Error(`HWP 파일이 DRM/암호화 보호되어 있습니다. PDF로 변환 후 업로드해 주세요. (파일명: ${name})`);
     }
-
-    // 텍스트 추출 실패 - 파일명 기반 최소 정보 + 명확한 안내
-    const titleFromFilename = filename.replace(/\.hwp$/i, '').trim();
-    throw new Error(
-      `HWP 파일에서 텍스트를 추출할 수 없습니다. 파일을 PDF 또는 JPG로 변환 후 업로드해 주세요. (파일명: ${titleFromFilename})`
-    );
+    throw new Error(`HWP 파싱 실패 (${result.code}): ${result.error}`);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('PDF 또는 JPG')) throw error;
+    if (error instanceof Error && (error.message.includes('DRM') || error.message.includes('PDF로 변환'))) throw error;
     throw new Error(`HWP 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
 
+export async function parseHWPX(buffer: Buffer, filename: string): Promise<string> {
+  try {
+    console.log('[Parser] HWPX 파싱 시작 (kordoc):', buffer.length, '바이트');
+    const { parseHwpx: kordocParseHwpx } = await import('kordoc');
+    const result = await kordocParseHwpx((buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer));
+    if (result.success) {
+      console.log('[Parser] HWPX 파싱 완료 (kordoc):', result.markdown.length, '글자');
+      return result.markdown;
+    }
+    const name = filename.replace(/\.hwpx$/i, '').trim();
+    throw new Error(`HWPX 파싱 실패 (${result.code}). PDF로 변환 후 업로드해 주세요. (파일명: ${name})`);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('PDF로 변환')) throw error;
+    throw new Error(`HWPX 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+  }
+}
 // ─── Regex fallback 파싱 (PDF/HWP AI 실패 시) ───────────────
 
 export function extractTravelInfo(text: string, filename?: string): ExtractedData {
@@ -872,6 +995,11 @@ export async function extractItineraryData(
 const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 기본 정보와 가격을 JSON 배열로 추출하세요.
 일정표(itinerary_data/days)는 추출하지 마세요. 상품이 1개여도 배열로 감싸세요.
 
+★★★ 복수 상품 분리 (필수) ★★★
+- 원문에 "[ZE]", "【BX】" 등(반각·전각 대괄호) 랜드 코드로 시작하고 같은 줄에 "일정표" 또는 "일정 표"가 붙은 헤더가 여러 번 나오면, 각 헤더와 그 아래의 포함/불포함/REMARK/일정·식사·호텔 블록을 하나의 상품으로 묶어 JSON 배열에 별도 객체로 넣을 것.
+- 상단 공통 가격표(목·일 5일/6일 요금)가 있으면 각 상품 객체의 price_tiers·price_list에 동일하게 반영해도 됨. 절대 4개 일정을 하나의 title로 합치지 말 것.
+- 출력은 반드시 유효한 JSON 배열만. 주석·설명·마크다운 코드펜스 금지.
+
 ★★★ 절대 규칙 ★★★
 - 상품 간 데이터 오염 금지: 각 상품의 inclusions/excludes/guide_tip/price_tiers는 해당 상품 섹션에서만 추출.
 - price_tiers 요일 정합성: 각 상품의 price_tiers 내 departure_day_of_week는 해당 상품의 departure_days와 반드시 일치해야 한다. 예: departure_days가 "일,월"인 상품에 "목","금" tier 포함 금지. 제외일 tier도 동일 규칙 적용.
@@ -934,31 +1062,159 @@ export interface MultiProductResult {
   itineraryData: TravelItinerary | null;
 }
 
-// JSON 파싱 헬퍼 (잘린 JSON 복구 포함)
-function safeParseJsonArray(raw: string): Record<string, unknown>[] | null {
-  let jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-  try {
-    const result = JSON.parse(jsonStr);
-    return Array.isArray(result) ? result : null;
-  } catch {
-    const lastCloseBrace = jsonStr.lastIndexOf('}');
-    if (lastCloseBrace > 0) {
-      jsonStr = jsonStr.slice(0, lastCloseBrace + 1);
-      if (!jsonStr.endsWith(']')) jsonStr += ']';
-      if (!jsonStr.startsWith('[')) jsonStr = '[' + jsonStr;
-      try {
-        const result = JSON.parse(jsonStr);
-        console.log('[Parser] 잘린 JSON 복구 성공');
-        return Array.isArray(result) ? result : null;
-      } catch { return null; }
+/** LLM이 흔히 내는 비표준 JSON(후행 쉼표 등)만 최소한으로 완화 — 문자열 내부는 건드리지 않음 */
+function stripCodeFences(s: string): string {
+  return s.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').replace(/^\uFEFF/, '').trim();
+}
+
+function loosenJsonCommas(jsonStr: string): string {
+  let out = '';
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < jsonStr.length; i++) {
+    const c = jsonStr[i];
+    if (escape) {
+      out += c;
+      escape = false;
+      continue;
     }
-    return null;
+    if (c === '\\' && inString) {
+      out += c;
+      escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      out += c;
+      continue;
+    }
+    if (!inString && c === ',' && (jsonStr[i + 1] === '}' || jsonStr[i + 1] === ']')) {
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+function coerceTopLevelArray(result: unknown): Record<string, unknown>[] | null {
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  if (result && typeof result === 'object') {
+    const o = result as Record<string, unknown>;
+    const nested = o.products ?? o.items ?? o.data ?? o.packages;
+    if (Array.isArray(nested) && nested.length > 0 && typeof nested[0] === 'object') {
+      return nested as Record<string, unknown>[];
+    }
+  }
+  return null;
+}
+
+/** Unterminated string 특화 복구: 문자열 내부/외부를 구분하여 마지막 "문자열 밖의 }"를 찾아 배열 닫기 */
+function repairUnterminatedJson(raw: string): string | null {
+  const isInsideString: boolean[] = new Array(raw.length).fill(false);
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    if (esc) { isInsideString[i] = inStr; esc = false; continue; }
+    if (raw[i] === '\\' && inStr) { isInsideString[i] = true; esc = true; continue; }
+    if (raw[i] === '"') { isInsideString[i] = inStr; inStr = !inStr; continue; }
+    isInsideString[i] = inStr;
+  }
+  for (let i = raw.length - 1; i >= 0; i--) {
+    if (raw[i] === '}' && !isInsideString[i]) {
+      let candidate = raw.slice(0, i + 1);
+      if (!candidate.trimStart().startsWith('[')) candidate = '[' + candidate;
+      if (!candidate.trimEnd().endsWith(']')) candidate += ']';
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function tryParseJsonArray(jsonStr: string): Record<string, unknown>[] | null {
+  const loosened = loosenJsonCommas(jsonStr);
+  try {
+    const result = JSON.parse(loosened);
+    return coerceTopLevelArray(result);
+  } catch {
+    try {
+      const result = JSON.parse(jsonStr);
+      return coerceTopLevelArray(result);
+    } catch {
+      return null;
+    }
   }
 }
 
+// JSON 파싱 헬퍼 (잘린 JSON 복구 포함)
+function safeParseJsonArray(raw: string): Record<string, unknown>[] | null {
+  const strippedRaw = stripCodeFences(raw);
+  let jsonStr = strippedRaw;
+  const direct = tryParseJsonArray(jsonStr);
+  if (direct) return direct;
+
+  const balanced = extractBalancedJsonArraySubstring(jsonStr);
+  if (balanced) {
+    const fromBal = tryParseJsonArray(balanced);
+    if (fromBal) {
+      console.log('[Parser] 균형 잡힌 JSON 배열 슬라이스 파싱 성공');
+      return fromBal;
+    }
+  }
+
+  const lastCloseBrace = jsonStr.lastIndexOf('}');
+  if (lastCloseBrace >= 0) {
+    const sliced = jsonStr.slice(0, lastCloseBrace + 1);
+    const slicedArr = !sliced.endsWith(']') ? sliced + ']' : sliced;
+    const slicedFull = !slicedArr.startsWith('[') ? '[' + slicedArr : slicedArr;
+    const repaired = tryParseJsonArray(slicedFull);
+    if (repaired) {
+      console.log('[Parser] 잘린 JSON 복구 성공');
+      return repaired;
+    }
+  }
+
+  // 4단계: Unterminated string 특화 repair — 원본(strippedRaw) 기준으로 안전한 } 탐색
+  const unterm = repairUnterminatedJson(strippedRaw);
+  if (unterm) {
+    const fromUnterm = tryParseJsonArray(unterm);
+    if (fromUnterm) {
+      console.log(`[Parser] Unterminated string repair 성공 — 원본 ${strippedRaw.length}자 중 ${unterm.length}자 보존, ${fromUnterm.length}개 객체 복구`);
+      return fromUnterm;
+    }
+  }
+  return null;
+}
+
 function safeParseJsonObject(raw: string): Record<string, unknown> | null {
-  const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-  try { return JSON.parse(jsonStr); } catch { return null; }
+  const jsonStr = stripCodeFences(raw);
+  const tryObj = (s: string): Record<string, unknown> | null => {
+    const loosened = loosenJsonCommas(s);
+    try {
+      return JSON.parse(loosened) as Record<string, unknown>;
+    } catch {
+      try {
+        return JSON.parse(s) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+  };
+  const first = tryObj(jsonStr);
+  if (first) return first;
+  const balanced = extractBalancedJsonObjectSubstring(jsonStr);
+  if (balanced) {
+    const fromBal = tryObj(balanced);
+    if (fromBal) {
+      console.log('[Parser] 균형 잡힌 JSON 객체 슬라이스 파싱 성공');
+      return fromBal;
+    }
+  }
+  const start = jsonStr.indexOf('{');
+  const end = jsonStr.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return tryObj(jsonStr.slice(start, end + 1));
+  }
+  return null;
 }
 
 // Phase 1 결과 → ExtractedData 변환
@@ -1016,47 +1272,291 @@ export async function extractMultipleProducts(
   rawText: string,
   base64Image?: string,
   mimeType?: string,
+  options?: ParseOptions,
 ): Promise<MultiProductResult[]> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) return [];
 
   const truncatedText = rawText.slice(0, 30000);
 
+  // Reflexion + 지역 컨텍스트 prefix
+  const reflectionBlock = options?.reflections?.length
+    ? `## 과거 정정 사례 (반드시 반영)\n${options.reflections.map(r =>
+        `- [${r.field_path}] "${r.before_value}" → "${r.after_value}": ${r.reflection ?? '정정 사항'}`
+      ).join('\n')}\n\n`
+    : '';
+  const regionBlock = options?.regionContext ? options.regionContext + '\n\n' : '';
+  const contextPrefix = regionBlock + reflectionBlock;
+
   try {
-    // ── Phase 1: 기본 정보 + 가격 추출 (일정표 제외 → 빠름) ──
-    // response_schema: 배열 형태의 상품 데이터 (JSON 파싱 실패 방지)
+    // ── Phase 1: 기본 정보 + 가격 추출 ──────────────────────────────────────
+    // DeepSeek primary (prefix 캐싱 → 2번째 파일부터 input 90% 할인)
+    // 이미지/Vision 경로는 Gemini 유지 (Vision 필수)
     const MULTI_PRODUCT_SCHEMA: ResponseSchema = {
       type: SchemaType.ARRAY,
       items: EXTRACTED_DATA_SCHEMA,
     };
-    console.log('[Parser] Phase 1 시작: 기본 정보 + 가격 추출');
-    let phase1Raw: string;
-    if (base64Image && mimeType) {
-      phase1Raw = await callGeminiVision(apiKey, base64Image, mimeType, MULTI_PRODUCT_PHASE1_PROMPT, MULTI_PRODUCT_SCHEMA);
-    } else {
-      phase1Raw = await callGeminiText(apiKey, truncatedText, MULTI_PRODUCT_PHASE1_PROMPT, MULTI_PRODUCT_SCHEMA);
+    const phase1Prompt = contextPrefix + MULTI_PRODUCT_PHASE1_PROMPT;
+    const singleProductPhase1Prompt = `${contextPrefix}${MULTI_PRODUCT_PHASE1_PROMPT}\n\n★★★ 이 사용자 메시지 구간에는 여행상품이 정확히 1개만 있습니다. JSON 배열 길이는 반드시 1이어야 합니다. ★★★\n`;
+
+    const route = classifyUploadDocumentComplexity(truncatedText);
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(truncatedText);
+    const mapReduceOn = !base64Image
+      && process.env.UPLOAD_MAP_REDUCE !== '0'
+      && sections.length >= 2
+      && (route.tier === 'catalog' || route.tier === 'risky');
+
+    let phase1Parsed: Record<string, unknown>[] | null = null;
+    let phase1Usage: { provider: 'deepseek' | 'gemini'; input: number; output: number; cache_hit: number; elapsed_ms?: number } | undefined;
+    let phase1Raw = '';
+
+    // ── Map-Reduce: 블록별 Phase 1 (카탈로그·복수 일정표) ─────────────────
+    if (mapReduceOn) {
+      console.log('[Parser] Map-Reduce Phase 1 — 블록', sections.length, '개, 라우트:', route.tier, `(항공프리픽스 ${route.distinctFlightPrefixes})`);
+      const CHUNK_CONCURRENCY = Math.min(
+        6,
+        Math.max(1, parseInt(process.env.UPLOAD_PHASE1_CONCURRENCY ?? '4', 10) || 4),
+      );
+      let aggIn = 0;
+      let aggOut = 0;
+      let aggCache = 0;
+      let usedGemini = false;
+
+      const tryMonolithicPhase1 = async (): Promise<Record<string, unknown>[] | null> => {
+        if (!apiKey) return null;
+        try {
+          const recoverRaw = await callGeminiText(apiKey, truncatedText, phase1Prompt, MULTI_PRODUCT_SCHEMA, 16384);
+          return safeParseJsonArray(recoverRaw);
+        } catch {
+          return null;
+        }
+      };
+
+      const runChunk = async (section: string, geminiOnly: boolean): Promise<Record<string, unknown> | null> => {
+        const userChunk = (sharedPrefix ? `${sharedPrefix}\n\n---\n\n` : '') + section;
+        const slice = userChunk.slice(0, 30000);
+        let raw: string | undefined;
+        if (!geminiOnly) {
+          const dsResult = await llmCall({
+            task: 'parse_travel_doc',
+            systemPrompt: singleProductPhase1Prompt,
+            userPrompt: slice,
+            maxTokens: 6000,
+            temperature: 0.1,
+            enableCaching: true,
+          });
+          if (dsResult.success && dsResult.rawText) {
+            raw = dsResult.rawText;
+            aggIn += dsResult._usage?.input ?? 0;
+            aggOut += dsResult._usage?.output ?? 0;
+            aggCache += dsResult._usage?.cache_hit ?? 0;
+            if (dsResult.fallbackUsed) usedGemini = true;
+          } else if (apiKey) {
+            raw = await callGeminiText(apiKey, slice, singleProductPhase1Prompt, MULTI_PRODUCT_SCHEMA, estimateRequiredOutputTokens(slice));
+            usedGemini = true;
+          }
+        } else if (apiKey) {
+          raw = await callGeminiText(apiKey, slice, singleProductPhase1Prompt, MULTI_PRODUCT_SCHEMA, 8192);
+          usedGemini = true;
+        }
+        if (!raw) return null;
+        let arr = safeParseJsonArray(raw);
+        if ((!arr || arr.length === 0) && apiKey) {
+          raw = await callGeminiText(apiKey, slice, singleProductPhase1Prompt, MULTI_PRODUCT_SCHEMA, 8192);
+          usedGemini = true;
+          arr = safeParseJsonArray(raw);
+        }
+        if (!arr?.length) return null;
+        if (arr.length > 1) {
+          console.warn('[Parser] Map-Reduce 청크가 복수 객체 반환 — 첫 항목만 사용');
+        }
+        return arr[0] as Record<string, unknown>;
+      };
+
+      const results: (Record<string, unknown> | null)[] = new Array(sections.length).fill(null);
+
+      for (let i = 0; i < sections.length; i += CHUNK_CONCURRENCY) {
+        const batch = sections.slice(i, i + CHUNK_CONCURRENCY);
+        await Promise.all(
+          batch.map(async (section, j) => {
+            const idx = i + j;
+            results[idx] = await runChunk(section, false);
+          }),
+        );
+      }
+
+      for (let idx = 0; idx < sections.length; idx++) {
+        if (results[idx]) continue;
+        console.warn(`[Parser] Map-Reduce 청크 ${idx + 1}/${sections.length} 재시도 (Gemini 전용)`);
+        results[idx] = await runChunk(sections[idx], true);
+      }
+
+      const partial = results.filter((x): x is Record<string, unknown> => x != null);
+      const allChunksOk = results.every(x => x != null);
+
+      let phase1Candidate: Record<string, unknown>[] | null = null;
+      if (allChunksOk) {
+        phase1Candidate = results as Record<string, unknown>[];
+      } else {
+        console.warn('[Parser] Map-Reduce 일부 실패 — 전체 문서 Phase 1 복구 시도');
+        const recovered = await tryMonolithicPhase1();
+        if (recovered && recovered.length >= sections.length) {
+          phase1Candidate = recovered;
+          usedGemini = true;
+        } else if (recovered && recovered.length > partial.length) {
+          phase1Candidate = recovered;
+          usedGemini = true;
+        } else if (partial.length >= 2) {
+          phase1Candidate = partial;
+        }
+      }
+
+      if (phase1Candidate && phase1Candidate.length >= 2) {
+        phase1Parsed = phase1Candidate;
+        phase1Usage = {
+          provider: usedGemini ? 'gemini' : 'deepseek',
+          input: aggIn,
+          output: aggOut,
+          cache_hit: aggCache,
+        };
+        const judge = await judgeCatalogProductCountConsistency(truncatedText, phase1Parsed.length);
+        if (!judge.skipped && !judge.consistent) {
+          console.warn('[Parser] 카탈로그 개수 Judge: 원문 헤더 수와 불일치 가능');
+          if (apiKey && process.env.UPLOAD_JUDGE_REPAIR !== '0') {
+            const repaired = await tryMonolithicPhase1();
+            if (repaired && repaired.length > phase1Parsed.length) {
+              console.log('[Parser] Judge 불일치 — 전체 문서 재파싱으로 상품 수 보정:', repaired.length);
+              phase1Parsed = repaired;
+              phase1Usage = { provider: 'gemini', input: 0, output: 0, cache_hit: 0 };
+            }
+          } else {
+            console.warn('[Parser] 수동 검토 권장 (UPLOAD_JUDGE_REPAIR=0 이면 자동 보정 생략)');
+          }
+        }
+      } else {
+        console.warn('[Parser] Map-Reduce Phase 1 — 유효 블록 < 2, 단일 경로로 폴백');
+        phase1Parsed = null;
+      }
     }
 
-    const phase1Parsed = safeParseJsonArray(phase1Raw);
+    if (!phase1Parsed) {
+      console.log('[Parser] Phase 1 단일 경로: 기본 정보 + 가격 추출 (DeepSeek primary)');
+      if (base64Image && mimeType) {
+        // 이미지: Vision 필수 → Gemini 유지
+        phase1Raw = await callGeminiVision(apiKey, base64Image, mimeType, phase1Prompt, MULTI_PRODUCT_SCHEMA);
+        phase1Usage = { provider: 'gemini', input: 0, output: 0, cache_hit: 0 };
+      } else {
+        // 텍스트: DeepSeek primary (prefix 캐싱), Gemini fallback
+        const dsResult = await llmCall({
+          task: 'parse_travel_doc',
+          systemPrompt: phase1Prompt,
+          userPrompt: truncatedText,
+          maxTokens: 8000,
+          temperature: 0.1,
+          enableCaching: true,
+        });
+        if (dsResult.success && dsResult.rawText) {
+          phase1Raw = dsResult.rawText;
+          phase1Usage = {
+            provider: dsResult.fallbackUsed ? 'gemini' : 'deepseek',
+            input:     dsResult._usage?.input ?? 0,
+            output:    dsResult._usage?.output ?? 0,
+            cache_hit: dsResult._usage?.cache_hit ?? 0,
+            elapsed_ms: dsResult.elapsed_ms,
+          };
+          const hit = dsResult._usage?.cache_hit ?? 0;
+          console.log(`[Parser] Phase 1 DeepSeek 완료 (${dsResult.fallbackUsed ? 'fallback→Gemini' : 'primary'}) — 캐시 히트: ${hit} 토큰, 소요: ${dsResult.elapsed_ms}ms`);
+        } else {
+          // DeepSeek 완전 실패 → Gemini fallback
+          const dsFailReason = dsResult.errors?.join(' | ') ?? '응답 없음';
+          console.warn(`[Parser] DeepSeek Phase 1 실패 (${dsFailReason.includes('DEEPSEEK_API_KEY') ? 'API키 미설정' : dsFailReason.slice(0, 80)}), Gemini fallback`);
+          const fallbackTokens = estimateRequiredOutputTokens(truncatedText);
+          phase1Raw = await callGeminiText(apiKey, truncatedText, phase1Prompt, MULTI_PRODUCT_SCHEMA, fallbackTokens);
+          phase1Usage = { provider: 'gemini', input: 0, output: 0, cache_hit: 0 };
+        }
+      }
+
+      phase1Parsed = safeParseJsonArray(phase1Raw);
+      // DeepSeek/Gemini 텍스트가 success여도 본문이 깨진 JSON인 경우가 많음 → 구조화 출력으로 1회 재시도
+      if ((!phase1Parsed || phase1Parsed.length === 0) && apiKey && !base64Image) {
+        console.warn('[Parser] Phase 1 JSON 비정상/빈 배열 — Gemini structured output 재시도');
+        try {
+          const retryTokens = estimateRequiredOutputTokens(truncatedText);
+          phase1Raw = await callGeminiText(apiKey, truncatedText, phase1Prompt, MULTI_PRODUCT_SCHEMA, retryTokens);
+          phase1Parsed = safeParseJsonArray(phase1Raw);
+          phase1Usage = { provider: 'gemini', input: 0, output: 0, cache_hit: 0 };
+        } catch (e) {
+          console.warn('[Parser] Gemini structured Phase 1 재시도 실패:', e instanceof Error ? e.message : e);
+        }
+      }
+    }
     if (!phase1Parsed || phase1Parsed.length === 0) {
       console.warn('[Parser] Phase 1 파싱 실패 — fallback');
       return [];
     }
-    console.log('[Parser] Phase 1 완료 —', phase1Parsed.length, '개 상품');
+    console.log('[Parser] Phase 1 완료 —', phase1Parsed.length, '개 상품', phase1Usage ? `(input:${phase1Usage.input} out:${phase1Usage.output} cache:${phase1Usage.cache_hit})` : '');
 
-    // ── Phase 2: 각 상품별 일정표 병렬 추출 ──
-    console.log('[Parser] Phase 2 시작: 일정표 병렬 추출');
+    // ── Phase 2: 각 상품별 일정표 병렬 추출 (텍스트=DeepSeek, 이미지=Gemini Vision) ──
+    console.log('[Parser] Phase 2 시작: 일정표 병렬 추출 (텍스트: DeepSeek, 이미지: Gemini Vision)');
+    let phase2Input = 0;
+    let phase2Output = 0;
+    let phase2CacheHit = 0;
+    let phase2ProviderFinal: 'deepseek' | 'gemini' = base64Image ? 'gemini' : 'deepseek';
+
     const phase2Promises = phase1Parsed.map(async (item) => {
       const title = (item.title as string) || '상품명 미상';
       const prompt = MULTI_PRODUCT_PHASE2_PROMPT.replace(/\{\{PRODUCT_TITLE\}\}/g, title);
       try {
         let itinRaw: string;
+        /** DeepSeek 실패 직후 이미 Gemini로 본문을 받았으면 JSON 재시도 블록 스킵 (중복 호출 방지) */
+        let alreadyUsedGeminiText = false;
         if (base64Image && mimeType) {
-          itinRaw = await callGeminiVision(apiKey, base64Image, mimeType, prompt);
+          // 이미지: Vision 필수 → Gemini 유지
+          const tracked = await callGeminiVisionTracked(apiKey, base64Image, mimeType, prompt);
+          itinRaw = tracked.text; phase2Input += tracked.input; phase2Output += tracked.output;
         } else {
-          itinRaw = await callGeminiText(apiKey, truncatedText, prompt);
+          // 텍스트: DeepSeek primary — 실패·JSON깨짐 시 Phase 1과 동일하게 Gemini 폴백
+          const dsResult = await llmCall({
+            task: 'parse_travel_doc',
+            systemPrompt: '여행 일정표를 정확히 JSON으로 추출하세요. 원문 텍스트를 1글자도 변경하지 마세요.',
+            userPrompt: `${prompt}\n\n---\n\n${truncatedText}`,
+            maxTokens: 8192,
+            temperature: 0.1,
+            enableCaching: true,
+          });
+          if (dsResult.success && dsResult.rawText) {
+            itinRaw = dsResult.rawText;
+            phase2Input += dsResult._usage?.input ?? 0;
+            phase2Output += dsResult._usage?.output ?? 0;
+            phase2CacheHit += dsResult._usage?.cache_hit ?? 0;
+          } else if (apiKey) {
+            console.warn(`[Parser] Phase 2 DeepSeek 실패 (${title}) — Gemini fallback`);
+            const tracked = await callGeminiTextTracked(apiKey, truncatedText, prompt, estimateRequiredOutputTokens(truncatedText));
+            itinRaw = tracked.text;
+            phase2Input += tracked.input;
+            phase2Output += tracked.output;
+            phase2ProviderFinal = 'gemini';
+            alreadyUsedGeminiText = true;
+          } else {
+            console.warn(`[Parser] Phase 2 DeepSeek 실패 (${title}) — GOOGLE_AI 없어 일정표 스킵`);
+            return null;
+          }
         }
-        const parsed = safeParseJsonObject(itinRaw);
+        let parsed = safeParseJsonObject(itinRaw);
+        // 텍스트 모드: DeepSeek 출력이 잘리거나 비 JSON이면 Gemini로 1회 재시도
+        if (!parsed && !base64Image && apiKey && !alreadyUsedGeminiText) {
+          console.warn(`[Parser] Phase 2 JSON 파싱 실패 (${title}) — Gemini 재시도`);
+          try {
+            const tracked = await callGeminiTextTracked(apiKey, truncatedText, prompt, estimateRequiredOutputTokens(truncatedText));
+            itinRaw = tracked.text;
+            phase2Input += tracked.input;
+            phase2Output += tracked.output;
+            phase2ProviderFinal = 'gemini';
+            parsed = safeParseJsonObject(itinRaw);
+          } catch {
+            /* noop */
+          }
+        }
         if (parsed) {
           const itin = parsed as unknown as TravelItinerary;
           if (itin.meta) itin.meta.brand = '여소남';
@@ -1070,13 +1570,25 @@ export async function extractMultipleProducts(
     });
 
     const itineraries = await Promise.all(phase2Promises);
-    console.log('[Parser] Phase 2 완료 — 일정표', itineraries.filter(Boolean).length, '개 성공');
+    console.log(`[Parser] Phase 2 완료 — 일정표 ${itineraries.filter(Boolean).length}개 성공 (${phase2ProviderFinal} in:${phase2Input} out:${phase2Output} cache:${phase2CacheHit})`);
 
     // ── 결합: Phase 1 기본정보 + Phase 2 일정표 ──
-    return phase1Parsed.map((item, idx) => ({
+    const products = phase1Parsed.map((item, idx) => ({
       extractedData: phase1ItemToExtractedData(item, rawText),
       itineraryData: itineraries[idx] ?? null,
     }));
+    // phase1Usage + phase2 토큰을 첫 번째 product에 숨겨서 parseDocument로 전달
+    if (products.length > 0 && (phase1Usage || phase2Input > 0)) {
+      const mergedUsage = {
+        ...(phase1Usage ?? { provider: 'deepseek' as const, input: 0, output: 0, cache_hit: 0 }),
+        phase2Provider: phase2ProviderFinal,
+        phase2Input,
+        phase2Output,
+        phase2CacheHit,
+      };
+      (products[0] as MultiProductResult & { _phase1Usage?: typeof mergedUsage })._phase1Usage = mergedUsage;
+    }
+    return products;
   } catch (err) {
     console.warn('[Parser] 복수 상품 추출 실패:', err instanceof Error ? err.message : err);
     return [];
@@ -1085,9 +1597,9 @@ export async function extractMultipleProducts(
 
 // ─── 메인 파싱 함수 ─────────────────────────────────────────
 
-export async function parseDocument(buffer: Buffer, filename: string): Promise<ParsedDocument> {
+export async function parseDocument(buffer: Buffer, filename: string, options?: ParseOptions): Promise<ParsedDocument> {
   const ext = filename.split('.').pop()?.toLowerCase();
-  let fileType: 'pdf' | 'image' | 'hwp' = 'pdf';
+  let fileType: 'pdf' | 'image' | 'hwp' | 'hwpx' = 'pdf';
 
   try {
     if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
@@ -1120,14 +1632,21 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
     } else if (ext === 'hwp') {
       fileType = 'hwp';
       rawText = await parseHWP(buffer, filename);
+    } else if (ext === 'hwpx') {
+      fileType = 'hwpx';
+      rawText = await parseHWPX(buffer, filename);
     } else {
       throw new Error(`지원하지 않는 파일 형식: ${ext}`);
     }
 
     if (!rawText) throw new Error('파일에서 텍스트를 추출할 수 없습니다.');
 
-    // 복수 상품 통합 추출 (1회 AI 호출로 모든 상품 + 일정표 추출)
-    const multiProducts = await extractMultipleProducts(rawText);
+    // 복수 상품 통합 추출 (DeepSeek primary + Gemini fallback)
+    const multiProducts = await extractMultipleProducts(rawText, undefined, undefined, options);
+    // Phase 1 토큰 사용량 수집
+    const phase1Usage = multiProducts.length > 0
+      ? (multiProducts[0] as MultiProductResult & { _phase1Usage?: ParsedDocument['_tokenUsage'] })._phase1Usage
+      : undefined;
 
     if (multiProducts.length > 1) {
       // 복수 상품: 첫 번째를 대표 extractedData로, 전체를 multiProducts에 담아 반환
@@ -1139,6 +1658,7 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
         multiProducts,
         parsedAt: new Date(),
         confidence: calculateConfidence(multiProducts[0].extractedData),
+        _tokenUsage: phase1Usage,
       };
     }
 
@@ -1151,7 +1671,7 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
     } else {
       // AI 실패 시 기존 fallback
       [extractedData, itineraryData] = await Promise.all([
-        parseTextWithAI(rawText),
+        parseTextWithAI(rawText, options),
         extractItineraryData(rawText),
       ]);
     }
@@ -1162,6 +1682,7 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
       itineraryData,
       parsedAt: new Date(),
       confidence: calculateConfidence(extractedData),
+      _tokenUsage: phase1Usage,
     };
   } catch (error) {
     throw new Error(`문서 파싱 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);

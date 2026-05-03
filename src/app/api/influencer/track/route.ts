@@ -18,15 +18,15 @@ import {
   hashUserAgent,
   getClientIp,
 } from '@/lib/affiliate/session';
-
-// 사장님 결정(2026-04-26): 동의 배너 미노출 → 모든 추적 쿠키 30일 일괄.
-const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
 
   const { searchParams } = request.nextUrl;
-  const ref = searchParams.get('ref');
+  const refRaw = searchParams.get('ref');
+  const ref = refRaw ? normalizeAffiliateReferralCode(refRaw) : '';
   const pkg = searchParams.get('pkg');
   const sub = searchParams.get('sub') || '';
 
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     if (!botDetected) {
       const { data: dupCheck } = await supabaseAdmin.rpc('is_duplicate_click', {
         p_session: sid,
-        p_ref: ref,
+        p_ref: ref, // canonical uppercase
         p_pkg: pkg,
       });
       isDuplicate = !!dupCheck;
@@ -108,20 +108,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    response.cookies.set('aff_ref', ref, {
-      maxAge: COOKIE_MAX_AGE,
+    const maxAge = getAffiliateRefCookieMaxAgeSec(request);
+    const cookieBase = {
       path: '/',
       httpOnly: false,
-      sameSite: 'lax',
-    });
+      sameSite: 'lax' as const,
+      secure: process.env.NODE_ENV === 'production',
+      ...(maxAge !== undefined ? { maxAge } : {}),
+    };
+    response.cookies.set('aff_ref', ref, cookieBase);
 
     if (sub) {
-      response.cookies.set('aff_sub', sub, {
-        maxAge: COOKIE_MAX_AGE,
-        path: '/',
-        httpOnly: false,
-        sameSite: 'lax',
-      });
+      response.cookies.set('aff_sub', sub, cookieBase);
     }
 
     return NextResponse.json(

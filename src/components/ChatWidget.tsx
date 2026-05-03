@@ -1,8 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useChatStore, type ChatMessage } from '@/lib/chat-store';
+import { useChatStore, type ChatMessage, type EscalationButtonAction } from '@/lib/chat-store';
+import {
+  buildEscalationSummaryFromMessages,
+  hasConsultPhoneConfigured,
+  logEscalationCtaPick,
+  openConsultPhone,
+  openKakaoFromChatEscalation,
+} from '@/lib/consult-escalation';
+import { buildQaChatHistory } from '@/lib/qa-chat-history';
 import { getReferrer } from '@/lib/tracker';
 import { MessageCircle, X, Send } from 'lucide-react';
 
@@ -40,6 +49,23 @@ export default function ChatWidget() {
     await streamChat(text);
   };
 
+  const handleEscalationAction = async (action: EscalationButtonAction) => {
+    const { messages: msgs, sessionId } = useChatStore.getState();
+    const conversationSummary = buildEscalationSummaryFromMessages(msgs);
+    logEscalationCtaPick({
+      channel: action,
+      sessionId,
+      affiliateRef: getReferrer(),
+      path: pathname || '/',
+      conversationSummary: conversationSummary || undefined,
+    });
+    if (action === 'phone') {
+      openConsultPhone();
+      return;
+    }
+    await openKakaoFromChatEscalation(msgs);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -53,7 +79,7 @@ export default function ChatWidget() {
       {!isOpen && (
         <button
           onClick={toggleChat}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all z-50 active:scale-95"
+          className="fixed right-6 z-[60] w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95 bottom-24 md:bottom-6"
           aria-label="채팅 열기"
         >
           <MessageCircle size={26} />
@@ -62,7 +88,7 @@ export default function ChatWidget() {
 
       {/* 채팅 창 */}
       {isOpen && (
-        <div className="fixed bottom-0 right-0 md:bottom-6 md:right-6 w-full md:w-96 h-full md:h-[600px] md:max-h-[80vh] bg-white md:rounded-2xl shadow-2xl flex flex-col z-50 border border-gray-200">
+        <div className="fixed bottom-0 right-0 md:bottom-6 md:right-6 w-full md:w-96 h-full md:h-[600px] md:max-h-[80vh] bg-white md:rounded-2xl shadow-2xl flex flex-col z-[60] border border-gray-200">
           {/* 헤더 */}
           <div className="bg-violet-600 text-white px-4 py-3 md:rounded-t-2xl flex justify-between items-center shrink-0">
             <div className="flex items-center gap-3">
@@ -88,10 +114,16 @@ export default function ChatWidget() {
                 </div>
                 <p className="text-sm font-medium text-gray-700 mb-1">궁금하신 점을 물어보세요!</p>
                 <p className="text-xs text-gray-400 mb-6">여행 상담부터 상품 추천까지</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {['다낭 추천 상품', '오사카 3박4일', '가격 문의'].map((q) => (
+                <div className="flex flex-wrap gap-2 justify-center max-w-[280px] mx-auto">
+                  {[
+                    '다낭 추천 상품',
+                    '자유여행 견적 알려줘',
+                    '오사카 3박4일',
+                    '가격 문의',
+                  ].map((q) => (
                     <button
                       key={q}
+                      type="button"
                       onClick={() => handleQuickButton(q)}
                       className="px-3 py-1.5 bg-violet-50 text-violet-700 text-xs rounded-full hover:bg-violet-100 transition"
                     >
@@ -99,11 +131,22 @@ export default function ChatWidget() {
                     </button>
                   ))}
                 </div>
+                <p className="text-[11px] text-gray-400 mt-5">
+                  바로 항공·호텔 조합만 보시려면{' '}
+                  <Link href="/free-travel" className="text-violet-600 font-medium hover:underline" onClick={() => closeChat()}>
+                    자유여행 페이지
+                  </Link>
+                </p>
               </div>
             )}
 
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} onButtonClick={handleQuickButton} />
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                onButtonClick={handleQuickButton}
+                onEscalationAction={handleEscalationAction}
+              />
             ))}
 
             {isTyping && (
@@ -153,7 +196,19 @@ export default function ChatWidget() {
 
 type StreamEvent =
   | { type: 'text'; content: string }
-  | { type: 'meta'; packages: any[]; escalate: boolean; critiqueSeverity: string }
+  | {
+      type: 'meta';
+      packages: any[];
+      escalate: boolean;
+      critiqueSeverity: string;
+      freeTravelHref?: string | null;
+      journey?: {
+        stage: string;
+        updated_at: string;
+        checklist_preview: string[];
+        automation_hints: string[];
+      };
+    }
   | { type: 'error'; message: string }
   | { type: 'done' };
 
@@ -183,10 +238,8 @@ async function streamChat(text: string) {
         message: text,
         sessionId,
         referrer: getReferrer(),
-        history: useChatStore.getState().messages.slice(-10).map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        affiliateRef: getReferrer(),
+        history: buildQaChatHistory(useChatStore.getState().messages, 10),
       }),
     });
 
@@ -199,6 +252,7 @@ async function streamChat(text: string) {
     let buffer = '';
     let metaPackages: any[] = [];
     let metaEscalate = false;
+    let metaFreeTravelHref: string | null = null;
 
     while (true) {
       const { value, done } = await reader.read();
@@ -224,6 +278,10 @@ async function streamChat(text: string) {
         } else if (ev.type === 'meta') {
           metaPackages = ev.packages || [];
           metaEscalate = !!ev.escalate;
+          metaFreeTravelHref =
+            typeof ev.freeTravelHref === 'string' && ev.freeTravelHref.length > 0
+              ? ev.freeTravelHref
+              : null;
         } else if (ev.type === 'error') {
           ensureMessage();
           updateMessage(assistantId!, {
@@ -249,12 +307,32 @@ async function streamChat(text: string) {
               updateMessage(assistantId, { isStreaming: false });
             }
           }
+          if (metaFreeTravelHref) {
+            addMessage({
+              role: 'assistant',
+              content:
+                '항공·호텔을 직접 조합해 보고 싶다면 자유여행 AI 견적 페이지에서 이어가실 수 있어요.',
+              type: 'cta_links',
+              ctaLinks: [
+                {
+                  label: '🚀 내 맞춤 자유여행 일정표 짜러가기',
+                  href: metaFreeTravelHref,
+                },
+              ],
+            });
+          }
           if (metaEscalate) {
+            const buttonActions: { action: EscalationButtonAction; label: string }[] = [
+              ...(hasConsultPhoneConfigured()
+                ? [{ action: 'phone' as const, label: '전화 상담 요청' }]
+                : []),
+              { action: 'kakao', label: '카카오톡 상담' },
+            ];
             addMessage({
               role: 'assistant',
               content: '더 정확한 안내를 위해 전문 상담사와 연결해드릴까요?',
               type: 'buttons',
-              buttons: ['전화 상담 요청', '카카오톡 상담'],
+              buttonActions,
             });
           }
         }
@@ -278,7 +356,15 @@ async function streamChat(text: string) {
   }
 }
 
-function MessageBubble({ message, onButtonClick }: { message: ChatMessage; onButtonClick: (text: string) => void }) {
+function MessageBubble({
+  message,
+  onButtonClick,
+  onEscalationAction,
+}: {
+  message: ChatMessage;
+  onButtonClick: (text: string) => void;
+  onEscalationAction: (action: EscalationButtonAction) => void | Promise<void>;
+}) {
   const isUser = message.role === 'user';
 
   return (
@@ -319,20 +405,61 @@ function MessageBubble({ message, onButtonClick }: { message: ChatMessage; onBut
           </div>
         )}
 
-        {/* 버튼형 */}
-        {message.type === 'buttons' && message.buttons && (
+        {/* 버튼형 — buttonActions(에스컬레이션) 우선, 없으면 레거시 문자열 → AI 재전송 */}
+        {message.type === 'buttons' && (message.buttonActions?.length || message.buttons?.length) && (
           <div>
             <p className="text-sm mb-2">{message.content}</p>
             <div className="space-y-1.5">
-              {message.buttons.map((btn, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onButtonClick(btn)}
-                  className="w-full bg-white text-violet-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-violet-50 transition text-left"
-                >
-                  {btn}
-                </button>
-              ))}
+              {message.buttonActions && message.buttonActions.length > 0
+                ? message.buttonActions.map((row, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => void onEscalationAction(row.action)}
+                      className="w-full bg-white text-violet-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-violet-50 transition text-left"
+                    >
+                      {row.label}
+                    </button>
+                  ))
+                : (message.buttons ?? []).map((btn, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => onButtonClick(btn)}
+                      className="w-full bg-white text-violet-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-violet-50 transition text-left"
+                    >
+                      {btn}
+                    </button>
+                  ))}
+            </div>
+          </div>
+        )}
+
+        {message.type === 'cta_links' && message.ctaLinks && message.ctaLinks.length > 0 && (
+          <div>
+            <p className="text-sm mb-2">{message.content}</p>
+            <div className="space-y-2">
+              {message.ctaLinks.map((link, idx) =>
+                link.href.startsWith('/') ? (
+                  <Link
+                    key={idx}
+                    href={link.href}
+                    className="block w-full text-center bg-violet-600 text-white px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-violet-700 transition"
+                  >
+                    {link.label}
+                  </Link>
+                ) : (
+                  <a
+                    key={idx}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full text-center bg-violet-600 text-white px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-violet-700 transition"
+                  >
+                    {link.label}
+                  </a>
+                ),
+              )}
             </div>
           </div>
         )}

@@ -1,29 +1,48 @@
 import type { Metadata } from 'next';
 import PackagesClient from './PackagesClient';
 import { supabaseAdmin } from '@/lib/supabase';
+import {
+  normalizeDepartureHub,
+  departureHubSupabaseOr,
+  hubMatchesDepartureAirport,
+  type DepartureHubId,
+} from '@/lib/departure-hub';
 
 export const revalidate = 300; // 5분 ISR
+
+function hubMetaLabel(hub: DepartureHubId): string {
+  if (hub === 'all') return '전국 출발';
+  if (hub === 'busan') return '부산 출발';
+  if (hub === 'incheon') return '인천 출발';
+  if (hub === 'daegu') return '대구 출발';
+  return '청주 출발';
+}
 
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: { destination?: string; q?: string; month?: string };
+  searchParams: { destination?: string; q?: string; month?: string; hub?: string; filter?: string };
 }): Promise<Metadata> {
+  let hub = normalizeDepartureHub(searchParams.hub);
+  if ((searchParams.filter || '') === '인천출발' && !searchParams.hub) hub = 'incheon';
+
   const term = (searchParams.destination || searchParams.q || '').trim();
   const month = searchParams.month || '';
+  const hubLine = hubMetaLabel(hub);
+
   if (term) {
     const monthLabel = month ? ` ${month.split('-')[0]}년 ${parseInt(month.split('-')[1])}월` : '';
     return {
-      title: `${term}${monthLabel} 패키지 여행 | 여소남`,
-      description: `${term}${monthLabel} 단체·패키지 여행 상품. 김해공항 출발, 확정일·잔여석 실시간 확인.`,
+      title: `${term}${monthLabel} 패키지 | 여소남`,
+      description: `${term}${monthLabel} · ${hubLine} 단체·패키지 여행. 확정일·요금 비교.`,
       alternates: {
         canonical: `/packages?destination=${encodeURIComponent(term)}${month ? `&month=${month}` : ''}`,
       },
     };
   }
   return {
-    title: '전체 패키지 상품 | 여소남',
-    description: '김해공항 출발 단체·패키지 여행 전체 상품. 중국·일본·동남아·마카오 인기 여행지.',
+    title: `${hubLine} 패키지 상품 | 여소남`,
+    description: `${hubLine} 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지.`,
     alternates: { canonical: '/packages' },
   };
 }
@@ -45,16 +64,37 @@ const PACKAGE_FIELDS = `
 export default async function PackagesPage({
   searchParams,
 }: {
-  searchParams: { destination?: string; filter?: string; q?: string; month?: string; priceMax?: string; urgency?: string; category?: string };
+  searchParams: {
+    destination?: string;
+    filter?: string;
+    q?: string;
+    month?: string;
+    priceMin?: string;
+    priceMax?: string;
+    urgency?: string;
+    category?: string;
+    hub?: string;
+  };
 }) {
   const destination = searchParams.destination || '';
-  const filter = searchParams.filter || '';
+  const rawFilter = searchParams.filter || '';
+  /** 레거시 칩 "인천출발" 북마크 → 출발 허브 인천 (허브 필로 이관) */
+  let hub = normalizeDepartureHub(searchParams.hub);
+  if (rawFilter === '인천출발' && !searchParams.hub) hub = 'incheon';
+  const filterForClient = rawFilter === '인천출발' ? '' : rawFilter;
+
   const q = searchParams.q?.trim() || '';
   const month = searchParams.month || '';
+  const priceMin = searchParams.priceMin || '';
   const priceMax = searchParams.priceMax || '';
   const urgency = searchParams.urgency || '';
   const category = searchParams.category || '';
   const sb = supabaseAdmin;
+
+  const urgencyOn = urgency === '1';
+  const hubOr = departureHubSupabaseOr(hub);
+  /** 마감특가는 SQL에서 or()를 쓰므로, 동시에 출발 허브를 쓰면 or 절이 덮어써짐 → 넉넉히 받은 뒤 허브는 메모리에서 걸러냄 */
+  const fetchLimit = urgencyOn ? 200 : 50;
 
   // 상품 목록 서버사이드 fetch
   // audit_status === 'blocked' 상품은 고객 목록에서 제외 (감사 게이트 이중 가드)
@@ -64,18 +104,23 @@ export default async function PackagesPage({
     .in('status', ['active', 'approved'])
     .or('audit_status.is.null,audit_status.neq.blocked')
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(fetchLimit);
 
   if (destination) {
     query = query.ilike('destination', `%${destination}%`);
   }
 
   // 마감특가: product_type='urgency' OR ticketing_deadline 14일 이내
-  if (urgency === '1') {
+  if (urgencyOn) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + 14);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
     query = query.or(`product_type.eq.urgency,ticketing_deadline.lte.${cutoffStr}`);
+  }
+
+  // 출발 허브 — 마감특가가 아닐 때만 SQL or (위와 충돌 방지)
+  if (hubOr && !urgencyOn) {
+    query = query.or(hubOr);
   }
 
   // 카테고리 필터: honeymoon / golf / cruise / theme
@@ -95,11 +140,17 @@ export default async function PackagesPage({
   // 출발일 살아있는 상품만 (홈 "인기 여행지" 카운트 / destinations/[city] 와 정합성).
   // price_dates 가 비어있는 legacy 상품은 alive 로 간주.
   const today = new Date().toISOString().slice(0, 10);
-  const aliveRaw = (rawPackages ?? []).filter((p: any) => {
+  let aliveRaw = (rawPackages ?? []).filter((p: any) => {
     const pd = (p.price_dates || []) as Array<{ date?: string }>;
     if (pd.length === 0) return true;
     return pd.some(d => d?.date && d.date >= today);
   });
+
+  if (urgencyOn && hub !== 'all') {
+    aliveRaw = aliveRaw.filter((p: any) => hubMatchesDepartureAirport(hub, p.departure_airport));
+  }
+
+  aliveRaw = aliveRaw.slice(0, 50);
 
   // products JOIN 결과를 단일 객체로 정규화 (Supabase는 배열로 반환)
   const packages = aliveRaw.map((pkg: any) => ({
@@ -108,11 +159,12 @@ export default async function PackagesPage({
   }));
 
   // 관광지 사진 서버사이드 fetch
+  // 사진 있는 관광지만 — 행 수가 적으면 목록 카드 다수가 이미지 없이 노출됨 (기존 300 → 상한 확대)
   const { data: attractions } = await sb
     .from('attractions')
     .select('name, short_desc, photos, country, region, mention_count')
     .not('photos', 'is', null)
-    .limit(300);
+    .limit(4000);
 
   // 그룹 1위 패키지 ID + 추천 사유 (추천 뱃지 + 툴팁용)
   const pkgIds = (packages ?? []).map((p: { id?: string }) => p.id).filter(Boolean) as string[];
@@ -138,9 +190,11 @@ export default async function PackagesPage({
       initialPackages={packages ?? []}
       initialAttractions={attractions ?? []}
       destination={destination}
-      filter={filter}
+      filter={filterForClient}
+      hub={hub}
       q={q}
       month={month}
+      priceMin={priceMin}
       priceMax={priceMax}
       urgency={urgency}
       category={category}

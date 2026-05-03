@@ -22,7 +22,7 @@ export default function AuthorBox({ publishedAt, updatedAt, destination }: Props
     >
       <div className="flex items-start gap-4">
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-lg font-bold text-white shadow-sm"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3182F6] to-[#1B64DA] text-lg font-bold text-white shadow-sm"
           aria-hidden="true"
         >
           여

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import Image from 'next/image';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 /**
  * 정보성 블로그 하단 상품 큐레이션
@@ -50,9 +50,9 @@ export default function DestinationCuration({ destination, products }: Props) {
   const maxP = Math.max(...prices, 0);
 
   return (
-    <section className="my-10 p-5 md:p-6 bg-gradient-to-br from-slate-50 to-indigo-50/40 border border-slate-200 rounded-2xl">
+    <section className="my-10 p-5 md:p-6 bg-gradient-to-br from-slate-50 to-[#EBF3FE]/40 border border-slate-200 rounded-2xl">
       <header className="mb-5">
-        <p className="text-[11px] font-semibold text-indigo-600 tracking-wider uppercase mb-1">
+        <p className="text-[11px] font-semibold text-[#3182F6] tracking-wider uppercase mb-1">
           여소남이 추천하는
         </p>
         <h3 className="text-[18px] md:text-[20px] font-bold text-slate-800">
@@ -73,24 +73,21 @@ export default function DestinationCuration({ destination, products }: Props) {
             <Link
               key={p.id}
               href={`/packages/${p.id}`}
-              className="group relative flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-indigo-300 hover:shadow-md transition"
+              className="group relative flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-[#3182F6]/40 hover:shadow-md transition"
             >
               {/* 이미지 */}
               <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
-                {p.hero_image_url ? (
-                  <Image
-                    src={p.hero_image_url}
-                    alt={`${p.destination} ${p.title}`}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-300 text-4xl">
-                    🌍
-                  </div>
-                )}
+                <SafeCoverImg
+                  src={p.hero_image_url}
+                  alt={`${p.destination} ${p.title}`}
+                  className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  loading="lazy"
+                  fallback={
+                    <div className="absolute inset-0 flex items-center justify-center text-slate-300 text-4xl">
+                      🌍
+                    </div>
+                  }
+                />
                 <span className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-bold rounded-full bg-white/90 text-slate-700">
                   {tier}
                 </span>
@@ -112,7 +109,7 @@ export default function DestinationCuration({ destination, products }: Props) {
                       {priceKr}
                     </span>
                   )}
-                  <span className="text-[11px] text-indigo-600 font-semibold group-hover:underline">
+                  <span className="text-[11px] text-[#3182F6] font-semibold group-hover:underline">
                     자세히 →
                   </span>
                 </div>
@@ -123,7 +120,7 @@ export default function DestinationCuration({ destination, products }: Props) {
       </div>
 
       <p className="mt-4 text-center text-[11px] text-slate-400">
-        💬 이 글이 도움되셨다면 <a href="https://pf.kakao.com/_yeosonam" target="_blank" rel="noopener" className="text-indigo-600 hover:underline font-semibold">카톡으로 문의</a>도 환영합니다.
+        💬 이 글이 도움되셨다면 <a href="https://pf.kakao.com/_yeosonam" target="_blank" rel="noopener" className="text-[#3182F6] hover:underline font-semibold">카톡으로 문의</a>도 환영합니다.
       </p>
     </section>
   );

@@ -1,5 +1,7 @@
 # 여소남 OS — AI 개발 하네스 (Harness Guide)
 
+> **공통 진입점:** 루트 [`AGENTS.md`](../AGENTS.md) — 모든 에이전트용 짧은 맥락·읽기 순서. 이 파일은 **심층 레시피·유틸 카탈로그·Claude Code 토큰 규칙** 전용이다.
+
 > 이 문서는 "하지 마라" 목록이 아니라 **"이렇게 해라" 레시피북**입니다.
 > 올바른 경로를 따라가면 버그가 구조적으로 발생할 수 없습니다.
 
@@ -33,6 +35,7 @@
 | **등록 후 상품 검증** | **`.claude/commands/validate-product.md`** (원문 ↔ A4 ↔ 모바일 3자 대조) |
 | **A4/모바일 렌더링 로직 추가·수정** | **`src/lib/render-contract.ts` 의 `renderPackage()` 출력에 추가** (렌더러는 `view.*` 만 소비, pkg 직접 파싱 금지 — ERR-KUL-05) |
 | **DB 필드에 내용 넣기 전** | **`db/FIELD_POLICY.md`** — 고객 노출 vs 내부 필드 구분. 커미션/정산 메모는 special_notes 금지 (ERR-FUK-customer-leaks) |
+| **AI 플라이휠·자비스 오케스트레이션·공개 QA(제휴 스코프·고객 여정)** | 루트 **`CURRENT_STATUS.md`** (§AI·§3 채팅/DB), **`docs/jarvis-orchestration.md`**, **`docs/platform-ai-roadmap.md`**, 에이전트 규칙 **`.cursor/rules/yeosonam-context.mdc`** — 스키마는 `supabase/migrations/2026050212*`~`0217*`·`0220*` 참고 |
 | 예약 상태 변경 | `src/lib/booking-state-machine.ts` |
 
 **이 강제 진입점을 무시하고 추측으로 진행하면 즉시 중단하십시오.**
@@ -90,6 +93,9 @@
 | 데이터 암호화 | `encrypt(plaintext)` / `decrypt(cipher)` | `encryption.ts` |
 | 정책/설정 조회 | `getActivePolicies(category)` | `policy-engine.ts` |
 | 유입 추적 | `initTracker()`, `trackContentView(id)` | `tracker.ts` |
+| **플랫폼 AI 이벤트(비PII 학습 축)** | `recordPlatformLearningEvent()` | `platform-learning.ts` |
+| **공개 QA 제휴 스코프 UUID 해석** | `resolveAffiliateScopeId()` | `affiliate-scope.ts` |
+| **대화 기반 고객 여정 스냅샷** | `advanceCustomerJourney()` | `customer-journey.ts` |
 
 ### 비즈니스 로직의 집 — `src/lib/`
 
@@ -196,7 +202,7 @@ export async function GET(request: NextRequest) {
 새 공개 API를 만들 때 첫 번째로 할 일: **PUBLIC_PATHS에 추가**.
 
 현재 공개 경로:
-- 화면: `/`, `/packages`, `/blog`, `/concierge`, `/group-inquiry`, `/rfq`, `/tenant`, `/share`, `/influencer`
+- 화면: `/`, `/packages`, `/blog`, `/concierge`, `/group-inquiry`, `/rfq`, `/tenant`, `/share`, `/influencer`, `/with`, `/legal`
 - API: `/api/cron/*`, `/api/slack-webhook`, `/api/notify/*`, `/api/tracking`, `/api/blog`, `/api/sms/receive`, `/api/qa/chat`
 
 ### 3-3. 멱등성

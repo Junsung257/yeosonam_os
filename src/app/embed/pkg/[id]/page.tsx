@@ -17,6 +17,7 @@
  *   - "예약" 버튼 → 새 창 /packages/{id}?ref=X
  */
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
   params: { id: string };
@@ -42,7 +43,7 @@ interface AffiliateRow {
 
 export default async function EmbedWidget({ params, searchParams }: Params) {
   const { id } = params;
-  const ref = (searchParams.ref || '').trim();
+  const ref = searchParams.ref ? normalizeAffiliateReferralCode(searchParams.ref) : '';
 
   let pkg: PackageRow | null = null;
   let aff: AffiliateRow | null = null;

@@ -10,17 +10,14 @@ import HeroBanner from '@/components/customer/HeroBanner';
 import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
+import { getConsultTelHref } from '@/lib/consult-escalation';
+
+/** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
+const PKG_COUNT_DISCLOSE_MIN = 6;
 
 // ISR 5분 / Windows 로컬은 force-dynamic (chunk race 회피)
 export const revalidate = process.platform === 'win32' ? 0 : 300;
 export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
-
-const COUNTRY_EMOJI: Record<string, string> = {
-  '베트남': '🇻🇳', '중국': '🇨🇳', '일본': '🇯🇵', '필리핀': '🇵🇭',
-  '말레이시아': '🇲🇾', '태국': '🇹🇭', '인도네시아': '🇮🇩', '캄보디아': '🇰🇭',
-  '대만': '🇹🇼', '몽골': '🇲🇳', '홍콩': '🇭🇰', '마카오': '🇲🇴',
-  '싱가포르': '🇸🇬', '라오스': '🇱🇦',
-};
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
@@ -42,6 +39,90 @@ interface Destination {
   image?: string;
 }
 
+const DOMESTIC_KEYWORDS = /국내|제주|부산|서울|강원|경주|여수/;
+
+function computeRankingMinPrice(p: any, today: string): number {
+  const pd = (p.price_dates || []) as Array<{ date?: string; price?: number }>;
+  const futurePd = pd.filter((d: any) => d?.date && d.date >= today);
+  if (futurePd.length > 0) {
+    const prices = futurePd.map((d: any) => d.price).filter(Boolean) as number[];
+    if (prices.length > 0) return Math.min(...prices);
+  }
+  const tierPrices = (p.price_tiers || []).map((t: any) => t.adult_price).filter(Boolean) as number[];
+  const fallback = [p.price, ...tierPrices].filter(Boolean) as number[];
+  return fallback.length > 0 ? Math.min(...fallback) : 0;
+}
+
+/** 랭킹 카드: 동일 이미지 URL이 여러 상품에 반복되지 않게 할당 */
+function buildRankingItemsUnique(
+  rankingPkgs: any[],
+  attractions: any[],
+  today: string,
+  overseasOnly: boolean,
+  usedUrls: Set<string>,
+): RankingItem[] {
+  const list = rankingPkgs
+    .filter((p: any) => {
+      const isDom = DOMESTIC_KEYWORDS.test(p.destination || '');
+      return overseasOnly ? !isDom : isDom;
+    })
+    .slice(0, 7);
+
+  return list.map((p: any) => {
+    const tryList: string[] = [];
+    if (p.hero_image_url) tryList.push(p.hero_image_url);
+    if (Array.isArray(p.thumbnail_urls)) {
+      for (const u of p.thumbnail_urls) {
+        if (u) tryList.push(u);
+      }
+    }
+
+    let image: string | null = null;
+    for (const url of tryList) {
+      if (url && !usedUrls.has(url)) {
+        image = url;
+        usedUrls.add(url);
+        break;
+      }
+    }
+
+    if (!image) {
+      const destParts = (p.destination || '').split(/[\/,\s]/).map((s: string) => s.trim()).filter(Boolean);
+      const matched = attractions
+        .filter((a: any) => {
+          if (!a.photos?.length) return false;
+          return destParts.some((part: string) => {
+            const r = a.region || '';
+            const c = a.country || '';
+            return r === part || r.includes(part) || part.includes(r) || (!!c && c.includes(part));
+          });
+        })
+        .sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
+
+      outer: for (const a of matched) {
+        for (const ph of a.photos || []) {
+          const url = ph.src_large || ph.src_medium;
+          if (url && !usedUrls.has(url)) {
+            image = url;
+            usedUrls.add(url);
+            break outer;
+          }
+        }
+      }
+    }
+
+    return {
+      id: p.id,
+      title: p.display_title || p.title,
+      destination: p.destination,
+      image,
+      minPrice: computeRankingMinPrice(p, today),
+      duration: p.nights && p.duration ? `${p.nights}박${p.duration}일` : null,
+      isOverseas: !DOMESTIC_KEYWORDS.test(p.destination || ''),
+    };
+  });
+}
+
 export default async function HomePage() {
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
@@ -56,7 +137,7 @@ export default async function HomePage() {
       .not('photos', 'is', null)
       .limit(300),
     sb.from('travel_packages')
-      .select('id, title, display_title, destination, price, price_tiers, price_dates, country, duration, nights')
+      .select('id, title, display_title, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
       .in('status', ['active', 'approved'])
       .order('created_at', { ascending: false })
       .limit(30),
@@ -73,6 +154,35 @@ export default async function HomePage() {
   const allPkgs = pkgResult.data ?? [];
   const attractions = attrResult.data ?? [];
   const rankingPkgs = rankingResult.data ?? [];
+
+  /** 홈 검색 시트 하단 — 마감 임박·특가 상품 최대 3개(랭킹 풀에서 추림) */
+  const cutoffTeaser = new Date();
+  cutoffTeaser.setDate(cutoffTeaser.getDate() + 14);
+  const cutoffTeaserStr = cutoffTeaser.toISOString().slice(0, 10);
+  function pkgAliveForTeaser(p: any) {
+    const pd = (p.price_dates || []) as Array<{ date?: string }>;
+    if (!pd.length) return true;
+    return pd.some(d => d?.date && d.date >= today);
+  }
+  function pkgUrgentForTeaser(p: any) {
+    if (p.product_type === 'urgency') return true;
+    const td = p.ticketing_deadline ? String(p.ticketing_deadline).slice(0, 10) : '';
+    return !!(td && td <= cutoffTeaserStr);
+  }
+  const homeUrgencyTop3: { id: string; title: string; destination: string | undefined; minPrice: number }[] = [];
+  const seenUrgent = new Set<string>();
+  for (const p of rankingPkgs as any[]) {
+    if (!pkgAliveForTeaser(p) || !pkgUrgentForTeaser(p)) continue;
+    if (seenUrgent.has(p.id)) continue;
+    seenUrgent.add(p.id);
+    homeUrgencyTop3.push({
+      id: p.id,
+      title: p.display_title || p.title,
+      destination: p.destination,
+      minPrice: computeRankingMinPrice(p, today),
+    });
+    if (homeUrgencyTop3.length >= 3) break;
+  }
 
   // 목적지별 집계
   const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
@@ -183,16 +293,6 @@ export default async function HomePage() {
     hasPillar: pillarSet.has(d.destination),
   }));
 
-  // 랭킹 데이터 (패키지에 attraction 이미지 매핑)
-  const attrImageByDestFull: Record<string, string> = {};
-  attractions.forEach((a: any) => {
-    const dest = a.destination || a.region || '';
-    if (dest && !attrImageByDestFull[dest] && a.photos?.[0]) {
-      const img = a.photos[0].src_large || a.photos[0].src_medium;
-      if (img) attrImageByDestFull[dest] = img;
-    }
-  });
-
   // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
   // ISR 캐시(revalidate=300) + Next.js fetch 캐시(1h)로 실제 Pexels 호출은 드물게 발생
   if (process.env.PEXELS_API_KEY) {
@@ -249,37 +349,8 @@ export default async function HomePage() {
       href: `/packages?destination=${encodeURIComponent(d.destination)}`,
     }));
 
-  function computePkgMinPrice(p: any): number {
-    const pd = (p.price_dates || []) as Array<{ date?: string; price?: number }>;
-    const futurePd = pd.filter((d: any) => d?.date && d.date >= today);
-    if (futurePd.length > 0) {
-      const prices = futurePd.map((d: any) => d.price).filter(Boolean) as number[];
-      if (prices.length > 0) return Math.min(...prices);
-    }
-    const tierPrices = (p.price_tiers || []).map((t: any) => t.adult_price).filter(Boolean) as number[];
-    const fallback = [p.price, ...tierPrices].filter(Boolean) as number[];
-    return fallback.length > 0 ? Math.min(...fallback) : 0;
-  }
-
-  const DOMESTIC_KEYWORDS = /국내|제주|부산|서울|강원|경주|여수/;
-  const toRankingItem = (p: any): RankingItem => ({
-    id: p.id,
-    title: p.display_title || p.title,
-    destination: p.destination,
-    image: p.hero_image_url || p.thumbnail_urls?.[0] || attrImageByDestFull[p.destination] || null,
-    minPrice: computePkgMinPrice(p),
-    duration: p.nights && p.duration ? `${p.nights}박${p.duration}일` : null,
-    isOverseas: !DOMESTIC_KEYWORDS.test(p.destination || ''),
-  });
-
-  const overseas: RankingItem[] = rankingPkgs
-    .filter((p: any) => !DOMESTIC_KEYWORDS.test(p.destination || ''))
-    .slice(0, 7)
-    .map(toRankingItem);
-  const domestic: RankingItem[] = rankingPkgs
-    .filter((p: any) => DOMESTIC_KEYWORDS.test(p.destination || ''))
-    .slice(0, 7)
-    .map(toRankingItem);
+  const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
+  const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
 
   /** 메인 랭킹 카드 소셜 프루프(초기 트래픽: 임계값 미만이면 미노출) */
   const RANK_BOOKING_MIN = 3;
@@ -341,6 +412,8 @@ export default async function HomePage() {
     .reduce((s, r) => s + (r.avg_rating * r.review_count), 0);
   const aggregateRating = totalReviews > 0 ? (weightedSum / totalReviews) : null;
   const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+  const consultTelHref = getConsultTelHref();
+  const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
 
   return (
     <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
@@ -400,7 +473,7 @@ export default async function HomePage() {
       {/* ── 검색바 — 히어로 하단 오버랩 ── */}
       <div className="px-4 md:px-6 -mt-7 md:-mt-10 relative z-10 pb-3 md:pb-5">
         <div className="max-w-[768px] mx-auto">
-          <HomeHeroSearchCluster />
+          <HomeHeroSearchCluster urgencyTop3={homeUrgencyTop3} />
         </div>
       </div>
 
@@ -464,8 +537,12 @@ export default async function HomePage() {
                     <h3 className="text-[18px] md:text-[20px] font-bold leading-tight tracking-[-0.02em]">
                       {d.destination}
                     </h3>
-                    <div className="mt-1 flex items-center gap-2 text-[12px] text-white/80">
-                      <span>🧳 {d.package_count}개</span>
+                    <div className="mt-1 flex items-center gap-2 text-[12px] text-white/80 flex-wrap">
+                      {d.package_count >= PKG_COUNT_DISCLOSE_MIN ? (
+                        <span>🧳 {d.package_count}개</span>
+                      ) : (
+                        <span>다양한 출발 일정</span>
+                      )}
                       {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
                       {d.avg_rating && <span>· ⭐ {Number(d.avg_rating).toFixed(1)}</span>}
                     </div>
@@ -485,7 +562,7 @@ export default async function HomePage() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {destsWithImages.map((dest, index) => {
-                const emoji = COUNTRY_EMOJI[dest.country] || '🌍';
+                const initial = (dest.destination || '?').trim().slice(0, 2);
                 return (
                   <Link
                     key={dest.destination}
@@ -500,19 +577,24 @@ export default async function HomePage() {
                         loading={index < 4 ? 'eager' : 'lazy'}
                         fetchPriority={index < 4 ? 'high' : undefined}
                         fallback={
-                          <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl md:text-5xl">
-                            {emoji}
+                          <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center">
+                            <span className="text-[22px] md:text-[28px] font-extrabold text-[#3182F6]/35 tracking-tight">
+                              {initial}
+                            </span>
                           </div>
                         }
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent pointer-events-none" />
-                      {/* 여행지명 오버레이 */}
-                      <div className="absolute bottom-3 left-3">
-                        <p className="text-white text-[16px] md:text-[18px] font-bold tracking-[-0.02em]">{emoji} {dest.destination}</p>
+                      <div className="absolute bottom-3 left-3 right-3">
+                        <p className="text-white text-[16px] md:text-[18px] font-bold tracking-[-0.02em] drop-shadow-md">
+                          {dest.destination}
+                        </p>
                       </div>
-                      {/* 상품 수 배지 */}
+                      {/* 상품 수 배지 — 소수 노출은 이탈 유발 가능, 임계값 이상만 숫자 표기 */}
                       <div className="absolute top-2.5 right-2.5">
-                        <span className="bg-white/90 text-[11px] font-bold text-[#3182F6] px-2 py-0.5 rounded-full">{dest.count}개</span>
+                        <span className="bg-white/90 text-[11px] font-bold text-[#3182F6] px-2 py-0.5 rounded-full">
+                          {dest.count >= PKG_COUNT_DISCLOSE_MIN ? `${dest.count}개` : '보러가기'}
+                        </span>
                       </div>
                     </div>
                     <div className="px-3 py-2.5 md:px-4 md:py-3">
@@ -537,30 +619,43 @@ export default async function HomePage() {
         </section>
       </main>
 
-      {/* ── 자유여행 진입점 배너 ── */}
+      {/* ── 패키지 중심 CTA (자유여행/AI는 보조 링크로 — 기대치 정렬) ── */}
       <section className="px-4 md:px-8 pb-8 max-w-[1200px] mx-auto">
-        <Link
-          href="/free-travel"
-          className="group flex items-center justify-between bg-gradient-to-r from-[#3182F6] to-[#60A5FA] rounded-2xl px-5 py-4 md:px-6 md:py-5 hover:shadow-lg transition-shadow"
-        >
-          <div>
-            <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wider mb-0.5">AI 자유여행 플래너</p>
-            <p className="text-[16px] md:text-[18px] font-extrabold text-white leading-tight">
-              항공·호텔 직접 골라 더 저렴하게
+        <div className="rounded-2xl overflow-hidden border border-[#E5E7EB] shadow-card bg-white">
+          <Link
+            href="/packages"
+            className="group flex items-center justify-between bg-gradient-to-r from-[#3182F6] to-[#60A5FA] px-5 py-4 md:px-6 md:py-5 hover:shadow-lg transition-shadow"
+          >
+            <div>
+              <p className="text-[11px] font-semibold text-white/80 tracking-wide mb-0.5">패키지·단체 여행</p>
+              <p className="text-[16px] md:text-[18px] font-extrabold text-white leading-tight">
+                출발 가능 일정·가격을 한눈에
+              </p>
+              <p className="text-[12px] text-white/85 mt-0.5">마감 임박·테마별 상품까지 바로 비교</p>
+            </div>
+            <div className="shrink-0 ml-4 bg-white/20 group-hover:bg-white/30 transition-colors rounded-full p-2.5">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </div>
+          </Link>
+          <div className="px-4 py-3 md:px-6 md:py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-[#F9FAFB]">
+            <p className="text-[12px] md:text-[13px] text-[#4E5968]">
+              항공+호텔 맞춤 조합은 단계적으로 준비 중입니다.
             </p>
-            <p className="text-[12px] text-white/80 mt-0.5">마이리얼트립 실시간 최저가 × 여소남 패키지 비교</p>
+            <Link
+              href="/free-travel"
+              className="text-[12px] md:text-[13px] font-semibold text-[#3182F6] shrink-0 underline-offset-2 hover:underline"
+            >
+              자유여행 베타 페이지 →
+            </Link>
           </div>
-          <div className="shrink-0 ml-4 bg-white/20 group-hover:bg-white/30 transition-colors rounded-full p-2.5">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </div>
-        </Link>
+        </div>
       </section>
 
       {/* ── 푸터 ── */}
       <footer className="px-6 py-8 md:py-12 text-center border-t border-[#F2F4F6]">
-        <p className="text-[13px] text-[#8B95A1]">부산/김해 출발 단체·패키지 여행 전문</p>
+        <p className="text-[13px] text-[#8B95A1]">부산 출발 단체·패키지 여행 전문</p>
         <p className="text-[12px] text-[#8B95A1] mt-1">yeosonam.co.kr</p>
         <div className="mt-4 flex justify-center gap-4">
           <Link href="/packages" className="text-[13px] text-[#4E5968] hover:text-[#3182F6] transition-colors">전체 상품</Link>
@@ -575,12 +670,15 @@ export default async function HomePage() {
         aria-label="문의하기"
       >
         <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
-          <a
-            href="tel:051-000-0000"
-            className="w-[48px] h-[48px] flex items-center justify-center rounded-full border border-[#E5E7EB] hover:bg-[#F2F4F6] shrink-0 transition-colors"
-          >
-            <span className="text-lg">📞</span>
-          </a>
+          {consultTelHref ? (
+            <a
+              href={consultTelHref}
+              className="w-[48px] h-[48px] flex items-center justify-center rounded-full border border-[#E5E7EB] hover:bg-[#F2F4F6] shrink-0 transition-colors"
+              aria-label={consultPhoneLabel ? `전화 상담 ${consultPhoneLabel}` : '전화 상담'}
+            >
+              <span className="text-lg">📞</span>
+            </a>
+          ) : null}
           <a
             href="https://pf.kakao.com/_xcFxkBG/chat"
             target="_blank"

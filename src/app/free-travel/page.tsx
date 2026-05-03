@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import FreeTravelClient from './FreeTravelClient';
 
 export const metadata: Metadata = {
@@ -12,5 +13,15 @@ export const metadata: Metadata = {
 };
 
 export default function FreeTravelPage() {
-  return <FreeTravelClient />;
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[40vh] flex items-center justify-center text-[#8B95A1] text-sm">
+          불러오는 중...
+        </div>
+      }
+    >
+      <FreeTravelClient />
+    </Suspense>
+  );
 }

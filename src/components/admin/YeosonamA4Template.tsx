@@ -3,8 +3,9 @@
 import React from 'react';
 import { groupForPoster, getEffectivePriceDates, type PriceDate, type MonthGroup } from '@/lib/price-dates';
 import { parseDaysWithTransport, isTransportSegment } from '@/lib/transportParser';
-import { matchAttraction as matchAttractionShared, matchAttractions as matchAttractionsShared } from '@/lib/attraction-matcher';
+import { matchAttraction as matchAttractionShared, matchAttractions as matchAttractionsShared, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { resolvePrimaryAttraction, type AttractionRefScheduleItem } from '@/lib/attraction-reference';
 import { formatDepartureDays } from '@/lib/admin-utils';
 import { normalizeOptionalTourName, type OptionalTourInput, type NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { renderPackage, getAirlineName, type CanonicalView } from '@/lib/render-contract';
@@ -75,13 +76,16 @@ interface PriceListItem {
 }
 
 export interface AttractionInfo {
+  id?: string;
   name: string;
   short_desc?: string;
+  long_desc?: string;
   category?: string;
   badge_type?: string; // 'tour' | 'special' | 'shopping' | 'meal'
   emoji?: string;
   country?: string;
   region?: string;
+  aliases?: string[];
 }
 
 export interface YeosonamA4Props {
@@ -104,7 +108,8 @@ export interface YeosonamA4Props {
     guide_tip?: string;
     single_supplement?: string;
     optional_tours?: { name: string; price?: string; price_usd?: number; price_krw?: number | null; note?: string | null }[];
-    itinerary_data?: TravelItinerary;
+    /** 배열·문자열 JSON·day_list 등 혼재 — normalizeDays로 일정 배열 정규화 */
+    itinerary_data?: TravelItinerary | DaySchedule[] | string;
     /** @deprecated 고객 fallback 경로 제거됨. customer_notes 사용. */
     special_notes?: string;
     customer_notes?: string;
@@ -169,7 +174,16 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
     .replace(HASHTAG_TAIL_RE, '')       // " #온천1박 #유후인 ..." 꼬리 해시태그 제거
     .split(/\s*[—–]\s+/)[0]             // " — " 이후 특전 나열 제거
     .trim();
-  const itinerary = pkg.itinerary_data;
+  const rawItinerary = pkg.itinerary_data;
+  /** meta / flight_out 등 — 문자열 JSON·순수 배열 저장본 호환 */
+  const itinerary: TravelItinerary | undefined = (() => {
+    if (rawItinerary == null) return undefined;
+    if (typeof rawItinerary === 'string') {
+      try { return JSON.parse(rawItinerary) as TravelItinerary; } catch { return undefined; }
+    }
+    if (Array.isArray(rawItinerary)) return { days: rawItinerary as DaySchedule[] };
+    return rawItinerary as TravelItinerary;
+  })();
 
   // W1 CRC — 렌더링 계약 단일 진입점. pkg 필드를 렌더러 내부에서 다시 파싱하지 말 것 (ERR-KUL-05).
   const view: CanonicalView = renderPackage(pkg as Parameters<typeof renderPackage>[0]);
@@ -190,8 +204,8 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
   // 이전: pkg.itinerary_data.days[0].schedule 직접 파싱 → CRC 우회.
   const arrivalCityName = view.flightHeader.outbound?.arrCity ?? undefined;
 
-  // itinerary_data가 배열로 직접 저장된 경우 대응 (days 래퍼 없이)
-  const days = Array.isArray(itinerary) ? itinerary : (itinerary?.days || []);
+  // 모바일 DetailClient와 동일 정규화: {days}·배열·문자열·day_list 등
+  const days = normalizeDays(rawItinerary as Parameters<typeof normalizeDays>[0]) as DaySchedule[];
   // ERR-20260418-07 — 일정 하단 잘림 방지 (페이지 분배 높이 보수적 계산)
   // 원인: activities * 28px 과소 추정 → 4일차 16:40 이후 잘림
   // 해결: 관광지 short_desc/배지/여백 포함 실측치 반영 (42px/활동)
@@ -1457,7 +1471,14 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                     const skipAttrMatch =
                       item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
                       /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|추천|선택관광/.test(item.activity || '');
-                    const attr = skipAttrMatch ? null : matchAttraction(item.activity, attractions, destination);
+                    const attr = skipAttrMatch
+                      ? null
+                      : resolvePrimaryAttraction(
+                        item as AttractionRefScheduleItem,
+                        (attractions ?? []) as unknown as AttractionData[],
+                        destination,
+                      ) as unknown as AttractionInfo | null;
+                    const attractionNote = (item as { attraction_note?: string | null }).attraction_note ?? null;
                     const isSpecial = isSpecialBenefit(item);
                     const isPrep = isPreparationNode(item);
                     const badge = isSpecial
@@ -1490,11 +1511,13 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                               </>;
                             })() : <span {...E} className={`font-bold ${isPrep ? 'text-slate-500' : 'text-slate-800'}`}>{item.activity}</span>}
                             {(() => {
-                              if (!attr?.short_desc || !attr.name) return null;
-                              if (seenAttractionIdsForDesc.has(attr.name)) return null;
-                              seenAttractionIdsForDesc.add(attr.name);
+                              const desc = attr?.short_desc || attractionNote;
+                              if (!desc) return null;
+                              const dedupKey = attr?.name || `${day.day}-${sIdx}-${desc}`;
+                              if (seenAttractionIdsForDesc.has(dedupKey)) return null;
+                              seenAttractionIdsForDesc.add(dedupKey);
                               return (
-                                <span className="text-[12px] text-slate-500 font-normal"> — {attr.short_desc}</span>
+                                <span className="text-[12px] text-slate-500 font-normal"> — {desc}</span>
                               );
                             })()}
                             {item.note && (

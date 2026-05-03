@@ -9,7 +9,9 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
 import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import DestinationPackagesSection from '@/components/customer/DestinationPackagesSection';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion } from '@/lib/regions';
+import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300;
 
@@ -253,11 +255,18 @@ export default async function DestinationPillarPage({ params }: { params: Promis
   const data = await getPillarData(decoded);
   if (!data) notFound();
 
-  // 히어로 이미지: approved destination hero > attraction 첫 사진
-  const heroImage =
-    (data.metadata?.photo_approved && data.metadata?.hero_image_url)
-      ? data.metadata.hero_image_url
-      : data.attractions.find(a => a.photos?.[0]?.src_medium)?.photos?.[0]?.src_medium;
+  // 히어로 이미지: 승인된 메타 URL(안전한 경우만) > 관광지 갤러리 medium/large
+  const fromMeta =
+    data.metadata?.photo_approved &&
+    data.metadata?.hero_image_url &&
+    isSafeImageSrc(data.metadata.hero_image_url)
+      ? data.metadata.hero_image_url.trim()
+      : null;
+  const fromAttr =
+    data.attractions
+      .map(a => pickAttractionPhotoUrl(a.photos as { src_medium?: string; src_large?: string }[] | null))
+      .find(Boolean) ?? null;
+  const heroImage = fromMeta || fromAttr;
 
   const pillarHtml = data.pillarPost?.blog_html ? renderPillarBody(data.pillarPost.blog_html) : null;
   const region = getRegionForCity(decoded);
@@ -373,11 +382,13 @@ export default async function DestinationPillarPage({ params }: { params: Promis
           {/* 배경 이미지 */}
           {heroImage && (
             <div className="absolute inset-0">
-              <img
+              <SafeCoverImg
                 src={heroImage}
                 alt={`${decoded} 여행 대표 이미지`}
                 className="w-full h-full object-cover scale-105 origin-center"
                 fetchPriority="high"
+                loading="eager"
+                fallback={<div className="w-full h-full bg-gradient-to-br from-[#1e3a5f] to-[#3182F6]" aria-hidden />}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/65 to-slate-900/25" />
             </div>

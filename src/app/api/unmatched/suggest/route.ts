@@ -19,116 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-
-interface AttractionRow {
-  id: string;
-  name: string;
-  aliases: string[] | null;
-  region: string | null;
-  country: string | null;
-  category: string | null;
-  emoji: string | null;
-  short_desc: string | null;
-}
-
-interface Suggestion {
-  id: string;
-  name: string;
-  aliases: string[];
-  region: string | null;
-  country: string | null;
-  category: string | null;
-  emoji: string | null;
-  short_desc: string | null;
-  score: number;
-  matched_via: 'exact' | 'jaccard' | 'lcs' | 'alias';
-  matched_term: string;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Activity 클린 (마커 / 괄호 부연 제거)
-// ═══════════════════════════════════════════════════════════════════════════
-function cleanActivity(text: string): string {
-  return text
-    .replace(/^[▶☆※♣♠♥♦*]+\s*/, '')
-    .replace(/[(\[].*?[)\]]/g, ' ')
-    .replace(/[·,.\-+/]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .split(/\s+/)
-      .filter(t => t.length >= 2)
-  );
-}
-
-// 한글·영문 LCS prefix length (단순)
-function commonPrefixLen(a: string, b: string): number {
-  let i = 0;
-  const min = Math.min(a.length, b.length);
-  while (i < min && a[i] === b[i]) i++;
-  return i;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Score
-// ═══════════════════════════════════════════════════════════════════════════
-function scoreCandidate(activityClean: string, activityTokens: Set<string>, attr: AttractionRow): Omit<Suggestion, 'id' | 'name' | 'aliases' | 'region' | 'country' | 'category' | 'emoji' | 'short_desc'> | null {
-  const candidates: { term: string; isAlias: boolean }[] = [
-    { term: attr.name, isAlias: false },
-    ...((attr.aliases || []).map(a => ({ term: a, isAlias: true }))),
-  ];
-
-  let best: Omit<Suggestion, 'id' | 'name' | 'aliases' | 'region' | 'country' | 'category' | 'emoji' | 'short_desc'> | null = null;
-
-  for (const { term, isAlias } of candidates) {
-    if (!term || term.length < 2) continue;
-    const termClean = term.toLowerCase().trim();
-    const aliasBonus = isAlias ? 10 : 0;
-
-    // 1. exact substring contains (양방향)
-    if (activityClean.includes(termClean) || termClean.includes(activityClean)) {
-      const score = 100 + aliasBonus;
-      if (!best || score > best.score) {
-        best = { score, matched_via: isAlias ? 'alias' : 'exact', matched_term: term };
-      }
-      continue;
-    }
-
-    // 2. 토큰 Jaccard
-    const termTokens = tokenize(termClean);
-    if (activityTokens.size > 0 && termTokens.size > 0) {
-      let intersect = 0;
-      for (const t of activityTokens) if (termTokens.has(t)) intersect++;
-      const union = activityTokens.size + termTokens.size - intersect;
-      const jaccard = union > 0 ? intersect / union : 0;
-      if (jaccard >= 0.4) {
-        const score = jaccard * 70 + aliasBonus;
-        if (!best || score > best.score) {
-          best = { score, matched_via: isAlias ? 'alias' : 'jaccard', matched_term: term };
-        }
-      }
-    }
-
-    // 3. 연속 prefix (한글 음절 단위)
-    const lcs = commonPrefixLen(activityClean, termClean);
-    if (lcs >= 2) {
-      const ratio = lcs / Math.min(activityClean.length, termClean.length);
-      if (ratio >= 0.5) {
-        const score = ratio * 50 + aliasBonus;
-        if (!best || score > best.score) {
-          best = { score, matched_via: isAlias ? 'alias' : 'lcs', matched_term: term };
-        }
-      }
-    }
-  }
-
-  return best;
-}
+import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  GET handler
@@ -149,9 +40,6 @@ export async function GET(request: NextRequest) {
       .single();
     if (e1 || !unmatched) return NextResponse.json({ error: '미매칭 항목 조회 실패' }, { status: 404 });
 
-    const activityClean = cleanActivity(unmatched.activity);
-    const activityTokens = tokenize(activityClean);
-
     // 2. 후보 attractions 조회 — region OR country 필터 (없으면 전체)
     let query = supabaseAdmin
       .from('attractions')
@@ -165,33 +53,18 @@ export async function GET(request: NextRequest) {
     const { data: candidates, error: e2 } = await query.limit(500);
     if (e2) throw e2;
 
-    // 3. 각 후보 score 계산
-    const suggestions: Suggestion[] = [];
-    for (const attr of (candidates || []) as AttractionRow[]) {
-      const sc = scoreCandidate(activityClean, activityTokens, attr);
-      if (sc && sc.score >= 30) {
-        suggestions.push({
-          id: attr.id,
-          name: attr.name,
-          aliases: attr.aliases || [],
-          region: attr.region,
-          country: attr.country,
-          category: attr.category,
-          emoji: attr.emoji,
-          short_desc: attr.short_desc,
-          ...sc,
-        });
-      }
-    }
-
-    suggestions.sort((a, b) => b.score - a.score);
-    const top = suggestions.slice(0, 3);
+    const scored = suggestAttractionsForActivity(
+      unmatched.activity,
+      ((candidates || []) as AttractionSuggestRow[]),
+      30,
+      3,
+    );
 
     return NextResponse.json({
       activity: unmatched.activity,
-      activity_clean: activityClean,
+      activity_clean: scored.activity_clean,
       candidate_count: candidates?.length || 0,
-      suggestions: top,
+      suggestions: scored.suggestions,
     });
   } catch (error) {
     console.error('[/api/unmatched/suggest] 오류:', error);

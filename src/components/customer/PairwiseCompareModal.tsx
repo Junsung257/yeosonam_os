@@ -82,7 +82,7 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
     },
     {
       label: '호텔 등급',
-      render: (d) => d.hotel_avg_grade != null ? `${d.hotel_avg_grade}성` : '—',
+      render: (d) => d.hotel_avg_grade != null ? `${d.hotel_avg_grade}성` : '미확인',
       bestIs: 'high',
     },
     {

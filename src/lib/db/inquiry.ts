@@ -44,7 +44,7 @@ export async function saveInquiry(data: {
 }
 
 // Q&A 조회
-export async function getInquiries(status?: string) {
+export async function getInquiries(status?: string, inquiryTypes?: string[]) {
   try {
     let query = supabase
       .from('qa_inquiries')
@@ -64,6 +64,11 @@ export async function getInquiries(status?: string) {
 
     if (status) {
       query = query.eq('status', status);
+    }
+
+    const types = (inquiryTypes ?? []).map((t) => t.trim()).filter(Boolean);
+    if (types.length > 0) {
+      query = query.in('inquiry_type', types);
     }
 
     const { data, error } = await query;

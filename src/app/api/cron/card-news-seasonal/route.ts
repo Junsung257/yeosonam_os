@@ -25,6 +25,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSeasonalContext } from '@/lib/card-news-html/seasonal';
 import { getPackageRawText } from '@/lib/packages/raw-text';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300; // Hobby plan 상한(300s). 2 그룹 처리는 MAX_GROUPS_PER_RUN로 분할.
 
@@ -43,9 +44,9 @@ export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.DEEPSEEK_API_KEY) {
     return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY 미설정' },
+      { error: 'DEEPSEEK_API_KEY 미설정' },
       { status: 503 },
     );
   }

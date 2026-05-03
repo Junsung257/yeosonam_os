@@ -79,9 +79,13 @@ async function main() {
       ? { rawText, engine: 'direct', ir: directIr, landOperator: args.operator, commissionRate: args.margin, ticketingDeadline: args.deadline || null, dryRun: args.dryRun }
       : { rawText, engine: args.engine, landOperator: args.operator, commissionRate: args.margin, ticketingDeadline: args.deadline || null, dryRun: args.dryRun };
 
+    const secret = process.env.CRON_SECRET;
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+      },
       body: JSON.stringify(payload),
     });
   } catch (err) {

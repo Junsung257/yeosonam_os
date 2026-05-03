@@ -21,6 +21,7 @@ export default function robots(): MetadataRoute.Robots {
           '/login',
           '/review/',                         // 리뷰 수집 폼 (booking_id 기반 개인 링크)
           '/share/',                          // 개인 공유 링크
+          '/with/',                           // 제휴 코브랜딩 랜딩 (noindex와 병행)
         ],
       },
       // 네이버/구글 봇에 명시적 허용 (속도 향상)

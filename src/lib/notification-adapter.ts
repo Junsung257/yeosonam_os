@@ -68,6 +68,17 @@ class MockNotificationAdapter implements NotificationAdapter {
 class KakaoNotificationAdapter implements NotificationAdapter {
   getChannelName() { return 'kakao'; }
 
+  private async mintTripPortalUrl(bookingId: string): Promise<string | null> {
+    try {
+      const { mintGuestPortalToken } = await import('./booking-guest-token');
+      const { portalUrl } = await mintGuestPortalToken(bookingId);
+      return portalUrl;
+    } catch (e) {
+      console.warn('[KakaoAdapter] 예약 포털 토큰 발급 실패 (마이그레이션·DB 확인)', e);
+      return null;
+    }
+  }
+
   async send(payload: NotificationPayload): Promise<NotificationResult> {
     let kakaoSent = false;
 
@@ -76,27 +87,60 @@ class KakaoNotificationAdapter implements NotificationAdapter {
     // 알림톡 발송 시도 (이벤트 타입별 분기)
     try {
       if (payload.customerPhone && payload.customerName) {
-        const { sendBalanceNotice } = await import('./kakao');
-        if (payload.eventType === 'BALANCE_NOTICE') {
-          // 계좌 정보 누락 시 발송 중단 — "계좌 정보 미설정" 문자열이 고객에게 그대로 가는 사고 방지.
-          // 대신 message_logs에 system 로그 + skipReason 남겨 어드민이 확인할 수 있게 함.
-          const account = process.env.COMPANY_ACCOUNT;
+        const { sendBalanceNotice, sendDepositNoticeAlimtalk } = await import('./kakao');
+        const account = process.env.COMPANY_ACCOUNT;
+
+        if (payload.eventType === 'DEPOSIT_NOTICE') {
+          if (!account) {
+            skipReason = 'COMPANY_ACCOUNT 환경변수 미설정 — 계약금 안내 발송 스킵';
+            console.error('[KakaoAdapter]', skipReason);
+          } else {
+            let portalUrl = await this.mintTripPortalUrl(payload.bookingId);
+            if (!portalUrl) {
+              const base = (process.env.NEXT_PUBLIC_BASE_URL ?? '').replace(/\/$/, '');
+              portalUrl = base ? `${base}/` : '';
+            }
+            if (!portalUrl) {
+              skipReason = '예약 포털 링크 생성 실패 — NEXT_PUBLIC_BASE_URL·booking_guest_tokens 테이블 확인';
+              console.error('[KakaoAdapter]', skipReason);
+            } else {
+              const depRes = await sendDepositNoticeAlimtalk({
+                phone: payload.customerPhone,
+                name: payload.customerName,
+                packageTitle: (payload.metadata?.packageTitle as string) ?? '여행 상품',
+                bookingNo: (payload.metadata?.bookingNo as string) ?? '',
+                depositAmount: (payload.metadata?.depositAmount as number) ?? 0,
+                dueDate: (payload.metadata?.dueDate as string) ?? '',
+                account,
+                portalUrl,
+              });
+              kakaoSent = depRes?.skipped !== true;
+              if (depRes?.skipped) {
+                skipReason =
+                  (depRes as { mode?: string }).mode === 'manual'
+                    ? 'KAKAO_TEMPLATE_DEPOSIT 미설정 또는 Solapi 수기 모드'
+                    : '계약금 알림톡 스킵';
+              }
+            }
+          }
+        } else if (payload.eventType === 'BALANCE_NOTICE') {
           if (!account) {
             skipReason = 'COMPANY_ACCOUNT 환경변수 미설정 — 잔금 안내 발송 스킵';
             console.error('[KakaoAdapter]', skipReason);
           } else {
-            await sendBalanceNotice({
+            const portalUrl = await this.mintTripPortalUrl(payload.bookingId);
+            const balRes = await sendBalanceNotice({
               phone:        payload.customerPhone,
               name:         payload.customerName,
               packageTitle: (payload.metadata?.packageTitle as string) ?? '여행 상품',
               balance:      (payload.metadata?.balance as number) ?? 0,
               dueDate:      (payload.metadata?.dueDate as string) ?? '출발 2주 전',
               account,
+              ...(portalUrl ? { portalUrl } : {}),
             });
-            kakaoSent = true;
+            kakaoSent = balRes?.skipped !== true;
           }
         }
-        // 추후 DEPOSIT_NOTICE, CONFIRMATION_GUIDE 등 템플릿 추가 시 여기에 분기
       }
     } catch (e) {
       console.warn('[KakaoAdapter 발송 실패]', e);

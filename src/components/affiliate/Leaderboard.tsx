@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { isSafeImageSrc } from '@/lib/image-url';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 interface LeaderboardRow {
   rank: number;
@@ -91,9 +93,18 @@ export function Leaderboard({
               >
                 {row.rank}
               </span>
-              {row.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={row.logo_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+              {row.logo_url && isSafeImageSrc(row.logo_url) ? (
+                <SafeCoverImg
+                  src={row.logo_url}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover"
+                  loading="lazy"
+                  fallback={
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                      {row.name.charAt(0)}
+                    </div>
+                  }
+                />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
                   {row.name.charAt(0)}

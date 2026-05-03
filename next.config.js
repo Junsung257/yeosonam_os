@@ -5,6 +5,8 @@ const withSerwist = require('@serwist/next').default({
   disable: process.env.NODE_ENV !== 'production',
 });
 
+const isProd = process.env.NODE_ENV === 'production';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -21,21 +23,18 @@ const nextConfig = {
       'isomorphic-dompurify',
       '@resvg/resvg-js',
       'satori',
+      // kordoc: ESM 전용 패키지 — 동적 import() 로 로드, external 로 webpack 번들 제외
+      'kordoc',
+      'pdf-parse',
     ],
-    // 자주 쓰는 큰 라이브러리에 자동 트리쉐이킹 적용 — dev 첫 컴파일/HMR 속도 개선.
-    // 특히 lucide-react는 import 1개당 전체 아이콘 번들이 통째로 들어가는 패턴이라 효과 큼.
-    // @supabase/supabase-js는 ESM/CJS 혼합이라 optimizePackageImports와 호환 안 됨(webpack chunk
-    // 깨짐) — 제외.
+    // lucide-react: import 1개당 전체 아이콘 번들이 통째로 들어가는 패턴이라 barrel 최적화 효과 큼.
+    // 주의: 실제 설치된 패키지만 등록할 것 — 미설치 패키지 등록 시 webpack factory undefined 에러 발생.
     optimizePackageImports: [
       'lucide-react',
-      'date-fns',
-      'react-icons',
-      'recharts',
     ],
-    // 주의: parallelServerCompiles + parallelServerBuildTraces 는 webpackBuildWorker 와
-    // 한 세트로만 동작한다. worker 없이 둘만 켜면 production build가 즉시 실패.
-    // (Vercel deploy 실패 원인이었음.) webpackBuildWorker 단독은 안전 — 빌드 병렬화만 담당.
-    webpackBuildWorker: true,
+    // webpackBuildWorker 는 개발에 넣지 않음 — Windows 등에서 pack 캐시 복구 실패·
+    // options.factory undefined(손상 청크)가 나기 쉬움. 프로덕션 빌드에서만 켠다.
+    ...(isProd ? { webpackBuildWorker: true } : {}),
   },
   images: {
     formats: ['image/avif', 'image/webp'],
@@ -54,6 +53,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'ixaxnvbmhzjvupissmly.supabase.co',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
       },
       {
         protocol: 'https',

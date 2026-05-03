@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import GlobalNav from '@/components/customer/GlobalNav';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const revalidate = 300;
@@ -142,23 +142,20 @@ function HeroCard({ post }: { post: BlogPost }) {
       href={`/blog/${post.slug}`}
       className="group relative block overflow-hidden rounded-2xl"
     >
-      {post.og_image_url ? (
-        <div className="aspect-[16/9] overflow-hidden relative">
-          <Image
-            src={post.og_image_url}
-            alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
-            fill
-            sizes="(max-width: 768px) 100vw, 66vw"
-            className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-            priority
-            unoptimized
-          />
-        </div>
-      ) : (
-        <div className="aspect-[16/9] bg-[#F2F4F6] flex items-center justify-center">
-          <span className="text-[80px] font-black text-[#D1D5DB]">{initial}</span>
-        </div>
-      )}
+      <div className="aspect-[16/9] overflow-hidden relative">
+        <SafeCoverImg
+          src={post.og_image_url}
+          alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+          loading="eager"
+          fetchPriority="high"
+          fallback={
+            <div className="absolute inset-0 bg-[#F2F4F6] flex items-center justify-center">
+              <span className="text-[80px] font-black text-[#D1D5DB]">{initial}</span>
+            </div>
+          }
+        />
+      </div>
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10 text-white">
         <div className="flex items-center gap-2 mb-4">
@@ -188,20 +185,17 @@ function SideCard({ post }: { post: BlogPost }) {
     >
       {/* 섬네일 — 112×112 */}
       <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-[#F2F4F6] relative">
-        {post.og_image_url ? (
-          <Image
-            src={post.og_image_url}
-            alt={dest || ''}
-            fill
-            sizes="112px"
-            className="object-cover group-hover:scale-105 transition-transform duration-300"
-            unoptimized
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-[36px] font-black text-[#D1D5DB]">{initial}</span>
-          </div>
-        )}
+        <SafeCoverImg
+          src={post.og_image_url}
+          alt={dest || ''}
+          className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+          loading="lazy"
+          fallback={
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-[36px] font-black text-[#D1D5DB]">{initial}</span>
+            </div>
+          }
+        />
       </div>
       {/* 텍스트 */}
       <div className="flex flex-col justify-center min-w-0 py-1">
@@ -235,22 +229,19 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
       href={`/blog/${post.slug}`}
       className="group overflow-hidden rounded-2xl border border-[#F2F4F6] bg-white transition-all hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5"
     >
-      {post.og_image_url ? (
-        <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-[#F2F4F6] relative`}>
-          <Image
-            src={post.og_image_url}
-            alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '블로그 썸네일'}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-            unoptimized
-          />
-        </div>
-      ) : (
-        <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} bg-[#F2F4F6] flex items-center justify-center`}>
-          <span className="font-black text-[#D1D5DB]" style={{ fontSize: compact ? '36px' : '52px' }}>{initial}</span>
-        </div>
-      )}
+      <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-[#F2F4F6] relative`}>
+        <SafeCoverImg
+          src={post.og_image_url}
+          alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '블로그 썸네일'}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+          loading="lazy"
+          fallback={
+            <div className={`absolute inset-0 flex items-center justify-center bg-[#F2F4F6]`}>
+              <span className="font-black text-[#D1D5DB]" style={{ fontSize: compact ? '36px' : '52px' }}>{initial}</span>
+            </div>
+          }
+        />
+      </div>
 
       <div className="p-4 md:p-5">
         <div className="mb-2.5 flex flex-wrap gap-1.5">

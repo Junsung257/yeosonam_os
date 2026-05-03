@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 600;
 
@@ -31,7 +33,7 @@ interface DestinationStat {
 interface AttractionSample {
   destination: string;
   name: string;
-  photos: Array<{ src_medium?: string }> | null;
+  photos: Array<{ src_medium?: string; src_large?: string }> | null;
 }
 
 async function getDestinations() {
@@ -49,7 +51,7 @@ async function getDestinations() {
     .select('destination, name, photos')
     .in('destination', destinations)
     .not('photos', 'is', null)
-    .limit(200) : { data: null };
+    .limit(4000) : { data: null };
 
   const attractionsByDest: Record<string, AttractionSample> = {};
   (attractions as AttractionSample[] | null)?.forEach(a => {
@@ -93,7 +95,7 @@ export default async function DestinationsIndexPage() {
 
       <GlobalNav />
       <main className="min-h-screen bg-white">
-        <header className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
+        <header className="bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#1B3A6B] text-white">
           <div className="mx-auto max-w-6xl px-4 md:px-6 py-14 md:py-20">
             <Link href="/" className="text-[13px] md:text-sm text-slate-300 hover:text-white">
               ← 여소남 홈
@@ -122,22 +124,27 @@ export default async function DestinationsIndexPage() {
               <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {stats.map(d => {
                   const attr = attractionsByDest[d.destination];
-                  const img = attr?.photos?.[0]?.src_medium;
+                  const img = pickAttractionPhotoUrl(attr?.photos ?? undefined);
                   return (
                     <Link
                       key={d.destination}
                       href={`/destinations/${encodeURIComponent(d.destination)}`}
-                      className="group relative h-72 md:h-80 rounded-xl overflow-hidden border border-slate-200 bg-slate-200"
+                      className="group relative h-72 md:h-80 rounded-xl overflow-hidden border border-slate-200 bg-slate-200 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_32px_rgba(49,130,246,0.18)]"
                     >
                       {img ? (
-                        <img
+                        <SafeCoverImg
                           src={img}
                           alt={`${d.destination} 여행지 대표 사진`}
                           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           loading="lazy"
+                          fallback={
+                            <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">
+                              🌍
+                            </div>
+                          }
                         />
                       ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-300 to-purple-400 flex items-center justify-center text-5xl">
+                        <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">
                           🌍
                         </div>
                       )}

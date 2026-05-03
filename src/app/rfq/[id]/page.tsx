@@ -95,7 +95,7 @@ function StatusTimeline({ status }: { status: string }) {
                   isCompleted
                     ? 'bg-green-500 border-green-500 text-white'
                     : isActive
-                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    ? 'bg-[#3182F6] border-[#3182F6] text-white'
                     : 'bg-white border-gray-300 text-gray-400'
                 }`}
               >
@@ -103,7 +103,7 @@ function StatusTimeline({ status }: { status: string }) {
               </div>
               <span
                 className={`text-xs mt-1 whitespace-nowrap ${
-                  isActive ? 'text-indigo-600 font-semibold' : isPending ? 'text-gray-400' : 'text-green-600'
+                  isActive ? 'text-[#3182F6] font-semibold' : isPending ? 'text-gray-400' : 'text-green-600'
                 }`}
               >
                 {step.label}
@@ -249,7 +249,7 @@ export default function RfqDetailPage() {
 
         {/* 헤더 */}
         <div>
-          <Link href="/" className="text-sm text-indigo-600 hover:underline">← 홈으로</Link>
+          <Link href="/" className="text-sm text-[#3182F6] hover:underline">← 홈으로</Link>
           <h1 className="text-2xl font-bold text-gray-900 mt-2">단체여행 견적 현황</h1>
           <p className="text-sm text-gray-500 mt-1">RFQ 코드: {rfq.rfq_code}</p>
         </div>
@@ -368,7 +368,7 @@ export default function RfqDetailPage() {
                     </div>
                     <div>
                       <span className="text-gray-500">AI 점수: </span>
-                      <span className="font-bold text-indigo-600">{p.ai_review?.score ?? '—'}/100</span>
+                      <span className="font-bold text-[#3182F6]">{p.ai_review?.score ?? '—'}/100</span>
                     </div>
                   </div>
 
@@ -381,7 +381,7 @@ export default function RfqDetailPage() {
                     <button
                       onClick={() => selectProposal(p.id)}
                       disabled={selecting === p.id || isContracted}
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      className="w-full bg-[#3182F6] hover:bg-[#1B64DA] disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
                     >
                       {selecting === p.id ? '처리 중...' : '이 제안 선택하기'}
                     </button>
@@ -403,7 +403,7 @@ export default function RfqDetailPage() {
                 <ul className="space-y-1">
                   {report.key_insights.map((insight, i) => (
                     <li key={i} className="text-sm text-gray-700 flex gap-2">
-                      <span className="text-indigo-500 flex-shrink-0">•</span>
+                      <span className="text-[#3182F6] flex-shrink-0">•</span>
                       {insight}
                     </li>
                   ))}

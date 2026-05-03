@@ -17,6 +17,7 @@ const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, P
  * ENABLE_DIRECT_SETTLEMENT=true 환경변수가 있을 때만 기존 방식으로 직접 READY 마감.
  * 기본은 /api/cron/affiliate-settlement-draft가 agent_actions 기안 → 사장님 결재함 승인.
  */
+export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
 

@@ -47,7 +47,7 @@ export default function ContractPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
         <p className="text-red-500 text-sm">{error}</p>
-        <Link href={`/rfq/${rfqId}`} className="text-indigo-600 text-sm hover:underline">
+        <Link href={`/rfq/${rfqId}`} className="text-[#3182F6] text-sm hover:underline">
           ← 견적 현황으로
         </Link>
       </div>
@@ -74,7 +74,7 @@ export default function ContractPage() {
             )}
             <button
               onClick={handlePrint}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
+              className="bg-[#3182F6] hover:bg-[#1B64DA] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
             >
               🖨️ 출력 / PDF
             </button>
@@ -102,9 +102,9 @@ export default function ContractPage() {
 
       {/* 하단 서명 안내 */}
       <div className="max-w-4xl mx-auto px-4 pb-12">
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-center">
-          <h3 className="font-semibold text-indigo-800 mb-2">계약 동의 및 결제</h3>
-          <p className="text-sm text-indigo-700 mb-4">
+        <div className="bg-[#EBF3FE] border border-[#DBEAFE] rounded-xl p-5 text-center">
+          <h3 className="font-semibold text-[#191F28] mb-2">계약 동의 및 결제</h3>
+          <p className="text-sm text-[#3182F6] mb-4">
             위 계약 내용에 동의하고 에스크로 결제를 진행하시면 계약이 확정됩니다.
           </p>
           <div className="flex gap-3 justify-center">

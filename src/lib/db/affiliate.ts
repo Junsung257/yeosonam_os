@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '../supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -54,10 +55,12 @@ export async function getAffiliates(): Promise<Affiliate[]> {
 /** 추천코드로 어필리에이트 단건 조회 */
 export async function getAffiliateByCode(referralCode: string): Promise<Affiliate | null> {
   try {
+    const code = normalizeAffiliateReferralCode(referralCode);
+    if (!code) return null;
     const { data, error } = await supabase
       .from('affiliates')
       .select('*')
-      .eq('referral_code', referralCode)
+      .eq('referral_code', code)
       .single();
     if (error) throw error;
     return data as Affiliate;

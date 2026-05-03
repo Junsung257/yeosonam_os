@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Vercel은 CRON_SECRET 환경변수가 설정된 경우
  * Authorization: Bearer <CRON_SECRET> 헤더를 자동으로 첨부합니다.
  */
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   // CRON_SECRET 검증
   const cronSecret = process.env.CRON_SECRET;

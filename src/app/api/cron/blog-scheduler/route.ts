@@ -11,6 +11,7 @@ import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
  *   2) 이번 주 큐 충전 (정보성 70% + 상품 30%)
  *   3) 각 항목에 target_publish_at 슬롯 할당 (하루 6개, 2시간 간격)
  */
+export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });

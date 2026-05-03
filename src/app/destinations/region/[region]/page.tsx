@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { REGIONS, getRegionBySlug, getDestinationUrl, cityInRegion } from '@/lib/regions';
@@ -8,6 +7,8 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard, { type PackageCardData } from '@/components/customer/PackageCard';
 import SearchBar from '@/components/customer/SearchBar';
 import SectionHeader from '@/components/customer/SectionHeader';
+import { pickAttractionPhotoUrl } from '@/lib/image-url';
+import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
 
 export const revalidate = 600;
 export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
@@ -75,7 +76,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const emptyResult = { data: null } as { data: null };
   const [attrsRes, pkgsRes, blogRes] = await Promise.all([
     dests.length > 0
-      ? supabaseAdmin.from('attractions').select('region, photos').in('region', dests).not('photos', 'is', null).limit(200)
+      ? supabaseAdmin.from('attractions').select('region, photos').in('region', dests).not('photos', 'is', null).limit(2000)
       : Promise.resolve(emptyResult),
     dests.length > 0
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
@@ -104,10 +105,10 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
-  ((attrs as Array<{ region: string; photos: Array<{ src_medium?: string }> | null }> | null) ?? []).forEach(a => {
+  ((attrs as Array<{ region: string; photos: Array<{ src_medium?: string; src_large?: string }> | null }> | null) ?? []).forEach(a => {
     const key = a.region;
     if (key && !imgByDest[key]) {
-      const u = a.photos?.[0]?.src_medium;
+      const u = pickAttractionPhotoUrl(a.photos ?? undefined);
       if (u) imgByDest[key] = u;
     }
   });
@@ -199,8 +200,14 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
         <header className="relative min-h-[320px] md:min-h-[420px] overflow-hidden bg-slate-900">
           {heroImage && (
             <div className="absolute inset-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={heroImage} alt={`${region.label} 여행 대표 이미지`} className="w-full h-full object-cover opacity-70" loading="eager" />
+              <SafeCoverImg
+                src={heroImage}
+                alt={`${region.label} 여행 대표 이미지`}
+                className="w-full h-full object-cover opacity-70"
+                loading="eager"
+                fetchPriority="high"
+                fallback={<div className="w-full h-full bg-slate-800" aria-hidden />}
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/60 to-slate-900/30" />
             </div>
           )}
@@ -279,8 +286,15 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                     className="group relative h-64 md:h-80 rounded-xl overflow-hidden border border-slate-200 bg-slate-200"
                   >
                     {c.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.image} alt={`${c.destination} 대표 이미지`} className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                      <SafeCoverImg
+                        src={c.image}
+                        alt={`${c.destination} 대표 이미지`}
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                        fallback={
+                          <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">{region.emoji}</div>
+                        }
+                      />
                     ) : (
                       <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">{region.emoji}</div>
                     )}
@@ -332,13 +346,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
               <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-4">
                 {data.posts.map(p => (
                   <Link key={p.id} href={`/blog/${p.slug}`} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
-                    {p.og_image_url ? (
-                      <div className="aspect-[16/9] bg-slate-100 overflow-hidden">
-                        <Image src={p.og_image_url} alt={p.seo_title || ''} width={400} height={225} className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                    ) : (
-                      <div className="aspect-[16/9] bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl">📖</div>
-                    )}
+                    <SafeMagazineThumb url={p.og_image_url} title={p.seo_title || ''} />
                     <div className="p-4">
                       <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-[#3182F6] tracking-tight">
                         {p.seo_title || '여행 가이드'}

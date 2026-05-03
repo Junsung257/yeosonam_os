@@ -11,9 +11,9 @@ import {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
+  const { id } = params;
 
   if (!isSupabaseConfigured) {
     return NextResponse.json(
@@ -36,9 +36,9 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: rfqId } = await params;
+  const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
     // Mock fallback

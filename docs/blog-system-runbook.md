@@ -50,7 +50,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 
 2. **Vercel Cron 로그**
    - Vercel Dashboard > Project > Crons 탭
-   - `blog-publisher` 가 매시간 정상 실행 확인
+   - `blog-publisher` 는 `vercel.json` 기준 **UTC 매일 02:00** (배치당 최대 `MAX_BATCH`건) — 매시간이 아님
    - `blog-lifecycle` 이 매일 01:30 KST 실행 확인
 
 3. **알림 체크**

@@ -10,12 +10,15 @@
  *   - 생성 2h~24h 이내 (2h: 너무 빠른 발송 방지, 24h: stale 제외)
  *   - customer_phone IS NOT NULL
  *   - admin_notes NOT LIKE '%retarget_sent%' (중복 방지)
+ *
+ * 알림톡 링크: /free-travel?session={세션id} (저장 견적 복원)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendFreeTravelRetarget } from '@/lib/kakao';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
   let failed = 0;
 
   for (const session of targets) {
-    const plannerUrl = `${BASE_URL}/free-travel`;
+    const plannerUrl = `${BASE_URL}/free-travel?session=${encodeURIComponent(session.id)}`;
     try {
       await sendFreeTravelRetarget({
         phone:       session.customer_phone,

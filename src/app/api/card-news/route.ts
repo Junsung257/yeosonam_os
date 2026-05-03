@@ -7,6 +7,9 @@ import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 
 export async function GET(request: NextRequest) {
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ card_news: [] });
   }
@@ -25,7 +28,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
   if (!isSupabaseConfigured) {

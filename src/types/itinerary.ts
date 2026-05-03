@@ -66,6 +66,12 @@ export interface ScheduleItem {
   activity:  string;          // 원문 그대로
   transport: string | null;   // "BX371" | "전용차량" | "C92(예정)"
   note:      string | null;   // 부연 설명
+  /** 정규화 매칭 결과 (Phase B 고도화): attractions.id[] */
+  attraction_ids?: string[];
+  /** 정규화 매칭 결과 (Phase B 고도화): attractions.name[] */
+  attraction_names?: string[];
+  /** 정형 관광지 설명 폴백 (렌더에서 short_desc 없을 때 사용) */
+  attraction_note?: string | null;
   type:      ScheduleItemType;
 }
 

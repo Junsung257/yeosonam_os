@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
-function isAdminRequest(request: NextRequest): boolean {
-  if (process.env.NODE_ENV !== 'production') return true;
+function assertAdminApiToken(request: NextRequest): boolean {
   const token = process.env.ADMIN_API_TOKEN;
   if (!token) return false;
   return request.headers.get('x-admin-token') === token;
@@ -16,7 +15,7 @@ const ResolveSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!assertAdminApiToken(request)) {
     return NextResponse.json({ code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' }, { status: 403 });
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -57,7 +56,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!assertAdminApiToken(request)) {
     return NextResponse.json({ code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' }, { status: 403 });
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {

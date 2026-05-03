@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCronBearer } from '@/lib/cron-auth'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { executeAction } from '@/lib/agent-action-executor'
 import { isValidTransition } from '@/lib/agent-action-machine'
@@ -10,6 +11,7 @@ import {
   checkPublishingLimit,
 } from '@/lib/instagram-publisher'
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const startAt = Date.now()
   const log: string[] = []
@@ -17,15 +19,10 @@ export async function GET(request: NextRequest) {
 
   push('=== 에이전트 액션 실행기 시작 ===')
 
-  // 인증: CRON_SECRET 또는 force=true
+  const authErr = requireCronBearer(request)
+  if (authErr) return authErr
+
   const isForce = request.nextUrl.searchParams.get('force') === 'true'
-  if (!isForce) {
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
 
   if (!isSupabaseConfigured) {
     push('Supabase 미설정 — 스킵')

@@ -15,6 +15,7 @@ import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured } from '@/lib/p
  *
  * 응답: { ok, total, filled, skipped, errors, durationMs }
  */
+export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });

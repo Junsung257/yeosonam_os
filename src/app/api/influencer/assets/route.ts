@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,25 +8,19 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-// GET: 인플루언서가 활용할 수 있는 마케팅 소재 (카드뉴스, 마케팅 카피 등)
+// GET: 마케팅 소재 — referral_code + PIN(헤더 x-influencer-pin) 필수
 export async function GET(req: NextRequest) {
   try {
     const referral_code = req.nextUrl.searchParams.get('code');
     const packageId = req.nextUrl.searchParams.get('package_id');
     if (!referral_code) return NextResponse.json({ error: '코드 필요' }, { status: 400 });
 
-    // 어필리에이트 확인
-    const { data: affiliate } = await supabaseAdmin
-      .from('affiliates')
-      .select('id')
-      .eq('referral_code', referral_code)
-      .single();
-
-    if (!affiliate) {
-      return NextResponse.json({ error: '존재하지 않는 코드' }, { status: 404 });
+    const pin = req.headers.get('x-influencer-pin')?.trim();
+    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, pin);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
-    // 카드뉴스 소재 — CONFIRMED 또는 LAUNCHED 상태만
     let cardNewsQuery = supabaseAdmin
       .from('card_news')
       .select('id, title, slides, package_id, status, created_at')
@@ -39,7 +34,6 @@ export async function GET(req: NextRequest) {
 
     const { data: cardNews } = await cardNewsQuery;
 
-    // 마케팅 카피가 있는 상품들
     let packagesQuery = supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, duration, price, marketing_copies, product_highlights, product_summary')
@@ -54,7 +48,6 @@ export async function GET(req: NextRequest) {
 
     const { data: packages } = await packagesQuery;
 
-    // 소재를 카테고리별로 정리
     const assets = {
       card_news: (cardNews || []).map(cn => ({
         id: cn.id,

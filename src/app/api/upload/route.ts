@@ -1,14 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
-import { parseDocument, calculateConfidence, classifyDocument } from '@/lib/parser';
+import { parseDocument, calculateConfidence, classifyDocument, type ParseOptions } from '@/lib/parser';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateMarketingCopies, type MarketingCopy } from '@/lib/ai';
 import {
   validateExtractedProduct,
   priceTiersToRows,
   determineProductStatus,
+  classifyUploadGate,
+  applyDeterministicExtractedDataFixes,
+  type UploadGate,
 } from '@/lib/upload-validator';
+import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { tiersToDatePrices } from '@/lib/price-dates';
+import { getRelevantReflections } from '@/lib/reflection-memory';
+import { getRegionCacheContext } from '@/lib/region-cache-context';
+import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
+import type { AttractionData } from '@/lib/attraction-matcher';
+import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
+import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
+
+/** 파싱 실패·BLOCKED 건 DLQ (비동기 적재, 실패해도 업로드 응답은 유지) */
+function scheduleUploadReviewInsert(row: {
+  severity?: string;
+  status?: string;
+  error_reason?: string | null;
+  source_filename?: string | null;
+  file_hash?: string | null;
+  normalized_content_hash?: string | null;
+  raw_text_chunk?: string | null;
+  parsed_draft_json?: Record<string, unknown> | null;
+  product_title?: string | null;
+  land_operator_id?: string | null;
+}) {
+  if (!isSupabaseConfigured) return;
+  void supabaseAdmin
+    .from('upload_review_queue')
+    .insert(row)
+    .then(({ error }: { error: { message: string } | null }) => {
+      if (error) console.warn('[Upload API] upload_review_queue 적재 실패(비중단):', error.message);
+    });
+}
+
+// ─── 민감정보 마스킹 (raw_extracted_text → 블로그/카드뉴스용) ─────────────────
+
+const SENSITIVE_KEYWORDS = /커미션|마진|수수료|net가|NET가|랜드비|원가|이익률|마진율|랜드가|행사가|랜드비용|수익/;
+
+function maskSensitiveRawText(rawText: string, landOperatorName?: string): string {
+  let masked = rawText;
+
+  // 1. 랜드사명 → 여소남 (브랜드 일관성)
+  if (landOperatorName && landOperatorName.length > 1) {
+    const escaped = landOperatorName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    masked = masked.replace(new RegExp(escaped, 'gi'), '여소남');
+  }
+
+  // 2. 민감 줄 전체 삭제 (금액이 함께 있을 때만) + 연속 빈 줄 압축
+  masked = masked
+    .split('\n')
+    .filter(line => !(SENSITIVE_KEYWORDS.test(line) && /\d/.test(line)))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+
+  return masked;
+}
 
 // ─── 코드 매핑 테이블 ─────────────────────────────────────────────────────────
 
@@ -201,7 +256,7 @@ async function identifySupplierFromText(
 
   // ── Phase 3: LLM Inference — Gemini Flash 헤더+푸터 추론 ────────────────────
   try {
-    const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
     if (!apiKey) return UNKNOWN;
 
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -286,6 +341,23 @@ async function generateInternalCode(
   return data as string;
 }
 
+// ─── 파일명 기반 목적지 임시 추출 (Reflexion + 지역캐시 사전 조회용) ──────────────
+
+const DEST_KEYWORDS = [
+  '장가계', '장자제', '서안', '시안', '북경', '상해', '청두', '계림', '황산', '연길', '중경',
+  '방콕', '치앙마이', '싱가포르', '다낭', '하노이', '호치민', '나트랑', '푸꾸옥', '세부', '마닐라',
+  '발리', '쿠알라룸푸르', '양곤', '오사카', '도쿄', '후쿠오카', '삿포로', '오키나와',
+  '홍콩', '마카오', '대만', '타이페이', '괌', '사이판',
+];
+
+function extractDestinationFromFilename(name: string): string {
+  const base = name.replace(/\.[^.]+$/, '');
+  for (const kw of DEST_KEYWORDS) {
+    if (base.includes(kw)) return kw;
+  }
+  return '';
+}
+
 // ─── API Route ───────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -341,7 +413,7 @@ export async function POST(request: NextRequest) {
       console.log('[Upload API] 텍스트 모드 해시:', fileHash.slice(0, 12));
     } else {
       // 파일 모드: 기존 로직
-      const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp'];
+      const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx'];
       const ext = '.' + (file!.name.split('.').pop()?.toLowerCase() ?? '');
       if (!allowedExtensions.includes(ext)) {
         return NextResponse.json(
@@ -372,6 +444,29 @@ export async function POST(request: NextRequest) {
           internal_code: existingHash.product_id ?? null,
           message:       `이미 처리된 파일입니다. (원본: ${existingHash.file_name}) AI 파싱 토큰 절약.`,
         });
+      }
+
+      // 텍스트 붙여넣기: 띄어쓰기·개행만 다른 동일 카탈로그 사전 차단 (파싱 전)
+      if (directRawText) {
+        const normalizedContentHash = computeNormalizedContentHash(directRawText);
+        const { data: existingNorm } = await supabaseAdmin
+          .from('document_hashes')
+          .select('file_hash, product_id, file_name, normalized_hash')
+          .eq('normalized_hash', normalizedContentHash)
+          .maybeSingle();
+
+        if (existingNorm) {
+          console.log('[Upload API] 정규화 해시 중복 — 파싱 스킵:', normalizedContentHash.slice(0, 12));
+          return NextResponse.json({
+            success:               true,
+            duplicate:             true,
+            duplicateReason:       'normalized_content',
+            fileHash,
+            normalizedContentHash: normalizedContentHash.slice(0, 16) + '…',
+            internal_code:         existingNorm.product_id ?? null,
+            message:               `이미 처리된 카탈로그입니다(본문 정규화 기준). 원본: ${existingNorm.file_name}`,
+          });
+        }
       }
     }
 
@@ -443,11 +538,60 @@ export async function POST(request: NextRequest) {
     // ── [E] Step 1: 문서 분류 (저비용 사전 분류) ─────────────────────────────
     // 첫 2,000자만 사용하는 경량 Gemini 호출로 상품 개수·문서 유형·여행 여부 파악
 
+    // ── [E-0] Reflexion + 지역 컨텍스트 사전 조회 (파싱 품질 향상) ─────────────
+    // 파일명에서 목적지를 임시 추출해 과거 정정 사례 + 지역 블록 데이터를 병렬 조회.
+    // DeepSeek prefix 캐싱: EXTRACT_PROMPT + regionContext 부분이 자동 캐시됨.
+    const tempDest = extractDestinationFromFilename(fileName);
+    // 파일명 기반 랜드사 ID (parseDocument 전에 computeable한 예비값)
+    const prelimLandOperatorId = resolveLandOperatorId(filenameRule.supplierRaw, landOps ?? []);
+    let parseOptions: ParseOptions = {};
+    if (isSupabaseConfigured) {
+      const [reflections, regionContext] = await Promise.all([
+        getRelevantReflections(supabaseAdmin, {
+          destination: tempDest || undefined,
+          landOperatorId: prelimLandOperatorId || undefined,
+          minSeverity: 'medium',
+          limit: 5,
+        }).catch(() => []),
+        tempDest ? getRegionCacheContext(tempDest).catch(() => '') : Promise.resolve(''),
+      ]);
+      if (reflections.length > 0) {
+        console.log('[Upload API] Reflexion 주입:', reflections.length, '건 (목적지:', tempDest, ')');
+      }
+      if (regionContext) {
+        console.log('[Upload API] 지역 컨텍스트 로드:', tempDest, regionContext.length, '자');
+      }
+      parseOptions = { reflections, regionContext };
+    }
+
     // ── [E-1] PDF/HWP 텍스트 추출 (바이너리 → 텍스트) ──────────────────────
     // 중요: PDF는 바이너리이므로 buffer.toString('utf-8')은 깨진 문자열을 반환함
     // 반드시 pdf-parse로 먼저 텍스트를 추출한 후 분류기에 넘겨야 함
-    const parsedDocument = await parseDocument(buffer, fileName);
+    const parsedDocument = await parseDocument(buffer, fileName, parseOptions);
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
+    const normalizedCatalogHash = computeNormalizedContentHash(parsedDocument.rawText ?? '');
+
+    // 파일 업로드: 추출된 본문 기준 정규화 해시 중복 (PDF/HWP 등 — 파싱 후 검사)
+    if (isSupabaseConfigured && !directRawText && (parsedDocument.rawText ?? '').trim().length >= 50) {
+      const { data: existingNormFile } = await supabaseAdmin
+        .from('document_hashes')
+        .select('file_hash, product_id, file_name, normalized_hash')
+        .eq('normalized_hash', normalizedCatalogHash)
+        .maybeSingle();
+
+      if (existingNormFile) {
+        console.log('[Upload API] 파일 모드 정규화 해시 중복 — 저장 스킵:', normalizedCatalogHash.slice(0, 12));
+        return NextResponse.json({
+          success:               true,
+          duplicate:             true,
+          duplicateReason:       'normalized_content',
+          fileHash,
+          normalizedContentHash: normalizedCatalogHash.slice(0, 16) + '…',
+          internal_code:         existingNormFile.product_id ?? null,
+          message:               `이미 처리된 카탈로그입니다(추출 본문 정규화 기준). 원본: ${existingNormFile.file_name}`,
+        });
+      }
+    }
 
     // 분류 항상 스킵 (여행상품만 올리므로 불필요 — 토큰 절약)
     const classification = { productCount: 1, isTravel: true, documentType: 'package' as const, estimatedConfidence: 0.9 };
@@ -494,6 +638,24 @@ export async function POST(request: NextRequest) {
     const savedInternalCodes: string[] = [];
     const saveErrors: { title: string; error: string }[] = [];
     let   totalPriceRowsSaved = 0;
+    const unmatchedRowsToInsert: {
+      activity: string;
+      package_id: string;
+      package_title: string;
+      day_number: number;
+      country: string | null;
+    }[] = [];
+    const matchedCanonicalNames = new Set<string>();
+    const extractedCandidateRows: { activity: string; destination?: string }[] = [];
+
+    let activeAttractions: AttractionData[] = [];
+    if (isSupabaseConfigured && !bulkMode) {
+      const { data: attrRows } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, short_desc, long_desc, aliases, country, region, category, emoji')
+        .eq('is_active', true);
+      activeAttractions = (attrRows || []) as AttractionData[];
+    }
 
     for (const product of productsToSave) {
       const ed = product.extractedData;
@@ -524,13 +686,28 @@ export async function POST(request: NextRequest) {
         }
 
         // ── G3. Zod 검증 + 가격 행 변환 ──────────────────────────────────────
+        applyDeterministicExtractedDataFixes(ed);
 
-        const validation = validateExtractedProduct(ed);
+        let validation = validateExtractedProduct(ed);
         if (validation.warnings.length > 0) {
           console.warn('[Upload API] 검증 경고:', validation.warnings.join(' | '));
         }
         if (!validation.isValid) {
           console.warn('[Upload API] Zod 검증 실패:', validation.errors.join(' | '));
+          const repaired = await repairExtractedDataWithGemini(
+            ed,
+            validation.errors,
+            parsedDocument.rawText ?? '',
+          );
+          if (repaired) {
+            applyDeterministicExtractedDataFixes(ed);
+            validation = validateExtractedProduct(ed);
+            if (validation.isValid) {
+              console.log('[Upload API] Zod Gemini 필드 보정으로 검증 통과');
+            } else {
+              console.warn('[Upload API] Zod 보정 후에도 실패:', validation.errors.join(' | '));
+            }
+          }
         }
 
         // net_price CHECK (net_price > 0) 제약조건 방어
@@ -547,6 +724,65 @@ export async function POST(request: NextRequest) {
         const priceRows  = priceTiersToRows(ed);
 
         console.log(`[Upload API] 가격 행 ${priceRows.length}개 변환됨 (product_prices)`);
+
+        // ── G3-B. 4단계 업로드 게이트 분류 ───────────────────────────────────
+
+        const uploadGate: UploadGate = classifyUploadGate(validation, confidence, priceRows.length);
+        console.log(`[Upload API] 업로드 게이트: ${uploadGate} (confidence=${(confidence * 100).toFixed(0)}%, priceRows=${priceRows.length})`);
+
+        // BLOCKED: 핵심 필드 누락 → DB 저장 차단 + 자동 기록
+        if (uploadGate === 'BLOCKED') {
+          // 실패 패턴을 extractions_corrections에 자동 기록 (자가학습 flywheel)
+          if (isSupabaseConfigured) {
+            const correctionRows = validation.errors.map(e => ({
+              field_path: e.match(/\[([^\]]+)\]/)?.[1] ?? 'unknown',
+              reflection: `업로드 파싱 실패: ${e}`,
+              before_value: null,
+              after_value: null,
+              raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+              severity: 'critical',
+              category: 'parse_failure',
+              land_operator_id: effectiveLandOperatorId,
+              destination: ed.destination ?? tempDest ?? null,
+              is_active: true,
+              applied_count: 0,
+            }));
+            supabaseAdmin.from('extractions_corrections').insert(correctionRows)
+              .then(() => {}).catch((e: Error) => console.warn('[Upload API] corrections 기록 실패(무시):', e.message));
+          }
+          scheduleUploadReviewInsert({
+            severity: 'critical',
+            error_reason: `BLOCKED: ${validation.errors.join(' | ')}`,
+            source_filename: fileName,
+            file_hash: fileHash,
+            normalized_content_hash: normalizedCatalogHash,
+            raw_text_chunk: (parsedDocument.rawText ?? '').slice(0, 12000),
+            parsed_draft_json: ed as unknown as Record<string, unknown>,
+            product_title: title,
+            land_operator_id: effectiveLandOperatorId,
+          });
+          saveErrors.push({ title, error: `필수 필드 누락 (BLOCKED): ${validation.errors.join(', ')}` });
+          continue; // DB INSERT 없이 다음 상품으로
+        }
+
+        // REVIEW_NEEDED: confidence 낮음 → 저장 후 수동 검토 필요 패턴 기록
+        if (uploadGate === 'REVIEW_NEEDED' && isSupabaseConfigured) {
+          const warnRows = validation.warnings.map(w => ({
+            field_path: 'confidence',
+            reflection: `낮은 파싱 신뢰도: ${w}`,
+            before_value: null,
+            after_value: null,
+            raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+            severity: 'high',
+            category: 'low_confidence',
+            land_operator_id: effectiveLandOperatorId,
+            destination: ed.destination ?? tempDest ?? null,
+            is_active: true,
+            applied_count: 0,
+          }));
+          supabaseAdmin.from('extractions_corrections').insert(warnRows)
+            .then(() => {}).catch(() => {});
+        }
 
         // ── G4. 상태 결정 ────────────────────────────────────────────────────
 
@@ -586,7 +822,10 @@ export async function POST(request: NextRequest) {
               theme_tags:            ed.theme_tags ?? [],
               selling_points:        ed.selling_points ?? null,
               flight_info:           ed.flight_info ?? null,
-              raw_extracted_text:    parsedDocument.rawText.slice(0, 50000),
+              raw_extracted_text:    maskSensitiveRawText(
+                parsedDocument.rawText,
+                landOps?.find((lo: { id: string; name: string }) => lo.id === effectiveLandOperatorId)?.name ?? filenameRule.supplierRaw,
+              ).slice(0, 50000),
               thumbnail_urls:        [],
             });
 
@@ -635,6 +874,22 @@ export async function POST(request: NextRequest) {
 
         // ── G8. travel_packages 테이블 INSERT (고객 노출용 + FK 연결) ─────────
 
+        const itineraryInput = (product.itineraryData ?? null) as ItineraryDataLike | null;
+        const enrichment = enrichItineraryWithAttractionReferences(
+          itineraryInput,
+          activeAttractions,
+          ed.destination,
+        );
+        const itineraryDataToSave = enrichment.itineraryData ?? product.itineraryData ?? null;
+        enrichment.matchedCanonicalNames.forEach(name => matchedCanonicalNames.add(name));
+        for (const day of itineraryDataToSave?.days ?? []) {
+          for (const s of day.schedule ?? []) {
+            if (s.type === 'flight' || s.type === 'hotel' || !s.activity) continue;
+            const cands = extractAttractionCandidates(s.activity, s.note);
+            for (const c of cands) extractedCandidateRows.push({ activity: c, destination: ed.destination });
+          }
+        }
+
         if (isSupabaseConfigured) {
           const { data: pkgResult, error: pkgError } = await supabaseAdmin
             .from('travel_packages')
@@ -679,7 +934,7 @@ export async function POST(request: NextRequest) {
               product_tags:          ed.product_tags      ?? [],
               product_highlights:    ed.product_highlights ?? [],
               product_summary:       ed.product_summary   ?? null,
-              itinerary_data:        product.itineraryData ?? null,
+              itinerary_data:        itineraryDataToSave,
               status:                'pending_review',
               marketing_copies:      marketingCopies,
               internal_code:         internalCode ?? null,
@@ -701,54 +956,16 @@ export async function POST(request: NextRequest) {
 
           console.log('[Upload API] travel_packages INSERT 완료:', pkgResult?.id, '← FK:', internalCode);
 
-          // ── 미매칭 관광지 자동 수집 ──────────────────────
-          if (product.itineraryData && pkgResult?.id) {
-            try {
-              const itData = product.itineraryData as { days?: { day?: number; schedule?: { activity: string; type?: string }[] }[] } | null;
-              const days = itData?.days || [];
-              const skipPattern = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
-              // 기존 관광지 목록 가져오기
-              const { data: existingAttr } = await supabaseAdmin.from('attractions').select('name');
-              const attrNames = new Set((existingAttr || []).map((a: { name: string }) => a.name));
-
-              const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country: string | null }[] = [];
-              for (const day of days) {
-                (day.schedule || []).forEach((item: { activity: string; type?: string }) => {
-                  if (!item.activity || item.activity.length < 2) return;
-                  if (skipPattern.test(item.activity)) return;
-                  if (item.type === 'flight' || item.type === 'hotel') return;
-                  // 간단 매칭: 이름이 activity에 포함되는지 확인
-                  const matched = [...attrNames].some((name: unknown) => typeof name === 'string' && name.length >= 2 && item.activity.includes(name));
-                  if (!matched) {
-                    unmatchedItems.push({
-                      activity: item.activity,
-                      package_id: pkgResult.id,
-                      package_title: title,
-                      day_number: day.day || 0,
-                      country: ed.destination || null,
-                    });
-                  }
-                });
-              }
-
-              // 미매칭 항목 upsert
-              for (const u of unmatchedItems) {
-                await supabaseAdmin.from('unmatched_activities').upsert({
-                  activity: u.activity,
-                  package_id: u.package_id,
-                  package_title: u.package_title,
-                  day_number: u.day_number,
-                  country: u.country,
-                  occurrence_count: 1,
-                  status: 'pending',
-                }, { onConflict: 'activity' });
-              }
-
-              if (unmatchedItems.length > 0) {
-                console.log(`[Upload API] 미매칭 관광지 ${unmatchedItems.length}개 수집됨`);
-              }
-            } catch (unmatchErr) {
-              console.warn('[Upload API] 미매칭 수집 실패 (무시):', unmatchErr);
+          // ── 미매칭 관광지 자동 수집 (정규화 후보 기반) ──────────────────────
+          if (pkgResult?.id && enrichment.unmatchedCandidates.length > 0) {
+            for (const u of enrichment.unmatchedCandidates) {
+              unmatchedRowsToInsert.push({
+                activity: u.activity,
+                package_id: pkgResult.id,
+                package_title: title,
+                day_number: u.day_number,
+                country: ed.destination || null,
+              });
             }
           }
         }
@@ -772,6 +989,17 @@ export async function POST(request: NextRequest) {
 
         const errMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
         console.error('[Upload API] 상품 저장 오류:', { title, error: errMsg });
+        scheduleUploadReviewInsert({
+          severity: 'high',
+          error_reason: errMsg,
+          source_filename: fileName,
+          file_hash: fileHash,
+          normalized_content_hash: normalizedCatalogHash,
+          raw_text_chunk: (parsedDocument.rawText ?? '').slice(0, 12000),
+          parsed_draft_json: ed as unknown as Record<string, unknown>,
+          product_title: title,
+          land_operator_id: effectiveLandOperatorId,
+        });
         saveErrors.push({ title, error: errMsg });
       }
     }
@@ -779,28 +1007,36 @@ export async function POST(request: NextRequest) {
     // ── [H-1] 관광지 마스터 DB 자동 구축 (벌크 모드 시 스킵) ──────────────────────
     if (isSupabaseConfigured && !bulkMode) {
       try {
-        // 모든 상품의 일정에서 관광지명 추출
-        const allActivities: { activity: string; destination?: string }[] = [];
-        for (const p of productsToSave) {
-          const days = p.itineraryData?.days || [];
-          const dest = p.extractedData.destination;
-          for (const day of days) {
-            for (const s of (day.schedule || [])) {
-              if (s.type === 'flight' || s.type === 'hotel' || !s.activity) continue;
-              allActivities.push({ activity: s.activity, destination: dest });
-            }
+        if (unmatchedRowsToInsert.length > 0) {
+          for (const u of unmatchedRowsToInsert) {
+            await supabaseAdmin.from('unmatched_activities').upsert({
+              activity: u.activity,
+              package_id: u.package_id,
+              package_title: u.package_title,
+              day_number: u.day_number,
+              country: u.country,
+              occurrence_count: 1,
+              status: 'pending',
+            }, { onConflict: 'activity' });
           }
+          console.log(`[Upload API] 미매칭 관광지 ${unmatchedRowsToInsert.length}개 수집됨`);
         }
 
-        if (allActivities.length > 0) {
-          // 기존 attractions 이름 조회
-          const { data: existingAttr } = await supabaseAdmin
-            .from('attractions')
-            .select('name');
-          const existingNames = new Set((existingAttr || []).map((a: { name: string }) => a.name));
+        if (extractedCandidateRows.length > 0) {
+          const allActivities = extractedCandidateRows;
+          const existingNames = new Set(
+            activeAttractions.map((a: AttractionData) => a.name.toLowerCase().replace(/\s+/g, '')),
+          );
 
           // Gemini에 신규 관광지만 한 번에 설명 생성 요청
-          const newActivities = allActivities.filter(a => !existingNames.has(a.activity));
+          const newActivities = allActivities.filter(
+            a => !existingNames.has(a.activity.toLowerCase().replace(/\s+/g, '')),
+          );
+
+          // 기존 관광지 mention_count 증가 (정규명 매칭 성공분 기준)
+          for (const name of [...matchedCanonicalNames]) {
+            await supabaseAdmin.rpc('increment_mention_count', { attraction_name: name }).catch(() => {});
+          }
 
           if (newActivities.length > 0) {
             const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -861,12 +1097,6 @@ ${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
                 console.warn('[Upload API] attractions 생성 실패 (비중단):', attrErr instanceof Error ? attrErr.message : attrErr);
               }
             }
-          } else {
-            // 기존 관광지 mention_count 증가
-            const mentionNames = [...new Set(allActivities.map(a => a.activity))];
-            for (const name of mentionNames) {
-              await supabaseAdmin.rpc('increment_mention_count', { attraction_name: name }).catch(() => {});
-            }
           }
         }
       } catch (attrError) {
@@ -880,9 +1110,10 @@ ${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
       await supabaseAdmin
         .from('document_hashes')
         .insert({
-          file_hash:  fileHash,
-          file_name:  fileName,
-          product_id: savedInternalCodes[0], // 대표 internal_code
+          file_hash:         fileHash,
+          file_name:         fileName,
+          normalized_hash:   normalizedCatalogHash,
+          product_id:        savedInternalCodes[0], // 대표 internal_code
         })
         .then(({ error: hashErr }: { error: { message: string } | null }) => {
           if (hashErr) console.warn('[Upload API] document_hashes 기록 실패 (비중단):', hashErr.message);
@@ -894,6 +1125,44 @@ ${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
 
     const productCount = productsToSave.length;
     const successCount = savedIds.length;
+
+    // 상품별 게이트 집계 (UI에 요약 표시)
+    const blockedCount = saveErrors.filter(e => e.error.includes('BLOCKED')).length;
+    const overallGate: UploadGate = blockedCount > 0 && successCount === 0
+      ? 'BLOCKED'
+      : blockedCount > 0
+        ? 'REVIEW_NEEDED'
+        : 'CLEAN';
+
+    // ── 토큰 사용량 비용 환산 (Phase 1 + Phase 2 합산) ───────────────────────
+    const tu = parsedDocument._tokenUsage;
+    const tokenInfo = tu ? (() => {
+      // Phase 1: DeepSeek V4 Flash: input $0.14/M, cache_hit $0.014/M, output $0.28/M
+      // Phase 1: Gemini 2.5 Flash: input $0.30/M, output $2.50/M
+      const billableInput = tu.input - tu.cache_hit;
+      const phase1CostUsd = tu.provider === 'deepseek'
+        ? (tu.cache_hit / 1_000_000 * 0.014) + (billableInput / 1_000_000 * 0.14) + (tu.output / 1_000_000 * 0.28)
+        : (tu.input / 1_000_000 * 0.30) + (tu.output / 1_000_000 * 2.50);
+      // Phase 2: 일정표 추출 (텍스트=DeepSeek, 이미지=Gemini)
+      const p2in = tu.phase2Input ?? 0;
+      const p2out = tu.phase2Output ?? 0;
+      const p2cache = tu.phase2CacheHit ?? 0;
+      const phase2CostUsd = tu.phase2Provider === 'gemini'
+        ? (p2in / 1_000_000 * 0.30) + (p2out / 1_000_000 * 2.50)
+        : (p2cache / 1_000_000 * 0.014) + ((p2in - p2cache) / 1_000_000 * 0.14) + (p2out / 1_000_000 * 0.28);
+      return {
+        provider:    tu.provider,
+        inputTokens: tu.input,
+        outputTokens: tu.output,
+        cacheHitTokens: tu.cache_hit,
+        phase2Provider: tu.phase2Provider ?? 'deepseek',
+        phase2InputTokens:  p2in,
+        phase2OutputTokens: p2out,
+        phase2CacheHitTokens: p2cache,
+        costUsd: Math.round((phase1CostUsd + phase2CostUsd) * 1_000_000) / 1_000_000,
+        elapsed_ms: tu.elapsed_ms,
+      };
+    })() : null;
 
     return NextResponse.json({
       success: successCount > 0 || !isSupabaseConfigured,
@@ -910,6 +1179,8 @@ ${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
       priceRowsSaved:  totalPriceRowsSaved,
       fileHash:        fileHash.slice(0, 12) + '...',
       classification,
+      gate:            overallGate,
+      tokenUsage:      tokenInfo,
       ...(saveErrors.length > 0 && { errors: saveErrors }),
       message: productCount > 1
         ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.`

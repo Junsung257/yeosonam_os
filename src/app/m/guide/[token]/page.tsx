@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured, getVoucherByBooking } from '@/lib/supabase';
 import { verifyGuidebookToken } from '@/lib/guidebook-token';
 import GuideTimeline from './GuideTimeline';
@@ -9,6 +10,14 @@ interface DayPlan {
   title: string;
   move: string;
   highlight: string;
+  /** 자유여행 플래너 plan_json.dayPlans 와 동일 스키마 */
+  stops?: Array<{
+    id: string;
+    timeHint: string;
+    label: string;
+    kind?: string;
+    affiliateLink?: string;
+  }>;
   hotels: Array<{
     type: 'recommended' | 'alternative';
     name: string;
@@ -60,6 +69,14 @@ export default async function MobileGuidePage({
         <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-5 text-center">
           <p className="text-sm font-semibold text-slate-900">만료되었거나 잘못된 가이드북입니다.</p>
           <p className="mt-1 text-xs text-slate-500">고객센터로 재발급을 요청해주세요.</p>
+          <a
+            href="https://pf.kakao.com/_xcFxkBG/chat"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block rounded-full bg-yellow-300 px-4 py-2 text-xs font-semibold text-slate-900"
+          >
+            카카오톡으로 재발급 요청
+          </a>
         </div>
       </div>
     );
@@ -84,8 +101,11 @@ export default async function MobileGuidePage({
     dayPlans = fallbackDayPlansFromVoucher(voucher);
   }
 
+  const guideRef = createHash('sha256').update(token).digest('hex').slice(0, 16);
+
   return (
     <GuideTimeline
+      guideRef={guideRef}
       dayPlans={dayPlans}
       voucher={voucher ? { title: '예약 바우처', html: voucherHtml } : null}
     />

@@ -15,6 +15,26 @@ import {
 } from '@/lib/text-sanitizer';
 import { tiersToDatePrices } from '@/lib/price-dates';
 import { embedText } from '@/lib/embeddings';
+import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
+import {
+  revalidateLandingPagesForPackage,
+  revalidateLandingPagesForPackageIds,
+} from '@/lib/revalidate-lp-package';
+import { invalidateQaChatPackageCache } from '@/lib/qa-chat-packages';
+import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
+
+function collectAttractionIds(itineraryData: unknown): string[] {
+  const ids = new Set<string>();
+  const root = itineraryData as { days?: { schedule?: { attraction_ids?: (string | null)[] }[] }[] } | null;
+  for (const day of root?.days ?? []) {
+    for (const item of day.schedule ?? []) {
+      for (const id of item.attraction_ids ?? []) {
+        if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+      }
+    }
+  }
+  return [...ids];
+}
 
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
 const DEPARTURE_CODES: Record<string, string> = {
@@ -102,13 +122,24 @@ const PACKAGE_LIST_FIELDS = `
   duration, departure_days, departure_airport, airline, min_participants, ticketing_deadline,
   price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
   inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges, normalized_surcharges,
-  optional_tours, itinerary, special_notes, customer_notes, internal_notes, notices_parsed, land_operator, commission_rate, commission_fixed_amount, commission_currency,
+  optional_tours, itinerary, special_notes, customer_notes, internal_notes, notices_parsed, land_operator, commission_rate, affiliate_commission_rate, commission_fixed_amount, commission_currency,
   product_tags, product_highlights, product_summary, itinerary_data,
   marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
+  data_completeness, field_confidences, is_stub, stub_source,
   seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
   avg_rating, review_count,
   audit_status, audit_report, audit_checked_at,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
+`;
+
+const PACKAGE_LIST_FIELDS_LITE = `
+  id, title, destination, country, category, product_type, trip_style,
+  duration, departure_days, departure_airport, airline, min_participants, ticketing_deadline,
+  price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
+  land_operator, commission_rate, product_tags, product_highlights, product_summary,
+  itinerary,
+  internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
+  audit_status, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
@@ -123,6 +154,9 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category') || undefined;
   const q        = (searchParams.get('q') || '').trim();
   const destFilter = searchParams.get('destination') || '';
+  const landOperatorFilter = searchParams.get('land_operator') || '';
+  const lite = searchParams.get('lite') === '1';
+  const sort = searchParams.get('sort') || 'created_desc';
   const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const limit    = Math.min(500, parseInt(searchParams.get('limit') || '100'));
   const from     = (page - 1) * limit;
@@ -180,30 +214,94 @@ export async function GET(request: NextRequest) {
         .eq(col, id)
         .single();
       if (pkgErr || !pkg) return NextResponse.json({ error: '패키지를 찾을 수 없습니다.' }, { status: 404 });
-      return NextResponse.json({ package: pkg });
+
+      let lp_hero_image_url: string | null = null;
+      if (supabaseAdmin) {
+        try {
+          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
+        } catch (e) {
+          console.warn('[GET /api/packages?id] lp hero resolve failed', e);
+        }
+      }
+
+      const attraction_ids = collectAttractionIds(pkg.itinerary_data);
+      return NextResponse.json(
+        {
+          package: pkg,
+          lp_hero_image_url,
+          attraction_ids,
+          attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
+        },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          },
+        },
+      );
     }
 
     // 목록 조회 — products JOIN 포함
     let query = supabaseAdmin
       .from('travel_packages')
-      .select(PACKAGE_LIST_FIELDS, { count: 'exact' })
-      .order('created_at', { ascending: false })
+      .select(lite ? PACKAGE_LIST_FIELDS_LITE : PACKAGE_LIST_FIELDS, { count: 'exact' })
       .range(from, from + limit - 1);
 
-    if (status && status !== 'all') query = query.eq('status', status);
+    // 서버 정렬 (가격은 구조상 로컬 보조 정렬 유지 가능)
+    switch (sort) {
+      case 'created_asc': query = query.order('created_at', { ascending: true }); break;
+      case 'title_asc': query = query.order('title', { ascending: true }); break;
+      case 'title_desc': query = query.order('title', { ascending: false }); break;
+      case 'land_operator_asc': query = query.order('land_operator', { ascending: true }); break;
+      case 'land_operator_desc': query = query.order('land_operator', { ascending: false }); break;
+      case 'commission_rate_asc': query = query.order('commission_rate', { ascending: true }); break;
+      case 'commission_rate_desc': query = query.order('commission_rate', { ascending: false }); break;
+      case 'destination_asc': query = query.order('destination', { ascending: true }); break;
+      case 'destination_desc': query = query.order('destination', { ascending: false }); break;
+      case 'deadline_asc': query = query.order('ticketing_deadline', { ascending: true }); break;
+      case 'deadline_desc': query = query.order('ticketing_deadline', { ascending: false }); break;
+      case 'status_asc': query = query.order('status', { ascending: true }); break;
+      case 'status_desc': query = query.order('status', { ascending: false }); break;
+      case 'created_desc':
+      default:
+        query = query.order('created_at', { ascending: false });
+        break;
+    }
+
+    if (status && status !== 'all') {
+      // 관리자 탭 상태(semantic) 호환
+      if (status === 'selling') {
+        query = query.in('status', ['approved', 'active']);
+      } else if (status === 'pending') {
+        query = query.in('status', ['pending', 'pending_review', 'draft']);
+      } else if (status === 'archived') {
+        query = query.in('status', ['archived', 'INACTIVE']);
+      } else {
+        query = query.eq('status', status);
+      }
+    }
     if (category)                   query = query.eq('category', category);
     if (destFilter)                 query = query.eq('destination', destFilter);
+    if (landOperatorFilter)         query = query.eq('land_operator', landOperatorFilter);
 
-    // 검색: title OR internal_code (departure_region은 JS-side 후필터)
+    // 검색: title/internal_code/short_code/destination/land_operator
     if (q) {
-      query = query.or(`title.ilike.%${q}%,internal_code.ilike.%${q}%`);
+      query = query.or(
+        `title.ilike.%${q}%,internal_code.ilike.%${q}%,short_code.ilike.%${q}%,destination.ilike.%${q}%,land_operator.ilike.%${q}%`,
+      );
     }
 
     const { data, error, count } = await query;
     if (error) throw error;
 
+    const enrichedData = (data ?? []).map((row: any) => ({
+      ...row,
+      has_itinerary_data:
+        !!row.itinerary_data?.days?.length ||
+        (Array.isArray(row.itinerary) && row.itinerary.length > 0),
+      attraction_preview_names: getAttractionPreviewNamesFromItinerary(row.itinerary_data, 4),
+    }));
     const totalPages = Math.ceil((count ?? 0) / limit);
-    return NextResponse.json({ data: data ?? [], count: count ?? 0, totalPages }, {
+    return NextResponse.json({ data: enrichedData, count: count ?? 0, totalPages }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (error) {
@@ -478,9 +576,11 @@ export async function PATCH(request: NextRequest) {
         for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
         revalidatePath('/packages');
         revalidateTag('packages'); // Task 4: Tag-based Invalidation 적용
+        revalidateLandingPagesForPackageIds(packageIds);
       } catch (e) {
         console.warn('[packages] revalidatePath/Tag 실패 (무시):', e);
       }
+      invalidateQaChatPackageCache();
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -499,6 +599,7 @@ export async function PATCH(request: NextRequest) {
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
       revalidateTag('packages');
+      revalidateLandingPagesForPackageIds(packageIds);
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -515,6 +616,7 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error;
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
+      revalidateLandingPagesForPackageIds(packageIds);
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -543,6 +645,7 @@ export async function PATCH(request: NextRequest) {
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
       revalidateTag('packages');
+      revalidateLandingPagesForPackageIds(packageIds);
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -560,6 +663,11 @@ export async function PATCH(request: NextRequest) {
         .eq('id', packageId);
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
+      revalidateLandingPagesForPackage(
+        packageId,
+        (result as { short_code?: string | null })?.short_code ?? null,
+      );
+      invalidateQaChatPackageCache();
       return NextResponse.json({ success: true, package: result });
     }
 
@@ -572,6 +680,10 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error;
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
+      revalidateLandingPagesForPackage(
+        packageId,
+        (data?.[0] as { short_code?: string | null } | undefined)?.short_code ?? null,
+      );
       return NextResponse.json({ success: true, package: data?.[0] });
     }
 
@@ -706,7 +818,6 @@ export async function PATCH(request: NextRequest) {
         try {
           const { getAdCampaigns, upsertCampaign } = await import('@/lib/supabase');
           const { pauseAd, isMetaConfigured } = await import('@/lib/meta-api');
-          const { createClient } = await import('@supabase/supabase-js');
 
           const activeCampaigns = await getAdCampaigns({ packageId, status: 'ACTIVE' });
           if (activeCampaigns.length === 0) return;
@@ -723,12 +834,8 @@ export async function PATCH(request: NextRequest) {
                   auto_pause_reason: `패키지 상태: ${newStatus}`,
                 });
 
-                // audit_logs 기록
-                const sb = createClient(
-                  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-                );
-                await sb.from('audit_logs').insert({
+                // audit_logs 기록 (RLS 대비: service_role 클라이언트)
+                await supabaseAdmin.from('audit_logs').insert({
                   action: 'META_AUTO_PAUSE',
                   target_type: 'campaign',
                   target_id: campaign.id,
@@ -749,6 +856,10 @@ export async function PATCH(request: NextRequest) {
 
     revalidatePath(`/packages/${packageId}`);
     revalidatePath('/packages');
+    revalidateLandingPagesForPackage(
+      packageId,
+      (result as { short_code?: string | null })?.short_code ?? null,
+    );
     return NextResponse.json({ success: true, package: result });
   } catch (error) {
     console.error('패키지 수정 오류:', error);
@@ -769,6 +880,7 @@ export async function DELETE(request: NextRequest) {
 
   try {
     await deletePackage(id);
+    revalidateLandingPagesForPackage(id, null);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('패키지 삭제 오류:', error);

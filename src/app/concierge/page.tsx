@@ -221,7 +221,7 @@ export default function ConciergePage() {
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-gray-500">바우처 코드</span>
-                    <p className="font-mono font-bold text-lg tracking-widest text-indigo-700">{v.code}</p>
+                    <p className="font-mono font-bold text-lg tracking-widest text-[#1B64DA]">{v.code}</p>
                   </div>
                 </div>
                 {v.product_type === 'CRUISE' && (
@@ -234,7 +234,7 @@ export default function ConciergePage() {
           </div>
           <button
             onClick={() => { setVouchers(null); setResults([]); setQuery(''); }}
-            className="mt-6 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700"
+            className="mt-6 w-full bg-[#3182F6] text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA]"
           >
             새 여행 계획하기
           </button>
@@ -270,12 +270,12 @@ export default function ConciergePage() {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="예: 방콕 3박 4일 호텔이랑 투어 추천해줘"
-                className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#3182F6]/40"
               />
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 transition"
+                className="bg-[#3182F6] text-white px-6 py-3 rounded-xl font-semibold hover:bg-[#1B64DA] disabled:opacity-50 transition"
               >
                 {loading ? '검색 중...' : '검색'}
               </button>
@@ -293,7 +293,7 @@ export default function ConciergePage() {
                   <button
                     key={s}
                     onClick={() => { setQuery(s); setTimeout(() => inputRef.current?.form?.requestSubmit(), 50); }}
-                    className="text-sm bg-white border border-gray-200 rounded-full px-3 py-1.5 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 transition"
+                    className="text-sm bg-white border border-gray-200 rounded-full px-3 py-1.5 text-gray-600 hover:bg-[#EBF3FE] hover:border-[#DBEAFE] transition"
                   >
                     {s}
                   </button>
@@ -318,7 +318,7 @@ export default function ConciergePage() {
                 {results.map(item => (
                   <div key={item.product_id} className="bg-white rounded-xl border shadow-sm p-4 flex flex-col">
                     <div className="flex items-center gap-1 flex-wrap mb-2">
-                      <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                      <span className="text-xs font-medium text-[#3182F6] bg-[#EBF3FE] px-2 py-0.5 rounded-full">
                         {PRODUCT_TYPE_LABELS[item.product_type] ?? item.product_type}
                       </span>
                       {resolveCategory(item) === 'DYNAMIC' ? (
@@ -346,13 +346,13 @@ export default function ConciergePage() {
                         <span className="text-xs text-gray-400 line-through">
                           ₩{item.cost.toLocaleString()}
                         </span>
-                        <div className="text-base font-bold text-indigo-700">
+                        <div className="text-base font-bold text-[#1B64DA]">
                           ₩{item.price.toLocaleString()}
                         </div>
                       </div>
                       <button
                         onClick={() => addToCart(item)}
-                        className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition"
+                        className="bg-[#3182F6] text-white text-xs px-3 py-1.5 rounded-lg hover:bg-[#1B64DA] transition"
                       >
                         + 담기
                       </button>
@@ -389,11 +389,11 @@ export default function ConciergePage() {
                 <div key={item.product_id} className="bg-gray-50 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <span className="text-xs text-indigo-600">
+                      <span className="text-xs text-[#3182F6]">
                         {PRODUCT_TYPE_LABELS[item.product_type]}
                       </span>
                       <p className="text-sm font-medium text-gray-800 leading-snug">{item.product_name}</p>
-                      <p className="text-sm font-bold text-indigo-700 mt-1">
+                      <p className="text-sm font-bold text-[#1B64DA] mt-1">
                         ₩{(item.price * item.quantity).toLocaleString()}
                       </p>
                     </div>
@@ -436,14 +436,14 @@ export default function ConciergePage() {
               </div>
               <button
                 onClick={() => setCheckoutOpen(true)}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition"
+                className="w-full bg-[#3182F6] text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition"
               >
                 결제하기
               </button>
               <button
                 onClick={handleShare}
                 disabled={sharing}
-                className="w-full py-2 text-sm border border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition disabled:opacity-50"
+                className="w-full py-2 text-sm border border-[#DBEAFE] text-[#3182F6] rounded-xl hover:bg-[#EBF3FE] transition disabled:opacity-50"
               >
                 {sharing ? '링크 생성 중...' : '이 구성 공유하기 🔗'}
               </button>
@@ -465,7 +465,7 @@ export default function ConciergePage() {
                   required
                   value={customer.name}
                   onChange={e => setCustomer(c => ({ ...c, name: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3182F6]/40"
                   placeholder="홍길동"
                 />
               </div>
@@ -475,7 +475,7 @@ export default function ConciergePage() {
                   type="tel"
                   value={customer.phone}
                   onChange={e => setCustomer(c => ({ ...c, phone: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3182F6]/40"
                   placeholder="010-0000-0000"
                 />
               </div>
@@ -485,7 +485,7 @@ export default function ConciergePage() {
                   type="email"
                   value={customer.email}
                   onChange={e => setCustomer(c => ({ ...c, email: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3182F6]/40"
                   placeholder="example@email.com"
                 />
               </div>
@@ -515,7 +515,7 @@ export default function ConciergePage() {
                 <button
                   type="submit"
                   disabled={paying}
-                  className="flex-1 bg-indigo-600 text-white py-2 rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex-1 bg-[#3182F6] text-white py-2 rounded-xl font-semibold text-sm hover:bg-[#1B64DA] disabled:opacity-50"
                 >
                   {paying ? '처리 중...' : '결제 완료'}
                 </button>

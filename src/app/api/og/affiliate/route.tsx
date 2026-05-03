@@ -16,6 +16,7 @@
  */
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 export const runtime = 'edge';
 
@@ -24,7 +25,7 @@ export const revalidate = 3600;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code') || 'PARTNER';
+  const code = normalizeAffiliateReferralCode(searchParams.get('code') || 'PARTNER') || 'PARTNER';
   const pkgId = searchParams.get('pkg');
 
   // 상품 / 어필리에이터 메타 페치 (서버측 supabase rest)
@@ -35,9 +36,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (supabaseUrl && anon) {
-      const headers = { apikey: anon, Authorization: `Bearer ${anon}` };
+    const restKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (supabaseUrl && restKey) {
+      const headers = { apikey: restKey, Authorization: `Bearer ${restKey}` };
       // 어필리에이터
       const affRes = await fetch(
         `${supabaseUrl}/rest/v1/affiliates?referral_code=eq.${encodeURIComponent(code)}&select=name&limit=1`,

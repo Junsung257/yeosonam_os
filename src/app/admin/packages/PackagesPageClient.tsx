@@ -11,6 +11,7 @@ import {
   PACKAGE_STATUS_LABEL as STATUS_LABEL,
   AUDIT_BADGE,
 } from '@/lib/package-status';
+import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
 const ApprovalModal = nextDynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
@@ -204,6 +205,8 @@ interface Package {
   product_highlights?: string[];
   product_summary?: string;
   itinerary_data?: unknown;
+  attraction_preview_names?: string[];
+  has_itinerary_data?: boolean;
   excluded_dates?: string[];
   confirmed_dates?: string[];
   marketing_copies?: MarketingCopy[];
@@ -453,6 +456,9 @@ const PackageRow = React.memo(function PackageRow({
   }, [togglePlatform, onShowToast]);
 
   const coverage = getCoverage(pkg.id);
+  const attractionPreview = (pkg.attraction_preview_names && pkg.attraction_preview_names.length > 0)
+    ? pkg.attraction_preview_names
+    : getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 3);
 
   return (
     <tr
@@ -471,6 +477,11 @@ const PackageRow = React.memo(function PackageRow({
         {/* 상품명 + 출발지 배지 */}
         <div className="flex items-start gap-1.5 flex-wrap">
           <span className="font-semibold text-slate-800 leading-snug">{pkg.title}</span>
+          {pkg.has_itinerary_data === false && (
+            <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium border leading-tight bg-amber-50 text-amber-700 border-amber-100">
+              일정표없음
+            </span>
+          )}
           {(() => {
             const region = pkg.products?.departure_region
               ?? (pkg.departure_airport ? pkg.departure_airport.replace(/\(.*\)/, '').trim() : undefined);
@@ -484,6 +495,15 @@ const PackageRow = React.memo(function PackageRow({
         {/* product_type · trip_style */}
         {pkg.product_type && (
           <div className="text-[11px] text-slate-400 mt-0.5">{pkg.product_type} · {pkg.trip_style}</div>
+        )}
+        {attractionPreview.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {attractionPreview.slice(0, 3).map((name, i) => (
+              <span key={`${pkg.id}-ap-${i}`} className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
+                {name}
+              </span>
+            ))}
+          </div>
         )}
         {/* internal_code / short_code — 클릭 복사 + Toast */}
         {(pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code) ? (
@@ -786,7 +806,10 @@ const PackageRow = React.memo(function PackageRow({
 export default function PackagesPage({ initialPackages }: { initialPackages?: Package[] } = {}) {
   const [packages, setPackages] = useState<Package[]>(initialPackages ?? []);
   const [loading, setLoading] = useState(!initialPackages?.length);
-  const _skipInitialLoad = useRef(!!initialPackages?.length);
+  const _skipInitialLoad = useRef(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(initialPackages?.length ?? 0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_desc');
@@ -1006,21 +1029,65 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (_skipInitialLoad.current) { _skipInitialLoad.current = false; return; }
     setLoading(true);
     try {
-      const res = await fetch('/api/packages?limit=500&status=all');
+      const params = new URLSearchParams();
+      params.set('limit', '500');
+      params.set('lite', '1');
+      params.set('status', statusFilter || 'all');
+      params.set('page', String(currentPage));
+      params.set('sort', sortBy);
+      if (searchQuery.trim()) params.set('q', searchQuery.trim());
+      if (landOperatorFilter) params.set('land_operator', landOperatorFilter);
+      const res = await fetch(`/api/packages?${params.toString()}`);
       const json = await res.json();
+      const nextTotalPages = Math.max(1, json.totalPages || 1);
+      if (currentPage > nextTotalPages) {
+        setCurrentPage(nextTotalPages);
+        return;
+      }
       setPackages(json.data || []);
+      setTotalPages(nextTotalPages);
+      setTotalCount(json.count || 0);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
+  }, [statusFilter, searchQuery, landOperatorFilter, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, searchQuery, landOperatorFilter]);
+
+  const openSelectedDetail = useCallback(async (pkg: Package) => {
+    // lite 응답에는 itinerary_data가 없을 수 있으므로 상세 조회 후 열기
+    // 단, 일정표가 없는 상품(has_itinerary_data=false)은 가벼운 row 정보로 바로 열기
+    if (pkg.itinerary_data === undefined && pkg.has_itinerary_data !== false) {
+      try {
+        const res = await fetch(`/api/packages?id=${pkg.id}`);
+        const json = await res.json();
+        if (res.ok && json.package) {
+          const fullPkg = json.package as Package;
+          setSelected(fullPkg);
+          setPackages(prev => prev.map(p => p.id === fullPkg.id ? { ...p, ...fullPkg } : p));
+          return;
+        }
+      } catch {
+        // fallback 아래 setSelected(pkg)
+      }
+    }
+    setSelected(pkg);
   }, []);
 
   useEffect(() => {
-    load();
+    const t = setTimeout(() => {
+      load();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  useEffect(() => {
     loadLogs();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, loadLogs]);
+  }, [loadLogs]);
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject' | 'delete' | 'extend') => {
     setActionLoading(packageId + action);
@@ -1061,12 +1128,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       }
     }
 
-    if (statusFilter === 'selling') {
-      list = list.filter(p => p.status === 'approved' || p.status === 'active');
-    } else if (statusFilter === 'pending') {
-      list = list.filter(p => p.status === 'pending' || p.status === 'pending_review' || p.status === 'draft');
-    } else if (statusFilter === 'archived') {
-      list = list.filter(p => p.status === 'archived');
+    if (statusFilter === 'archived') {
+      list = list.filter(p => p.status === 'archived' || p.status === 'INACTIVE');
     }
 
     if (searchQuery.trim()) {
@@ -1074,45 +1137,24 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       list = list.filter(p =>
         p.title.toLowerCase().includes(q) ||
         (p.destination || '').toLowerCase().includes(q) ||
-        (p.land_operator || '').toLowerCase().includes(q)
+        (p.land_operator || '').toLowerCase().includes(q) ||
+        (p.internal_code || '').toLowerCase().includes(q) ||
+        (p.short_code || '').toLowerCase().includes(q) ||
+        (p.attraction_preview_names || []).some(name => name.toLowerCase().includes(q))
       );
     }
 
-    if (landOperatorFilter) {
-      list = list.filter(p => p.land_operator === landOperatorFilter);
+    // 서버 정렬이 기본. 가격 정렬만 로컬 보조(최저가 계산 필요)
+    if (sortBy === 'price_asc' || sortBy === 'price_desc') {
+      list.sort((a, b) => {
+        const aMin = Math.min(...(a.price_tiers?.map(t => t.adult_price ?? Infinity) || [a.price ?? Infinity]));
+        const bMin = Math.min(...(b.price_tiers?.map(t => t.adult_price ?? Infinity) || [b.price ?? Infinity]));
+        return sortBy === 'price_asc' ? aMin - bMin : bMin - aMin;
+      });
     }
 
-    list.sort((a, b) => {
-      switch (sortBy) {
-        case 'created_asc': return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        case 'title_asc': return a.title.localeCompare(b.title, 'ko');
-        case 'title_desc': return b.title.localeCompare(a.title, 'ko');
-        case 'land_operator_asc': return (a.land_operator || 'zzz').localeCompare(b.land_operator || 'zzz', 'ko');
-        case 'land_operator_desc': return (b.land_operator || '').localeCompare(a.land_operator || '', 'ko');
-        case 'commission_rate_asc': return (a.commission_rate ?? -1) - (b.commission_rate ?? -1);
-        case 'commission_rate_desc': return (b.commission_rate ?? -1) - (a.commission_rate ?? -1);
-        case 'destination_asc': return (a.destination || 'zzz').localeCompare(b.destination || 'zzz', 'ko');
-        case 'destination_desc': return (b.destination || '').localeCompare(a.destination || '', 'ko');
-        case 'deadline_asc': return (a.ticketing_deadline || '9999').localeCompare(b.ticketing_deadline || '9999');
-        case 'deadline_desc': return (b.ticketing_deadline || '').localeCompare(a.ticketing_deadline || '');
-        case 'status_asc': return (a.status || '').localeCompare(b.status || '');
-        case 'status_desc': return (b.status || '').localeCompare(a.status || '');
-        case 'price_asc': {
-          const aMin = Math.min(...(a.price_tiers?.map(t => t.adult_price ?? Infinity) || [a.price ?? Infinity]));
-          const bMin = Math.min(...(b.price_tiers?.map(t => t.adult_price ?? Infinity) || [b.price ?? Infinity]));
-          return aMin - bMin;
-        }
-        case 'price_desc': {
-          const aMin = Math.min(...(a.price_tiers?.map(t => t.adult_price ?? 0) || [a.price ?? 0]));
-          const bMin = Math.min(...(b.price_tiers?.map(t => t.adult_price ?? 0) || [b.price ?? 0]));
-          return bMin - aMin;
-        }
-        default: return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-    });
-
     return list;
-  }, [packages, statusFilter, searchQuery, sortBy, showExpired, landOperatorFilter]);
+  }, [packages, statusFilter, searchQuery, sortBy, showExpired]);
 
   // Shift+Click 지원 체크박스 토글
   const handleHeaderSort = (field: string) => {
@@ -1397,6 +1439,21 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           </button>
         ))}
       </div>
+      <div className="flex items-center justify-between mb-2 text-[12px] text-slate-500">
+        <span>총 {totalCount.toLocaleString()}건 · {currentPage}/{totalPages} 페이지</span>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage <= 1 || loading}
+            className="px-2 py-1 rounded border border-slate-200 disabled:opacity-40"
+          >이전</button>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages || loading}
+            className="px-2 py-1 rounded border border-slate-200 disabled:opacity-40"
+          >다음</button>
+        </div>
+      </div>
 
       {/* 목록 */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -1457,7 +1514,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     actionLoading={actionLoading}
                     marketingTracker={marketingTracker}
                     onToggleCheck={toggleCheck}
-                    onSetSelected={setSelected}
+                    onSetSelected={openSelectedDetail}
                     onSetApprovalTarget={setApprovalTarget}
                     onSetInlineEditPkgId={setInlineEditPkgId}
                     onHandleInlineLandOperator={handleInlineLandOperator}

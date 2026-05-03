@@ -11,7 +11,7 @@ const CATEGORIES = [
   { icon: '🏛️', label: '유럽', href: '/destinations/region/europe' },
   { icon: '💍', label: '허니문', href: '/packages?category=honeymoon' },
   { icon: '⛳', label: '해외골프', href: '/packages?category=golf' },
-  { icon: '📖', label: '매거진', href: '/blog' },
+  { icon: '👥', label: '단체·맞춤', href: '/group-inquiry' },
 ];
 
 function isLinkActive(href: string, pathname: string | null): boolean {

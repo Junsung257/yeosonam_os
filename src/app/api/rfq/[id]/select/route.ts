@@ -11,9 +11,9 @@ import {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: rfqId } = await params;
+  const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
     return NextResponse.json(

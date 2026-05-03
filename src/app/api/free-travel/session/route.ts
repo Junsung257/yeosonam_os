@@ -27,12 +27,10 @@ function maskPhone(phone: string | null): string | null {
   return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
 }
 
-function isAdminRequest(request: NextRequest): boolean {
+function assertAdminApiToken(request: NextRequest): boolean {
   const token = process.env.ADMIN_API_TOKEN;
-  if (process.env.NODE_ENV !== 'production') return true;
   if (!token) return false;
-  const headerToken = request.headers.get('x-admin-token');
-  return headerToken === token;
+  return request.headers.get('x-admin-token') === token;
 }
 
 export async function POST(request: NextRequest) {
@@ -86,7 +84,7 @@ export async function GET(request: NextRequest) {
 
   // 목록 조회 모드 (어드민 페이지용)
   if (list) {
-    if (!isAdminRequest(request)) {
+    if (!assertAdminApiToken(request)) {
       return NextResponse.json(
         { code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' },
         { status: 403 },

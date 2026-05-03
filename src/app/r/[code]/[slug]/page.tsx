@@ -12,17 +12,19 @@
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
   params: { code: string; slug: string };
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const { code, slug } = params;
+  const { code: rawCode, slug } = params;
+  const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
-  const ogUrl = `${baseUrl}/api/og/affiliate?code=${encodeURIComponent(code)}&pkg=${encodeURIComponent(slug)}`;
+  const ogUrl = `${baseUrl}/api/og/affiliate?code=${encodeURIComponent(code || rawCode)}&pkg=${encodeURIComponent(slug)}`;
 
-  let title = `여소남 추천 여행 — ${code}`;
+  let title = `여소남 추천 여행 — ${code || rawCode}`;
   let description = '여소남 제휴 콘텐츠 · 추천 보상 포함 (광고)';
   if (isSupabaseConfigured) {
     try {
@@ -33,7 +35,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
         .maybeSingle();
       if (pkg) {
         const p = pkg as { title?: string; destination?: string; product_summary?: string };
-        title = `${p.title || title} · ${code} × 여소남`;
+        title = `${p.title || title} · ${code || rawCode} × 여소남`;
         description = (p.product_summary || `${p.destination || ''} 여행 패키지`) + ' · 여소남 제휴 콘텐츠 (광고)';
       }
     } catch { /* */ }
@@ -46,7 +48,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       title,
       description,
       images: [{ url: ogUrl, width: 1200, height: 630 }],
-      url: `${baseUrl}/r/${code}/${slug}`,
+      url: `${baseUrl}/r/${encodeURIComponent(rawCode)}/${slug}`,
       type: 'website',
     },
     twitter: {
@@ -60,12 +62,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 export default async function AffiliateShortLinkPage({ params }: Params) {
-  const { code, slug } = params;
+  const { code: rawCode, slug } = params;
+  const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
 
   // 서버측 클릭 추적 (best-effort) — 실패해도 redirect 진행.
   // /api/influencer/track 은 쿠키도 발급하지만 redirect 시 쿠키 set 어려우므로,
   // 클라이언트가 /packages/{id}?ref={code} 도착 시 다시 ref 처리되어 쿠키 발급됨.
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && code) {
     try {
       // affiliate_touchpoints 에 직접 INSERT (단축링크 도달 자체를 기록)
       await supabaseAdmin.from('affiliate_touchpoints').insert({
@@ -80,6 +83,7 @@ export default async function AffiliateShortLinkPage({ params }: Params) {
   }
 
   // /packages/{id}?ref={code} 로 영구 redirect (302 — 검색 인덱싱 안 됨)
-  const target = `/packages/${encodeURIComponent(slug)}?ref=${encodeURIComponent(code)}&utm_source=shortlink`;
+  const refParam = code || normalizeAffiliateReferralCode(rawCode);
+  const target = `/packages/${encodeURIComponent(slug)}?ref=${encodeURIComponent(refParam)}&utm_source=shortlink`;
   redirect(target);
 }

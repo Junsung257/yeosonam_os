@@ -1,9 +1,11 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import { getAirlineName } from '@/lib/render-contract';
+import { isSafeImageSrc } from '@/lib/image-url';
 
 export interface PackageCardData {
   id: string;
@@ -168,9 +170,9 @@ export default function PackageCard({
       <Link
         href={`/packages/${pkg.id}`}
         onClick={handleClick}
-        className="block card-touch"
+        className="block card-touch w-full min-w-0 max-w-full"
       >
-        <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-[#F2F4F6] last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow">
+        <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-[#F2F4F6] last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow w-full min-w-0 max-w-full">
           <CardImage
             img={img}
             title={title}
@@ -197,7 +199,7 @@ export default function PackageCard({
     <Link
       href={`/packages/${pkg.id}`}
       onClick={handleClick}
-      className="group block bg-white rounded-[16px] overflow-hidden shadow-card hover:shadow-card-hover transition-shadow card-touch"
+      className="group block bg-white rounded-[16px] overflow-hidden shadow-card md:hover:shadow-card-hover md:hover:-translate-y-1 transition-all duration-200 card-touch"
     >
       <CardImage
         img={img}
@@ -233,10 +235,24 @@ function CardImage({
   isYeosonamPick?: boolean;
   rankNumber?: number;
 }) {
+  const safeSrc = img && isSafeImageSrc(img) ? img.trim() : null;
+  const [imgBroken, setImgBroken] = useState(false);
+  useEffect(() => {
+    setImgBroken(false);
+  }, [safeSrc]);
+  const showImage = Boolean(safeSrc && !imgBroken);
+
   return (
     <div className={`relative flex-shrink-0 overflow-hidden bg-[#F2F4F6] ${sizeClass}`}>
-      {img ? (
-        <Image src={img} alt={title} fill className="object-cover group-hover:scale-105 transition-transform duration-300" sizes={sizes} />
+      {showImage && safeSrc ? (
+        <Image
+          src={safeSrc}
+          alt={title}
+          fill
+          className="object-cover group-hover:scale-105 transition-transform duration-300"
+          sizes={sizes}
+          onError={() => setImgBroken(true)}
+        />
       ) : (
         <div className="w-full h-full bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-2xl md:text-5xl">🌍</div>
       )}
@@ -353,7 +369,7 @@ function CardBody({
       {pkg.product_highlights && pkg.product_highlights.length > 0 && (
         <div className="flex gap-1.5 mt-2.5 flex-wrap">
           {pkg.product_highlights.slice(0, 3).map((tag, i) => (
-            <span key={i} className="text-[12px] text-[#8B95A1] bg-[#F2F4F6] px-2 py-0.5 rounded-full">{tag}</span>
+            <span key={i} className="text-[12px] text-[#3182F6] bg-[#EBF3FE] px-2 py-0.5 rounded-full font-medium">{tag}</span>
           ))}
         </div>
       )}

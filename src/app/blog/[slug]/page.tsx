@@ -636,11 +636,11 @@ export default async function BlogDetailPage({
           aria-label="경로 탐색"
         >
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-gray-500">
-            <Link href="/" className="hover:text-indigo-600">
+            <Link href="/" className="hover:text-[#3182F6]">
               홈
             </Link>
             <span aria-hidden="true">/</span>
-            <Link href="/blog" className="hover:text-indigo-600">
+            <Link href="/blog" className="hover:text-[#3182F6]">
               블로그
             </Link>
             {pkg?.destination && (
@@ -648,7 +648,7 @@ export default async function BlogDetailPage({
                 <span aria-hidden="true">/</span>
                 <Link
                   href={`/blog/destination/${encodeURIComponent(pkg.destination)}`}
-                  className="hover:text-indigo-600"
+                  className="hover:text-[#3182F6]"
                 >
                   {pkg.destination}
                 </Link>
@@ -691,7 +691,7 @@ export default async function BlogDetailPage({
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 pt-4 text-sm text-gray-500">
             <div className="flex items-center gap-2">
               <span
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-bold text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#3182F6] to-[#1B64DA] text-xs font-bold text-white"
                 aria-hidden="true"
               >
                 여
@@ -769,7 +769,7 @@ export default async function BlogDetailPage({
                   return (
                     <>
                       <div
-                        className="prose prose-lg prose-indigo prose-blog max-w-none scroll-smooth"
+                        className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
                         dangerouslySetInnerHTML={{ __html: split.before }}
                       />
                       <InlineRelated
@@ -778,7 +778,7 @@ export default async function BlogDetailPage({
                         relatedPosts={inlineRelatedLites}
                       />
                       <div
-                        className="prose prose-lg prose-indigo prose-blog max-w-none scroll-smooth"
+                        className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
                         dangerouslySetInnerHTML={{ __html: split.after }}
                       />
                     </>
@@ -786,7 +786,7 @@ export default async function BlogDetailPage({
                 }
                 return (
                   <div
-                    className="prose prose-lg prose-indigo prose-blog max-w-none scroll-smooth"
+                    className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
                     dangerouslySetInnerHTML={{ __html: bodyHtml }}
                   />
                 );
@@ -977,7 +977,7 @@ export default async function BlogDetailPage({
         {/* 하단 네비 */}
         <div className="border-t bg-white">
           <div className="mx-auto max-w-6xl px-4 py-8 text-sm">
-            <Link href="/blog" className="font-medium text-indigo-600 hover:text-indigo-800">
+            <Link href="/blog" className="font-medium text-[#3182F6] hover:text-[#1B64DA]">
               ← 블로그 목록으로
             </Link>
           </div>

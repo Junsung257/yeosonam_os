@@ -1,10 +1,14 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import type { TravelItinerary } from '@/types/itinerary';
 import type {
   PackageFeatures, ScoreBreakdown, ScoringPolicy,
 } from './types';
 import { getActivePolicy } from './policy';
-import { extractPackageFeatures, type RawPackageRow } from './extract-features';
+import {
+  extractPackageFeatures,
+  pickPackageRepresentativeDate,
+  type RawPackageRow,
+} from './extract-features';
+import { loadMrtHotelQualityMap } from '@/lib/mrt-hotel-intel';
 import { computeEffectivePrice, type EffectivePriceResult } from './effective-price';
 import { topsis, type CriterionType } from './topsis';
 import { loadBrandEntries, type HotelBrandEntry } from './hotel-brands';
@@ -57,10 +61,19 @@ const TOPSIS_CRITERIA: CriterionType[] = [
   'benefit',  // free_time_ratio
 ];
 
+/** 일정 등급 + MRT(리뷰·상대가격) 블렌딩 — 동일 등급 호텔 간 미세 구분 */
+function blendedHotelBenefit(f: PackageFeatures): number {
+  const label = f.hotel_avg_grade ?? 3.0;
+  const m = f.mrt_hotel_quality_score;
+  if (m == null || Number.isNaN(m)) return label;
+  const mrtPart = 2 + (m / 100) * 3;
+  return 0.5 * label + 0.5 * mrtPart;
+}
+
 function buildMatrixRow(f: PackageFeatures, ep: EffectivePriceResult): number[] {
   return [
     ep.effective_price,
-    f.hotel_avg_grade ?? 3.0,
+    blendedHotelBenefit(f),
     f.meal_count,
     f.free_option_count,
     -f.shopping_count,         // benefit (적을수록 +)
@@ -184,7 +197,17 @@ export async function recommendBestPackages(
     loadReliabilityMap(operatorIds),
     loadBrandEntries().catch((): HotelBrandEntry[] => []),
   ]);
-  const features = candidates.map(c => extractPackageFeatures(c, reliabilityMap));
+  const mrtKeys = candidates.map(c => ({
+    packageId: c.id,
+    departureDate: pickPackageRepresentativeDate(c.price_dates),
+  }));
+  const mrtQualityMap = await loadMrtHotelQualityMap(mrtKeys);
+  const features = candidates.map(c => {
+    const f = extractPackageFeatures(c, reliabilityMap);
+    const k = `${c.id}|${f.departure_date ?? '_'}`;
+    const mq = mrtQualityMap.get(k);
+    return { ...f, mrt_hotel_quality_score: mq ?? null };
+  });
   const eps = features.map(f => computeEffectivePrice(f, policy, brandEntries));
 
   // 3) TOPSIS
@@ -205,6 +228,7 @@ export async function recommendBestPackages(
       rank_in_group: ranks[i],
       group_size: candidates.length,
       why: eps[i].why,
+      mrt_hotel_quality_score: features[i].mrt_hotel_quality_score ?? null,
     };
     return {
       package_id: c.id,
@@ -273,6 +297,10 @@ export async function recomputeAllScores(): Promise<{
     groups.get(key)!.push(e);
   }
 
+  const mrtQualityGlobal = await loadMrtHotelQualityMap(
+    expanded.map(p => ({ packageId: p.id, departureDate: p._date })),
+  );
+
   // 기존 캐시 삭제 (정책 단위)
   const { error: delErr } = await supabaseAdmin
     .from('package_scores').delete().eq('policy_id', policy.id);
@@ -299,7 +327,9 @@ export async function recomputeAllScores(): Promise<{
     const features = items.map(p => {
       const sig = lookupMonthSignal(destSignals, p.destination, p._date);
       const enrichedPkg: RawPackageRow = { ...p, climate_score: sig.climate_score, popularity_score: sig.popularity_score };
-      return extractPackageFeatures(enrichedPkg, reliabilityMap, p._date);
+      const f = extractPackageFeatures(enrichedPkg, reliabilityMap, p._date);
+      const mq = mrtQualityGlobal.get(`${p.id}|${p._date}`);
+      return { ...f, mrt_hotel_quality_score: mq ?? null };
     });
     const eps = features.map(f => computeEffectivePrice(f, policy, brandEntries));
     const matrix = features.map((f, i) => buildMatrixRow(f, eps[i]));
@@ -328,6 +358,7 @@ export async function recomputeAllScores(): Promise<{
           list_price: features[i].list_price,
           deductions: eps[i].deductions,
           why: eps[i].why,
+          mrt_hotel_quality_score: features[i].mrt_hotel_quality_score ?? null,
         },
       });
     });
@@ -427,6 +458,8 @@ export async function recomputeGroupScores(
     package_id: r.package_id,
     policy_id: policy.id,
     group_key: result.group_key,
+    departure_date: r.features.departure_date,
+    list_price: r.list_price,
     effective_price: r.effective_price,
     topsis_score: r.topsis_score,
     rank_in_group: r.rank,
@@ -435,6 +468,7 @@ export async function recomputeGroupScores(
       list_price: r.list_price,
       deductions: r.breakdown.deductions,
       why: r.breakdown.why,
+      mrt_hotel_quality_score: r.features.mrt_hotel_quality_score ?? null,
     },
     shopping_count: r.features.shopping_count,
     hotel_avg_grade: r.features.hotel_avg_grade,

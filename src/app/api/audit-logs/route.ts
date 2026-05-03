@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
-}
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 // GET: 감사 로그 타임라인 조회
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
   const { searchParams } = new URL(request.url);
   const targetType = searchParams.get('targetType'); // 'booking' | 'affiliate' | 'settlement'
   const targetId = searchParams.get('targetId');
   const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-  const supabase = getSupabase();
+  const supabase = supabaseAdmin;
 
   try {
     let query = supabase
@@ -38,7 +34,10 @@ export async function GET(request: NextRequest) {
 
 // POST: 감사 로그 기록
 export async function POST(request: NextRequest) {
-  const supabase = getSupabase();
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();

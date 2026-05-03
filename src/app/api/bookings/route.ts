@@ -3,6 +3,7 @@ import { getBookings, getBookingById, createBooking, updateBookingStatus, update
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -156,7 +157,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 어필리에이트 + 상품 병렬 조회 (순차 → 동시 실행으로 최대 300-500ms 절감)
-    const affRef = body.affiliateRef || request.cookies.get('aff_ref')?.value;
+    const affRefRaw = (body.affiliateRef as string | undefined) || request.cookies.get('aff_ref')?.value;
+    const affRef =
+      typeof affRefRaw === 'string' && affRefRaw.trim() ? normalizeAffiliateReferralCode(affRefRaw) : '';
     type AffRow = { id: string; grade: number | null; bonus_rate: number; created_at: string | null };
     let affData: AffRow | null = null;
 
@@ -228,6 +231,11 @@ export async function POST(request: NextRequest) {
     }
 
     const booking = await createBooking(body);
+
+    if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
+      const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
+      enqueueDepositNoticeGateTask(booking.id as string).catch(() => {});
+    }
 
     // 어필리에이트 last_conversion_at 업데이트
     if (affData && booking?.id) {
@@ -356,6 +364,25 @@ export async function PATCH(request: NextRequest) {
     const { id } = body;
     if (!id) {
       return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
+    }
+
+    // 계약금 안내 게이트 해제 (assisted → 운영자 승인 후 전이 허용)
+    if (typeof body.deposit_notice_blocked === 'boolean') {
+      const { data, error } = await supabaseAdmin
+        .from('bookings')
+        .update({
+          deposit_notice_blocked: body.deposit_notice_blocked,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (body.deposit_notice_blocked === false) {
+        const { resolveDepositNoticeGateTasks } = await import('@/lib/booking-workflow-tasks');
+        await resolveDepositNoticeGateTasks(id);
+      }
+      return NextResponse.json({ booking: data });
     }
 
     // 일행 추가 (booking_passengers에 연결)

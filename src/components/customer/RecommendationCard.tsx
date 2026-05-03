@@ -105,7 +105,7 @@ function generateHeadline(rank: number, ded: Deductions, feat: Features): string
     if (noShopping) return '노쇼핑인데 이 일정 최저가';
     if (fiveStar) return '5성급인데 이 일정 최저가';
     if (optionPacked) return '옵션 포함인데 이 일정 최저가';
-    return '이 일정에서 가장 좋은 구성';
+    return '이 출발일 최고 가성비 구성';
   }
   if (flight && fiveStar) return '직항·5성 가치가 큰 옵션';
   if (flight) return '직항 가치가 큰 옵션';
@@ -218,7 +218,7 @@ export default function RecommendationCard({
               </span>
               <span className="text-[11px] font-bold text-gray-500">상당</span>
             </div>
-            <p className="text-[12.5px] text-rose-600 font-semibold mt-1 break-keep">
+            <p className="text-[13px] text-rose-600 font-semibold mt-1 break-keep">
               💸 이 구성 따로 사면 <span className="text-[14px] font-extrabold">+{savingsManwon}만원</span> 더 들어요
             </p>
           </div>
@@ -241,7 +241,7 @@ export default function RecommendationCard({
         {/* ③ Social Proof — 임계값 충족 시만 */}
         {proof && (
           <div className="px-5 pb-3">
-            <p className="text-[11.5px] text-gray-600 flex items-center gap-1.5">
+            <p className="text-[12px] text-gray-600 flex items-center gap-1.5">
               <span className="w-1 h-1 rounded-full bg-emerald-500 flex-shrink-0" />
               <span>{proof}</span>
             </p>

@@ -50,12 +50,29 @@ export async function POST(request: NextRequest) {
     );
 
     if (!upstream.ok) {
+      let body: { error?: string; error_description?: string } = {};
+      try {
+        body = (await upstream.json()) as typeof body;
+      } catch {
+        /* ignore */
+      }
+      const desc = (body.error_description || '').toLowerCase();
+      const isRotatedRace =
+        body.error === 'invalid_grant' &&
+        (desc.includes('already used') || desc.includes('already been used'));
+
       const res = NextResponse.json(
-        { error: 'refresh 실패', status: upstream.status },
-        { status: 401 },
+        {
+          error: isRotatedRace ? 'refresh_in_flight' : 'refresh 실패',
+          status: upstream.status,
+        },
+        { status: isRotatedRace ? 409 : 401 },
       );
-      res.cookies.delete('sb-access-token');
-      res.cookies.delete('sb-refresh-token');
+      // 동시 refresh 로 이미 다른 요청이 토큰을 회전시킨 경우 쿠키를 지우면 갱신 성공분까지 날아간다.
+      if (!isRotatedRace) {
+        res.cookies.delete('sb-access-token');
+        res.cookies.delete('sb-refresh-token');
+      }
       return res;
     }
 

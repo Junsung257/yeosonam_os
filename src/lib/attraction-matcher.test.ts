@@ -52,6 +52,16 @@ describe('normalizeDays', () => {
   it('{days 누락} 객체 → []', () => {
     expect(normalizeDays({} as { days?: unknown[] })).toEqual([]);
   });
+
+  it('JSON 문자열 → days 파싱', () => {
+    const arr = [{ day: 1, schedule: [] }];
+    expect(normalizeDays(JSON.stringify({ days: arr }))).toEqual(arr);
+  });
+
+  it('day_list 비표준 키 → 배열 추출', () => {
+    const arr = [{ day: 1 }];
+    expect(normalizeDays({ day_list: arr } as { day_list: typeof arr })).toEqual(arr);
+  });
 });
 
 describe('matchAttraction — 기본 매칭', () => {

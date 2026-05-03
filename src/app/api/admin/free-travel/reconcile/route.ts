@@ -24,15 +24,14 @@ const RequestSchema = z.object({
   totalKrw:    z.number().int().min(0).optional(),
 });
 
-function isAdminRequest(request: NextRequest): boolean {
-  if (process.env.NODE_ENV !== 'production') return true;
+function assertAdminApiToken(request: NextRequest): boolean {
   const token = process.env.ADMIN_API_TOKEN;
   if (!token) return false;
   return request.headers.get('x-admin-token') === token;
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!assertAdminApiToken(request)) {
     return NextResponse.json({ code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' }, { status: 403 });
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -76,7 +75,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!assertAdminApiToken(request)) {
     return NextResponse.json({ code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' }, { status: 403 });
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {

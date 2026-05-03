@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getPackagesByAngle } from '@/lib/angle-matcher';
 import GlobalNav from '@/components/customer/GlobalNav';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
 export const revalidate = 3600;
@@ -107,7 +107,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
       <main className="min-h-screen bg-white">
         <header className="border-b bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white">
           <div className="mx-auto max-w-6xl px-4 md:px-6 py-14 md:py-20">
-            <div className="flex items-center gap-2 text-[13px] md:text-sm text-indigo-200 mb-4">
+            <div className="flex items-center gap-2 text-[13px] md:text-sm text-blue-200 mb-4">
               <Link href="/" className="hover:text-white">홈</Link>
               <span>/</span>
               <Link href="/blog" className="hover:text-white">블로그</Link>
@@ -118,7 +118,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
             <h1 className="text-[40px] md:text-[60px] font-black tracking-tight leading-[1.05]">
               {meta.label} 여행 가이드
             </h1>
-            <p className="mt-4 text-base md:text-lg text-indigo-100 leading-relaxed">{meta.tagline} · {posts.length}편의 가이드</p>
+            <p className="mt-4 text-base md:text-lg text-blue-100 leading-relaxed">{meta.tagline} · {posts.length}편의 가이드</p>
           </div>
         </header>
 
@@ -184,15 +184,19 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                 {posts.map(post => (
                   <Link key={post.id} href={`/blog/${post.slug}`}
                     className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
-                    {post.og_image_url ? (
-                      <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
-                        <Image src={post.og_image_url} alt={post.seo_title || ''} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover transition group-hover:scale-105" unoptimized />
-                      </div>
-                    ) : (
-                      <div className="flex aspect-[16/9] items-center justify-center bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
-                        <span className="text-4xl">{meta.emoji}</span>
-                      </div>
-                    )}
+                    <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
+                      <SafeCoverImg
+                        src={post.og_image_url}
+                        alt={post.seo_title || ''}
+                        className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
+                        loading="lazy"
+                        fallback={
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
+                            <span className="text-4xl">{meta.emoji}</span>
+                          </div>
+                        }
+                      />
+                    </div>
                     <div className="p-5">
                       {post.travel_packages?.destination && (
                         <span className="rounded-full bg-[#EBF3FE] px-2.5 py-1 text-xs font-medium text-[#3182F6] mb-3 inline-block">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,14 @@ interface Session {
     activities: { name: string; price: number }[];
     aiSummary: string;
     comparison: { totalMin: number; totalMax: number };
+    itinerarySource?: 'llm' | 'template';
+    itineraryLlmError?: string;
+    itineraryScore?: { score: number; label: string };
+    plannerPreferences?: {
+      companionType?: string | null;
+      hotelBudgetBand?: string | null;
+      travelPace?: string | null;
+    };
   };
   source: string;
   status?: string;
@@ -80,6 +89,15 @@ function fmtDate(s: string) { return s ? s.slice(0, 10) : '-'; }
 
 // ─── 컴포넌트 ────────────────────────────────────────────────────────────────
 
+interface ItineraryMetricsPayload {
+  windowDays: number;
+  sampleSize: number;
+  llm: number;
+  template: number;
+  unknown: number;
+  itineraryLlmErrorCounts: Record<string, number>;
+}
+
 interface ExperimentsPayload {
   since: string;
   days: number;
@@ -110,12 +128,17 @@ interface ExperimentsPayload {
   message?: string;
 }
 
+type MetricsWindow = 7 | 30 | 90;
+
 export default function FreeTravelPageClient({
   initialSessions,
+  itineraryMetricsByWindow,
 }: {
   initialSessions: Session[];
+  itineraryMetricsByWindow: Record<MetricsWindow, ItineraryMetricsPayload | null>;
 }) {
   const [tab, setTab]             = useState<'leads' | 'revenues' | 'reservations' | 'experiments'>('leads');
+  const [metricsWindow, setMetricsWindow] = useState<MetricsWindow>(30);
   // sessions는 서버 pre-fetch 데이터로 초기화 (useEffect fetch 없음)
   const [sessions, setSessions]   = useState<Session[]>(initialSessions);
   const [revenues, setRevenues]   = useState<RevenueItem[]>([]);
@@ -230,12 +253,66 @@ export default function FreeTravelPageClient({
 
   const totalCommission  = revenues.reduce((s, r) => s + (r.commission ?? 0), 0);
 
+  const metricsActive = itineraryMetricsByWindow[metricsWindow];
+  const hasAnyMetricsPanel = ([7, 30, 90] as const).some(
+    d => itineraryMetricsByWindow[d] != null,
+  );
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* 헤더 */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">자유여행 플래너 관리</h1>
         <p className="text-sm text-gray-500 mt-1">MRT 어필리에이트 리드 · 수익 · 예약 내역</p>
+        {hasAnyMetricsPanel && (
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-indigo-900">일정 AI 통계</p>
+              <span className="text-xs text-indigo-700">기간</span>
+              {([7, 30, 90] as const).map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setMetricsWindow(d)}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                    metricsWindow === d
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white/80 text-indigo-800 ring-1 ring-indigo-200 hover:bg-white'
+                  }`}
+                >
+                  {d}일
+                </button>
+              ))}
+            </div>
+            {metricsActive ? (
+              <>
+                <p className="mt-2 text-xs text-indigo-800">
+                  최근 <strong>{metricsActive.windowDays}</strong>일 · 표본 <strong>{metricsActive.sampleSize}</strong>건
+                  <span className="text-indigo-600"> (건수 상한 3,000)</span>
+                </p>
+                <div className="mt-2 flex flex-wrap gap-3 text-indigo-800">
+                  <span>DeepSeek 일정 <strong>{metricsActive.llm}</strong></span>
+                  <span>템플릿 폴백 <strong>{metricsActive.template}</strong></span>
+                  <span>미분류 <strong>{metricsActive.unknown}</strong></span>
+                </div>
+                {Object.keys(metricsActive.itineraryLlmErrorCounts).length > 0 && (
+                  <p className="mt-2 text-xs text-indigo-700">
+                    폴백 사유:{' '}
+                    {Object.entries(metricsActive.itineraryLlmErrorCounts)
+                      .map(([k, v]) => `${k} ${v}`)
+                      .join(' · ')}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-amber-800">이 기간 통계를 불러오지 못했습니다. DB 연결을 확인해 주세요.</p>
+            )}
+            <p className="mt-2 text-[11px] text-indigo-600">
+              리타겟 알림톡 <strong>플래너링크</strong>에는 고객별 저장 견적 URL(<code className="rounded bg-white/60 px-1">?session=</code>)이 들어갑니다. 주간 크론{' '}
+              <code className="rounded bg-white/60 px-1">/api/cron/free-travel-plan-housekeeping</code>
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 탭 */}
@@ -269,6 +346,23 @@ export default function FreeTravelPageClient({
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[s.status ?? 'new'] ?? 'bg-gray-100 text-gray-600'}`}>
                       {STATUS_LABEL[s.status ?? 'new'] ?? s.status}
                     </span>
+                    {s.plan_json?.itinerarySource === 'llm' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-medium">일정 AI</span>
+                    )}
+                    {s.plan_json?.itinerarySource === 'template' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">일정 템플릿</span>
+                    )}
+                    {typeof s.plan_json?.itineraryScore?.score === 'number' && (
+                      <span className="text-[10px] text-gray-500">구성점수 {s.plan_json.itineraryScore!.score}</span>
+                    )}
+                    {s.plan_json?.itineraryLlmError && (
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 font-medium cursor-help"
+                        title={s.plan_json.itineraryLlmError}
+                      >
+                        일정 폴백
+                      </span>
+                    )}
                   </div>
 
                   {s.plan_json?.aiSummary && (
@@ -303,6 +397,23 @@ export default function FreeTravelPageClient({
                     {(s.plan_json?.comparison?.totalMin ?? 0) > 0 && (
                       <span className="text-blue-600 font-medium">총 {fmt만(s.plan_json.comparison.totalMin)}~{fmt만(s.plan_json.comparison.totalMax)}</span>
                     )}
+                    {s.plan_json?.plannerPreferences && (
+                      <span className="text-gray-500" title="플래너 옵션(복원용)">
+                        {[
+                          s.plan_json.plannerPreferences.companionType,
+                          s.plan_json.plannerPreferences.hotelBudgetBand,
+                          s.plan_json.plannerPreferences.travelPace,
+                        ].filter(Boolean).join(' · ') || '플래너 옵션 없음'}
+                      </span>
+                    )}
+                    <Link
+                      href={`/free-travel?session=${s.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline font-medium"
+                    >
+                      플래너에서 열기
+                    </Link>
                   </div>
                 </div>
 

@@ -10,25 +10,29 @@ import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
+import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 
 /**
- * 블로그 자동 발행 크론 — 매시간 정각 실행 (vercel.json: 0 * * * *)
+ * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
  *
  * 로직:
- *   1) blog_topic_queue WHERE target_publish_at <= NOW() AND status='queued' 스캔 (최대 10개)
+ *   1) blog_topic_queue WHERE target_publish_at <= NOW() AND status='queued' 스캔 (최대 MAX_BATCH)
  *   2) 각 항목:
  *      a. status='generating' 락 (동시성 방지)
  *      b. source 에 따라 생성:
  *         - pillar       → /destinations/[city] 허브 (장문 AI)
- *         - card_news    → from-card-news API 위임 (PNG 삽입 블로그)
+ *         - card_news    → from-card-news `publisher_bridge`(본문만) + 퍼블리셔가 단일 INSERT/승격
  *         - product      → content-generator.generateBlogPost (템플릿)
  *         - 나머지       → Gemini 2.5 Flash + style guide
  *      c. 4-Gate 검증 (length·cliche·duplicate·keyword_density)
- *      d. Pass → content_creatives insert(status='published') + 색인 알림 + ISR revalidate
+ *      d. Pass → content_creatives insert 또는 draft 승격(status='published') + 색인 알림 + ISR revalidate
  *         Fail → attempts++ / 2회 초과 시 status='failed'
  *   3) 실패 사유는 error_patterns RAG 에 자동 기록 (자기학습)
  *
  * 멀티테넌시: blog_topic_queue.tenant_id 그대로 content_creatives 에 전파
+ *
+ * 카드뉴스 경로는 "생성 API가 draft를 먼저 넣고 퍼블리셔가 또 INSERT"하면 멱등이 깨지므로,
+ * At-least-once 크론에서 흔한 **단일 커밋 지점** 패턴으로 브리지 호출을 분리함.
  */
 
 export const runtime = 'nodejs';
@@ -156,23 +160,65 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
     //   3) product_id 있음 → generateBlogPost (템플릿)
     //   4) 나머지 → Gemini 정보성 글
     let generated: GeneratedBlog;
+    /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
+    let promoteDraftId: string | null = null;
+
     if (item.source === 'pillar' && item.destination) {
       generated = await generatePillar(item);
     } else if (item.card_news_id) {
-      // 어드민 직접 생성과 중복 방지: linked_blog_id 이미 있으면 done 처리
+      promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
         .from('card_news')
         .select('linked_blog_id')
         .eq('id', item.card_news_id)
         .limit(1);
-      if (cnCheck?.[0]?.linked_blog_id) {
-        await supabaseAdmin
-          .from('blog_topic_queue')
-          .update({ status: 'done', meta: { ...(item.meta || {}), skip_reason: 'already_generated_by_admin' } })
-          .eq('id', item.id);
-        return { id: item.id, topic: item.topic, status: 'done', reason: 'already_generated_by_admin' };
+      const linkedId = cnCheck?.[0]?.linked_blog_id as string | undefined;
+
+      if (linkedId) {
+        const { data: ccRow } = await supabaseAdmin
+          .from('content_creatives')
+          .select('id, status, blog_html, slug, seo_title, seo_description, og_image_url')
+          .eq('id', linkedId)
+          .maybeSingle();
+
+        if (!ccRow) {
+          await handleFailure(item, 'card_news.linked_blog_id 에 해당하는 content_creatives 행 없음', null, true);
+          return { id: item.id, topic: item.topic, status: 'error', reason: 'orphan_linked_blog' };
+        }
+
+        if (ccRow.status === 'published') {
+          await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'done',
+              content_creative_id: ccRow.id,
+              meta: { ...(item.meta || {}), skip_reason: 'card_news_blog_already_published' },
+            })
+            .eq('id', item.id);
+          return { id: item.id, topic: item.topic, status: 'done', reason: 'already_published' };
+        }
+
+        if (ccRow.status === 'draft' && (ccRow.blog_html || '').length >= 80) {
+          promoteDraftId = ccRow.id;
+          generated = {
+            blog_html: ccRow.blog_html as string,
+            slug: ccRow.slug as string,
+            seo_title: (ccRow.seo_title as string) || item.topic,
+            seo_description: (ccRow.seo_description as string) || '',
+            og_image_url: ccRow.og_image_url,
+          };
+        } else {
+          await handleFailure(
+            item,
+            `연결된 블로그 초안이 비어 있거나 상태가 비정상(status=${ccRow.status})`,
+            null,
+            true,
+          );
+          return { id: item.id, topic: item.topic, status: 'error', reason: 'invalid_linked_draft' };
+        }
+      } else {
+        generated = await generateFromCardNews(item);
       }
-      generated = await generateFromCardNews(item);
     } else if (item.source === 'product' && item.product_id) {
       generated = await generateFromProduct(item);
     } else {
@@ -224,43 +270,68 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
       return { id: item.id, topic: item.topic, status: 'gate_failed', reason: qa.summary };
     }
 
-    // content_creatives INSERT
     const now = new Date().toISOString();
-    const { data: inserted, error: insErr } = await supabaseAdmin
-      .from('content_creatives')
-      .insert({
-        tenant_id: item.tenant_id ?? null,                  // 멀티테넌트 격리
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        seo_title: generated.seo_title,
-        seo_description: generated.seo_description,
-        og_image_url: generated.og_image_url,
-        product_id: item.product_id ?? null,
-        category: item.category || (item.product_id ? 'product_intro' : 'travel_tips'),
-        channel: 'naver_blog',
-        angle_type: item.angle_type || 'value',
-        status: 'published',
-        published_at: now,
-        quality_gate: qa,
-        topic_source: item.source,
-        destination: item.destination ?? null,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        pillar_for: item.source === 'pillar' ? item.destination : null,
-        landing_enabled: !!item.product_id,
-        target_ad_keywords: item.meta?.keywords ?? [],
-        readability_score: readability.score,
-        readability_issues: readability.issues,
-        generation_meta: { queue_item_id: item.id, ...(item.meta || {}) },
-      })
-      .select('id')
-      .limit(1);
+    const rowPayload = {
+      tenant_id: item.tenant_id ?? null,
+      blog_html: generated.blog_html,
+      slug: generated.slug,
+      seo_title: generated.seo_title,
+      seo_description: generated.seo_description,
+      og_image_url: generated.og_image_url,
+      product_id: item.product_id ?? null,
+      category: item.category || (item.product_id ? 'product_intro' : 'travel_tips'),
+      channel: 'naver_blog' as const,
+      angle_type: item.angle_type || 'value',
+      status: 'published' as const,
+      published_at: now,
+      quality_gate: qa,
+      topic_source: item.source,
+      destination: item.destination ?? null,
+      content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+      pillar_for: item.source === 'pillar' ? item.destination : null,
+      landing_enabled: !!item.product_id,
+      target_ad_keywords: item.meta?.keywords ?? [],
+      readability_score: readability.score,
+      readability_issues: readability.issues,
+      generation_meta: promoteDraftId
+        ? { queue_item_id: item.id, promoted_from_draft: true, ...(item.meta || {}) }
+        : { queue_item_id: item.id, ...(item.meta || {}) },
+    };
 
-    if (insErr) {
-      await handleFailure(item, `DB insert 실패: ${insErr.message}`, qa);
-      return { id: item.id, topic: item.topic, status: 'insert_failed', reason: insErr.message };
+    let creativeId: string;
+
+    if (promoteDraftId) {
+      const { error: upErr } = await supabaseAdmin
+        .from('content_creatives')
+        .update(rowPayload)
+        .eq('id', promoteDraftId);
+
+      if (upErr) {
+        await handleFailure(item, `DB update(초안승격) 실패: ${upErr.message}`, qa);
+        return { id: item.id, topic: item.topic, status: 'update_failed', reason: upErr.message };
+      }
+      creativeId = promoteDraftId;
+    } else {
+      const { data: inserted, error: insErr } = await supabaseAdmin
+        .from('content_creatives')
+        .insert(rowPayload)
+        .select('id')
+        .limit(1);
+
+      if (insErr) {
+        await handleFailure(item, `DB insert 실패: ${insErr.message}`, qa);
+        return { id: item.id, topic: item.topic, status: 'insert_failed', reason: insErr.message };
+      }
+
+      creativeId = inserted?.[0]?.id as string;
     }
 
-    const creativeId = inserted?.[0]?.id;
+    if (item.card_news_id && creativeId && !promoteDraftId) {
+      await supabaseAdmin
+        .from('card_news')
+        .update({ linked_blog_id: creativeId, updated_at: now })
+        .eq('id', item.card_news_id);
+    }
 
     // 큐 업데이트
     await supabaseAdmin.from('blog_topic_queue')
@@ -275,15 +346,6 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
     return { id: item.id, topic: item.topic, status: 'published', reason: generated.slug };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
-
-    // 카드뉴스 경로가 이미 블로그 INSERT까지 완료한 경우 — 큐만 published 로 마무리
-    if (msg.startsWith('__ALREADY_PUBLISHED__')) {
-      const creativeId = msg.replace('__ALREADY_PUBLISHED__', '');
-      await supabaseAdmin.from('blog_topic_queue')
-        .update({ status: 'published', content_creative_id: creativeId })
-        .eq('id', item.id);
-      return { id: item.id, topic: item.topic, status: 'published', reason: creativeId };
-    }
 
     // 컨텍스트 부족(관광지+상품 0)은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
@@ -333,24 +395,18 @@ interface GeneratedBlog {
 }
 
 /**
- * 카드뉴스 기반 블로그 — 이미 확정된 card_news + 슬라이드 PNG 를 활용.
- * 내부적으로 /api/blog/from-card-news 를 재사용 (이미 Brief→블로그 로직 완비).
+ * 카드뉴스 기반 블로그 — 확정된 card_news + 슬라이드 PNG.
+ * `publisher_bridge` 로 본문만 받아 퍼블리셔가 게이트 통과 후 단일 INSERT (draft 선삽입 없음).
  */
 async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
-  // 카드뉴스 로드
   const { data: cn, error: cnErr } = await supabaseAdmin
     .from('card_news')
-    .select('id, slide_image_urls, slides, linked_blog_id, status')
+    .select('id, slide_image_urls, slides, status')
     .eq('id', item.card_news_id)
     .limit(1);
 
   if (cnErr || !cn?.[0]) throw new Error(`카드뉴스 로드 실패: ${item.card_news_id}`);
   const card = cn[0];
-
-  // 이미 연결된 블로그 있으면 에러 (중복 방지)
-  if (card.linked_blog_id) {
-    throw new Error(`이미 블로그 연결됨: linked_blog_id=${card.linked_blog_id}`);
-  }
 
   const slideUrls = (card.slide_image_urls as string[]) || [];
   if (slideUrls.length === 0) {
@@ -358,12 +414,17 @@ async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const cronSecret = process.env.CRON_SECRET;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;
+
   const res = await fetch(`${baseUrl}/api/blog/from-card-news`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       card_news_id: item.card_news_id,
       slide_image_urls: slideUrls,
+      publisher_bridge: true,
     }),
   });
 
@@ -373,20 +434,17 @@ async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
   }
 
   const data = await res.json();
-  // from-card-news 는 이미 content_creatives INSERT까지 수행함 → 이후 publisher 로직이 중복 INSERT 하면 충돌
-  // 그래서 여기선 "이미 만들어졌다" 신호를 큐 메타로 남기고 더 이상 진행 안 함
-  if (data.blog_id) {
-    // publisher 본 흐름을 조기종료 — 다음 item 처리
-    throw new Error(`__ALREADY_PUBLISHED__${data.blog_id}`);
+  const bridge = parsePublisherBridgeResponse(data);
+  if (!bridge) {
+    throw new Error('from-card-news: publisher_bridge 파싱 실패(필드 누락·어드민 응답 혼동). 배포·CRON_SECRET·요청 본문을 확인하세요.');
   }
 
-  // 폴백: API가 blog_html만 리턴한 경우 (이론상 드묾)
   return {
-    blog_html: data.blog_html || '',
-    slug: data.slug || `cardnews-${item.card_news_id}`,
-    seo_title: data.seo_title || item.topic,
-    seo_description: data.seo_description || '',
-    og_image_url: slideUrls[0] || null,
+    blog_html: bridge.blog_html,
+    slug: bridge.slug || `cardnews-${item.card_news_id}`,
+    seo_title: bridge.seo_title || item.topic,
+    seo_description: bridge.seo_description || '',
+    og_image_url: bridge.og_image_url ?? slideUrls[0] ?? null,
   };
 }
 

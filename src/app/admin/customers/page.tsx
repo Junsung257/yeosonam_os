@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { GRADE_STYLE, LIFECYCLE_STAGES, getNextAction, type CustomerStatus } from '@/lib/mileage';
+import { BOOKING_STATUS_COLOR, BOOKING_STATUS_LABEL } from '@/lib/status-colors';
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -56,15 +57,7 @@ interface MileageHistory {
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
-const BOOKING_STATUS: Record<string, string> = {
-  pending: '대기', confirmed: '확정', completed: '완료', cancelled: '취소',
-};
-const BOOKING_STATUS_COLOR: Record<string, string> = {
-  pending:   'bg-yellow-50 text-yellow-700',
-  confirmed: 'bg-blue-50 text-blue-700',
-  completed: 'bg-green-50 text-green-700',
-  cancelled: 'bg-slate-100 text-slate-500',
-};
+const BOOKING_STATUS: Record<string, string> = BOOKING_STATUS_LABEL;
 const CHANNEL_LABEL: Record<string, string> = {
   phone: '전화', kakao: '카카오', email: '이메일', visit: '방문', cafe: '카페', sms: 'SMS',
 };

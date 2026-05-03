@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCronBearer } from '@/lib/cron-auth';
 import { isSupabaseConfigured, supabase, createMessageLog } from '@/lib/supabase';
 import { getNotificationAdapter } from '@/lib/notification-adapter';
 
@@ -11,16 +12,12 @@ import { getNotificationAdapter } from '@/lib/notification-adapter';
  * D-3:  출발 확정서 안내 (CONFIRMATION_GUIDE) 로그
  * D+1:  귀국 해피콜 (HAPPY_CALL) 로그
  */
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
-  // 인증: Vercel Cron Secret 또는 force=true (관리자 테스트용)
+  const authErr = requireCronBearer(request);
+  if (authErr) return authErr;
+
   const isForce = request.nextUrl.searchParams.get('force') === 'true';
-  if (!isForce) {
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

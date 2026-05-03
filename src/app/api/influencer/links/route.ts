@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,16 +8,28 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-// GET: 인플루언서가 생성한 링크 목록
+function readPin(req: NextRequest, body?: { pin?: string }): string | undefined {
+  const h = req.headers.get('x-influencer-pin');
+  if (h?.trim()) return h.trim();
+  return typeof body?.pin === 'string' ? body.pin.trim() : undefined;
+}
+
+// GET: 링크 목록 — PIN 필수 (헤더 x-influencer-pin)
 export async function GET(req: NextRequest) {
   try {
     const referral_code = req.nextUrl.searchParams.get('code');
     if (!referral_code) return NextResponse.json({ error: '코드 필요' }, { status: 400 });
 
+    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, readPin(req));
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
+    }
+
+    const canon = (auth.affiliate as { referral_code: string }).referral_code;
     const { data: links, error } = await supabaseAdmin
       .from('influencer_links')
       .select('*')
-      .eq('referral_code', referral_code)
+      .eq('referral_code', canon)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -26,26 +39,28 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: 새 링크 생성
+// POST: 새 링크 생성 — body.pin 필수
 export async function POST(req: NextRequest) {
   try {
-    const { referral_code, package_id, package_title } = await req.json();
+    const body = await req.json();
+    const { referral_code, package_id, package_title, pin } = body as {
+      referral_code?: string;
+      package_id?: string;
+      package_title?: string;
+      pin?: string;
+    };
     if (!referral_code || !package_id) {
       return NextResponse.json({ error: '필수 필드 누락' }, { status: 400 });
     }
 
-    // 어필리에이트 확인
-    const { data: affiliate } = await supabaseAdmin
-      .from('affiliates')
-      .select('id, referral_code')
-      .eq('referral_code', referral_code)
-      .single();
-
-    if (!affiliate) {
-      return NextResponse.json({ error: '존재하지 않는 코드' }, { status: 404 });
+    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, readPin(req, { pin }));
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
-    // 중복 체크 (같은 상품에 대해 이미 생성된 링크)
+    const affiliate = auth.affiliate as { id: string; referral_code: string };
+    const canon = affiliate.referral_code;
+
     const { data: existing } = await supabaseAdmin
       .from('influencer_links')
       .select('id, short_url')
@@ -61,15 +76,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 링크 URL 생성
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
-    const shortUrl = `${baseUrl}/packages/${package_id}?ref=${referral_code}`;
+    const shortUrl = `${baseUrl}/packages/${package_id}?ref=${encodeURIComponent(canon)}`;
 
     const { data: link, error } = await supabaseAdmin
       .from('influencer_links')
       .insert({
         affiliate_id: affiliate.id,
-        referral_code,
+        referral_code: canon,
         package_id,
         package_title: package_title || null,
         short_url: shortUrl,

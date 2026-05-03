@@ -148,9 +148,9 @@ function generateContractHtml(params: {
 // ── GET: 계약서 조회 ─────────────────────────────────────────────────────────
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: rfqId } = await params;
+  const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
     const mockHtml = generateContractHtml({

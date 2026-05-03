@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { findOrCreateCustomerByPhone } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,7 +18,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 인플루언서/제휴 추천인 코드 (미들웨어가 ?ref= 파라미터에서 쿠키로 저장)
-    const affRef = req.cookies.get('aff_ref')?.value || null;
+    const affRaw = req.cookies.get('aff_ref')?.value || null;
+    const affCanon = affRaw?.trim() ? normalizeAffiliateReferralCode(affRaw) : '';
+    const affRef = affCanon || null;
 
     const { error } = await supabase.from('leads').insert({
       product_id: productId,

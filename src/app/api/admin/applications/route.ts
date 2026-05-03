@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 // GET: 파트너 신청 목록
 export async function GET(request: NextRequest) {
@@ -52,14 +53,17 @@ export async function POST(request: NextRequest) {
       let code = '';
       for (let attempt = 0; attempt < 10; attempt++) {
         const suffix = Array.from({ length: 6 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
-        const candidate = `${app.name.replace(/[^a-zA-Z가-힣]/g, '').slice(0, 4).toUpperCase()}_${suffix}`;
+        const candidate = normalizeAffiliateReferralCode(
+          `${app.name.replace(/[^a-zA-Z가-힣]/g, '').slice(0, 4).toUpperCase()}_${suffix}`,
+        );
         const { count } = await supabaseAdmin
           .from('affiliates')
           .select('*', { count: 'exact', head: true })
           .eq('referral_code', candidate);
         if (!count || count === 0) { code = candidate; break; }
       }
-      if (!code) code = `YSN_${Date.now().toString(36).toUpperCase().slice(-6)}`;
+      if (!code) code = normalizeAffiliateReferralCode(`YSN_${Date.now().toString(36).toUpperCase().slice(-6)}`);
+      else code = normalizeAffiliateReferralCode(code);
 
       // affiliates 테이블에 생성
       const { data: affiliate, error: affErr } = await supabaseAdmin

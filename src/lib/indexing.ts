@@ -11,13 +11,13 @@
 
 import { requestGoogleIndexing, IndexingResult } from './gsc-client';
 
-const INDEXNOW_KEY = process.env.INDEXNOW_KEY || '2bf8a3e4yeosonam7c1d9f6e0b5a';
+const INDEXNOW_KEY = process.env.INDEXNOW_KEY ?? '';
 
 export interface IndexingReport {
   url: string;
   google: 'success' | 'failed' | 'skipped';
   google_error?: string;
-  indexnow: 'success' | 'failed';
+  indexnow: 'success' | 'failed' | 'skipped';
   indexnow_error?: string;
   sitemap_pings: { provider: string; ok: boolean }[];
   duration_ms: number;
@@ -70,25 +70,29 @@ export async function notifyIndexing(
   report.google = googleResult.ok ? 'success' : 'failed';
   if (!googleResult.ok) report.google_error = googleResult.error;
 
-  // 2. IndexNow (Bing/Yandex/Seznam 통합)
-  try {
-    const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        host,
-        key: INDEXNOW_KEY,
-        keyLocation: `${baseUrl}/${INDEXNOW_KEY}.txt`,
-        urlList: [url],
-      }),
-    });
-    // IndexNow: 200 = 색인 요청 수락, 202 = 처리 중, 400 = 잘못된 요청, 403 = 키 미일치
-    report.indexnow = (indexnowRes.status === 200 || indexnowRes.status === 202) ? 'success' : 'failed';
-    if (!report.indexnow.includes('success')) {
-      report.indexnow_error = `HTTP ${indexnowRes.status}`;
+  // 2. IndexNow (Bing/Yandex/Seznam 통합) — INDEXNOW_KEY 미설정 시 스킵
+  if (!INDEXNOW_KEY) {
+    report.indexnow = 'skipped';
+    report.indexnow_error = 'INDEXNOW_KEY 미설정';
+  } else {
+    try {
+      const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host,
+          key: INDEXNOW_KEY,
+          keyLocation: `${baseUrl}/${INDEXNOW_KEY}.txt`,
+          urlList: [url],
+        }),
+      });
+      report.indexnow = indexnowRes.status === 200 || indexnowRes.status === 202 ? 'success' : 'failed';
+      if (report.indexnow !== 'success') {
+        report.indexnow_error = `HTTP ${indexnowRes.status}`;
+      }
+    } catch (err) {
+      report.indexnow_error = err instanceof Error ? err.message : String(err);
     }
-  } catch (err) {
-    report.indexnow_error = err instanceof Error ? err.message : String(err);
   }
 
   // 3. Sitemap ping (Bing) + WebSub/PubSubHubbub ping (Google Feedfetcher)

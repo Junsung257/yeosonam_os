@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { ensureSessionRefreshed } from '@/lib/fetch-with-session-refresh';
 
 const REFRESH_INTERVAL_MS = 50 * 60 * 1000; // 50분. access token 1시간 만료 직전 갱신.
 
@@ -22,11 +23,7 @@ export function useAutoRefreshSession(options: { enabled?: boolean } = {}) {
       if (now - lastRefreshAt.current < 30 * 1000) return; // 30초 내 중복 방지
       lastRefreshAt.current = now;
       try {
-        await fetch('/api/auth/refresh', {
-          method: 'POST',
-          credentials: 'same-origin',
-          keepalive: true,
-        });
+        await ensureSessionRefreshed();
       } catch {
         // 네트워크 실패는 조용히 무시 — 다음 트리거에서 재시도
       }

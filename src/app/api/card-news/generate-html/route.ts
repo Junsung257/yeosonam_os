@@ -38,9 +38,9 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.DEEPSEEK_API_KEY) {
     return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY 미설정 — 서버 환경변수 확인 필요' },
+      { error: 'DEEPSEEK_API_KEY 미설정 — 서버 환경변수 확인 필요' },
       { status: 503 },
     );
   }

@@ -10,7 +10,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
   if (!isSupabaseConfigured) {
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
   if (!isSupabaseConfigured) {

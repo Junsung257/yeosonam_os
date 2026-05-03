@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { earnMileage } from '@/lib/mileage-service';
 import { signGuidebookToken } from '@/lib/guidebook-token';
+import { sendGuidebookReadyAlimtalk } from '@/lib/kakao';
 
 /**
  * POST /api/checkout/complete
@@ -145,6 +146,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     sessionId: session_id,
   });
   guidebookUrl = `${request.nextUrl.origin}/m/guide/${guideToken}`;
+
+  if (body.customer_phone && body.raw_voucher_data) {
+    void sendGuidebookReadyAlimtalk({
+      phone: body.customer_phone,
+      name: String(body.raw_voucher_data.customer_name ?? '고객'),
+      productTitle: String(body.raw_voucher_data.product_title ?? body.raw_voucher_data.destination ?? '여행 상품'),
+      departureDate: String(body.raw_voucher_data.departure_date ?? ''),
+      guidebookUrl,
+    });
+  }
 
   // ── 응답 — 원가(base_cost) 절대 미포함 ───────────────────────
 

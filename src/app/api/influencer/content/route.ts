@@ -20,6 +20,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -50,7 +51,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json()) as RequestBody;
-    if (!body.referral_code || !body.pin || !body.product_id || !body.platform) {
+    const refCanon = normalizeAffiliateReferralCode(body.referral_code || '');
+    if (!refCanon || !body.pin || !body.product_id || !body.platform) {
       return NextResponse.json({ error: 'referral_code, pin, product_id, platform 필수' }, { status: 400 });
     }
     if (!ALLOWED_PLATFORMS.includes(body.platform)) {
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
     // 1. 어필리에이터 검증 + PIN 일치 + brute-force 방어
     // (LLM 비용이 발생하는 endpoint이므로 referral_code 단독 인증 금지 — /api/influencer/dashboard 와 동일 PIN 패턴)
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const identifier = `content_${body.referral_code}_${ip}`;
+    const identifier = `content_${refCanon}_${ip}`;
     const PIN_WINDOW_MIN = 10;
     const PIN_MAX = 5;
     const windowStart = new Date(Date.now() - PIN_WINDOW_MIN * 60 * 1000).toISOString();
@@ -82,7 +84,7 @@ export async function POST(request: NextRequest) {
     const { data: aff } = await supabaseAdmin
       .from('affiliates')
       .select('id, name, referral_code, logo_url, channel_url, channel_type, grade_label, pin, phone, is_active')
-      .eq('referral_code', body.referral_code)
+      .eq('referral_code', refCanon)
       .maybeSingle();
 
     if (!aff || (aff as { is_active: boolean }).is_active !== true) {
@@ -262,7 +264,7 @@ export async function GET(request: NextRequest) {
   try {
     const { supabaseAdmin } = await import('@/lib/supabase');
     const { searchParams } = request.nextUrl;
-    const code = searchParams.get('code');
+    const code = normalizeAffiliateReferralCode(searchParams.get('code') || '');
     if (!code) return NextResponse.json({ error: 'code 필수' }, { status: 400 });
 
     const { data: aff } = await supabaseAdmin

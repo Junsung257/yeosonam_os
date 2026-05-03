@@ -13,6 +13,7 @@
 
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { trackDeepSeekCost, trackCost } from '@/lib/jarvis/cost-tracker';
 
 // ─── 모델 상수 ───────────────────────────────────────────────────────────────
 
@@ -38,7 +39,13 @@ export type LlmTask =
   | 'blog-generate'        // Flash (콘텐츠 생성)
   | 'content-brief'        // Flash (마케팅 브리프)
   | 'free-travel-extract'  // Flash (자유여행 파라미터 추출)
-  | 'free-travel-compose'; // Flash (자유여행 일정 코멘트 생성)
+  | 'free-travel-itinerary' // Flash (자유여행 일자별 슬롯 JSON — DeepSeek 가성비)
+  | 'free-travel-compose' // Flash (자유여행 일정 코멘트 생성)
+  | 'parse_travel_doc'   // Flash (HWP/PDF 여행상품 구조화 추출 — Gemini 대체)
+  // 고객 QA / 품질 (DeepSeek primary — 2026-05)
+  | 'qa-chat'              // 공개 상담 챗 JSON 응답
+  | 'response-critic'      // Self-RAG 스타일 응답 검증 JSON
+  | 'customer-fact-extract'; // 고객 팩트 Mem0 스타일 추출 (원시 JSON 배열)
 
 interface ModelRef {
   provider: 'deepseek' | 'gemini';
@@ -128,7 +135,32 @@ const ROUTING: Record<LlmTask, RouteConfig> = {
     fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
     maxRetries: 2,
   },
+  'free-travel-itinerary': {
+    executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
+    fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
+    maxRetries: 2,
+  },
   'free-travel-compose': {
+    executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
+    fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
+    maxRetries: 2,
+  },
+  'parse_travel_doc': {
+    executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
+    fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
+    maxRetries: 3,
+  },
+  'qa-chat': {
+    executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
+    fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
+    maxRetries: 2,
+  },
+  'response-critic': {
+    executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
+    fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
+    maxRetries: 1,
+  },
+  'customer-fact-extract': {
     executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
     fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
     maxRetries: 2,
@@ -195,12 +227,14 @@ export interface GatewayResult<T = unknown> {
   provider?: 'deepseek' | 'gemini';
   model?: string;
   fallbackUsed?: boolean;
-  advisorUsed?: boolean;    // V2: advisor 호출 여부
-  complexityScore?: number; // V2: 복잡도 점수
-  retryCount?: number;      // V3: 재시도 횟수
+  advisorUsed?: boolean;
+  complexityScore?: number;
+  retryCount?: number;
   cacheHit?: boolean;
   errors?: string[];
   elapsed_ms?: number;
+  /** 비용 추적용 토큰 수 (내부 전달용) */
+  _usage?: { input: number; output: number; cache_hit: number };
 }
 
 // ─── 클라이언트 팩토리 ────────────────────────────────────────────────────────
@@ -211,6 +245,7 @@ function getDeepSeek(): OpenAI | null {
   return new OpenAI({
     apiKey: key,
     baseURL: 'https://api.deepseek.com',
+    timeout: 60_000,
   });
 }
 
@@ -247,7 +282,13 @@ async function callDeepSeek(
     const usage = response.usage;
 
     // 캐시 히트 감지 (DeepSeek 프롬프트 캐싱)
-    const cacheHit = (usage as any)?.prompt_cache_hit_tokens > 0;
+    const cacheHitTokens = (usage as any)?.prompt_cache_hit_tokens ?? 0;
+    const cacheHit = cacheHitTokens > 0;
+    const _usage = {
+      input: usage?.prompt_tokens ?? 0,
+      output: usage?.completion_tokens ?? 0,
+      cache_hit: cacheHitTokens,
+    };
 
     if (params.jsonSchema) {
       try {
@@ -258,6 +299,7 @@ async function callDeepSeek(
           provider: 'deepseek',
           model,
           cacheHit,
+          _usage,
           elapsed_ms: Date.now() - start,
         };
       } catch {
@@ -278,6 +320,7 @@ async function callDeepSeek(
       provider: 'deepseek',
       model,
       cacheHit,
+      _usage,
       elapsed_ms: Date.now() - start,
     };
   } catch (e) {
@@ -306,18 +349,25 @@ async function callGemini(
       generationConfig: {
         responseMimeType: params.jsonSchema ? 'application/json' : 'text/plain',
         temperature: params.temperature ?? 0.3,
-        maxOutputTokens: params.maxTokens || 2000,
+        maxOutputTokens: params.maxTokens ? Math.max(params.maxTokens, 16384) : 4096,
         ...(params.jsonSchema ? { responseSchema: params.jsonSchema as any } : {}),
       },
     });
     const res = await model.generateContent(params.userPrompt);
     const txt = res.response.text();
+    const meta = res.response.usageMetadata;
+    const _usage = {
+      input: meta?.promptTokenCount ?? 0,
+      output: meta?.candidatesTokenCount ?? 0,
+      cache_hit: meta?.cachedContentTokenCount ?? 0,
+    };
     return {
       success: true,
       data: params.jsonSchema ? JSON.parse(txt) : undefined,
       rawText: params.jsonSchema ? undefined : txt,
       provider: 'gemini',
       model: modelName,
+      _usage,
       elapsed_ms: Date.now() - start,
     };
   } catch (e) {
@@ -387,27 +437,61 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
   const errors: string[] = [];
   const maxRetries = route.maxRetries ?? 2;
 
-  // 1차~N차: executor 재시도 (DeepSeek는 저렴하므로 재시도 부담 없음)
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const primary = await callModel(route.executor, params);
-    if (primary.success) {
-      return { ...primary, complexityScore, retryCount: attempt } as GatewayResult<T>;
+  // ─── 비용 기록 헬퍼 (fail-open) ────────────────────────────────────────────
+  function recordCost(result: GatewayResult, model: string, provider: 'deepseek' | 'gemini') {
+    if (!result._usage) return;
+    const { input, output, cache_hit } = result._usage;
+    if (provider === 'deepseek') {
+      void trackDeepSeekCost({
+        task: effectiveTask,
+        model,
+        usage: { prompt_tokens: input, completion_tokens: output, prompt_cache_hit_tokens: cache_hit },
+        latencyMs: result.elapsed_ms,
+      });
+    } else {
+      void trackCost({
+        ctx: { userRole: 'platform_admin' },
+        agentType: effectiveTask,
+        model,
+        usage: {
+          promptTokenCount: input,
+          candidatesTokenCount: output,
+          cachedContentTokenCount: cache_hit,
+        },
+        latencyMs: result.elapsed_ms,
+      });
     }
-    errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${route.executor.provider}/${route.executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);
+  }
 
-    // 2회 이상 실패하고 advisor 있으면 조언 구해서 재시도
-    if (attempt >= 1 && route.advisor) {
-      const advice = await consultAdvisor(route.advisor, params, errors[errors.length - 1]);
-      if (advice) {
-        const enhancedParams: GatewayCallParams = {
-          ...params,
-          systemPrompt: `${params.systemPrompt}\n\n[전략 가이드]\n${advice}`,
-        };
-        const retried = await callModel(route.executor, enhancedParams);
-        if (retried.success) {
-          return { ...retried, advisorUsed: true, complexityScore, retryCount: attempt + 1 } as GatewayResult<T>;
+  // 1차~N차: executor 재시도 (DeepSeek는 저렴하므로 재시도 부담 없음)
+  const skipExecutor = route.executor.provider === 'deepseek' && !process.env.DEEPSEEK_API_KEY?.trim();
+  if (skipExecutor) {
+    errors.push('[executor skipped] DEEPSEEK_API_KEY 빈 값 또는 미설정');
+    console.warn(`[llm-gateway] DeepSeek executor 스킵 → 즉시 fallback (task=${effectiveTask})`);
+  } else {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const primary = await callModel(route.executor, params);
+      if (primary.success) {
+        recordCost(primary, route.executor.model, route.executor.provider);
+        return { ...primary, complexityScore, retryCount: attempt } as GatewayResult<T>;
+      }
+      errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${route.executor.provider}/${route.executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);
+
+      // 2회 이상 실패하고 advisor 있으면 조언 구해서 재시도
+      if (attempt >= 1 && route.advisor) {
+        const advice = await consultAdvisor(route.advisor, params, errors[errors.length - 1]);
+        if (advice) {
+          const enhancedParams: GatewayCallParams = {
+            ...params,
+            systemPrompt: `${params.systemPrompt}\n\n[전략 가이드]\n${advice}`,
+          };
+          const retried = await callModel(route.executor, enhancedParams);
+          if (retried.success) {
+            recordCost(retried, route.executor.model, route.executor.provider);
+            return { ...retried, advisorUsed: true, complexityScore, retryCount: attempt + 1 } as GatewayResult<T>;
+          }
+          errors.push(`[executor+advisor retry] ${retried.errors?.join(',') ?? 'unknown'}`);
         }
-        errors.push(`[executor+advisor retry] ${retried.errors?.join(',') ?? 'unknown'}`);
       }
     }
   }
@@ -417,6 +501,7 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
     console.warn(`[llm-gateway fallback] ${route.executor.provider}→${route.fallback.provider} (task=${effectiveTask})`);
     const fb = await callModel(route.fallback, params);
     if (fb.success) {
+      recordCost(fb, route.fallback.model, route.fallback.provider);
       return { ...fb, fallbackUsed: true, complexityScore } as GatewayResult<T>;
     }
     errors.push(`[fallback ${route.fallback.provider}/${route.fallback.model}] ${fb.errors?.join(',') ?? 'unknown'}`);

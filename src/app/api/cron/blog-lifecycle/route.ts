@@ -15,6 +15,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *   상품 블로그는 상품 수명과 함께 죽는다.
  *   정보성 블로그(product_id IS NULL)는 절대 건드리지 않는다 (영구 SEO 자산).
  */
+export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });

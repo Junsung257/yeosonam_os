@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { InfluencerAuthContext } from './auth-context';
 import type { AffiliateInfo } from './auth-context';
+import { isSafeImageSrc } from '@/lib/image-url';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export default function InfluencerLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
@@ -32,6 +34,17 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
     sessionStorage.setItem(`inf_auth_${code}`, JSON.stringify(a));
   };
 
+  const clearAuth = () => {
+    try {
+      sessionStorage.removeItem(`inf_auth_${code}`);
+      sessionStorage.removeItem(`inf_pin_${code}`);
+    } catch {
+      /* ignore */
+    }
+    setAffiliate(null);
+    setAuthenticated(false);
+  };
+
   const GRADE_COLORS: Record<number, string> = {
     1: 'bg-amber-700', 2: 'bg-gray-400', 3: 'bg-yellow-500', 4: 'bg-cyan-500', 5: 'bg-purple-500',
   };
@@ -44,16 +57,27 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
   ];
 
   return (
-    <InfluencerAuthContext.Provider value={{ affiliate, authenticated, setAuth: handleSetAuth }}>
+    <InfluencerAuthContext.Provider
+      value={{ affiliate, authenticated, setAuth: handleSetAuth, clearAuth }}
+    >
       <div className="min-h-screen bg-gray-50">
         {/* 상단 네비게이션 */}
         <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
             {/* 좌측: 로고 + 이름 */}
             <div className="flex items-center gap-3">
-              {affiliate?.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={affiliate.logo_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+              {affiliate?.logo_url && isSafeImageSrc(affiliate.logo_url) ? (
+                <SafeCoverImg
+                  src={affiliate.logo_url}
+                  alt=""
+                  className="h-8 w-8 rounded-full object-cover"
+                  loading="lazy"
+                  fallback={
+                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
+                      {affiliate?.name?.[0] || code[0]}
+                    </div>
+                  }
+                />
               ) : (
                 <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
                   {affiliate?.name?.[0] || code[0]}
@@ -96,12 +120,8 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
             <div className="flex items-center gap-3">
               {authenticated && (
                 <button
-                  onClick={() => {
-                    sessionStorage.removeItem(`inf_auth_${code}`);
-                    sessionStorage.removeItem(`inf_pin_${code}`);
-                    setAffiliate(null);
-                    setAuthenticated(false);
-                  }}
+                  type="button"
+                  onClick={clearAuth}
                   className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-full px-2.5 py-1 transition-colors"
                 >
                   로그아웃

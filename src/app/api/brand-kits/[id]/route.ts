@@ -9,7 +9,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  if (!isAdminRequest(request)) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const { id } = params;
@@ -50,7 +50,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  if (!isAdminRequest(request)) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const { data, error } = await supabaseAdmin

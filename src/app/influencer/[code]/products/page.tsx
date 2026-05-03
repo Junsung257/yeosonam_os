@@ -45,9 +45,16 @@ export default function InfluencerProducts() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      let pinHeader: Record<string, string> = {};
+      try {
+        const p = sessionStorage.getItem(`inf_pin_${code}`);
+        if (p) pinHeader = { 'x-influencer-pin': p };
+      } catch {
+        /* ignore */
+      }
       const [pkgRes, linkRes] = await Promise.all([
         fetch('/api/packages'),
-        fetch(`/api/influencer/links?code=${code}`),
+        fetch(`/api/influencer/links?code=${encodeURIComponent(code)}`, { headers: pinHeader }),
       ]);
       const pkgJson = await pkgRes.json();
       const linkJson = await linkRes.json();
@@ -66,6 +73,12 @@ export default function InfluencerProducts() {
   const createLink = async (pkg: Package) => {
     setCreating(pkg.id);
     try {
+      let pin = '';
+      try {
+        pin = sessionStorage.getItem(`inf_pin_${code}`) || '';
+      } catch {
+        pin = '';
+      }
       const res = await fetch('/api/influencer/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,6 +86,7 @@ export default function InfluencerProducts() {
           referral_code: code,
           package_id: pkg.id,
           package_title: pkg.title,
+          pin,
         }),
       });
       const json = await res.json();

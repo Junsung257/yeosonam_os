@@ -30,6 +30,7 @@ import {
   type SeasonalSignal,
 } from '@/lib/seasonal-signals';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5분 + buffer
 

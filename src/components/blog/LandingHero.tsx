@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 /**
  * 상품 블로그 광고 랜딩 Hero
@@ -35,21 +35,18 @@ export default function LandingHero({
 
   return (
     <section className="relative overflow-hidden rounded-2xl shadow-sm mb-6 bg-slate-900">
-      {/* Hero 이미지 (LCP 최적화) */}
-      {heroImage && (
-        <div className="absolute inset-0 z-0">
-          <Image
-            src={heroImage}
-            alt={headline}
-            fill
-            priority
-            sizes="(max-width: 768px) 100vw, 800px"
-            className="object-cover"
-            fetchPriority="high"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/50 to-slate-900/20" />
-        </div>
-      )}
+      {/* Hero 이미지 — OG/외부 URL 대응 + 로드 실패 시 단색 */}
+      <div className="absolute inset-0 z-0">
+        <SafeCoverImg
+          src={heroImage}
+          alt={headline}
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="eager"
+          fetchPriority="high"
+          fallback={<div className="absolute inset-0 bg-slate-900" aria-hidden />}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/50 to-slate-900/20" />
+      </div>
 
       <div className="relative z-10 px-6 py-10 md:px-10 md:py-14 text-white">
         {/* DKI 매칭 시 시그널 (디버그용 — 광고 트래픽에서만 보임) */}

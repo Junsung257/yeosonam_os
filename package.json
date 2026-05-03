@@ -28,7 +28,9 @@
     "audit:drift:detail": "node db/audit_schema_drift.js --detail",
     "audit:drift:ci": "node db/audit_schema_drift.js --detail --fail-on-drift",
     "audit:api-drift": "node db/audit_api_field_drift.js",
-    "audit:api-drift:ci": "node db/audit_api_field_drift.js --strict"
+    "audit:api-drift:ci": "node db/audit_api_field_drift.js --strict",
+    "audit:migration-prefix": "node db/audit_migration_prefix_collisions.js",
+    "audit:migration-prefix:ci": "node db/audit_migration_prefix_collisions.js --fail-on-collision"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",

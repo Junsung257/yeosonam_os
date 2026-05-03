@@ -16,6 +16,7 @@ import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
  * 응답:
  *   { ok, scanned, matched, unmatched, errors, durationMs }
  */
+export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const result = await resweepUnmatchedActivities(); // attractionIds 없으면 전체 sweep

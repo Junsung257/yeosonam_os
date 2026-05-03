@@ -16,12 +16,15 @@
  */
 
 import { NextRequest } from 'next/server'
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify'
 import { supabaseAdmin } from '@/lib/supabase'
 import { prepareDispatch, runV2 } from '@/lib/jarvis/v2-dispatch'
 import { encodeSSE, encodeKeepalive, SSE_HEADERS } from '@/lib/jarvis/stream-encoder'
 import { resolveJarvisContext } from '@/lib/jarvis/context'
 import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
 import type { AgentRunResult } from '@/lib/jarvis/types'
+import { mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
+import { recordPlatformLearningEvent } from '@/lib/platform-learning'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
@@ -41,6 +44,21 @@ export async function POST(req: NextRequest) {
   if (!message?.trim()) {
     return new Response(JSON.stringify({ error: '메시지가 필요합니다.' }), {
       status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const token = req.cookies.get('sb-access-token')?.value
+  if (!token) {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const verified = await verifySupabaseAccessToken(token)
+  if (!verified.ok) {
+    return new Response(JSON.stringify({ error: '세션이 유효하지 않습니다.' }), {
+      status: 401,
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -77,6 +95,7 @@ export async function POST(req: NextRequest) {
         agentType: dispatch.agentType,
         sessionId: session.id,
         reason: 'agent not yet V2-enabled',
+        specialist: dispatch.specialistPick,
       }),
       { status: 409, headers: { 'Content-Type': 'application/json' } },
     )
@@ -97,6 +116,11 @@ export async function POST(req: NextRequest) {
             sessionId: session.id,
             agent: dispatch.agentType,
             confidence: dispatch.routerConfidence,
+            specialist: {
+              id: dispatch.specialistPick.specialistId,
+              label: dispatch.specialistPick.labelKo,
+              method: dispatch.specialistPick.method,
+            },
           },
         } as StreamEvent))
 
@@ -129,14 +153,30 @@ export async function POST(req: NextRequest) {
               timestamp: new Date().toISOString(),
             },
           ]
+          const orchBase = mergeOrchestrationContext(session?.context, dispatch.specialistPick)
           await supabaseAdmin
             .from('jarvis_sessions')
             .update({
               messages: updatedMessages,
-              context: { ...(session?.context ?? {}), ...finalResult.contextUpdate },
+              context: { ...orchBase, ...finalResult.contextUpdate },
               updated_at: new Date().toISOString(),
             })
             .eq('id', session.id)
+
+          recordPlatformLearningEvent({
+            source: 'jarvis_v2_stream',
+            sessionId: session.id,
+            affiliateId: null,
+            tenantId: ctx.tenantId ?? null,
+            userMessage: message,
+            payload: {
+              agent: dispatch.agentType,
+              specialist_id: dispatch.specialistPick.specialistId,
+              specialist_method: dispatch.specialistPick.method,
+              tools_used: finalResult?.toolsUsed ?? [],
+              pending_hitl: !!finalResult?.pendingActionId,
+            },
+          })
         }
 
         controller.enqueue(encodeSSE({
@@ -144,6 +184,7 @@ export async function POST(req: NextRequest) {
           data: {
             sessionId: session.id,
             agent: dispatch.agentType,
+            specialist: dispatch.specialistPick,
             latencyMs: Date.now() - started,
             toolsUsed: finalResult?.toolsUsed ?? [],
             pendingAction: finalResult?.pendingAction ?? null,

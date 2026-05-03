@@ -26,6 +26,7 @@ import PackingTipsCard from '@/components/customer/PackingTipsCard';
 import RecommendationCard from '@/components/customer/RecommendationCard';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
+import { isSafeImageSrc } from '@/lib/image-url';
 
 interface PriceTier {
   period_label: string;
@@ -75,13 +76,14 @@ interface Package {
   display_title?: string;
   hero_tagline?: string;
   product_summary?: string;
+  thumbnail_urls?: string[] | null;
   products?: { display_name?: string; internal_code?: string };
 }
 
 interface AttractionInfo {
-  name: string; short_desc?: string; long_desc?: string; badge_type?: string; emoji?: string;
+  name: string; short_desc?: string | null; long_desc?: string | null; badge_type?: string | null; emoji?: string | null;
   aliases?: string[]; photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
-  country?: string; region?: string;
+  country?: string | null; region?: string | null;
 }
 
 // W-final F2 — flight/city 파서는 render-contract.ts 단일 소스로 이관.
@@ -98,7 +100,7 @@ function getTimelineIcon(type?: string, activity?: string) {
   if (type === 'optional') return { icon: '💎', bg: 'bg-pink-500' };
   if (type === 'shopping') return { icon: '🛍️', bg: 'bg-[#8B95A1]' };
   if (type === 'cruise' || type === 'spa') return { icon: '✨', bg: 'bg-cyan-500' };
-  if (activity && /호텔.*체크|투숙|휴식/.test(activity)) return { icon: '🏨', bg: 'bg-indigo-400' };
+  if (activity && /호텔.*체크|투숙|휴식/.test(activity)) return { icon: '🏨', bg: 'bg-[#3182F6]/60' };
   if (activity && /식사|중식|석식|조식/.test(activity)) return { icon: '🍽️', bg: 'bg-orange-400' };
   if (activity && /이동|출발|공항/.test(activity)) return { icon: '🚌', bg: 'bg-gray-400' };
   return { icon: '📍', bg: 'bg-[#3182F6]' };
@@ -171,6 +173,54 @@ interface DetailClientProps {
 
 const ANGLE_LABELS: Record<string, string> = { value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리', urgency: '긴급특가', activity: '액티비티', food: '미식' };
 
+function AttractionPhotoSlide({ src, alt }: { src: string; alt: string }) {
+  const [bad, setBad] = useState(false);
+  if (bad) {
+    return (
+      <div
+        className="relative shrink-0 w-4/5 h-44 rounded-2xl overflow-hidden snap-center shadow-sm bg-gradient-to-br from-slate-100 to-slate-200 ring-1 ring-slate-200/60"
+        aria-hidden
+      />
+    );
+  }
+  return (
+    <div className="relative shrink-0 w-4/5 h-44 rounded-2xl overflow-hidden snap-center shadow-sm">
+      <Image src={src} alt={alt} fill className="object-cover" sizes="80vw" loading="lazy" onError={() => setBad(true)} />
+    </div>
+  );
+}
+
+function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; title: string; variant: 'row' | 'grid' }) {
+  const [hide, setHide] = useState(false);
+  const ok = isSafeImageSrc(url) && !hide;
+  if (variant === 'row') {
+    if (!ok) {
+      return (
+        <div className="flex h-20 w-28 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
+          <span className="text-3xl">📖</span>
+        </div>
+      );
+    }
+    return (
+      <div className="h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+        <img src={url!} alt={title || ''} className="h-full w-full object-cover" loading="lazy" onError={() => setHide(true)} />
+      </div>
+    );
+  }
+  if (!ok) {
+    return (
+      <div className="aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-[#F2F4F6] to-[#EBF3FE]">
+        <span className="text-2xl">📖</span>
+      </div>
+    );
+  }
+  return (
+    <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+      <img src={url!} alt={title || ''} className="w-full h-full object-cover" loading="lazy" onError={() => setHide(true)} />
+    </div>
+  );
+}
+
 export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [], initialNotices = [], climateData = null, representativeMonth = new Date().getMonth() + 1, departureDistribution = {}, scoreRows = [], rivalsByDate = {}, socialProof }: DetailClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -195,6 +245,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [submitted, setSubmitted] = useState(false);
   const [attractions, setAttractions] = useState<AttractionInfo[]>(initialAttractions);
   const [clipboardToast, setClipboardToast] = useState(false);
+  const [shareToast, setShareToast] = useState(false);
+  const [attractionModal, setAttractionModal] = useState<AttractionInfo | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
 
@@ -263,8 +316,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     }
   }, [id, initialPackage, initialAttractions.length]);
 
+  const intersectingRef = useRef<Set<string>>(new Set());
   const observerCallback = useCallback((entries: IntersectionObserverEntry[]) => {
-    for (const entry of entries) { if (entry.isIntersecting) setActiveSection(entry.target.getAttribute('data-section') || '상품정보'); }
+    for (const entry of entries) {
+      const section = entry.target.getAttribute('data-section') || '';
+      if (!section) continue;
+      if (entry.isIntersecting) intersectingRef.current.add(section);
+      else intersectingRef.current.delete(section);
+    }
+    // NAV_SECTIONS 순서 기준으로 가장 위쪽 섹션만 활성화 (다중 활성화 방지)
+    const ordered = NAV_SECTIONS.filter(s => intersectingRef.current.has(s));
+    if (ordered.length > 0) setActiveSection(ordered[0]);
   }, []);
 
   useEffect(() => {
@@ -316,10 +378,66 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       : Infinity;
     return Math.min(minTier, minDate, pkg.price || Infinity);
   }, [pkg, tiers]);
-  const heroPhoto = useMemo(() => {
-    if (!pkg) return undefined;
-    return attractions.find(a => a.photos && a.photos.length > 0 && a.country && pkg.destination?.includes(a.country))?.photos?.[0];
+  const heroUrl = useMemo(() => {
+    if (!pkg) return null;
+    // destination "다낭/호이안", "방콕/파타야" 등 slash/공백 구분 → 토큰 분리 후 양방향 매칭
+    const destTokens = (pkg.destination || '').split(/[\/·, ]+/).map(t => t.trim()).filter(Boolean);
+    const photo = attractions.find(a =>
+      a.photos && a.photos.length > 0 &&
+      destTokens.some(t =>
+        (a.country && (a.country.includes(t) || t.includes(a.country))) ||
+        (a.region && (a.region.includes(t) || t.includes(a.region)))
+      )
+    )?.photos?.[0];
+    const raw = photo?.src_large || photo?.src_medium;
+    return isSafeImageSrc(raw) ? raw.trim() : null;
   }, [pkg, attractions]);
+  const [heroImgBroken, setHeroImgBroken] = useState(false);
+  useEffect(() => {
+    setHeroImgBroken(false);
+  }, [heroUrl]);
+
+  // DAY별 첫 번째 관광지 썸네일 (DAY 탭 프리뷰용)
+  const dayAttractionPhotos = useMemo(() => {
+    return (pkg ? normalizeDays(pkg.itinerary_data) : []).map(day => {
+      const firstAct = day.schedule?.find(s => s.activity && (s.type === 'activity' || !s.type));
+      if (!firstAct) return null;
+      const matched = attractions.find(a =>
+        a.name === firstAct.activity || a.aliases?.some(alias => alias === firstAct.activity)
+      );
+      const src = matched?.photos?.[0]?.src_medium;
+      return isSafeImageSrc(src) ? src.trim() : null;
+    });
+  }, [pkg, attractions]);
+
+  // Hero 멀티 슬라이드 갤러리
+  const heroPhotos = useMemo(() => {
+    if (!pkg) return [];
+    const destTokens = (pkg.destination || '').split(/[\/·, ]+/).map(t => t.trim()).filter(Boolean);
+    const attrPhotos = attractions
+      .filter(a => a.photos && a.photos.length > 0 && destTokens.some(t =>
+        (a.country && (a.country.includes(t) || t.includes(a.country))) ||
+        (a.region && (a.region.includes(t) || t.includes(a.region)))
+      ))
+      .flatMap(a => a.photos || [])
+      .slice(0, 5);
+    if (attrPhotos.length > 0) return attrPhotos;
+    // attraction 사진 없을 때 상품 thumbnail_urls로 폴백
+    return (pkg.thumbnail_urls || [])
+      .filter(u => isSafeImageSrc(u))
+      .slice(0, 5)
+      .map(u => ({ src_large: u, src_medium: u, photographer: '', pexels_id: 0 }));
+  }, [attractions, pkg]);
+  const [heroSlide, setHeroSlide] = useState(0);
+  const heroTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startHeroTimer = useCallback(() => {
+    if (heroTimerRef.current) clearInterval(heroTimerRef.current);
+    heroTimerRef.current = setInterval(() => setHeroSlide(p => (p + 1) % Math.max(heroPhotos.length, 1)), 5000);
+  }, [heroPhotos.length]);
+  useEffect(() => {
+    if (heroPhotos.length > 1) startHeroTimer();
+    return () => { if (heroTimerRef.current) clearInterval(heroTimerRef.current); };
+  }, [heroPhotos.length, startHeroTimer]);
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
@@ -351,7 +469,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const retArrTime = view.flightHeader.inbound?.arrTime ?? undefined;
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.phone) return;
+    if (!formData.name || !formData.phone || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       await fetch('/api/leads', {
         method: 'POST',
@@ -377,6 +496,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         }),
       });
     } catch { /* 전송 실패해도 UI는 정상 표시 */ }
+    finally { setIsSubmitting(false); }
     setSubmitted(true);
     setTimeout(() => { setShowForm(false); setSubmitted(false); setFormData({ name: '', phone: '', message: '', date: '' }); }, 3000);
   };
@@ -384,7 +504,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) { try { await navigator.share({ title: pkg.title, url }); } catch {} }
-    else { await navigator.clipboard.writeText(url); alert('링크가 복사되었습니다!'); }
+    else {
+      await navigator.clipboard.writeText(url);
+      setShareToast(true);
+      setTimeout(() => setShareToast(false), 2500);
+    }
   };
 
   const scrollToSection = (section: string) => sectionRefs.current[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -401,11 +525,42 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 히어로 (사진 배경) ═══ */}
       <div ref={el => { sectionRefs.current['상품정보'] = el; }} data-section="상품정보"
         className="relative h-[420px] md:h-[560px] w-full overflow-hidden md:rounded-b-3xl">
-        {heroPhoto ? (
-          <Image src={heroPhoto.src_large || heroPhoto.src_medium} alt={pkg.destination || ''} fill className="object-cover" sizes="100vw" priority />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[#191F28] via-[#1B64DA] to-[#3182F6]" />
-        )}
+        {/* 멀티 슬라이드 갤러리: 수동 스와이프 시 자동전환 중지 */}
+        <div
+          className="absolute inset-0"
+          onTouchStart={() => { if (heroTimerRef.current) { clearInterval(heroTimerRef.current); heroTimerRef.current = null; } }}
+        >
+          {heroPhotos.length > 0 && !heroImgBroken ? (
+            heroPhotos.map((photo, idx) => {
+              const src = photo.src_large || photo.src_medium;
+              if (!isSafeImageSrc(src)) return null;
+              return (
+                <Image
+                  key={idx}
+                  src={src.trim()}
+                  alt={pkg.destination || ''}
+                  fill
+                  className={`object-cover transition-opacity duration-700 ${idx === heroSlide ? 'opacity-100' : 'opacity-0'}`}
+                  sizes="100vw"
+                  priority={idx === 0}
+                  onError={() => { if (idx === heroSlide) setHeroImgBroken(true); }}
+                />
+              );
+            })
+          ) : heroUrl && !heroImgBroken ? (
+            <Image
+              src={heroUrl}
+              alt={pkg.destination || ''}
+              fill
+              className="object-cover"
+              sizes="100vw"
+              priority
+              onError={() => setHeroImgBroken(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#191F28] via-[#1B64DA] to-[#3182F6]" />
+          )}
+        </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
         {/* 상단 네비 */}
@@ -459,11 +614,39 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             {pkg.duration && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.duration}일</span>}
           </div>
         </div>
+
+        {/* 갤러리 도트 인디케이터 */}
+        {heroPhotos.length > 1 && (
+          <div className="absolute bottom-14 left-0 right-0 flex justify-center gap-1.5 pointer-events-none">
+            {heroPhotos.map((_, i) => (
+              <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === heroSlide ? 'w-4 bg-white' : 'w-1.5 bg-white/40'}`} />
+            ))}
+          </div>
+        )}
+        {/* 갤러리 카운터 */}
+        {heroPhotos.length > 1 && (
+          <div className="absolute bottom-16 right-4 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full tabular-nums">
+            {heroSlide + 1} / {heroPhotos.length}
+          </div>
+        )}
       </div>
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}
       <section className="px-4 -mt-6 relative z-10">
         <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+          {/* Social Proof — 서버에서 내려온 실제 데이터만 표시 */}
+          {socialProof && (socialProof.bookings > 0 || socialProof.interest > 0) && (
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-50">
+              {socialProof!.bookings > 0 && (
+                <span className="text-xs text-gray-500 flex items-center gap-1">
+                  🔥 최근 30일 <strong className="text-gray-800">{socialProof!.bookings}명</strong> 예약
+                </span>
+              )}
+              {socialProof!.interest > 0 && (
+                <span className="text-xs text-gray-400">· 관심 {socialProof!.interest}명</span>
+              )}
+            </div>
+          )}
           <div className="flex justify-between items-start">
             <div>
               <p className="text-gray-500 text-sm mb-1">판매가</p>
@@ -477,8 +660,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               const today = new Date();
               today.setHours(0,0,0,0); deadline.setHours(0,0,0,0);
               const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              const dDayText = diffDays <= 0 ? '마감' : diffDays <= 7 ? `D-${diffDays}` : `D-${diffDays}`;
-              const urgentColor = diffDays <= 3 ? 'bg-red-500 text-white' : diffDays <= 7 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600';
+              const dDayText = diffDays <= 0 ? '마감' : `D-${diffDays}`;
+              const urgentColor = diffDays <= 3 ? 'bg-red-500 text-white animate-pulse' : diffDays <= 7 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600';
               return (
                 <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${urgentColor}`}>
                   ⏰ {dDayText} ({(deadline.getMonth()+1)}/{deadline.getDate()} 마감)
@@ -487,14 +670,21 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             })()}
           </div>
 
-          {/* 핵심 특전 */}
-          {pkg.product_highlights && pkg.product_highlights.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
-              {pkg.product_highlights.slice(0, 4).map((h, i) => (
-                <span key={i} className="bg-[#EBF3FE] text-[#3182F6] px-2.5 py-1 rounded-lg text-xs font-medium">{h}</span>
-              ))}
-            </div>
-          )}
+          {/* 핵심 특전 — highlights 없으면 inclusions.program에서 최대 4개 fallback */}
+          {(() => {
+            const items = pkg.product_highlights && pkg.product_highlights.length > 0
+              ? pkg.product_highlights.slice(0, 4)
+              : (view?.inclusions.program ?? []).filter(p => /직항|마사지|무료|팁|입장료|가이드|업그레이드/.test(p)).slice(0, 4);
+            if (items.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
+                {items.map((h, i) => {
+                  const icon = /직항/.test(h) ? '✈️' : /마사지/.test(h) ? '💆' : /무료|업그레이드/.test(h) ? '🎁' : /팁.*포함|포함.*팁|팁전부/.test(h) ? '✅' : /호텔|리조트|스파/.test(h) ? '🏨' : /가이드/.test(h) ? '👤' : '✨';
+                  return <span key={i} className="bg-[#EBF3FE] text-[#3182F6] px-2.5 py-1 rounded-lg text-xs font-medium">{icon} {h}</span>;
+                })}
+              </div>
+            );
+          })()}
         </div>
       </section>
 
@@ -613,27 +803,29 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
             {/* 가는편 */}
             <div className="p-4">
-              <p className="text-xs font-bold text-[#3182F6] mb-2">가는편</p>
+              <p className="text-xs font-bold text-[#3182F6] mb-2.5">가는편</p>
               <div className="flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">출발</p>
-                  {flightDep.time && <p className="text-lg font-black text-gray-900">{flightDep.time}</p>}
-                  <p className="text-xs text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
+                <div className="text-center min-w-[60px]">
+                  {flightDep.time && <p className="text-xl font-black text-gray-900 tabular-nums">{flightDep.time}</p>}
+                  <p className="text-xs text-gray-500 mt-0.5">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
-                <div className="flex flex-col items-center px-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6]" />
-                    <div className="w-12 h-[1px] bg-[#EBF3FE]" />
-                    <span className="text-[#3182F6] text-xs">✈</span>
-                    <div className="w-12 h-[1px] bg-[#EBF3FE]" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6]" />
+                <div className="flex flex-col items-center flex-1 px-2">
+                  <div className="flex items-center w-full gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6] shrink-0" />
+                    <div className="flex-1 h-[1px] bg-[#EBF3FE]" />
+                    <span className="text-[#3182F6] text-sm shrink-0">✈</span>
+                    <div className="flex-1 h-[1px] bg-[#EBF3FE]" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6] shrink-0" />
                   </div>
-                  <span className="text-xs text-gray-500 mt-0.5">{formatFlightLabel(flightDep.transport)} 직항</span>
+                  <div className="text-center mt-1">
+                    {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
+                    {flightDep.transport && <span className="text-[10px] text-gray-400 ml-1">{formatFlightLabel(flightDep.transport)}</span>}
+                    <span className="text-[10px] text-gray-400 ml-1">직항</span>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">도착</p>
-                  <p className="text-lg font-black text-gray-900">{depArrTime || '—'}</p>
-                  <p className="text-xs text-gray-500">{depArrCity}</p>
+                <div className="text-center min-w-[60px]">
+                  <p className="text-xl font-black text-gray-900 tabular-nums">{depArrTime || '—'}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{depArrCity}</p>
                 </div>
               </div>
             </div>
@@ -642,27 +834,29 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             {/* 오는편 */}
             {flightReturn && (
             <div className="p-4">
-              <p className="text-xs font-bold text-orange-500 mb-2">오는편</p>
+              <p className="text-xs font-bold text-orange-500 mb-2.5">오는편</p>
               <div className="flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">출발</p>
-                  <p className="text-lg font-black text-gray-900">{flightReturn.time || '—'}</p>
-                  <p className="text-xs text-gray-500">{flightReturn.depCity || (pkg.destination || '').split('/')[0]}</p>
+                <div className="text-center min-w-[60px]">
+                  <p className="text-xl font-black text-gray-900 tabular-nums">{flightReturn.time || '—'}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{flightReturn.depCity || (pkg.destination || '').split('/')[0]}</p>
                 </div>
-                <div className="flex flex-col items-center px-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-                    <div className="w-12 h-[1px] bg-orange-200" />
-                    <span className="text-orange-400 text-xs">✈</span>
-                    <div className="w-12 h-[1px] bg-orange-200" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                <div className="flex flex-col items-center flex-1 px-2">
+                  <div className="flex items-center w-full gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                    <div className="flex-1 h-[1px] bg-orange-200" />
+                    <span className="text-orange-400 text-sm shrink-0">✈</span>
+                    <div className="flex-1 h-[1px] bg-orange-200" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
                   </div>
-                  <span className="text-xs text-gray-500 mt-0.5">{formatFlightLabel(flightReturn.transport)} 직항</span>
+                  <div className="text-center mt-1">
+                    {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
+                    {flightReturn.transport && <span className="text-[10px] text-gray-400 ml-1">{formatFlightLabel(flightReturn.transport)}</span>}
+                    <span className="text-[10px] text-gray-400 ml-1">직항</span>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">도착</p>
-                  <p className="text-lg font-black text-gray-900">{retArrTime || '—'}</p>
-                  <p className="text-xs text-gray-500">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
+                <div className="text-center min-w-[60px]">
+                  <p className="text-xl font-black text-gray-900 tabular-nums">{retArrTime || '—'}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
               </div>
             </div>
@@ -685,7 +879,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 요금표 ═══ */}
       {(tiers.length > 0 || allPriceDates.length > 0) && (
-        <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-12">
+        <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-[108px]">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">출발일 선택</h2>
           {allPriceDates.length === 0 ? (
             // price_dates / departure_dates 둘 다 없는 경우 → tier 카드 폴백
@@ -775,7 +969,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <h3 className="text-xs font-bold text-red-800 mb-3">❌ 불포함 사항</h3>
               <ul className="space-y-1.5">
                 {view.excludes.basic.map((item, i) => (
-                  <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed"><span className="shrink-0 text-red-300">•</span>{item}</li>
+                  <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed">
+                    <span className="shrink-0 text-red-300">•</span>
+                    <span>
+                      {item}
+                      {/마사지팁/.test(item) && <span className="text-red-400 text-xs ml-1">(60분 $2, 90분 $3, 120분 $4)</span>}
+                      {/매너팁|가이드팁/.test(item) && !/마사지/.test(item) && <span className="text-red-400 text-xs ml-1">(약 $1~2/일)</span>}
+                    </span>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -821,27 +1022,36 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 일정표 ═══ */}
       {days.length > 0 && (
-        <div ref={el => { sectionRefs.current['일정표'] = el; }} data-section="일정표" className="px-4 py-8 scroll-mt-12">
+        <div ref={el => { sectionRefs.current['일정표'] = el; }} data-section="일정표" className="px-4 py-8 scroll-mt-[108px]">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">여행 일정</h2>
 
           {/* Day 탭 (Voyager 스타일 pill) — 클릭 시 해당 day로 스크롤 */}
           <div className="sticky top-[44px] z-20 bg-white/95 backdrop-blur-md -mx-4 px-4 pb-3 pt-1">
             <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-              {days.map(day => (
-                <button key={day.day} onClick={() => {
-                    setActiveDay(day.day);
-                    dayRefs.current[day.day]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                  className={`flex-shrink-0 flex flex-col items-center px-5 py-3 rounded-2xl transition-all border ${
-                    activeDay === day.day
-                      ? 'bg-[#3182F6] text-white border-[#3182F6] shadow-lg shadow-card'
-                      : 'bg-white text-gray-500 border-gray-200 hover:border-[#EBF3FE]'
-                  }`}>
-                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
-                  <span className="font-extrabold text-lg leading-none mt-0.5">{String(day.day).padStart(2, '0')}</span>
-                  <span className="text-xs mt-1 opacity-70">{day.regions?.[0]?.slice(0, 6) || ''}</span>
-                </button>
-              ))}
+              {days.map((day, idx) => {
+                const thumb = dayAttractionPhotos[idx];
+                const isActive = activeDay === day.day;
+                return (
+                  <button key={day.day} onClick={() => {
+                      setActiveDay(day.day);
+                      dayRefs.current[day.day]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className={`flex-shrink-0 flex flex-col items-center px-4 py-2.5 rounded-2xl transition-all border ${
+                      isActive
+                        ? 'bg-[#3182F6] text-white border-[#3182F6] shadow-lg'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-[#EBF3FE]'
+                    }`}>
+                    {thumb ? (
+                      <div className={`w-8 h-8 rounded-full overflow-hidden mb-1.5 ring-2 ${isActive ? 'ring-white/50' : 'ring-gray-100'}`}>
+                        <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : null}
+                    <span className="text-xs font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
+                    <span className="font-extrabold text-lg leading-none mt-0.5">{String(day.day).padStart(2, '0')}</span>
+                    <span className="text-xs mt-1 opacity-70">{day.regions?.[0]?.slice(0, 6) || ''}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -853,7 +1063,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             // 이제 days.map 바깥에서 Set 을 공유해 **전 DAY 에서 처음 매칭된 activity에만 카드**, 이후는 텍스트만.
             const seenAttractionIds = new Set<string>();
             return days.map(currentDay => (
-            <div key={currentDay.day} ref={el => { dayRefs.current[currentDay.day] = el; }} data-day={currentDay.day} className="scroll-mt-[160px] mb-10">
+            <div key={currentDay.day} id={`day-${currentDay.day}`} ref={el => { dayRefs.current[currentDay.day] = el; }} data-day={currentDay.day} className="scroll-mt-[160px] mb-10">
               {/* Day 헤더 */}
               <div className="flex items-center gap-2 mb-4">
                 <span className="bg-[#3182F6] text-white text-xs font-bold px-2.5 py-1 rounded-lg">DAY {currentDay.day}</span>
@@ -877,7 +1087,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const isDuplicateInDay = !!(candidateKey && seenAttractionIds.has(candidateKey));
                   const attr = isDuplicateInDay ? null : attrCandidate;
                   if (candidateKey) seenAttractionIds.add(candidateKey);
-                  const hasPhotos = attr?.photos && attr.photos.length > 0;
+                  const validAttrPhotoUrls = (attr?.photos ?? [])
+                    .map(p => {
+                      const u = (p.src_large || p.src_medium || '').trim();
+                      return isSafeImageSrc(u) ? u : null;
+                    })
+                    .filter((u): u is string => u != null);
+                  const hasPhotos = validAttrPhotoUrls.length > 0;
 
                   // 항공편은 하나투어 스타일 카드로 렌더링 (첫날/마지막날만, 중간DAY는 일반 표시)
                   const isFirstOrLastDay = currentDay.day === 1 || currentDay.day === days[days.length - 1]?.day || currentDay.day === days[days.length - 2]?.day;
@@ -1013,9 +1229,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                               : attr.badge_type;
                           return (
                           <div className="mt-2 text-left">
-                            {/* 관광지명 */}
+                            {/* 관광지명 — 클릭 시 바텀시트 상세 팝업 */}
                             <div className="flex items-center gap-1">
-                              <span className="font-bold text-base text-blue-900">{attr.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setAttractionModal(attr)}
+                                className="font-bold text-base text-blue-900 text-left underline-offset-2 hover:underline active:opacity-70"
+                              >
+                                {attr.name}
+                              </button>
+                              <span className="text-blue-400 text-xs">›</span>
                             </div>
                             {/* 한줄설명 */}
                             {attr.short_desc && (
@@ -1025,10 +1248,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             {/* 사진 슬라이더 (모바일 스와이프 캐러셀) */}
                             {hasPhotos && (
                               <div className="flex gap-2 overflow-x-auto scrollbar-hide snap-x mt-3 pb-2 -mx-1 px-1">
-                                {attr.photos!.slice(0, 5).map((photo, pIdx) => (
-                                  <div key={pIdx} className="relative shrink-0 w-4/5 h-44 rounded-2xl overflow-hidden snap-center shadow-sm">
-                                    <Image src={photo.src_large || photo.src_medium} alt={attr.name} fill className="object-cover" sizes="80vw" loading="lazy" />
-                                  </div>
+                                {validAttrPhotoUrls.slice(0, 5).map((url, pIdx) => (
+                                  <AttractionPhotoSlide key={`${url}-${pIdx}`} src={url} alt={attr.name} />
                                 ))}
                               </div>
                             )}
@@ -1040,7 +1261,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                                 effectiveBadge === 'shopping' ? 'border-[#EBF3FE] text-[#3182F6] bg-[#EBF3FE]' :
                                 effectiveBadge === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
                                 effectiveBadge === 'restaurant' ? 'border-orange-300 text-orange-700 bg-orange-50' :
-                                effectiveBadge === 'hotel' ? 'border-indigo-300 text-indigo-700 bg-indigo-50' :
+                                effectiveBadge === 'hotel' ? 'border-[#DBEAFE] text-[#1B64DA] bg-[#EBF3FE]' :
                                 effectiveBadge === 'golf' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
                                 'border-gray-300 text-gray-600 bg-gray-50'
                               }`}>{
@@ -1055,7 +1276,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             
                             {/* 지역 스토리 매거진 뷰 (long_desc 상시 노출) */}
                             {attr.long_desc && (
-                              <div className="mt-2 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] rounded-xl p-3 border border-indigo-100/50">
+                              <div className="mt-2 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] rounded-xl p-3 border border-[#DBEAFE]/50">
                                 <p className="text-sm text-gray-700 leading-loose break-keep">
                                   {attr.long_desc}
                                 </p>
@@ -1078,6 +1299,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const viewDay = view.days.find(v => v.day === currentDay.day);
                   const card = viewDay?.hotelCard;
                   if (!card?.name) return null;
+                  const gradeLabel = card.grade != null && card.grade !== '' ? String(card.grade) : '';
                   return (
                     <div className="relative pl-8">
                       <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#3182F6] ring-2 ring-[#EBF3FE] z-10" />
@@ -1086,17 +1308,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                         <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
                           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#EBF3FE] to-[#3182F6]/30 flex items-center justify-center text-xl shrink-0">
                             {/* ERR-HET-hotel-ger-star@2026-04-22 — 게르는 성급 표기가 없는 숙소라 별 대신 🛖 아이콘 */}
-                            {card.grade && /게르/.test(card.grade) ? '🛖' : '🏨'}
+                            {gradeLabel && /게르/.test(gradeLabel) ? '🛖' : '🏨'}
                           </div>
                           <div>
-                            {card.grade && (() => {
+                            {gradeLabel && (() => {
                               // "5성급"/"준5성급"/"4성급" 등에서 숫자만 추출. 숫자 없으면 텍스트 배지로 표시.
                               // ERR-HET-hotel-grade-ambiguity@2026-04-22 — 별만 5개 있으면 "준5성"인지 "정5성"
                               // 인지 고객이 혼동. 별 옆에 grade 문자열 원본("준5성급"/"5성급") 을 라벨로 병기.
-                              const m = card.grade.match(/(\d+)\s*성/);
+                              const m = gradeLabel.match(/(\d+)\s*성/);
                               const starCount = m ? parseInt(m[1], 10) : null;
                               if (Number.isFinite(starCount) && starCount! > 0) {
-                                const label = card.grade.trim();
+                                const label = gradeLabel.trim();
                                 return (
                                   <div className="flex flex-row gap-0.5 mb-0.5 items-center">
                                     {Array.from({ length: starCount! }).map((_, i) => (
@@ -1106,9 +1328,24 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                                   </div>
                                 );
                               }
+                              // 숫자만 온 경우(예: DB numeric 5) — 별 개수로 표시
+                              const numericOnly = /^\d+$/.test(gradeLabel.trim());
+                              if (numericOnly) {
+                                const n = parseInt(gradeLabel.trim(), 10);
+                                if (n > 0 && n <= 7) {
+                                  return (
+                                    <div className="flex flex-row gap-0.5 mb-0.5 items-center">
+                                      {Array.from({ length: n }).map((_, i) => (
+                                        <span key={i} className="text-amber-400 text-xs leading-none">★</span>
+                                      ))}
+                                      <span className="text-[10px] text-gray-600 ml-1.5 font-semibold">{n}성급</span>
+                                    </div>
+                                  );
+                                }
+                              }
                               // 숫자 없는 등급 (게르 등) — 별 대신 라벨 배지
                               return (
-                                <span className="inline-block text-[10px] text-gray-600 bg-gray-200 px-1.5 py-0.5 rounded mb-0.5">{card.grade}</span>
+                                <span className="inline-block text-[10px] text-gray-600 bg-gray-200 px-1.5 py-0.5 rounded mb-0.5">{gradeLabel}</span>
                               );
                             })()}
                             <h4 className="font-bold text-xs text-gray-800">{card.name}</h4>
@@ -1135,15 +1372,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       <h3 className="font-bold text-base text-gray-900 mb-3">식사 안내</h3>
                       <div className="flex gap-2">
                         {[
-                          { label: '조식', note: currentDay.meals.breakfast_note, has: currentDay.meals.breakfast, fallback: '호텔식' },
-                          { label: '중식', note: currentDay.meals.lunch_note, has: currentDay.meals.lunch, fallback: '현지식' },
-                          { label: '석식', note: currentDay.meals.dinner_note, has: currentDay.meals.dinner, fallback: '현지식' },
-                        ].map(m => (
-                          <div key={m.label} className="bg-gray-50 rounded-xl px-3 py-2.5 flex-1 text-center border border-gray-100">
-                            <p className="text-xs text-gray-500 mb-0.5">{m.label}</p>
-                            <p className="text-sm font-bold text-gray-700">{m.note || (m.has ? m.fallback : '불포함')}</p>
-                          </div>
-                        ))}
+                          { label: '조식', emoji: '🍳', note: currentDay.meals.breakfast_note, has: currentDay.meals.breakfast, fallback: '호텔식', colors: { on: 'bg-yellow-50 border-yellow-200 text-yellow-800', off: 'bg-gray-50 border-gray-100 text-gray-400' } },
+                          { label: '중식', emoji: '🥘', note: currentDay.meals.lunch_note, has: currentDay.meals.lunch, fallback: '현지식', colors: { on: 'bg-green-50 border-green-200 text-green-800', off: 'bg-gray-50 border-gray-100 text-gray-400' } },
+                          { label: '석식', emoji: '🍽️', note: currentDay.meals.dinner_note, has: currentDay.meals.dinner, fallback: '현지식', colors: { on: 'bg-orange-50 border-orange-200 text-orange-800', off: 'bg-gray-50 border-gray-100 text-gray-400' } },
+                        ].map(m => {
+                          const active = m.has || !!m.note;
+                          return (
+                            <div key={m.label} className={`rounded-xl px-3 py-2.5 flex-1 text-center border ${active ? m.colors.on : m.colors.off}`}>
+                              <p className="text-xs mb-0.5">{m.emoji} {m.label}</p>
+                              <p className="text-sm font-bold">{m.note || (active ? m.fallback : '불포함')}</p>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1161,7 +1401,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <div
           ref={el => { sectionRefs.current['선택관광'] = el; }}
           data-section="선택관광"
-          className="px-4 py-4 scroll-mt-12"
+          className="px-4 py-4 scroll-mt-[108px]"
         >
           <div className="bg-pink-50/50 rounded-2xl p-4">
             <h3 className="text-xs font-bold text-pink-900 mb-3">💎 선택관광 (별도 비용)</h3>
@@ -1212,7 +1452,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       })()}
 
       {/* ═══ 유의사항 (독립 토글 다중 열림) + 예약 약관 ═══ */}
-      <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-12">
+      <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-[108px]">
         {(() => {
           // 4-level 약관 해소 결과를 서버(page.tsx)에서 initialNotices 로 주입.
           //   Tier 1 플랫폼 → Tier 2 랜드사 공통 → Tier 3 랜드사×상품타입 → Tier 4 상품 특약.
@@ -1292,15 +1532,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     href={`/blog/${bp.slug}`}
                     className="flex gap-3 rounded-2xl border border-[#EBF3FE] bg-[#EBF3FE]/30 p-3 hover:bg-white hover:shadow-md hover:border-[#EBF3FE] transition"
                   >
-                    {bp.og_image_url ? (
-                      <div className="h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
-                        <img src={bp.og_image_url} alt={bp.seo_title || ''} className="h-full w-full object-cover" loading="lazy" />
-                      </div>
-                    ) : (
-                      <div className="flex h-20 w-28 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
-                        <span className="text-3xl">📖</span>
-                      </div>
-                    )}
+                    <BlogOgThumb url={bp.og_image_url} title={bp.seo_title || ''} variant="row" />
                     <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5">
                       <span className="self-start mb-1 inline-block rounded-full bg-[#3182F6] px-2 py-0.5 text-[10px] font-bold text-white">
                         {ANGLE_LABELS[bp.angle_type] || bp.angle_type}
@@ -1328,15 +1560,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     href={`/blog/${bp.slug}`}
                     className="block rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-md hover:border-[#EBF3FE] transition"
                   >
-                    {bp.og_image_url ? (
-                      <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
-                        <img src={bp.og_image_url} alt={bp.seo_title || ''} className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                    ) : (
-                      <div className="aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-[#F2F4F6] to-[#EBF3FE]">
-                        <span className="text-2xl">📖</span>
-                      </div>
-                    )}
+                    <BlogOgThumb url={bp.og_image_url} title={bp.seo_title || ''} variant="grid" />
                     <div className="p-3">
                       <span className="inline-block rounded bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 mb-1">
                         {ANGLE_LABELS[bp.angle_type] || bp.angle_type}
@@ -1359,9 +1583,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           📋 문의 메시지가 복사됐어요 — 채팅창에 붙여넣기 하세요
         </div>
       )}
+      {/* 링크 공유 토스트 */}
+      {shareToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
+          🔗 링크가 복사되었습니다
+        </div>
+      )}
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약하기 (Jiwonnote 분석 P3) ═══ */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-40 border-t border-gray-100 safe-area-bottom">
+        {/* 신뢰 배너 — 상품 타입별 보장 문구 */}
+        <div className="bg-[#EBF3FE] text-[#1d4ed8] text-[10px] text-center py-1.5 font-semibold flex items-center justify-center gap-2.5 flex-wrap px-3">
+          <span>✅ 숨은 수수료 없음</span>
+          {pkg.product_type && /노팁|no.?tip/i.test(pkg.product_type) && <span>✅ 팁 없음</span>}
+          {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
+          {pkg.product_type && /노옵션|no.?option/i.test(pkg.product_type) && <span>✅ 선택관광 강요 없음</span>}
+          <span>✅ 출발 확정 후 안심 예약</span>
+        </div>
         <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-4 pt-3 flex items-center gap-2">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
           <div className="flex-1 min-w-0">
@@ -1426,17 +1664,53 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <span>카톡</span>
           </button>
 
-          {/* 예약하기 — primary, 폼 열기 */}
+          {/* 예약하기 — primary, 폼 열기 (상태형: 날짜 선택 여부에 따라 텍스트 변경) */}
           <button
             type="button"
             onClick={() => setShowForm(true)}
             className="h-11 px-5 rounded-full bg-[#3182F6] text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
             aria-label="예약 문의 폼 열기"
           >
-            예약하기
+            {selectedDate
+              ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 예약`
+              : '예약하기'}
           </button>
         </div>
       </div>
+
+      {/* ═══ 관광지 상세 바텀시트 ═══ */}
+      {attractionModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setAttractionModal(null)}>
+          <div className="bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl overflow-hidden max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2" />
+            {/* 대표 사진 */}
+            {attractionModal.photos && attractionModal.photos.length > 0 && (
+              <div className="w-full h-48 relative">
+                <img
+                  src={attractionModal.photos[0].src_large || attractionModal.photos[0].src_medium}
+                  alt={attractionModal.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            <div className="p-5">
+              <div className="flex items-start justify-between mb-2">
+                <h3 className="font-extrabold text-lg text-gray-900">{attractionModal.name}</h3>
+                <button onClick={() => setAttractionModal(null)} className="text-gray-400 text-xl ml-3 shrink-0">✕</button>
+              </div>
+              {attractionModal.short_desc && (
+                <p className="text-sm font-medium text-gray-700 mb-3">{attractionModal.short_desc}</p>
+              )}
+              {attractionModal.long_desc && (
+                <p className="text-sm text-gray-600 leading-relaxed">{attractionModal.long_desc}</p>
+              )}
+              {(!attractionModal.short_desc && !attractionModal.long_desc) && (
+                <p className="text-sm text-gray-400">상세 정보가 준비 중입니다.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══ 예약 폼 바텀시트 ═══ */}
       {showForm && (
@@ -1469,9 +1743,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />}
                   <textarea placeholder="요청사항 (선택)" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
                     rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
-                  <button onClick={handleSubmit} disabled={!formData.name || !formData.phone}
-                    className="w-full py-3 bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white font-bold rounded-xl text-sm disabled:opacity-50 shadow-lg">
-                    문의 접수하기
+                  <button onClick={handleSubmit} disabled={!formData.name || !formData.phone || isSubmitting}
+                    className="w-full py-3 bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white font-bold rounded-xl text-sm disabled:opacity-50 shadow-lg flex items-center justify-center gap-2">
+                    {isSubmitting ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        <span>접수 중...</span>
+                      </>
+                    ) : '문의 접수하기'}
                   </button>
                 </div>
               </>

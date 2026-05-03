@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { BOOKING_STATUS_COLOR, BOOKING_STATUS_LABEL } from '@/lib/status-colors';
 
 interface Customer {
   id: string;
@@ -38,13 +39,8 @@ interface Note {
   created_at: string;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: '예약대기', confirmed: '예약확정', completed: '결제완료', cancelled: '취소',
-};
-const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800', confirmed: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800', cancelled: 'bg-gray-100 text-gray-500',
-};
+const STATUS_LABEL = BOOKING_STATUS_LABEL;
+const STATUS_COLOR = BOOKING_STATUS_COLOR;
 
 export default function CustomerDetailPage() {
   const { id } = useParams();

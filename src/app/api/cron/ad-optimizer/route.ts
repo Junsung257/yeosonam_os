@@ -31,6 +31,7 @@ import {
  * vercel.json 등록:
  *   { "path": "/api/cron/ad-optimizer", "schedule": "0 * * * *" }  ← 매시 정각
  */
+export const dynamic = 'force-dynamic';
 export async function GET(): Promise<NextResponse> {
   const startAt = Date.now();
   const log: string[] = [];

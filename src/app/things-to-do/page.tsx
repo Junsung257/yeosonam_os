@@ -7,6 +7,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { pickAttractionPhotoUrl } from '@/lib/image-url';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export const revalidate = 86400; // 1d
 
@@ -36,14 +38,15 @@ async function getRegions(): Promise<RegionEntry[]> {
       map.set(r.region, {
         region: r.region,
         count: 0,
-        cover: photos?.[0]?.src_medium ?? photos?.[0]?.src_large ?? null,
+        cover: pickAttractionPhotoUrl(photos ?? undefined),
       });
     }
     const e = map.get(r.region)!;
     e.count += 1;
     if (!e.cover) {
       const photos = r.photos as Array<{ src_medium?: string; src_large?: string }> | null;
-      e.cover = photos?.[0]?.src_medium ?? photos?.[0]?.src_large ?? null;
+      const u = pickAttractionPhotoUrl(photos ?? undefined);
+      if (u) e.cover = u;
     }
   }
   return Array.from(map.values()).sort((a, b) => b.count - a.count);
@@ -75,10 +78,15 @@ export default async function ThingsToDoIndexPage() {
             className="group overflow-hidden rounded-lg border border-neutral-200 bg-white transition-shadow hover:shadow-md"
           >
             <div className="relative h-32 w-full bg-neutral-100">
-              {r.cover && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={r.cover} alt={r.region} loading="lazy" className="h-full w-full object-cover" />
-              )}
+              {r.cover ? (
+                <SafeCoverImg
+                  src={r.cover}
+                  alt={r.region}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                  fallback={<div className="h-full w-full bg-neutral-200" aria-hidden />}
+                />
+              ) : null}
             </div>
             <div className="p-3">
               <div className="font-semibold">{r.region}</div>

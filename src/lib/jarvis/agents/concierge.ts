@@ -35,7 +35,7 @@ ${YEOSONAM_BUSINESS_RULES}
 - knowledge_search: 상품/블로그/관광지/정책 지식베이스 검색 (RAG hybrid: vector + BM25 + RRF)
 - recommend_best_packages: 같은 목적지·날짜 그룹에서 점수 1위 패키지 추천 (Effective Price + TOPSIS)
 - recommend_compare_pair: 두 패키지 1대1 자연어 비교 ("10만 비싸지만 5성+마사지")
-- plan_free_travel: 고객 자유여행 요청 시 실시간 항공+호텔+액티비티 견적 조회 (MRT 연동). 자유여행 언급 시 호출.
+- plan_free_travel: 고객 자유여행 요청 시 실시간 항공+호텔+액티비티 견적 조회 (MRT 연동). 자유여행 언급 시 호출. 도구 결과의 plannerUrl(세션 링크)을 고객에게 그대로 전달하면 동일 견적을 다시 열 수 있음.
 
 ## 답변 흐름 (v6, 2026-04-30)
 1. 첫 메시지면 knowledge_search 로 사용자 질문 핵심 키워드 검색
@@ -276,6 +276,8 @@ function buildExecutor(ctx: JarvisContext) {
         const comparison = acc['comparison'] as any
         const summary    = acc['summary']    as any
         const doneEvt    = acc['done']       as any
+        const sessionId  = doneEvt?.sessionId as string | undefined
+        const plannerUrl = sessionId ? `${baseUrl}/free-travel?session=${encodeURIComponent(sessionId)}` : `${baseUrl}/free-travel`
 
         return {
           destination:       params.destination,
@@ -289,7 +291,8 @@ function buildExecutor(ctx: JarvisContext) {
           totalMax:          comparison?.totalMax,
           aiSummary:         summary?.text,
           packageComparison: comparison,
-          sessionId:         doneEvt?.sessionId,
+          sessionId,
+          plannerUrl,
         }
       }
       default:

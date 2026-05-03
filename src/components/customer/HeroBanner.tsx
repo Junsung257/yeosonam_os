@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export interface HeroSlide {
   image: string;
@@ -48,19 +48,24 @@ export default function HeroBanner({ slides, autoPlayMs = 3000 }: Props) {
           className={`absolute inset-0 transition-opacity duration-700 ${i === current ? 'opacity-100' : 'opacity-0'}`}
           aria-hidden={i !== current}
         >
-          <Image
+          <SafeCoverImg
             src={s.image}
             alt={s.destination}
-            fill
-            className="object-cover"
-            priority={i === 0}
-            sizes="100vw"
+            className="absolute inset-0 h-full w-full object-cover"
+            loading={i === 0 ? 'eager' : 'lazy'}
+            fetchPriority={i === 0 ? 'high' : undefined}
+            fallback={<div className="absolute inset-0 bg-gradient-to-br from-[#1B64DA] to-[#3182F6]" aria-hidden />}
           />
         </div>
       ))}
 
-      {/* 그라데이션 오버레이 */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
+      {/* 그라데이션 오버레이 — 하단 타이포 가독성 + 전역 딤 */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/5 pointer-events-none" />
+      {/* 텍스트 영역(하단) 추가 딤 */}
+      <div
+        className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-transparent to-black/45"
+        aria-hidden
+      />
 
       {/* 텍스트 + CTA */}
       <Link href={slide.href} className="absolute inset-0 flex flex-col justify-end p-6 md:p-12 pb-10 md:pb-14">

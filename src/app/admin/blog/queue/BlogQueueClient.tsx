@@ -143,7 +143,10 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
             시즌 · 커버리지 갭 · 상품 기반 자동 토픽 생성 및 예약 발행
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Link href="/admin/blog/system" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+            시스템·크론
+          </Link>
           <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
             ← 블로그 목록
           </Link>

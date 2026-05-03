@@ -19,7 +19,7 @@ import {
  * 두 산식은 src/lib/kpi-basis.ts의 단일 정의를 공유. 산식 변경 시 그 한 곳만 수정.
  */
 export async function GET(request: NextRequest) {
-  if (!isAdminRequest(request)) {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
   if (!isSupabaseConfigured) return NextResponse.json({ stats: null });

@@ -34,6 +34,19 @@ const PRODUCTS_TOOLS_RAW = [
     }
   },
   {
+    name: 'get_package_hotel_mrt_cache',
+    description:
+      'DB에 저장된 MRT 호텔 동기화(어메니티·평점·취소규정 요약·체크인 시간 등). Wi‑Fi/조식 층 등 API에 있는 범위만 답변 가능. 없으면 /admin에서 MRT 동기화 후 재시도.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['package_id'],
+      properties: {
+        package_id: { type: 'string', description: '패키지 UUID' },
+        departure_date: { type: 'string', description: '출발일 YYYY-MM-DD (선택 — 미지정 시 전체 출발일 행)' },
+      },
+    },
+  },
+  {
     name: 'recommend_package',
     description: '조건에 맞는 상품을 최대 3개 추천합니다.',
     input_schema: {
@@ -251,6 +264,47 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       if (error) throw error
       return data?.[0] || null
     }
+    case 'get_package_hotel_mrt_cache': {
+      const pid = args.package_id as string
+      if (!pid) throw new Error('package_id 필수')
+      const { fetchHotelIntelForJarvis } = await import('@/lib/mrt-hotel-intel')
+      const dep = typeof args.departure_date === 'string' ? args.departure_date : null
+      const rows = await fetchHotelIntelForJarvis(pid, dep)
+      return {
+        package_id: pid,
+        departure_date: dep,
+        hotels: rows.map((row: Record<string, unknown>) => {
+          const snap = row.mrt_snapshot as Record<string, unknown> | null | undefined
+          const dj = snap?.detail_jsonb as Record<string, unknown> | undefined
+          return {
+            day_index: row.day_index,
+            itinerary_hotel_name: row.itinerary_hotel_name,
+            itinerary_hotel_grade: row.itinerary_hotel_grade,
+            matched_mrt_name: row.matched_mrt_name,
+            match_score: row.match_score,
+            composite_mrt_score: row.composite_mrt_score,
+            market_median_price_krw: row.market_median_price_krw,
+            listing_price_krw: row.listing_price_krw,
+            price_percentile: row.price_percentile,
+            computed_at: row.computed_at,
+            amenities: snap?.amenities ?? [],
+            check_in: snap?.check_in,
+            check_out: snap?.check_out,
+            rating: snap?.rating,
+            review_count: snap?.review_count,
+            provider_url: snap?.provider_url,
+            description_excerpt: typeof dj?.description === 'string'
+              ? (dj.description as string).slice(0, 800)
+              : undefined,
+            cancellation_excerpt: typeof dj?.cancellationPolicy === 'string'
+              ? (dj.cancellationPolicy as string).slice(0, 600)
+              : undefined,
+            check_in_time: dj?.checkInTime,
+            check_out_time: dj?.checkOutTime,
+          }
+        }),
+      }
+    }
     case 'recommend_package': {
       let query = supabaseAdmin
         .from('travel_packages')
@@ -307,6 +361,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
           features: {
             shopping_count: r.features.shopping_count,
             hotel_avg_grade: r.features.hotel_avg_grade,
+            mrt_hotel_quality_score: r.features.mrt_hotel_quality_score ?? null,
             meal_count: r.features.meal_count,
             free_option_count: r.features.free_option_count,
             is_direct_flight: r.features.is_direct_flight,

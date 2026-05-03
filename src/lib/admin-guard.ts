@@ -1,48 +1,63 @@
 /**
- * lib/admin-guard.ts
+ * 어드민 전용 API 라우트에서 세션을 확인하는 헬퍼.
  *
- * 어드민 전용 API 라우트에서 admin 세션을 확인하는 헬퍼.
- * middleware.ts 가 로그인 여부만 체크하므로,
- * 민감한 어드민 데이터를 반환하는 라우트는 이 함수로 추가 role 검증.
- *
- * 사용:
- *   if (!isAdminRequest(request)) {
- *     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
- *   }
+ * - Supabase access_token 은 SUPABASE_JWT_SECRET 으로 서명 검증 후 이메일 화이트리스트(ADMIN_EMAILS) 확인.
+ * - 서버 간 호출: Authorization Bearer 가 SUPABASE_SERVICE_ROLE_KEY 와 일치할 때만 허용.
+ * - 레거시 sb-admin 쿠키는 비프로덕션에서만.
  */
 
 import { type NextRequest } from 'next/server';
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 
-export function isAdminRequest(req: NextRequest): boolean {
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map(v => v.trim().toLowerCase())
-    .filter(Boolean);
-
-  // 1) JWT payload email 기반 검증 (middleware에서 서명/만료 1차 확인 전제)
-  const token = req.cookies.get('sb-access-token')?.value;
-  if (token) {
-    try {
-      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString('utf8')) as { email?: string; role?: string };
-      const email = payload.email?.toLowerCase();
-      if (payload.role === 'service_role') return true;
-      if (email && adminEmails.includes(email)) return true;
-    } catch {
-      // noop
-    }
-  }
-
-  // 2) 레거시 관리자 쿠키는 개발 모드에서만 허용
-  const adminCookie = req.cookies.get('sb-admin')?.value;
-  if (process.env.NODE_ENV !== 'production' && adminCookie) return true;
-
-  // 3) 서버-to-서버 호출: service_role key Bearer 토큰
+export async function isAdminRequest(req: NextRequest): Promise<boolean> {
   const auth = req.headers.get('authorization') ?? '';
   if (
     auth.startsWith('Bearer ') &&
     process.env.SUPABASE_SERVICE_ROLE_KEY &&
     auth.slice(7) === process.env.SUPABASE_SERVICE_ROLE_KEY
-  ) return true;
+  ) {
+    return true;
+  }
 
-  return false;
+  if (process.env.NODE_ENV !== 'production' && req.cookies.get('sb-admin')?.value) {
+    return true;
+  }
+
+  const adminEmails = (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map(v => v.trim().toLowerCase())
+    .filter(Boolean);
+  if (adminEmails.length === 0) return false;
+
+  const token = req.cookies.get('sb-access-token')?.value;
+  if (!token) return false;
+
+  const v = await verifySupabaseAccessToken(token);
+  if (!v.ok) return false;
+
+  const email =
+    typeof v.payload.email === 'string' ? v.payload.email.toLowerCase() : undefined;
+  return !!(email && adminEmails.includes(email));
+}
+
+/** 정책 감사 로그용: 검증된 이메일 또는 service / 기본값 */
+export async function resolveAdminActorLabel(req: NextRequest): Promise<string> {
+  const auth = req.headers.get('authorization') ?? '';
+  if (
+    auth.startsWith('Bearer ') &&
+    process.env.SUPABASE_SERVICE_ROLE_KEY &&
+    auth.slice(7) === process.env.SUPABASE_SERVICE_ROLE_KEY
+  ) {
+    return 'service_role';
+  }
+
+  const token = req.cookies.get('sb-access-token')?.value;
+  if (!token) return 'admin';
+
+  const v = await verifySupabaseAccessToken(token);
+  if (!v.ok) return 'admin';
+
+  if (typeof v.payload.email === 'string' && v.payload.email) return v.payload.email;
+  if (typeof v.payload.sub === 'string' && v.payload.sub) return v.payload.sub;
+  return 'admin';
 }

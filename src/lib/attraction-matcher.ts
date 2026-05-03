@@ -281,11 +281,32 @@ export function matchAllActivities(
 /**
  * itinerary_data 듀얼 포맷 정규화 헬퍼
  * DB에 { days: [...] } 객체 또는 [...] 배열이 혼재 → 항상 배열 반환
+ * - JSON 문자열로 저장된 레거시/중간 산출물
+ * - LLM이 day_list 등 비표준 키로 반환한 경우
  */
+/** itinerary_data 루트 — 표준 days 외 LLM/레거시 키 허용 */
+export type NormalizeDaysInput<T> =
+  | T[]
+  | { days?: T[]; day_list?: T[]; itinerary_days?: T[]; schedule?: unknown }
+  | null
+  | undefined
+  | string;
+
 export function normalizeDays<T = Record<string, unknown>>(
-  itineraryData: T[] | { days?: T[] } | null | undefined,
+  itineraryData: NormalizeDaysInput<T>,
 ): T[] {
-  if (!itineraryData) return [];
+  if (itineraryData == null || itineraryData === '') return [];
+  if (typeof itineraryData === 'string') {
+    try {
+      return normalizeDays(JSON.parse(itineraryData) as NormalizeDaysInput<T>);
+    } catch {
+      return [];
+    }
+  }
   if (Array.isArray(itineraryData)) return itineraryData;
-  return (itineraryData as { days?: T[] }).days || [];
+  const obj = itineraryData as { days?: T[] } & Record<string, unknown>;
+  if (Array.isArray(obj.days)) return obj.days;
+  const alt = obj.day_list ?? obj.itinerary_days ?? obj.schedule;
+  if (Array.isArray(alt)) return alt as T[];
+  return [];
 }

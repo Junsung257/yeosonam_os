@@ -260,6 +260,8 @@ export interface DocumentHash {
   file_hash: string;
   /** 원본 파일명 */
   file_name: string;
+  /** 정규화 본문 SHA-256 — 띄어쓰기만 다른 동일 카탈로그 차단 */
+  normalized_hash?: string | null;
   /** 이 파일로 생성된 상품 코드 (있으면) */
   product_id?: string | null;
   created_at: string;

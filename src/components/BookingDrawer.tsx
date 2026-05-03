@@ -55,6 +55,8 @@ interface BookingDetail {
   settlement_mode?: 'accrual' | 'cash' | null;
   commission_rate?: number | null;
   commission_amount?: number | null;
+  /** assisted 모드에서 pending→계약금 단계 전이 전 운영자 승인 */
+  deposit_notice_blocked?: boolean;
 }
 
 interface MessageLog {
@@ -799,6 +801,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
   // Phase 2a — append-only 원장 보기 모달
   const [showLedger, setShowLedger] = useState(false);
+  const [issuingPortal, setIssuingPortal] = useState(false);
+  const [clearingGate, setClearingGate] = useState(false);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const visible = !!bookingId;
@@ -835,6 +839,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   }, [txs]);
 
   const transitions = booking ? (ALLOWED_TRANSITIONS[booking.status] ?? []) : [];
+  const depositTransitionBlocked =
+    !!booking && booking.status === 'pending' && booking.deposit_notice_blocked === true;
 
   // ── Data Fetch ─────────────────────────────────────────────────────────────
 
@@ -919,6 +925,50 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       onStatusChange?.(bookingId, to);
       showToast(`"${getStatusLabel(to)}"으로 변경됨`);
     } finally { setTransitioning(null); }
+  };
+
+  const handleClearDepositGate = async () => {
+    if (!bookingId) return;
+    setClearingGate(true);
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bookingId, deposit_notice_blocked: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? '게이트 해제 실패', 'err');
+        return;
+      }
+      await fetchAll(bookingId);
+      if (data.booking) onSave?.(bookingId, data.booking);
+      showToast('계약금 안내 단계로 넘길 수 있습니다');
+    } finally {
+      setClearingGate(false);
+    }
+  };
+
+  const handleIssueGuestPortal = async () => {
+    if (!bookingId) return;
+    setIssuingPortal(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/guest-portal`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? '링크 발급 실패', 'err');
+        return;
+      }
+      const url = data.portalUrl as string;
+      if (url && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        showToast('고객 링크를 클립보드에 복사했습니다');
+      } else {
+        showToast(url || '발급됨');
+      }
+    } finally {
+      setIssuingPortal(false);
+    }
   };
 
   // ── 정산 확정 / 되돌리기 ─────────────────────────────────────────────
@@ -1172,6 +1222,47 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                   </div>
                 )}
 
+                {booking.status === 'pending' && booking.deposit_notice_blocked && (
+                  <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-3 space-y-2">
+                    <p className="text-[12px] font-bold text-amber-950">계약금 안내 전 운영자 승인 필요</p>
+                    <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                      지금은 검수 후 전이하는 모드입니다. 허용 후 &quot;랜드사 승인 (계약금 청구)&quot; 버튼을 누르세요.
+                      전체 자동화 전환 시 서버 환경에{' '}
+                      <span className="font-mono text-[10px] bg-amber-100/80 px-1 rounded">BOOKING_AUTOMATION_TIER=full_auto</span>
+                      를 설정하면 이 단계가 기본 생략됩니다.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleClearDepositGate}
+                        disabled={clearingGate}
+                        className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[12px] font-semibold hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {clearingGate ? '처리 중…' : '계약금 안내 허용'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleIssueGuestPortal}
+                        disabled={issuingPortal}
+                        className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-amber-900 text-[12px] font-semibold hover:bg-amber-100/50 disabled:opacity-50"
+                      >
+                        {issuingPortal ? '발급 중…' : '고객 요약 링크 복사'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {booking.status !== 'cancelled' && !booking.deposit_notice_blocked && (
+                  <button
+                    type="button"
+                    onClick={handleIssueGuestPortal}
+                    disabled={issuingPortal}
+                    className="w-full text-[11px] text-slate-500 hover:text-blue-600 py-1.5 border border-dashed border-slate-200 rounded-lg hover:border-blue-200 transition disabled:opacity-50"
+                  >
+                    {issuingPortal ? '링크 발급 중…' : '고객용 예약 요약 링크 복사 (토큰)'}
+                  </button>
+                )}
+
                 {/* 기본 정보 */}
                 <div className="bg-white rounded-2xl ring-1 ring-gray-900/5 shadow-sm p-4">
                   <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">기본 정보</h3>
@@ -1386,7 +1477,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             <div className="flex gap-1.5 flex-wrap flex-1">
               {transitions.map(t => (
                 <button key={t.to} onClick={() => handleTransition(t.to)}
-                  disabled={transitioning !== null}
+                  disabled={transitioning !== null || (t.to === 'waiting_deposit' && depositTransitionBlocked)}
                   className={`px-3 py-1.5 text-[12px] font-semibold rounded-lg transition disabled:opacity-50 whitespace-nowrap ${
                     t.isMock
                       ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100'

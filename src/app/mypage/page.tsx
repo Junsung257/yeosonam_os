@@ -184,14 +184,14 @@ function BookingCard({ booking }: { booking: Booking }) {
       <div className="flex items-center justify-between pt-2 border-t border-gray-100">
         <div>
           <p className="text-xs text-gray-400">결제 금액</p>
-          <p className="font-bold text-indigo-700">₩{fmt(booking.total_selling_price)}</p>
+          <p className="font-bold text-[#1B64DA]">₩{fmt(booking.total_selling_price)}</p>
         </div>
 
         {/* 확정서 버튼 — 결제 완료 시만 활성 */}
         {isCompleted && hasVoucher ? (
           <Link
             href={`/voucher/${booking.voucher_id}`}
-            className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs font-semibold px-3 py-2 rounded-xl hover:bg-indigo-700 transition"
+            className="flex items-center gap-1.5 bg-[#3182F6] text-white text-xs font-semibold px-3 py-2 rounded-xl hover:bg-[#1B64DA] transition"
           >
             📄 확정서 보기
           </Link>
@@ -202,7 +202,7 @@ function BookingCard({ booking }: { booking: Booking }) {
         ) : (
           <Link
             href={`/rfq/${booking.id}/chat`}
-            className="flex items-center gap-1.5 border border-indigo-300 text-indigo-600 text-xs font-semibold px-3 py-2 rounded-xl hover:bg-indigo-50 transition"
+            className="flex items-center gap-1.5 border border-[#DBEAFE] text-[#3182F6] text-xs font-semibold px-3 py-2 rounded-xl hover:bg-[#EBF3FE] transition"
           >
             💬 채팅
           </Link>
@@ -243,7 +243,7 @@ export default function MyPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="w-10 h-10 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-gray-400 text-sm">로딩 중...</p>
         </div>
       </div>
@@ -265,16 +265,16 @@ export default function MyPage() {
         {mileage && <MileageCard info={mileage} />}
 
         {/* 마일리지 사용 배너 */}
-        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex items-center justify-between">
+        <div className="bg-[#EBF3FE] border border-[#DBEAFE] rounded-2xl p-4 flex items-center justify-between">
           <div>
-            <p className="font-semibold text-indigo-900 text-sm">🎁 마일리지 사용하기</p>
-            <p className="text-xs text-indigo-600 mt-0.5">
+            <p className="font-semibold text-[#191F28] text-sm">🎁 마일리지 사용하기</p>
+            <p className="text-xs text-[#3182F6] mt-0.5">
               결제 시 최대 30%까지 사용 가능 · 사용해도 원가 불변
             </p>
           </div>
           <Link
             href="/packages"
-            className="bg-indigo-600 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap hover:bg-indigo-700 transition"
+            className="bg-[#3182F6] text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap hover:bg-[#1B64DA] transition"
           >
             여행 찾기
           </Link>
@@ -299,7 +299,7 @@ export default function MyPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition ${
                   activeTab === tab.key
-                    ? 'bg-white shadow-sm text-indigo-700 font-semibold'
+                    ? 'bg-white shadow-sm text-[#1B64DA] font-semibold'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -312,7 +312,7 @@ export default function MyPage() {
             <div className="text-center py-12 text-gray-400">
               <p className="text-3xl mb-2">🧳</p>
               <p className="text-sm">예약 내역이 없습니다</p>
-              <Link href="/packages" className="mt-3 inline-block text-indigo-600 text-sm underline">
+              <Link href="/packages" className="mt-3 inline-block text-[#3182F6] text-sm underline">
                 여행 상품 둘러보기 →
               </Link>
             </div>

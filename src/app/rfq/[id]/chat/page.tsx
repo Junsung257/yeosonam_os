@@ -187,7 +187,7 @@ export default function RfqChatPage() {
                   <div
                     className={`px-4 py-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${
                       isCustomer
-                        ? 'bg-indigo-600 text-white rounded-tr-sm'
+                        ? 'bg-[#3182F6] text-white rounded-tr-sm'
                         : 'bg-white border text-gray-800 rounded-tl-sm shadow-sm'
                     }`}
                   >
@@ -222,12 +222,12 @@ export default function RfqChatPage() {
             disabled={sending}
             placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
             rows={2}
-            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50"
+            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#3182F6]/30 disabled:opacity-50"
           />
           <button
             onClick={sendMessage}
             disabled={sending || !input.trim()}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"
+            className="bg-[#3182F6] hover:bg-[#1B64DA] disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"
           >
             {sending ? '...' : '전송'}
           </button>

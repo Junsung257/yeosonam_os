@@ -13,6 +13,10 @@ import { validateIntake } from '@/lib/intake-normalizer';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const auth = req.headers.get('authorization');
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   let body: { pkg?: unknown };
   try {
     body = await req.json();

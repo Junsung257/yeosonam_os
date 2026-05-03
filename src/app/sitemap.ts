@@ -8,6 +8,23 @@ const HARD_LIMIT = 45000;
 
 export const revalidate = 3600; // 1시간 — sitemap 자체도 ISR
 
+function safeLastModified(iso: string | null | undefined): Date {
+  if (!iso) return new Date();
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d : new Date();
+}
+
+/** 블로그 slug 가 URL 경로로 안전한지 (빈 값·이상한 토큰 제외) */
+function isSafeSitemapBlogSlug(slug: string | null | undefined): boolean {
+  if (slug == null || typeof slug !== 'string') return false;
+  const s = slug.trim();
+  if (s.length === 0 || s.length > 512) return false;
+  if (s.startsWith('/') || s.includes('//') || s.includes('?') || s.includes('#')) return false;
+  // 최소 1글자 이상의 글자/숫자 (예: slug `-weather` 같은 깨진 행 제외)
+  if (!/[0-9a-zA-Z가-힣]/.test(s)) return false;
+  return true;
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // ── 정적 경로 ─────────────────────────────────────────────
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -20,6 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // /login 은 robots.txt 에서 Disallow → sitemap 에서도 제외
   ];
 
+  try {
   if (!isSupabaseConfigured) return staticRoutes;
 
   // ── 동적: 상품 + 목적지 필터 랜딩 ─────────────────────────
@@ -121,20 +139,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.75,
       })),
       // 개별 글 — updated_at 우선, 없으면 published_at
-      ...postList.map((post) => {
-        const last = post.updated_at || post.published_at;
-        const entry: MetadataRoute.Sitemap[number] = {
-          url: `${BASE_URL}/blog/${post.slug}`,
-          lastModified: last ? new Date(last) : new Date(),
-          changeFrequency: 'weekly',
-          priority: 0.7,
-        };
-        // Next.js MetadataRoute.Sitemap 는 images 속성을 지원 (xmlns:image 자동 주입)
-        if (post.og_image_url) {
-          (entry as any).images = [post.og_image_url];
-        }
-        return entry;
-      }),
+      // Next 14 MetadataRoute.Sitemap 에서 images 등 확장 필드는 런타임 XML 직렬화 시 500 유발 가능 → url/lastModified 만 사용
+      ...postList
+        .filter((post) => isSafeSitemapBlogSlug(post.slug))
+        .map((post) => {
+          const last = post.updated_at || post.published_at;
+          return {
+            url: `${BASE_URL}/blog/${encodeURIComponent(post.slug)}`,
+            lastModified: safeLastModified(last),
+            changeFrequency: 'weekly' as const,
+            priority: 0.7,
+          };
+        }),
     ];
   } catch (err) {
     console.warn('[sitemap] blog 로딩 실패:', err);
@@ -167,4 +183,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...rfqRoutes,
     ...blogRoutes,
   ];
+  } catch (e) {
+    console.error('[sitemap] 전체 생성 실패 — 정적 경로만 반환:', e);
+    return staticRoutes;
+  }
 }

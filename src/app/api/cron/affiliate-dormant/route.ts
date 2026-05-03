@@ -8,6 +8,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 const DORMANT_MONTHS = parseInt(process.env.DORMANT_MONTHS || '6');
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true, message: 'DB 미설정' });
 
