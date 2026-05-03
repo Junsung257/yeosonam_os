@@ -14,7 +14,7 @@ import {
   LogOut, Star, StarOff, Menu as MenuIcon, Eye,
   ArrowLeftRight, Unlink, FileSearch, PackagePlus, Combine,
   Receipt, Plane, Palette, Target, Zap, Send,
-  Tags, BadgeDollarSign, Settings, PencilLine,
+  Tags, BadgeDollarSign, Settings, PencilLine, GitBranch,
   type LucideIcon,
 } from 'lucide-react';
 import { useAutoRefreshSession } from '@/hooks/useAutoRefreshSession';
@@ -63,6 +63,8 @@ const navGroups: NavGroup[] = [
       { href: '/admin/payments',           label: '입금 관리',    icon: Wallet },
       { href: '/admin/payments/reconcile', label: '입금 조정',    icon: ArrowLeftRight },
       { href: '/admin/booking-guide',      label: '예약 안내문',  icon: FileText },
+      { href: '/admin/reviews',            label: '리뷰 감정분석', icon: Star },
+      { href: '/admin/flight-alerts',      label: '항공 지연',    icon: Plane },
     ],
   },
   {
@@ -94,6 +96,8 @@ const navGroups: NavGroup[] = [
       { href: '/admin/applications',        label: '파트너 신청',            icon: UserPlus },
       { href: '/admin/partner-preview',     label: '파트너 프론트 미리보기', icon: Eye },
       { href: '/admin/rfqs',                label: '단체 RFQ',               icon: FileQuestion },
+      { href: '/admin/competitor-prices',   label: '경쟁사 가격',            icon: TrendingUp },
+      { href: '/admin/analytics',           label: 'LTV 코호트',             icon: BarChart3 },
       { href: '/admin/concierge',           label: '컨시어지',               icon: Headset },
       { href: '/admin/free-travel',         label: '자유여행 플래너',        icon: Compass },
       { href: '/admin/tenants',             label: '테넌트 관리',            icon: Layers },
@@ -108,6 +112,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/land-settlements',        label: '랜드사 정산',  icon: Receipt },
       { href: '/admin/tax',                     label: '세무 관리',    icon: Calculator },
       { href: '/admin/free-travel/settlements', label: '자유여행 정산', icon: Plane },
+      { href: '/admin/invoice',              label: '인보이스 파싱', icon: Receipt },
     ],
   },
   {
@@ -147,6 +152,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/generate',                label: 'AI 생성',           icon: Wand2 },
       { href: '/admin/qa',                      label: 'Q&A 챗봇',          icon: MessageCircle },
       { href: '/admin/platform-learning',       label: 'AI 플라이휠',       icon: LibraryBig },
+      { href: '/admin/agent-mas',               label: 'MAS 관제',         icon: GitBranch },
       { href: '/admin/extractions/corrections', label: 'AI 파싱 교정 이력', icon: PencilLine },
     ],
   },
@@ -161,6 +167,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/scoring/funnel', label: '추천 깔때기',   icon: TrendingUp },
       { href: '/admin/scoring/trends', label: '순위 변동',     icon: Activity },
       { href: '/admin/alerts',         label: '운영 알림',     icon: AlertTriangle },
+      { href: '/admin/gdpr',           label: '개인정보 삭제', icon: AlertTriangle },
       { href: '/admin/blog/system',    label: '블로그 시스템', icon: Settings },
     ],
   },

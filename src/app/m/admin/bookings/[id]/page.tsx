@@ -11,6 +11,7 @@ import {
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fmtDate, fmtK, getBalance } from '@/lib/admin-utils';
 import BookingActions from './_actions';
+import BookingConciergeAdminPanel from '@/components/booking/BookingConciergeAdminPanel';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -187,6 +188,8 @@ export default async function MobileBookingDetail({
             </div>
           </dl>
         </section>
+
+        <BookingConciergeAdminPanel bookingId={params.id} />
 
         <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">

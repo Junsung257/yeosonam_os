@@ -227,6 +227,27 @@ export function groupForPoster(dates: PriceDate[], opts?: { globalMinOverride?: 
   return result;
 }
 
+// ── Dynamic Pricing: markup 적용 헬퍼 ────────────────────────────────
+// price_markup_rate (0.05 = 5%)가 설정된 패키지의 가격 표시에 사용
+export function applyMarkup(price: number, markupRate: number): number {
+  if (!markupRate || markupRate <= 0) return price;
+  return Math.ceil((price * (1 + markupRate)) / 1000) * 1000; // 1,000원 단위 올림
+}
+
+export function applyMarkupToDates(
+  priceDates: PriceDate[],
+  markupRate: number,
+): PriceDate[] {
+  if (!markupRate || markupRate <= 0) return priceDates;
+  return priceDates.map((pd) => ({
+    ...pd,
+    price: applyMarkup(pd.price, markupRate),
+    ...(pd.child_price != null
+      ? { child_price: applyMarkup(pd.child_price, markupRate) }
+      : {}),
+  }));
+}
+
 // ── 4. getMinPriceFromDates ──
 
 export function getMinPriceFromDates(dates: PriceDate[]): number {

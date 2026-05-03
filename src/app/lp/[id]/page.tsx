@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { loadLpPackageForPage } from '@/lib/load-lp-package';
 import { LandingClient } from './LandingClient';
+import { LpRouteSkeleton } from './LpRouteSkeleton';
 
 /** 세그먼트 ISR — unstable_cache(300s)와 함께 동작 */
 export const revalidate = 300;
@@ -49,13 +50,7 @@ export default async function LpPage({ params }: { params: { id: string } }) {
   if (!data) notFound();
 
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center text-[var(--text-muted)] bg-[var(--bg-section)]">
-          불러오는 중…
-        </div>
-      }
-    >
+    <Suspense fallback={<LpRouteSkeleton />}>
       <LandingClient initialData={data} />
     </Suspense>
   );

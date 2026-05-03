@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,10 @@ const ALLOWED_STATUS = new Set([
 ]);
 
 export async function GET(req: NextRequest) {
+  if (!(await isAdminRequest(req))) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ tasks: [], total: 0 });
   }

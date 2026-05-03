@@ -11,6 +11,7 @@ import {
   type BookingStatus,
 } from '@/lib/booking-state-machine';
 import type { MessageLog } from '@/lib/supabase';
+import BookingConciergeAdminPanel from '@/components/booking/BookingConciergeAdminPanel';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 interface BookingDetail {
@@ -743,6 +744,8 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           <p className="text-xs text-gray-400 mt-3">현재 상태에서 가능한 전이가 없습니다.</p>
         )}
       </div>
+
+      <BookingConciergeAdminPanel bookingId={id} onToast={showToast} />
 
       {/* 고객 응대 타임라인 */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">

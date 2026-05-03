@@ -44,20 +44,39 @@ export async function mintGuestPortalToken(bookingId: string): Promise<{ rawToke
 export async function resolveGuestPortalBookingId(rawToken: string): Promise<{
   bookingId: string;
   tokenRowId: string;
+  tokenExpiresAt: string;
 } | null> {
   const tokenHash = hashGuestPortalToken(rawToken.trim());
   const now = new Date().toISOString();
 
   const { data, error } = await supabaseAdmin
     .from('booking_guest_tokens')
-    .select('id, booking_id')
+    .select('id, booking_id, expires_at')
     .eq('token_hash', tokenHash)
     .is('revoked_at', null)
     .gt('expires_at', now)
     .maybeSingle();
 
   if (error || !data) return null;
-  return { bookingId: (data as { booking_id: string }).booking_id, tokenRowId: (data as { id: string }).id };
+  const row = data as { booking_id: string; id: string; expires_at: string };
+  return { bookingId: row.booking_id, tokenRowId: row.id, tokenExpiresAt: row.expires_at };
+}
+
+/** 세션 쿠키 검증 후 DB에서 토큰 행이 여전히 유효한지 확인 */
+export async function assertGuestPortalTokenRowActive(
+  tokenRowId: string,
+  bookingId: string,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('booking_guest_tokens')
+    .select('id')
+    .eq('id', tokenRowId)
+    .eq('booking_id', bookingId)
+    .is('revoked_at', null)
+    .gt('expires_at', now)
+    .maybeSingle();
+  return !error && Boolean(data);
 }
 
 export async function touchGuestPortalToken(tokenRowId: string): Promise<void> {

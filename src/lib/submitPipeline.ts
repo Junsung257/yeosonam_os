@@ -1,8 +1,11 @@
 import type { TrackingData } from '@/hooks/useTracking';
+import { trackLead } from '@/components/MetaPixel';
 
 export interface KakaoLeadContext {
   productTitle?: string;
   internalCode?: string;
+  /** Meta Lead 이벤트 value (원) — 미입력 시 0 */
+  leadValueForPixel?: number;
 }
 
 export interface LeadFormData {
@@ -108,10 +111,16 @@ export async function submitLeadPipeline(
   chatSessionId?: string,
 ): Promise<void> {
   const payload = buildPayload(productId, form, tracking, chatSessionId);
-  // 실패해도 카카오 이동은 막지 않음 (UX 우선)
-  await submitWithRetry(payload).catch(err =>
-    console.error('[LeadPipeline] submit failed:', err)
-  );
+  try {
+    await submitWithRetry(payload);
+    trackLead({
+      content_name: kakaoContext?.productTitle ?? '여행 상담 신청',
+      value: kakaoContext?.leadValueForPixel ?? 0,
+      content_ids: [productId],
+    });
+  } catch (err) {
+    console.error('[LeadPipeline] submit failed:', err);
+  }
   // 카카오 채팅창에 붙여넣기 좋은 메시지를 클립보드에 복사
   try {
     const message = buildKakaoMessage(form, kakaoContext);

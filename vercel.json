@@ -251,6 +251,18 @@
     {
       "path": "/api/cron/weather-upsell",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/fx-rate-sync",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/review-sentiment",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/fraud-detect",
+      "schedule": "0 * * * *"
     }
   ]
 }

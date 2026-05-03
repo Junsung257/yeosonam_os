@@ -295,6 +295,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         content_name: initialPackage.title || '',
         content_category: initialPackage.destination || '',
         value: initialPackage.price || 0,
+        content_ids: [id],
       });
       setIsLoading(false);
       return;
@@ -308,6 +309,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           content_name: p.title || '',
           content_category: p.destination || '',
           value: p.price || 0,
+          content_ids: [String(p.id ?? id)],
         });
       }
     }).catch(console.error).finally(() => setIsLoading(false));
@@ -1680,7 +1682,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             type="button"
             aria-label="카카오톡으로 문의"
             onClick={async () => {
-              trackLead({ content_name: pkg.title || '', value: displayPrice || 0 });
+              trackLead({
+                content_name: pkg.title || '',
+                value: displayPrice || 0,
+                content_ids: [id],
+              });
               // recommendation_outcomes inquiry 트래킹 (점수 시스템 funnel)
               fetch('/api/tracking/recommendation', {
                 method: 'PATCH',

@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { transitionAgentTask } from '@/lib/agent/tasking';
+import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
 ) {
   try {
+    if (!(await isAdminRequest(request))) {
+      return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+    }
+
     const approvalId = params.id;
     const body = await request.json().catch(() => ({}));
     const action = body?.action === 'reject' ? 'reject' : 'approve';
-    const reviewer = typeof body?.reviewedBy === 'string' ? body.reviewedBy : 'admin:manual';
+    const reviewer = await resolveAdminActorLabel(request);
     const reason = typeof body?.reason === 'string' ? body.reason : null;
 
     const { data: approval, error: approvalErr } = await supabaseAdmin
