@@ -1148,7 +1148,7 @@ function tryParseJsonArray(jsonStr: string): Record<string, unknown>[] | null {
 // JSON 파싱 헬퍼 (잘린 JSON 복구 포함)
 function safeParseJsonArray(raw: string): Record<string, unknown>[] | null {
   const strippedRaw = stripCodeFences(raw);
-  let jsonStr = strippedRaw;
+  const jsonStr = strippedRaw;
   const direct = tryParseJsonArray(jsonStr);
   if (direct) return direct;
 

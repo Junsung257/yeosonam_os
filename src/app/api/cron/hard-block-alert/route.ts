@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 export const maxDuration = 60;
 
@@ -27,15 +28,8 @@ interface AlertItem {
 }
 
 export async function GET(request: NextRequest) {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
-
-  const authHeader = request.headers.get('authorization');
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
 
   try {
     // 1. 하드블럭 설정된 활성 패키지 조회

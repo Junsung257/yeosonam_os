@@ -28,23 +28,25 @@ export async function POST(request: NextRequest) {
 
     if (taskErr) throw taskErr;
 
-    // agent_approvals: 어드민 직접 대응 기록
-    await supabaseAdmin.from('agent_approvals').insert({
+    // agent_approvals: 어드민 직접 대응 기록 (감사 로그 — 실패해도 메인 응답 유지)
+    const { error: approvalErr } = await supabaseAdmin.from('agent_approvals').insert({
       task_id: taskId,
       status: 'approved',
       requested_by: 'jarvis',
       reviewed_by: adminId ?? 'admin',
       reviewed_at: new Date().toISOString(),
     });
+    if (approvalErr) console.warn('[hitl/takeover] agent_approvals insert 실패:', approvalErr.message);
 
-    // agent_incidents: 수동 핸드오프 감사 로그
-    await supabaseAdmin.from('agent_incidents').insert({
+    // agent_incidents: 수동 핸드오프 감사 로그 (감사 로그 — 실패해도 메인 응답 유지)
+    const { error: incidentErr } = await supabaseAdmin.from('agent_incidents').insert({
       task_id: taskId,
       severity: 'info',
       category: 'manual_handoff',
       message: note ?? '어드민 직접 대응',
       details: { adminId: adminId ?? 'admin', takenOverAt: new Date().toISOString() },
     });
+    if (incidentErr) console.warn('[hitl/takeover] agent_incidents insert 실패:', incidentErr.message);
 
     return NextResponse.json({ ok: true, taskId, status: 'resumed' });
   } catch (err) {
