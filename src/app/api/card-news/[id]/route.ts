@@ -69,8 +69,10 @@ export async function PATCH(
           .neq('status', 'failed');
         if (count === 0) {
           const cn = data as any;
-          const targetAt = new Date();
-          targetAt.setMinutes(targetAt.getMinutes() + 30);
+          const { getEarliestBlogPublishEligibleMs } = await import('@/lib/card-news-render-readiness');
+          const eligibleMs = await getEarliestBlogPublishEligibleMs(params.id);
+          const minScheduleMs = Date.now() + 30 * 60 * 1000;
+          const targetAt = new Date(Math.max(minScheduleMs, eligibleMs));
           await supabaseAdmin.from('blog_topic_queue').insert({
             source: 'card_news',
             card_news_id: params.id,

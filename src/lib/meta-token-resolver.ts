@@ -8,6 +8,7 @@
  * 메모리 캐시 (1분) — publish 호출마다 DB 치면 부하.
  */
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
+import { createSingleFlight } from './async-single-flight';
 
 interface CacheEntry {
   value: string;
@@ -15,6 +16,7 @@ interface CacheEntry {
 }
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 60 * 1000;
+const dbFetchFlight = createSingleFlight<string, string | null>();
 
 /**
  * 토큰 조회. env 우선, 미설정/만료 의심 시 DB 조회.
@@ -32,12 +34,14 @@ export async function resolveMetaToken(key: string): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
 
   try {
-    const { data } = await supabaseAdmin
-      .from('system_secrets')
-      .select('value')
-      .eq('key', key)
-      .maybeSingle();
-    const value = (data?.value as string | undefined) ?? null;
+    const value = await dbFetchFlight(key, async () => {
+      const { data } = await supabaseAdmin
+        .from('system_secrets')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+      return (data?.value as string | undefined) ?? null;
+    });
     if (value) {
       cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
     }

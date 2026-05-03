@@ -93,6 +93,13 @@ export async function GET() {
 
       if (updateError) throw updateError;
       archivedCount = toArchive.length;
+
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages(toArchive, 'auto_archived_package');
+      } catch (e) {
+        console.warn('[auto-archive] blog_topic_queue skip 실패 (무시):', e);
+      }
     }
 
     console.log(`[auto-archive] ${archivedCount}개 상품 아카이브 완료`);

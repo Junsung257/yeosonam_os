@@ -22,6 +22,8 @@
  *   ADMIN_ALERT_EMAIL    잔액 부족 알림 수신 이메일
  */
 
+import { fetchAdAccountSnapshot, isMetaConfigured } from '@/lib/meta-api';
+
 // ── 설정 상수 ────────────────────────────────────────────────
 
 const ROAS_TARGET_PCT = parseInt(process.env.AD_ROAS_TARGET_PCT ?? '150');
@@ -70,6 +72,28 @@ export async function syncAdAccountBalance(
   platform: 'naver' | 'google' | 'meta',
   accountName: string
 ): Promise<AdAccountSnapshot> {
+  if (platform === 'meta' && isMetaConfigured()) {
+    try {
+      const acc = await fetchAdAccountSnapshot();
+      const balance = Number(acc.balance ?? 0);
+      const amountSpent = Number(acc.amount_spent ?? 0);
+      const spendCap = acc.spend_cap ? Number(acc.spend_cap) : NaN;
+      return {
+        platform: 'meta',
+        account_name: acc.name || accountName,
+        current_balance: Number.isFinite(balance) ? balance : 0,
+        daily_budget: Number.isFinite(spendCap) && spendCap > 0 ? Math.round(spendCap / 100) : 150000,
+        daily_spend_today: Number.isFinite(amountSpent) ? amountSpent : 0,
+        is_active: (acc.account_status ?? 1) === 1,
+      };
+    } catch (e) {
+      console.warn(
+        '[AdController] Meta 계정 동기화 실패 — mock 폴백:',
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
   // ── Mock: 실제 API 미연동 시 더미 데이터 반환 ──────────────
   const mockBalances: Record<string, number> = {
     naver: 120000 + Math.floor(Math.random() * 30000),

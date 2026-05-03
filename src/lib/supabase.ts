@@ -741,6 +741,14 @@ export async function createBooking(data: {
   quickCreated?: boolean; quickCreatedTxId?: string;
   /** 명시하지 않으면 BOOKING_AUTOMATION_TIER 에 따름 (assisted=true, full_auto=false) */
   depositNoticeBlocked?: boolean;
+  /** 마케팅 귀속 (블로그·광고·제휴) — 예약 행에 스냅샷 저장 */
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  utm_attributed_campaign_id?: string | null;
+  referral_code?: string | null;
 }) {
   try {
     const { initialDepositNoticeBlockedForNewBooking } = await import('./booking-automation-policy');
@@ -817,6 +825,15 @@ export async function createBooking(data: {
       ...(data.quickCreatedTxId ? { quick_created_tx_id: data.quickCreatedTxId } : {}),
       deposit_notice_blocked:
         data.depositNoticeBlocked ?? initialDepositNoticeBlockedForNewBooking(),
+      ...(data.utm_source ? { utm_source: data.utm_source } : {}),
+      ...(data.utm_medium ? { utm_medium: data.utm_medium } : {}),
+      ...(data.utm_campaign ? { utm_campaign: data.utm_campaign } : {}),
+      ...(data.utm_term ? { utm_term: data.utm_term } : {}),
+      ...(data.utm_content ? { utm_content: data.utm_content } : {}),
+      ...(data.utm_attributed_campaign_id
+        ? { utm_attributed_campaign_id: data.utm_attributed_campaign_id }
+        : {}),
+      ...(data.referral_code ? { referral_code: data.referral_code } : {}),
     }] as never).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;

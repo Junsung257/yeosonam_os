@@ -171,6 +171,13 @@ export async function GET(): Promise<NextResponse> {
     }
   }
 
+  const kstHour = (new Date().getUTCHours() + 9) % 24;
+  if (kstHour >= 1 && kstHour < 7) {
+    push(
+      `[marketing-rules hint] KST ${kstHour}시 off-peak — 입찰 ${process.env.AD_OFFPEAK_BID_FACTOR || '0.85'}배 감액 권고 (플랫폼 키워드 ID 매핑 후 실연동)`,
+    );
+  }
+
   push(`=== 완료 (${Date.now() - startAt}ms) ===`);
 
   return NextResponse.json({

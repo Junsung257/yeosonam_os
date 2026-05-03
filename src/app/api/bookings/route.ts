@@ -230,6 +230,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // UTM / 제휴 코드 — 클라이언트가 camelCase 로 보내도 스냅샷 컬럼에 정규화
+    if (body.utmSource && !body.utm_source) body.utm_source = body.utmSource;
+    if (body.utmMedium && !body.utm_medium) body.utm_medium = body.utmMedium;
+    if (body.utmCampaign && !body.utm_campaign) body.utm_campaign = body.utmCampaign;
+    if (body.utmTerm && !body.utm_term) body.utm_term = body.utmTerm;
+    if (body.utmContent && !body.utm_content) body.utm_content = body.utmContent;
+    if (affRef && !body.referral_code) body.referral_code = affRef;
+
     const booking = await createBooking(body);
 
     if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {

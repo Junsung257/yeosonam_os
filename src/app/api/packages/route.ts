@@ -595,6 +595,12 @@ export async function PATCH(request: NextRequest) {
         .update({ status: 'archived', updated_at: new Date().toISOString() })
         .in('id', packageIds);
       if (error) throw error;
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages(packageIds, 'bulk_archive_package');
+      } catch (e) {
+        console.warn('[packages] blog_topic_queue skip (bulk_archive):', e);
+      }
       const { revalidateTag } = await import('next/cache');
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
@@ -678,6 +684,12 @@ export async function PATCH(request: NextRequest) {
         .eq('id', packageId)
         .select();
       if (error) throw error;
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages([packageId], 'package_rejected');
+      } catch (e) {
+        console.warn('[packages] blog_topic_queue skip (reject):', e);
+      }
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
       revalidateLandingPagesForPackage(
@@ -750,6 +762,16 @@ export async function PATCH(request: NextRequest) {
       .select()
       .single();
     if (updateErr) throw updateErr;
+
+    const resolvedPkgStatus = (result as { status?: string } | null)?.status;
+    if (resolvedPkgStatus === 'archived' || resolvedPkgStatus === 'rejected') {
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages([packageId], `package_${resolvedPkgStatus}`);
+      } catch (e) {
+        console.warn('[packages] blog_topic_queue skip (status):', e);
+      }
+    }
 
     // ─── Reflexion 자동 INSERT (best-effort, 실패해도 PATCH 응답 막지 않음) ───
     if (beforeSnapshot && beforePkgMeta && trackedKeysChanged.length > 0) {

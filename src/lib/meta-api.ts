@@ -271,3 +271,28 @@ export function isMetaConfigured(): boolean {
     process.env.META_AD_ACCOUNT_ID
   );
 }
+
+export interface MetaAdAccountFields {
+  name: string;
+  account_status?: number;
+  balance?: string;
+  amount_spent?: string;
+  spend_cap?: string;
+  currency?: string;
+}
+
+/**
+ * 광고계정 스냅샷 (잔액·지출) — AdController 잔액 동기화용.
+ * balance / amount_spent 는 통화 단위가 계정 설정에 따름.
+ */
+export async function fetchAdAccountSnapshot(): Promise<MetaAdAccountFields> {
+  const { accessToken, adAccountId } = getCredentials();
+  const params = new URLSearchParams({
+    fields: 'name,account_status,balance,amount_spent,spend_cap,currency',
+    access_token: accessToken,
+  });
+  const res = await fetch(`${BASE_URL}/${adAccountId}?${params.toString()}`);
+  const json = (await res.json()) as MetaApiResponse<MetaAdAccountFields> & Partial<MetaAdAccountFields>;
+  if (json.error) handleMetaError(json, 'fetchAdAccountSnapshot');
+  return json as MetaAdAccountFields;
+}

@@ -11,6 +11,8 @@ import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
+import { buildStandardBlogCtaMarkdown } from '@/lib/blog-cta';
+import { getEarliestBlogPublishEligibleMs } from '@/lib/card-news-render-readiness';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -42,6 +44,24 @@ export const dynamic = 'force-dynamic';
 const MAX_BATCH = 3; // 10건×20초=200s → Vercel 300s 한계 근접, 3건으로 안전마진 확보
 const MAX_ATTEMPTS = 2;
 
+/** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
+let blogStyleGuideCache: { content: string; version: string } | null = null;
+
+async function getActiveBlogStyleGuide(): Promise<{ content: string; version: string }> {
+  if (blogStyleGuideCache) return blogStyleGuideCache;
+  const { data: promptRow } = await supabaseAdmin
+    .from('prompt_versions')
+    .select('content, version')
+    .eq('domain', 'blog_style_guide')
+    .eq('is_active', true)
+    .limit(1);
+  blogStyleGuideCache = {
+    content: promptRow?.[0]?.content || '',
+    version: promptRow?.[0]?.version || 'v1.0',
+  };
+  return blogStyleGuideCache;
+}
+
 async function runBlogPublisher(request: NextRequest) {
   // CRON_SECRET 검증 (vercel cron 요청만 통과)
   const authHeader = request.headers.get('authorization');
@@ -57,6 +77,7 @@ async function runBlogPublisher(request: NextRequest) {
   const errors: string[] = [];
 
   try {
+    blogStyleGuideCache = null;
     const nowIso = new Date().toISOString();
     const { data: queue } = await supabaseAdmin
       .from('blog_topic_queue')
@@ -75,7 +96,7 @@ async function runBlogPublisher(request: NextRequest) {
       try {
         const r = await processQueueItem(item);
         results.push(r);
-        if (r.status !== 'published' && r.status !== 'done') {
+        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer') {
           errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
@@ -84,43 +105,50 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
-    for (const r of results) {
-      if (r.status === 'published') {
-        const slug = r.reason;
-        if (slug) {
-          // 색인 요청 + 결과를 DB에 저장 (auto-pilot 모니터링)
-          notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
-            .then(report => {
-              return supabaseAdmin.from('indexing_reports').insert({
-                url: report.url,
-                google_status: report.google,
-                google_error: report.google_error ?? null,
-                indexnow_status: report.indexnow,
-                indexnow_error: report.indexnow_error ?? null,
-                sitemap_pings: report.sitemap_pings,
-                duration_ms: report.duration_ms,
-              });
-            })
-            .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ });
-          try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
+    const publishedSlugs = results
+      .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
+      .map(r => r.reason);
 
-          // 🆕 자비스 RAG 자동 인덱싱 (v5, 2026-04-30) — 발행 즉시 자비스 학습
-          (async () => {
+    for (const r of results) {
+      if (r.status === 'published' && r.reason) {
+        const slug = r.reason;
+        notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
+          .then(report => {
+            return supabaseAdmin.from('indexing_reports').insert({
+              url: report.url,
+              google_status: report.google,
+              google_error: report.google_error ?? null,
+              indexnow_status: report.indexnow,
+              indexnow_error: report.indexnow_error ?? null,
+              sitemap_pings: report.sitemap_pings,
+              duration_ms: report.duration_ms,
+            });
+          })
+          .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ });
+        try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
+      }
+    }
+
+    if (publishedSlugs.length > 0) {
+      try {
+        const { data: ccRows } = await supabaseAdmin
+          .from('content_creatives')
+          .select('id, slug')
+          .in('slug', publishedSlugs)
+          .eq('status', 'published');
+        const bySlug = new Map((ccRows || []).map((row: { id: string; slug: string }) => [row.slug, row.id]));
+        for (const slug of publishedSlugs) {
+          const cid = bySlug.get(slug);
+          if (cid) {
             try {
-              const { data: cc } = await supabaseAdmin
-                .from('content_creatives')
-                .select('id')
-                .eq('slug', slug)
-                .eq('status', 'published')
-                .order('published_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (cc?.id) await indexBlog(cc.id);
+              await indexBlog(cid);
             } catch (e) {
               console.warn('[blog-publisher] RAG 인덱싱 실패 (비중단):', e instanceof Error ? e.message : e);
             }
-          })().catch(() => {});
+          }
         }
+      } catch (e) {
+        console.warn('[blog-publisher] RAG 배치 조회 실패:', e instanceof Error ? e.message : e);
       }
     }
     try { revalidatePath('/blog'); } catch { /* noop */ }
@@ -154,6 +182,29 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
   }
 
   try {
+    if (item.card_news_id) {
+      const eligibleMs = await getEarliestBlogPublishEligibleMs(item.card_news_id as string);
+      if (Date.now() < eligibleMs) {
+        const when = new Date(eligibleMs).toISOString();
+        await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'queued',
+            attempts: item.attempts ?? 0,
+            target_publish_at: when,
+            last_error: null,
+            updated_at: new Date().toISOString(),
+            meta: {
+              ...(item.meta || {}),
+              render_buffer_until: when,
+              deferred_render_buffer_at: new Date().toISOString(),
+            },
+          })
+          .eq('id', item.id);
+        return { id: item.id, topic: item.topic, status: 'deferred_buffer', reason: when };
+      }
+    }
+
     // 생성 경로 분기
     //   1) pillar → /destinations/[city] 허브 본문 생성 (장문 AI)
     //   2) card_news 연결 → from-card-news API 위임 (PNG 삽입 블로그)
@@ -234,9 +285,11 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
     // links-gate(내부링크 ≥1) + cta-gate(링크 ≥2) 동시 통과
     const internalLinkCount = (generated.blog_html.match(/\[([^\]]+)\]\(\/[^)]*\)/g) || []).length;
     const mdLinkCount = (generated.blog_html.match(/\[([^\]]+)\]\((?:\/|https?:\/\/)[^)]*\)/g) || []).length;
-    if ((internalLinkCount < 1 || mdLinkCount < 2) && item.destination) {
-      const dest = encodeURIComponent(item.destination);
-      generated.blog_html += `\n\n---\n\n> **여소남 ${item.destination} 패키지 보기** — [항공+호텔+일정 한번에 확인](/packages?destination=${dest}) | [카카오톡 무료 상담](https://pf.kakao.com/_xfxnFj/chat)\n`;
+    if (internalLinkCount < 1 || mdLinkCount < 2) {
+      generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
+        destination: item.destination,
+        slug: generated.slug,
+      })}`;
     }
 
     // 🆕 가독성 점수 계산 (한국어 휴리스틱)
@@ -413,6 +466,13 @@ async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
     throw new Error('카드뉴스 PNG 아직 렌더링 안 됨. 어드민에서 "확정+블로그 생성" 먼저 클릭하세요.');
   }
 
+  const eligibleMs = await getEarliestBlogPublishEligibleMs(item.card_news_id as string);
+  if (Date.now() < eligibleMs) {
+    throw new Error(
+      `카드뉴스 PNG 안정화 대기 중 (~${new Date(eligibleMs).toISOString()}). 크론이 자동으로 재시도합니다.`,
+    );
+  }
+
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const cronSecret = process.env.CRON_SECRET;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -459,16 +519,7 @@ async function generatePillar(item: any): Promise<GeneratedBlog> {
   const ctx = await buildPillarContext(item.destination);
   if (!ctx) throw new Error(`${item.destination} 컨텍스트 부족 (관광지+상품 0)`);
 
-  // 활성 스타일 가이드
-  const { data: promptRow } = await supabaseAdmin
-    .from('prompt_versions')
-    .select('content, version')
-    .eq('domain', 'blog_style_guide')
-    .eq('is_active', true)
-    .limit(1);
-
-  const styleGuide = promptRow?.[0]?.content || '';
-  const promptVersion = promptRow?.[0]?.version || 'v1.0';
+  const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
 
   // Pillar는 head tier — SERP 경쟁 분석 주입 (7일 캐시 활용)
   let serpBlock = '';
@@ -557,6 +608,15 @@ function romanize(dest: string): string {
   return MAP[dest] || dest.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
+function slugifyTopic(topic: string): string {
+  return topic
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .substring(0, 80);
+}
+
 async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
@@ -600,16 +660,11 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     throw new Error('AI API 키 미설정 — 정보성 블로그 생성 불가');
   }
 
-  // 활성 스타일 가이드 로드 (prompt_versions 에서 active 버전)
-  const { data: promptRow } = await supabaseAdmin
-    .from('prompt_versions')
-    .select('content, version')
-    .eq('domain', 'blog_style_guide')
-    .eq('is_active', true)
-    .limit(1);
-
-  const styleGuide = promptRow?.[0]?.content || '';
-  const promptVersion = promptRow?.[0]?.version || 'v1.0';
+  const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
+  const baseForUtm = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  const utmCamp = encodeURIComponent(
+    (item.meta?.expected_slug as string | undefined) || slugifyTopic(item.topic) || 'blog',
+  );
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -681,9 +736,9 @@ ${serpBlock}
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
 - 3-Tier CTA 분산:
-  - 도입부: [관련 패키지 보기](/packages?destination=${encodeURIComponent(item.destination || '')}?utm=blog_top)
-  - 중간: [여소남 큐레이터에게 문의](https://yeosonam.com?utm=blog_mid)
-  - 마지막: [여소남에서 안심 여행 준비하세요](https://yeosonam.com?utm=blog_bottom)`;
+  - 도입부: [관련 패키지 보기](${baseForUtm}/packages?destination=${encodeURIComponent(item.destination || '')}&utm_source=blog&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=intro_cta)
+  - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=blog&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
+  - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=blog&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
 
   const raw = await generateBlogText(prompt, { temperature: 0.7 });
   const blog_html = raw
@@ -709,13 +764,4 @@ ${serpBlock}
     seo_description,
     og_image_url: null,
   };
-}
-
-function slugifyTopic(topic: string): string {
-  return topic
-    .toLowerCase()
-    .replace(/[^a-z0-9가-힣\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .substring(0, 80);
 }
