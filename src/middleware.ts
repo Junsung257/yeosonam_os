@@ -25,6 +25,7 @@ const PUBLIC_EXACT = new Set([
   '/api/auth/refresh',
   '/m/admin/login',
   '/api/qa/chat',
+  '/api/qa/vision',
   '/api/sms/receive',
   '/api/notify/alimtalk',
   '/api/slack-webhook',
@@ -100,6 +101,8 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/booking-attribution-audit',
   '/api/cron/marketing-rules',
   '/api/cron/concierge-cart-retarget',
+  '/api/cron/churn-detect',
+  '/api/cron/weather-upsell',
   // concierge 개별 엔드포인트
   '/api/concierge/search',
   '/api/concierge/cart',
@@ -107,11 +110,38 @@ const PUBLIC_EXACT = new Set([
   // 기타
   '/api/tenant/rfqs',
   '/api/tracking/recommendation',
+  // 랜드사 파트너 포털 (Bearer 토큰 자체 인증)
+  '/api/partner/packages',
+  '/api/partner/bookings',
+  '/partner',
+  // Phase 2-F: 환율 스냅샷 크론
+  '/api/cron/fx-rate-sync',
+  // Phase 2-G: B2B 도매 API (자체 Bearer 인증)
+  '/api/b2b/packages',
+  // Phase 3-A: 동행자 온보딩
+  '/join',
+  // Phase 3-B: 귀국 후 릴스 크론
+  '/api/cron/post-travel-reels',
+  // Phase 3-B: 릴스 생성 API (booking_id 기반, 인증 불필요)
+  '/api/reels/create',
+  // Phase 3-E: 리뷰 감정 분석 크론
+  '/api/cron/review-sentiment',
+  // Phase 3-G: 여권 OCR (비로그인 고객용)
+  '/api/passport/ocr',
+  // Phase 3-H: 사기 탐지 크론
+  '/api/cron/fraud-detect',
 ]);
 
 // 하위 경로까지 공개가 필요한 prefix — 짧은 배열, 정확 일치 실패 시에만 검사
 const PUBLIC_PREFIXES = [
+  '/reels/',           // Phase 3-B: 릴스 공유 페이지 (share_token 기반)
+  '/api/reels/',       // Phase 3-B: 릴스 API
+  '/api/b2b/packages/',  // Phase 2-G: B2B 단건 상세 동적 경로
+  '/trip/',
+  '/api/booking-portal/',
+  '/api/booking-concierge/',
   '/packages/',
+  '/lp/', // 광고·SNS 유입 마케팅 랜딩 (비로그인)
   '/blog/',
   '/api/blog/',
   '/products/',
@@ -141,6 +171,13 @@ const PUBLIC_PREFIXES = [
   '/api/free-travel/',
   '/blog/destination/',
   '/legal/',
+  // Phase 3-A: 동행자 온보딩
+  '/join/',
+  '/api/join/',
+  // Phase 3-E: package_reviews 공개 API
+  '/api/package-reviews/',
+  // Phase 3-G: 여권 OCR 고객 페이지
+  '/passport-assist/',
 ];
 
 // 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
@@ -151,6 +188,7 @@ const PUBLIC_EXACT_SHORT = new Set([
   '/with', '/r', '/embed', '/partner-apply', '/api/partner-apply',
   '/api/recommendations', '/destinations', '/review', '/api/reviews',
   '/free-travel', '/api/free-travel', '/blog/destination',
+  '/api/package-reviews', '/passport-assist',
 ]);
 
 function isPublicPath(request: NextRequest) {
