@@ -1,5 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { sendSlackAlert } from '@/lib/slack-alert';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +16,9 @@ export const dynamic = 'force-dynamic';
  *
  * 실제 고객 알림(알림톡 등)은 추후 확장 예정.
  */
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+
   if (!isSupabaseConfigured) {
     console.log('[post-travel-reels cron] Supabase 미설정 — Mock 실행');
     return NextResponse.json({ ok: true, processed: 0, mock: true });
@@ -109,10 +113,9 @@ export async function GET(): Promise<NextResponse> {
       date: today,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : '처리 실패';
     console.error('[post-travel-reels cron] error:', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
-      { status: 500 },
-    );
+    await sendSlackAlert(`[post-travel-reels] 크론 오류: ${message}`);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

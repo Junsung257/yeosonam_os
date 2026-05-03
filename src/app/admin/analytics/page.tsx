@@ -52,6 +52,7 @@ export default function AnalyticsPage() {
         setCohorts(d.cohorts ?? []);
         setTotal(d.totalCustomers ?? 0);
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

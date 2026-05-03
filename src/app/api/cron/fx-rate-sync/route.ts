@@ -3,16 +3,19 @@
  * 매일 1회 실행 — open.er-api.com (무료, 키 불필요) 에서 USD→KRW 환율 조회 후
  * fx_rate_snapshots 테이블에 upsert.
  */
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 const FX_API_URL = 'https://open.er-api.com/v6/latest/USD';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }

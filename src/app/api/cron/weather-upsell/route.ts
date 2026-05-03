@@ -305,13 +305,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       checked_at: new Date().toISOString(),
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : '날씨 업셀 크론 실패';
     console.error('[weather-upsell] 오류:', err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: err instanceof Error ? err.message : '날씨 업셀 크론 실패',
-      },
-      { status: 500 },
-    );
+    await sendSlackAlert(`[weather-upsell] 크론 오류: ${message}`);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -49,6 +49,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
     }
     adminEmail = (verified.payload.email as string | undefined) ?? 'unknown';
+
+    // super_admin만 GDPR 삭제 허용
+    const userId = (verified.payload.sub as string | undefined);
+    if (userId) {
+      const { data: adminRow } = await supabaseAdmin
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', userId)
+        .limit(1);
+      const role = adminRow?.[0]?.role;
+      if (role !== 'super_admin') {
+        return NextResponse.json({ error: 'super_admin 권한 필요' }, { status: 403 });
+      }
+    }
   } catch {
     return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
   }

@@ -177,13 +177,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       checked_at: new Date().toISOString(),
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : '취소 감지 실패';
     console.error('[churn-detect] 오류:', err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: err instanceof Error ? err.message : '취소 감지 실패',
-      },
-      { status: 500 },
-    );
+    await sendSlackAlert(`[churn-detect] 크론 오류: ${message}`);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

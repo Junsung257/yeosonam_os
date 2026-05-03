@@ -45,9 +45,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ stale: staleTasks.length });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    const message = err instanceof Error ? err.message : String(err);
+    await sendSlackAlert(`[hitl-reminder] 크론 오류: ${message}`);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

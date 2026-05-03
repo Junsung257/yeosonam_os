@@ -78,17 +78,32 @@ export async function GET(request: NextRequest) {
 
     if (bookingError) throw bookingError;
 
+    type BookingRow = {
+      booking_no: string | null;
+      departure_date: string | null;
+      adult_count: number | null;
+      status: string;
+      created_at: string | null;
+      travel_packages: { title: string | null; land_operator_id: string | null } | { title: string | null; land_operator_id: string | null }[] | null;
+    };
+
     // 해당 랜드사 소속 예약만 필터링 (join으로 필터가 어려운 경우 앱 레벨에서)
-    const filtered = (bookings ?? [])
-      .filter((b: any) => b.travel_packages?.land_operator_id === operator.id)
-      .map((b: any) => ({
-        booking_no: b.booking_no,
-        package_title: b.travel_packages?.title ?? '',
-        departure_date: b.departure_date,
-        adult_count: b.adult_count,
-        status: b.status,
-        created_at: b.created_at,
-      }));
+    const filtered = (bookings as BookingRow[] ?? [])
+      .filter((b) => {
+        const pkg = Array.isArray(b.travel_packages) ? b.travel_packages[0] : b.travel_packages;
+        return pkg?.land_operator_id === operator.id;
+      })
+      .map((b) => {
+        const pkg = Array.isArray(b.travel_packages) ? b.travel_packages[0] : b.travel_packages;
+        return {
+          booking_no: b.booking_no,
+          package_title: pkg?.title ?? '',
+          departure_date: b.departure_date,
+          adult_count: b.adult_count,
+          status: b.status,
+          created_at: b.created_at,
+        };
+      });
 
     return NextResponse.json({
       operator: { id: operator.id, name: operator.name },

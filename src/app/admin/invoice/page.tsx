@@ -24,9 +24,17 @@ interface Discrepancy {
   ledger_amount: number | null;
 }
 
+interface LedgerEntry {
+  created_at: string | null;
+  account: string | null;
+  entry_type: string | null;
+  amount: number | null;
+  memo: string | null;
+}
+
 interface ParseResult {
   parsed: ParsedInvoice;
-  ledger_entries: unknown[];
+  ledger_entries: LedgerEntry[];
   discrepancies: Discrepancy[];
 }
 
@@ -276,7 +284,7 @@ export default function InvoiceParsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(result.ledger_entries as any[]).slice(0, 20).map((e, i) => (
+                  {result.ledger_entries.slice(0, 20).map((e, i) => (
                     <tr key={i} style={styles.tr}>
                       <td style={{ ...styles.td, fontSize: 11, color: '#9ca3af' }}>
                         {e.created_at ? new Date(e.created_at).toLocaleDateString('ko-KR') : '-'}

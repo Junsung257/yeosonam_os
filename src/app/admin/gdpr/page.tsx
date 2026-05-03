@@ -45,14 +45,6 @@ export default function GdprPage() {
     setErrorMsg(null);
 
     try {
-      const res = await fetch('/api/admin/gdpr/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-
-      // credentials=include 로 쿠키 기반 세션 → Authorization 헤더가 필요한 경우
-      // 실제 배포 시 Supabase 클라이언트에서 session.access_token 주입 필요
       const resWithAuth = await fetch('/api/admin/gdpr/delete', {
         method: 'POST',
         headers: {
@@ -62,11 +54,10 @@ export default function GdprPage() {
         body: JSON.stringify({ customerId: customerId.trim(), adminNote }),
       });
 
-      void res; // 첫 번째 fetch는 토큰 확인용이었으므로 무시
-      const data = await resWithAuth.json();
+      const data = await resWithAuth.json().catch(() => ({}));
 
       if (!resWithAuth.ok) {
-        setErrorMsg(data.error ?? '삭제 처리 중 오류가 발생했습니다.');
+        setErrorMsg((data as { error?: string }).error ?? '삭제 처리 중 오류가 발생했습니다.');
         return;
       }
 
