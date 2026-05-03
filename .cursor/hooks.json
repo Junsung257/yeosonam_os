@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "npm run os:inbox",
+        "timeout": 120
+      }
+    ],
+    "stop": [
+      {
+        "command": "npm run os:inbox",
+        "timeout": 120
+      }
+    ]
+  }
+}

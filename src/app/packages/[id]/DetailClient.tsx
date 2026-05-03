@@ -27,6 +27,7 @@ import RecommendationCard from '@/components/customer/RecommendationCard';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { useChatStore } from '@/lib/chat-store';
 
 interface PriceTier {
   period_label: string;
@@ -334,6 +335,55 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     Object.values(sectionRefs.current).forEach(el => { if (el) observer.observe(el); });
     return () => observer.disconnect();
   }, [pkg, observerCallback]);
+
+  /** 한 번 이상 스크롤한 뒤 멈춤 → 15초 체류 시 AI 챗 선제 오픈 */
+  const proactiveChatDoneRef = useRef(false);
+  useEffect(() => {
+    if (!pkg || isLoading) return;
+    proactiveChatDoneRef.current = false;
+    const label = pkg.display_title || pkg.products?.display_name || pkg.title || '이 상품';
+    const dest = pkg.destination?.trim() || '목적지';
+
+    let scrollSettle: ReturnType<typeof setTimeout> | null = null;
+    let dwell: ReturnType<typeof setTimeout> | null = null;
+    let hasScrolled = false;
+
+    const clearDwell = () => {
+      if (dwell) {
+        clearTimeout(dwell);
+        dwell = null;
+      }
+    };
+
+    const onScroll = () => {
+      hasScrolled = true;
+      if (scrollSettle) clearTimeout(scrollSettle);
+      clearDwell();
+      scrollSettle = setTimeout(() => {
+        scrollSettle = null;
+        dwell = setTimeout(() => {
+          if (proactiveChatDoneRef.current) return;
+          const st = useChatStore.getState();
+          if (st.messages.length > 0 || st.isOpen) return;
+          proactiveChatDoneRef.current = true;
+          st.openChat();
+          st.addMessage({
+            role: 'assistant',
+            content:
+              `**${label}** 상품을 살펴보고 계시네요. ${dest} 일정·요금·일정표에서 궁금한 점이 있으면 여기서 바로 물어보세요.`,
+            type: 'text',
+          });
+        }, 15_000);
+      }, 200);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (scrollSettle) clearTimeout(scrollSettle);
+      clearDwell();
+    };
+  }, [pkg, isLoading, packageId]);
 
   // Day 스크롤 추적: 스크롤하면 현재 보이는 day에 맞춰 탭 자동 활성화
   useEffect(() => {

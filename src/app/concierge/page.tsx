@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { trackEngagement } from '@/lib/tracker';
 
 interface MockSearchResult {
   product_id:       string;
@@ -72,6 +73,28 @@ export default function ConciergePage() {
 
   const sessionId = getOrCreateSessionId();
 
+  // 장바구니 상태에서 페이지 이탈 시 이탈 신호를 남겨 후속 리마케팅에 활용
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (cart.length === 0) return;
+      try {
+        navigator.sendBeacon(
+          '/api/tracking',
+          JSON.stringify({
+            type: 'engagement',
+            session_id: sessionId,
+            event_type: 'cart_abandon_exit',
+            page_url: '/concierge',
+          }),
+        );
+      } catch {
+        // noop
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [cart.length, sessionId]);
+
   // 페이지 로드 시 장바구니 복원
   useEffect(() => {
     if (!sessionId) return;
@@ -117,6 +140,12 @@ export default function ConciergePage() {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ session_id: sessionId, item: newItem }),
+    });
+    trackEngagement({
+      event_type: 'cart_added',
+      product_id: item.product_id,
+      product_name: item.product_name,
+      page_url: typeof window !== 'undefined' ? window.location.pathname : '/concierge',
     });
   }
 
@@ -435,7 +464,13 @@ export default function ConciergePage() {
                 <span className="font-bold text-gray-900">₩{cartTotal.toLocaleString()}</span>
               </div>
               <button
-                onClick={() => setCheckoutOpen(true)}
+                onClick={() => {
+                  setCheckoutOpen(true);
+                  trackEngagement({
+                    event_type: 'checkout_start',
+                    page_url: typeof window !== 'undefined' ? window.location.pathname : '/concierge',
+                  });
+                }}
                 className="w-full bg-[#3182F6] text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition"
               >
                 결제하기

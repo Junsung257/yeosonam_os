@@ -38,6 +38,41 @@ interface MonthlyData {
   count: number;
 }
 
+interface SubStat {
+  referral_code: string;
+  sub_id: string;
+  clicks_30d: number;
+  unique_sessions_30d: number;
+  touched_packages_30d: number;
+}
+
+type AttributionModel = 'last_touch' | 'first_touch' | 'linear';
+
+interface ModelCompare {
+  sample_size: number;
+  first_touch_match_count: number;
+  last_touch_match_count: number;
+  linear_multi_touch_candidates: number;
+  attribution_switch_count: number;
+  affected_commission_pool_krw: number;
+}
+
+interface SubTrend {
+  day: string;
+  clicks: number;
+  unique_sessions: number;
+  touched_packages: number;
+}
+
+interface CronHealth {
+  cron: string;
+  success_count_7d: number;
+  failure_count_7d: number;
+  success_rate_7d: number;
+  last_failure_at: string | null;
+  last_failure_message: string | null;
+}
+
 const GRADE_LABELS = ['', '브론즈', '실버', '골드', '플래티넘', '다이아'];
 const GRADE_COLORS = ['', 'text-gray-500', 'text-slate-600', 'text-yellow-600', 'text-purple-600', 'text-blue-600'];
 
@@ -45,7 +80,13 @@ export default function AffiliateAnalyticsPage() {
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [monthly, setMonthly] = useState<MonthlyData[]>([]);
+  const [subStats, setSubStats] = useState<SubStat[]>([]);
+  const [subTrend, setSubTrend] = useState<SubTrend[]>([]);
+  const [modelCompare, setModelCompare] = useState<ModelCompare | null>(null);
+  const [cronHealth, setCronHealth] = useState<CronHealth[]>([]);
   const [loading, setLoading] = useState(true);
+  const [attributionModel, setAttributionModel] = useState<AttributionModel>('last_touch');
+  const [savingModel, setSavingModel] = useState(false);
 
   // KPI 산식 기준 토글 — 예약(생성일, 수수료 정산) ↔ 매출 인식(출발일, IFRS 15)
   // 어필리에이트 정산 정책은 commission(생성일) 기준이 default. 회계용 비교는 accounting.
@@ -63,10 +104,40 @@ export default function AffiliateAnalyticsPage() {
         setKpi(data.kpi || null);
         setPartners(data.partners || []);
         setMonthly(data.monthly || []);
+        setSubStats(data.sub_stats || []);
+        setSubTrend(data.sub_trend || []);
+        setModelCompare(data.model_compare || null);
+        setCronHealth(data.cron_health || []);
       })
       .finally(() => { setLoading(false); setRefetching(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basis]);
+
+  useEffect(() => {
+    fetch('/api/admin/affiliate-settings')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.attribution_model) setAttributionModel(d.attribution_model as AttributionModel);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveAttributionModel = async (model: AttributionModel) => {
+    setSavingModel(true);
+    try {
+      const res = await fetch('/api/admin/affiliate-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attribution_model: model }),
+      });
+      if (!res.ok) throw new Error();
+      setAttributionModel(model);
+    } catch {
+      alert('모델 저장 실패');
+    } finally {
+      setSavingModel(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -90,6 +161,99 @@ export default function AffiliateAnalyticsPage() {
             {refetching && <span className="text-[11px] text-gray-400">갱신 중…</span>}
             <KPIBasisToggle value={basis} onChange={setBasis} />
           </div>
+        </div>
+
+        {modelCompare && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h2 className="font-semibold text-gray-900 text-sm mb-3">귀속 모델 비교 (최근 30일 샘플)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-center">
+              <div className="rounded-lg bg-gray-50 py-3">
+                <p className="text-xs text-gray-500">샘플 예약</p>
+                <p className="text-lg font-bold text-gray-900">{modelCompare.sample_size}</p>
+              </div>
+              <div className="rounded-lg bg-blue-50 py-3">
+                <p className="text-xs text-blue-600">First-touch 일치</p>
+                <p className="text-lg font-bold text-blue-700">{modelCompare.first_touch_match_count}</p>
+              </div>
+              <div className="rounded-lg bg-indigo-50 py-3">
+                <p className="text-xs text-indigo-600">Last-touch 일치</p>
+                <p className="text-lg font-bold text-indigo-700">{modelCompare.last_touch_match_count}</p>
+              </div>
+              <div className="rounded-lg bg-purple-50 py-3">
+                <p className="text-xs text-purple-600">Linear 후보(다중터치)</p>
+                <p className="text-lg font-bold text-purple-700">{modelCompare.linear_multi_touch_candidates}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-center">
+              <div className="rounded-lg bg-amber-50 py-3">
+                <p className="text-xs text-amber-700">귀속 변경 가능 예약</p>
+                <p className="text-lg font-bold text-amber-800">{modelCompare.attribution_switch_count}</p>
+              </div>
+              <div className="rounded-lg bg-rose-50 py-3">
+                <p className="text-xs text-rose-700">영향 커미션 풀(예상)</p>
+                <p className="text-lg font-bold text-rose-800">₩{modelCompare.affected_commission_pool_krw.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cronHealth.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 text-sm">어필리에이트 크론 헬스 (최근 7일)</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">크론</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">성공</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">실패</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">성공률</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">마지막 실패</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cronHealth.map((c) => (
+                    <tr key={c.cron} className="border-b border-gray-50">
+                      <td className="px-4 py-2 font-mono text-gray-700">{c.cron}</td>
+                      <td className="px-3 py-2 text-right text-emerald-700">{c.success_count_7d.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-rose-700">{c.failure_count_7d.toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right font-semibold ${c.success_rate_7d >= 95 ? 'text-emerald-700' : c.success_rate_7d >= 80 ? 'text-amber-700' : 'text-rose-700'}`}>
+                        {c.success_rate_7d.toFixed(1)}%
+                      </td>
+                      <td className="px-4 py-2 text-gray-600">
+                        {c.last_failure_at
+                          ? `${new Date(c.last_failure_at).toLocaleString()} · ${c.last_failure_message || '실패'}`
+                          : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500">멀티터치 귀속 모델</span>
+          {(['last_touch', 'first_touch', 'linear'] as AttributionModel[]).map((m) => (
+            <button
+              key={m}
+              disabled={savingModel}
+              onClick={() => void saveAttributionModel(m)}
+              className={`px-3 py-1.5 text-xs rounded-lg border transition ${
+                attributionModel === m
+                  ? 'bg-[#001f3f] text-white border-[#001f3f]'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+          <span className="text-[11px] text-gray-400 ml-auto">
+            저장 시 다음 재계산 크론부터 적용
+          </span>
         </div>
 
         {/* KPI 카드 — basis 표기로 정의 명확화 */}
@@ -131,6 +295,53 @@ export default function AffiliateAnalyticsPage() {
             <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
               <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-100 rounded" />매출</span>
               <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-500 rounded" />커미션</span>
+            </div>
+          </div>
+        )}
+
+        {subStats.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900 text-sm">최근 30일 Sub-ID 상위 성과</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Referral</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Sub-ID</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">클릭</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">유니크 세션</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-600">터치 상품수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subStats.map((s, idx) => (
+                    <tr key={`${s.referral_code}_${s.sub_id}_${idx}`} className="border-b border-gray-50">
+                      <td className="px-4 py-2 font-mono text-gray-700">{s.referral_code}</td>
+                      <td className="px-3 py-2 text-gray-700">{s.sub_id}</td>
+                      <td className="px-3 py-2 text-right">{s.clicks_30d.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{s.unique_sessions_30d.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right">{s.touched_packages_30d.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {subTrend.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 className="font-semibold text-gray-900 text-sm mb-3">Sub-ID 일별 트렌드 (최근 30일)</h2>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+              {subTrend.slice(-12).map((d) => (
+                <div key={d.day} className="rounded-lg bg-gray-50 p-2">
+                  <p className="text-[10px] text-gray-500">{d.day.slice(5)}</p>
+                  <p className="text-sm font-bold text-gray-900">{d.clicks.toLocaleString()} 클릭</p>
+                  <p className="text-[10px] text-gray-500">{d.unique_sessions.toLocaleString()} 유니크</p>
+                </div>
+              ))}
             </div>
           </div>
         )}

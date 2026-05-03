@@ -53,6 +53,33 @@ interface DashboardData {
     total_links: number; total_clicks: number;
     total_conversions: number; conversion_rate: string;
   };
+  funnel_30d?: {
+    clicks: number;
+    bookings: number;
+    settlements_krw: number;
+    click_to_booking_rate: number;
+  };
+  tier_progress?: {
+    current_tier: number;
+    current_label: string;
+    current_booking_count: number;
+    current_step: number;
+    next_step: number;
+    progress_pct: number;
+  };
+  reward_events?: Array<{
+    id: string;
+    event_type: string;
+    points: number;
+    reward_amount?: number | null;
+    created_at: string;
+  }>;
+  sub_id_stats?: Array<{
+    sub_id: string;
+    clicks_30d: number;
+    unique_sessions_30d: number;
+    touched_packages_30d: number;
+  }>;
   settlements: Settlement[];
   recent_bookings: Booking[];
   contents?: ContentItem[];
@@ -240,7 +267,7 @@ export default function InfluencerDashboard() {
   };
   const totalContentRevenue = (content_revenue || []).reduce((s, c) => s + (c.revenue || 0), 0);
   const totalContentBookings = (content_revenue || []).reduce((s, c) => s + (c.bookings || 0), 0);
-  const progress = getGradeProgress(aff.grade, aff.booking_count);
+  const progress = data.tier_progress?.progress_pct ?? getGradeProgress(aff.grade, aff.booking_count);
 
   const STATUS_MAP: Record<string, { label: string; color: string }> = {
     PENDING: { label: '이월', color: 'bg-yellow-100 text-yellow-700' },
@@ -319,6 +346,30 @@ export default function InfluencerDashboard() {
         <KPICard label="전환율" value={stats.conversion_rate} icon="📈" sub={`전환 ${stats.total_conversions}건`} />
       </div>
 
+      {/* ── 30일 퍼널 ── */}
+      {data.funnel_30d && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <h2 className="font-bold text-gray-900 mb-3">최근 30일 퍼널 (클릭 → 예약 → 정산)</h2>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-lg bg-gray-50 py-3">
+              <p className="text-xs text-gray-500">클릭</p>
+              <p className="text-lg font-bold text-gray-900">{data.funnel_30d.clicks.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 py-3">
+              <p className="text-xs text-gray-500">예약</p>
+              <p className="text-lg font-bold text-gray-900">{data.funnel_30d.bookings.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 py-3">
+              <p className="text-xs text-gray-500">정산액</p>
+              <p className="text-lg font-bold text-green-700">₩{data.funnel_30d.settlements_krw.toLocaleString()}</p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            클릭 대비 예약 전환율: <span className="font-semibold text-blue-700">{data.funnel_30d.click_to_booking_rate}%</span>
+          </p>
+        </div>
+      )}
+
       {/* ── 등급 & 진행률 ── */}
       <div className="bg-white rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3">
@@ -339,6 +390,43 @@ export default function InfluencerDashboard() {
         </div>
         <p className="text-xs text-gray-400 mt-1 text-right">{progress}%</p>
       </div>
+
+      {/* ── Sub-ID 성과 ── */}
+      {data.sub_id_stats && data.sub_id_stats.length > 0 && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <h2 className="font-bold text-gray-900 mb-3">채널(Sub-ID) 성과</h2>
+          <div className="space-y-2">
+            {data.sub_id_stats.slice(0, 8).map((s) => (
+              <div key={s.sub_id} className="flex items-center justify-between border-b border-gray-50 py-2 last:border-0">
+                <p className="text-sm font-medium text-gray-900">{s.sub_id}</p>
+                <p className="text-xs text-gray-500">
+                  클릭 {s.clicks_30d} · 유니크 {s.unique_sessions_30d} · 상품 {s.touched_packages_30d}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 리워드 이벤트 ── */}
+      {data.reward_events && data.reward_events.length > 0 && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <h2 className="font-bold text-gray-900 mb-3">최근 리워드/보상</h2>
+          <div className="space-y-2">
+            {data.reward_events.slice(0, 8).map((r) => (
+              <div key={r.id} className="flex items-center justify-between border-b border-gray-50 py-2 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{r.event_type}</p>
+                  <p className="text-[11px] text-gray-400">{r.created_at.slice(0, 10)}</p>
+                </div>
+                <p className="text-sm font-bold text-emerald-700">
+                  {r.reward_amount ? `₩${Number(r.reward_amount).toLocaleString()}` : `${r.points} pt`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── 콘텐츠별 매출 기여도 ── */}
       {contents && contents.length > 0 && (

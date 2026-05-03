@@ -34,6 +34,7 @@ interface Message {
 
 type StreamEvent =
   | { type: 'text'; content: string }
+  | { type: 'text_final'; content: string }
   | {
       type: 'meta';
       packages: RecommendedPackage[];
@@ -155,6 +156,16 @@ export default function QAPage() {
 
           if (ev.type === 'text') {
             assistantContent += ev.content;
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === 'assistant' && prev.length > 0) {
+                const head = prev.slice(0, -1);
+                return [...head, { ...last, content: assistantContent }];
+              }
+              return [...prev, { role: 'assistant' as const, content: assistantContent }];
+            });
+          } else if (ev.type === 'text_final') {
+            assistantContent = ev.content;
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last?.role === 'assistant' && prev.length > 0) {

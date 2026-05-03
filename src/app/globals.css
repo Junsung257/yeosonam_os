@@ -2,24 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ──────────────────────────────────────────────────────────
- * Pretendard — WOFF2 (공식 CDN). 로컬 OTF 가 손상·누락될 때 브라우저 OTS 오류 방지.
- * 카드뉴스 Satori 는 별도 서버 경로의 폰트 파일을 쓰므로 여기와 일치할 필요 없음.
- * ────────────────────────────────────────────────────────── */
-@font-face {
-  font-family: 'Pretendard';
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-  src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Pretendard';
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-  src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Bold.woff2') format('woff2');
-}
+/* Pretendard: next/font/local (layout.tsx) — CDN @font-face 제거로 레이아웃 시프트·외부 의존 감소 */
 
 /* ──────────────────────────────────────────────────────────
  * 디자인 토큰 (Toss Blue 기반 통합 팔레트)
@@ -57,9 +40,7 @@ html {
 }
 
 body {
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  /* font-family: next/font local (layout.tsx body className) */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.02em;
@@ -78,8 +59,9 @@ body {
 }
 .scroll-x::-webkit-scrollbar { display: none; }
 
-/* 카드 터치 피드백 (scale 0.98) */
+/* 카드 터치 피드백 (scale 0.98) — touch-action으로 모바일 300ms 탭 지연 완화 */
 .card-touch {
+  touch-action: manipulation;
   transition: all 0.2s ease-in-out;
   cursor: pointer;
 }

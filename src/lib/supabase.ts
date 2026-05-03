@@ -1,6 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import type { CartItem } from './db/concierge';
 
+/** 목록·검색·자비스 도구 공통 — select('*') 대비 페이로드 절감 */
+const PACKAGE_LIST_SELECT = `
+  id, title, destination, category, product_type, trip_style,
+  departure_days, airline, min_participants, ticketing_deadline,
+  price, price_tiers, price_dates, excluded_dates, status, confidence, created_at,
+  duration, nights,
+  inclusions, excludes, guide_tip, single_supplement,
+  small_group_surcharge, optional_tours, itinerary, special_notes,
+  land_operator, product_tags, product_highlights, product_summary,
+  audit_status, internal_code
+`.replace(/\s+/g, ' ').trim();
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -251,17 +263,9 @@ export async function getPackages(filters?: {
     const limit = filters?.limit || 20;
     const from = (page - 1) * limit;
 
-    const LIST_FIELDS = `
-      id, title, destination, category, product_type, trip_style,
-      departure_days, airline, min_participants, ticketing_deadline,
-      price, price_tiers, status, confidence, created_at,
-      inclusions, excludes, guide_tip, single_supplement,
-      small_group_surcharge, optional_tours, itinerary, special_notes,
-      land_operator, product_tags, product_highlights, product_summary
-    `;
     let query = supabase
       .from('travel_packages')
-      .select(LIST_FIELDS, { count: 'exact' })
+      .select(PACKAGE_LIST_SELECT, { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1);
 
@@ -289,7 +293,7 @@ export async function getApprovedPackages(destination?: string, keyword?: string
   try {
     let query = supabase
       .from('travel_packages')
-      .select('*')
+      .select(PACKAGE_LIST_SELECT)
       .eq('status', 'approved')
       .or('audit_status.is.null,audit_status.neq.blocked')
       .order('created_at', { ascending: false });
@@ -321,7 +325,7 @@ export async function getPendingPackages() {
   try {
     const { data, error } = await supabase
       .from('travel_packages')
-      .select('*')
+      .select(PACKAGE_LIST_SELECT)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -466,19 +470,20 @@ export async function getCustomers(opts: {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    // 예약 통계 집계
-    const { data: bStats } = await supabaseAdmin
-      .from('bookings')
-      .select('lead_customer_id, total_price')
-      .or('is_deleted.is.null,is_deleted.eq.false')
-      .neq('status', 'cancelled');
-
+    const { data: statsRows, error: statsErr } = await supabaseAdmin
+      .from('customer_booking_stats')
+      .select('customer_id, booking_count, total_sales');
+    if (statsErr) {
+      console.warn('[getCustomers] customer_booking_stats 조회 실패 — 통계 0 처리:', statsErr.message);
+    }
     const statsMap = new Map<string, { count: number; totalSales: number }>();
-    for (const b of bStats || []) {
-      const cid = (b as any).lead_customer_id;
-      if (!cid) continue;
-      const prev = statsMap.get(cid) || { count: 0, totalSales: 0 };
-      statsMap.set(cid, { count: prev.count + 1, totalSales: prev.totalSales + ((b as any).total_price || 0) });
+    for (const row of statsRows || []) {
+      const r = row as { customer_id: string; booking_count: number | string; total_sales: number | string };
+      if (!r.customer_id) continue;
+      statsMap.set(r.customer_id, {
+        count: Number(r.booking_count),
+        totalSales: Number(r.total_sales),
+      });
     }
 
     let enriched = (data || []).map((c: any) => ({
@@ -1189,7 +1194,7 @@ export type { SecureChat, Voucher } from './db/voucher';
 // ═══════════════════════════════════════════════════════════════
 export {
   getAdAccounts, updateAdAccountBalance,
-  getKeywordPerformances, updateKeywordStatus, upsertKeywordPerformance,
+  getKeywordPerformances, updateKeywordStatus, updateKeywordBid, upsertKeywordPerformance,
   getAdDashboardStats,
 } from './db/ads';
 export type { AdAccount, KeywordPerformance } from './db/ads';

@@ -2,23 +2,30 @@
 
 import { useState } from 'react';
 import { Link2, Check, Facebook, Twitter, MessageCircle } from 'lucide-react';
+import { buildTrackedShareUrl } from '@/lib/share-url';
 
 interface Props {
   url: string;
   title: string;
   compact?: boolean;
+  /** utm_campaign (예: 블로그 slug) */
+  utmCampaign?: string;
 }
 
-export default function ShareButtons({ url, title, compact = false }: Props) {
+export default function ShareButtons({ url, title, compact = false, utmCampaign = 'blog' }: Props) {
   const [copied, setCopied] = useState(false);
 
+  const tracked = (channel: Parameters<typeof buildTrackedShareUrl>[1]['channel']) =>
+    buildTrackedShareUrl(url, { channel, utmCampaign });
+
   const copyLink = async () => {
+    const toCopy = tracked('copy');
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(toCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      window.prompt('링크를 복사해 주세요', url);
+      window.prompt('링크를 복사해 주세요', toCopy);
     }
   };
 
@@ -26,9 +33,10 @@ export default function ShareButtons({ url, title, compact = false }: Props) {
     window.open(shareUrl, '_blank', 'width=540,height=640,noopener,noreferrer');
   };
 
-  const kakaoStory = `https://story.kakao.com/share?url=${encodeURIComponent(url)}`;
-  const facebook = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
-  const twitter = `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`;
+  const shareTarget = tracked('kakao');
+  const kakaoStory = `https://story.kakao.com/share?url=${encodeURIComponent(shareTarget)}`;
+  const facebook = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(tracked('facebook'))}`;
+  const twitter = `https://twitter.com/intent/tweet?url=${encodeURIComponent(tracked('twitter'))}&text=${encodeURIComponent(title)}`;
 
   const btnBase =
     'inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-[#DBEAFE] hover:bg-[#EBF3FE] hover:text-[#3182F6]';

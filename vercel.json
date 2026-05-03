@@ -2,23 +2,23 @@
   "crons": [
     {
       "path": "/api/cron/meta-optimize",
-      "schedule": "0 0 * * *"
+      "schedule": "2 0 * * *"
     },
     {
       "path": "/api/cron/journey-scheduler",
-      "schedule": "0 0 * * *"
+      "schedule": "4 0 * * *"
     },
     {
       "path": "/api/cron/post-travel",
-      "schedule": "0 9 * * *"
+      "schedule": "5 9 * * *"
     },
     {
       "path": "/api/cron/ad-optimizer",
-      "schedule": "0 2 * * *"
+      "schedule": "2 2 * * *"
     },
     {
       "path": "/api/cron/sync-creative-performance",
-      "schedule": "0 0 * * *"
+      "schedule": "6 0 * * *"
     },
     {
       "path": "/api/cron/auto-archive",
@@ -38,7 +38,7 @@
     },
     {
       "path": "/api/cron/agent-executor",
-      "schedule": "0 0 * * *"
+      "schedule": "8 0 * * *"
     },
     {
       "path": "/api/cron/embed-products",
@@ -49,16 +49,20 @@
       "schedule": "0 2 1 * *"
     },
     {
+      "path": "/api/cron/affiliate-dormant",
+      "schedule": "30 2 1 * *"
+    },
+    {
       "path": "/api/cron/affiliate-anomaly-detect",
-      "schedule": "0 9 * * *"
+      "schedule": "40 9 * * *"
     },
     {
       "path": "/api/cron/affiliate-content-24h-report",
-      "schedule": "0 9 * * *"
+      "schedule": "12 9 * * *"
     },
     {
       "path": "/api/cron/visual-baseline-monitor",
-      "schedule": "0 9 * * *"
+      "schedule": "24 9 * * *"
     },
     {
       "path": "/api/cron/blog-lifecycle",
@@ -78,7 +82,7 @@
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "0 2 * * *"
+      "schedule": "4 2 * * *"
     },
     {
       "path": "/api/cron/trend-topic-miner",
@@ -94,7 +98,7 @@
     },
     {
       "path": "/api/cron/blog-daily-summary",
-      "schedule": "0 0 * * *"
+      "schedule": "10 0 * * *"
     },
     {
       "path": "/api/cron/sync-engagement",
@@ -106,7 +110,7 @@
     },
     {
       "path": "/api/cron/meta-token-refresh",
-      "schedule": "0 9 * * *"
+      "schedule": "36 9 * * *"
     },
     {
       "path": "/api/cron/dlq-replay",
@@ -138,7 +142,7 @@
     },
     {
       "path": "/api/cron/payment-stale-alert",
-      "schedule": "0 0 * * *"
+      "schedule": "14 0 * * *"
     },
     {
       "path": "/api/cron/refresh-seasonal",
@@ -162,7 +166,7 @@
     },
     {
       "path": "/api/cron/setup-new-destinations",
-      "schedule": "0 2 * * *"
+      "schedule": "20 2 * * *"
     },
     {
       "path": "/api/cron/free-travel-retarget",
@@ -187,6 +191,38 @@
     {
       "path": "/api/cron/marketing-rules",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/concierge-cart-retarget",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-tier-rewards",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-reactivation-campaign",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-attribution-recalc",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-live-celebration",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-lifetime-commission",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-sub-daily-rollup",
+      "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-model-compare-rollup",
+      "schedule": "40 6 * * *"
     }
   ]
 }

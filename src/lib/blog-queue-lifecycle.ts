@@ -19,19 +19,29 @@ export async function skipBlogQueueForPackages(
 
   let skipped = 0;
 
-  const { data: byProduct, error: e1 } = await supabaseAdmin
-    .from('blog_topic_queue')
-    .update({
-      status: 'skipped',
-      last_error: reason,
-      updated_at: now,
-      meta: baseMeta as never,
-    })
-    .in('product_id', packageIds)
-    .in('status', ['queued', 'generating'])
-    .select('id');
+  const mergeMeta = (prev: unknown) => ({
+    ...(typeof prev === 'object' && prev !== null && !Array.isArray(prev) ? (prev as Record<string, unknown>) : {}),
+    ...baseMeta,
+  });
 
-  if (!e1) skipped += byProduct?.length ?? 0;
+  const { data: qProduct } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id, meta')
+    .in('product_id', packageIds)
+    .in('status', ['queued', 'generating']);
+
+  for (const row of qProduct || []) {
+    const { error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({
+        status: 'skipped',
+        last_error: reason,
+        updated_at: now,
+        meta: mergeMeta((row as { meta?: unknown }).meta) as never,
+      })
+      .eq('id', (row as { id: string }).id);
+    if (!error) skipped += 1;
+  }
 
   const { data: cnRows } = await supabaseAdmin
     .from('card_news')
@@ -41,19 +51,24 @@ export async function skipBlogQueueForPackages(
   const cardIds = (cnRows || []).map((r: { id: string }) => r.id).filter(Boolean);
   if (cardIds.length === 0) return { skipped };
 
-  const { data: byCard, error: e2 } = await supabaseAdmin
+  const { data: qCard } = await supabaseAdmin
     .from('blog_topic_queue')
-    .update({
-      status: 'skipped',
-      last_error: reason,
-      updated_at: now,
-      meta: baseMeta as never,
-    })
+    .select('id, meta')
     .in('card_news_id', cardIds)
-    .in('status', ['queued', 'generating'])
-    .select('id');
+    .in('status', ['queued', 'generating']);
 
-  if (!e2) skipped += byCard?.length ?? 0;
+  for (const row of qCard || []) {
+    const { error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({
+        status: 'skipped',
+        last_error: reason,
+        updated_at: now,
+        meta: mergeMeta((row as { meta?: unknown }).meta) as never,
+      })
+      .eq('id', (row as { id: string }).id);
+    if (!error) skipped += 1;
+  }
 
   return { skipped };
 }

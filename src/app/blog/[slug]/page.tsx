@@ -847,7 +847,7 @@ export default async function BlogDetailPage({
             />
 
             {/* 공유 버튼 */}
-            <ShareButtons url={pageUrl} title={title} />
+            <ShareButtons url={pageUrl} title={title} utmCampaign={slug} />
 
             {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (가격대 분산) */}
             {isInfoBlog && post.destination && curationProducts.length > 0 && (

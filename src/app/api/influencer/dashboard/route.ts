@@ -118,6 +118,16 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
 
   const totalClicks = linkStats?.reduce((sum, l) => sum + (l.click_count || 0), 0) || 0;
   const totalConversions = linkStats?.reduce((sum, l) => sum + (l.conversion_count || 0), 0) || 0;
+  const bookingCount = Number(affiliate.booking_count) || 0;
+
+  const tierSteps = [0, 10, 30, 50, 100];
+  const currentTier = Math.min(Math.max(Number(affiliate.grade) || 1, 1), 5);
+  const currentStep = tierSteps[currentTier - 1] || 0;
+  const nextStep = tierSteps[Math.min(currentTier, tierSteps.length - 1)] || currentStep;
+  const tierProgressPct =
+    nextStep > currentStep
+      ? Math.min(100, Math.round(((bookingCount - currentStep) / Math.max(1, nextStep - currentStep)) * 100))
+      : 100;
 
   const { data: contents } = await supabaseAdmin
     .from('content_distributions')
@@ -143,7 +153,70 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
     .eq('sub_id', 'co_brand_landing')
     .gte('clicked_at', since30);
 
+  const { count: clicks30 } = await supabaseAdmin
+    .from('affiliate_touchpoints')
+    .select('id', { count: 'exact', head: true })
+    .eq('referral_code', affiliate.referral_code)
+    .eq('is_bot', false)
+    .eq('is_duplicate', false)
+    .gte('clicked_at', since30);
+
+  const { count: bookings30 } = await supabaseAdmin
+    .from('bookings')
+    .select('id', { count: 'exact', head: true })
+    .eq('affiliate_id', affiliate.id)
+    .gte('created_at', since30);
+
+  const monthPeriod = new Date().toISOString().slice(0, 7);
+  const { data: settlements30 } = await supabaseAdmin
+    .from('settlements')
+    .select('final_payout, status, settlement_period')
+    .eq('affiliate_id', affiliate.id)
+    .eq('settlement_period', monthPeriod)
+    .in('status', ['READY', 'COMPLETED']);
+  const payout30 = (settlements30 || []).reduce((s: number, r: { final_payout?: number }) => s + (Number(r.final_payout) || 0), 0);
+
+  const { data: rewardEvents } = await supabaseAdmin
+    .from('affiliate_reward_events')
+    .select('id, event_type, points, reward_amount, payload, created_at')
+    .eq('affiliate_id', affiliate.id)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
   const siteBase = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+
+  const { data: subTouchpoints } = await supabaseAdmin
+    .from('affiliate_touchpoints')
+    .select('sub_id, session_id, package_id, is_bot, is_duplicate, clicked_at')
+    .eq('referral_code', affiliate.referral_code)
+    .gte('clicked_at', since30)
+    .eq('is_bot', false)
+    .eq('is_duplicate', false);
+
+  const subAgg = new Map<string, { clicks: number; uniqueSessions: Set<string>; packageHits: Set<string> }>();
+  for (const t of (subTouchpoints || []) as Array<{
+    sub_id: string | null;
+    session_id: string | null;
+    package_id: string | null;
+  }>) {
+    const key = (t.sub_id || 'default').trim() || 'default';
+    if (!subAgg.has(key)) {
+      subAgg.set(key, { clicks: 0, uniqueSessions: new Set<string>(), packageHits: new Set<string>() });
+    }
+    const cur = subAgg.get(key)!;
+    cur.clicks += 1;
+    if (t.session_id) cur.uniqueSessions.add(t.session_id);
+    if (t.package_id) cur.packageHits.add(t.package_id);
+  }
+
+  const sub_id_stats = [...subAgg.entries()]
+    .map(([sub_id, v]) => ({
+      sub_id,
+      clicks_30d: v.clicks,
+      unique_sessions_30d: v.uniqueSessions.size,
+      touched_packages_30d: v.packageHits.size,
+    }))
+    .sort((a, b) => b.clicks_30d - a.clicks_30d);
 
   if (contentIds.length > 0) {
     const { data: attributedBookings } = await supabaseAdmin
@@ -193,6 +266,21 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
       total_conversions: totalConversions,
       conversion_rate: totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(1) + '%' : '0%',
     },
+    funnel_30d: {
+      clicks: clicks30 ?? 0,
+      bookings: bookings30 ?? 0,
+      settlements_krw: payout30,
+      click_to_booking_rate: (clicks30 || 0) > 0 ? Number((((bookings30 || 0) / Math.max(1, clicks30 || 0)) * 100).toFixed(2)) : 0,
+    },
+    tier_progress: {
+      current_tier: currentTier,
+      current_label: gradeInfo.label,
+      current_booking_count: bookingCount,
+      current_step: currentStep,
+      next_step: nextStep,
+      progress_pct: Math.max(0, tierProgressPct),
+    },
+    reward_events: rewardEvents || [],
     settlements,
     recent_bookings,
     contents: contents || [],
@@ -202,6 +290,7 @@ async function buildDashboardResponse(affiliate: any, authenticated: boolean) {
       full_url: siteBase ? `${siteBase}/with/${encodeURIComponent(affiliate.referral_code)}` : '',
       landing_views_30d: landingViews30 ?? 0,
     },
+    sub_id_stats,
     attribution_notice:
       '정산은 여행 귀국일·예약 상태에 따라 월별로 반영됩니다. 아래 금액은 시스템 기록 기준이며, 미확정 건은 변동될 수 있습니다.',
   });

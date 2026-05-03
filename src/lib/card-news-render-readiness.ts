@@ -14,35 +14,71 @@ export function getCardNewsRenderBufferMs(): number {
  * - 폴백: card_news.updated_at
  * - 둘 다 없으면 now (슬라이드 URL 검증은 퍼블리셔 후속 단계)
  */
-export async function getEarliestBlogPublishEligibleMs(cardNewsId: string): Promise<number> {
+function eligibleMsForCardRow(
+  row: { slide_image_urls?: unknown; updated_at?: string | null } | undefined,
+  latestRenderMs: number,
+  buffer: number,
+): number {
+  if (!row) return Date.now() + buffer;
+  const urls = (row.slide_image_urls as string[] | null) || [];
+  const updatedMs = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+  let anchor = Math.max(updatedMs, latestRenderMs);
+  if (urls.length === 0) anchor = Date.now();
+  return anchor + buffer;
+}
+
+/**
+ * 크론 배치용 — 카드뉴스별 최소 발행 시각을 2번의 DB 왕복으로 조회 (N건 × 2회 방지).
+ */
+export async function getEarliestBlogPublishEligibleMsBatch(cardNewsIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
   const buffer = getCardNewsRenderBufferMs();
-  if (!isSupabaseConfigured) return Date.now() + buffer;
+  const nowEligible = Date.now() + buffer;
+
+  if (!isSupabaseConfigured || cardNewsIds.length === 0) {
+    for (const id of cardNewsIds) out.set(id, nowEligible);
+    return out;
+  }
+
+  const ids = [...new Set(cardNewsIds.filter(Boolean))];
+  if (ids.length === 0) return out;
 
   const { data: cnRows, error: cnErr } = await supabaseAdmin
     .from('card_news')
-    .select('slide_image_urls, updated_at')
-    .eq('id', cardNewsId)
-    .limit(1);
+    .select('id, slide_image_urls, updated_at')
+    .in('id', ids);
 
-  if (cnErr || !cnRows?.[0]) return Date.now() + buffer;
-
-  const row = cnRows[0] as { slide_image_urls?: unknown; updated_at?: string | null };
-  const urls = (row.slide_image_urls as string[] | null) || [];
-  const updatedMs = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+  const cnById = new Map<string, { slide_image_urls?: unknown; updated_at?: string | null }>();
+  if (!cnErr && cnRows) {
+    for (const r of cnRows as { id: string; slide_image_urls?: unknown; updated_at?: string | null }[]) {
+      if (r?.id) cnById.set(r.id, r);
+    }
+  }
 
   const { data: rRows } = await supabaseAdmin
     .from('card_news_renders')
-    .select('rendered_at')
-    .eq('card_news_id', cardNewsId)
-    .order('rendered_at', { ascending: false })
-    .limit(1);
+    .select('card_news_id, rendered_at')
+    .in('card_news_id', ids)
+    .order('rendered_at', { ascending: false });
 
-  const renderMs = rRows?.[0]?.rendered_at
-    ? new Date(rRows[0].rendered_at as string).getTime()
-    : 0;
+  const latestRenderByCn = new Map<string, number>();
+  for (const r of rRows || []) {
+    const cid = (r as { card_news_id?: string }).card_news_id;
+    const ra = (r as { rendered_at?: string | null }).rendered_at;
+    if (!cid || latestRenderByCn.has(cid) || !ra) continue;
+    latestRenderByCn.set(cid, new Date(ra).getTime());
+  }
 
-  let anchor = Math.max(updatedMs, renderMs);
-  if (urls.length === 0) anchor = Date.now();
+  for (const id of ids) {
+    const row = cnById.get(id);
+    const renderMs = latestRenderByCn.get(id) ?? 0;
+    out.set(id, eligibleMsForCardRow(row, renderMs, buffer));
+  }
 
-  return anchor + buffer;
+  return out;
+}
+
+export async function getEarliestBlogPublishEligibleMs(cardNewsId: string): Promise<number> {
+  const m = await getEarliestBlogPublishEligibleMsBatch([cardNewsId]);
+  return m.get(cardNewsId) ?? Date.now() + getCardNewsRenderBufferMs();
 }

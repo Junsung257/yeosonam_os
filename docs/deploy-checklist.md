@@ -40,6 +40,21 @@
 - [ ] `REVALIDATE_SECRET` (ISR 강제 무효화용, 아무 긴 문자열)
 - [ ] `AUTO_APPROVE_LEARNING=false` (권장, 수동 승인)
 
+### 이번 세션 추가 토글 (권장 기본: dry-run)
+- [ ] `AD_OPTIMIZER_APPLY_CHANGES=false`
+- [ ] `AD_OPTIMIZER_APPLY_OFFPEAK_RULE=false`
+- [ ] `MARKETING_RULES_APPLY_BID_UPDATES=false`
+- [ ] `PUBLISH_ORCHESTRATION_WRITE_LOGS=false`
+- [ ] `BOOKING_ATTRIBUTION_AUTOFIX=false`
+- [ ] `AD_OFFPEAK_BID_FACTOR=0.85`
+- [ ] `AD_MIN_BID_KRW=70`
+- [ ] `AD_FLAG_UP_BID_FACTOR=1.1`
+
+운영 전환 권장 순서:
+1) 1~2일 dry-run 관찰 (`*_APPLY_* = false`)
+2) `MARKETING_RULES_APPLY_BID_UPDATES=true`만 먼저 켜서 off-peak 단일 경로 적용
+3) 안정화 후 필요 시 `AD_OPTIMIZER_APPLY_CHANGES=true` 전환
+
 ---
 
 ## ⏰ 3. Vercel Cron 등록 확인
@@ -51,6 +66,8 @@
 - [ ] `/api/cron/blog-publisher` — 매시간 정각
 - [ ] `/api/cron/blog-learn` — 매주 일 23:00 KST
 - [ ] 기타 11개 기존 크론 (meta-optimize, auto-archive, post-travel 등) 유지
+- [ ] `/api/cron/marketing-rules` — 등록/ENABLED 확인
+- [ ] `/api/cron/booking-attribution-audit` — 등록/ENABLED 확인
 
 Vercel Dashboard > Project > Settings > Crons 에서 전부 ENABLED 확인.
 
@@ -104,6 +121,9 @@ Vercel Dashboard > Project > Settings > Crons 에서 전부 ENABLED 확인.
 - [ ] `curl https://yeosonam.com/api/cron/blog-scheduler` → 200 + `pillars: { queued: N }` 응답
 - [ ] `curl https://yeosonam.com/api/cron/blog-publisher` → 200 + `processed: N` 응답
 - [ ] `curl https://yeosonam.com/api/cron/blog-lifecycle` → 200 응답
+- [ ] `curl https://yeosonam.com/api/cron/marketing-rules` → 200 + `apply_bid_updates` 확인
+- [ ] `curl https://yeosonam.com/api/cron/ad-optimizer` → 200 + `apply_db_changes` 확인
+- [ ] `curl https://yeosonam.com/api/cron/booking-attribution-audit` → 200 + `autofix_enabled` 확인
 
 ---
 

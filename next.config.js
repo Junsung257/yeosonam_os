@@ -80,6 +80,10 @@ const nextConfig = {
         source: '/api/destinations/:path*',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=600' }],
       },
+      {
+        source: '/api/exchange-rate',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=600, stale-while-revalidate=3600' }],
+      },
     ];
   },
   async redirects() {

@@ -220,7 +220,16 @@ export interface AdEngagementLog {
   id: string;
   session_id: string;
   user_id?: string | null;
-  event_type: 'page_view' | 'product_view' | 'cart_added' | 'checkout_start';
+  event_type:
+    | 'page_view'
+    | 'product_view'
+    | 'cart_added'
+    | 'checkout_start'
+    | 'scroll_25'
+    | 'scroll_50'
+    | 'scroll_75'
+    | 'scroll_90'
+    | string;
   product_id?: string | null;
   product_name?: string | null;
   cart_added: boolean;
@@ -410,6 +419,18 @@ export async function updateKeywordStatus(
   if (!sb) return;
   await sb.from('keyword_performances').update({
     status,
+    updated_at: new Date().toISOString(),
+  } as never).eq('id', id);
+}
+
+export async function updateKeywordBid(
+  id: string,
+  currentBid: number,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  await sb.from('keyword_performances').update({
+    current_bid: currentBid,
     updated_at: new Date().toISOString(),
   } as never).eq('id', id);
 }

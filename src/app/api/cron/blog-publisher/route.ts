@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { runQualityGates } from '@/lib/blog-quality-gate';
@@ -12,7 +13,8 @@ import { computeReadability } from '@/lib/blog-readability';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildStandardBlogCtaMarkdown } from '@/lib/blog-cta';
-import { getEarliestBlogPublishEligibleMs } from '@/lib/card-news-render-readiness';
+import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from '@/lib/card-news-render-readiness';
+import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -63,10 +65,8 @@ async function getActiveBlogStyleGuide(): Promise<{ content: string; version: st
 }
 
 async function runBlogPublisher(request: NextRequest) {
-  // CRON_SECRET 검증 (vercel cron 요청만 통과)
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {
@@ -92,9 +92,13 @@ async function runBlogPublisher(request: NextRequest) {
       return { processed: 0, message: '발행할 토픽 없음', errors };
     }
 
+    const cardNewsIds = [...new Set(queue.map((q: { card_news_id?: string | null }) => q.card_news_id).filter(Boolean))] as string[];
+    const eligibleByCardNewsId =
+      cardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(cardNewsIds) : new Map<string, number>();
+
     for (const item of queue) {
       try {
-        const r = await processQueueItem(item);
+        const r = await processQueueItem(item, eligibleByCardNewsId);
         results.push(r);
         if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer') {
           errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
@@ -136,17 +140,25 @@ async function runBlogPublisher(request: NextRequest) {
           .select('id, slug')
           .in('slug', publishedSlugs)
           .eq('status', 'published');
-        const bySlug = new Map((ccRows || []).map((row: { id: string; slug: string }) => [row.slug, row.id]));
-        for (const slug of publishedSlugs) {
-          const cid = bySlug.get(slug);
-          if (cid) {
+        const bySlug = new Map<string, string>();
+        for (const row of ccRows ?? []) {
+          const s = row?.slug;
+          const id = row?.id;
+          if (typeof s === 'string' && s && typeof id === 'string' && id) {
+            bySlug.set(s, id);
+          }
+        }
+        await Promise.all(
+          publishedSlugs.map(async slug => {
+            const cid = bySlug.get(slug);
+            if (!cid) return;
             try {
               await indexBlog(cid);
             } catch (e) {
               console.warn('[blog-publisher] RAG 인덱싱 실패 (비중단):', e instanceof Error ? e.message : e);
             }
-          }
-        }
+          }),
+        );
       } catch (e) {
         console.warn('[blog-publisher] RAG 배치 조회 실패:', e instanceof Error ? e.message : e);
       }
@@ -169,7 +181,10 @@ async function runBlogPublisher(request: NextRequest) {
 
 export const GET = withCronLogging('blog-publisher', runBlogPublisher);
 
-async function processQueueItem(item: any): Promise<{ id: string; topic: string; status: string; reason?: string }> {
+async function processQueueItem(
+  item: any,
+  eligibleByCardNewsId: Map<string, number>,
+): Promise<{ id: string; topic: string; status: string; reason?: string }> {
   // 동시성 방지 — generating 락
   const { error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -183,7 +198,9 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
 
   try {
     if (item.card_news_id) {
-      const eligibleMs = await getEarliestBlogPublishEligibleMs(item.card_news_id as string);
+      const cnid = item.card_news_id as string;
+      const eligibleMs =
+        eligibleByCardNewsId.get(cnid) ?? Date.now() + getCardNewsRenderBufferMs();
       if (Date.now() < eligibleMs) {
         const when = new Date(eligibleMs).toISOString();
         await supabaseAdmin
@@ -268,7 +285,7 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
           return { id: item.id, topic: item.topic, status: 'error', reason: 'invalid_linked_draft' };
         }
       } else {
-        generated = await generateFromCardNews(item);
+        generated = await generateFromCardNews(item, eligibleByCardNewsId);
       }
     } else if (item.source === 'product' && item.product_id) {
       generated = await generateFromProduct(item);
@@ -394,6 +411,19 @@ async function processQueueItem(item: any): Promise<{ id: string; topic: string;
       })
       .eq('id', item.id);
 
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    try {
+      await recordAutoPublishLog({
+        platform: 'blog',
+        url: `${baseUrl}/blog/${generated.slug}`,
+        productId: item.product_id ?? null,
+        travelPackageId: item.travel_package_id ?? item.package_id ?? null,
+      });
+    } catch (e) {
+      // 로그 저장 실패는 발행 성공을 롤백하지 않는다.
+      console.warn('[blog-publisher] marketing_logs 기록 실패(비중단):', e instanceof Error ? e.message : e);
+    }
+
     try { revalidatePath(`/blog/${generated.slug}`); } catch { /* noop */ }
 
     return { id: item.id, topic: item.topic, status: 'published', reason: generated.slug };
@@ -451,7 +481,7 @@ interface GeneratedBlog {
  * 카드뉴스 기반 블로그 — 확정된 card_news + 슬라이드 PNG.
  * `publisher_bridge` 로 본문만 받아 퍼블리셔가 게이트 통과 후 단일 INSERT (draft 선삽입 없음).
  */
-async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
+async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string, number>): Promise<GeneratedBlog> {
   const { data: cn, error: cnErr } = await supabaseAdmin
     .from('card_news')
     .select('id, slide_image_urls, slides, status')
@@ -466,7 +496,9 @@ async function generateFromCardNews(item: any): Promise<GeneratedBlog> {
     throw new Error('카드뉴스 PNG 아직 렌더링 안 됨. 어드민에서 "확정+블로그 생성" 먼저 클릭하세요.');
   }
 
-  const eligibleMs = await getEarliestBlogPublishEligibleMs(item.card_news_id as string);
+  const cnid = item.card_news_id as string;
+  const eligibleMs =
+    eligibleByCardNewsId.get(cnid) ?? Date.now() + getCardNewsRenderBufferMs();
   if (Date.now() < eligibleMs) {
     throw new Error(
       `카드뉴스 PNG 안정화 대기 중 (~${new Date(eligibleMs).toISOString()}). 크론이 자동으로 재시도합니다.`,

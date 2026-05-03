@@ -1,14 +1,34 @@
 import type { Metadata, Viewport } from 'next';
 import dynamic from 'next/dynamic';
+import localFont from 'next/font/local';
 import './globals.css';
 import MetaPixel from '@/components/MetaPixel';
 import KakaoMomentPixel from '@/components/KakaoMomentPixel';
+import MsClarity from '@/components/MsClarity';
+import TrackerBootstrap from '@/components/TrackerBootstrap';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
 // ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
 // PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
+
+const pretendard = localFont({
+  src: [
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Bold.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
+  display: 'swap',
+  variable: '--font-pretendard',
+});
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
@@ -95,7 +115,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko">
+    <html lang="ko" className={pretendard.variable}>
       <head>
         <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="anonymous" />
@@ -123,9 +143,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="bg-gray-50 antialiased">
+      <body className={`${pretendard.className} bg-gray-50 antialiased`}>
+        <TrackerBootstrap />
         <MetaPixel />
         <KakaoMomentPixel />
+        <MsClarity />
         <AffiliateAttributionBanner />
         {children}
         <ChatWidget />

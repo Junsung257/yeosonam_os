@@ -200,8 +200,18 @@ export function trackSearch(params: {
 
 // ── trackEngagement ────────────────────────────────────────────
 
+export type EngagementEventType =
+  | 'page_view'
+  | 'product_view'
+  | 'cart_added'
+  | 'checkout_start'
+  | 'scroll_25'
+  | 'scroll_50'
+  | 'scroll_75'
+  | 'scroll_90';
+
 export function trackEngagement(params: {
-  event_type: 'page_view' | 'product_view' | 'cart_added' | 'checkout_start';
+  event_type: EngagementEventType;
   product_id?: string;
   product_name?: string;
   page_url?: string;
@@ -214,6 +224,12 @@ export function trackEngagement(params: {
     cart_added: params.event_type === 'cart_added',
     ...params,
   });
+}
+
+/** 스크롤 깊이 마일스톤 — 이탈 구간·히트맵 보조용 (ad_engagement_logs.event_type) */
+export function trackScrollMilestone(depthPct: 25 | 50 | 75 | 90, pageUrl: string): void {
+  const event_type = `scroll_${depthPct}` as EngagementEventType;
+  trackEngagement({ event_type, page_url: pageUrl });
 }
 
 // ── trackConversion ────────────────────────────────────────────

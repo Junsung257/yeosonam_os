@@ -99,6 +99,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/agent-executor',
   '/api/cron/booking-attribution-audit',
   '/api/cron/marketing-rules',
+  '/api/cron/concierge-cart-retarget',
   // concierge 개별 엔드포인트
   '/api/concierge/search',
   '/api/concierge/cart',

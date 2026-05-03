@@ -21,8 +21,11 @@ import { resolveJarvisContext } from '@/lib/jarvis/context'
 import type { JarvisContext } from '@/lib/jarvis/types'
 import { resolveSpecialist, mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
 import { recordPlatformLearningEvent } from '@/lib/platform-learning'
+import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
+import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
 
 export async function POST(req: NextRequest) {
+  let taskId: string | null = null
   try {
     const body = await req.json()
     const { message, sessionId, context = {} } = body
@@ -65,6 +68,21 @@ export async function POST(req: NextRequest) {
     const routerResult = await routeMessage(message, session?.context || {})
     const agentType = routerResult.agent
     const specialistPick = resolveSpecialist(agentType, message, ctx)
+    const decision = supervisorLite({
+      message,
+      sessionId: session.id,
+      tenantId: ctx.tenantId,
+      affiliateId: null,
+      agentType,
+      ctx,
+      correlationId: crypto.randomUUID(),
+      source: 'jarvis_v1',
+    })
+    const createdTask = await createAgentTask(decision.envelope)
+    taskId = createdTask.id
+    if (taskId) {
+      await transitionAgentTask(taskId, 'queued', 'running')
+    }
 
     // 3. 해당 Agent 실행
     const agentMap = {
@@ -77,6 +95,11 @@ export async function POST(req: NextRequest) {
     } as const
     const runAgent = agentMap[agentType]
     const result = await runAgent({ message, session, user: null, ctx })
+    if (taskId) {
+      await transitionAgentTask(taskId, 'running', 'done', {
+        completed_at: new Date().toISOString(),
+      })
+    }
 
     // 4. 메시지 히스토리 업데이트
     const updatedMessages = [
@@ -131,6 +154,15 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (error) {
+    if (taskId) {
+      try {
+        await transitionAgentTask(taskId, 'running', 'failed', {
+          last_error: error instanceof Error ? error.message : 'unknown',
+        })
+      } catch {
+        // ignore
+      }
+    }
     console.error('[자비스] 오류:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'AI 처리 실패' },

@@ -196,6 +196,7 @@ export default function ChatWidget() {
 
 type StreamEvent =
   | { type: 'text'; content: string }
+  | { type: 'text_final'; content: string }
   | {
       type: 'meta';
       packages: any[];
@@ -275,6 +276,9 @@ async function streamChat(text: string) {
         if (ev.type === 'text') {
           ensureMessage();
           appendToMessage(assistantId!, ev.content);
+        } else if (ev.type === 'text_final') {
+          ensureMessage();
+          updateMessage(assistantId!, { content: ev.content });
         } else if (ev.type === 'meta') {
           metaPackages = ev.packages || [];
           metaEscalate = !!ev.escalate;

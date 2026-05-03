@@ -7,16 +7,21 @@
  * executor의 approve_monthly_settlement 핸들러가 settlements를 READY로 UPSERT.
  */
 import { NextResponse } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 import {
   resolvePreviousPeriod,
   calculateDraftForAffiliate,
 } from '@/lib/affiliate/settlement-calc';
 
 export const dynamic = 'force-dynamic';
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {
@@ -84,6 +89,12 @@ export async function GET() {
       after_value: { period, drafted, carried, skipped } as any,
     }).then(() => {}).catch(() => {});
 
+    await reportAffiliateCronSuccess('affiliate-settlement-draft', {
+      period,
+      drafted: drafted.length,
+      carried: carried.length,
+      skipped: skipped.length,
+    });
     return NextResponse.json({
       period,
       drafted: drafted.length,
@@ -93,6 +104,7 @@ export async function GET() {
     });
   } catch (err) {
     console.error('[정산 기안 크론 실패]', err);
+    await reportAffiliateCronFailure('affiliate-settlement-draft', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '정산 기안 크론 실패' },
       { status: 500 },

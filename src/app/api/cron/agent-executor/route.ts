@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
   }
 
   const processed = { executed: 0, failed: 0, expired: 0, errors: [] as string[] }
+  const tasking = { approvals_expired: 0, tasks_expired: 0 }
 
   // ── 1. approved 액션 실행 ─────────────────────────────────────────
   try {
@@ -117,6 +118,49 @@ export async function GET(request: NextRequest) {
     }
   } catch (e) {
     push(`만료 처리 실패: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  // ── 2-1. MAS 승인/작업 만료 처리: pending approvals + frozen tasks ───────
+  try {
+    const now = new Date().toISOString()
+    const { data: expiredApprovals, error: apErr } = await supabaseAdmin
+      .from('agent_approvals')
+      .select('id, task_id')
+      .eq('status', 'pending')
+      .not('expires_at', 'is', null)
+      .lt('expires_at', now)
+      .limit(100)
+
+    if (apErr) throw apErr
+
+    if (expiredApprovals && expiredApprovals.length > 0) {
+      const approvalIds = expiredApprovals.map((a: any) => a.id)
+      const taskIds = expiredApprovals.map((a: any) => a.task_id).filter(Boolean)
+
+      await supabaseAdmin
+        .from('agent_approvals')
+        .update({ status: 'expired', reviewed_at: now, reviewed_by: 'system:agent-executor' })
+        .in('id', approvalIds)
+
+      if (taskIds.length > 0) {
+        await supabaseAdmin
+          .from('agent_tasks')
+          .update({
+            status: 'expired',
+            last_error: 'approval_expired',
+            completed_at: now,
+            updated_at: now,
+          })
+          .in('id', taskIds)
+          .eq('status', 'frozen')
+      }
+
+      tasking.approvals_expired = approvalIds.length
+      tasking.tasks_expired = taskIds.length
+      push(`MAS 만료 처리: approvals=${approvalIds.length}, tasks=${taskIds.length}`)
+    }
+  } catch (e) {
+    push(`MAS 만료 처리 실패: ${e instanceof Error ? e.message : String(e)}`)
   }
 
   // ── 3. Google Search Console 데이터 수집 ────────────────────────────
@@ -288,6 +332,7 @@ export async function GET(request: NextRequest) {
     is_force: isForce,
     elapsed_ms: Date.now() - startAt,
     processed,
+    tasking,
     gsc: gscStats,
     ig: igStats,
     log,

@@ -376,3 +376,30 @@ export async function sendFreeTravelRetarget(params: {
     },
   });
 }
+
+/** 컨시어지 장바구니 이탈 리타게팅 알림톡 */
+export async function sendConciergeCartRetarget(params: {
+  phone: string;
+  name?: string;
+  itemCount: number;
+  cartUrl: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_CONCIERGE_CART_RETARGET || '';
+  if (!templateId) {
+    console.log(
+      '[컨시어지 장바구니 리타게팅] KAKAO_TEMPLATE_CONCIERGE_CART_RETARGET 미설정 — 수기 모드',
+      params.phone,
+      params.itemCount,
+    );
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '상품수': String(Math.max(1, params.itemCount)),
+      '장바구니링크': params.cartUrl,
+    },
+  });
+}

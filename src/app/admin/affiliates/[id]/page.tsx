@@ -12,6 +12,7 @@ interface Affiliate {
   bank_info?: string; // 마스킹된 계좌
   landing_intro?: string | null;
   landing_pick_package_ids?: string[] | null;
+  landing_video_url?: string | null;
 }
 
 interface Settlement {
@@ -20,6 +21,16 @@ interface Settlement {
   tax_deduction: number; final_payout: number;
   status: 'PENDING' | 'READY' | 'COMPLETED' | 'VOID';
   settled_at?: string; created_at: string;
+}
+
+interface PromoPerformance {
+  code: string;
+  discount_type: 'percent' | 'fixed';
+  discount_value: number;
+  uses_count: number;
+  bookings: number;
+  revenue: number;
+  commission: number;
 }
 
 const GRADE_COLORS: Record<number, string> = {
@@ -57,11 +68,13 @@ export default function AffiliateDetailPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', memo: '', payout_type: 'PERSONAL' as 'PERSONAL'|'BUSINESS', commission_rate: 0.09, business_number: '', is_active: true });
   const [saving, setSaving] = useState(false);
   const [landingIntro, setLandingIntro] = useState('');
+  const [landingVideoUrl, setLandingVideoUrl] = useState('');
   const [pickPackageIds, setPickPackageIds] = useState<string[]>([]);
   const [pickTitles, setPickTitles] = useState<Record<string, string>>({});
   const [pkgQuery, setPkgQuery] = useState('');
   const [pkgResults, setPkgResults] = useState<Array<{ id: string; title?: string; display_title?: string; destination?: string; status?: string }>>([]);
   const [savingLanding, setSavingLanding] = useState(false);
+  const [promoRows, setPromoRows] = useState<PromoPerformance[]>([]);
 
   const [siteOrigin, setSiteOrigin] = useState('');
   useEffect(() => {
@@ -71,14 +84,17 @@ export default function AffiliateDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [aRes, sRes] = await Promise.all([
+      const [aRes, sRes, pRes] = await Promise.all([
         fetch(`/api/affiliates?id=${params.id}&showBankInfo=false`),
         fetch(`/api/settlements?affiliateId=${params.id}`),
+        fetch(`/api/admin/affiliate-promo-report?affiliateId=${params.id}`),
       ]);
       const aJson = await aRes.json();
       const sJson = await sRes.json();
+      const pJson = await pRes.json();
       setAffiliate(aJson.affiliate);
       setSettlements(sJson.settlements || []);
+      setPromoRows(pJson.rows || []);
       if (aJson.affiliate) {
         const a = aJson.affiliate as Affiliate & { commission_rate?: number; business_number?: string; is_active?: boolean };
         setForm({
@@ -92,6 +108,7 @@ export default function AffiliateDetailPage() {
           is_active: a.is_active ?? true,
         });
         setLandingIntro((a.landing_intro as string | null | undefined) || '');
+        setLandingVideoUrl((a.landing_video_url as string | null | undefined) || '');
         setPickPackageIds(Array.isArray(a.landing_pick_package_ids) ? [...a.landing_pick_package_ids] : []);
       }
     } finally {
@@ -179,6 +196,7 @@ export default function AffiliateDetailPage() {
         body: JSON.stringify({
           id: params.id,
           landing_intro: landingIntro.trim() || null,
+          landing_video_url: landingVideoUrl.trim() || null,
           landing_pick_package_ids: pickPackageIds,
         }),
       });
@@ -387,6 +405,19 @@ export default function AffiliateDetailPage() {
           {(siteOrigin || (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '') || '(배포 도메인)')}/with/{affiliate.referral_code}
         </p>
         <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">상단 영상 URL (YouTube)</label>
+          <input
+            type="url"
+            value={landingVideoUrl}
+            onChange={e => setLandingVideoUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">
+            입력하면 /with 랜딩 상단에 자동 임베드됩니다. 비우면 영상 없이 텍스트만 노출됩니다.
+          </p>
+        </div>
+        <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">랜딩 인사말 · 소개</label>
           <textarea
             value={landingIntro}
@@ -561,6 +592,38 @@ export default function AffiliateDetailPage() {
                     {STATUS_LABELS[s.status]}
                   </span>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 프로모코드 성과 */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-800">프로모코드 성과</h2>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              {['코드', '할인', '사용', '예약', '매출', '커미션'].map(h => (
+                <th key={h} className="text-left px-4 py-2 text-xs text-gray-500">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {promoRows.length === 0 ? (
+              <tr><td colSpan={6} className="text-center py-6 text-gray-400">프로모코드 성과 없음</td></tr>
+            ) : promoRows.map((r, idx) => (
+              <tr key={`${r.code}_${idx}`} className="hover:bg-gray-50">
+                <td className="px-4 py-3 font-mono text-xs font-semibold">{r.code}</td>
+                <td className="px-4 py-3">
+                  {r.discount_type === 'percent' ? `${r.discount_value}%` : `₩${Number(r.discount_value).toLocaleString()}`}
+                </td>
+                <td className="px-4 py-3">{r.uses_count}</td>
+                <td className="px-4 py-3">{r.bookings}</td>
+                <td className="px-4 py-3">₩{r.revenue.toLocaleString()}</td>
+                <td className="px-4 py-3 font-semibold text-purple-700">₩{r.commission.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>

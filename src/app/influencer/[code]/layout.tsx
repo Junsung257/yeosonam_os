@@ -54,6 +54,7 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
     { href: `/influencer/${code}/products`, label: '상품 & 링크', icon: '🔗' },
     { href: `/influencer/${code}/create-content`, label: '콘텐츠 생성', icon: '✨' },
     { href: `/influencer/${code}/assets`, label: '마케팅 소재', icon: '🎨' },
+    { href: `/influencer/${code}/playbook`, label: '성공사례/CS', icon: '📚' },
   ];
 
   return (

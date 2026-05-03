@@ -90,6 +90,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/admin/affiliates',          label: '제휴/인플루언서',        icon: Handshake },
       { href: '/admin/affiliate-analytics', label: '제휴 분석',              icon: BarChart3 },
+      { href: '/admin/affiliate-promo-report', label: '프로모코드 성과',      icon: Tags },
       { href: '/admin/applications',        label: '파트너 신청',            icon: UserPlus },
       { href: '/admin/partner-preview',     label: '파트너 프론트 미리보기', icon: Eye },
       { href: '/admin/rfqs',                label: '단체 RFQ',               icon: FileQuestion },

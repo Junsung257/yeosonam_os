@@ -117,6 +117,191 @@ export async function GET(request: NextRequest) {
       ...(monthlyMap.get(month) || { revenue: 0, commission: 0, count: 0 }),
     }));
 
+    // 최근 30일 sub_id 성과 (top 20) — 일 집계 테이블 우선 사용
+    const sinceDate = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    let subStats: Array<{
+      referral_code: string;
+      sub_id: string;
+      clicks_30d: number;
+      unique_sessions_30d: number;
+      touched_packages_30d: number;
+    }> = [];
+    const { data: subDaily, error: subErr } = await supabaseAdmin
+      .from('affiliate_sub_attribution_daily')
+      .select('day, referral_code, sub_id, clicks, unique_sessions, touched_packages')
+      .gte('day', sinceDate)
+      .limit(20000);
+    const subTrendMap = new Map<string, { clicks: number; unique_sessions: number; touched_packages: number }>();
+    if (!subErr && subDaily && subDaily.length > 0) {
+      const roll = new Map<string, { referral_code: string; sub_id: string; clicks: number; unique_sessions: number; touched_packages: number }>();
+      subDaily.forEach((r: any) => {
+        const referralCode = String(r.referral_code || '').trim();
+        const subId = String(r.sub_id || 'default').trim() || 'default';
+        if (!referralCode) return;
+        const key = `${referralCode}::${subId}`;
+        const prev = roll.get(key) || { referral_code: referralCode, sub_id: subId, clicks: 0, unique_sessions: 0, touched_packages: 0 };
+        prev.clicks += Number(r.clicks) || 0;
+        prev.unique_sessions += Number(r.unique_sessions) || 0;
+        prev.touched_packages += Number(r.touched_packages) || 0;
+        roll.set(key, prev);
+
+        const dayKey = String(r.day || '').slice(0, 10);
+        if (dayKey) {
+          const dayPrev = subTrendMap.get(dayKey) || { clicks: 0, unique_sessions: 0, touched_packages: 0 };
+          dayPrev.clicks += Number(r.clicks) || 0;
+          dayPrev.unique_sessions += Number(r.unique_sessions) || 0;
+          dayPrev.touched_packages += Number(r.touched_packages) || 0;
+          subTrendMap.set(dayKey, dayPrev);
+        }
+      });
+      subStats = [...roll.values()]
+        .map((s) => ({
+          referral_code: s.referral_code,
+          sub_id: s.sub_id,
+          clicks_30d: s.clicks,
+          unique_sessions_30d: s.unique_sessions,
+          touched_packages_30d: s.touched_packages,
+        }))
+        .sort((a, b) => b.clicks_30d - a.clicks_30d)
+        .slice(0, 20);
+    } else {
+      const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+      const { data: touchpoints } = await supabaseAdmin
+        .from('affiliate_touchpoints')
+        .select('referral_code, sub_id, session_id, package_id')
+        .gte('clicked_at', since30)
+        .eq('is_bot', false)
+        .eq('is_duplicate', false)
+        .limit(10000);
+      const subMap = new Map<string, { referral_code: string; sub_id: string; clicks: number; sessions: Set<string>; packages: Set<string> }>();
+      (touchpoints || []).forEach((t: any) => {
+        const referralCode = String(t.referral_code || '').trim();
+        if (!referralCode) return;
+        const subId = String(t.sub_id || 'default').trim() || 'default';
+        const key = `${referralCode}::${subId}`;
+        if (!subMap.has(key)) {
+          subMap.set(key, { referral_code: referralCode, sub_id: subId, clicks: 0, sessions: new Set<string>(), packages: new Set<string>() });
+        }
+        const cur = subMap.get(key)!;
+        cur.clicks += 1;
+        if (t.session_id) cur.sessions.add(String(t.session_id));
+        if (t.package_id) cur.packages.add(String(t.package_id));
+      });
+      subStats = [...subMap.values()]
+        .map((s) => ({
+          referral_code: s.referral_code,
+          sub_id: s.sub_id,
+          clicks_30d: s.clicks,
+          unique_sessions_30d: s.sessions.size,
+          touched_packages_30d: s.packages.size,
+        }))
+        .sort((a, b) => b.clicks_30d - a.clicks_30d)
+        .slice(0, 20);
+      // fallback 실시간 조회에서는 trend를 간소화(미제공)
+    }
+    const subTrend = [...subTrendMap.entries()]
+      .map(([day, v]) => ({ day, clicks: v.clicks, unique_sessions: v.unique_sessions, touched_packages: v.touched_packages }))
+      .sort((a, b) => a.day.localeCompare(b.day))
+      .slice(-30);
+
+    // 모델별 비교(최근 30일) — 일집계 캐시 우선, 없으면 경량 fallback
+    const compareSinceDate = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const { data: modelDaily } = await supabaseAdmin
+      .from('affiliate_model_compare_daily')
+      .select('sample_size, first_touch_match_count, last_touch_match_count, linear_multi_touch_candidates, attribution_switch_count, affected_commission_pool_krw')
+      .gte('day', compareSinceDate)
+      .limit(60);
+
+    let modelCompare = {
+      sample_size: 0,
+      first_touch_match_count: 0,
+      last_touch_match_count: 0,
+      linear_multi_touch_candidates: 0,
+      attribution_switch_count: 0,
+      affected_commission_pool_krw: 0,
+    };
+    if (modelDaily && modelDaily.length > 0) {
+      for (const r of modelDaily as any[]) {
+        modelCompare.sample_size += Number(r.sample_size) || 0;
+        modelCompare.first_touch_match_count += Number(r.first_touch_match_count) || 0;
+        modelCompare.last_touch_match_count += Number(r.last_touch_match_count) || 0;
+        modelCompare.linear_multi_touch_candidates += Number(r.linear_multi_touch_candidates) || 0;
+        modelCompare.attribution_switch_count += Number(r.attribution_switch_count) || 0;
+        modelCompare.affected_commission_pool_krw += Number(r.affected_commission_pool_krw) || 0;
+      }
+      modelCompare.affected_commission_pool_krw = Math.round(modelCompare.affected_commission_pool_krw);
+    } else {
+      const compareSince = new Date(Date.now() - 30 * 86400000).toISOString();
+      const { data: cmpBookings } = await supabaseAdmin
+        .from('bookings')
+        .select('id, created_at, affiliate_id, influencer_commission')
+        .gte('created_at', compareSince)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .limit(120);
+      modelCompare.sample_size = (cmpBookings || []).length;
+      modelCompare.affected_commission_pool_krw = Math.round(
+        (cmpBookings || []).reduce((s: number, b: any) => s + (Number(b.influencer_commission) || 0), 0),
+      );
+    }
+
+    // 크론 헬스(최근 7일): 성공/실패 로그 기반 성공률 + 마지막 실패
+    const cronNames = [
+      'affiliate-dormant',
+      'affiliate-anomaly-detect',
+      'affiliate-settlement-draft',
+      'affiliate-content-24h-report',
+      'affiliate-attribution-recalc',
+      'affiliate-sub-daily-rollup',
+      'affiliate-model-compare-rollup',
+      'affiliate-tier-rewards',
+      'affiliate-reactivation-campaign',
+      'affiliate-live-celebration',
+      'affiliate-lifetime-commission',
+    ];
+    const healthSince = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: cronLogs } = await supabaseAdmin
+      .from('audit_logs')
+      .select('action, target_id, created_at, description, after_value')
+      .in('action', ['AFFILIATE_CRON_SUCCEEDED', 'AFFILIATE_CRON_FAILED'])
+      .gte('created_at', healthSince)
+      .in('target_id', cronNames)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    const cronMap = new Map<string, { success: number; failure: number; last_failure_at: string | null; last_failure_message: string | null }>();
+    cronNames.forEach((name) => {
+      cronMap.set(name, { success: 0, failure: 0, last_failure_at: null, last_failure_message: null });
+    });
+    (cronLogs || []).forEach((log: any) => {
+      const key = String(log.target_id || '').trim();
+      if (!cronMap.has(key)) return;
+      const cur = cronMap.get(key)!;
+      if (log.action === 'AFFILIATE_CRON_SUCCEEDED') {
+        cur.success += 1;
+        return;
+      }
+      if (log.action === 'AFFILIATE_CRON_FAILED') {
+        cur.failure += 1;
+        if (!cur.last_failure_at) {
+          cur.last_failure_at = String(log.created_at || '');
+          const msg = (log?.after_value as { message?: string } | null)?.message;
+          cur.last_failure_message = String(msg || log.description || '실패');
+        }
+      }
+    });
+    const cronHealth = cronNames.map((name) => {
+      const v = cronMap.get(name)!;
+      const total = v.success + v.failure;
+      const success_rate = total > 0 ? Math.round((v.success / total) * 1000) / 10 : 100;
+      return {
+        cron: name,
+        success_count_7d: v.success,
+        failure_count_7d: v.failure,
+        success_rate_7d: success_rate,
+        last_failure_at: v.last_failure_at,
+        last_failure_message: v.last_failure_message,
+      };
+    });
+
     return NextResponse.json({
       basis,
       basisMeta: {
@@ -136,6 +321,10 @@ export async function GET(request: NextRequest) {
       },
       partners,
       monthly,
+      sub_stats: subStats,
+      sub_trend: subTrend,
+      model_compare: modelCompare,
+      cron_health: cronHealth,
     });
   } catch (err) {
     console.error('[Affiliate Analytics]', err);

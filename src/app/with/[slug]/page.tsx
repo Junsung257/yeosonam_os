@@ -9,6 +9,14 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isSafeImageSrc } from '@/lib/image-url';
 
+function extractYoutubeEmbedUrl(input?: string | null): string | null {
+  if (!input) return null;
+  const s = input.trim();
+  const m = s.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+  if (!m?.[1]) return null;
+  return `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1`;
+}
+
 /** 랜딩 조회수(affiliate_touchpoints)가 방문마다 기록되도록 캐시 비활성화 */
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +68,7 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
 
   const { data: aff, error: affErr } = await supabaseAdmin
     .from('affiliates')
-    .select('name, referral_code, logo_url, landing_intro, landing_pick_package_ids')
+    .select('name, referral_code, logo_url, landing_intro, landing_pick_package_ids, landing_video_url')
     .eq('referral_code', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -73,6 +81,7 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
     logo_url?: string | null;
     landing_intro?: string | null;
     landing_pick_package_ids?: string[] | null;
+    landing_video_url?: string | null;
   };
 
   const pickIds = (row.landing_pick_package_ids || []).filter(Boolean);
@@ -116,6 +125,8 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
   const intro =
     row.landing_intro?.trim() ||
     `안녕하세요, ${row.name}입니다. 여소남과 함께 엄선한 패키지를 소개합니다. 아래 상품은 이 링크로 예약 시 제휴 혜택이 적용됩니다.`;
+  const youtubeEmbedUrl = extractYoutubeEmbedUrl(row.landing_video_url || row.landing_intro);
+  const campaignEndsAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
   try {
     const sid = cookies().get('ys_session_id')?.value || `ssr-${Date.now()}`;
@@ -137,6 +148,10 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
       <main>
         <section className="border-b border-gray-200 bg-white">
           <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-900">
+              <strong>{row.name}</strong>님이 직접 검증한 팬 전용 추천 상품입니다. 기간 한정 혜택은{' '}
+              <span className="font-semibold">{campaignEndsAt.slice(0, 10)}</span>까지 적용됩니다.
+            </div>
             <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-center">
               <div className="flex shrink-0 items-center gap-4">
                 <div className="relative h-16 w-40 shrink-0 sm:h-20 sm:w-48">
@@ -180,6 +195,23 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
                 <p className="mt-4 whitespace-pre-wrap text-base leading-relaxed text-gray-700">{intro}</p>
               </div>
             </div>
+            {youtubeEmbedUrl ? (
+              <div className="mx-auto mt-8 max-w-3xl">
+                <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
+                  <div className="aspect-video">
+                    <iframe
+                      src={youtubeEmbedUrl}
+                      title={`${row.name} 제휴 소개 영상`}
+                      className="h-full w-full"
+                      loading="lazy"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -216,10 +248,15 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
                         <p className="mt-2 line-clamp-2 text-sm text-gray-600">{highlight}</p>
                       ) : null}
                       {typeof pkg.price === 'number' ? (
-                        <p className="mt-4 text-lg font-bold text-gray-900">
-                          {pkg.price.toLocaleString('ko-KR')}
-                          <span className="text-sm font-normal text-gray-500">원~</span>
-                        </p>
+                        <div className="mt-4">
+                          <p className="text-sm text-gray-500 line-through">
+                            일반가 {pkg.price.toLocaleString('ko-KR')}원
+                          </p>
+                          <p className="text-lg font-bold text-rose-600">
+                            팬 전용가 {Math.max(0, Math.floor(pkg.price * 0.95)).toLocaleString('ko-KR')}
+                            <span className="text-sm font-medium text-rose-500">원~</span>
+                          </p>
+                        </div>
                       ) : null}
                       <span className="mt-3 inline-block text-sm font-medium text-emerald-800">상세 보기</span>
                     </Link>

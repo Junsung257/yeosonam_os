@@ -16,6 +16,7 @@ import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
   params: { code: string; slug: string };
+  searchParams?: { sub?: string };
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -61,9 +62,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-export default async function AffiliateShortLinkPage({ params }: Params) {
+export default async function AffiliateShortLinkPage({ params, searchParams }: Params) {
   const { code: rawCode, slug } = params;
   const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
+  const subRaw =
+    typeof searchParams?.sub === 'string'
+      ? searchParams.sub.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
+      : '';
 
   // 서버측 클릭 추적 (best-effort) — 실패해도 redirect 진행.
   // /api/influencer/track 은 쿠키도 발급하지만 redirect 시 쿠키 set 어려우므로,
@@ -75,7 +80,7 @@ export default async function AffiliateShortLinkPage({ params }: Params) {
         session_id: `r-shortlink-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         referral_code: code,
         package_id: slug,
-        sub_id: 'shortlink',
+        sub_id: subRaw || 'shortlink',
         is_bot: false,
         is_duplicate: false,
       } as never);
@@ -84,6 +89,6 @@ export default async function AffiliateShortLinkPage({ params }: Params) {
 
   // /packages/{id}?ref={code} 로 영구 redirect (302 — 검색 인덱싱 안 됨)
   const refParam = code || normalizeAffiliateReferralCode(rawCode);
-  const target = `/packages/${encodeURIComponent(slug)}?ref=${encodeURIComponent(refParam)}&utm_source=shortlink`;
+  const target = `/packages/${encodeURIComponent(slug)}?ref=${encodeURIComponent(refParam)}&utm_source=shortlink${subRaw ? `&sub=${encodeURIComponent(subRaw)}` : ''}`;
   redirect(target);
 }

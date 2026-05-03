@@ -10,7 +10,9 @@
  * 발견 시 agent_actions(action_type='notify_affiliate_anomaly', priority='critical') 기안.
  */
 import { NextResponse } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
 interface AnomalyFinding {
   affiliate_id: string | null;
@@ -28,9 +30,12 @@ function median(values: number[]): number {
 }
 
 export const dynamic = 'force-dynamic';
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {
@@ -114,6 +119,37 @@ export async function GET() {
       }
     }
 
+    // 셀프 리퍼럴 의심: 제휴 예약인데 커미션이 0인 건이 하루 2건 이상
+    const { data: zeroCommissionRows } = await supabaseAdmin
+      .from('bookings')
+      .select('affiliate_id')
+      .eq('booking_type', 'AFFILIATE')
+      .eq('influencer_commission', 0)
+      .gte('created_at', `${yesterdayIso}T00:00:00`)
+      .lte('created_at', `${yesterdayIso}T23:59:59`)
+      .not('affiliate_id', 'is', null);
+
+    const zeroByAff = new Map<string, number>();
+    (zeroCommissionRows || []).forEach((r: { affiliate_id: string | null }) => {
+      if (!r.affiliate_id) return;
+      zeroByAff.set(r.affiliate_id, (zeroByAff.get(r.affiliate_id) || 0) + 1);
+    });
+
+    for (const [affId, count] of zeroByAff.entries()) {
+      if (count >= 2) {
+        const aff = (affiliates || []).find((a: any) => a.id === affId);
+        if (aff) {
+          findings.push({
+            affiliate_id: affId,
+            affiliate_name: aff.name,
+            referral_code: aff.referral_code,
+            kind: 'self_referral_suspected',
+            detail: { zeroCommissionAffiliateBookings: count, day: yesterdayIso },
+          });
+        }
+      }
+    }
+
     try {
       const { data: geoAnomalies } = await supabaseAdmin
         .from('affiliate_geo_anomalies')
@@ -153,9 +189,11 @@ export async function GET() {
       after_value: { date: yesterdayIso, findings } as any,
     }).then(() => {}).catch(() => {});
 
+    await reportAffiliateCronSuccess('affiliate-anomaly-detect', { date: yesterdayIso, findings: findings.length });
     return NextResponse.json({ date: yesterdayIso, findings: findings.length, details: findings });
   } catch (err) {
     console.error('[이상탐지 크론 실패]', err);
+    await reportAffiliateCronFailure('affiliate-anomaly-detect', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '이상탐지 실패' },
       { status: 500 },

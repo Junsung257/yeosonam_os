@@ -30,7 +30,9 @@
     "audit:api-drift": "node db/audit_api_field_drift.js",
     "audit:api-drift:ci": "node db/audit_api_field_drift.js --strict",
     "audit:migration-prefix": "node db/audit_migration_prefix_collisions.js",
-    "audit:migration-prefix:ci": "node db/audit_migration_prefix_collisions.js --fail-on-collision"
+    "audit:migration-prefix:ci": "node db/audit_migration_prefix_collisions.js --fail-on-collision",
+    "os:inbox": "node scripts/os-improvement-inbox.mjs",
+    "eval:concierge": "node scripts/eval-concierge.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",
@@ -67,6 +69,7 @@
     "papaparse": "^5.5.3",
     "pdf-parse": "^1.1.1",
     "postcss": "^8",
+    "pretendard": "^1.3.9",
     "puppeteer": "^24.39.1",
     "react": "^18",
     "react-dom": "^18",

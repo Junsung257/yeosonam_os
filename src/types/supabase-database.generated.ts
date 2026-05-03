@@ -950,6 +950,7 @@ export type Database = {
           is_active: boolean
           landing_intro: string | null
           landing_pick_package_ids: string[]
+          landing_video_url: string | null
           last_conversion_at: string | null
           memo: string | null
           name: string
@@ -972,6 +973,7 @@ export type Database = {
           is_active?: boolean
           landing_intro?: string | null
           landing_pick_package_ids?: string[]
+          landing_video_url?: string | null
           last_conversion_at?: string | null
           memo?: string | null
           name: string
@@ -994,6 +996,7 @@ export type Database = {
           is_active?: boolean
           landing_intro?: string | null
           landing_pick_package_ids?: string[]
+          landing_video_url?: string | null
           last_conversion_at?: string | null
           memo?: string | null
           name?: string

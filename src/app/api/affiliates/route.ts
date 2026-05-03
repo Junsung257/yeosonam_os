@@ -142,6 +142,18 @@ function sanitizeLandingPickIds(raw: unknown): string[] {
   return out;
 }
 
+function sanitizeLandingVideoUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim();
+  if (!t) return null;
+  if (t.length > 500) return null;
+  const ok =
+    /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}/.test(t) ||
+    /^https?:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}/.test(t) ||
+    /^https?:\/\/(www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}/.test(t);
+  return ok ? t : null;
+}
+
 // PATCH: 어필리에이트 정보 수정
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -165,6 +177,7 @@ export async function PATCH(request: NextRequest) {
       is_active,
       landing_intro,
       landing_pick_package_ids,
+      landing_video_url,
     } = body;
 
     if (!id) return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
@@ -189,6 +202,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (landing_pick_package_ids !== undefined) {
       payload.landing_pick_package_ids = sanitizeLandingPickIds(landing_pick_package_ids);
+    }
+    if (landing_video_url !== undefined) {
+      payload.landing_video_url = sanitizeLandingVideoUrl(landing_video_url);
     }
 
     const { data, error } = await supabase

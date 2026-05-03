@@ -43,11 +43,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { referral_code, package_id, package_title, pin } = body as {
+    const { referral_code, package_id, package_title, pin, sub_id } = body as {
       referral_code?: string;
       package_id?: string;
       package_title?: string;
       pin?: string;
+      sub_id?: string;
     };
     if (!referral_code || !package_id) {
       return NextResponse.json({ error: '필수 필드 누락' }, { status: 400 });
@@ -61,11 +62,21 @@ export async function POST(req: NextRequest) {
     const affiliate = auth.affiliate as { id: string; referral_code: string };
     const canon = affiliate.referral_code;
 
+    const normalizedSub = typeof sub_id === 'string'
+      ? sub_id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
+      : '';
+
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
+    const shortUrl = normalizedSub
+      ? `${baseUrl}/r/${encodeURIComponent(canon)}/${package_id}?sub=${encodeURIComponent(normalizedSub)}`
+      : `${baseUrl}/r/${encodeURIComponent(canon)}/${package_id}`;
+
     const { data: existing } = await supabaseAdmin
       .from('influencer_links')
       .select('id, short_url')
       .eq('affiliate_id', affiliate.id)
       .eq('package_id', package_id)
+      .eq('short_url', shortUrl)
       .limit(1);
 
     if (existing && existing.length > 0) {
@@ -75,9 +86,6 @@ export async function POST(req: NextRequest) {
         message: '이미 생성된 링크입니다',
       });
     }
-
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
-    const shortUrl = `${baseUrl}/packages/${package_id}?ref=${encodeURIComponent(canon)}`;
 
     const { data: link, error } = await supabaseAdmin
       .from('influencer_links')

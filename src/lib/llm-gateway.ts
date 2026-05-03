@@ -532,3 +532,161 @@ export function getAllRoutes(): Record<LlmTask, { executor: string; advisor?: st
     ]),
   ) as any;
 }
+
+// ─── 스트리밍 (DeepSeek 전용) — QA TTFT 개선 ─────────────────────────────────
+
+/**
+ * 부분 JSON 버퍼에서 "reply" 문자열 값의 현재까지 파싱 가능한 접두를 반환.
+ * 스트리밍 중에도 고객에게 본문을 먼저 보여주기 위함.
+ */
+export function extractPartialReplyFromJsonObject(accumulated: string): string | null {
+  const m = accumulated.match(/"reply"\s*:\s*"/);
+  if (!m || m.index === undefined) return null;
+  let i = m.index + m[0].length;
+  let out = '';
+  while (i < accumulated.length) {
+    const c = accumulated[i];
+    if (c === '\\') {
+      i++;
+      if (i >= accumulated.length) break;
+      const esc = accumulated[i];
+      if (esc === 'n') out += '\n';
+      else if (esc === 't') out += '\t';
+      else if (esc === 'r') out += '\r';
+      else out += esc;
+      i++;
+      continue;
+    }
+    if (c === '"') return out;
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+type StreamDeltaHandler = (info: { accumulated: string; replyVisible: string | null }) => void;
+
+async function callDeepSeekStream(
+  client: OpenAI,
+  model: string,
+  params: GatewayCallParams,
+  onDelta: StreamDeltaHandler,
+): Promise<GatewayResult> {
+  const start = Date.now();
+  try {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: params.systemPrompt },
+      { role: 'user', content: params.userPrompt },
+    ];
+
+    const requestParams: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
+      model,
+      messages,
+      max_tokens: params.maxTokens || 2000,
+      temperature: params.temperature ?? 0.3,
+      stream: true,
+      ...(params.jsonSchema ? { response_format: { type: 'json_object' as const } } : {}),
+    };
+
+    const stream = await client.chat.completions.create(requestParams);
+    let acc = '';
+    let usage: OpenAI.Chat.Completions.ChatCompletion['usage'] | undefined;
+    for await (const chunk of stream) {
+      const piece = chunk.choices[0]?.delta?.content ?? '';
+      if (piece) {
+        acc += piece;
+        onDelta({
+          accumulated: acc,
+          replyVisible: extractPartialReplyFromJsonObject(acc),
+        });
+      }
+      if (chunk.usage) usage = chunk.usage;
+    }
+
+    const cacheHitTokens = (usage as { prompt_cache_hit_tokens?: number } | undefined)?.prompt_cache_hit_tokens ?? 0;
+    const cacheHit = cacheHitTokens > 0;
+    const _usage = {
+      input: usage?.prompt_tokens ?? 0,
+      output: usage?.completion_tokens ?? 0,
+      cache_hit: cacheHitTokens,
+    };
+    const content = acc;
+
+    if (params.jsonSchema) {
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          success: true,
+          data: parsed,
+          provider: 'deepseek',
+          model,
+          cacheHit,
+          _usage,
+          elapsed_ms: Date.now() - start,
+        };
+      } catch {
+        return {
+          success: false,
+          rawText: content,
+          provider: 'deepseek',
+          model,
+          errors: [`JSON 파싱 실패: ${content.slice(0, 200)}`],
+          elapsed_ms: Date.now() - start,
+        };
+      }
+    }
+
+    return {
+      success: true,
+      rawText: content,
+      provider: 'deepseek',
+      model,
+      cacheHit,
+      _usage,
+      elapsed_ms: Date.now() - start,
+    };
+  } catch (e) {
+    return {
+      success: false,
+      provider: 'deepseek',
+      model,
+      errors: [e instanceof Error ? e.message : String(e)],
+      elapsed_ms: Date.now() - start,
+    };
+  }
+}
+
+/**
+ * DeepSeek 스트리밍 1회 시도 (TTFT). 실패 시 호출부에서 llmCall 폴백.
+ */
+export async function tryDeepSeekStream(
+  params: GatewayCallParams,
+  onDelta: StreamDeltaHandler,
+): Promise<GatewayResult<string>> {
+  const autoEscalate = params.autoEscalate !== false;
+  const effectiveTask = autoEscalate
+    ? autoEscalateTask(params.task, params.userPrompt)
+    : params.task;
+  const route = ROUTING[effectiveTask];
+  const client = getDeepSeek();
+  if (!client || !process.env.DEEPSEEK_API_KEY?.trim()) {
+    return { success: false, errors: ['DEEPSEEK_API_KEY 없음'] };
+  }
+  if (route.executor.provider !== 'deepseek') {
+    return { success: false, errors: ['스트리밍은 DeepSeek executor만 지원'] };
+  }
+  const result = await callDeepSeekStream(client, route.executor.model, params, onDelta);
+  if (result.success && result._usage) {
+    void trackDeepSeekCost({
+      task: effectiveTask,
+      model: route.executor.model,
+      usage: {
+        prompt_tokens: result._usage.input,
+        completion_tokens: result._usage.output,
+        prompt_cache_hit_tokens: result._usage.cache_hit,
+      },
+      latencyMs: result.elapsed_ms,
+    });
+  }
+  return result as GatewayResult<string>;
+}

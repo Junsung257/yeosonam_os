@@ -8,10 +8,26 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, phone, channel_type, channel_url, follower_count, intro, business_type, business_number } = body;
+    const { name, phone, channel_type, channel_url, follower_count, intro, business_type, business_number, invite_code } = body;
 
     if (!name || !phone || !channel_type || !channel_url) {
       return NextResponse.json({ error: '이름, 연락처, 채널유형, 채널URL은 필수입니다.' }, { status: 400 });
+    }
+
+    // Invite-only 운영: AFFILIATE_INVITE_CODES="CODE1,CODE2"
+    const invitePolicy = (process.env.AFFILIATE_INVITE_CODES || '').trim();
+    if (invitePolicy) {
+      const allow = invitePolicy
+        .split(',')
+        .map((v) => v.trim().toUpperCase())
+        .filter(Boolean);
+      const submitted = String(invite_code || '').trim().toUpperCase();
+      if (!submitted || !allow.includes(submitted)) {
+        return NextResponse.json(
+          { error: '초대 코드가 필요하거나 유효하지 않습니다. 운영팀 초대 코드를 확인해 주세요.' },
+          { status: 403 }
+        );
+      }
     }
 
     // 중복 신청 확인

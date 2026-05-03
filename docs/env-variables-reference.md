@@ -54,6 +54,13 @@
 
 동의·약관 정리 전에는 **미설정 권장**. `/admin/platform-learning` 에서 조회.
 
+## 🧭 MAS 운영 토글 (Concierge PoC)
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `AI_SHADOW_MODE` | `true`이면 고객 응답 대신 점검 메시지+에스컬레이션 안내만 노출(섀도우 검증 모드) | `false` |
+| `CONCIERGE_EVAL_THRESHOLD` | 오프라인 평가(`npm run eval:concierge`) 합격선 | `0.95` |
+
 ## ✉️ 알림 · 색인 API (선택)
 
 | 키 | 용도 |
@@ -72,6 +79,29 @@
 | `META_PAGE_ID` | Meta 페이지 |
 | `GOOGLE_ADS_*` | Google Ads API (미구현, 향후) |
 | `NAVER_AD_*` | 네이버 검색광고 API (미구현, 향후) |
+
+### 광고 자동 최적화 런타임 토글
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `AD_OPTIMIZER_APPLY_CHANGES` | `true`/`1`이면 `ad-optimizer`가 키워드 상태/입찰을 실제 DB에 반영. 아니면 dry-run | `false` |
+| `AD_OPTIMIZER_APPLY_OFFPEAK_RULE` | `true`/`1`이면 `ad-optimizer`에서 새벽 감액 규칙도 반영 | `false` |
+| `MARKETING_RULES_APPLY_BID_UPDATES` | `true`/`1`이면 `marketing-rules`에서 off-peak 감액 반영 | `false` |
+| `AD_OFFPEAK_BID_FACTOR` | off-peak 감액 배수 | `0.85` |
+| `AD_MIN_BID_KRW` | 감액 시 하한 입찰가(원) | `70` |
+| `AD_FLAG_UP_BID_FACTOR` | `FLAGGED_UP` 시 입찰 상향 배수 | `1.1` |
+| `MARKETING_RULES_VERBOSE` | `1`일 때 정책 로그 상세 출력 | `0` |
+
+운영 권장:
+- off-peak 감액은 **한쪽 크론만** 실반영하세요. 보통 `MARKETING_RULES_APPLY_BID_UPDATES=true`, `AD_OPTIMIZER_APPLY_OFFPEAK_RULE=false` 조합을 권장합니다.
+- 첫 적용은 dry-run(`*_APPLY_* = false`)으로 1~2일 로그 확인 후 전환하세요.
+
+### 발행/귀속 자동 보강 토글
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `PUBLISH_ORCHESTRATION_WRITE_LOGS` | `true`/`1`이면 블로그 자동 발행 성공 시 `marketing_logs` 기록 | `false` |
+| `BOOKING_ATTRIBUTION_AUTOFIX` | `true`/`1`이면 귀속 신호가 있는 예약의 비어있는 UTM을 보수적으로 자동 보강 | `false` |
 
 ## 🔄 외부 API (선택)
 
@@ -112,12 +142,16 @@
 | `AUTO_APPROVE_LEARNING=false` | 자기학습 수동 승인 필요 (권장 모드) |
 | `PEXELS_API_KEY` 없음 | 이미지 없이 블로그 생성 (품질 저하) |
 | `NEXT_PUBLIC_CONSULT_PHONE` 없음 | QA 채팅 에스컬레이션에서 **전화** 버튼 미표시 (카카오톡만) |
+| `*_APPLY_*` 토글 미설정 | 광고/발행 자동화가 dry-run 중심으로 동작(안전 모드) |
 
 ## 🤝 제휴·추천 쿠키 (`aff_ref`) — 선택
 
 | 키 | 용도 | 기본 |
 |---|---|---|
 | `AFFILIATE_REF_STRICT_MARKETING_CONSENT` | `true`이면 `ys_marketing_consent=true` 일 때만 `aff_ref` 30일, 아니면 세션 쿠키만 | 미설정 = 항상 30일 |
+| `AFFILIATE_INVITE_CODES` | 파트너 신청 Invite-only 코드 목록 (쉼표 구분). 설정 시 코드 없는 신청 차단 | 미설정 = 공개 신청 |
+| `AFFILIATE_ATTRIBUTION_MODEL` | 멀티터치 재계산 기본 모델 (`last_touch` / `first_touch` / `linear`) | `last_touch` |
+| `AFFILIATE_LIFETIME_EXPERIMENT_RATE` | Lifetime 0.5% 실험군 배정 비율 (0~1) | `0.3` |
 
 자세한 운영 기준: [`docs/affiliate-attribution.md`](./affiliate-attribution.md)
 
@@ -147,7 +181,19 @@ ANTHROPIC_API_KEY=your_claude_key
 # 선택
 AUTO_APPROVE_LEARNING=false
 REVALIDATE_SECRET=your_random_secret
+# AD_OPTIMIZER_APPLY_CHANGES=false
+# AD_OPTIMIZER_APPLY_OFFPEAK_RULE=false
+# MARKETING_RULES_APPLY_BID_UPDATES=false
+# AD_OFFPEAK_BID_FACTOR=0.85
+# AD_MIN_BID_KRW=70
+# AD_FLAG_UP_BID_FACTOR=1.1
+# MARKETING_RULES_VERBOSE=1
+# PUBLISH_ORCHESTRATION_WRITE_LOGS=false
+# BOOKING_ATTRIBUTION_AUTOFIX=false
 # AFFILIATE_REF_STRICT_MARKETING_CONSENT=true  # PIPA 대비 시만
+# AFFILIATE_INVITE_CODES=HEIZE2026,PARTNERVIP
+# AFFILIATE_ATTRIBUTION_MODEL=last_touch
+# AFFILIATE_LIFETIME_EXPERIMENT_RATE=0.3
 
 # 미매칭 관광지 (선택 — 미설정 시 기본값)
 # UNMATCHED_AUTO_RESOLVE_MIN_SCORE=95

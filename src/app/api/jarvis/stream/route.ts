@@ -25,6 +25,9 @@ import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
 import type { AgentRunResult } from '@/lib/jarvis/types'
 import { mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
 import { recordPlatformLearningEvent } from '@/lib/platform-learning'
+import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
+import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
+import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
@@ -86,6 +89,27 @@ export async function POST(req: NextRequest) {
 
   // 2) Router + config 조립
   const dispatch = await prepareDispatch({ message, session, ctx })
+  const traceId = crypto.randomUUID()
+  const decision = supervisorLite({
+    message,
+    sessionId: session.id,
+    tenantId: ctx.tenantId,
+    affiliateId: null,
+    agentType: dispatch.agentType,
+    ctx,
+    correlationId: crypto.randomUUID(),
+    source: 'jarvis_stream',
+  })
+  const createdTask = await createAgentTask(decision.envelope)
+  await transitionAgentTask(createdTask.id, 'queued', 'running')
+  const rootSpan = await startTraceSpan({
+    traceId,
+    spanName: 'jarvis_stream_total',
+    sessionId: session.id,
+    taskId: createdTask.id,
+    agentType: dispatch.agentType,
+    metadata: { specialistId: dispatch.specialistPick.specialistId },
+  })
 
   // V2 미지원 agent → 클라이언트가 V1 (/api/jarvis) 로 폴백하도록 명시 응답
   if (!dispatch.supported || !dispatch.config) {
@@ -106,6 +130,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const started = Date.now()
       let finalResult: AgentRunResult | null = null
+      let firstTokenAt: number | null = null
       let keepaliveTimer: ReturnType<typeof setInterval> | null = null
 
       try {
@@ -135,6 +160,9 @@ export async function POST(req: NextRequest) {
           if (step.done) {
             finalResult = step.value
             break
+          }
+          if (firstTokenAt === null && (step.value as any)?.type === 'token') {
+            firstTokenAt = Date.now()
           }
           controller.enqueue(encodeSSE(step.value))
         }
@@ -175,6 +203,8 @@ export async function POST(req: NextRequest) {
               specialist_method: dispatch.specialistPick.method,
               tools_used: finalResult?.toolsUsed ?? [],
               pending_hitl: !!finalResult?.pendingActionId,
+              trace_id: traceId,
+              ttft_ms: firstTokenAt ? firstTokenAt - started : null,
             },
           })
         }
@@ -191,12 +221,41 @@ export async function POST(req: NextRequest) {
           },
         }))
       } catch (err) {
+        try {
+          await transitionAgentTask(createdTask.id, 'running', 'failed', {
+            last_error: err instanceof Error ? err.message : 'stream_error',
+          })
+        } catch {
+          // ignore
+        }
         console.error('[jarvis-stream] 오류:', err)
         controller.enqueue(encodeSSE({
           type: 'error',
           data: { message: err instanceof Error ? err.message : '스트리밍 오류' },
         }))
       } finally {
+        if (finalResult) {
+          try {
+            await transitionAgentTask(createdTask.id, 'running', 'done', {
+              completed_at: new Date().toISOString(),
+            })
+          } catch {
+            // ignore
+          }
+        }
+        try {
+          await endTraceSpan({
+            id: rootSpan.id,
+            startedAt: rootSpan.started_at,
+            metadata: {
+              traceId,
+              ttftMs: firstTokenAt ? firstTokenAt - started : null,
+              totalLatencyMs: Date.now() - started,
+            },
+          })
+        } catch {
+          // ignore
+        }
         if (keepaliveTimer) clearInterval(keepaliveTimer)
         controller.close()
       }

@@ -4,6 +4,7 @@ import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { checkSelfReferral } from '@/lib/affiliate/self-referral';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -135,6 +136,24 @@ export async function POST(request: NextRequest) {
   }
   try {
     const body = await request.json();
+    const rawIdempotencyKey =
+      typeof body.idempotencyKey === 'string'
+        ? body.idempotencyKey
+        : typeof body.idempotency_key === 'string'
+          ? body.idempotency_key
+          : '';
+    const idempotencyKey = rawIdempotencyKey.trim();
+
+    if (idempotencyKey) {
+      // 멱등 키는 로깅/DB 인덱싱 안전을 위해 길이·문자 제한
+      if (idempotencyKey.length > 128 || !/^[a-zA-Z0-9:_-]+$/.test(idempotencyKey)) {
+        return NextResponse.json(
+          { error: 'idempotencyKey 형식이 올바르지 않습니다. (영문/숫자/:_- , 128자 이하)' },
+          { status: 400 },
+        );
+      }
+      body.idempotencyKey = idempotencyKey;
+    }
 
     // 서버사이드 유효성 검사
     if (!body.leadCustomerId) {
@@ -145,11 +164,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 멱등성: idempotency_key 가 있으면 기존 booking 반환 (재시도/이중제출 방어)
-    if (body.idempotencyKey) {
+    if (idempotencyKey) {
       const { data: existing } = await supabaseAdmin
         .from('bookings')
         .select('*')
-        .eq('idempotency_key', body.idempotencyKey)
+        .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
       if (existing) {
         return NextResponse.json({ booking: existing, idempotent_replay: true }, { status: 200 });
@@ -160,13 +179,25 @@ export async function POST(request: NextRequest) {
     const affRefRaw = (body.affiliateRef as string | undefined) || request.cookies.get('aff_ref')?.value;
     const affRef =
       typeof affRefRaw === 'string' && affRefRaw.trim() ? normalizeAffiliateReferralCode(affRefRaw) : '';
-    type AffRow = { id: string; grade: number | null; bonus_rate: number; created_at: string | null };
+    const affSub = request.cookies.get('aff_sub')?.value || null;
+    const promoCodeRaw = (body.promoCode as string | undefined) || (body.promo_code as string | undefined) || '';
+    const promoCode = normalizeAffiliateReferralCode(promoCodeRaw);
+    type AffRow = {
+      id: string;
+      grade: number | null;
+      bonus_rate: number;
+      created_at: string | null;
+      phone: string | null;
+      email: string | null;
+    };
     let affData: AffRow | null = null;
+    let selfReferralBlocked = false;
+    let selfReferralReason: string | null = null;
 
     const affQuery = affRef && !body.affiliateId
-      ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
+      ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
       : body.affiliateId
-        ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
+        ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
         : null;
 
     const pkgQuery = body.packageId
@@ -188,46 +219,119 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 프로모코드 귀속: 쿠키 ref가 없어도 할인코드로 affiliate 귀속
+    if (!body.affiliateId && promoCode) {
+      const nowIso = new Date().toISOString();
+      const { data: promoRow } = await supabaseAdmin
+        .from('affiliate_promo_codes')
+        .select('id, affiliate_id, code, is_active, starts_at, ends_at, max_uses, uses_count')
+        .eq('code', promoCode)
+        .maybeSingle();
+      if (promoRow) {
+        const p = promoRow as {
+          id: string;
+          affiliate_id: string;
+          code: string;
+          is_active: boolean;
+          starts_at: string | null;
+          ends_at: string | null;
+          max_uses: number | null;
+          uses_count: number;
+        };
+        const activeWindow =
+          p.is_active &&
+          (!p.starts_at || p.starts_at <= nowIso) &&
+          (!p.ends_at || p.ends_at >= nowIso) &&
+          (p.max_uses === null || p.uses_count < p.max_uses);
+        if (activeWindow) {
+          body.affiliateId = p.affiliate_id;
+          body.bookingType = 'AFFILIATE';
+          body.promo_code = p.code;
+          body.promo_affiliate_id = p.affiliate_id;
+          console.log(`[Affiliate] 프로모코드 귀속: ${p.code} → ${p.affiliate_id}`);
+          const { data: affFromPromo } = await supabaseAdmin
+            .from('affiliates')
+            .select('id, grade, bonus_rate, created_at, phone, email')
+            .eq('id', p.affiliate_id)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (affFromPromo) affData = affFromPromo as AffRow;
+        }
+      }
+    }
+
+    // 셀프 리퍼럴 방어: 예약자 연락처와 파트너 연락처가 같으면 커미션만 차단
+    if (affData && body.leadCustomerId) {
+      const { data: leadCustomer } = await supabaseAdmin
+        .from('customers')
+        .select('phone, email')
+        .eq('id', body.leadCustomerId)
+        .maybeSingle();
+      const selfCheck = checkSelfReferral({
+        bookingPhone: (leadCustomer as { phone?: string | null } | null)?.phone ?? null,
+        bookingEmail: (leadCustomer as { email?: string | null } | null)?.email ?? null,
+        affiliatePhone: affData.phone,
+        affiliateEmail: affData.email,
+      });
+      selfReferralBlocked = selfCheck.flagged;
+      selfReferralReason = selfCheck.reason;
+    }
+
     // 커미션 자동계산 — 가산식 정책 엔진 + 예약 시점 스냅샷 (ERR-방지)
     //   final = 상품기본률 + 등급보너스 + Σ캠페인 ↓ min(글로벌 캡)
     //   surcharge 제외, 순수 상품가 기준
     if (body.affiliateId && affData) {
-      const { applyCommissionPolicies } = await import('@/lib/policy-engine');
-
-      let baseRate = 0.02;
-      let destination: string | undefined;
-      const pkg = pkgResult.data as { affiliate_commission_rate: number | null; destination: string | null } | null;
-      if (pkg) {
-        const r = Number(pkg.affiliate_commission_rate);
-        if (Number.isFinite(r) && r >= 0) baseRate = r;
-        destination = pkg.destination ?? undefined;
-      }
-
-      const daysSinceSignup = affData.created_at
-        ? Math.max(0, Math.floor((Date.now() - new Date(affData.created_at).getTime()) / 86400000))
-        : 0;
-
-      const breakdown = await applyCommissionPolicies({
-        product_id: body.packageId,
-        destination,
-        affiliate_id: affData.id,
-        affiliate_grade: affData.grade ?? 1,
-        days_since_signup: daysSinceSignup,
-        base_rate: baseRate,
-        tier_bonus: affData.bonus_rate ?? 0,
-      });
-
       const commissionBase = (body.adultCount || 0) * (body.adultPrice || 0)
                            + (body.childCount || 0) * (body.childPrice || 0);
+      if (selfReferralBlocked) {
+        body.influencerCommission = 0;
+        body.appliedTotalCommissionRate = 0;
+        body.commissionBreakdown = {
+          base: 0,
+          tier: 0,
+          campaigns: [],
+          capped: false,
+          final_rate: 0,
+          blocked_reason: `SELF_REFERRAL_${selfReferralReason || 'MATCH'}`,
+        };
+        console.warn(
+          `[Affiliate] 셀프 리퍼럴 커미션 차단: affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`
+        );
+      } else {
+        const { applyCommissionPolicies } = await import('@/lib/policy-engine');
 
-      body.influencerCommission = Math.round(commissionBase * breakdown.final_rate);
-      body.appliedTotalCommissionRate = breakdown.final_rate;
-      body.commissionBreakdown = breakdown;
+        let baseRate = 0.02;
+        let destination: string | undefined;
+        const pkg = pkgResult.data as { affiliate_commission_rate: number | null; destination: string | null } | null;
+        if (pkg) {
+          const r = Number(pkg.affiliate_commission_rate);
+          if (Number.isFinite(r) && r >= 0) baseRate = r;
+          destination = pkg.destination ?? undefined;
+        }
 
-      console.log(
-        `[Affiliate] 커미션 자동계산(가산식): base=${commissionBase} × ${breakdown.final_rate} = ${body.influencerCommission} ` +
-        `[${breakdown.base}+${breakdown.tier}+캠페인${breakdown.campaigns.length}건${breakdown.capped ? '(캡적용)' : ''}]`
-      );
+        const daysSinceSignup = affData.created_at
+          ? Math.max(0, Math.floor((Date.now() - new Date(affData.created_at).getTime()) / 86400000))
+          : 0;
+
+        const breakdown = await applyCommissionPolicies({
+          product_id: body.packageId,
+          destination,
+          affiliate_id: affData.id,
+          affiliate_grade: affData.grade ?? 1,
+          days_since_signup: daysSinceSignup,
+          base_rate: baseRate,
+          tier_bonus: affData.bonus_rate ?? 0,
+        });
+
+        body.influencerCommission = Math.round(commissionBase * breakdown.final_rate);
+        body.appliedTotalCommissionRate = breakdown.final_rate;
+        body.commissionBreakdown = breakdown;
+
+        console.log(
+          `[Affiliate] 커미션 자동계산(가산식): base=${commissionBase} × ${breakdown.final_rate} = ${body.influencerCommission} ` +
+          `[${breakdown.base}+${breakdown.tier}+캠페인${breakdown.campaigns.length}건${breakdown.capped ? '(캡적용)' : ''}]`
+        );
+      }
     }
 
     // UTM / 제휴 코드 — 클라이언트가 camelCase 로 보내도 스냅샷 컬럼에 정규화
@@ -237,12 +341,33 @@ export async function POST(request: NextRequest) {
     if (body.utmTerm && !body.utm_term) body.utm_term = body.utmTerm;
     if (body.utmContent && !body.utm_content) body.utm_content = body.utmContent;
     if (affRef && !body.referral_code) body.referral_code = affRef;
+    if (promoCode && !body.promo_code) body.promo_code = promoCode;
+    if (body.affiliateId && !body.promo_affiliate_id && body.promo_code) body.promo_affiliate_id = body.affiliateId;
+    if (!body.attribution_model) body.attribution_model = 'last_touch';
+    if (!body.attribution_split) {
+      body.attribution_split = {
+        model: body.attribution_model,
+        last_touch: affRef || null,
+        promo_code: body.promo_code || null,
+        sub_id: affSub,
+      };
+    }
 
     const booking = await createBooking(body);
 
     if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
       const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
       enqueueDepositNoticeGateTask(booking.id as string).catch(() => {});
+    }
+
+    // 셀프 리퍼럴 차단 건은 감사 로그로 남겨 정산 이슈를 사전 방지
+    if (booking?.id && affData && selfReferralBlocked) {
+      supabaseAdmin.from('audit_logs').insert({
+        action: 'AFFILIATE_SELF_REFERRAL_BLOCKED',
+        target_type: 'booking',
+        target_id: booking.id,
+        description: `affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`,
+      }).then(() => {}).catch(() => {});
     }
 
     // 어필리에이트 last_conversion_at 업데이트
@@ -272,6 +397,44 @@ export async function POST(request: NextRequest) {
           }
         })
         .catch(() => {});
+    }
+
+    // 프로모코드 사용량 증가 (예약 생성 성공 후)
+    if (body.promo_code && booking?.id) {
+      const { data: promo } = await supabaseAdmin
+        .from('affiliate_promo_codes')
+        .select('id, uses_count')
+        .eq('code', body.promo_code)
+        .maybeSingle();
+      if (promo) {
+        const pr = promo as { id: string; uses_count: number };
+        supabaseAdmin
+          .from('affiliate_promo_codes')
+          .update({ uses_count: (pr.uses_count || 0) + 1, updated_at: new Date().toISOString() })
+          .eq('id', pr.id)
+          .then(() => {})
+          .catch(() => {});
+      }
+    }
+
+    // Lifetime 귀속 실험군: 신규 고객이 제휴로 첫 예약하면 실험군 할당
+    if (booking?.id && body.leadCustomerId && body.affiliateId) {
+      const experimentRate = Number(process.env.AFFILIATE_LIFETIME_EXPERIMENT_RATE || '0.3');
+      const group = Math.random() < Math.max(0, Math.min(1, experimentRate)) ? 'lifetime_0_5' : 'control';
+      const { data: existsLink } = await supabaseAdmin
+        .from('affiliate_lifetime_links')
+        .select('id')
+        .eq('customer_id', body.leadCustomerId)
+        .eq('affiliate_id', body.affiliateId)
+        .maybeSingle();
+      if (!existsLink) {
+        supabaseAdmin.from('affiliate_lifetime_links').insert({
+          customer_id: body.leadCustomerId,
+          affiliate_id: body.affiliateId,
+          origin_booking_id: booking.id,
+          experiment_group: group,
+        } as never).then(() => {}).catch(() => {});
+      }
     }
 
     // 약관 스냅샷: 예약 시점 4-level 머지 결과를 freeze (법적 증빙용, Ironclad/Juro CLM 관행)

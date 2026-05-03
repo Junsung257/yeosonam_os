@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withCronLogging } from '@/lib/cron-observability';
+import { getKeywordPerformances, isSupabaseConfigured, updateKeywordBid } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,17 +17,44 @@ async function runMarketingRules(request: NextRequest) {
   const kstHour = (new Date().getUTCHours() + 9) % 24;
   const offpeak = kstHour >= 1 && kstHour < 7;
   const factor = process.env.AD_OFFPEAK_BID_FACTOR || '0.85';
+  const minBid = Number(process.env.AD_MIN_BID_KRW || 70);
+  const applyBidUpdates =
+    process.env.MARKETING_RULES_APPLY_BID_UPDATES === '1' ||
+    process.env.MARKETING_RULES_APPLY_BID_UPDATES === 'true';
 
   const log: string[] = [];
   if (offpeak && process.env.MARKETING_RULES_VERBOSE === '1') {
-    log.push(`[marketing-rules] KST ${kstHour}시 off-peak — 입찰 ${factor}배 감액 권고 (연동 전 로그만)`);
+    log.push(
+      `[marketing-rules] KST ${kstHour}시 off-peak — 입찰 ${factor}배 감액 ${
+        applyBidUpdates ? '실반영' : 'dry-run'
+      }`,
+    );
+  }
+
+  let adjusted = 0;
+  if (offpeak && isSupabaseConfigured && applyBidUpdates) {
+    const activeKeywords = await getKeywordPerformances({ status: 'ACTIVE' });
+    const bidFactor = Number(factor) || 0.85;
+    for (const kw of activeKeywords) {
+      const current = Number(kw.current_bid || 0);
+      if (!Number.isFinite(current) || current <= 0) continue;
+      const nextBid = Math.max(minBid, Math.round(current * bidFactor));
+      if (nextBid >= current) continue;
+      await updateKeywordBid(kw.id, nextBid);
+      adjusted += 1;
+    }
+    if (process.env.MARKETING_RULES_VERBOSE === '1') {
+      log.push(`[marketing-rules] off-peak 입찰 감액 적용: ${adjusted}건`);
+    }
   }
 
   return {
     ok: true,
     kstHour,
     offpeak,
+    apply_bid_updates: applyBidUpdates,
     bid_factor_hint: offpeak ? Number(factor) || 0.85 : null,
+    adjusted_keywords: adjusted,
     log,
   };
 }

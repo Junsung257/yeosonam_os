@@ -43,6 +43,7 @@ type TrackingPayload =
       type: 'engagement';
       session_id: string;
       user_id?: string;
+      /** page_view, scroll_25 … 등 — DB는 text 컬럼 */
       event_type: string;
       product_id?: string;
       product_name?: string;
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       void insertEngagementLog({
         session_id: body.session_id,
         user_id: body.user_id ?? null,
-        event_type: body.event_type as 'page_view' | 'product_view' | 'cart_added' | 'checkout_start',
+        event_type: body.event_type,
         product_id: body.product_id ?? null,
         product_name: body.product_name ?? null,
         cart_added: body.cart_added ?? false,
