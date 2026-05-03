@@ -13,6 +13,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { LAND_SETTLEMENT_STATUS_COLOR } from '@/lib/status-colors';
+import { fmtNum as fmtKRW } from '@/lib/admin-utils';
 
 interface SettlementBookingRef {
   id: string | null;
@@ -53,11 +55,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   confirmed: '확정',
   reversed: '되돌림',
 };
-const STATUS_BADGE: Record<Settlement['status'], string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  reversed: 'bg-slate-100 text-slate-500 border-slate-200',
-};
+const STATUS_BADGE = LAND_SETTLEMENT_STATUS_COLOR as Record<Settlement['status'], string>;
 
 export default function LandSettlementsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -352,11 +350,6 @@ function SettlementRow({
       )}
     </>
   );
-}
-
-function fmtKRW(n: number): string {
-  if (!n) return '0';
-  return n.toLocaleString();
 }
 
 function buildExportUrl(status: StatusFilter): string {

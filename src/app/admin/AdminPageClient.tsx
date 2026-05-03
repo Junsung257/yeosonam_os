@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
+import { fmtNum as fmtComma } from '@/lib/admin-utils';
 import ScoringKpiWidget from '@/components/admin/ScoringKpiWidget';
 
 const ComposedChart = nextDynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
@@ -106,7 +107,6 @@ interface Booking {
 // ── 유틸 ──────────────────────────────────────────────────
 
 const fmt만 = (n: number) => `${(n / 10000).toFixed(0)}만`;
-const fmtComma = (n: number) => n.toLocaleString();
 
 // ── 서브 컴포넌트: TwoTrackKPI (V4 — IFRS 15 매출 인식 분리) ─────────────
 //
@@ -127,10 +127,11 @@ function MiniSpark({ data, color }: { data: number[]; color: string }) {
 }
 
 function TwoTrackKPI({
-  recognized, newBookings,
+  recognized, newBookings, periodLabel,
 }: {
   recognized: RecognizedRevenueMonth[];
   newBookings: NewBookingsMonth[];
+  periodLabel: string;
 }) {
   const now = new Date();
   const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -158,7 +159,7 @@ function TwoTrackKPI({
       {/* 카드 1: 출발일 기준 확정매출 (회계, IFRS 15) */}
       <Link href="/admin/bookings?mode=recognized" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">확정매출 · 출발일 기준</span>
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">확정매출 · 출발일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
           {recognizedGrowth !== 0 && (
             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${recognizedGrowth >= 0 ? 'bg-[#E9FAF4] text-[#04C584]' : 'bg-[#FFF1F2] text-[#F04452]'}`}>
               {recognizedGrowth >= 0 ? '+' : ''}{recognizedGrowth}%
@@ -177,7 +178,7 @@ function TwoTrackKPI({
       {/* 카드 2: 생성일 기준 신규예약 (영업, 취소 가능) */}
       <Link href="/admin/bookings?mode=new" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">신규예약 · 생성일 기준</span>
+          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">신규예약 · 생성일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
           {bookingsGrowth !== 0 && (
             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${bookingsGrowth >= 0 ? 'bg-[#E9FAF4] text-[#04C584]' : 'bg-[#FFF1F2] text-[#F04452]'}`}>
               {bookingsGrowth >= 0 ? '+' : ''}{bookingsGrowth}%
@@ -204,12 +205,12 @@ function TwoTrackKPI({
 
 // ── 서브 컴포넌트: CashflowChart ──────────────────────────
 
-function CashflowChart({ chartData }: { chartData: MonthlyChartData[] }) {
+function CashflowChart({ chartData, periodLabel }: { chartData: MonthlyChartData[]; periodLabel: string }) {
   if (chartData.length === 0) return null;
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[14px] font-semibold text-[#191F28]">캐시플로우 (6개월)</h2>
+        <h2 className="text-[14px] font-semibold text-[#191F28]">캐시플로우 ({periodLabel})</h2>
         <span className="text-[10px] text-slate-400">출발일 기준 / 직접·제휴 합산</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -1096,12 +1097,14 @@ export default function AdminPage({
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   // BUG-4: fetch 실패 배너
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
+  // 글로벌 기간 필터 (revenue-recognition + chart 공통)
+  const [period, setPeriod] = useState<'3m' | '6m' | '12m'>('6m');
 
   // 상세 패널
   const [selectedPackage, setSelectedPackage] = useState<TravelPackage | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const loadAll = async () => {
+  const loadAll = async (months = 6) => {
     setIsLoading(true);
     setFetchErrors([]);
     try {
@@ -1140,13 +1143,13 @@ export default function AdminPage({
       }
 
       // 차트 (fire-and-forget — 느려도 초기 렌더 블록 안 함)
-      fetch('/api/dashboard/chart')
+      fetch(`/api/dashboard/chart?months=${months}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d?.data) setChartData(d.data); })
         .catch(() => { setFetchErrors(prev => [...new Set([...prev, '차트'])]); });
 
       // V4: 매출 인식 분리 + Booking Pace + 90일 취소율
-      fetch('/api/dashboard/revenue-recognition?months=6')
+      fetch(`/api/dashboard/revenue-recognition?months=${months}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d || d.error) { setFetchErrors(prev => [...new Set([...prev, '매출인식'])]); return; }
@@ -1191,7 +1194,7 @@ export default function AdminPage({
     }
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(6); }, []);
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject') => {
     setProcessingId(packageId);
@@ -1266,8 +1269,8 @@ export default function AdminPage({
         </div>
       )}
 
-      {/* UX-2 + E: sticky frosted-glass 헤더 + 새로고침 버튼 */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between">
+      {/* UX-2 + E: sticky frosted-glass 헤더 + 기간 필터 + 새로고침 버튼 */}
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div>
           <h1 className="text-[16px] font-bold text-[#191F28]">어드민 대시보드</h1>
           {lastRefreshed && (
@@ -1276,8 +1279,36 @@ export default function AdminPage({
             </p>
           )}
         </div>
+
+        {/* 글로벌 기간 필터 — revenue-recognition + chart 공통 적용 */}
+        <div className="flex items-center gap-1 bg-[#F2F4F6] rounded-[8px] p-0.5 ml-auto">
+          {(['3m', '6m', '12m'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => {
+                setPeriod(p);
+                const m = p === '3m' ? 3 : p === '12m' ? 12 : 6;
+                setIsRefreshing(true);
+                loadAll(m);
+              }}
+              disabled={isRefreshing || isLoading}
+              className={`px-2.5 py-1 rounded-[6px] text-[11px] font-semibold transition-all disabled:opacity-50 ${
+                period === p
+                  ? 'bg-white text-[#191F28] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                  : 'text-[#8B95A1] hover:text-[#4E5968]'
+              }`}
+            >
+              {p === '3m' ? '3개월' : p === '6m' ? '6개월' : '12개월'}
+            </button>
+          ))}
+        </div>
+
         <button
-          onClick={() => { setIsRefreshing(true); loadAll(); }}
+          onClick={() => {
+            const m = period === '3m' ? 3 : period === '12m' ? 12 : 6;
+            setIsRefreshing(true);
+            loadAll(m);
+          }}
           disabled={isRefreshing || isLoading}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-[10px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-[12px] text-[#4E5968] hover:bg-[#F9FAFB] disabled:opacity-50 transition-shadow"
         >
@@ -1405,7 +1436,7 @@ export default function AdminPage({
       {/* ── Zone 2: 현황 KPI (오늘 비즈니스 상태) ──────────────────────── */}
 
       {/* 매출 인식 분리 KPI (IFRS 15 / ASC 606) */}
-      <TwoTrackKPI recognized={recognized} newBookings={newBookings} />
+      <TwoTrackKPI recognized={recognized} newBookings={newBookings} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
 
       {/* 재무 미니 카드 — 모두 drilldown 가능 (Stripe 패턴) */}
       {(() => {
@@ -1478,7 +1509,7 @@ export default function AdminPage({
       )}
 
       {/* 캐시플로우 차트 */}
-      <CashflowChart chartData={chartData} />
+      <CashflowChart chartData={chartData} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
 
       {/* 운영 KPI — 정산 잔여(payable/receivable) + AI 비용 */}
       <OperationsKPI aiUsage={aiUsage} settlement={settlement} aiCredits={aiCredits} />
@@ -1565,7 +1596,7 @@ export default function AdminPage({
               { href: '/partner-apply', label: '파트너 신청' },
             ]},
             { title: '인플루언서', links: [
-              { href: '/influencer', label: '인플루언서 포털' },
+              { href: '/admin/partner-preview', label: '파트너 포털·코브랜딩 미리보기' },
               { href: '/admin/affiliates', label: '제휴 관리 (어드민)' },
             ]},
             { title: '기타', links: [

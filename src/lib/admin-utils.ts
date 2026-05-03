@@ -3,6 +3,22 @@
  * payments/page.tsx, bookings/page.tsx, ledger/page.tsx 에서 공유
  */
 
+/** 숫자 → 천단위 콤마 (예: 1234567 → "1,234,567") */
+export function fmtNum(n: number): string {
+  return n.toLocaleString('ko-KR');
+}
+
+/** ISO 날짜 → YYYY-MM-DD 10자리 (예: "2024-12-25T..." → "2024-12-25") */
+export function fmtDateISO(d?: string | null): string {
+  return d ? d.slice(0, 10) : '';
+}
+
+/** ISO 날짜 → YYYY-MM-DD HH:mm (예: "2024-12-25T13:30:00" → "2024-12-25 13:30") */
+export function fmtDateTime(d?: string | null): string {
+  if (!d) return '';
+  return d.slice(0, 16).replace('T', ' ');
+}
+
 /** 원화 정수 → 만원 단위 문자열 (예: 1230000 → "123.0만") */
 export function fmt만(n: number): string {
   return `${(n / 10000).toFixed(1)}만`;

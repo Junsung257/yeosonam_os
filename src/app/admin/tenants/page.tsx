@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { fmtNum as fmt } from '@/lib/admin-utils';
 
 interface Tenant {
   id:               string;
@@ -37,8 +38,6 @@ const STATUS_BADGE: Record<string, string> = {
   inactive:  'bg-slate-100 text-slate-500',
   suspended: 'bg-red-50 text-red-600',
 };
-
-function fmt(n: number) { return n.toLocaleString('ko-KR'); }
 
 export default function TenantsPage() {
   const router = useRouter();

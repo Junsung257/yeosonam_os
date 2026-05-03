@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { fmtNum as fmt } from '@/lib/admin-utils';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -46,8 +47,6 @@ const STATUS_TABS = [
   { value: 'awaiting_selection', label: '선택대기' },
   { value: 'contracted', label: '계약완료' },
 ];
-
-const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 // ── KPI 카드 ──────────────────────────────────────────────────────────────────
 function KpiCard({

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { extractPrimaryName } from '@/lib/customer-name';
+import { fmt만, fmtDate, getBalance, nameSim } from '@/lib/admin-utils';
 import PaymentCommandBar, { type PaymentCommandBarHandle } from './_components/PaymentCommandBar';
 import SettlementBundleModal from './_components/SettlementBundleModal';
 import AutoSuggestChip from './_components/AutoSuggestChip';
@@ -43,8 +44,6 @@ interface BookingFull {
 
 // ─── 유틸 ──────────────────────────────────────────────────────────────────────
 
-function fmt만(n: number) { return `${(n / 10000).toFixed(1)}만`; }
-function fmtDate(d?: string) { return d ? d.slice(2, 10).replace(/-/g, '-') : ''; }
 /** 고객명 + 출발일(YYMMDD) 앵커 — 업계 표준 (Cloudbeds/Xero 패턴) */
 function fmtDateCompact(d?: string): string {
   if (!d) return 'TBD';
@@ -79,16 +78,6 @@ function hoursSince(iso?: string): number {
   if (!iso) return 0;
   return (Date.now() - new Date(iso).getTime()) / 3600_000;
 }
-function getBalance(b: BookingFull) { return Math.max(0, (b.total_price || 0) - (b.paid_amount || 0)); }
-function nameSim(a?: string, b?: string): number {
-  if (!a || !b) return 0;
-  const an = a.replace(/\s+/g, ''), bn = b.replace(/\s+/g, '');
-  if (an === bn) return 1.0;
-  if (an.includes(bn) || bn.includes(an)) return 0.7;
-  if (an[0] === bn[0]) return 0.3;
-  return 0;
-}
-
 /** 신뢰도 → 3색 pill (ACTICO 패턴) — 숫자 해석 부담 제거 */
 function confidenceBucket(c: number): { label: string; cls: string } {
   if (c >= 0.9)  return { label: '자동 확정', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };

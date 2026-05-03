@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { fmtNum as fmt } from '@/lib/admin-utils';
 
 interface TaxBooking {
   id:                      string;
@@ -43,10 +44,6 @@ function getMonthOptions(): string[] {
     months.push(d.toISOString().slice(0, 7));
   }
   return months;
-}
-
-function fmt(n: number): string {
-  return n.toLocaleString('ko-KR');
 }
 
 const RECEIPT_LABEL: Record<string, string> = {

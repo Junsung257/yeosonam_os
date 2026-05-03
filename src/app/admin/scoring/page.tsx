@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import PolicyWeightsCompare from '@/components/admin/PolicyWeightsCompare';
+import { fmt만 as fmtKRW } from '@/lib/admin-utils';
 
 interface ScoringPolicy {
   id: string;
@@ -61,8 +62,6 @@ const WEIGHT_DESCRIPTIONS: Record<string, string> = {
 };
 
 const HOTEL_GRADES = ['3성', '준4성', '4성', '준5성', '5성'];
-
-const fmtKRW = (n: number) => `${(n / 10000).toFixed(1)}만`;
 
 export default function ScoringAdminPage() {
   const [policy, setPolicy] = useState<ScoringPolicy | null>(null);

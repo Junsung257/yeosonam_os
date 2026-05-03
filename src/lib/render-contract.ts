@@ -71,7 +71,8 @@ export interface MealInfo {
 /** HotelInfo — day.hotel 원본 */
 export interface HotelInfo {
   name?: string | null;
-  grade?: string | null;
+  /** JSON/DB 에서 숫자(5)로 들어오는 케이스 있음 — 렌더 전 문자열로 정규화 */
+  grade?: string | number | null;
   note?: string | null;
 }
 
@@ -241,6 +242,8 @@ export interface CanonicalView {
   /** 출발/귀국 항공편 헤더 (Phase 2 확장 — ERR-KUL-05 후속) */
   flightHeader: FlightHeader;
   optionalTours: CanonicalOptionalTours;
+  /** optionalTours.groups 단축 — 렌더러 직접 소비용 (CRC v1 마이그레이션 보조) */
+  optionalToursByRegion: OptionalTourGroup[];
   surchargesMerged: MergedSurcharge[];
   excludes: CanonicalExcludes;
   shopping: CanonicalShopping;
@@ -694,12 +697,18 @@ function extractHotelCard(schedule: ScheduleItem[], hotel: HotelInfo | null | un
   const title = hotelTitle || '호텔 투숙 및 휴식';
   const note = [hotel.note, ...extras].filter(Boolean).join(' · ') || null;
 
+  const rawGrade = hotel.grade;
+  const gradeStr =
+    rawGrade != null && rawGrade !== ''
+      ? String(rawGrade).trim()
+      : null;
+
   return {
     schedule: out,
     hotelCard: {
       title,
       name: hotel.name || null,
-      grade: hotel.grade || null,
+      grade: gradeStr,
       note,
       absorbedActivities: absorbed,
     },
@@ -772,10 +781,12 @@ export function renderPackage(
 ): CanonicalView {
   const { merged, excludes } = resolveSurchargesAndExcludes(pkg);
   const days = resolveDays(pkg);
+  const optionalTours = resolveOptionalTours(pkg);
   return {
     airlineHeader: resolveAirlineHeader(pkg),
     flightHeader: resolveFlightHeader(days),
-    optionalTours: resolveOptionalTours(pkg),
+    optionalTours,
+    optionalToursByRegion: optionalTours.groups,
     surchargesMerged: merged,
     excludes,
     shopping: resolveShopping(pkg),
