@@ -152,10 +152,11 @@ export async function GET(request: NextRequest) {
 
     // 5. Bulk update (배치 10개씩)
     const CHUNK = 10;
+    const updateErrors: string[] = [];
     for (let i = 0; i < updates.length; i += CHUNK) {
       const chunk = updates.slice(i, i + CHUNK);
       for (const row of chunk) {
-        await supabaseAdmin
+        const { error: updateErr } = await supabaseAdmin
           .from('travel_packages')
           .update({
             price_markup_rate: row.price_markup_rate,
@@ -165,7 +166,11 @@ export async function GET(request: NextRequest) {
             view_count_snap_at: row.view_count_snap_at,
           })
           .eq('id', row.id);
+        if (updateErr) updateErrors.push(`${row.id}: ${updateErr.message}`);
       }
+    }
+    if (updateErrors.length > 0) {
+      await sendSlackAlert(`[dynamic-pricing] 업데이트 실패 ${updateErrors.length}건`, { errors: updateErrors });
     }
 
     // 6. Slack 리포트 (마크업 적용 건 있을 때만)

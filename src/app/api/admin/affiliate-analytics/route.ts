@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
       .gte('day', compareSinceDate)
       .limit(60);
 
-    let modelCompare = {
+    const modelCompare = {
       sample_size: 0,
       first_touch_match_count: 0,
       last_touch_match_count: 0,

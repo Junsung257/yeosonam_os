@@ -20,7 +20,7 @@ export const maxDuration = 60;
 
 interface BookingRow {
   id: string;
-  customer_id: string | null;
+  lead_customer_id: string | null;
   total_price: number | null;
   created_at: string;
   ip_address: string | null;
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // 최근 1시간 예약 목록 조회 (ip_address, customer 가입일 포함)
     const { data: bookings, error: fetchErr } = await supabaseAdmin
       .from('bookings')
-      .select('id, customer_id, total_price, created_at, ip_address, customers!lead_customer_id(id, created_at)')
+      .select('id, lead_customer_id, total_price, created_at, ip_address, customers!lead_customer_id(id, created_at)')
       .gte('created_at', cutoff)
       .order('created_at', { ascending: true });
 
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ip: b.ip_address ?? '0.0.0.0',
         amount: b.total_price ?? 0,
         createdAt: b.created_at,
-        customerId: b.customer_id ?? b.id,
+        customerId: b.lead_customer_id ?? b.id,
         isNewCustomer: isNew,
       };
     });
