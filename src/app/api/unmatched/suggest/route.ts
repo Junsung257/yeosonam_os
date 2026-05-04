@@ -21,6 +21,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
 
+export const dynamic = 'force-dynamic';
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  GET handler
 // ═══════════════════════════════════════════════════════════════════════════

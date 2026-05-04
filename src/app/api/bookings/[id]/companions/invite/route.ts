@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
- * POST /api/bookings/[bookingId]/companions/invite
+ * POST /api/bookings/:id/companions/invite
  *
  * 대표 예약자가 동행자 초대 링크를 생성한다.
  *
@@ -18,14 +18,14 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { bookingId: string } },
+  { params }: { params: { id: string } },
 ) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
 
   try {
-    const { bookingId } = params;
+    const bookingId = params.id;
     const body = await request.json().catch(() => ({}));
     const count = Math.min(10, Math.max(1, Number(body?.count ?? 1)));
 

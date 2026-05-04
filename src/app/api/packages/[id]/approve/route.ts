@@ -191,16 +191,48 @@ export async function PATCH(
     }
 
     // 2) 카드뉴스 자동 변형 (정책 ON 시 + DEEPSEEK_API_KEY 있을 때)
+    // HTTP로 /api/card-news/generate-variants 를 치면 rawText 필수 + 어드민 인증이 필요해 항상 실패함.
+    // 오케스트레이터와 동일: agent_actions 에 적재 → /api/cron/agent-executor 가 executeGenerateVariantsJob 실행.
     if (policy?.auto_trigger_card_news && process.env.DEEPSEEK_API_KEY) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        const res = await fetch(`${baseUrl}/api/card-news/generate-variants`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ package_id: id, count: 5, async: true }),
-          signal: AbortSignal.timeout(8000),  // 비동기 트리거만 — 결과 안 기다림
-        });
-        cardNewsInfo = { triggered: res.ok };
+        const { data: pkgRow, error: pkgRowErr } = await supabaseAdmin
+          .from('travel_packages')
+          .select('title, destination, product_summary, product_highlights')
+          .eq('id', id)
+          .single();
+
+        if (pkgRowErr || !pkgRow) {
+          cardNewsInfo = { triggered: false, reason: pkgRowErr?.message ?? '상품 재조회 실패' };
+        } else {
+          const rawText = [
+            pkgRow.title,
+            pkgRow.product_summary ?? '',
+            ...((pkgRow.product_highlights as string[]) ?? []),
+          ]
+            .map(s => (typeof s === 'string' ? s.trim() : ''))
+            .filter(Boolean)
+            .join('\n\n');
+
+          if (!rawText.trim()) {
+            cardNewsInfo = { triggered: false, reason: '카드뉴스용 원문이 비어 있음(제목·요약·하이라이트)' };
+          } else {
+            const { error: actionErr } = await supabaseAdmin.from('agent_actions').insert({
+              agent_type: 'package_approval',
+              action_type: 'generate_card_news_variants',
+              payload: {
+                rawText,
+                productMeta: { title: pkgRow.title, destination: pkgRow.destination ?? undefined },
+                package_id: id,
+                count: 5,
+                skipCritic: false,
+              },
+              status: 'approved',
+            });
+            cardNewsInfo = actionErr
+              ? { triggered: false, reason: actionErr.message }
+              : { triggered: true };
+          }
+        }
       } catch (e) {
         cardNewsInfo = { triggered: false, reason: e instanceof Error ? e.message : 'unknown' };
       }

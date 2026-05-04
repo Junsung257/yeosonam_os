@@ -2,6 +2,53 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { applySettlementApproval, type SettlementDraft } from '@/lib/affiliate/settlement-calc'
 import { executeGenerateVariantsJob } from '@/lib/card-news-html/variant-job'
 
+function resolveAppOriginForInternalFetch(): string {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL
+  if (explicit) return explicit.replace(/\/$/, '')
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return `http://127.0.0.1:${process.env.PORT ?? 3000}`
+}
+
+async function triggerCardNewsRenderFromVariants(result: any): Promise<{
+  attempted: number
+  success: number
+  failed: number
+}> {
+  const variants = Array.isArray(result?.variants) ? result.variants : []
+  const variantIds = variants
+    .map((v: any) => v?.card_news_id)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+  if (variantIds.length === 0) return { attempted: 0, success: 0, failed: 0 }
+
+  const origin = resolveAppOriginForInternalFetch()
+  const settled = await Promise.allSettled(
+    variantIds.map(async (cardNewsId: string) => {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 8000)
+      try {
+        const res = await fetch(`${origin}/api/card-news/${cardNewsId}/render-html-to-png`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          signal: controller.signal,
+        })
+        return res.ok
+      } finally {
+        clearTimeout(timeout)
+      }
+    }),
+  )
+
+  let success = 0
+  let failed = 0
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && s.value) success += 1
+    else failed += 1
+  }
+  return { attempted: variantIds.length, success, failed }
+}
+
 // ── 실행 결과 타입 ──────────────────────────────────────────────────
 export interface ExecutionResult {
   success: boolean
@@ -14,7 +61,17 @@ export interface ExecutionResult {
 // agent_actions, jarvis_pending_actions 양쪽에서 공통 사용
 const handlers: Record<string, (args: any) => Promise<any>> = {
   generate_card_news_variants: async (args) => {
-    return await executeGenerateVariantsJob(args);
+    const result = await executeGenerateVariantsJob(args)
+    const render = await triggerCardNewsRenderFromVariants(result).catch((e) => ({
+      attempted: 0,
+      success: 0,
+      failed: 0,
+      error: e instanceof Error ? e.message : String(e),
+    }))
+    return {
+      ...result,
+      auto_render: render,
+    }
   },
   // 프롬프트 개선 제안 승인 → prompt_versions 에 새 버전 등록 + 활성화
   // analysis.suggested_prompt_changes 를 기존 style_guide 내용에 appendix 로 붙여서 새 버전 생성.
