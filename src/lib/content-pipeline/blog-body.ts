@@ -41,10 +41,12 @@ export interface BlogBodyInput {
     product_id?: string;
   };
   baseUrl?: string;
+  /** 승인된 실제 후기 — 본문에 > 인용으로 삽입하도록 프롬프트 주입 */
+  reviewQuotesMarkdown?: string | null;
 }
 
 export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
-  const { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl } = input;
+  const { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl, reviewQuotesMarkdown } = input;
 
   if (!hasBlogApiKey()) {
     return buildFallbackBlog(input);
@@ -132,6 +134,16 @@ ${productContext ? `## 상품 팩트 (절대 변경 금지, 이 정보만 사용
 - 출발: ${productContext.departure_airport ?? ''}
 - 포함사항: ${(productContext.inclusions ?? []).join(', ')}
 - 일정: ${(productContext.itinerary ?? []).join(' / ')}
+` : ''}
+${reviewQuotesMarkdown?.trim() ? `
+## 실제 여행자 후기 (반드시 준수)
+
+아래는 **승인된 고객 후기**에서 발췌한 문장이다.
+- 본문 **중간 H2 구간**(일정·팁 섹션 등)에 \`> \` 인용 형태로 **1~3곳** 끼워 넣어라.
+- 인용 문장은 **의미 유지·맞춤법만 다듬**하고, 과장·낚시 문구를 **붙이지 마라**.
+- 고객 혹은 제3자를 특정할 수 있는 정보(실명·연락처·예약번호)는 넣지 마라.
+
+${reviewQuotesMarkdown.trim()}
 ` : ''}
 
 ## 이미지 배치 (URL 한 글자도 변경 금지, 지정된 위치에 한 번만 삽입)

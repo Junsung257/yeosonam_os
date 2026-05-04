@@ -17,6 +17,8 @@ const BLOG_CRON_NAMES = new Set([
   'blog-lifecycle',
   'blog-daily-summary',
   'trend-topic-miner',
+  'serp-rank-snapshot',
+  'rank-tracking',
 ]);
 
 function isBlogCron(name: string | null | undefined): boolean {

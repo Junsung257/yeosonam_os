@@ -23,7 +23,8 @@ function eligibleMsForCardRow(
   const urls = (row.slide_image_urls as string[] | null) || [];
   const updatedMs = row.updated_at ? new Date(row.updated_at).getTime() : 0;
   let anchor = Math.max(updatedMs, latestRenderMs);
-  if (urls.length === 0) anchor = Date.now();
+  // slide_image_urls 컬럼이 비어 있어도 card_news_renders 가 있으면 그 시각 기준으로 버퍼 적용
+  if (urls.length === 0 && latestRenderMs === 0) anchor = Date.now();
   return anchor + buffer;
 }
 

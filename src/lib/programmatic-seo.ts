@@ -21,6 +21,8 @@
 
 import { supabaseAdmin } from './supabase';
 import { researchKeywordsBatch, classifyKeywordTier } from './keyword-research';
+import { classifySearchIntent, intentPriorityDelta } from './blog-search-intent';
+import { computeSeasonalTargetPublishAt } from './blog-season-publish';
 
 // 12 angle × 시즌 적합도
 interface AngleTemplate {
@@ -247,20 +249,31 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   for (const c of fresh as any[]) {
     const r = research.get(c.primary_keyword);
     const tier = r?.tier ?? c.expected_tier ?? classifyKeywordTier(c.primary_keyword);
+    const intent = classifySearchIntent(
+      `${c.primary_keyword ?? ''} ${c.topic_template ?? ''}`.trim(),
+    );
+    const basePriority =
+      typeof c.priority === 'number' && !Number.isNaN(c.priority) ? c.priority : 50;
+    const priority = Math.max(1, basePriority + intentPriorityDelta(intent));
+    const seasonalAt = computeSeasonalTargetPublishAt(
+      typeof c.month === 'number' ? c.month : null,
+    );
     queueRows.push({
       topic: c.topic_template,
       source: 'coverage_gap',  // programmatic은 coverage gap 일종
-      priority: c.priority,
+      priority,
       destination: c.destination,
       category: 'travel_tips',
       primary_keyword: c.primary_keyword,
       keyword_tier: tier,
       monthly_search_volume: r?.monthly_search_volume ?? null,
       competition_level: r?.competition_level ?? (tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low'),
+      ...(seasonalAt ? { target_publish_at: seasonalAt } : {}),
       meta: {
         programmatic_source_id: c.id,
         programmatic_angle: c.angle,
         programmatic_month: c.month,
+        search_intent: intent,
       },
     });
   }

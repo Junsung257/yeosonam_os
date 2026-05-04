@@ -23,7 +23,7 @@ import StickyMobileCta from '@/components/blog/StickyMobileCta';
 import DestinationCuration from '@/components/blog/DestinationCuration';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
-import { buildBlogJsonLd } from '@/lib/blog-jsonld';
+import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 
 export const revalidate = 3600;
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
@@ -82,6 +82,7 @@ interface BlogPost {
     departure_airport: string | null;
     product_highlights: string[] | null;
     inclusions: string[] | null;
+    status?: string | null;
   } | null;
 }
 
@@ -169,7 +170,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status)',
     )
     .eq('slug', slug)
     .eq('status', 'published')
@@ -436,195 +437,69 @@ export default async function BlogDetailPage({
     readingMinutes = estimateReadingMinutes(sanitized);
   }
 
-  // FAQ 자동 추출
-  const faqItems: { q: string; a: string }[] = [];
-  if (post.blog_html) {
-    const faqRegex = /\*\*Q\.\s*(.+?)\*\*\s*\n\s*\n\s*A\.\s*(.+?)(?=\n\n|\n\*\*Q\.|\n##|$)/gs;
-    let m;
-    while ((m = faqRegex.exec(post.blog_html)) !== null) {
-      faqItems.push({ q: m[1].trim(), a: m[2].trim() });
-    }
-  }
+  const productDurationDays =
+    pkg?.duration != null && !Number.isNaN(Number(pkg.duration)) ? Number(pkg.duration) : null;
+
+  const jsonLd = buildBlogPostPageJsonLd({
+    baseUrl: BASE_URL,
+    pageUrl,
+    title,
+    description: post.seo_description || '',
+    publishedAt: post.published_at,
+    modifiedAt: post.updated_at,
+    ogImageUrl: post.og_image_url,
+    blogHtmlMarkdown: post.blog_html || '',
+    bodyHtmlForWordCount: bodyHtml,
+    readingMinutes,
+    angleLabel,
+    pkg: pkg
+      ? {
+          id: pkg.id,
+          title: pkg.title,
+          destination: pkg.destination,
+          price: pkg.price,
+        }
+      : null,
+    durationStr,
+    productDurationDays,
+  });
 
   return (
     <>
       <ReadingProgress />
 
-      {/* JSON-LD: BlogPosting */}
+      {/* JSON-LD — BlogPosting · BreadcrumbList · FAQ · HowTo · TouristTrip (blog-jsonld 단일 소스) */}
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BlogPosting',
-            headline: title,
-            description: post.seo_description || '',
-            image: post.og_image_url || `${BASE_URL}/og-image.png`,
-            datePublished: post.published_at,
-            dateModified: post.updated_at || post.published_at,
-            inLanguage: 'ko-KR',
-            wordCount: bodyHtml.replace(/<[^>]+>/g, '').length,
-            timeRequired: `PT${readingMinutes}M`,
-            articleSection: angleLabel,
-            keywords: [pkg?.destination, angleLabel, '여행', '패키지여행', '단체여행']
-              .filter(Boolean)
-              .join(','),
-            // author 배열 — Google Rich Results는 다중 author 지원.
-            // Organization(브랜드) + Person(편집자)로 EEAT의 Authoritativeness + Experience 분리 시그널.
-            // Quality Rater Guidelines 2025 권장: 저자 신원·외부 프로필 sameAs 노출.
-            author: [
-              {
-                '@type': 'Organization',
-                name: '여소남',
-                url: BASE_URL,
-                sameAs: [
-                  'https://blog.naver.com/yesonam',
-                  'https://www.instagram.com/yesonam',
-                ],
-              },
-              {
-                '@type': 'Person',
-                name: '여소남 운영팀',
-                jobTitle: '여행 큐레이션 에디터',
-                worksFor: { '@type': 'Organization', name: '여소남', url: BASE_URL },
-                url: `${BASE_URL}/about`,
-              },
-            ],
-            // reviewedBy — 본문이 운영팀 OP의 검수를 거쳤다는 사실 시그널 (Experience).
-            reviewedBy: {
-              '@type': 'Organization',
-              name: '여소남 운영팀',
-              url: BASE_URL,
-            },
-            publisher: {
-              '@type': 'Organization',
-              name: '여소남',
-              logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png` },
-            },
-            mainEntityOfPage: pageUrl,
-            ...(pkg && {
-              about: {
-                '@type': 'TouristTrip',
-                name: pkg.title,
-                description: `${pkg.destination}${durationStr ? ` ${durationStr}` : ''} 여행 패키지`,
-                touristType: angleLabel,
-                ...(pkg.destination && {
-                  itinerary: {
-                    '@type': 'TouristDestination',
-                    name: pkg.destination,
-                  },
-                }),
-                ...(pkg.price && {
-                  offers: {
-                    '@type': 'Offer',
-                    price: pkg.price,
-                    priceCurrency: 'KRW',
-                    availability: 'https://schema.org/InStock',
-                    url: `${BASE_URL}/packages/${pkg.id}`,
-                    validThrough: new Date(
-                      new Date().getFullYear(),
-                      11,
-                      31,
-                    )
-                      .toISOString()
-                      .slice(0, 10),
-                  },
-                }),
-              },
-              ...(pkg.destination && {
-                mentions: [
-                  {
-                    '@type': 'TouristDestination',
-                    name: pkg.destination,
-                  },
-                ],
-              }),
-            }),
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.blogPosting) }}
       />
-
-      {/* BreadcrumbList JSON-LD */}
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BreadcrumbList',
-            itemListElement: [
-              { '@type': 'ListItem', position: 1, name: '홈', item: BASE_URL },
-              { '@type': 'ListItem', position: 2, name: '블로그', item: `${BASE_URL}/blog` },
-              ...(pkg?.destination
-                ? [
-                    {
-                      '@type': 'ListItem',
-                      position: 3,
-                      name: pkg.destination,
-                      item: `${BASE_URL}/blog/destination/${encodeURIComponent(pkg.destination)}`,
-                    },
-                    { '@type': 'ListItem', position: 4, name: title, item: pageUrl },
-                  ]
-                : [{ '@type': 'ListItem', position: 3, name: title, item: pageUrl }]),
-            ],
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumbList) }}
       />
-
-      {/* FAQPage JSON-LD */}
-      {faqItems.length > 0 && (
+      {jsonLd.faqPage && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'FAQPage',
-              mainEntity: faqItems.map((faq) => ({
-                '@type': 'Question',
-                name: faq.q,
-                acceptedAnswer: { '@type': 'Answer', text: faq.a },
-              })),
-            }),
-          }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faqPage) }}
         />
       )}
-
-      {/* HowTo + TouristTrip JSON-LD (일정/상품 블로그 자동 감지) */}
-      {(() => {
-        const bundle = buildBlogJsonLd({
-          title,
-          description: post.seo_description || '',
-          url: pageUrl,
-          publishedAt: post.published_at,
-          modifiedAt: (post as any).updated_at,
-          imageUrl: post.og_image_url,
-          blogHtml: post.blog_html || '',
-          destination: pkg?.destination,
-          duration: pkg?.duration != null ? Number(pkg.duration) : undefined,
-          price: pkg?.price,
-          productId: pkg?.id,
-        });
-        return (
-          <>
-            {bundle.howTo && (
-              <script
-                suppressHydrationWarning
-                type="application/ld+json"
-                dangerouslySetInnerHTML={{ __html: JSON.stringify(bundle.howTo) }}
-              />
-            )}
-            {bundle.touristTrip && (
-              <script
-                suppressHydrationWarning
-                type="application/ld+json"
-                dangerouslySetInnerHTML={{ __html: JSON.stringify(bundle.touristTrip) }}
-              />
-            )}
-          </>
-        );
-      })()}
+      {jsonLd.howTo && (
+        <script
+          suppressHydrationWarning
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.howTo) }}
+        />
+      )}
+      {jsonLd.touristTrip && (
+        <script
+          suppressHydrationWarning
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.touristTrip) }}
+        />
+      )}
 
       <BlogTracker contentCreativeId={post.id} />
       <GlobalNav />
@@ -658,6 +533,25 @@ export default async function BlogDetailPage({
             <span className="truncate text-gray-900">{title}</span>
           </div>
         </nav>
+
+        {pkg?.status &&
+          !['active', 'approved'].includes(String(pkg.status).toLowerCase()) && (
+            <div className="mx-auto max-w-6xl px-4 pt-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                이 글과 연결된 상품은 현재 예약이 어렵거나 판매가 종료된 상태일 수 있어요.{' '}
+                <Link
+                  href={
+                    pkg.destination
+                      ? `/packages?destination=${encodeURIComponent(pkg.destination)}`
+                      : '/packages'
+                  }
+                  className="font-semibold text-amber-900 underline underline-offset-2"
+                >
+                  대체 패키지 보기
+                </Link>
+              </div>
+            </div>
+          )}
 
         {/* 매거진 스타일 헤더 */}
         <header className="mx-auto max-w-3xl px-4 pb-6 pt-10 md:pt-14">

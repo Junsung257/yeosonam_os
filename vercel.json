@@ -93,6 +93,10 @@
       "schedule": "0 21 * * *"
     },
     {
+      "path": "/api/cron/serp-rank-snapshot",
+      "schedule": "30 21 * * *"
+    },
+    {
       "path": "/api/cron/rank-tracking",
       "schedule": "0 3 * * *"
     },

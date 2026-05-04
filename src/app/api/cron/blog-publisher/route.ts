@@ -13,7 +13,14 @@ import { computeReadability } from '@/lib/blog-readability';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildStandardBlogCtaMarkdown } from '@/lib/blog-cta';
+import {
+  fetchApprovedReviewSnippets,
+  formatReviewQuotesAppendMarkdown,
+  formatReviewQuotesForPrompt,
+} from '@/lib/blog-review-quotes';
+import { maybeApplyChainOfDensity } from '@/lib/blog-chain-of-density';
 import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from '@/lib/card-news-render-readiness';
+import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 
 /**
@@ -306,6 +313,7 @@ async function processQueueItem(
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
+        utmSource: 'naver_blog',
       })}`;
     }
 
@@ -484,14 +492,13 @@ interface GeneratedBlog {
 async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string, number>): Promise<GeneratedBlog> {
   const { data: cn, error: cnErr } = await supabaseAdmin
     .from('card_news')
-    .select('id, slide_image_urls, slides, status')
+    .select('id, status')
     .eq('id', item.card_news_id)
     .limit(1);
 
   if (cnErr || !cn?.[0]) throw new Error(`카드뉴스 로드 실패: ${item.card_news_id}`);
-  const card = cn[0];
 
-  const slideUrls = (card.slide_image_urls as string[]) || [];
+  const slideUrls = await getSlideImagePublicUrlsForBlog(item.card_news_id);
   if (slideUrls.length === 0) {
     throw new Error('카드뉴스 PNG 아직 렌더링 안 됨. 어드민에서 "확정+블로그 생성" 먼저 클릭하세요.');
   }
@@ -558,6 +565,7 @@ async function generatePillar(item: any): Promise<GeneratedBlog> {
   const serpKw = item.primary_keyword || item.destination;
   if (serpKw) {
     try {
+      await new Promise(r => setTimeout(r, 500));
       const serp = await analyzeSerp(serpKw, 'naver_blog');
       serpBlock = buildSerpPromptBlock(serp);
     } catch { /* SERP 실패 시 미주입 — 발행 계속 */ }
@@ -673,7 +681,13 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     attractions = attrs || [];
   }
 
-  const blog_html = generateBlogPost(product, angle, attractions);
+  let blog_html = generateBlogPost(product, angle, attractions);
+  const reviewSnips = await fetchApprovedReviewSnippets({
+    packageId: product.id,
+    destination: product.destination,
+    limit: 3,
+  });
+  blog_html += formatReviewQuotesAppendMarkdown(reviewSnips);
   const seo = generateBlogSeo(product, angle);
   // Append product ID suffix to prevent slug collisions between same-destination products
   const slug = `${seo.slug}-${product.id.slice(-6)}`;
@@ -697,6 +711,16 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const utmCamp = encodeURIComponent(
     (item.meta?.expected_slug as string | undefined) || slugifyTopic(item.topic) || 'blog',
   );
+  const utmSrc = 'naver_blog';
+  const reviewSnips = await fetchApprovedReviewSnippets({
+    packageId: item.product_id ?? null,
+    destination: item.destination ?? null,
+    limit: 4,
+  });
+  const reviewPromptBlock =
+    reviewSnips.length > 0
+      ? `\n## 실제 여행자 목소리 (본문 중간 H2 사이에 > 인용으로 1~3곳 반영)\n${formatReviewQuotesForPrompt(reviewSnips)}\n`
+      : '';
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -740,6 +764,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
   if ((tier === 'head' || tier === 'mid') && primaryKw) {
     try {
+      await new Promise(r => setTimeout(r, 500));
       serpData = await analyzeSerp(primaryKw, 'naver_blog');
       serpBlock = buildSerpPromptBlock(serpData);
     } catch { /* SERP 실패 시 미주입 — 발행은 계속 */ }
@@ -757,6 +782,7 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **Primary Keyword**: ${primaryKw}
 **부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
+${reviewPromptBlock}
 ${tierGuidance[tier]}
 ${trendBlock}
 ${serpBlock}
@@ -768,16 +794,17 @@ ${serpBlock}
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
 - 3-Tier CTA 분산:
-  - 도입부: [관련 패키지 보기](${baseForUtm}/packages?destination=${encodeURIComponent(item.destination || '')}&utm_source=blog&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=intro_cta)
-  - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=blog&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
-  - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=blog&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
+  - 도입부: [관련 패키지 보기](${baseForUtm}/packages?destination=${encodeURIComponent(item.destination || '')}&utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=intro_cta)
+  - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
+  - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
 
   const raw = await generateBlogText(prompt, { temperature: 0.7 });
-  const blog_html = raw
+  let blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
+  blog_html = await maybeApplyChainOfDensity(blog_html);
 
   // slug 자동 — expected_slug 있으면 우선
   const expected = item.meta?.expected_slug;

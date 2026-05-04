@@ -22,6 +22,7 @@ interface QueueItem {
   monthly_search_volume: number | null;
   competition_level: 'low' | 'medium' | 'high' | null;
   trend_score: number | null;
+  meta?: { search_intent?: string } | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -290,6 +291,11 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
                       {it.trend_score != null && it.trend_score > 0 && (
                         <span className="text-[10px] text-orange-600 font-mono">
                           🔥 {it.trend_score}
+                        </span>
+                      )}
+                      {it.meta?.search_intent && (
+                        <span className="text-[10px] text-violet-600">
+                          의도 {it.meta.search_intent}
                         </span>
                       )}
                     </div>

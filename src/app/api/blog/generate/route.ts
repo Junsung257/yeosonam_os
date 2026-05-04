@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 
 /**
  * 블로그 AI 초안 생성 API
@@ -37,8 +38,9 @@ export async function POST(request: NextRequest) {
     const catName = categoryLabel[category] || '여행 정보';
 
 
-    const prompt = `너는 10년차 여행 블로그 전문 에디터다.
-아래 주제로 SEO 최적화된 한국어 블로그 글을 작성해라.
+    const prompt = `아래 주제·카테고리로 **한 편의 한국어 블로그 초안**을 작성해라.
+위 시스템 스타일 가이드(페르소나·금지어·구조)를 **전부 준수**한다.
+정보성 글이므로 상품 H2 블록 대신, 주제에 맞는 H2를 스스로 설계해도 된다. 다만 **## [자주 묻는 질문]** 은 Q/A 포맷으로 넣어라.
 
 ## 주제
 ${topic}
@@ -46,18 +48,27 @@ ${topic}
 ## 카테고리
 ${catName}
 
-## 작성 규칙
-1. 마크다운 형식 (# H1, ## H2, ### H3)
-2. H1: 주제 키워드 포함
-3. H2: 5~7개 사용
-4. 전체 분량: 1500~2500자
-5. 인트로에 핵심 결론 먼저 제시
-6. 실용적 정보 위주 (날짜, 비용, 준비물 등 구체적 수치)
-7. CTA: "여소남에서 안심 여행 준비하세요 — yeosonam.com"
-8. 마크다운만 출력 (코드블록 감싸지 말 것)
-9. 브랜드: 여소남`;
+## 이번 글 전용 규칙
+1. 마크다운 (# H1, ## H2, ### H3). H1에 주제 키워드 포함.
+2. H2는 5~7개.
+3. 전체 1,500~2,500자(공백 제외 기준 아님, 본문 길이).
+4. 인트로에서 독자가 궁금해할 결론을 먼저 짚고, 뒤에서 근거를 풀어라.
+5. 날짜·비용·준비물 등 **검증 가능한 수치**를 구체적으로.
+6. 마지막에 여소남 안내 한 줄 + yeosonam.com 링크 (스타일 가이드 CTA 톤에 맞출 것).
+7. 마크다운만 출력 (코드블록으로 감싸지 말 것).`;
 
-    const blogHtml = (await generateBlogText(prompt, { temperature: 0.7 }))
+    const systemPrompt = `${BLOG_STYLE_GUIDE}
+
+## 모드 오버라이드 (이 요청은 정보성 단독 주제)
+
+- 연결된 상품(travel_packages)이 없다. **## [여소남이 이 상품을 고른 이유]** · **## [항공·요금·포함 안내]** 표 섹션은 작성하지 않는다.
+- 동등한 실용 분량을 주제·카테고리에 맞는 H2로 채운다.
+- **## [자주 묻는 질문]** 은 스타일 가이드 포맷으로 유지한다.`;
+
+    const blogHtml = (await generateBlogText(prompt, {
+      temperature: 0.7,
+      systemPrompt,
+    }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     // slug 자동 생성

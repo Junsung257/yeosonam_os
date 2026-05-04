@@ -1,113 +1,64 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-04T06:05:53+09:00
-- actionable_changed_files: 101
+- generated_at_kst: 2026-05-04T22:25:37+09:00
+- actionable_changed_files: 52
 - todo_markers: 0
-- areas: API 37, LIB 17, APP 15, ETC 11, DB 9, DOCS 7, UI 5
+- areas: API 15, LIB 15, ETC 8, UI 6, APP 4, DB 3, DOCS 1
 
 ## 1) Actionable Changed Files
 
-- `M ` `docs/deploy-checklist.md`
+- `M ` `.gitignore`
 - ` M` `docs/env-variables-reference.md`
-- ` M` `next.config.js`
 - ` M` `package-lock.json`
 - ` M` `package.json`
 - ` M` `public/sw.js`
-- ` M` `src/app/admin/affiliate-analytics/page.tsx`
-- ` M` `src/app/admin/affiliates/[id]/page.tsx`
-- ` M` `src/app/admin/qa/page.tsx`
-- ` M` `src/app/api/admin/affiliate-analytics/route.ts`
-- ` M` `src/app/api/affiliates/route.ts`
-- ` M` `src/app/api/auth/refresh/route.ts`
-- ` M` `src/app/api/auth/session/route.ts`
-- ` M` `src/app/api/bookings/route.ts`
-- ` M` `src/app/api/cron/ad-optimizer/route.ts`
-- ` M` `src/app/api/cron/affiliate-anomaly-detect/route.ts`
-- ` M` `src/app/api/cron/affiliate-content-24h-report/route.ts`
-- ` M` `src/app/api/cron/affiliate-dormant/route.ts`
-- ` M` `src/app/api/cron/affiliate-settlement-draft/route.ts`
-- ` M` `src/app/api/cron/agent-executor/route.ts`
+- ` M` `src/app/admin/blog/queue/BlogQueueClient.tsx`
+- ` M` `src/app/api/blog/from-card-news/route.ts`
+- ` M` `src/app/api/blog/generate/route.ts`
+- ` D` `src/app/api/bookings/[bookingId]/companions/invite/route.ts`
+- ` M` `src/app/api/card-news/[id]/render-html-to-png/route.ts`
+- ` M` `src/app/api/card-news/[id]/route.ts`
+- ` M` `src/app/api/card-news/render-v2/route.ts`
 - ` M` `src/app/api/cron/blog-publisher/route.ts`
-- ` M` `src/app/api/cron/booking-attribution-audit/route.ts`
-- ` M` `src/app/api/cron/marketing-rules/route.ts`
-- ` M` `src/app/api/influencer/dashboard/route.ts`
-- ` M` `src/app/api/influencer/links/route.ts`
-- ` M` `src/app/api/jarvis/route.ts`
-- ` M` `src/app/api/jarvis/stream/route.ts`
-- ` M` `src/app/api/partner-apply/route.ts`
-- ` M` `src/app/api/qa/chat/route.ts`
-- ` M` `src/app/api/tracking/route.ts`
+- ` M` `src/app/api/cron/rank-tracking/route.ts`
+- ` M` `src/app/api/cron/trend-topic-miner/route.ts`
+- ` M` `src/app/api/ops/blog-system/route.ts`
+- ` M` `src/app/api/packages/[id]/approve/route.ts`
+- ` M` `src/app/api/unmatched/suggest/route.ts`
 - ` M` `src/app/blog/[slug]/page.tsx`
-- ` M` `src/app/concierge/page.tsx`
-- ` M` `src/app/globals.css`
-- ` M` `src/app/influencer/[code]/layout.tsx`
-- ` M` `src/app/influencer/[code]/page.tsx`
-- ` M` `src/app/influencer/[code]/products/page.tsx`
 - ` M` `src/app/layout.tsx`
-- ` M` `src/app/packages/[id]/DetailClient.tsx`
-- ` M` `src/app/r/[code]/[slug]/page.tsx`
-- ` M` `src/app/with/[slug]/page.tsx`
-- ` M` `src/components/AdminLayout.tsx`
-- ` M` `src/components/ChatWidget.tsx`
-- ` M` `src/components/blog/ShareButtons.tsx`
-- ` M` `src/lib/blog-queue-lifecycle.ts`
+- ` M` `src/app/page.tsx`
+- ` M` `src/components/KakaoMomentPixel.tsx`
+- ` M` `src/components/MetaPixel.tsx`
+- ` M` `src/components/MsClarity.tsx`
+- ` M` `src/components/customer/HomeHeroSearchCluster.tsx`
+- ` M` `src/lib/agent-action-executor.ts`
+- ` M` `src/lib/blog-cta.ts`
+- ` M` `src/lib/blog-jsonld.ts`
 - ` M` `src/lib/card-news-render-readiness.ts`
-- ` M` `src/lib/cron-auth.ts`
-- ` M` `src/lib/db/ads.ts`
-- ` M` `src/lib/kakao.ts`
-- ` M` `src/lib/llm-gateway.ts`
-- ` M` `src/lib/publish-orchestration.ts`
-- ` M` `src/lib/supabase.ts`
-- ` M` `src/lib/tracker.ts`
-- ` M` `src/middleware.ts`
+- ` M` `src/lib/content-pipeline/blog-body.ts`
+- ` M` `src/lib/programmatic-seo.ts`
+- ` M` `src/prompts/blog/style-guide.ts`
 - ` M` `src/types/supabase-database.generated.ts`
 - ` M` `vercel.json`
-- `??` `.github/workflows/concierge-eval-gate.yml`
-- `??` `docs/affiliate-machine-execution-plan.md`
-- `??` `docs/mas-concierge-poc-master-plan.md`
-- `??` `docs/mas-concierge-runbook.md`
-- `??` `docs/os-automation-runbook.md`
-- `??` `docs/pending-settings-tracker.md`
-- `??` `scripts/eval-concierge.mjs`
-- `??` `scripts/os-improvement-inbox.mjs`
-- `??` `src/app/admin/affiliate-promo-report/`
-- `??` `src/app/api/admin/affiliate-promo-report/`
-- `??` `src/app/api/admin/affiliate-settings/`
-- `??` `src/app/api/admin/agent/`
-- `??` `src/app/api/affiliate/`
-- `??` `src/app/api/agent/approvals/`
-- `??` `src/app/api/cron/affiliate-attribution-recalc/`
-- `??` `src/app/api/cron/affiliate-lifetime-commission/`
-- `??` `src/app/api/cron/affiliate-live-celebration/`
-- `??` `src/app/api/cron/affiliate-model-compare-rollup/`
-- `??` `src/app/api/cron/affiliate-reactivation-campaign/`
-- `??` `src/app/api/cron/affiliate-sub-daily-rollup/`
-- `??` `src/app/api/cron/affiliate-tier-rewards/`
-- `??` `src/app/api/cron/concierge-cart-retarget/`
-- `??` `src/app/api/influencer/playbook/`
-- `??` `src/app/api/influencer/promo-codes/`
-- `??` `src/app/api/qa/feedback/`
-- `??` `src/app/influencer/[code]/playbook/`
-- `??` `src/components/MsClarity.tsx`
-- `??` `src/components/TrackerBootstrap.tsx`
-- `??` `src/lib/affiliate/cron-monitor.ts`
-- `??` `src/lib/agent/`
-- `??` `src/lib/guardrails/`
-- `??` `src/lib/jarvis/risk-scorer.test.ts`
-- `??` `src/lib/jarvis/risk-scorer.ts`
-- `??` `src/lib/jarvis/supervisor-lite.ts`
-- `??` `src/lib/share-url.ts`
-- `??` `src/lib/telemetry/`
-- `??` `supabase/migrations/20260503150000_affiliate_machine_phase2.sql`
-- `??` `supabase/migrations/20260503154000_affiliates_add_landing_video_url.sql`
-- `??` `supabase/migrations/20260503162000_affiliate_lifetime_attribution.sql`
-- `??` `supabase/migrations/20260503170000_affiliate_sub_daily.sql`
-- `??` `supabase/migrations/20260504000000_affiliate_model_compare_daily.sql`
-- `??` `supabase/migrations/20260504003000_agent_tasking_core.sql`
-- `??` `supabase/migrations/20260504004000_agent_trace_spans.sql`
-- `??` `supabase/migrations/20260504180000_customer_booking_stats_view.sql`
-- `??` `supabase/migrations/20260504181000_error_patterns_embedding_hnsw.sql`
-- `??` `tests/evals/`
+- `??` `scripts/copy-partytown-lib.cjs`
+- `??` `src/app/api/bookings/[id]/companions/`
+- `??` `src/app/api/cron/serp-rank-snapshot/`
+- `??` `src/app/api/ops/blog-normalize-image/`
+- `??` `src/components/PartytownInit.tsx`
+- `??` `src/components/customer/HomeHeroUrgencyStrip.tsx`
+- `??` `src/lib/blog-chain-of-density.ts`
+- `??` `src/lib/blog-image-normalize.ts`
+- `??` `src/lib/blog-review-quotes.ts`
+- `??` `src/lib/blog-search-intent.ts`
+- `??` `src/lib/blog-season-publish.ts`
+- `??` `src/lib/card-news-slide-urls.ts`
+- `??` `src/lib/marketing-osmu.ts`
+- `??` `src/lib/naver-blog-export.ts`
+- `??` `src/lib/third-party-script-type.ts`
+- `??` `supabase/migrations/20260504240000_leads_utm_term.sql`
+- `??` `supabase/migrations/20260504250000_keyword_pool_blog_seo.sql`
+- `??` `supabase/migrations/20260504251000_serp_rank_marketing_osmu.sql`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -115,36 +66,16 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` M` `src/app/api/cron/booking-attribution-audit/route.ts`
-- [ ] P0 `??` `supabase/migrations/20260504180000_customer_booking_stats_view.sql`
-- [ ] P0 ` M` `src/app/api/auth/refresh/route.ts`
-- [ ] P0 ` M` `src/app/api/auth/session/route.ts`
-- [ ] P0 ` M` `src/app/api/bookings/route.ts`
-- [ ] P1 ` M` `src/app/admin/affiliate-analytics/page.tsx`
-- [ ] P1 ` M` `src/app/admin/affiliates/[id]/page.tsx`
-- [ ] P1 ` M` `src/app/api/admin/affiliate-analytics/route.ts`
-- [ ] P1 ` M` `src/app/api/affiliates/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/ad-optimizer/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/affiliate-anomaly-detect/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/affiliate-content-24h-report/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/affiliate-dormant/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/affiliate-settlement-draft/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/agent-executor/route.ts`
+- [ ] P0 ` D` `src/app/api/bookings/[bookingId]/companions/invite/route.ts`
+- [ ] P0 `??` `src/app/api/bookings/[id]/companions/`
 - [ ] P1 ` M` `src/app/api/cron/blog-publisher/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/marketing-rules/route.ts`
-- [ ] P1 ` M` `src/app/api/tracking/route.ts`
-- [ ] P1 ` M` `src/lib/kakao.ts`
-- [ ] P1 `??` `src/app/admin/affiliate-promo-report/`
-- [ ] P1 `??` `src/app/api/admin/affiliate-promo-report/`
-- [ ] P1 `??` `src/app/api/admin/affiliate-settings/`
-- [ ] P1 `??` `src/app/api/affiliate/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-attribution-recalc/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-lifetime-commission/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-live-celebration/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-model-compare-rollup/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-reactivation-campaign/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-sub-daily-rollup/`
-- [ ] P1 `??` `src/app/api/cron/affiliate-tier-rewards/`
+- [ ] P1 ` M` `src/app/api/cron/rank-tracking/route.ts`
+- [ ] P1 ` M` `src/app/api/cron/trend-topic-miner/route.ts`
+- [ ] P1 `??` `src/app/api/cron/serp-rank-snapshot/`
+- [ ] P1 ` M` `src/types/supabase-database.generated.ts`
+- [ ] P1 `??` `supabase/migrations/20260504240000_leads_utm_term.sql`
+- [ ] P1 `??` `supabase/migrations/20260504250000_keyword_pool_blog_seo.sql`
+- [ ] P1 `??` `supabase/migrations/20260504251000_serp_rank_marketing_osmu.sql`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

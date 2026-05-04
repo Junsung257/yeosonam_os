@@ -5,14 +5,19 @@ export function buildStandardBlogCtaMarkdown(opts: {
   destination: string | null | undefined;
   slug: string;
   baseUrl?: string;
+  /** 기본 blog. 매거진 채널(naver_blog) 등 분석용으로 naver_blog 등 지정 */
+  utmSource?: string;
+  utmMedium?: string;
 }): string {
   const base = (opts.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(
     /\/$/,
     '',
   );
   const slug = opts.slug || 'blog';
+  const src = opts.utmSource || 'blog';
+  const med = opts.utmMedium || 'organic';
   const utm = (content: string) =>
-    `utm_source=blog&utm_medium=organic&utm_campaign=${encodeURIComponent(slug)}&utm_content=${encodeURIComponent(content)}`;
+    `utm_source=${encodeURIComponent(src)}&utm_medium=${encodeURIComponent(med)}&utm_campaign=${encodeURIComponent(slug)}&utm_content=${encodeURIComponent(content)}`;
 
   const dest = opts.destination?.trim();
   const pkgPath = dest

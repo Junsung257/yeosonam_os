@@ -289,6 +289,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 블로그 퍼블리셔·from-card-news 가 읽는 slide_image_urls 동기화 (1x1 전 슬라이드 성공 시)
+    try {
+      const bySlide = new Map<number, string>();
+      for (const r of results) {
+        if (r.format === '1x1' && r.url) bySlide.set(r.slide_index, r.url);
+      }
+      const ordered: string[] = [];
+      for (let i = 0; i < slides.length; i++) {
+        const u = bySlide.get(i);
+        if (u) ordered.push(u);
+      }
+      if (ordered.length === slides.length && ordered.length > 0) {
+        await supabaseAdmin
+          .from('card_news')
+          .update({
+            slide_image_urls: ordered,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', body.card_news_id);
+      }
+    } catch (e) {
+      console.warn('[render-v2] slide_image_urls 동기화 실패 (비중단):', e instanceof Error ? e.message : e);
+    }
+
     // content_factory_jobs.steps.satori_render 업데이트
     try {
       const hasAnySuccess = results.some(r => r.url !== null);

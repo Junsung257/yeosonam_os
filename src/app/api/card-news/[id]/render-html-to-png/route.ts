@@ -155,6 +155,7 @@ export async function POST(
       .from('card_news')
       .update({
         ig_slide_urls: igSlideUrls,
+        slide_image_urls: igSlideUrls,
         updated_at: new Date().toISOString(),
       })
       .eq('id', cardNewsId);

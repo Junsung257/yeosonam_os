@@ -11,6 +11,7 @@ import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { ContentBrief } from '@/lib/validators/content-brief';
 import { pickMarketingPrice } from '@/lib/marketing-price';
+import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/blog-review-quotes';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -170,6 +171,15 @@ export async function POST(request: NextRequest) {
         }
 
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+        let reviewQuotesMarkdown: string | null = null;
+        if (productData) {
+          const snips = await fetchApprovedReviewSnippets({
+            packageId: productData.id,
+            destination: productData.destination,
+            limit: 4,
+          });
+          reviewQuotesMarkdown = formatReviewQuotesForPrompt(snips) || null;
+        }
         blogHtml = await generateBlogBody({
           brief,
           slideImageMap,
@@ -187,6 +197,7 @@ export async function POST(request: NextRequest) {
             product_id: productData.id,
           } : undefined,
           baseUrl,
+          reviewQuotesMarkdown,
         });
 
         slug = `${brief.seo.slug_suggestion}-cn`;

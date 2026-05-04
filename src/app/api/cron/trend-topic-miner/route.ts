@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { collectAllTrends, classifyKeywordTier, detectDestination } from '@/lib/keyword-research';
+import { classifySearchIntent } from '@/lib/blog-search-intent';
 import { withCronLogging } from '@/lib/cron-observability';
 
 /**
@@ -110,6 +111,14 @@ async function runTrendMiner(request: NextRequest) {
   );
 
   const queueRows: any[] = [];
+  const poolRowsPending: Array<{
+    keyword: string;
+    source: string;
+    related_destination: string;
+    trend_score: number | null;
+    search_intent: ReturnType<typeof classifySearchIntent>;
+    raw: object;
+  }> = [];
   const archiveLink: Array<{ keyword: string; observed_at: string; source: string }> = [];
 
   for (const c of candidates) {
@@ -123,6 +132,15 @@ async function runTrendMiner(request: NextRequest) {
       ? `지금 뜨는 ${c.keyword} — 검색량 급등 분석`
       : `${dest} ${c.keyword} — 최신 트렌드 가이드`;
 
+    poolRowsPending.push({
+      keyword: c.keyword,
+      source: c.source,
+      related_destination: dest,
+      trend_score: c.trend_score ?? null,
+      search_intent: classifySearchIntent(c.keyword),
+      raw: (c as { raw?: object }).raw ?? {},
+    });
+
     queueRows.push({
       topic,
       source: 'trend',
@@ -135,7 +153,12 @@ async function runTrendMiner(request: NextRequest) {
       monthly_search_volume: c.search_volume ?? null,
       competition_level: tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low',
       trend_score: c.trend_score ?? null,
-      meta: { keywords: [c.keyword, dest], trend_source: c.source, raw: c.raw },
+      meta: {
+        keywords: [c.keyword, dest],
+        trend_source: c.source,
+        raw: c.raw,
+        search_intent: classifySearchIntent(c.keyword),
+      },
     });
     archiveLink.push({ keyword: c.keyword, observed_at, source: c.source });
   }

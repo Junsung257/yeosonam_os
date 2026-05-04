@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin, getCardNewsById } from '@/lib/supabase';
 
+function resolveAppOriginForInternalFetch(): string {
+  const u = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+  if (u) return u.replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -59,7 +66,7 @@ export async function PATCH(
       .single();
     if (error) throw error;
 
-    // CONFIRMED 전환 시 블로그 큐 자동 insert (fire-and-forget, 30분 버퍼)
+    // CONFIRMED 전환 시: PNG 자동 렌더 트리거(필요 시) + 블로그 큐 insert
     if (patch.status === 'CONFIRMED' && data) {
       try {
         const { count } = await supabaseAdmin
@@ -68,22 +75,65 @@ export async function PATCH(
           .eq('card_news_id', params.id)
           .neq('status', 'failed');
         if (count === 0) {
-          const cn = data as any;
+          const cn = data as Record<string, unknown>;
+          const hasColUrls =
+            Array.isArray(cn.slide_image_urls) && (cn.slide_image_urls as string[]).length > 0;
+
+          const isHtml =
+            cn.template_family === 'html' &&
+            typeof cn.html_generated === 'string' &&
+            (cn.html_generated as string).trim().length > 0;
+          const slides = cn.slides as unknown[] | undefined;
+          const hasSlides = Array.isArray(slides) && slides.length > 0;
+
+          let autoRenderKicked = false;
+          const origin = resolveAppOriginForInternalFetch();
+          if (!hasColUrls && isHtml) {
+            autoRenderKicked = true;
+            fetch(`${origin}/api/card-news/${params.id}/render-html-to-png`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            }).catch((e) =>
+              console.warn(`[CardNews Hook] render-html-to-png 트리거 실패 ${params.id}:`, e),
+            );
+          } else if (!hasColUrls && hasSlides) {
+            autoRenderKicked = true;
+            fetch(`${origin}/api/card-news/render-v2`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ card_news_id: params.id, formats: ['1x1'] }),
+            }).catch((e) => console.warn(`[CardNews Hook] render-v2 트리거 실패 ${params.id}:`, e));
+          }
+
           const { getEarliestBlogPublishEligibleMs } = await import('@/lib/card-news-render-readiness');
           const eligibleMs = await getEarliestBlogPublishEligibleMs(params.id);
           const minScheduleMs = Date.now() + 30 * 60 * 1000;
-          const targetAt = new Date(Math.max(minScheduleMs, eligibleMs));
+          const rawGrace = process.env.CARD_NEWS_CONFIRM_RENDER_GRACE_MS;
+          const graceParsed = rawGrace ? parseInt(rawGrace, 10) : NaN;
+          const renderGraceMs =
+            Number.isFinite(graceParsed) && graceParsed >= 0 ? graceParsed : 20 * 60 * 1000;
+          const renderGraceAt = Date.now() + renderGraceMs;
+          const targetAt = new Date(
+            autoRenderKicked
+              ? Math.max(minScheduleMs, eligibleMs, renderGraceAt)
+              : Math.max(minScheduleMs, eligibleMs),
+          );
+
           await supabaseAdmin.from('blog_topic_queue').insert({
             source: 'card_news',
             card_news_id: params.id,
-            topic: cn.title || '카드뉴스 블로그',
+            topic: (cn.title as string) || '카드뉴스 블로그',
             priority: 90,
             category: 'card_news',
-            primary_keyword: (cn.title || '').substring(0, 30),
+            primary_keyword: ((cn.title as string) || '').substring(0, 30),
             keyword_tier: 'mid',
             target_publish_at: targetAt.toISOString(),
             status: 'queued',
-            meta: { auto_queued_by: 'card_news_confirm_hook' },
+            meta: {
+              auto_queued_by: 'card_news_confirm_hook',
+              auto_render_kicked: autoRenderKicked,
+            },
           });
         }
       } catch (hookErr) {

@@ -12287,6 +12287,113 @@ export type Database = {
           },
         ]
       }
+      keyword_pool: {
+        Row: {
+          collected_at: string
+          id: string
+          keyword: string
+          promoted_at: string | null
+          raw: Json
+          related_destination: string | null
+          search_intent: string | null
+          source: string
+          trend_score: number | null
+        }
+        Insert: {
+          collected_at?: string
+          id?: string
+          keyword: string
+          promoted_at?: string | null
+          raw?: Json
+          related_destination?: string | null
+          search_intent?: string | null
+          source: string
+          trend_score?: number | null
+        }
+        Update: {
+          collected_at?: string
+          id?: string
+          keyword?: string
+          promoted_at?: string | null
+          raw?: Json
+          related_destination?: string | null
+          search_intent?: string | null
+          source?: string
+          trend_score?: number | null
+        }
+        Relationships: []
+      }
+      marketing_assets: {
+        Row: {
+          body: string | null
+          channel: string
+          content_creative_id: string | null
+          created_at: string
+          id: string
+          meta: Json
+          seed_topic: string
+          tenant_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          channel: string
+          content_creative_id?: string | null
+          created_at?: string
+          id?: string
+          meta?: Json
+          seed_topic: string
+          tenant_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          channel?: string
+          content_creative_id?: string | null
+          created_at?: string
+          id?: string
+          meta?: Json
+          seed_topic?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_assets_content_creative_id_fkey"
+            columns: ["content_creative_id"]
+            isOneToOne: false
+            referencedRelation: "content_creatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      serp_rank_snapshots: {
+        Row: {
+          checked_at: string
+          engine: string
+          id: string
+          keyword: string
+          position: number | null
+          raw: Json
+          url: string
+        }
+        Insert: {
+          checked_at?: string
+          engine: string
+          id?: string
+          keyword: string
+          position?: number | null
+          raw?: Json
+          url: string
+        }
+        Update: {
+          checked_at?: string
+          engine?: string
+          id?: string
+          keyword?: string
+          position?: number | null
+          raw?: Json
+          url?: string
+        }
+        Relationships: []
+      }
       unmatched_activities: {
         Row: {
           activity: string
