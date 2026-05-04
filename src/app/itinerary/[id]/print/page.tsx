@@ -1,11 +1,14 @@
 import PrintBar from './PrintBar';
 import { createClient } from '@supabase/supabase-js';
-import type { TravelItinerary } from '@/types/itinerary';
+import type { DaySchedule, TravelItinerary } from '@/types/itinerary';
 import type { PriceListItem } from '@/lib/parser';
+import { renderPackage } from '@/lib/render-contract';
+import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 import {
   PosterHeader,
   PosterPrice,
   PosterInfo,
+  PosterLegalNotice,
   PosterScheduleTable,
   PosterFooter,
   PosterMiniHeader,
@@ -27,19 +30,79 @@ async function loadPackage(id: string) {
   if (!sb) return null;
   const { data } = await sb
     .from('travel_packages')
-    .select('id, title, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates')
+    .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions')
     .eq('id', id)
     .single();
   return data as {
     id: string;
     title: string;
+    destination: string | null;
+    airline: string | null;
+    departure_airport: string | null;
     itinerary_data: TravelItinerary | null;
     price_tiers: PriceTier[] | null;
     price_list: PriceListItem[] | null;
     single_supplement: string | null;
     guide_tip: string | null;
     excluded_dates: string[] | null;
+    excludes: string[] | null;
+    surcharges: {
+      name?: string;
+      start?: string;
+      end?: string;
+      amount?: number;
+      currency?: string;
+      unit?: string;
+    }[] | null;
+    optional_tours: {
+      name: string;
+      price_usd?: number | null;
+      price_krw?: number | null;
+      note?: string | null;
+    }[] | null;
+    customer_notes: string | null;
+    internal_notes: string | null;
+    inclusions: string[] | null;
   } | null;
+}
+
+function toPosterDays(days: ReturnType<typeof renderPackage>['days']): DaySchedule[] {
+  return days.map((d) => ({
+    day: d.day,
+    regions: d.regions,
+    meals: {
+      breakfast: !!d.meals?.breakfast,
+      lunch: !!d.meals?.lunch,
+      dinner: !!d.meals?.dinner,
+      breakfast_note: d.meals?.breakfast_note ?? null,
+      lunch_note: d.meals?.lunch_note ?? null,
+      dinner_note: d.meals?.dinner_note ?? null,
+    },
+    schedule: d.schedule.map((s) => ({
+      time: s.time ?? null,
+      activity: s.activity ?? '',
+      transport: s.transport ?? null,
+      note: s.note ?? null,
+      type: (s.type as DaySchedule['schedule'][number]['type']) ?? 'normal',
+    })),
+    hotel: d.hotelCard
+      ? {
+          name: d.hotelCard.name ?? '',
+          grade: d.hotelCard.grade ?? null,
+          note: d.hotelCard.note ?? null,
+        }
+      : null,
+  }));
+}
+
+function parseTourPrices(price: string | null): { price_usd: number | null; price_krw: number | null } {
+  if (!price) return { price_usd: null, price_krw: null };
+  const usd = price.match(/\$([0-9]+(?:\.[0-9]+)?)/);
+  const krw = price.match(/([0-9][0-9,]*)\s*원/);
+  return {
+    price_usd: usd ? Number(usd[1]) : null,
+    price_krw: krw ? Number(krw[1].replace(/,/g, '')) : null,
+  };
 }
 
 // ── A4 페이지 컨테이너 ────────────────────────────────────────────────────
@@ -87,23 +150,46 @@ export default async function PrintPage({
   }
 
   const itinerary = pkg.itinerary_data;
+  const view = renderPackage(pkg);
   const priceTiers = pkg.price_tiers ?? [];
   const priceList = pkg.price_list ?? [];
   const excludedDates = pkg.excluded_dates ?? [];
-  const days = itinerary.days ?? [];
+  const days = toPosterDays(view.days);
+  const itineraryForRender: TravelItinerary = {
+    ...itinerary,
+    meta: {
+      ...itinerary.meta,
+      airline: view.airlineHeader.airlineLabel ?? itinerary.meta.airline,
+    },
+    highlights: {
+      ...itinerary.highlights,
+      inclusions: view.inclusions.flat.length > 0 ? view.inclusions.flat : itinerary.highlights.inclusions,
+      excludes: view.excludes.basic.length > 0 ? view.excludes.basic : itinerary.highlights.excludes,
+      shopping: view.shopping.text ?? itinerary.highlights.shopping,
+    },
+    days,
+    optional_tours: view.optionalTours.flat.length > 0
+      ? view.optionalTours.flat.map((t) => ({
+          name: t.name,
+          ...parseTourPrices(t.price),
+          note: t.note ?? null,
+        }))
+      : itinerary.optional_tours,
+  };
 
   // 높이 기반 자동 페이지 분배
   const priceListRowCount = priceList.length > 0
     ? priceList.reduce((sum, p) => sum + p.rules.length, 0)
     : 0;
 
-  const { headerH, priceH, infoH, footerH } = estimateHeights(itinerary, priceTiers.length, priceListRowCount);
+  const { headerH, priceH, infoH, footerH } = estimateHeights(itineraryForRender, priceTiers.length, priceListRowCount);
   const page1DayCount = calcPage1DayCount(days, headerH, priceH, infoH, footerH);
   const page1Days = days.slice(0, page1DayCount);
   const page2Days = days.slice(page1DayCount);
 
   // 선택관광 목록
-  const optTours = itinerary.optional_tours ?? [];
+  const optTours = itineraryForRender.optional_tours ?? [];
+  const legalNotices = getLegalNoticeLinesOrDefault(itineraryForRender.highlights.remarks ?? [], 3);
 
   return (
     <>
@@ -114,10 +200,10 @@ export default async function PrintPage({
       >
         {/* ══════ Page 1: 요금표 + 포함불포함 + 일정표(앞부분) ══════ */}
         <A4Page>
-          <PosterHeader meta={itinerary.meta} />
+          <PosterHeader meta={itineraryForRender.meta} />
 
           <PosterPrice
-            meta={itinerary.meta}
+            meta={itineraryForRender.meta}
             priceTiers={priceTiers.length > 0 ? priceTiers : undefined}
             priceList={priceList.length > 0 ? priceList : undefined}
             highlightDate={departureDate}
@@ -126,7 +212,7 @@ export default async function PrintPage({
             guideTip={pkg.guide_tip}
           />
 
-          <PosterInfo highlights={itinerary.highlights} />
+          <PosterInfo highlights={itineraryForRender.highlights} />
 
           {/* 일정 테이블 (페이지1에 들어가는 만큼) */}
           {page1Days.length > 0 && (
@@ -165,13 +251,14 @@ export default async function PrintPage({
             </div>
           )}
 
+          <PosterLegalNotice notices={legalNotices} />
           <PosterFooter />
         </A4Page>
 
         {/* ══════ Page 2: 나머지 일정 + 선택관광 (필요한 경우만) ══════ */}
         {page2Days.length > 0 && (
           <A4Page>
-            <PosterMiniHeader title={itinerary.meta.title} />
+            <PosterMiniHeader title={itineraryForRender.meta.title} />
 
             <div style={{ flex: 1 }}>
               <PosterScheduleTable
@@ -200,6 +287,7 @@ export default async function PrintPage({
               )}
             </div>
 
+            <PosterLegalNotice notices={legalNotices} />
             <PosterFooter />
           </A4Page>
         )}

@@ -342,6 +342,7 @@ export function LandingClient({ initialData }: { initialData: LandingProductData
         onItineraryViewed={handleItineraryViewed}
         includes={data.itinerary.includes}
         excludes={data.itinerary.excludes}
+        legalNotices={data.itinerary.legalNotices}
         packageId={data.id}
         reviewScore={data.reviewScore}
         reviewCount={data.reviewCount}

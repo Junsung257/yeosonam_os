@@ -5,6 +5,8 @@ import type { PriceListItem } from '@/lib/parser';
 import { normalizeDays } from '@/lib/attraction-matcher';
 import { getEffectivePriceDates } from '@/lib/price-dates';
 import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
+import { renderPackage } from '@/lib/render-contract';
+import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -55,7 +57,20 @@ export interface LandingProductData {
     highlights: string[];
     includes: string[];
     excludes: string[];
+    legalNotices: string[];
   };
+}
+
+function toLpActivityType(type?: string | null): DayActivity['type'] {
+  if (!type) return 'sightseeing';
+  if (type === 'meal') return 'meal';
+  if (type === 'hotel') return 'hotel';
+  if (type === 'flight') return 'flight';
+  if (type === 'optional') return 'optional';
+  if (type === 'shopping') return 'shopping';
+  if (type === 'train') return 'transport';
+  if (type === 'normal') return 'sightseeing';
+  return 'sightseeing';
 }
 
 /** 서버에서만 호출 — 채팅 URL 은 env 채널 ID 기준 */
@@ -63,6 +78,7 @@ export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
   lpHeroImageUrl: string | null,
 ): LandingProductData {
+  const view = renderPackage(pkg);
   const products = pkg.products as
     | { internal_code?: string }
     | { internal_code?: string }[]
@@ -115,6 +131,8 @@ export function mapTravelPackageToLandingData(
   const dayRows = normalizeDays(
     pkg.itinerary_data as Parameters<typeof normalizeDays>[0],
   ) as Record<string, unknown>[];
+  const canonicalDays = view.days;
+  const legalNotices = extractLegalNoticeLinesFromPkg(pkg, 3);
 
   return {
     id: String(pkg.id),
@@ -161,29 +179,60 @@ export function mapTravelPackageToLandingData(
     departureGuaranteed: eff.some(d => d.confirmed),
     itinerary: {
       highlights: (pkg.product_highlights as string[]) || [],
-      includes: (pkg.inclusions as string[]) || [],
-      excludes: (pkg.excludes as string[]) || [],
-      days: dayRows.map((row): ItineraryDay => {
-        const d = row as Record<string, unknown>;
-        return {
-          day: d.day as number,
-          title: (Array.isArray(d.regions) ? (d.regions as string[]).join(' · ') : '') || '상세 일정',
-          regions: Array.isArray(d.regions) ? (d.regions as string[]).join(' · ') : '',
-          meals: (d.meals as ItineraryDay['meals']) || {
-            breakfast: false,
-            lunch: false,
-            dinner: false,
-          },
-          activities: ((d.schedule as { activity: string; type?: string; note?: string }[]) || []).map(
-            s => ({
-              type: (s.type as DayActivity['type']) || 'sightseeing',
-              label: s.activity,
-              detail: s.note,
-            }),
-          ),
-          hotel: (d.hotel as { name?: string } | null)?.name,
-        };
-      }),
+      includes: view.inclusions.flat.length > 0
+        ? view.inclusions.flat
+        : ((pkg.inclusions as string[]) || []),
+      excludes: view.excludes.basic.length > 0
+        ? view.excludes.basic
+        : ((pkg.excludes as string[]) || []),
+      legalNotices,
+      days: (canonicalDays.length > 0
+        ? canonicalDays.map((d): ItineraryDay => ({
+            day: d.day,
+            title: d.regions.length > 0 ? d.regions.join(' · ') : '상세 일정',
+            regions: d.regions.join(' · '),
+            meals: {
+              breakfast: !!d.meals?.breakfast,
+              lunch: !!d.meals?.lunch,
+              dinner: !!d.meals?.dinner,
+            },
+            activities: [
+              ...d.schedule.map(s => ({
+                type: toLpActivityType(s.type),
+                label: s.activity ?? '',
+                detail: s.note ?? undefined,
+              })),
+              ...(d.hotelCard?.name
+                ? [{
+                    type: 'hotel' as const,
+                    label: `호텔: ${d.hotelCard.name}`,
+                    detail: d.hotelCard.note ?? undefined,
+                  }]
+                : []),
+            ],
+            hotel: d.hotelCard?.name ?? undefined,
+          }))
+        : dayRows.map((row): ItineraryDay => {
+            const d = row as Record<string, unknown>;
+            return {
+              day: d.day as number,
+              title: (Array.isArray(d.regions) ? (d.regions as string[]).join(' · ') : '') || '상세 일정',
+              regions: Array.isArray(d.regions) ? (d.regions as string[]).join(' · ') : '',
+              meals: (d.meals as ItineraryDay['meals']) || {
+                breakfast: false,
+                lunch: false,
+                dinner: false,
+              },
+              activities: ((d.schedule as { activity: string; type?: string; note?: string }[]) || []).map(
+                s => ({
+                  type: toLpActivityType(s.type),
+                  label: s.activity,
+                  detail: s.note,
+                }),
+              ),
+              hotel: (d.hotel as { name?: string } | null)?.name,
+            };
+          })),
     },
   };
 }

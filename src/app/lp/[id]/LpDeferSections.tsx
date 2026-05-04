@@ -7,6 +7,7 @@ import {
   Clock, CheckCircle2, XCircle,
 } from 'lucide-react';
 import type { ItineraryDay, DayActivity } from '@/lib/map-travel-package-to-lp';
+import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 
 function fmt(n: number) {
   return n.toLocaleString('ko-KR');
@@ -43,6 +44,22 @@ function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: 
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function LegalNotice({ legalNotices }: { legalNotices: string[] }) {
+  const renderLines = getLegalNoticeLinesOrDefault(legalNotices, 3);
+  return (
+    <section className="px-5 py-4 bg-orange-50 border-t border-orange-100">
+      <h3 className="text-sm font-bold text-orange-800 mb-2">특별약관 및 취소수수료 안내</h3>
+      <div className="space-y-1.5">
+        {renderLines.map((line, idx) => (
+          <p key={`${idx}-${line.slice(0, 12)}`} className="text-xs text-orange-900 leading-relaxed">
+            • {line}
+          </p>
+        ))}
       </div>
     </section>
   );
@@ -197,6 +214,7 @@ export interface LpDeferSectionsProps {
   onItineraryViewed: () => void;
   includes: string[];
   excludes: string[];
+  legalNotices: string[];
   packageId: string;
   reviewScore: number;
   reviewCount: number;
@@ -208,6 +226,7 @@ export function LpDeferSections({
   onItineraryViewed,
   includes,
   excludes,
+  legalNotices,
   packageId,
   reviewScore,
   reviewCount,
@@ -216,6 +235,7 @@ export function LpDeferSections({
     <>
       <ItinerarySection days={days} onViewed={onItineraryViewed} />
       <IncludeExclude includes={includes} excludes={excludes} />
+      <LegalNotice legalNotices={legalNotices} />
       <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} />
     </>
   );
