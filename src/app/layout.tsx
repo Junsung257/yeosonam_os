@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import dynamic from 'next/dynamic';
 import localFont from 'next/font/local';
 import './globals.css';
+import PartytownInit from '@/components/PartytownInit';
 import MetaPixel from '@/components/MetaPixel';
 import KakaoMomentPixel from '@/components/KakaoMomentPixel';
 import MsClarity from '@/components/MsClarity';
@@ -144,6 +145,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`${pretendard.className} bg-gray-50 antialiased`}>
+        <PartytownInit />
         <TrackerBootstrap />
         <MetaPixel />
         <KakaoMomentPixel />

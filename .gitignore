@@ -9,6 +9,12 @@ node_modules
 /.next/
 /out/
 
+# Partytown — `postinstall` / `npm run partytown:copy` 가 node_modules 에서 복사 (원본은 커밋 안 함)
+/public/~partytown/
+
+# Partytown — postinstall(`copy-partytown-lib.cjs`)로 생성, 레포에 커밋하지 않음
+public/~partytown/
+
 # Production
 /build
 

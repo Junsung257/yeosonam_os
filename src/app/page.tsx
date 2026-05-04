@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
+import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
@@ -473,7 +474,9 @@ export default async function HomePage() {
       {/* ── 검색바 — 히어로 하단 오버랩 ── */}
       <div className="px-4 md:px-6 -mt-7 md:-mt-10 relative z-10 pb-3 md:pb-5">
         <div className="max-w-[768px] mx-auto">
-          <HomeHeroSearchCluster urgencyTop3={homeUrgencyTop3} />
+          <HomeHeroSearchCluster>
+            <HomeHeroUrgencyStrip items={homeUrgencyTop3} />
+          </HomeHeroSearchCluster>
         </div>
       </div>
 

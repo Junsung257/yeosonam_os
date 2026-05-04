@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Script from 'next/script';
 import { useMarketingConsent } from '@/lib/consent';
 import { trackKakaoPixelPageView } from '@/lib/kakao-moment-events';
+import { thirdPartyScriptType } from '@/lib/third-party-script-type';
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_KAKAO_PIXEL_ID;
 
@@ -25,6 +26,7 @@ export default function KakaoMomentPixel() {
   return (
     <Script
       id="kakao-moment-kp"
+      type={thirdPartyScriptType()}
       src="//t1.kakaocdn.net/adfit/static/kp.js"
       strategy="lazyOnload"
       onLoad={() => setScriptReady(true)}

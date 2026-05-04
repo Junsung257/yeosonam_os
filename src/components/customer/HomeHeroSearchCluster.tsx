@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useChatStore } from '@/lib/chat-store';
@@ -31,13 +32,6 @@ const POPULAR_DESTINATIONS: string[] = [
   '홍콩',
   '싱가포르',
 ];
-
-export type HomeUrgencyTeaser = {
-  id: string;
-  title: string;
-  destination?: string;
-  minPrice: number;
-};
 
 type PickerStep = 'hub' | 'when' | 'where' | 'budget';
 
@@ -140,7 +134,7 @@ const chevron = '▾';
 const slotTrigger =
   'inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-[15px] font-bold text-[#1d4ed8] bg-[#EFF6FF] border border-[#BFDBFE] hover:bg-[#DBEAFE] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3182F6]/40 transition-colors';
 
-export default function HomeHeroSearchCluster({ urgencyTop3 = [] }: { urgencyTop3?: HomeUrgencyTeaser[] }) {
+export default function HomeHeroSearchCluster({ children }: { children?: ReactNode }) {
   const openChat = useChatStore(s => s.openChat);
   const [step, setStep] = useState<PickerStep | null>(null);
   const [showCustomCalendar, setShowCustomCalendar] = useState(false);
@@ -285,36 +279,7 @@ export default function HomeHeroSearchCluster({ urgencyTop3 = [] }: { urgencyTop
           이 조건으로 패키지 보기
         </Link>
 
-        {urgencyTop3.length > 0 ? (
-          <div className="mt-5 pt-4 border-t border-[#F2F4F6] space-y-3">
-            <p className="text-[13px] font-bold text-[#191F28] flex items-center gap-1.5">
-              <span aria-hidden>🔥</span>
-              이번 주 마감·특가 TOP {urgencyTop3.length}
-            </p>
-            <ul className="space-y-2">
-              {urgencyTop3.map(item => (
-                <li key={item.id}>
-                  <Link
-                    href={`/packages/${item.id}`}
-                    className="flex items-start gap-3 rounded-xl border border-[#E8ECF2] bg-[#FAFBFF] px-3 py-3 hover:border-[#3182F6]/40 transition-colors card-touch"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[14px] font-bold text-[#191F28] leading-snug line-clamp-2">{item.title}</p>
-                      {item.destination ? (
-                        <p className="text-[11px] text-[#8B95A1] mt-0.5">{item.destination}</p>
-                      ) : null}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-[13px] font-extrabold text-[#3182F6] tabular-nums">
-                        {item.minPrice.toLocaleString()}원~
-                      </p>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        {children}
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">

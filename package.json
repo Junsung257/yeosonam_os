@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "clean:next": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){if(e.code!=='ENOENT')throw e}\"",
+    "prebuild": "node scripts/copy-partytown-lib.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -32,10 +33,13 @@
     "audit:migration-prefix": "node db/audit_migration_prefix_collisions.js",
     "audit:migration-prefix:ci": "node db/audit_migration_prefix_collisions.js --fail-on-collision",
     "os:inbox": "node scripts/os-improvement-inbox.mjs",
-    "eval:concierge": "node scripts/eval-concierge.mjs"
+    "eval:concierge": "node scripts/eval-concierge.mjs",
+    "partytown:copy": "node scripts/copy-partytown-lib.cjs",
+    "postinstall": "node scripts/copy-partytown-lib.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",
+    "@builder.io/partytown": "^0.10.2",
     "@google/generative-ai": "^0.24.1",
     "@resvg/resvg-js": "^2.6.2",
     "@sentry/nextjs": "^10.49.0",
@@ -78,6 +82,7 @@
     "recharts": "^3.8.0",
     "satori": "^0.26.0",
     "serwist": "^9.5.7",
+    "sharp": "^0.33.5",
     "swr": "^2.4.1",
     "tailwindcss": "^3.3.0",
     "typescript": "^5",

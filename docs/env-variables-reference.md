@@ -74,11 +74,18 @@
 
 | 키 | 용도 |
 |---|---|
+| `NEXT_PUBLIC_PARTYTOWN` | `1`이면 Meta·카카오 모먼트·Clarity 스크립트를 Partytown(웹 워커)로 격리. 미설정·그 외 값이면 메인 스레드에서 기존과 동일하게 로드 | `1` (성능 검증 후 켜기 권장) |
 | `META_ACCESS_TOKEN` | Meta Ads 광고 API (배포 상태) |
 | `META_AD_ACCOUNT_ID` | Meta 광고 계정 |
 | `META_PAGE_ID` | Meta 페이지 |
 | `GOOGLE_ADS_*` | Google Ads API (미구현, 향후) |
 | `NAVER_AD_*` | 네이버 검색광고 API (미구현, 향후) |
+
+### 성능 — 서드파티 스크립트 격리 (선택)
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `NEXT_PUBLIC_PARTYTOWN` | `1`이면 Meta·카카오 모먼트·Clarity 스크립트를 Partytown(웹 워커)로 격리. 켠 뒤 전환·픽셀 이벤트 QA 권장 | 미설정 (= 메인 스레드 로드) |
 
 ### 광고 자동 최적화 런타임 토글
 

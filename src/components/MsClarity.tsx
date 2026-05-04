@@ -2,6 +2,7 @@
 
 import Script from 'next/script';
 import { useAnalyticsConsent } from '@/lib/consent';
+import { thirdPartyScriptType } from '@/lib/third-party-script-type';
 
 const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
 
@@ -18,6 +19,7 @@ export default function MsClarity() {
   return (
     <Script
       id="ms-clarity"
+      type={thirdPartyScriptType()}
       strategy="lazyOnload"
       dangerouslySetInnerHTML={{
         __html: `(function(c,l,a,r,i,t,y){
