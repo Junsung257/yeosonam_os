@@ -9,7 +9,7 @@
  */
 
 import OpenAI from 'openai';
-import { CARD_NEWS_HTML_SYSTEM_PROMPT } from './system-prompt';
+import { getCardNewsSystemPrompt } from './system-prompt';
 import { checkFaithfulness, type FaithfulnessReport } from './faithfulness-check';
 import { getBrandVoiceBlock } from '@/lib/content-pipeline/brand-voice';
 import { extractCompetitorSeed, formatCompetitorSeedAsPrompt } from './competitor-seed';
@@ -172,7 +172,7 @@ export async function generateCardNewsHtml(
   const startedAt = Date.now();
 
   // Brand voice 동적 주입 (brandCode 있을 때만)
-  let systemPrompt = CARD_NEWS_HTML_SYSTEM_PROMPT;
+  let systemPrompt = await getCardNewsSystemPrompt();
   if (input.brandCode) {
     try {
       const voiceBlock = await getBrandVoiceBlock(input.brandCode, 'instagram', 2);

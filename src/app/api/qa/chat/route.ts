@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { saveInquiry, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { getPrompt } from '@/lib/prompt-loader';
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages';
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint';
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor';
@@ -79,7 +80,7 @@ function applyCommission(price: number) {
   return Math.round(price * (1 + COMMISSION_RATE / 100));
 }
 
-const QA_SYSTEM = `당신은 여행사 AI 상담원입니다. 아래 「상품 목록」「이전 대화」「고객 문의」를 바탕으로 답변하세요.
+const QA_SYSTEM_FALLBACK = `당신은 여행사 AI 상담원입니다. 아래 「상품 목록」「이전 대화」「고객 문의」를 바탕으로 답변하세요.
 
 ## 답변 규칙
 1. 고객 요구에 맞는 상품을 1~3개 추천하고 이유를 설명하세요.
@@ -379,11 +380,12 @@ ${historyText || '(첫 메시지)'}
 ${message}`;
 
         // Phase 1: DeepSeek 토큰 스트리밍(TTFT) → 실패 시 llmCall(비스트림) 폴백
+        const qaSystem = await getPrompt('qa-chat', QA_SYSTEM_FALLBACK);
         let lastReplyStreamLen = 0;
         let gen = await tryDeepSeekStream(
           {
             task: 'qa-chat',
-            systemPrompt: QA_SYSTEM,
+            systemPrompt: qaSystem,
             userPrompt,
             temperature: 0.2,
             maxTokens: 2500,
@@ -402,7 +404,7 @@ ${message}`;
           lastReplyStreamLen = 0;
           gen = await llmCall({
             task: 'qa-chat',
-            systemPrompt: QA_SYSTEM,
+            systemPrompt: qaSystem,
             userPrompt,
             temperature: 0.2,
             maxTokens: 2500,

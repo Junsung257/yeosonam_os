@@ -33,8 +33,9 @@ import { zodToGeminiSchema } from './llm-structured-output';
 import { retrieveSimilarExamples, buildFewShotPromptFragment, type SimilarExample } from './few-shot-retriever';
 import { getRelevantReflections, buildReflectionPromptFragment, trackReflectionApplied } from './reflection-memory';
 import { createClient } from '@supabase/supabase-js';
+import { getPrompt } from './prompt-loader';
 
-const SYSTEM_PROMPT = `당신은 여행 상품 원문을 구조화된 IR(Intermediate Representation) 로 변환하는 전문 정형화 Agent 입니다.
+const SYSTEM_PROMPT_FALLBACK = `당신은 여행 상품 원문을 구조화된 IR(Intermediate Representation) 로 변환하는 전문 정형화 Agent 입니다.
 
 ## 절대 규칙 (위반 시 INSERT 차단)
 
@@ -156,44 +157,42 @@ export async function normalizeWithLlm(
     sb = createClient(supabaseUrl, supabaseKey);
   }
 
-  // ── EPR few-shot retrieval (cosine top-K) ─
+  // ── EPR + Reflexion 병렬 조회 (독립적 쿼리이므로 Promise.all로 동시 실행) ─
   let fewShotFragment = '';
   let fewShotCount = 0;
-  if (fewShotEnabled && sb && geminiKey) {
-    try {
-      const examples = await retrieveSimilarExamples(input.rawText, sb as any, geminiKey, {
-        limit: fewShotLimit,
-        minSimilarity: 0.55,
-      });
-      if (examples.length > 0) {
-        fewShotFragment = buildFewShotPromptFragment(examples);
-        fewShotCount = examples.length;
-        console.log(`[normalize-with-llm EPR] retrieved ${examples.length} examples, top similarity=${examples[0].similarity.toFixed(2)}`);
-      }
-    } catch (e) {
-      console.warn('[normalize-with-llm EPR] retrieval 실패 (폴백: few-shot 없이 진행):', e instanceof Error ? e.message : e);
-    }
-  }
-
-  // ── Reflexion 정정 메모리 (사장님 정정 누적) ─
   let reflectionFragment = '';
   let reflectionIds: string[] = [];
-  if (reflectionEnabled && sb) {
-    try {
-      const reflections = await getRelevantReflections(sb, {
-        landOperatorId: options.landOperatorId,
-        destination: input.hintRegion,
-        limit: reflectionLimit,
-        minSeverity: 'medium',
-      });
-      if (reflections.length > 0) {
-        reflectionFragment = buildReflectionPromptFragment(reflections);
-        reflectionIds = reflections.map(r => r.id);
-        console.log(`[normalize-with-llm Reflexion] retrieved ${reflections.length} corrections (CRITICAL=${reflections.filter(r => r.severity === 'critical').length} HIGH=${reflections.filter(r => r.severity === 'high').length})`);
-      }
-    } catch (e) {
-      console.warn('[normalize-with-llm Reflexion] retrieval 실패:', e instanceof Error ? e.message : e);
-    }
+
+  const [eprResult, reflexionResult] = await Promise.all([
+    (fewShotEnabled && sb && geminiKey)
+      ? retrieveSimilarExamples(input.rawText, sb as any, geminiKey, {
+          limit: fewShotLimit,
+          minSimilarity: 0.55,
+        }).catch((e: unknown) => {
+          console.warn('[normalize-with-llm EPR] retrieval 실패 (폴백: few-shot 없이 진행):', e instanceof Error ? e.message : e);
+          return [];
+        })
+      : Promise.resolve([]),
+    (reflectionEnabled && sb)
+      ? getRelevantReflections(sb, {
+          landOperatorId: options.landOperatorId,
+          destination: input.hintRegion,
+          limit: reflectionLimit,
+          minSeverity: 'medium',
+        }).catch((e: unknown) => {
+          console.warn('[normalize-with-llm Reflexion] retrieval 실패:', e instanceof Error ? e.message : e);
+          return [];
+        })
+      : Promise.resolve([]),
+  ]);
+
+  if (eprResult.length > 0) {
+    fewShotFragment = buildFewShotPromptFragment(eprResult);
+    fewShotCount = eprResult.length;
+  }
+  if (reflexionResult.length > 0) {
+    reflectionFragment = buildReflectionPromptFragment(reflexionResult);
+    reflectionIds = reflexionResult.map((r: { id: string }) => r.id);
   }
 
   const buildUserMessage = () => [
@@ -260,6 +259,7 @@ async function runDeepSeek(
   opts: { maxRetries: number; userMessage: string; model: string },
 ): Promise<NormalizerResult> {
   const client = getDeepSeekClient();
+  const systemPrompt = await getPrompt('normalize-system', SYSTEM_PROMPT_FALLBACK);
   let lastErrors: string[] = [];
   let feedback: string | null = null;
 
@@ -272,7 +272,7 @@ async function runDeepSeek(
       const response = await client.chat.completions.create({
         model: opts.model,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
         response_format: { type: 'json_object' },
@@ -338,6 +338,7 @@ async function runGemini(
   opts: { maxRetries: number; userMessage: string; model: string },
 ): Promise<NormalizerResult> {
   const client = getGeminiClient();
+  const systemPrompt = await getPrompt('normalize-system', SYSTEM_PROMPT_FALLBACK);
   let lastErrors: string[] = [];
   let feedback: string | null = null;
 
@@ -345,7 +346,7 @@ async function runGemini(
     try {
       const model = client.getGenerativeModel({
         model: opts.model,
-        systemInstruction: SYSTEM_PROMPT,
+        systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: zodToGeminiSchema(NormalizedIntakeSchema) as unknown as Parameters<
@@ -412,6 +413,7 @@ async function runClaudeLegacy(
   if (!key) return { success: false, errors: ['ANTHROPIC_API_KEY 누락 — Claude 레거시 엔진 사용 불가'] };
   const client = new Anthropic({ apiKey: key });
   const schema = zodToClaudeSchema(NormalizedIntakeSchema);
+  const systemPrompt = await getPrompt('normalize-system', SYSTEM_PROMPT_FALLBACK);
 
   let lastErrors: string[] = [];
   let feedbackMessage: string | null = null;
@@ -434,7 +436,7 @@ async function runClaudeLegacy(
         system: [
           {
             type: 'text',
-            text: SYSTEM_PROMPT,
+            text: systemPrompt,
             cache_control: { type: 'ephemeral' },
           },
         ],

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { RouterResult } from './types';
-import { ROUTER_PROMPT } from './prompts';
+import { getRouterPrompt } from './prompts';
 
 /**
  * 자비스 의도 라우터 (DeepSeek V4-Flash)
@@ -20,10 +20,11 @@ export async function routeMessage(
   const model = process.env.JARVIS_ROUTER_MODEL || 'deepseek-v4-flash';
 
   try {
+    const routerPrompt = await getRouterPrompt();
     const response = await client.chat.completions.create({
       model,
       messages: [
-        { role: 'system', content: ROUTER_PROMPT },
+        { role: 'system', content: routerPrompt },
         { role: 'user', content: `컨텍스트: ${JSON.stringify(context)}\n\n사용자 메시지: ${userMessage}` },
       ],
       temperature: 0.1,

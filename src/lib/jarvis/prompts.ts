@@ -1,4 +1,10 @@
-export const ROUTER_PROMPT = `
+import { getPrompt } from '@/lib/prompt-loader';
+
+export async function getRouterPrompt(): Promise<string> {
+  return getPrompt('jarvis-router', ROUTER_PROMPT_FALLBACK);
+}
+
+const ROUTER_PROMPT_FALLBACK = `
 당신은 여소남 여행사 OS 라우터입니다. 사용자 메시지를 한 개 에이전트로 라우팅해 JSON만 응답하세요.
 
 에이전트:

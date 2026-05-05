@@ -14,7 +14,7 @@ import {
   LogOut, Star, StarOff, Menu as MenuIcon, Eye,
   ArrowLeftRight, Unlink, FileSearch, PackagePlus, Combine,
   Receipt, Plane, Palette, Target, Zap, Send,
-  Tags, BadgeDollarSign, Settings, PencilLine, GitBranch,
+  Tags, BadgeDollarSign, Settings, PencilLine, GitBranch, SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { useAutoRefreshSession } from '@/hooks/useAutoRefreshSession';
@@ -154,6 +154,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/platform-learning',       label: 'AI 플라이휠',       icon: LibraryBig },
       { href: '/admin/agent-mas',               label: 'MAS 관제',         icon: GitBranch },
       { href: '/admin/extractions/corrections', label: 'AI 파싱 교정 이력', icon: PencilLine },
+      { href: '/admin/prompts',                 label: '프롬프트 레지스트리', icon: SlidersHorizontal },
     ],
   },
   {
