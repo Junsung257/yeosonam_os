@@ -3,10 +3,11 @@ import Link from 'next/link';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { ScrollReveal } from '@/components/blog/ScrollReveal';
 
 export const revalidate = 300;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
 
 export const metadata: Metadata = {
@@ -23,18 +24,34 @@ export const metadata: Metadata = {
 };
 
 const ANGLE_LABELS: Record<string, string> = {
-  value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',
-  urgency: '긴급특가', activity: '액티비티', food: '미식',
+  value: '💰 가성비', emotional: '🌸 감성', filial: '🎁 효도', luxury: '✨ 럭셔리',
+  urgency: '⚡ 긴급특가', activity: '🏄 액티비티', food: '🍜 미식',
 };
 
 const ANGLE_CHIPS = [
-  { v: 'value', label: '가성비' },
-  { v: 'luxury', label: '럭셔리' },
-  { v: 'filial', label: '효도' },
-  { v: 'emotional', label: '감성' },
-  { v: 'activity', label: '액티비티' },
-  { v: 'food', label: '미식' },
+  { v: 'value',    label: '💰 가성비' },
+  { v: 'luxury',   label: '✨ 럭셔리' },
+  { v: 'filial',   label: '🎁 효도' },
+  { v: 'emotional',label: '🌸 감성' },
+  { v: 'activity', label: '🏄 액티비티' },
+  { v: 'food',     label: '🍜 미식' },
 ];
+
+// 카테고리별 칩 색상 (Tailwind 클래스)
+const ANGLE_CHIP_STYLE: Record<string, string> = {
+  value:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  luxury:   'bg-amber-50 text-amber-700 border border-amber-200',
+  filial:   'bg-pink-50 text-pink-700 border border-pink-200',
+  emotional:'bg-purple-50 text-purple-700 border border-purple-200',
+  activity: 'bg-blue-50 text-blue-700 border border-blue-200',
+  food:     'bg-orange-50 text-orange-700 border border-orange-200',
+  urgency:  'bg-red-50 text-red-700 border border-red-200',
+};
+
+// 콘텐츠 타입별 읽기 시간 추정 (분)
+const READING_TIME: Record<string, number> = {
+  guide: 7, tip: 4, review: 5, package_intro: 3, pillar: 12,
+};
 
 const CONTENT_TYPE_LABELS: Record<string, string> = {
   guide: '가이드',
@@ -136,6 +153,8 @@ function HeroCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
   const initial = dest?.[0] ?? '✈';
+  const readMin = READING_TIME[ct] ?? 7;
+  const angleLabel = post.angle_type ? ANGLE_LABELS[post.angle_type] : null;
 
   return (
     <Link
@@ -146,7 +165,7 @@ function HeroCard({ post }: { post: BlogPost }) {
         <SafeCoverImg
           src={post.og_image_url}
           alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           loading="eager"
           fetchPriority="high"
           fallback={
@@ -156,17 +175,28 @@ function HeroCard({ post }: { post: BlogPost }) {
           }
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10 text-white">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <span className="text-[11px] font-semibold border border-white/25 bg-white/10 backdrop-blur-sm px-2.5 py-1 rounded-full">
             {CONTENT_TYPE_LABELS[ct]}
           </span>
-          {dest && <span className="text-[13px] text-white/60 font-medium">{dest}</span>}
+          {dest && <span className="text-[13px] text-white/70 font-medium">{dest}</span>}
+          {angleLabel && (
+            <span className="text-[11px] font-semibold border border-white/20 bg-white/10 backdrop-blur-sm px-2.5 py-1 rounded-full text-white/90">
+              {angleLabel}
+            </span>
+          )}
         </div>
         <h2 className="text-h1 md:text-[32px] font-extrabold leading-[1.2] line-clamp-2 tracking-[-0.03em]">
           {post.seo_title || post.travel_packages?.title || '여행 가이드'}
         </h2>
+        <div className="mt-4 flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 backdrop-blur-sm px-4 py-2 text-[13px] font-semibold text-white group-hover:bg-white/20 transition-colors">
+            전체 읽기 →
+          </span>
+          <span className="text-[12px] text-white/60">📖 {readMin}분 읽기</span>
+        </div>
       </div>
     </Link>
   );
@@ -177,11 +207,13 @@ function SideCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
   const initial = dest?.[0] ?? '✈';
+  const readMin = READING_TIME[ct] ?? 5;
+  const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
 
   return (
     <Link
       href={`/blog/${post.slug}`}
-      className="group flex gap-4 overflow-hidden rounded-xl border border-admin-border bg-white p-4 transition-all hover:shadow-[0_2px_16px_rgba(0,0,0,0.08)] hover:border-[#E5E7EB]"
+      className="group flex gap-4 overflow-hidden rounded-xl border border-admin-border bg-white p-4 transition-all hover:shadow-[0_2px_16px_rgba(0,0,0,0.08)] hover:border-brand/20"
     >
       {/* 섬네일 — 112×112 */}
       <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-bg-section relative">
@@ -198,20 +230,25 @@ function SideCard({ post }: { post: BlogPost }) {
         />
       </div>
       {/* 텍스트 */}
-      <div className="flex flex-col justify-center min-w-0 py-1">
-        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+      <div className="flex flex-col justify-center min-w-0 py-1 gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="bg-bg-section text-text-body text-[11px] font-medium px-2 py-0.5 rounded">
             {CONTENT_TYPE_LABELS[ct]}
           </span>
-          {dest && (
-            <span className="bg-bg-section text-text-body text-[11px] font-medium px-2 py-0.5 rounded">
-              {dest}
+          {post.angle_type && ANGLE_LABELS[post.angle_type] && angleChipStyle && (
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${angleChipStyle}`}>
+              {ANGLE_LABELS[post.angle_type]}
             </span>
           )}
         </div>
         <h3 className="line-clamp-2 text-[15px] font-bold text-text-primary group-hover:text-brand leading-[1.4] tracking-[-0.01em] transition-colors">
           {post.seo_title || post.travel_packages?.title || '여행 가이드'}
         </h3>
+        <div className="flex items-center gap-1.5 text-[11px] text-text-secondary">
+          {dest && <span>{dest}</span>}
+          {dest && <span className="text-[#D1D5DB]">·</span>}
+          <span>📖 {readMin}분 읽기</span>
+        </div>
       </div>
     </Link>
   );
@@ -223,11 +260,13 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const price = post.travel_packages?.price;
   const ct = post.content_type || 'guide';
   const initial = dest?.[0] ?? '✈';
+  const readMin = READING_TIME[ct] ?? 5;
+  const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
 
   return (
     <Link
       href={`/blog/${post.slug}`}
-      className="group overflow-hidden rounded-2xl border border-admin-border bg-white transition-all hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5"
+      className="group overflow-hidden rounded-2xl border border-admin-border bg-white transition-all hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:border-brand/25"
     >
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>
         <SafeCoverImg
@@ -236,7 +275,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           loading="lazy"
           fallback={
-            <div className={`absolute inset-0 flex items-center justify-center bg-bg-section`}>
+            <div className="absolute inset-0 flex items-center justify-center bg-bg-section">
               <span className="font-black text-[#D1D5DB]" style={{ fontSize: compact ? '36px' : '52px' }}>{initial}</span>
             </div>
           }
@@ -253,8 +292,8 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
               {dest}
             </span>
           )}
-          {post.angle_type && ANGLE_LABELS[post.angle_type] && (
-            <span className="bg-bg-section text-text-body text-[11px] px-2 py-0.5 rounded">
+          {post.angle_type && ANGLE_LABELS[post.angle_type] && angleChipStyle && (
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${angleChipStyle}`}>
               {ANGLE_LABELS[post.angle_type]}
             </span>
           )}
@@ -271,9 +310,11 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
         )}
 
         <div className="mt-3 flex items-center justify-between">
-          <time className="text-[11px] text-text-secondary">
-            {new Date(post.published_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })}
-          </time>
+          <div className="flex items-center gap-2 text-[11px] text-text-secondary">
+            <time>{new Date(post.published_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })}</time>
+            <span className="text-[#D1D5DB]">·</span>
+            <span>📖 {readMin}분 읽기</span>
+          </div>
           {price && (
             <span className="text-micro text-text-secondary tabular-nums">
               {Math.round(price / 10000).toLocaleString()}만원~
@@ -491,7 +532,11 @@ export default async function BlogListPage({
             </div>
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {posts.map(post => <BlogCard key={post.id} post={post} compact />)}
+              {posts.map((post, idx) => (
+                <ScrollReveal key={post.id} delay={((idx % 6) + 1) as 1|2|3|4|5|6}>
+                  <BlogCard post={post} compact />
+                </ScrollReveal>
+              ))}
             </div>
           )}
 

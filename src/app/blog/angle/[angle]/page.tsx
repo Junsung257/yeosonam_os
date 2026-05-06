@@ -8,9 +8,9 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 const ANGLE_META: Record<string, { label: string; tagline: string; emoji: string }> = {
   value:     { label: '가성비',   tagline: '합리적인 가격으로 즐기는 알찬 여행',         emoji: '💰' },

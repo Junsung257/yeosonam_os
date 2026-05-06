@@ -25,6 +25,11 @@
 - 🔑 `KAKAO_TEMPLATE_VOUCHER_ISSUED` — 바우처 발행 템플릿 ID
 - 🔑 `KAKAO_TEMPLATE_AFFILIATE_CELEBRATION` — 제휴 축하 템플릿 ID
 
+### 🔍 Google 색인 (블로그 SEO 핵심 — 미설정 시 색인 불가)
+- 🔑 `NEXT_PUBLIC_BASE_URL` — 반드시 `https://www.yeosonam.com` (www 포함). 미설정 시 카노니컬 URL 불일치 → 71개 페이지 색인 실패 원인
+- 🔑 `GOOGLE_SERVICE_ACCOUNT_JSON` — Google Cloud Console → Indexing API 활성화 → Service Account JSON 전체 내용. Search Console에서 해당 SA 이메일을 **소유자(Owner)** 권한으로 추가 필수. 설정 후 `POST /api/blog/bulk-reindex` 실행해서 기존 71개 글 일괄 색인 요청
+- 🔑 `INDEXNOW_KEY` — IndexNow (Bing/Yandex) 즉시 색인용. 키 생성 후 `public/${INDEXNOW_KEY}.txt` 파일에 키 값 저장 필요
+
 ### 외부 API
 - 🔑 `ANTHROPIC_API_KEY` — Claude API (IR 파이프라인용, 기존 키 만료됨)
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림

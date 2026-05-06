@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       revalidatePath(`/blog/${cleanSlug}`);
 
       // 통합 색인 알림 (Google Indexing API + IndexNow + Bing sitemap ping)
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       notifyIndexing(`${baseUrl}/blog/${cleanSlug}`, baseUrl)
         .then(r => console.log(`[blog POST] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
         .catch(() => {});
@@ -188,7 +188,7 @@ export async function PATCH(request: NextRequest) {
       }
       revalidatePath('/blog');
       revalidatePath(`/blog/${target.slug}`);
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const report = await notifyIndexing(`${baseUrl}/blog/${target.slug}`, baseUrl);
       return NextResponse.json({ success: true, force_revalidate: true, slug: target.slug, indexing: report });
     }
@@ -264,7 +264,7 @@ export async function PATCH(request: NextRequest) {
 
       // 통합 색인 알림 (Google Indexing API + IndexNow)
       if (finalSlug) {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
         notifyIndexing(`${baseUrl}/blog/${finalSlug}`, baseUrl)
           .then(r => console.log(`[blog PATCH] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
           .catch(() => {});

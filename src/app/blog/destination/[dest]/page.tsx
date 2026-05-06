@@ -6,9 +6,9 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',

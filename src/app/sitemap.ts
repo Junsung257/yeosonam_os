@@ -1,12 +1,12 @@
 import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 // Google sitemap 1파일 상한은 50,000 URL / 50MB. 아래 상한은 방어적으로 둔다.
 const HARD_LIMIT = 45000;
 
-export const revalidate = 3600; // 1시간 — sitemap 자체도 ISR
+export const revalidate = 60; // 1분 — 새 글 발행 후 빠른 sitemap 반영
 
 function safeLastModified(iso: string | null | undefined): Date {
   if (!iso) return new Date();

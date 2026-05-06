@@ -21,11 +21,13 @@ import { applyMarkdownAccents, applyHtmlAccents } from '@/lib/blog-accent';
 import LandingHero from '@/components/blog/LandingHero';
 import StickyMobileCta from '@/components/blog/StickyMobileCta';
 import DestinationCuration from '@/components/blog/DestinationCuration';
+import { ScrollReveal } from '@/components/blog/ScrollReveal';
+import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
 // 이 한 줄이 "발행 직후 첫 요청 race로 404가 캐시되는" 패턴을 구조적으로 차단한다.
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
@@ -49,7 +51,7 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
   }
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 // ── 타입 ────────────────────────────────────────────────────
 interface BlogPost {
@@ -102,13 +104,13 @@ interface RelatedPost {
 }
 
 const ANGLE_LABELS: Record<string, string> = {
-  value: '가성비',
-  emotional: '감성',
-  filial: '효도',
-  luxury: '럭셔리',
-  urgency: '긴급특가',
-  activity: '액티비티',
-  food: '미식',
+  value: '💰 가성비',
+  emotional: '🌸 감성',
+  filial: '🎁 효도',
+  luxury: '✨ 럭셔리',
+  urgency: '⚡ 긴급특가',
+  activity: '🏄 액티비티',
+  food: '🍜 미식',
 };
 
 // ── 유틸 ────────────────────────────────────────────────────
@@ -298,6 +300,34 @@ async function getCurationProductsForInfo(destination: string) {
   ];
 }
 
+// ── 이전/다음 글 (published_at 기준) ─────────────────────────
+type NavPost = { slug: string; seo_title: string | null; og_image_url: string | null; destination: string | null };
+
+async function getPrevNextPosts(
+  slug: string,
+  publishedAt: string,
+): Promise<{ prev: NavPost | null; next: NavPost | null }> {
+  if (!isSupabaseConfigured) return { prev: null, next: null };
+
+  const base = supabaseAdmin
+    .from('content_creatives')
+    .select('slug, seo_title, og_image_url, destination')
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .not('slug', 'is', null)
+    .neq('slug', slug);
+
+  const [prevRes, nextRes] = await Promise.all([
+    base.lt('published_at', publishedAt).order('published_at', { ascending: false }).limit(1),
+    base.gt('published_at', publishedAt).order('published_at', { ascending: true }).limit(1),
+  ]);
+
+  return {
+    prev: (prevRes.data?.[0] as NavPost) ?? null,
+    next: (nextRes.data?.[0] as NavPost) ?? null,
+  };
+}
+
 // ── 동적 메타데이터 ──────────────────────────────────────────
 export async function generateMetadata({
   params,
@@ -387,8 +417,8 @@ export default async function BlogDetailPage({
   const isInfoBlog = !post.product_id;
   const isLanding = !!post.landing_enabled && !!post.product_id;
 
-  // post 의존 4개 쿼리 병렬화 — 직렬 누적 RT → 1 RT (TTFB 200~400ms 단축 기대)
-  const [dki, curationProducts, relatedPosts, relatedProducts] = await Promise.all([
+  // post 의존 5개 쿼리 병렬화 — 직렬 누적 RT → 1 RT (TTFB 200~400ms 단축 기대)
+  const [dki, curationProducts, relatedPosts, relatedProducts, prevNext] = await Promise.all([
     isLanding
       ? resolveDki(
           { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
@@ -404,6 +434,7 @@ export default async function BlogDetailPage({
       : Promise.resolve([] as Awaited<ReturnType<typeof getCurationProductsForInfo>>),
     getRelatedPosts(slug, pkg?.destination, post.angle_type),
     getRelatedProducts(pkg?.id, pkg?.destination),
+    getPrevNextPosts(slug, post.published_at),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -467,6 +498,7 @@ export default async function BlogDetailPage({
   return (
     <>
       <ReadingProgress />
+      <BackToTop />
 
       {/* JSON-LD — BlogPosting · BreadcrumbList · FAQ · HowTo · TouristTrip (blog-jsonld 단일 소스) */}
       <script
@@ -800,6 +832,7 @@ export default async function BlogDetailPage({
 
         {/* 관련 글 섹션 — Jiwonnote 스타일: 흰배경 + 검정 hr 헤더 */}
         {relatedPosts.length > 0 && (
+          <ScrollReveal>
           <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
             <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
               <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
@@ -866,14 +899,61 @@ export default async function BlogDetailPage({
               </div>
             </div>
           </section>
+          </ScrollReveal>
         )}
 
-        {/* 하단 네비 */}
+        {/* 하단 네비 — 이전/다음 글 */}
         <div className="border-t bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-8 text-sm">
-            <Link href="/blog" className="font-medium text-brand hover:text-[#1B64DA]">
-              ← 블로그 목록으로
-            </Link>
+          <div className="mx-auto max-w-6xl px-4 py-8">
+            <div className="mb-5 text-sm">
+              <Link href="/blog" className="font-medium text-brand hover:text-[#1B64DA]">
+                ← 블로그 목록으로
+              </Link>
+            </div>
+            {(prevNext.prev || prevNext.next) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {prevNext.prev ? (
+                  <Link
+                    href={`/blog/${prevNext.prev.slug}`}
+                    className="group flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-5 transition hover:border-brand/30 hover:shadow-md"
+                  >
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      ← 이전 글
+                    </span>
+                    {prevNext.prev.destination && (
+                      <span className="text-xs text-slate-500">{prevNext.prev.destination}</span>
+                    )}
+                    <span className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                      {(prevNext.prev.seo_title || '여행 가이드')
+                        .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                        .trim()}
+                    </span>
+                  </Link>
+                ) : (
+                  <div />
+                )}
+                {prevNext.next ? (
+                  <Link
+                    href={`/blog/${prevNext.next.slug}`}
+                    className="group flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-5 text-right transition hover:border-brand/30 hover:shadow-md"
+                  >
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      다음 글 →
+                    </span>
+                    {prevNext.next.destination && (
+                      <span className="text-xs text-slate-500">{prevNext.next.destination}</span>
+                    )}
+                    <span className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                      {(prevNext.next.seo_title || '여행 가이드')
+                        .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                        .trim()}
+                    </span>
+                  </Link>
+                ) : (
+                  <div />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </main>

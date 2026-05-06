@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'slug가 없는 글은 재색인 불가' }, { status: 400 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
     const url = `${baseUrl}/blog/${post.slug}`;
 
     const report = await notifyIndexing(url, baseUrl);
