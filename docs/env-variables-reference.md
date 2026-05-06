@@ -61,13 +61,51 @@
 | `AI_SHADOW_MODE` | `true`이면 고객 응답 대신 점검 메시지+에스컬레이션 안내만 노출(섀도우 검증 모드) | `false` |
 | `CONCIERGE_EVAL_THRESHOLD` | 오프라인 평가(`npm run eval:concierge`) 합격선 | `0.95` |
 
+## 🤖 AI 라우팅(전체/부분 전환)
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `AI_DEFAULT_PROVIDER` | 기본 AI 제공자 (`deepseek`, `claude`, `gemini`) | `deepseek` |
+| `AI_TASK_PROVIDER_OVERRIDES` | 태스크별 제공자 오버라이드. 형식: `task:provider,task:provider` | 빈 값 |
+| `AI_TASK_MODEL_OVERRIDES` | 태스크별 모델 오버라이드. 형식: `task:model,task:model` | 빈 값 |
+| `BLOG_AI_MODEL` | 블로그 생성 모델 강제 지정(선택) | `deepseek-v4-flash` |
+
+예시:
+- `AI_DEFAULT_PROVIDER=deepseek`
+- `AI_TASK_PROVIDER_OVERRIDES=blog-generate:claude,qa-chat:deepseek`
+- `AI_TASK_MODEL_OVERRIDES=blog-generate:claude-sonnet-4-6`
+
+전환 명령:
+- 전체 DeepSeek: `npm run ai:all:deepseek`
+- 전체 Claude: `npm run ai:all:claude`
+- 블로그만 DeepSeek: `npm run ai:blog:deepseek`
+- 블로그만 Claude: `npm run ai:blog:claude`
+- 카드뉴스만 DeepSeek: `npm run ai:card-news:deepseek`
+- 카드뉴스만 Claude: `npm run ai:card-news:claude`
+- 임의 태스크/모델 지정: `npm run ai:switch -- --task qa-chat=deepseek --model qa-chat=deepseek-v4-pro`
+
+운영(프로덕션) 권장:
+- `.env` 대신 `public.system_ai_policies` 테이블을 우선 사용합니다.
+- `task='*'` 는 전역 기본값, `task='card-news'` 같은 개별 태스크가 전역보다 우선합니다.
+- 필드 예시: `provider`, `model`, `fallback_provider`, `fallback_model`, `timeout_ms`, `enabled`
+
+개발 가드:
+- `npm run lint:secrets` 를 CI/로컬 훅에 연결해 비즈니스 코드에서 `process.env.*KEY/SECRET/TOKEN` 직접 접근을 차단하세요.
+- 허용 파일은 `secret-registry`, `ai-provider-policy`, `supabase`로 제한합니다.
+
 ## ✉️ 알림 · 색인 API (선택)
 
 | 키 | 용도 |
 |---|---|
 | `INDEX_NOW_KEY` | Bing/네이버 IndexNow API 키 |
 | `GOOGLE_INDEXING_CREDENTIALS` | Google Indexing API 서비스 계정 JSON |
-| `SLACK_WEBHOOK_URL` | Slack 어드민 알림 |
+| `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
+| `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
+| `SLACK_ALERTS_WEBHOOK` | 어드민 알림 큐 critical/warning 푸시 (`admin-alerts`) |
+| `SLACK_PAYMENTS_WEBHOOK_URL` | 결제·정산 전용 (`slack-notifier`, 우선순위) |
+| `SLACK_GROUP_RFQ_WEBHOOK_URL` | 단체여행 RFQ 랜딩 문의 알림 |
+| `SLACK_CHANNEL_ID` | `slack-gap-fill` 크론이 스캔할 Slack 채널 ID (`C…`) |
+| `GOOGLE_ADS_CLIENT_ID` | Google Ads / Analytics OAuth 클라이언트 ID |
 | `REVALIDATE_SECRET` | ISR 강제 무효화 시크릿 |
 
 ## 📊 트래킹 · 광고 (선택)

@@ -1,64 +1,212 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-04T22:25:37+09:00
-- actionable_changed_files: 52
+- generated_at_kst: 2026-05-07T00:05:44+09:00
+- actionable_changed_files: 443
 - todo_markers: 0
-- areas: API 15, LIB 15, ETC 8, UI 6, APP 4, DB 3, DOCS 1
+- areas: APP 169, API 126, LIB 76, UI 59, ETC 10, DOCS 3
 
 ## 1) Actionable Changed Files
 
-- `M ` `.gitignore`
-- ` M` `docs/env-variables-reference.md`
-- ` M` `package-lock.json`
-- ` M` `package.json`
-- ` M` `public/sw.js`
+- `M ` `docs/env-variables-reference.md`
+- ` M` `docs/pending-settings-tracker.md`
+- ` M` `src/app/(customer)/products/page.tsx`
+- ` M` `src/app/admin/AdminPageClient.tsx`
+- ` M` `src/app/admin/affiliate-analytics/page.tsx`
+- ` M` `src/app/admin/affiliate-promo-report/page.tsx`
+- ` M` `src/app/admin/affiliates/AffiliatesPageClient.tsx`
+- ` M` `src/app/admin/affiliates/[id]/page.tsx`
+- ` M` `src/app/admin/affiliates/page.tsx`
+- ` M` `src/app/admin/agent-mas/page.tsx`
+- ` M` `src/app/admin/alerts/page.tsx`
+- ` M` `src/app/admin/analytics/page.tsx`
+- ` M` `src/app/admin/applications/page.tsx`
+- ` M` `src/app/admin/attractions/loading.tsx`
+- ` M` `src/app/admin/attractions/page.tsx`
+- ` M` `src/app/admin/attractions/unmatched/page.tsx`
+- ` M` `src/app/admin/blog/BlogDataFetcher.tsx`
+- ` M` `src/app/admin/blog/BlogFilterTabs.tsx`
+- ` M` `src/app/admin/blog/[id]/page.tsx`
+- ` M` `src/app/admin/blog/ads/page.tsx`
+- ` M` `src/app/admin/blog/categories/page.tsx`
+- ` M` `src/app/admin/blog/page.tsx`
+- ` M` `src/app/admin/blog/policy/page.tsx`
 - ` M` `src/app/admin/blog/queue/BlogQueueClient.tsx`
+- ` M` `src/app/admin/blog/rankings/page.tsx`
+- ` M` `src/app/admin/blog/system/page.tsx`
+- ` M` `src/app/admin/blog/topical/page.tsx`
+- ` M` `src/app/admin/blog/write/page.tsx`
+- ` M` `src/app/admin/booking-guide/page.tsx`
+- ` M` `src/app/admin/bookings/BookingsPageClient.tsx`
+- ` M` `src/app/admin/bookings/[id]/BookingDetailClient.tsx`
+- ` M` `src/app/admin/bookings/[id]/edit/EditBookingClient.tsx`
+- ` M` `src/app/admin/bookings/loading.tsx`
+- ` M` `src/app/admin/bookings/new/NewBookingFormClient.tsx`
+- ` M` `src/app/admin/competitor-prices/page.tsx`
+- ` M` `src/app/admin/concierge/page.tsx`
+- ` M` `src/app/admin/concierge/transactions/[id]/page.tsx`
+- ` M` `src/app/admin/content-analytics/page.tsx`
+- ` M` `src/app/admin/content-gaps/page.tsx`
+- ` M` `src/app/admin/content-hub/page.tsx`
+- ` M` `src/app/admin/content-queue/page.tsx`
+- ` M` `src/app/admin/control-tower/page.tsx`
+- ` M` `src/app/admin/customers/[id]/page.tsx`
+- ` M` `src/app/admin/customers/loading.tsx`
+- ` M` `src/app/admin/customers/page.tsx`
+- ` M` `src/app/admin/departing-locations/page.tsx`
+- ` M` `src/app/admin/destinations/page.tsx`
+- ` M` `src/app/admin/escalations/page.tsx`
+- ` M` `src/app/admin/extractions/corrections/page.tsx`
+- ` M` `src/app/admin/flight-alerts/page.tsx`
+- ` M` `src/app/admin/free-travel/FreeTravelPageClient.tsx`
+- ` M` `src/app/admin/free-travel/page.tsx`
+- ` M` `src/app/admin/free-travel/settlements/page.tsx`
+- ` M` `src/app/admin/gdpr/page.tsx`
+- ` M` `src/app/admin/generate/page.tsx`
+- ` M` `src/app/admin/inbox/page.tsx`
+- ` M` `src/app/admin/ir-preview/IrPreviewClient.tsx`
+- ` M` `src/app/admin/ir-preview/page.tsx`
+- ` M` `src/app/admin/jarvis/components/ActionCard.tsx`
+- ` M` `src/app/admin/jarvis/components/AgentActionsPanel.tsx`
+- ` M` `src/app/admin/jarvis/page.tsx`
+- ` M` `src/app/admin/jarvis/rag/page.tsx`
+- ` M` `src/app/admin/kakao-import/page.tsx`
+- ` M` `src/app/admin/land-operators/page.tsx`
+- ` M` `src/app/admin/land-settlements/page.tsx`
+- ` M` `src/app/admin/layout.tsx`
+- ` M` `src/app/admin/ledger/loading.tsx`
+- ` M` `src/app/admin/ledger/page.tsx`
+- ` M` `src/app/admin/loading.tsx`
+- ` M` `src/app/admin/marketing/brand-kits/page.tsx`
+- ` M` `src/app/admin/marketing/campaigns/page.tsx`
+- ` M` `src/app/admin/marketing/card-news/CardNewsListPageClient.tsx`
+- ` M` `src/app/admin/marketing/card-news/[id]/page.tsx`
+- ` M` `src/app/admin/marketing/card-news/[id]/v2/page.tsx`
+- ` M` `src/app/admin/marketing/card-news/new-html/page.tsx`
+- ` M` `src/app/admin/marketing/card-news/new/page.tsx`
+- ` M` `src/app/admin/marketing/card-news/variants/[group_id]/page.tsx`
+- ` M` `src/app/admin/marketing/card-news/variants/new/page.tsx`
+- ` M` `src/app/admin/marketing/content-hub/[cardNewsId]/page.tsx`
+- ` M` `src/app/admin/marketing/creatives/page.tsx`
+- ` M` `src/app/admin/marketing/loading.tsx`
+- ` M` `src/app/admin/marketing/page.tsx`
+- ` M` `src/app/admin/ops/page.tsx`
+- ` M` `src/app/admin/packages/PackagesPageClient.tsx`
+- ` M` `src/app/admin/packages/[id]/review/page.tsx`
+- ` M` `src/app/admin/packages/loading.tsx`
+- ` M` `src/app/admin/partner-preview/PartnerPreviewClient.tsx`
+- ` M` `src/app/admin/partner-preview/page.tsx`
+- ` M` `src/app/admin/payments/PaymentsPageClient.tsx`
+- ` M` `src/app/admin/payments/loading.tsx`
+- ` M` `src/app/admin/payments/reconcile/page.tsx`
+- ` M` `src/app/admin/platform-learning/page.tsx`
+- ` M` `src/app/admin/products/[id]/distribute/page.tsx`
+- ` M` `src/app/admin/products/assemble-free-travel/page.tsx`
+- ` M` `src/app/admin/products/from-mrt/page.tsx`
+- ` M` `src/app/admin/products/review/page.tsx`
+- ` M` `src/app/admin/products/stub/page.tsx`
+- ` M` `src/app/admin/prompts/[key]/page.tsx`
+- ` M` `src/app/admin/prompts/page.tsx`
+- ` M` `src/app/admin/qa/page.tsx`
+- ` M` `src/app/admin/reviews/page.tsx`
+- ` M` `src/app/admin/rfqs/[id]/page.tsx`
+- ` M` `src/app/admin/rfqs/page.tsx`
+- ` M` `src/app/admin/scoring/funnel/page.tsx`
+- ` M` `src/app/admin/scoring/page.tsx`
+- ` M` `src/app/admin/scoring/trends/page.tsx`
+- ` M` `src/app/admin/search-ads/page.tsx`
+- ` M` `src/app/admin/settlements/loading.tsx`
+- ` M` `src/app/admin/settlements/page.tsx`
+- ` M` `src/app/admin/tax/page.tsx`
+- ` M` `src/app/admin/tenants/[tenantId]/bot/page.tsx`
+- ` M` `src/app/admin/tenants/page.tsx`
+- ` M` `src/app/admin/terms-templates/[id]/page.tsx`
+- ` M` `src/app/admin/terms-templates/page.tsx`
+- ` M` `src/app/admin/upload/page.tsx`
+- ` M` `src/app/api/admin/ai-credits/route.ts`
+- ` M` `src/app/api/admin/b2b/keys/route.ts`
+- ` M` `src/app/api/admin/customers/masked/route.ts`
+- ` M` `src/app/api/admin/flight-alerts/[id]/route.ts`
+- ` M` `src/app/api/admin/flight-alerts/route.ts`
+- ` M` `src/app/api/admin/free-travel/reconcile/route.ts`
+- ` M` `src/app/api/admin/free-travel/unmatched/route.ts`
+- ` M` `src/app/api/admin/hitl/notify/route.ts`
+- ` M` `src/app/api/admin/hitl/takeover/route.ts`
+- ` M` `src/app/api/admin/hitl/tasks/route.ts`
+- ` M` `src/app/api/admin/invoice/parse/route.ts`
+- ` M` `src/app/api/admin/scoring/train-ltr/route.ts`
+- ` M` `src/app/api/attractions/bulk-import/route.ts`
+- ` M` `src/app/api/attractions/route.ts`
+- ` M` `src/app/api/audit-pkg-to-ir/route.ts`
+- ` M` `src/app/api/auth/refresh/route.ts`
 - ` M` `src/app/api/blog/from-card-news/route.ts`
-- ` M` `src/app/api/blog/generate/route.ts`
-- ` D` `src/app/api/bookings/[bookingId]/companions/invite/route.ts`
-- ` M` `src/app/api/card-news/[id]/render-html-to-png/route.ts`
+- ` M` `src/app/api/blog/queue/route.ts`
+- ` M` `src/app/api/booking-concierge/chat/route.ts`
+- ` M` `src/app/api/bookings/route.ts`
+- ` M` `src/app/api/campaigns/launch/route.ts`
+- ` M` `src/app/api/card-news/[id]/confirm/route.ts`
 - ` M` `src/app/api/card-news/[id]/route.ts`
-- ` M` `src/app/api/card-news/render-v2/route.ts`
+- ` M` `src/app/api/card-news/generate-html/route.ts`
+- ` M` `src/app/api/card-news/generate-variants/route.ts`
+- ` M` `src/app/api/card-news/route.ts`
+- ` M` `src/app/api/concierge/search/route.ts`
+- ` M` `src/app/api/content-factory/[cardNewsId]/publish-meta/route.ts`
+- ` M` `src/app/api/content-factory/[cardNewsId]/route.ts`
+- ` M` `src/app/api/content-hub/publish/route.ts`
+- ` M` `src/app/api/cron/ad-optimizer/route.ts`
+- ` M` `src/app/api/cron/blog-daily-summary/route.ts`
 - ` M` `src/app/api/cron/blog-publisher/route.ts`
+- ` M` `src/app/api/cron/card-news-refine/route.ts`
+- ` M` `src/app/api/cron/card-news-seasonal/route.ts`
+- ` M` `src/app/api/cron/concierge-cart-retarget/route.ts`
+- ` M` `src/app/api/cron/dlq-replay/route.ts`
+- ` M` `src/app/api/cron/embed-products/route.ts`
+- ` M` `src/app/api/cron/free-travel-plan-housekeeping/route.ts`
+- ` M` `src/app/api/cron/free-travel-retarget/route.ts`
+- ` M` `src/app/api/cron/land-operator-reliability/route.ts`
+- ` M` `src/app/api/cron/ltr-funnel-report/route.ts`
+- ` M` `src/app/api/cron/marketing-rules/route.ts`
+- ` M` `src/app/api/cron/meta-optimize/route.ts`
+- ` M` `src/app/api/cron/meta-token-refresh/route.ts`
+- ` M` `src/app/api/cron/mrt-revenue-sync/route.ts`
+- ` M` `src/app/api/cron/payment-heartbeat/route.ts`
+- ` M` `src/app/api/cron/policy-ab-compare/route.ts`
+- ` M` `src/app/api/cron/post-travel-reels/route.ts`
+- ` M` `src/app/api/cron/post-travel/route.ts`
+- ` M` `src/app/api/cron/publish-scheduled/route.ts`
+- ` M` `src/app/api/cron/rag-incremental/route.ts`
 - ` M` `src/app/api/cron/rank-tracking/route.ts`
+- ` M` `src/app/api/cron/refresh-seasonal/route.ts`
+- ` M` `src/app/api/cron/review-sentiment/route.ts`
+- ` M` `src/app/api/cron/scoring-recompute/route.ts`
+- ` M` `src/app/api/cron/serp-rank-snapshot/route.ts`
+- ` M` `src/app/api/cron/setup-new-destinations/route.ts`
+- ` M` `src/app/api/cron/slack-gap-fill/route.ts`
+- ` M` `src/app/api/cron/sync-creative-performance/route.ts`
+- ` M` `src/app/api/cron/sync-engagement/route.ts`
+- ` M` `src/app/api/cron/topical-rebuild/route.ts`
 - ` M` `src/app/api/cron/trend-topic-miner/route.ts`
+- ` M` `src/app/api/cron/unmatched-auto-resolve/route.ts`
+- ` M` `src/app/api/cron/variant-winner-decide/route.ts`
+- ` M` `src/app/api/cron/visual-baseline-monitor/route.ts`
+- ` M` `src/app/api/departing-locations/route.ts`
+- ` M` `src/app/api/free-travel/session/route.ts`
+- ` M` `src/app/api/influencer/assets/route.ts`
+- ` M` `src/app/api/influencer/dashboard/route.ts`
+- ` M` `src/app/api/influencer/links/route.ts`
+- ` M` `src/app/api/land-operators/route.ts`
+- ` M` `src/app/api/leads/route.ts`
+- ` M` `src/app/api/meta/campaigns/[id]/route.ts`
+- ` M` `src/app/api/meta/creatives/deploy/route.ts`
+- ` M` `src/app/api/meta/creatives/route.ts`
+- ` M` `src/app/api/meta/optimize/route.ts`
+- ` M` `src/app/api/meta/performance/route.ts`
+- ` M` `src/app/api/notify/alimtalk/route.ts`
+- ` M` `src/app/api/og/affiliate/route.tsx`
+- ` M` `src/app/api/ops/blog-normalize-image/route.ts`
 - ` M` `src/app/api/ops/blog-system/route.ts`
-- ` M` `src/app/api/packages/[id]/approve/route.ts`
-- ` M` `src/app/api/unmatched/suggest/route.ts`
-- ` M` `src/app/blog/[slug]/page.tsx`
-- ` M` `src/app/layout.tsx`
-- ` M` `src/app/page.tsx`
-- ` M` `src/components/KakaoMomentPixel.tsx`
-- ` M` `src/components/MetaPixel.tsx`
-- ` M` `src/components/MsClarity.tsx`
-- ` M` `src/components/customer/HomeHeroSearchCluster.tsx`
-- ` M` `src/lib/agent-action-executor.ts`
-- ` M` `src/lib/blog-cta.ts`
-- ` M` `src/lib/blog-jsonld.ts`
-- ` M` `src/lib/card-news-render-readiness.ts`
-- ` M` `src/lib/content-pipeline/blog-body.ts`
-- ` M` `src/lib/programmatic-seo.ts`
-- ` M` `src/prompts/blog/style-guide.ts`
-- ` M` `src/types/supabase-database.generated.ts`
-- ` M` `vercel.json`
-- `??` `scripts/copy-partytown-lib.cjs`
-- `??` `src/app/api/bookings/[id]/companions/`
-- `??` `src/app/api/cron/serp-rank-snapshot/`
-- `??` `src/app/api/ops/blog-normalize-image/`
-- `??` `src/components/PartytownInit.tsx`
-- `??` `src/components/customer/HomeHeroUrgencyStrip.tsx`
-- `??` `src/lib/blog-chain-of-density.ts`
-- `??` `src/lib/blog-image-normalize.ts`
-- `??` `src/lib/blog-review-quotes.ts`
-- `??` `src/lib/blog-search-intent.ts`
-- `??` `src/lib/blog-season-publish.ts`
-- `??` `src/lib/card-news-slide-urls.ts`
-- `??` `src/lib/marketing-osmu.ts`
-- `??` `src/lib/naver-blog-export.ts`
-- `??` `src/lib/third-party-script-type.ts`
-- `??` `supabase/migrations/20260504240000_leads_utm_term.sql`
-- `??` `supabase/migrations/20260504250000_keyword_pool_blog_seo.sql`
-- `??` `supabase/migrations/20260504251000_serp_rank_marketing_osmu.sql`
+- ` M` `src/app/api/ops/console-links/route.ts`
+- ` M` `src/app/api/ops/cron-health/route.ts`
+- ` M` `src/app/api/orchestrator/auto-publish/route.ts`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -66,16 +214,36 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` D` `src/app/api/bookings/[bookingId]/companions/invite/route.ts`
-- [ ] P0 `??` `src/app/api/bookings/[id]/companions/`
-- [ ] P1 ` M` `src/app/api/cron/blog-publisher/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/rank-tracking/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/trend-topic-miner/route.ts`
-- [ ] P1 `??` `src/app/api/cron/serp-rank-snapshot/`
-- [ ] P1 ` M` `src/types/supabase-database.generated.ts`
-- [ ] P1 `??` `supabase/migrations/20260504240000_leads_utm_term.sql`
-- [ ] P1 `??` `supabase/migrations/20260504250000_keyword_pool_blog_seo.sql`
-- [ ] P1 `??` `supabase/migrations/20260504251000_serp_rank_marketing_osmu.sql`
+- [ ] P0 ` M` `src/components/admin/BookingGuideTemplate.tsx`
+- [ ] P0 ` M` `src/components/affiliate/CoBrandFooter.tsx`
+- [ ] P0 ` M` `src/components/affiliate/Leaderboard.tsx`
+- [ ] P0 ` M` `src/components/customer/AffiliateAttributionBanner.tsx`
+- [ ] P0 ` M` `src/app/admin/booking-guide/page.tsx`
+- [ ] P0 ` M` `src/app/admin/bookings/BookingsPageClient.tsx`
+- [ ] P0 ` M` `src/app/admin/bookings/[id]/BookingDetailClient.tsx`
+- [ ] P0 ` M` `src/app/admin/bookings/[id]/edit/EditBookingClient.tsx`
+- [ ] P0 ` M` `src/app/admin/bookings/loading.tsx`
+- [ ] P0 ` M` `src/app/admin/bookings/new/NewBookingFormClient.tsx`
+- [ ] P0 ` M` `src/app/admin/ledger/loading.tsx`
+- [ ] P0 ` M` `src/app/admin/ledger/page.tsx`
+- [ ] P0 ` M` `src/app/admin/payments/PaymentsPageClient.tsx`
+- [ ] P0 ` M` `src/app/admin/payments/loading.tsx`
+- [ ] P0 ` M` `src/app/admin/payments/reconcile/page.tsx`
+- [ ] P0 ` M` `src/app/api/auth/refresh/route.ts`
+- [ ] P0 ` M` `src/app/api/booking-concierge/chat/route.ts`
+- [ ] P0 ` M` `src/app/api/bookings/route.ts`
+- [ ] P0 ` M` `src/app/review/[booking_id]/ReviewForm.tsx`
+- [ ] P0 ` M` `src/app/review/[booking_id]/page.tsx`
+- [ ] P0 ` M` `src/lib/booking-automation-policy.ts`
+- [ ] P0 ` M` `src/lib/booking-portal-session.ts`
+- [ ] P0 `??` `src/app/api/auth/google-callback/`
+- [ ] P0 `??` `src/app/api/auth/google-oauth-start/`
+- [ ] P0 `??` `src/app/api/auth/meta-callback/`
+- [ ] P0 `??` `src/app/api/auth/meta-oauth-start/`
+- [ ] P0 `??` `src/app/api/auth/naver-callback/`
+- [ ] P0 `??` `src/app/api/auth/naver-oauth-start/`
+- [ ] P1 ` M` `src/app/admin/affiliate-analytics/page.tsx`
+- [ ] P1 ` M` `src/app/admin/affiliate-promo-report/page.tsx`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

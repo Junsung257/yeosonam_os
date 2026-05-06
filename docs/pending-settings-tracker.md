@@ -6,13 +6,6 @@
 
 ---
 
-## 🗄 DB 마이그레이션
-> `mcp__supabase__apply_migration` 으로 자동 실행 가능
-
-- 🤖 `db/blog_autopublish_v1.sql` 적용
-- 🤖 `db/blog_ad_integration_v1.sql` 적용
-- 🤖 `db/blog_featured_pillar_v1.sql` 적용
-
 ---
 
 ## 🔑 환경변수 — 미설정 (Vercel Production)
@@ -46,6 +39,20 @@
 - 🔑 `META_AD_ACCOUNT_ID` — Meta 광고 계정 ID
 - 🔑 `META_PAGE_ID` — Meta 페이지 ID
 
+### Session 2/3: 멀티테넌트 OAuth + 마케팅 파이프라인
+- 🔑 `GOOGLE_ADS_CLIENT_ID` — Google Cloud Console → OAuth 2.0 클라이언트 ID (Ads + Analytics scope)
+- 🔑 `GOOGLE_ADS_CLIENT_SECRET` — Google OAuth 앱 시크릿
+- 🔑 `META_APP_ID` — Meta 앱 ID (기존 `META_APP_SECRET`과 페어, developers.facebook.com에서 확인)
+- 🔑 `RESEND_FROM_EMAIL` — 리타겟 이메일 발신 주소 (예: noreply@yeosonam.com, Resend에서 도메인 인증 필요)
+- 🔑 `OAUTH_STATE_SECRET` — OAuth CSRF state HMAC 서명 전용 시크릿 (CRON_SECRET과 분리, 32자 이상 랜덤 문자열)
+
+### Sprint 2-A (Naver OAuth) + Sprint 4-B (TossPayments) + Inngest
+- 🔑 `NAVER_CLIENT_ID` — 네이버 개발자센터 > 애플리케이션 ID (블로그 API 스코프)
+- 🔑 `NAVER_CLIENT_SECRET` — 네이버 개발자센터 > Client Secret
+- 🔑 `TOSS_SECRET_KEY` — TossPayments 대시보드 > 개발 > API 키 > 시크릿 키
+- 🔑 `INNGEST_EVENT_KEY` — Inngest 대시보드 > 앱 > Event Key
+- 🔑 `INNGEST_SIGNING_KEY` — Inngest 대시보드 > 앱 > Signing Key
+
 ---
 
 ## ⚙️ 광고/발행 토글 — 대표님 승인 후 dry-run→실운영 전환
@@ -60,14 +67,6 @@
 
 ---
 
-## 🔒 보안 · RLS 확인
-> `mcp__supabase__execute_sql` 로 확인 가능
-
-- 🤖 `ad_landing_mappings` RLS 정책 `allow_all_alm` 활성 여부 확인
-- 🤖 `/api/reviews` POST `booking_id` 검증 로직 존재 확인
-
----
-
 ## ⏰ Vercel Cron 확인
 > Vercel Dashboard > Project > Settings > Crons 에서 수동 확인
 
@@ -79,15 +78,6 @@
   - `/api/cron/marketing-rules`
   - `/api/cron/booking-attribution-audit`
   - 기타 9개 기존 크론 (meta-optimize, auto-archive, post-travel 등)
-
----
-
-## 🌐 라우팅 확인
-> Grep + 코드 확인으로 자동 가능
-
-- 🤖 `middleware.ts` PUBLIC_PATHS에 `/blog`, `/destinations`, `/review`, `/api/reviews`, `/api/cron/blog-*` 포함 확인
-- 🤖 `robots.txt` (또는 `/robots.ts`) 에 `/destinations` allow 포함 확인
-- 🤖 `sitemap.xml` (또는 `/sitemap.ts`) 에 `/destinations`, `/destinations/[city]` 포함 확인
 
 ---
 
