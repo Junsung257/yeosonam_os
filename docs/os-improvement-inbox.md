@@ -1,135 +1,13 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-07T00:19:05+09:00
-- actionable_changed_files: 123
+- generated_at_kst: 2026-05-07T00:22:46+09:00
+- actionable_changed_files: 0
 - todo_markers: 0
-- areas: LIB 63, UI 54, ETC 6
+- areas: 
 
 ## 1) Actionable Changed Files
 
-- `M ` `.github/workflows/baseline-refresh.yml`
-- ` M` `src/components/AdminLayout.tsx`
-- ` M` `src/components/ConsentBanner.tsx`
-- ` M` `src/components/admin/AdPerformanceDashboard.tsx`
-- ` M` `src/components/admin/AnalyticsDashboard.tsx`
-- ` M` `src/components/admin/ApprovalModal.tsx`
-- ` M` `src/components/admin/BookingGuideTemplate.tsx`
-- ` M` `src/components/admin/CampaignLinkBuilder.tsx`
-- ` M` `src/components/admin/CardNewsEditor.tsx`
-- ` M` `src/components/admin/CardNewsStudio.tsx`
-- ` M` `src/components/admin/InstagramPublishModal.tsx`
-- ` M` `src/components/admin/KPIBasisToggle.tsx`
-- ` M` `src/components/admin/MarketingPromptGenerator.tsx`
-- ` M` `src/components/admin/MetaAutoPublisher.tsx`
-- ` M` `src/components/admin/PosterStudio.tsx`
-- ` M` `src/components/admin/SlideCanvas.tsx`
-- ` M` `src/components/admin/SmartCombobox.tsx`
-- ` M` `src/components/admin/YeosonamA4Template.tsx`
-- ` M` `src/components/admin/mobile/MobileActionSheet.tsx`
-- ` M` `src/components/admin/mobile/MobileBottomTab.tsx`
-- ` M` `src/components/admin/mobile/MobileCard.tsx`
-- ` M` `src/components/admin/mobile/MobileHeader.tsx`
-- ` M` `src/components/admin/mobile/MobileStatCard.tsx`
-- ` M` `src/components/admin/mobile/MobileStatusBadge.tsx`
-- ` M` `src/components/admin/ui/DataTable.tsx`
-- ` M` `src/components/affiliate/CoBrandFooter.tsx`
-- ` M` `src/components/affiliate/Leaderboard.tsx`
-- ` M` `src/components/blog/AuthorBox.tsx`
-- ` M` `src/components/blog/BlogCitations.tsx`
-- ` M` `src/components/blog/DestinationCuration.tsx`
-- ` M` `src/components/blog/InlineRelated.tsx`
-- ` M` `src/components/blog/ReadingProgress.tsx`
-- ` M` `src/components/blog/ShareButtons.tsx`
-- ` M` `src/components/blog/TldrBox.tsx`
-- ` M` `src/components/customer/AffiliateAttributionBanner.tsx`
-- ` M` `src/components/customer/CategoryIcons.tsx`
-- ` M` `src/components/customer/DepartureCalendar.tsx`
-- ` M` `src/components/customer/DestinationPackagesSection.tsx`
-- ` M` `src/components/customer/GlobalNav.tsx`
-- ` M` `src/components/customer/HeroBanner.tsx`
-- ` M` `src/components/customer/HomeHeroSearchCluster.tsx`
-- ` M` `src/components/customer/HomeHeroUrgencyStrip.tsx`
-- ` M` `src/components/customer/PackageCard.tsx`
-- ` M` `src/components/customer/PackingTipsCard.tsx`
-- ` M` `src/components/customer/PairwiseCompareModal.tsx`
-- ` M` `src/components/customer/RankingSection.tsx`
-- ` M` `src/components/customer/RecommendationCard.tsx`
-- ` M` `src/components/customer/SafeRemoteImage.tsx`
-- ` M` `src/components/customer/SearchBar.tsx`
-- ` M` `src/components/customer/SectionHeader.tsx`
-- ` M` `src/components/customer/TimezoneCard.tsx`
-- ` M` `src/components/customer/TravelFitnessCard.tsx`
-- ` M` `src/components/lp/LeadBottomSheet.tsx`
-- ` M` `src/components/ui/Chip.tsx`
-- ` M` `src/hooks/usePushSubscription.ts`
-- ` M` `src/lib/ad-controller.ts`
-- ` M` `src/lib/admin-alerts.ts`
-- ` M` `src/lib/admin-guard.ts`
-- ` M` `src/lib/affiliate/session.ts`
-- ` M` `src/lib/agent-action-executor.ts`
-- ` M` `src/lib/ai.ts`
-- ` M` `src/lib/blog-ai-caller.ts`
-- ` M` `src/lib/blog-readability.ts`
-- ` M` `src/lib/booking-automation-policy.ts`
-- ` M` `src/lib/booking-portal-session.ts`
-- ` M` `src/lib/card-news-html/critic.ts`
-- ` M` `src/lib/card-news-html/generate.ts`
-- ` M` `src/lib/card-news-html/winner-detector.ts`
-- ` M` `src/lib/card-news-slide-urls.ts`
-- ` M` `src/lib/content-pipeline/publishers/meta-ads-publisher.ts`
-- ` M` `src/lib/creative-engine/sync-performance.ts`
-- ` M` `src/lib/cron-auth.ts`
-- ` M` `src/lib/db/affiliate.ts`
-- ` M` `src/lib/debug-auth-session-report.ts`
-- ` M` `src/lib/destination-setup.ts`
-- ` M` `src/lib/encryption.test.ts`
-- ` M` `src/lib/encryption.ts`
-- ` M` `src/lib/exchange-rate.ts`
-- ` M` `src/lib/guidebook-token.ts`
-- ` M` `src/lib/indexing.ts`
-- ` M` `src/lib/instagram-publisher.ts`
-- ` M` `src/lib/jarvis/agents/affiliate.ts`
-- ` M` `src/lib/jarvis/claude-router.ts`
-- ` M` `src/lib/jarvis/deepseek-agent-loop-v2.ts`
-- ` M` `src/lib/jarvis/deepseek-agent-loop.ts`
-- ` M` `src/lib/jarvis/rag/indexer.ts`
-- ` M` `src/lib/jarvis/rag/retriever.ts`
-- ` M` `src/lib/kakao.ts`
-- ` M` `src/lib/keyword-research.ts`
-- ` M` `src/lib/ktkg-extractor.ts`
-- ` M` `src/lib/llm-cross-validator.ts`
-- ` M` `src/lib/llm-gateway.ts`
-- ` M` `src/lib/map-travel-package-to-lp.test.ts`
-- ` M` `src/lib/meta-api.ts`
-- ` M` `src/lib/mrt-partner-api.ts`
-- ` M` `src/lib/naver-blog-export.ts`
-- ` M` `src/lib/normalize-with-llm.ts`
-- ` M` `src/lib/notification-adapter.ts`
-- ` M` `src/lib/parser.ts`
-- ` M` `src/lib/parser/extracted-field-repair.ts`
-- ` M` `src/lib/parser/upload-consistency-judge.ts`
-- ` M` `src/lib/passenger-extractor.ts`
-- ` M` `src/lib/pexels.ts`
-- ` M` `src/lib/push-dispatcher.ts`
-- ` M` `src/lib/rfq-ai.ts`
-- ` M` `src/lib/roas-calculator.ts`
-- ` M` `src/lib/search-ads-api.ts`
-- ` M` `src/lib/seasonal-signals.ts`
-- ` M` `src/lib/serp-analyzer.ts`
-- ` M` `src/lib/session-guard.ts`
-- ` M` `src/lib/slack-alert.ts`
-- ` M` `src/lib/slack-notifier.ts`
-- ` M` `src/lib/standard-terms.ts`
-- ` M` `src/lib/submitPipeline.ts`
-- ` M` `src/lib/supabase-jwt-verify.ts`
-- ` M` `src/lib/supabase.ts`
-- ` M` `src/lib/threads-publisher.ts`
-- ` M` `src/lib/travel-providers/mrt.ts`
-- ` M` `src/middleware.ts`
-- ` M` `vercel.json`
-- `??` `public/sw.js`
-- `??` `public/swe-worker-ab00d3c7d2d59769.js`
-- `??` `src/components/customer/BottomTabBar.tsx`
+- 없음
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -137,19 +15,7 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` M` `src/components/admin/BookingGuideTemplate.tsx`
-- [ ] P0 ` M` `src/components/affiliate/CoBrandFooter.tsx`
-- [ ] P0 ` M` `src/components/affiliate/Leaderboard.tsx`
-- [ ] P0 ` M` `src/components/customer/AffiliateAttributionBanner.tsx`
-- [ ] P0 ` M` `src/lib/booking-automation-policy.ts`
-- [ ] P0 ` M` `src/lib/booking-portal-session.ts`
-- [ ] P1 ` M` `src/lib/affiliate/session.ts`
-- [ ] P1 ` M` `src/lib/db/affiliate.ts`
-- [ ] P1 ` M` `src/lib/jarvis/agents/affiliate.ts`
-- [ ] P1 ` M` `src/lib/kakao.ts`
-- [ ] P1 ` M` `src/lib/supabase-jwt-verify.ts`
-- [ ] P1 ` M` `src/lib/supabase.ts`
-- [ ] P1 ` M` `src/middleware.ts`
+- 없음
 
 ## 4) Next Actions (Manual Prioritization Queue)
 
