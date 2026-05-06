@@ -314,6 +314,12 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
             <time>{new Date(post.published_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })}</time>
             <span className="text-[#D1D5DB]">·</span>
             <span>📖 {readMin}분 읽기</span>
+            {post.view_count && post.view_count >= 100 && (
+              <>
+                <span className="text-[#D1D5DB]">·</span>
+                <span>👁 {post.view_count >= 1000 ? `${(post.view_count / 1000).toFixed(1)}k` : post.view_count}</span>
+              </>
+            )}
           </div>
           {price && (
             <span className="text-micro text-text-secondary tabular-nums">
@@ -338,10 +344,10 @@ export default async function BlogListPage({
   const { featured, posts, total, destinations } = await getBlogData(page, { destination, angle });
   const totalPages = Math.ceil(total / PER_PAGE);
 
-  const buildHref = (override: Partial<{ page: number; destination: string; angle: string }>) => {
+  const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
     const next = new URLSearchParams();
     if (override.page && override.page !== 1) next.set('page', String(override.page));
-    const d = override.destination ?? destination;
+    const d = 'destination' in override ? override.destination : destination;
     const a = override.angle ?? angle;
     if (d) next.set('destination', d);
     if (a) next.set('angle', a);
@@ -417,10 +423,11 @@ export default async function BlogListPage({
           </div>
         </header>
 
-        {/* ── 필터 — 스타일 단일 행 (매거진 에디토리얼 기준) ── */}
+        {/* ── 필터 바 — 스타일·목적지 2행 ── */}
         <div className="border-b border-admin-border bg-white sticky top-14 md:top-16 z-20">
-          <div className="mx-auto max-w-6xl px-4 py-3">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <div className="mx-auto max-w-6xl px-4">
+            {/* 1행: 스타일 필터 */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2.5 border-b border-admin-border/50">
               <Link href="/blog" className={`${chipBase} ${!destination && !angle ? chipActive : chipIdle}`}>
                 전체
               </Link>
@@ -433,15 +440,27 @@ export default async function BlogListPage({
                   {c.label}
                 </Link>
               ))}
-              {/* 목적지 필터는 드롭다운으로 분리 — 아래 '목적지별 완벽 가이드' 섹션이 대체 */}
+            </div>
+            {/* 2행: 목적지 필터 */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2.5">
+              <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 pr-1">여행지</span>
               {destination && (
-                <span className={`${chipBase} ${chipActive} flex items-center gap-1.5`}>
-                  {destination}
-                  <Link href="/blog" aria-label="목적지 필터 해제" className="opacity-60 hover:opacity-100">
+                <span className={`${chipBase} ${chipActive} flex items-center gap-1.5 text-[12px]`}>
+                  📍 {destination}
+                  <Link href={buildHref({ destination: null, page: 1 })} aria-label="목적지 필터 해제" className="opacity-70 hover:opacity-100 font-bold">
                     ×
                   </Link>
                 </span>
               )}
+              {destinations.slice(0, 12).filter(d => d.destination !== destination).map(d => (
+                <Link
+                  key={d.destination}
+                  href={buildHref({ destination: d.destination, page: 1 })}
+                  className={`${chipBase} ${chipIdle} text-[12px]`}
+                >
+                  {d.destination}
+                </Link>
+              ))}
             </div>
           </div>
         </div>

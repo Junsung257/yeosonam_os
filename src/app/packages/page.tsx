@@ -54,7 +54,7 @@ const PACKAGE_FIELDS = `
   id, title, destination, country, category, product_type, trip_style,
   departure_days, departure_airport, airline, min_participants, ticketing_deadline,
   price, price_tiers, price_list, price_dates, status, created_at,
-  product_tags, product_highlights, product_summary, itinerary_data,
+  product_tags, product_highlights, product_summary,
   internal_code, is_airtel, display_title, hero_tagline, duration, nights,
   avg_rating, review_count,
   seats_held, seats_confirmed,
@@ -161,7 +161,7 @@ export default async function PackagesPage({
   // 관광지 사진 서버사이드 fetch
   // Next 데이터 캐시(약 2MB) 초과를 피하기 위해 payload 상한을 둔다.
   // 기존 4000건은 photos JSON 포함 시 캐시 실패를 유발할 수 있어, 목적지 힌트 기반으로 축소 조회한다.
-  const attractionLimit = destination || q ? 420 : 650;
+  const attractionLimit = destination || q ? 180 : 240;
   let attractionQuery = sb
     .from('attractions')
     .select('name, photos, country, region, mention_count')

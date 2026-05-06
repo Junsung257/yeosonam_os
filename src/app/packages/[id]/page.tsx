@@ -10,6 +10,17 @@ import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } fro
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 
 export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음) // refreshed 2026-04-22
+const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
+
+const DETAIL_FIELDS = `
+  id, title, destination, duration, nights, price, airline, departure_airport, departure_days,
+  min_participants, min_people, ticketing_deadline, product_type,
+  price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
+  product_highlights, customer_notes, internal_notes, notices_parsed, itinerary_data,
+  display_title, hero_tagline, product_summary, thumbnail_urls, is_airtel,
+  land_operator_id, audit_status,
+  products(internal_code, display_name, departure_region)
+`;
 
 // SEO: 동적 메타데이터
 export async function generateMetadata({
@@ -48,7 +59,7 @@ export default async function PackageDetailPage({
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
   const pkgResult = await sb.from('travel_packages')
-    .select('*, products(internal_code, display_name, departure_region)')
+    .select(DETAIL_FIELDS)
     .eq('id', id)
     .single();
 
@@ -76,7 +87,7 @@ export default async function PackageDetailPage({
     matchQuery = matchQuery.or(`${regionClauses},${destCountryClause},${countryClauses}`);
   }
 
-  const matchResult = await matchQuery.limit(3000);
+  const matchResult = await matchQuery.limit(1200);
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
@@ -303,23 +314,61 @@ export default async function PackageDetailPage({
   }
 
   // ── 사회적 증거 카운트 (Cialdini Principle 4) ───────────────────────
-  // destination 단위 30일 인기도 — bookings + signals (관심 트래픽). 임계값 미만은 노출 X (false signal 방지)
-  let socialProof: { bookings: number; interest: number } = { bookings: 0, interest: 0 };
+  // destination 단위 30일 인기도 + 오늘 조회수 + 다음 출발일 예약 현황
+  let socialProof: {
+    bookings: number;
+    interest: number;
+    todayViews: number;
+    nextDepartureBookings: number;
+    nextDepartureDate: string | null;
+  } = { bookings: 0, interest: 0, todayViews: 0, nextDepartureBookings: 0, nextDepartureDate: null };
+
   if (pkg?.destination) {
-    const since = new Date(Date.now() - 30 * 86400000).toISOString();
-    const [bk, sg] = await Promise.all([
+    const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
+    const since24h = new Date(Date.now() - 86400000).toISOString();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const destPkgIds = (await sb.from('travel_packages').select('id').eq('destination', pkg.destination))
+      .data?.map((p: { id: string }) => p.id) ?? [];
+
+    // 가장 가까운 미래 출발일 탐색 (price_dates 또는 price_tiers에서)
+    const pd = (pkg as { price_dates?: { date: string }[] }).price_dates ?? [];
+    const pt = (pkg as { price_tiers?: { departure_dates?: string[] }[] }).price_tiers ?? [];
+    const allDates: string[] = [];
+    for (const d of pd) if (d?.date) allDates.push(d.date);
+    for (const t of pt) for (const d of (t.departure_dates ?? [])) if (d) allDates.push(d);
+    const nextDate = allDates.filter(d => d >= todayStr).sort()[0] ?? null;
+
+    const [bk, sg, tv, nb] = await Promise.all([
+      // 30일 예약 (destination 단위)
       sb.from('bookings').select('id', { count: 'exact', head: true })
-        .eq('status', 'confirmed').gte('created_at', since)
-        .in('package_id',
-          (await sb.from('travel_packages').select('id').eq('destination', pkg.destination)).data?.map((p: { id: string }) => p.id) ?? []
-        ),
+        .in('status', ['confirmed', 'waiting_balance', 'fully_paid'])
+        .gte('created_at', since30d)
+        .in('package_id', destPkgIds),
+      // 30일 조회 신호
       sb.from('package_score_signals').select('id', { count: 'exact', head: true })
-        .gte('created_at', since)
-        .in('package_id',
-          (await sb.from('travel_packages').select('id').eq('destination', pkg.destination)).data?.map((p: { id: string }) => p.id) ?? []
-        ),
+        .gte('created_at', since30d)
+        .in('package_id', destPkgIds),
+      // 오늘 이 상품 조회수 (24h)
+      sb.from('package_score_signals').select('id', { count: 'exact', head: true })
+        .gte('created_at', since24h)
+        .eq('package_id', id),
+      // 다음 출발일 현재 예약자 수
+      nextDate
+        ? sb.from('bookings').select('id', { count: 'exact', head: true })
+            .eq('package_id', id)
+            .eq('departure_date', nextDate)
+            .in('status', ['confirmed', 'deposit_paid', 'waiting_balance', 'fully_paid'])
+        : Promise.resolve({ count: 0 }),
     ]);
-    socialProof = { bookings: bk.count ?? 0, interest: sg.count ?? 0 };
+
+    socialProof = {
+      bookings: bk.count ?? 0,
+      interest: sg.count ?? 0,
+      todayViews: tv.count ?? 0,
+      nextDepartureBookings: (nb as { count: number | null }).count ?? 0,
+      nextDepartureDate: nextDate,
+    };
   }
 
   // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기

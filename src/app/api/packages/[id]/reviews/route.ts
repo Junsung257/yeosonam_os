@@ -51,11 +51,12 @@ export async function POST(
   // 여기서는 reviewer_name 이 있으면 dummy customer 조회 또는 생성.
   let customerId: string | null = null;
   if (reviewer_name) {
+    // phone을 reviewer별 고유 sentinel로 사용 (customers.phone UNIQUE 제약 대응)
+    const seededPhone = `SEEDED_${reviewer_name.replace(/\s+/g, '_').slice(0, 50)}`;
     const { data: existing } = await supabaseAdmin
       .from('customers')
       .select('id')
-      .eq('name', reviewer_name)
-      .eq('phone', 'SEEDED')
+      .eq('phone', seededPhone)
       .limit(1);
 
     if (existing && existing.length > 0) {
@@ -63,7 +64,7 @@ export async function POST(
     } else {
       const { data: created } = await supabaseAdmin
         .from('customers')
-        .insert({ name: reviewer_name, phone: 'SEEDED', email: null })
+        .insert({ name: reviewer_name, phone: seededPhone, email: null })
         .select('id')
         .single();
       customerId = created?.id ?? null;

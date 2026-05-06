@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin, getCardNewsById } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import { insertBlogTopicQueue } from '@/lib/card-news/blog-topic-queue';
 
 function resolveAppOriginForInternalFetch(): string {
   const u = getSecret('NEXT_PUBLIC_APP_URL') || getSecret('NEXT_PUBLIC_BASE_URL');
@@ -59,6 +60,19 @@ export async function PATCH(
     }
     patch.updated_at = new Date().toISOString();
 
+    // CONFIRMED 요청 시: renders 존재 여부로 게이팅
+    // renders 없음 → RENDERING으로 전환, render-v2 kick → render 완료 후 자동 CONFIRMED
+    // renders 있음 → 바로 CONFIRMED 허용
+    if (patch.status === 'CONFIRMED') {
+      const { count: renderCount } = await supabaseAdmin
+        .from('card_news_renders')
+        .select('id', { count: 'exact', head: true })
+        .eq('card_news_id', params.id);
+      if (!renderCount || renderCount === 0) {
+        patch.status = 'RENDERING';
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('card_news')
       .update(patch as never)
@@ -67,76 +81,40 @@ export async function PATCH(
       .single();
     if (error) throw error;
 
-    // CONFIRMED 전환 시: PNG 자동 렌더 트리거(필요 시) + 블로그 큐 insert
+    // RENDERING 전환 시: 렌더 kick (render-v2 완료 후 자동 CONFIRMED + blog_topic_queue 처리)
+    if (patch.status === 'RENDERING' && data) {
+      const cn = data as Record<string, unknown>;
+      const isHtml =
+        cn.template_family === 'html' &&
+        typeof cn.html_generated === 'string' &&
+        (cn.html_generated as string).trim().length > 0;
+      const hasSlides =
+        Array.isArray(cn.slides) && (cn.slides as unknown[]).length > 0;
+
+      const origin = resolveAppOriginForInternalFetch();
+      if (isHtml) {
+        fetch(`${origin}/api/card-news/${params.id}/render-html-to-png`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }).catch((e) =>
+          console.warn(`[CardNews Hook] render-html-to-png 트리거 실패 ${params.id}:`, e),
+        );
+      } else if (hasSlides) {
+        fetch(`${origin}/api/card-news/render-v2`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ card_news_id: params.id, formats: ['1x1'] }),
+        }).catch((e) =>
+          console.warn(`[CardNews Hook] render-v2 트리거 실패 ${params.id}:`, e),
+        );
+      }
+    }
+
+    // CONFIRMED 전환 시 (renders 이미 존재하는 경우): blog_topic_queue 직접 insert
     if (patch.status === 'CONFIRMED' && data) {
       try {
-        const { count } = await supabaseAdmin
-          .from('blog_topic_queue')
-          .select('id', { count: 'exact', head: true })
-          .eq('card_news_id', params.id)
-          .neq('status', 'failed');
-        if (count === 0) {
-          const cn = data as Record<string, unknown>;
-          const hasColUrls =
-            Array.isArray(cn.slide_image_urls) && (cn.slide_image_urls as string[]).length > 0;
-
-          const isHtml =
-            cn.template_family === 'html' &&
-            typeof cn.html_generated === 'string' &&
-            (cn.html_generated as string).trim().length > 0;
-          const slides = cn.slides as unknown[] | undefined;
-          const hasSlides = Array.isArray(slides) && slides.length > 0;
-
-          let autoRenderKicked = false;
-          const origin = resolveAppOriginForInternalFetch();
-          if (!hasColUrls && isHtml) {
-            autoRenderKicked = true;
-            fetch(`${origin}/api/card-news/${params.id}/render-html-to-png`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({}),
-            }).catch((e) =>
-              console.warn(`[CardNews Hook] render-html-to-png 트리거 실패 ${params.id}:`, e),
-            );
-          } else if (!hasColUrls && hasSlides) {
-            autoRenderKicked = true;
-            fetch(`${origin}/api/card-news/render-v2`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ card_news_id: params.id, formats: ['1x1'] }),
-            }).catch((e) => console.warn(`[CardNews Hook] render-v2 트리거 실패 ${params.id}:`, e));
-          }
-
-          const { getEarliestBlogPublishEligibleMs } = await import('@/lib/card-news-render-readiness');
-          const eligibleMs = await getEarliestBlogPublishEligibleMs(params.id);
-          const minScheduleMs = Date.now() + 30 * 60 * 1000;
-          const rawGrace = process.env.CARD_NEWS_CONFIRM_RENDER_GRACE_MS;
-          const graceParsed = rawGrace ? parseInt(rawGrace, 10) : NaN;
-          const renderGraceMs =
-            Number.isFinite(graceParsed) && graceParsed >= 0 ? graceParsed : 20 * 60 * 1000;
-          const renderGraceAt = Date.now() + renderGraceMs;
-          const targetAt = new Date(
-            autoRenderKicked
-              ? Math.max(minScheduleMs, eligibleMs, renderGraceAt)
-              : Math.max(minScheduleMs, eligibleMs),
-          );
-
-          await supabaseAdmin.from('blog_topic_queue').insert({
-            source: 'card_news',
-            card_news_id: params.id,
-            topic: (cn.title as string) || '카드뉴스 블로그',
-            priority: 90,
-            category: 'card_news',
-            primary_keyword: ((cn.title as string) || '').substring(0, 30),
-            keyword_tier: 'mid',
-            target_publish_at: targetAt.toISOString(),
-            status: 'queued',
-            meta: {
-              auto_queued_by: 'card_news_confirm_hook',
-              auto_render_kicked: autoRenderKicked,
-            },
-          });
-        }
+        await insertBlogTopicQueue(params.id, 'card_news_confirm_hook');
       } catch (hookErr) {
         console.error(`[CardNews Hook] blog_topic_queue insert 실패 card_news_id=${params.id}:`, hookErr);
       }

@@ -29,8 +29,24 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { renderSlideV2, FORMATS } from '@/lib/card-news/v2/render-v2';
+import { insertBlogTopicQueue } from '@/lib/card-news/blog-topic-queue';
 import type { FormatKey, SlideV2 } from '@/lib/card-news/v2/types';
 import type { TemplateFamily } from '@/lib/validators/content-brief';
+
+// Vercel warm instance 재사용: 폰트 버퍼를 모듈 레벨에서 캐싱
+let _fontCache: { regular: ArrayBuffer; bold: ArrayBuffer } | null = null;
+
+async function loadFonts(): Promise<{ regular: ArrayBuffer; bold: ArrayBuffer }> {
+  if (_fontCache) return _fontCache;
+  const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
+  const boldPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Bold.otf');
+  const [reg, bold] = await Promise.all([readFile(regPath), readFile(boldPath)]);
+  _fontCache = {
+    regular: reg.buffer.slice(reg.byteOffset, reg.byteOffset + reg.byteLength) as ArrayBuffer,
+    bold: bold.buffer.slice(bold.byteOffset, bold.byteOffset + bold.byteLength) as ArrayBuffer,
+  };
+  return _fontCache;
+}
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -76,15 +92,13 @@ export async function POST(request: NextRequest) {
       body.family ?? (cn.template_family as TemplateFamily | undefined) ?? undefined;
     const templateVersion = (cn.template_version as string | undefined) ?? 'v2';
 
-    // 2. 폰트 로드 (모든 슬라이드 공유)
-    let fontRegular: ArrayBuffer | null = null;
-    let fontBold: ArrayBuffer | null = null;
+    // 2. 폰트 로드 (모듈 캐시 사용 — warm instance 재사용 시 I/O 없음)
+    let fontRegular: ArrayBuffer;
+    let fontBold: ArrayBuffer;
     try {
-      const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
-      const boldPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Bold.otf');
-      const [reg, bold] = await Promise.all([readFile(regPath), readFile(boldPath)]);
-      fontRegular = reg.buffer.slice(reg.byteOffset, reg.byteOffset + reg.byteLength) as ArrayBuffer;
-      fontBold = bold.buffer.slice(bold.byteOffset, bold.byteOffset + bold.byteLength) as ArrayBuffer;
+      const fonts = await loadFonts();
+      fontRegular = fonts.regular;
+      fontBold = fonts.bold;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return NextResponse.json({ error: `폰트 로드 실패: ${msg}` }, { status: 500 });
@@ -344,6 +358,37 @@ export async function POST(request: NextRequest) {
       }
     } catch {
       // 스텝 업데이트 실패는 렌더 결과에 영향 없음
+    }
+
+    // RENDERING → CONFIRMED 자동 전환
+    // render-v2가 fire-and-forget으로 호출됐을 때, 렌더 완료 후 안전하게 CONFIRMED로 전환
+    try {
+      const { data: currentCn } = await supabaseAdmin
+        .from('card_news')
+        .select('status')
+        .eq('id', body.card_news_id)
+        .maybeSingle();
+
+      if (currentCn?.status === 'RENDERING') {
+        const anySuccess = results.some((r) => r.url !== null);
+        if (anySuccess) {
+          await supabaseAdmin
+            .from('card_news')
+            .update({ status: 'CONFIRMED', updated_at: new Date().toISOString() })
+            .eq('id', body.card_news_id);
+          await insertBlogTopicQueue(body.card_news_id, 'render_complete_hook');
+          console.log(`[render-v2] RENDERING → CONFIRMED 전환 완료: ${body.card_news_id}`);
+        } else {
+          // 전체 렌더 실패 → DRAFT로 복귀
+          await supabaseAdmin
+            .from('card_news')
+            .update({ status: 'DRAFT', updated_at: new Date().toISOString() })
+            .eq('id', body.card_news_id);
+          console.warn(`[render-v2] 전체 렌더 실패 → DRAFT 복귀: ${body.card_news_id}`);
+        }
+      }
+    } catch (transitionErr) {
+      console.warn('[render-v2] RENDERING→CONFIRMED 전환 실패 (렌더 결과는 OK):', transitionErr instanceof Error ? transitionErr.message : transitionErr);
     }
 
     return NextResponse.json({ renders: results });

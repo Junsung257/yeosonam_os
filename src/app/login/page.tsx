@@ -1,6 +1,6 @@
-// 서버 컴포넌트 wrapper — Windows webpack chunk race 회피용 prerender 비활성.
-// ERR-windows-prerender-chunk@2026-04-26 (Next.js 14.0.4 client component 'export const dynamic' 무시 버그 회피)
-export const dynamic = 'force-dynamic';
+// Windows 로컬만 force-dynamic 유지 (webpack chunk race 회피),
+// 운영(Linux)은 auto로 두어 Next 정적/캐시 최적화를 활용한다.
+export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
 
 import LoginForm from './LoginForm';
 

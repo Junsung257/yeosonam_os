@@ -161,16 +161,41 @@ export async function POST(request: NextRequest) {
             },
           });
           coverCritique = critique;
+          const appUrlForCritic = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+          const kickRenderAfterCritic = () => {
+            fetch(`${appUrlForCritic}/api/card-news/render-v2`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ card_news_id: cardNews.id, formats: ['1x1'] }),
+            }).catch(() => {});
+          };
+
           if (critique.verdict !== 'ship_as_is' && critique.rewritten_cover) {
+            // minor_polish 또는 regenerate: rewritten_cover 적용 후 재렌더
             coverApply = await applyCritiqueToCover(cardNews.id, critique);
-            // Cover 텍스트 변경 후 자동 재렌더 (fire-and-forget)
             if ((coverApply as { applied?: boolean })?.applied) {
-              const appUrl = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
-              fetch(`${appUrl}/api/card-news/render-v2`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ card_news_id: cardNews.id, formats: ['1x1'] }),
-              }).catch(() => {});
+              kickRenderAfterCritic();
+            }
+          } else if (critique.verdict === 'regenerate' && !critique.rewritten_cover) {
+            // score<60 + rewritten_cover 없음: 카피 전체 재생성 후 재렌더
+            try {
+              const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
+              const newCopySlides = await generateCardCopy(briefAny as never);
+              const mergedSlides = newCopySlides.map((s, i) => ({
+                ...slides[i],
+                headline: s.headline,
+                body: s.body,
+                eyebrow: s.eyebrow ?? slides[i]?.eyebrow ?? null,
+                tip: s.tip ?? slides[i]?.tip ?? null,
+                warning: s.warning ?? slides[i]?.warning ?? null,
+                price_chip: s.price_chip ?? slides[i]?.price_chip ?? null,
+                trust_row: s.trust_row ?? slides[i]?.trust_row ?? null,
+              }));
+              const { supabaseAdmin: supa } = await import('@/lib/supabase');
+              await supa.from('card_news').update({ slides: mergedSlides }).eq('id', cardNews.id);
+              kickRenderAfterCritic();
+            } catch (regenErr) {
+              console.warn('[card-news POST] regenerate 재생성 실패(무시):', regenErr instanceof Error ? regenErr.message : regenErr);
             }
           }
           // cover_critic 스텝 완료 마킹

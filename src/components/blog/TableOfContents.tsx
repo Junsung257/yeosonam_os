@@ -79,17 +79,19 @@ export default function TableOfContents({ items, variant = 'both' }: Props) {
       {showDesktop && (
       <nav className="hidden md:block sticky top-24 self-start text-[13px]" aria-label="목차">
         <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">목차</p>
-        <ul className="space-y-2.5">
+        <ul className="space-y-0.5">
           {items.map(item => {
             const isActive = item.id === activeId;
             return (
-              <li key={item.id} className={item.level === 3 ? 'pl-3' : ''}>
+              <li key={item.id}>
                 <a
                   href={`#${item.id}`}
-                  className={`block leading-snug transition ${
+                  className={`block leading-snug py-1.5 transition-all border-l-2 ${
+                    item.level === 3 ? 'pl-5' : 'pl-3'
+                  } ${
                     isActive
-                      ? 'text-slate-900 font-bold'
-                      : 'text-slate-500 hover:text-slate-900'
+                      ? 'border-l-[var(--brand)] text-slate-900 font-semibold'
+                      : 'border-l-transparent text-slate-500 hover:text-slate-900 hover:border-l-slate-300'
                   }`}
                 >
                   {item.text}

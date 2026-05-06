@@ -7,12 +7,13 @@ import type { CardNews } from '@/lib/supabase';
 
 const STATUS_BADGE: Record<string, string> = {
   DRAFT: 'bg-slate-100 text-slate-600',
+  RENDERING: 'bg-yellow-100 text-yellow-700',
   CONFIRMED: 'bg-blue-100 text-blue-700',
   LAUNCHED: 'bg-green-100 text-green-700',
   ARCHIVED: 'bg-red-100 text-red-500',
 };
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: '초안', CONFIRMED: '컨펌됨', LAUNCHED: '런치됨', ARCHIVED: '보관',
+  DRAFT: '초안', RENDERING: '렌더중', CONFIRMED: '컨펌됨', LAUNCHED: '런치됨', ARCHIVED: '보관',
 };
 
 interface Package { id: string; title: string; destination: string; }
@@ -163,6 +164,13 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             className="px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
           >
             ← 대시보드
+          </button>
+          <button
+            onClick={() => router.push('/admin/marketing/card-news/campaign/new')}
+            className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600"
+            title="상품 선택 → 각도 선택 → 원클릭으로 카드뉴스+렌더+블로그큐 자동 생성"
+          >
+            🚀 캠페인 시작
           </button>
           <button
             onClick={() => router.push('/admin/marketing/card-news/new')}

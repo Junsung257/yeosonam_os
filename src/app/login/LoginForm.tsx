@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getSupabaseClient } from '@/lib/supabase';
 
 function LoginFormInner() {
   const router = useRouter();
@@ -23,6 +22,7 @@ function LoginFormInner() {
     setError('');
 
     try {
+      const { getSupabaseClient } = await import('@/lib/supabase');
       const supabase = getSupabaseClient();
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 

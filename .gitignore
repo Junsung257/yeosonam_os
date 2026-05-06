@@ -87,3 +87,13 @@ lint_output.txt
 tmp-*.json
 tmp-*.txt
 tmp-*.html
+
+# Lighthouse 로컬 분석 산출물
+.tmp-lh-*.json
+
+# Serwist/next-pwa 빌드 산출물 (빌드 시 자동 생성)
+/public/sw.js
+/public/swe-worker-*.js
+
+# Lazyweb 디자인 리포트 (로컬 분석 전용)
+.lazyweb/

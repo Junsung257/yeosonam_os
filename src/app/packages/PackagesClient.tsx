@@ -3,8 +3,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
-import type { AttractionData } from '@/lib/attraction-matcher';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -18,6 +16,8 @@ import {
   DEFAULT_DEPARTURE_HUB,
   appendDepartureHubToSearchParams,
 } from '@/lib/departure-hub';
+const INITIAL_VISIBLE_COUNT = 18;
+const VISIBLE_STEP = 18;
 
 interface Package {
   id: string;
@@ -141,6 +141,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
   const attractions = initialAttractions;
   const [activeFilter, setActiveFilter] = useState(resolveLegacyFilterLabel(filter || '전체'));
   const [sortBy, setSortBy] = useState('recommended');
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const listTopRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -168,21 +169,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     const map = new Map<string, string | null>();
     for (const pkg of packages) {
       let chosen: string | null = null;
-      // 1차: itinerary 관광지 매칭
-      const days = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
-      outer: for (const day of days) {
-        for (const item of (day.schedule || [])) {
-          if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
-          if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) continue;
-          const attr = matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null;
-          const fromAttr = pickUnusedAttractionPhotoUrl(attr?.photos, used);
-          if (fromAttr) {
-            chosen = fromAttr;
-            break outer;
-          }
-        }
-      }
-      // 2차: 목적지 폴백
+      // 목적지 기반 대표 사진만 사용해 목록 렌더 비용을 낮춘다.
       if (!chosen) {
         const destParts = (pkg.destination || '').split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
         const destAttractions = attractions
@@ -198,7 +185,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
           }
         }
       }
-      // 3차: 상품 자체 thumbnail_urls (attraction 사진 전혀 없을 때)
+      // 2차: 상품 자체 thumbnail_urls (attraction 사진 전혀 없을 때)
       if (!chosen) {
         const thumb = pkg.thumbnail_urls?.find(u => u && u.startsWith('http'));
         if (thumb) chosen = thumb;
@@ -215,7 +202,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
   }, [packages]);
 
   // 출발월 매칭: price_dates 또는 price_tiers.departure_dates에 해당 YYYY-MM 시작 날짜가 있는지 (콤마로 여러 월)
-  function matchesSingleMonth(pkg: Package, ym: string): boolean {
+  const matchesSingleMonth = useCallback((pkg: Package, ym: string): boolean => {
     if (pkg.price_dates?.length) {
       if (pkg.price_dates.some(d => typeof d.date === 'string' && d.date.startsWith(ym))) return true;
     }
@@ -225,13 +212,13 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
       }
     }
     return false;
-  }
-  function matchesMonth(pkg: Package, monthParam: string): boolean {
+  }, []);
+  const matchesMonth = useCallback((pkg: Package, monthParam: string): boolean => {
     if (!monthParam) return true;
     const yms = monthParam.split(',').map(s => s.trim()).filter(Boolean);
     if (yms.length === 0) return true;
     return yms.some(ym => matchesSingleMonth(pkg, ym));
-  }
+  }, [matchesSingleMonth]);
 
   // 필터 + 정렬 (클라이언트 사이드) — minPrice는 사전 계산된 맵에서 조회
   const filteredPackages = useMemo(() => {
@@ -250,7 +237,16 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     if (sortBy === 'price_asc') result = [...result].sort((a, b) => mp(a) - mp(b));
     if (sortBy === 'price_desc') result = [...result].sort((a, b) => mp(b) - mp(a));
     return result;
-  }, [packages, activeFilter, sortBy, month, priceMinNum, priceMaxNum, minPriceByPkgId]);
+  }, [packages, activeFilter, sortBy, month, priceMinNum, priceMaxNum, minPriceByPkgId, matchesMonth]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT);
+  }, [activeFilter, sortBy, month, priceMinNum, priceMaxNum, destination, q, urgency, category, hub]);
+
+  const visiblePackages = useMemo(
+    () => filteredPackages.slice(0, visibleCount),
+    [filteredPackages, visibleCount],
+  );
 
   return (
     <div className="min-h-screen bg-white w-full overflow-x-hidden max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
@@ -416,7 +412,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
         </div>
       ) : (
         <div className="px-4 py-4 space-y-3 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-          {filteredPackages.map(pkg => (
+          {visiblePackages.map(pkg => (
             <PackageCard
               key={pkg.id}
               pkg={pkg as any}
@@ -430,6 +426,17 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
               onClick={trackClick}
             />
           ))}
+        </div>
+      )}
+      {filteredPackages.length > visiblePackages.length && (
+        <div className="px-4 pb-6 md:max-w-7xl md:mx-auto md:px-8">
+          <button
+            type="button"
+            onClick={() => setVisibleCount(v => Math.min(v + VISIBLE_STEP, filteredPackages.length))}
+            className="w-full h-11 rounded-full border border-[#D1DCE8] bg-white text-[14px] font-semibold text-text-primary hover:border-brand/60 hover:text-brand transition"
+          >
+            상품 더 보기 ({visiblePackages.length}/{filteredPackages.length})
+          </button>
         </div>
       )}
 

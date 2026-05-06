@@ -681,6 +681,11 @@ const PackageRow = React.memo(function PackageRow({
             title="모바일 랜딩페이지 (고객용)"
           >모바일</button>
           <button
+            onClick={() => window.open(`/admin/packages/${pkg.id}/reviews`, '_blank')}
+            className="px-1.5 py-1 border border-amber-300 text-amber-600 rounded text-[10px] hover:bg-amber-50 whitespace-nowrap"
+            title="고객 후기 관리 (카카오 피드백 등록)"
+          >⭐후기</button>
+          <button
             onClick={() => onPromptGen(pkg)}
             className="px-1.5 py-1 border border-blue-300 text-blue-600 rounded text-[10px] hover:bg-blue-50 whitespace-nowrap"
             title="마케팅 프롬프트 생성"

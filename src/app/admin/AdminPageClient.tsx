@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
 import { fmtNum as fmtComma } from '@/lib/admin-utils';
-import ScoringKpiWidget from '@/components/admin/ScoringKpiWidget';
+const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 
 const ComposedChart = nextDynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
 const Bar = nextDynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
