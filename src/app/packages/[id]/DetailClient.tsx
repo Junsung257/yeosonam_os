@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import nextDynamic from 'next/dynamic';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
@@ -20,15 +21,16 @@ import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
 import GlobalNav from '@/components/customer/GlobalNav';
-import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
-import TimezoneCard from '@/components/customer/TimezoneCard';
-import PackingTipsCard from '@/components/customer/PackingTipsCard';
-import PackageFAQ from '@/components/customer/PackageFAQ';
-import RecommendationCard from '@/components/customer/RecommendationCard';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { useChatStore } from '@/lib/chat-store';
+
+const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
+const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
+const TimezoneCard = nextDynamic(() => import('@/components/customer/TimezoneCard'), { loading: () => null });
+const PackingTipsCard = nextDynamic(() => import('@/components/customer/PackingTipsCard'), { loading: () => null });
+const PackageFAQ = nextDynamic(() => import('@/components/customer/PackageFAQ'), { loading: () => null });
 
 interface PriceTier {
   period_label: string;

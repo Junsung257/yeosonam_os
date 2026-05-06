@@ -19,7 +19,7 @@ export function BackToTop() {
       type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
       aria-label="맨 위로"
-      className="fixed bottom-20 right-4 md:bottom-8 md:right-6 z-40
+      className="fixed bottom-24 right-4 md:bottom-8 md:right-6 z-40
         flex h-10 w-10 items-center justify-center
         rounded-full border border-slate-200 bg-white shadow-md
         text-slate-500 transition

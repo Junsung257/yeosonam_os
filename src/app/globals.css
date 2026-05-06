@@ -73,11 +73,13 @@ body {
 .scroll-x::-webkit-scrollbar { display: none; }
 
 /* 스크롤바 완전 숨김 유틸 (카테고리 아이콘 가로 스크롤 등) */
-.scrollbar-hide {
+.scrollbar-hide,
+.no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
 /* 페이지 스크롤바 — 얇고 브랜드 톤으로 (webkit only, 데스크탑) */
 @media (min-width: 768px) {
