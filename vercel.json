@@ -218,7 +218,7 @@
     },
     {
       "path": "/api/cron/affiliate-live-celebration",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/affiliate-lifetime-commission",
@@ -242,7 +242,7 @@
     },
     {
       "path": "/api/cron/hitl-reminder",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/content-drift-detect",

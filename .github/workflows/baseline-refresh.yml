@@ -49,6 +49,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "ℹ️  변경사항 없음"
           else
-            git commit -m "test: refresh visual baselines (automated)"
+            git commit -m "test: refresh visual baselines (automated) [vercel skip]"
             git push
           fi
