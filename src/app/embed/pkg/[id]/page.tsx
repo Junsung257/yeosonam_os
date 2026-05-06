@@ -142,7 +142,7 @@ export default async function EmbedWidget({ params, searchParams }: Params) {
               textAlign: 'right',
               fontSize: 18,
               fontWeight: 800,
-              color: '#001f3f',
+              color: '#2563EB',
             }}
           >
             ₩{pkg.price.toLocaleString()}
@@ -156,7 +156,7 @@ export default async function EmbedWidget({ params, searchParams }: Params) {
         target="_blank"
         rel="noopener noreferrer"
         style={{
-          background: '#001f3f',
+          background: '#2563EB',
           color: 'white',
           textAlign: 'center',
           padding: '10px 16px',
@@ -181,7 +181,7 @@ export default async function EmbedWidget({ params, searchParams }: Params) {
           marginTop: 2,
         }}
       >
-        {aff?.name ? `${aff.name} × ` : ''}<span style={{ color: '#001f3f', fontWeight: 700 }}>여소남</span>
+        {aff?.name ? `${aff.name} × ` : ''}<span style={{ color: '#2563EB', fontWeight: 700 }}>여소남</span>
       </div>
     </div>
   );

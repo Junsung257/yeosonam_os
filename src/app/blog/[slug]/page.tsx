@@ -510,12 +510,12 @@ export default async function BlogDetailPage({
           className="border-b bg-white/95 backdrop-blur sticky top-14 md:top-16 z-20"
           aria-label="경로 탐색"
         >
-          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-gray-500">
-            <Link href="/" className="hover:text-[#3182F6]">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-slate-500">
+            <Link href="/" className="hover:text-brand">
               홈
             </Link>
             <span aria-hidden="true">/</span>
-            <Link href="/blog" className="hover:text-[#3182F6]">
+            <Link href="/blog" className="hover:text-brand">
               블로그
             </Link>
             {pkg?.destination && (
@@ -523,14 +523,14 @@ export default async function BlogDetailPage({
                 <span aria-hidden="true">/</span>
                 <Link
                   href={`/blog/destination/${encodeURIComponent(pkg.destination)}`}
-                  className="hover:text-[#3182F6]"
+                  className="hover:text-brand"
                 >
                   {pkg.destination}
                 </Link>
               </>
             )}
             <span aria-hidden="true">/</span>
-            <span className="truncate text-gray-900">{title}</span>
+            <span className="truncate text-slate-900">{title}</span>
           </div>
         </nav>
 
@@ -572,27 +572,27 @@ export default async function BlogDetailPage({
             </Link>
           </div>
 
-          <h1 className="text-[32px] font-black leading-[1.15] tracking-tight text-gray-900 md:text-[48px] md:leading-[1.1]">
+          <h1 className="text-[32px] font-black leading-[1.15] tracking-tight text-slate-900 md:text-[48px] md:leading-[1.1]">
             {title}
           </h1>
 
           {post.seo_description && (
-            <p className="mt-5 text-base leading-relaxed text-gray-600 md:text-lg">
+            <p className="mt-5 text-base leading-relaxed text-slate-600 md:text-lg">
               {post.seo_description}
             </p>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 pt-4 text-sm text-gray-500">
+          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <span
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#3182F6] to-[#1B64DA] text-xs font-bold text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-xs font-bold text-white"
                 aria-hidden="true"
               >
                 여
               </span>
-              <span className="font-medium text-gray-700">여소남 에디터</span>
+              <span className="font-medium text-slate-700">여소남 에디터</span>
             </div>
-            <span aria-hidden="true" className="text-gray-300">·</span>
+            <span aria-hidden="true" className="text-slate-300">·</span>
             <time dateTime={post.published_at}>
               {new Date(post.published_at).toLocaleDateString('ko-KR', {
                 year: 'numeric',
@@ -600,7 +600,7 @@ export default async function BlogDetailPage({
                 day: 'numeric',
               })}
             </time>
-            <span aria-hidden="true" className="text-gray-300">·</span>
+            <span aria-hidden="true" className="text-slate-300">·</span>
             <span>약 {readingMinutes}분 읽기</span>
           </div>
         </header>
@@ -623,7 +623,7 @@ export default async function BlogDetailPage({
         {/* 정보성 글 또는 랜딩 비활성 시 기본 히어로 이미지 — Jiwonnote 스타일: 좁은 폭 + 작은 radius */}
         {!isLanding && post.og_image_url && (
           <figure className="mx-auto mb-4 max-w-3xl px-4">
-            <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-gray-100">
+            <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
               <Image
                 src={post.og_image_url}
                 alt={title}
@@ -686,7 +686,7 @@ export default async function BlogDetailPage({
                 );
               })()
             ) : (
-              <p className="py-10 text-center text-gray-400">본문이 준비 중입니다.</p>
+              <p className="py-10 text-center text-slate-400">본문이 준비 중입니다.</p>
             )}
 
             {/* 상품 CTA 카드 — Jiwonnote 미니멀 스타일: 슬레이트 보더 + 흰배경 */}
@@ -826,7 +826,7 @@ export default async function BlogDetailPage({
                       className="group overflow-hidden rounded-md border border-slate-200 bg-white transition hover:shadow-md"
                     >
                       {rp.og_image_url ? (
-                        <div className="relative aspect-[16/9] overflow-hidden bg-gray-100">
+                        <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
                           <Image
                             src={rp.og_image_url}
                             alt={rpTitle}
@@ -871,7 +871,7 @@ export default async function BlogDetailPage({
         {/* 하단 네비 */}
         <div className="border-t bg-white">
           <div className="mx-auto max-w-6xl px-4 py-8 text-sm">
-            <Link href="/blog" className="font-medium text-[#3182F6] hover:text-[#1B64DA]">
+            <Link href="/blog" className="font-medium text-brand hover:text-[#1B64DA]">
               ← 블로그 목록으로
             </Link>
           </div>

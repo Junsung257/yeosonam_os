@@ -175,25 +175,25 @@ function FlightCard({ f }: { f: FlightResult }) {
   return (
     <div className="bg-white rounded-2xl border border-[#E5E7EB] p-4 flex flex-col gap-1.5 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-semibold text-[#3182F6]">{f.airline || '항공사'}</span>
-        {f.flightCode && <span className="text-[11px] text-[#8B95A1]">{f.flightCode}</span>}
+        <span className="text-[13px] font-semibold text-brand">{f.airline || '항공사'}</span>
+        {f.flightCode && <span className="text-[11px] text-text-secondary">{f.flightCode}</span>}
       </div>
-      <div className="flex items-center gap-2 text-[13px] text-[#4E5968]">
+      <div className="flex items-center gap-2 text-[13px] text-text-body">
         <span>{f.departure.airport}</span>
         <span className="text-[#C9D0D6]">→</span>
         <span>{f.arrival.airport}</span>
       </div>
       <div className="flex items-center justify-between mt-1">
-        <span className="text-[18px] font-extrabold text-[#191F28] tabular-nums">
+        <span className="text-[18px] font-extrabold text-text-primary tabular-nums">
           {f.price.toLocaleString()}
-          <span className="text-[12px] font-normal text-[#8B95A1] ml-0.5">원~</span>
+          <span className="text-[12px] font-normal text-text-secondary ml-0.5">원~</span>
         </span>
         {link && (
           <a
             href={link}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[12px] font-semibold text-white bg-[#3182F6] px-3 py-1.5 rounded-full hover:bg-[#1b6cf2] transition-colors"
+            className="text-[12px] font-semibold text-white bg-brand px-3 py-1.5 rounded-full hover:bg-[#1b6cf2] transition-colors"
           >
             예약
           </a>
@@ -253,25 +253,25 @@ function HotelCard({
         />
       ) : null}
       <div className="p-3 flex flex-col gap-1">
-        <p className="text-[15px] font-semibold text-[#191F28] leading-tight line-clamp-2">{h.name}</p>
+        <p className="text-[15px] font-semibold text-text-primary leading-tight line-clamp-2">{h.name}</p>
         {h.rating != null && (
           <div className="flex items-center gap-1">
             <span className="text-amber-400 text-[12px]">★</span>
-            <span className="text-[12px] text-[#4E5968]">{h.rating.toFixed(1)}</span>
-            {h.reviewCount && <span className="text-[11px] text-[#8B95A1]">({h.reviewCount.toLocaleString()})</span>}
+            <span className="text-[12px] text-text-body">{h.rating.toFixed(1)}</span>
+            {h.reviewCount && <span className="text-[11px] text-text-secondary">({h.reviewCount.toLocaleString()})</span>}
           </div>
         )}
         <div className="flex items-center justify-between mt-1">
           <div>
-            <span className="text-[17px] font-extrabold text-[#191F28] tabular-nums">{h.pricePerNight.toLocaleString()}</span>
-            <span className="text-[12px] text-[#8B95A1] ml-0.5">원/박</span>
+            <span className="text-[17px] font-extrabold text-text-primary tabular-nums">{h.pricePerNight.toLocaleString()}</span>
+            <span className="text-[12px] text-text-secondary ml-0.5">원/박</span>
           </div>
           <div className="flex items-center gap-1.5">
             {checkIn && (detailFetchable || (h.location && h.location.length > 0) || (h.amenities && h.amenities.length > 0)) && (
               <button
                 type="button"
                 onClick={toggleDetail}
-                className="text-[12px] font-medium text-[#8B95A1] border border-[#E5E7EB] px-2 py-0.5 rounded-full hover:border-[#3182F6] hover:text-[#3182F6] transition-colors"
+                className="text-[12px] font-medium text-text-secondary border border-[#E5E7EB] px-2 py-0.5 rounded-full hover:border-brand hover:text-brand transition-colors"
               >
                 {expanded ? '접기' : '상세'}
               </button>
@@ -281,7 +281,7 @@ function HotelCard({
                 href={link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[12px] font-semibold text-[#3182F6] border border-[#3182F6] px-2.5 py-1 rounded-full hover:bg-[#3182F6] hover:text-white transition-colors"
+                className="text-[12px] font-semibold text-brand border border-brand px-2.5 py-1 rounded-full hover:bg-brand hover:text-white transition-colors"
               >
                 보기
               </a>
@@ -295,41 +295,41 @@ function HotelCard({
         <div className="border-t border-[#F3F4F6] px-3 pb-3 pt-2 bg-[#FAFAFA]">
           {loading ? (
             <div className="flex items-center gap-2 py-1.5">
-              <svg className="animate-spin w-3.5 h-3.5 text-[#3182F6]" viewBox="0 0 24 24" fill="none">
+              <svg className="animate-spin w-3.5 h-3.5 text-brand" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
-              <span className="text-[13px] text-[#8B95A1]">상세 정보 불러오는 중...</span>
+              <span className="text-[13px] text-text-secondary">상세 정보 불러오는 중...</span>
             </div>
           ) : detail ? (
             <div className="space-y-2">
               {detail.description && (
-                <p className="text-[13px] text-[#4E5968] leading-relaxed line-clamp-4">{detail.description}</p>
+                <p className="text-[13px] text-text-body leading-relaxed line-clamp-4">{detail.description}</p>
               )}
               {detail.amenities && detail.amenities.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {detail.amenities.slice(0, 6).map((am, i) => (
-                    <span key={i} className="text-[11px] bg-white text-[#4E5968] border border-[#E5E7EB] px-1.5 py-0.5 rounded-full">{am}</span>
+                    <span key={i} className="text-[11px] bg-white text-text-body border border-[#E5E7EB] px-1.5 py-0.5 rounded-full">{am}</span>
                   ))}
                 </div>
               )}
               {(detail.checkInTime || detail.checkOutTime) && (
-                <div className="flex gap-3 text-[12px] text-[#8B95A1]">
+                <div className="flex gap-3 text-[12px] text-text-secondary">
                   {detail.checkInTime  && <span>체크인 {detail.checkInTime}</span>}
                   {detail.checkOutTime && <span>체크아웃 {detail.checkOutTime}</span>}
                 </div>
               )}
               {detail.cancellationPolicy && (
-                <p className="text-[12px] text-[#8B95A1] leading-snug">{detail.cancellationPolicy}</p>
+                <p className="text-[12px] text-text-secondary leading-snug">{detail.cancellationPolicy}</p>
               )}
             </div>
           ) : !detailFetchable ? (
             <div className="space-y-2">
-              {h.location ? <p className="text-[13px] text-[#4E5968]">{h.location}</p> : null}
+              {h.location ? <p className="text-[13px] text-text-body">{h.location}</p> : null}
               {h.amenities && h.amenities.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {h.amenities.slice(0, 6).map((am, i) => (
-                    <span key={i} className="text-[11px] bg-white text-[#4E5968] border border-[#E5E7EB] px-1.5 py-0.5 rounded-full">{am}</span>
+                    <span key={i} className="text-[11px] bg-white text-text-body border border-[#E5E7EB] px-1.5 py-0.5 rounded-full">{am}</span>
                   ))}
                 </div>
               )}
@@ -339,9 +339,9 @@ function HotelCard({
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-[13px] text-[#8B95A1] py-1">상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도하거나 「보기」로 마이리얼트립에서 확인해 주세요.</p>
+              <p className="text-[13px] text-text-secondary py-1">상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도하거나 「보기」로 마이리얼트립에서 확인해 주세요.</p>
               {link && (
-                <a href={link} target="_blank" rel="noopener noreferrer" className="inline-block text-[12px] font-semibold text-[#3182F6] underline">
+                <a href={link} target="_blank" rel="noopener noreferrer" className="inline-block text-[12px] font-semibold text-brand underline">
                   마이리얼트립에서 이 숙소 열기
                 </a>
               )}
@@ -411,22 +411,22 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
           />
         ) : null}
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-[#191F28] leading-tight line-clamp-2">{a.name}</p>
-          {a.duration && <p className="text-[11px] text-[#8B95A1] mt-0.5">{a.duration}</p>}
+          <p className="text-[13px] font-semibold text-text-primary leading-tight line-clamp-2">{a.name}</p>
+          {a.duration && <p className="text-[11px] text-text-secondary mt-0.5">{a.duration}</p>}
           <div className="flex items-center justify-between mt-1.5">
-            <span className="text-[14px] font-bold text-[#3182F6] tabular-nums">{a.price.toLocaleString()}원~</span>
+            <span className="text-[14px] font-bold text-brand tabular-nums">{a.price.toLocaleString()}원~</span>
             <div className="flex items-center gap-1.5">
               {gid && link && (
                 <button
                   onClick={toggleDetail}
-                  className="text-[11px] font-medium text-[#8B95A1] border border-[#E5E7EB] px-2 py-0.5 rounded-full hover:border-[#3182F6] hover:text-[#3182F6] transition-colors"
+                  className="text-[11px] font-medium text-text-secondary border border-[#E5E7EB] px-2 py-0.5 rounded-full hover:border-brand hover:text-brand transition-colors"
                 >
                   {expanded ? '접기' : '상세'}
                 </button>
               )}
               {link && (
                 <a href={link} target="_blank" rel="noopener noreferrer"
-                  className="text-[11px] text-[#8B95A1] underline hover:text-[#3182F6]">예약</a>
+                  className="text-[11px] text-text-secondary underline hover:text-brand">예약</a>
               )}
             </div>
           </div>
@@ -438,16 +438,16 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
         <div className="border-t border-[#F3F4F6] px-3 pb-3 pt-2 bg-[#FAFAFA]">
           {loading ? (
             <div className="flex items-center gap-2 py-1">
-              <svg className="animate-spin w-3 h-3 text-[#3182F6]" viewBox="0 0 24 24" fill="none">
+              <svg className="animate-spin w-3 h-3 text-brand" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
-              <span className="text-[11px] text-[#8B95A1]">불러오는 중...</span>
+              <span className="text-[11px] text-text-secondary">불러오는 중...</span>
             </div>
           ) : detail ? (
             <div className="space-y-2">
               {detail.description && (
-                <p className="text-[12px] text-[#4E5968] leading-relaxed line-clamp-4">{detail.description}</p>
+                <p className="text-[12px] text-text-body leading-relaxed line-clamp-4">{detail.description}</p>
               )}
               {detail.includes && detail.includes.length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -457,12 +457,12 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
                 </div>
               )}
               {detail.meetingPoint && (
-                <p className="text-[11px] text-[#8B95A1]">📍 {detail.meetingPoint}</p>
+                <p className="text-[11px] text-text-secondary">📍 {detail.meetingPoint}</p>
               )}
 
               {/* 날짜별 가격·재고 조회 */}
               <div className="pt-2 border-t border-[#EBEBEB]">
-                <p className="text-[10px] font-semibold text-[#4E5968] mb-1.5">날짜별 가격·재고</p>
+                <p className="text-[10px] font-semibold text-text-body mb-1.5">날짜별 가격·재고</p>
                 <input
                   type="date"
                   value={selectedDate}
@@ -470,24 +470,24 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
                     setSelectedDate(e.target.value);
                     if (e.target.value) fetchOptions(e.target.value);
                   }}
-                  className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:border-[#3182F6] bg-white"
+                  className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:border-brand bg-white"
                 />
                 {optionsLoading && (
                   <div className="flex items-center gap-1.5 mt-1.5">
-                    <svg className="animate-spin w-3 h-3 text-[#3182F6]" viewBox="0 0 24 24" fill="none">
+                    <svg className="animate-spin w-3 h-3 text-brand" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                     </svg>
-                    <span className="text-[11px] text-[#8B95A1]">옵션 조회 중...</span>
+                    <span className="text-[11px] text-text-secondary">옵션 조회 중...</span>
                   </div>
                 )}
                 {options.length > 0 && (
                   <div className="mt-1.5 space-y-1">
                     {options.slice(0, 4).map((opt, i) => (
                       <div key={i} className="flex items-center justify-between bg-white border border-[#E5E7EB] rounded-lg px-2.5 py-1.5">
-                        <span className="text-[11px] text-[#4E5968] leading-tight flex-1 pr-2 line-clamp-1">{opt.name}</span>
+                        <span className="text-[11px] text-text-body leading-tight flex-1 pr-2 line-clamp-1">{opt.name}</span>
                         <div className="text-right shrink-0">
-                          <span className={`text-[12px] font-bold tabular-nums ${opt.available === false ? 'text-[#C9D0D6] line-through' : 'text-[#3182F6]'}`}>
+                          <span className={`text-[12px] font-bold tabular-nums ${opt.available === false ? 'text-[#C9D0D6] line-through' : 'text-brand'}`}>
                             {(opt.adultPrice ?? opt.price).toLocaleString()}원
                           </span>
                           {opt.available === false && (
@@ -499,12 +499,12 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
                   </div>
                 )}
                 {!optionsLoading && options.length === 0 && selectedDate && (
-                  <p className="text-[11px] text-[#8B95A1] mt-1.5">선택 가능한 옵션이 없습니다.</p>
+                  <p className="text-[11px] text-text-secondary mt-1.5">선택 가능한 옵션이 없습니다.</p>
                 )}
               </div>
             </div>
           ) : (
-            <p className="text-[12px] text-[#8B95A1] py-1">상세 정보를 가져올 수 없습니다.</p>
+            <p className="text-[12px] text-text-secondary py-1">상세 정보를 가져올 수 없습니다.</p>
           )}
         </div>
       )}
@@ -532,7 +532,7 @@ function FareCalendarWidget({
   if (loading) {
     return (
       <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4 shadow-sm">
-        <p className="text-[13px] font-semibold text-[#191F28] mb-2">📅 날짜별 항공 최저가</p>
+        <p className="text-[13px] font-semibold text-text-primary mb-2">📅 날짜별 항공 최저가</p>
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="shrink-0 w-20 h-16 bg-[#F7F8FA] rounded-xl animate-pulse" />
@@ -548,8 +548,8 @@ function FareCalendarWidget({
   return (
     <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-2.5">
-        <p className="text-[13px] font-semibold text-[#191F28]">📅 날짜별 항공 최저가</p>
-        <span className="text-[10px] text-[#8B95A1]">날짜 탭 클릭 시 재검색</span>
+        <p className="text-[13px] font-semibold text-text-primary">📅 날짜별 항공 최저가</p>
+        <span className="text-[10px] text-text-secondary">날짜 탭 클릭 시 재검색</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x">
         {entries.slice(0, 14).map(e => {
@@ -566,8 +566,8 @@ function FareCalendarWidget({
               }}
               className={`shrink-0 snap-start flex flex-col items-center px-3 py-2.5 rounded-xl border transition-all ${
                 isMin
-                  ? 'bg-[#3182F6] border-[#3182F6] text-white'
-                  : 'bg-[#F7F8FA] border-[#E5E7EB] text-[#4E5968] hover:border-[#3182F6] hover:bg-[#EBF3FE]'
+                  ? 'bg-brand border-brand text-white'
+                  : 'bg-[#F7F8FA] border-[#E5E7EB] text-text-body hover:border-brand hover:bg-brand-light'
               }`}
             >
               <span className="text-[10px] font-medium opacity-80">{mon}</span>
@@ -582,7 +582,7 @@ function FareCalendarWidget({
           );
         })}
       </div>
-      <p className="text-[10px] text-[#8B95A1] mt-2">* 예상 가격. 실제 예약가는 다를 수 있습니다.</p>
+      <p className="text-[10px] text-text-secondary mt-2">* 예상 가격. 실제 예약가는 다를 수 있습니다.</p>
     </section>
   );
 }
@@ -595,23 +595,23 @@ function DecoyComparison({
   onPackageClick?: (pkg: ComparisonPackage) => void;
 }) {
   return (
-    <section className="bg-gradient-to-br from-[#EBF3FE] to-[#DBEAFE] rounded-3xl p-5 md:p-6">
-      <h2 className="text-[16px] font-bold text-[#191F28] mb-1">자유여행 vs 여소남 패키지</h2>
-      <p className="text-[13px] text-[#4E5968] mb-4">같은 여행, 가격을 비교해보세요.</p>
+    <section className="bg-gradient-to-br from-brand-light to-[#DBEAFE] rounded-3xl p-5 md:p-6">
+      <h2 className="text-[16px] font-bold text-text-primary mb-1">자유여행 vs 여소남 패키지</h2>
+      <p className="text-[13px] text-text-body mb-4">같은 여행, 가격을 비교해보세요.</p>
 
       {/* 자유여행 총액 */}
       <div className="bg-white/70 rounded-2xl p-4 mb-3">
-        <p className="text-[12px] text-[#8B95A1] font-medium mb-1">자유여행 예상 비용</p>
+        <p className="text-[12px] text-text-secondary font-medium mb-1">자유여행 예상 비용</p>
         <div className="flex items-baseline gap-1">
-          <span className="text-[22px] font-extrabold text-[#191F28] tabular-nums">
+          <span className="text-[22px] font-extrabold text-text-primary tabular-nums">
             {comparison.totalMin.toLocaleString()}
           </span>
-          <span className="text-[13px] text-[#8B95A1]">원 ~</span>
-          <span className="text-[16px] font-bold text-[#8B95A1] tabular-nums">
+          <span className="text-[13px] text-text-secondary">원 ~</span>
+          <span className="text-[16px] font-bold text-text-secondary tabular-nums">
             {comparison.totalMax.toLocaleString()}원
           </span>
         </div>
-        <p className="text-[11px] text-[#8B95A1] mt-0.5">항공 + 숙박 + 액티비티 3개 기준</p>
+        <p className="text-[11px] text-text-secondary mt-0.5">항공 + 숙박 + 액티비티 3개 기준</p>
       </div>
 
       {/* 패키지 비교 */}
@@ -622,13 +622,13 @@ function DecoyComparison({
               onClick={() => onPackageClick?.(p)}
               className="bg-white rounded-2xl p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
               <div className="flex-1 min-w-0 pr-3">
-                <p className="text-[13px] font-semibold text-[#191F28] leading-tight line-clamp-1">{p.title}</p>
+                <p className="text-[13px] font-semibold text-text-primary leading-tight line-clamp-1">{p.title}</p>
                 {p.highlights.slice(0, 2).map((h, i) => (
-                  <span key={i} className="inline-block text-[10px] text-[#3182F6] bg-[#EBF3FE] px-1.5 py-0.5 rounded-full mr-1 mt-1">{h}</span>
+                  <span key={i} className="inline-block text-[10px] text-brand bg-brand-light px-1.5 py-0.5 rounded-full mr-1 mt-1">{h}</span>
                 ))}
               </div>
               <div className="text-right shrink-0">
-                <p className="text-[16px] font-extrabold text-[#191F28] tabular-nums">{p.price.toLocaleString()}원</p>
+                <p className="text-[16px] font-extrabold text-text-primary tabular-nums">{p.price.toLocaleString()}원</p>
                 {p.savings > 0 && (
                   <span className="inline-block bg-red-50 text-red-500 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5">
                     {p.savings.toLocaleString()}원 절약
@@ -640,7 +640,7 @@ function DecoyComparison({
         </div>
       )}
 
-      <p className="text-[12px] text-[#8B95A1] mt-3 text-center">{comparison.message}</p>
+      <p className="text-[12px] text-text-secondary mt-3 text-center">{comparison.message}</p>
     </section>
   );
 }
@@ -1163,20 +1163,20 @@ export default function FreeTravelClient() {
     <div className="min-h-screen bg-[#F7F8FA]">
       {/* ── Nav ── */}
       <nav className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-[#E5E7EB] px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="text-[#8B95A1] hover:text-[#191F28] transition-colors">
+        <Link href="/" className="text-text-secondary hover:text-text-primary transition-colors">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </Link>
-        <h1 className="text-[17px] font-bold text-[#191F28]">자유여행 AI 견적</h1>
+        <h1 className="text-[17px] font-bold text-text-primary">자유여행 AI 견적</h1>
       </nav>
 
       {/* ── Hero + 입력 ── */}
       <section className="bg-gradient-to-b from-white to-[#F7F8FA] px-4 pt-8 pb-6">
         <div className="max-w-[640px] mx-auto">
-          <p className="text-[13px] font-semibold text-[#3182F6] mb-2 tracking-wider uppercase">AI 자유여행 플래너</p>
-          <h2 className="text-[25px] md:text-[29px] font-extrabold text-[#191F28] leading-tight tracking-[-0.03em] mb-2">
+          <p className="text-[13px] font-semibold text-brand mb-2 tracking-wider uppercase">AI 자유여행 플래너</p>
+          <h2 className="text-[25px] md:text-[29px] font-extrabold text-text-primary leading-tight tracking-[-0.03em] mb-2">
             항공 + 호텔 + 액티비티<br />30초 AI 견적
           </h2>
-          <p className="text-[15px] text-[#4E5968] mb-6 leading-snug">자연어로 입력하면 마이리얼트립 실시간 최저가를 비교해드립니다.</p>
+          <p className="text-[15px] text-text-body mb-6 leading-snug">자연어로 입력하면 마이리얼트립 실시간 최저가를 비교해드립니다.</p>
 
           <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-hidden">
             <textarea
@@ -1186,19 +1186,19 @@ export default function FreeTravelClient() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSearch(); } }}
               placeholder="예) 5월 1일~5일 부산출발 다낭 성인2 아동2"
               rows={3}
-              className="w-full px-4 pt-4 pb-2 text-[16px] text-[#191F28] placeholder-[#C9D0D6] resize-none outline-none"
+              className="w-full px-4 pt-4 pb-2 text-[16px] text-text-primary placeholder-[#C9D0D6] resize-none outline-none"
               disabled={isSearching}
             />
             <div className="px-4 pb-2 space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[12px] text-[#8B95A1] w-full">누구와 가시나요?</span>
+                <span className="text-[12px] text-text-secondary w-full">누구와 가시나요?</span>
                 {['커플/부부', '아이 동반', '부모님 동반', '친구/지인'].map(option => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => setCompanionType(option)}
                     className={`px-2.5 py-1 rounded-full text-[12px] border transition-colors ${
-                      companionType === option ? 'bg-[#EBF3FE] border-[#3182F6] text-[#3182F6]' : 'border-[#E5E7EB] text-[#4E5968]'
+                      companionType === option ? 'bg-brand-light border-brand text-brand' : 'border-[#E5E7EB] text-text-body'
                     }`}
                   >
                     {option}
@@ -1206,14 +1206,14 @@ export default function FreeTravelClient() {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[12px] text-[#8B95A1] w-full">호텔 예산은 어느 정도인가요?</span>
+                <span className="text-[12px] text-text-secondary w-full">호텔 예산은 어느 정도인가요?</span>
                 {['10만원대', '20~30만원대', '40만원 이상'].map(option => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => setHotelBudgetBand(option)}
                     className={`px-2.5 py-1 rounded-full text-[12px] border transition-colors ${
-                      hotelBudgetBand === option ? 'bg-[#EBF3FE] border-[#3182F6] text-[#3182F6]' : 'border-[#E5E7EB] text-[#4E5968]'
+                      hotelBudgetBand === option ? 'bg-brand-light border-brand text-brand' : 'border-[#E5E7EB] text-text-body'
                     }`}
                   >
                     {option}
@@ -1221,14 +1221,14 @@ export default function FreeTravelClient() {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[12px] text-[#8B95A1] w-full">여행 속도는 어떻게 원하시나요?</span>
+                <span className="text-[12px] text-text-secondary w-full">여행 속도는 어떻게 원하시나요?</span>
                 {['여유', '보통', '빡빡'].map(option => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => setTravelPace(option)}
                     className={`px-2.5 py-1 rounded-full text-[12px] border transition-colors ${
-                      travelPace === option ? 'bg-[#EBF3FE] border-[#3182F6] text-[#3182F6]' : 'border-[#E5E7EB] text-[#4E5968]'
+                      travelPace === option ? 'bg-brand-light border-brand text-brand' : 'border-[#E5E7EB] text-text-body'
                     }`}
                   >
                     {option}
@@ -1240,7 +1240,7 @@ export default function FreeTravelClient() {
               <button
                 onClick={handleSearch}
                 disabled={isSearching || !input.trim()}
-                className="px-5 py-2.5 bg-[#3182F6] text-white text-[15px] font-semibold rounded-full hover:bg-[#1b6cf2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                className="px-5 py-2.5 bg-brand text-white text-[15px] font-semibold rounded-full hover:bg-[#1b6cf2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 {isSearching ? (
                   <>
@@ -1267,8 +1267,8 @@ export default function FreeTravelClient() {
             {HOW_IT_WORKS.map(({ emoji, title, desc }) => (
               <div key={title} className="bg-white rounded-2xl p-4 text-center border border-[#E5E7EB]">
                 <div className="text-3xl mb-2">{emoji}</div>
-                <p className="text-[13px] font-bold text-[#191F28] leading-tight">{title}</p>
-                <p className="text-[11px] text-[#8B95A1] mt-1">{desc}</p>
+                <p className="text-[13px] font-bold text-text-primary leading-tight">{title}</p>
+                <p className="text-[11px] text-text-secondary mt-1">{desc}</p>
               </div>
             ))}
           </div>
@@ -1276,7 +1276,7 @@ export default function FreeTravelClient() {
           {/* 할인 항공사 배너 */}
           {promoAirlines.length > 0 && (
             <div className="bg-white border border-[#E5E7EB] rounded-2xl p-4 shadow-sm">
-              <p className="text-[12px] font-semibold text-[#4E5968] mb-2.5">✈️ 이번 주 할인 항공사</p>
+              <p className="text-[12px] font-semibold text-text-body mb-2.5">✈️ 이번 주 할인 항공사</p>
               <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
                 {promoAirlines.slice(0, 8).map((al, i) => (
                   <a
@@ -1289,7 +1289,7 @@ export default function FreeTravelClient() {
                         setInput(`${al.airline} 항공권 검색`);
                       }
                     }}
-                    className="shrink-0 flex flex-col items-center gap-1 bg-[#F7F8FA] hover:bg-[#EBF3FE] border border-[#E5E7EB] hover:border-[#3182F6] px-3 py-2 rounded-xl transition-all cursor-pointer"
+                    className="shrink-0 flex flex-col items-center gap-1 bg-[#F7F8FA] hover:bg-brand-light border border-[#E5E7EB] hover:border-brand px-3 py-2 rounded-xl transition-all cursor-pointer"
                   >
                     {al.imageUrl && isSafeImageSrc(al.imageUrl) ? (
                       <SafeCoverImg
@@ -1302,7 +1302,7 @@ export default function FreeTravelClient() {
                     ) : (
                       <span className="text-[20px]">✈️</span>
                     )}
-                    <span className="text-[11px] font-semibold text-[#191F28] whitespace-nowrap">{al.airline}</span>
+                    <span className="text-[11px] font-semibold text-text-primary whitespace-nowrap">{al.airline}</span>
                     {al.discountRate != null && (
                       <span className="text-[10px] font-bold text-red-500">{al.discountRate}% 할인</span>
                     )}
@@ -1319,22 +1319,22 @@ export default function FreeTravelClient() {
         <section className="px-4 py-6 max-w-[640px] mx-auto">
           <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5 text-center shadow-sm">
             <div className="flex justify-center mb-3">
-              <svg className="animate-spin w-8 h-8 text-[#3182F6]" viewBox="0 0 24 24" fill="none">
+              <svg className="animate-spin w-8 h-8 text-brand" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
             </div>
-            <p className="text-[15px] font-semibold text-[#191F28]">{state.statusMessage || '검색 중...'}</p>
+            <p className="text-[15px] font-semibold text-text-primary">{state.statusMessage || '검색 중...'}</p>
 
             {/* 결과가 오는 대로 미리 보여주기 */}
             {state.flights.length > 0 && (
-              <p className="text-[12px] text-[#3182F6] mt-2">✈️ 항공 {state.flights.length}건 발견</p>
+              <p className="text-[12px] text-brand mt-2">✈️ 항공 {state.flights.length}건 발견</p>
             )}
             {state.hotels.length > 0 && (
-              <p className="text-[12px] text-[#3182F6] mt-0.5">🏨 호텔 {state.hotels.length}건 발견</p>
+              <p className="text-[12px] text-brand mt-0.5">🏨 호텔 {state.hotels.length}건 발견</p>
             )}
             {state.activities.length > 0 && (
-              <p className="text-[12px] text-[#3182F6] mt-0.5">🎡 액티비티 {state.activities.length}건 발견</p>
+              <p className="text-[12px] text-brand mt-0.5">🎡 액티비티 {state.activities.length}건 발견</p>
             )}
           </div>
         </section>
@@ -1364,8 +1364,8 @@ export default function FreeTravelClient() {
 
           {/* AI 코멘트 */}
           {state.aiSummary && (
-            <div className="bg-[#3182F6]/5 border border-[#3182F6]/20 rounded-2xl p-4">
-              <p className="text-[14px] text-[#191F28] leading-relaxed">{state.aiSummary}</p>
+            <div className="bg-brand/5 border border-brand/20 rounded-2xl p-4">
+              <p className="text-[14px] text-text-primary leading-relaxed">{state.aiSummary}</p>
             </div>
           )}
 
@@ -1383,7 +1383,7 @@ export default function FreeTravelClient() {
                     setShareHint('복사에 실패했습니다. 주소창의 링크를 직접 공유해 주세요.');
                   }
                 }}
-                className="text-[12px] font-semibold text-[#3182F6] hover:underline"
+                className="text-[12px] font-semibold text-brand hover:underline"
               >
                 이 견적 링크 복사
               </button>
@@ -1393,14 +1393,14 @@ export default function FreeTravelClient() {
 
           {state.itineraryScore && (
             <section className="bg-gradient-to-br from-[#F0FDF4] to-[#ECFDF5] border border-[#BBF7D0] rounded-2xl p-4 shadow-sm">
-              <h3 className="text-[16px] font-bold text-[#191F28] mb-1">📊 일정 구성 점수</h3>
-              <p className="text-[12px] text-[#4E5968] mb-3 leading-snug">
+              <h3 className="text-[16px] font-bold text-text-primary mb-1">📊 일정 구성 점수</h3>
+              <p className="text-[12px] text-text-body mb-3 leading-snug">
                 날씨·계절이 아니라, <strong>이 일정이 얼마나 알차고 균형 잡혔는지</strong>를 나타냅니다. 여소남 승인 패키지 일정·하이라이트와의 결이 맞으면 가산됩니다.
               </p>
               <div className="flex items-end gap-2 mb-2">
                 <span className="text-[32px] font-extrabold text-[#166534] tabular-nums leading-none">{state.itineraryScore.score}</span>
                 <span className="text-[13px] font-semibold text-[#15803D] pb-1">/ 100</span>
-                <span className="text-[13px] font-bold text-[#191F28] pb-1 ml-1">{state.itineraryScore.label}</span>
+                <span className="text-[13px] font-bold text-text-primary pb-1 ml-1">{state.itineraryScore.label}</span>
               </div>
               <p className="text-[12px] text-[#64748B] mb-2">{state.itineraryScore.summary}</p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-[#475569]">
@@ -1416,7 +1416,7 @@ export default function FreeTravelClient() {
           {state.dayPlans.length > 0 && (
             <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-[15px] font-bold text-[#191F28]">🗓️ 일자별 추천 일정표</h3>
+                <h3 className="text-[15px] font-bold text-text-primary">🗓️ 일자별 추천 일정표</h3>
                 {state.itinerarySource === 'llm' && (
                   <span className="text-[10px] font-semibold text-[#0369A1] bg-[#E0F2FE] px-2 py-0.5 rounded-full">
                     AI 일정 (DeepSeek)
@@ -1440,10 +1440,10 @@ export default function FreeTravelClient() {
                 {state.dayPlans.map(plan => (
                   <article key={plan.day} className="border border-[#EEF0F3] rounded-xl p-3">
                     <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[13px] font-bold text-[#191F28]">{plan.day}일차 · {plan.title}</p>
-                      <span className="text-[11px] text-[#8B95A1]">{plan.date}</span>
+                      <p className="text-[13px] font-bold text-text-primary">{plan.day}일차 · {plan.title}</p>
+                      <span className="text-[11px] text-text-secondary">{plan.date}</span>
                     </div>
-                    <p className="text-[12px] text-[#4E5968]">{plan.move}</p>
+                    <p className="text-[12px] text-text-body">{plan.move}</p>
                     {plan.stops && plan.stops.length > 0 && (
                       <ul className="mt-2 space-y-1.5 border-t border-[#F1F5F9] pt-2">
                         {plan.stops.map(s => (
@@ -1451,22 +1451,22 @@ export default function FreeTravelClient() {
                             <span className="shrink-0 text-[10px] font-semibold text-[#64748B] w-10">{s.timeHint}</span>
                             <span className="flex-1 min-w-0">{s.label}</span>
                             {s.kind === 'bookable' && (
-                              <span className="text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8] bg-[#EFF6FF] px-1.5 py-0.5 rounded">예약 연계</span>
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8] bg-blue-50 px-1.5 py-0.5 rounded">예약 연계</span>
                             )}
                           </li>
                         ))}
                       </ul>
                     )}
-                    <p className="text-[11px] text-[#8B95A1] mt-1">{plan.highlight}</p>
+                    <p className="text-[11px] text-text-secondary mt-1">{plan.highlight}</p>
                     {plan.hotels.length > 0 && (
                       <div className="mt-2 space-y-1.5">
                         {plan.hotels.map((hotel, idx) => (
                           <div key={idx} className="flex items-center justify-between bg-[#F8FAFC] border border-[#EEF2F7] rounded-lg px-2.5 py-1.5">
                             <div>
-                              <p className="text-[12px] font-medium text-[#191F28]">{hotel.type === 'recommended' ? '추천 호텔' : '대안 호텔'}: {hotel.name}</p>
-                              <p className="text-[10px] text-[#8B95A1]">{hotel.reason}</p>
+                              <p className="text-[12px] font-medium text-text-primary">{hotel.type === 'recommended' ? '추천 호텔' : '대안 호텔'}: {hotel.name}</p>
+                              <p className="text-[10px] text-text-secondary">{hotel.reason}</p>
                             </div>
-                            <p className="text-[12px] font-bold text-[#3182F6]">{hotel.pricePerNight.toLocaleString()}원/박</p>
+                            <p className="text-[12px] font-bold text-brand">{hotel.pricePerNight.toLocaleString()}원/박</p>
                           </div>
                         ))}
                       </div>
@@ -1476,10 +1476,10 @@ export default function FreeTravelClient() {
                         {plan.activities.map((act, idx) => (
                           <div key={idx} className="flex items-center justify-between bg-[#EEF6FF] border border-[#D9EAFF] rounded-lg px-2.5 py-1.5">
                             <div>
-                              <p className="text-[12px] font-semibold text-[#191F28]">액티비티: {act.title}</p>
+                              <p className="text-[12px] font-semibold text-text-primary">액티비티: {act.title}</p>
                               <p className="text-[10px] text-[#6B7280]">{act.reason}</p>
                             </div>
-                            <p className="text-[12px] font-bold text-[#3182F6]">{act.price.toLocaleString()}원~</p>
+                            <p className="text-[12px] font-bold text-brand">{act.price.toLocaleString()}원~</p>
                           </div>
                         ))}
                       </div>
@@ -1492,8 +1492,8 @@ export default function FreeTravelClient() {
 
           {noResultDone && (
             <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4">
-              <p className="text-[14px] font-bold text-[#191F28] mb-1">검색 결과가 충분하지 않습니다.</p>
-              <p className="text-[12px] text-[#8B95A1]">
+              <p className="text-[14px] font-bold text-text-primary mb-1">검색 결과가 충분하지 않습니다.</p>
+              <p className="text-[12px] text-text-secondary">
                 날짜를 1~2일 조정하거나 목적지를 더 구체적으로 입력해 주세요. 예: `5/8~11 부산출발 도야마 성인3 아동1`.
               </p>
             </section>
@@ -1502,9 +1502,9 @@ export default function FreeTravelClient() {
           {/* 항공 */}
           {state.flights.length > 0 && (
             <section>
-              <h3 className="text-[15px] font-bold text-[#191F28] mb-2.5 flex items-center gap-1.5">
+              <h3 className="text-[15px] font-bold text-text-primary mb-2.5 flex items-center gap-1.5">
                 ✈️ 항공권
-                <span className="text-[11px] font-normal text-[#8B95A1]">최저가 순</span>
+                <span className="text-[11px] font-normal text-text-secondary">최저가 순</span>
               </h3>
               <div className="grid gap-2">
                 {state.flights.slice(0, 3).map((f, i) => <FlightCard key={i} f={f} />)}
@@ -1528,9 +1528,9 @@ export default function FreeTravelClient() {
           {/* 숙박 */}
           {state.hotels.length > 0 && (
             <section>
-              <h3 className="text-[15px] font-bold text-[#191F28] mb-2.5 flex items-center gap-1.5">
+              <h3 className="text-[15px] font-bold text-text-primary mb-2.5 flex items-center gap-1.5">
                 🏨 호텔
-                <span className="text-[12px] font-normal text-[#8B95A1]">1박 기준 최저가 순</span>
+                <span className="text-[12px] font-normal text-text-secondary">1박 기준 최저가 순</span>
                 {state.hotelsEstimated && <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">추정</span>}
               </h3>
               {state.hotelsEstimated && (
@@ -1556,7 +1556,7 @@ export default function FreeTravelClient() {
           {/* 액티비티 */}
           {state.activities.length > 0 && (
             <section>
-              <h3 className="text-[15px] font-bold text-[#191F28] mb-2.5">🎡 액티비티</h3>
+              <h3 className="text-[15px] font-bold text-text-primary mb-2.5">🎡 액티비티</h3>
               {state.activitiesEstimated && (
                 <p className="text-[12px] text-amber-800 bg-amber-50/80 border border-amber-100 rounded-xl px-3 py-2 mb-2 leading-relaxed">실시간 조회가 되지 않아 추정 데이터를 표시 중입니다. 예약 가능 여부는 링크가 있을 때만 해당 페이지에서 확인할 수 있습니다.</p>
               )}
@@ -1570,12 +1570,12 @@ export default function FreeTravelClient() {
 
           {state.comparison?.quoteBreakdown && (
             <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4 shadow-sm">
-              <h3 className="text-[15px] font-bold text-[#191F28] mb-2">💸 예상 견적 브리핑</h3>
+              <h3 className="text-[15px] font-bold text-text-primary mb-2">💸 예상 견적 브리핑</h3>
               <div className="space-y-1.5 text-[13px]">
-                <div className="flex justify-between"><span className="text-[#4E5968]">항공</span><span className="font-semibold text-[#191F28]">{state.comparison.quoteBreakdown.flights.toLocaleString()}원</span></div>
-                <div className="flex justify-between"><span className="text-[#4E5968]">호텔</span><span className="font-semibold text-[#191F28]">{state.comparison.quoteBreakdown.hotels.toLocaleString()}원</span></div>
-                <div className="flex justify-between"><span className="text-[#4E5968]">액티비티</span><span className="font-semibold text-[#191F28]">{state.comparison.quoteBreakdown.activities.toLocaleString()}원</span></div>
-                <div className="pt-1 border-t border-[#F1F5F9] text-[12px] text-[#8B95A1]">
+                <div className="flex justify-between"><span className="text-text-body">항공</span><span className="font-semibold text-text-primary">{state.comparison.quoteBreakdown.flights.toLocaleString()}원</span></div>
+                <div className="flex justify-between"><span className="text-text-body">호텔</span><span className="font-semibold text-text-primary">{state.comparison.quoteBreakdown.hotels.toLocaleString()}원</span></div>
+                <div className="flex justify-between"><span className="text-text-body">액티비티</span><span className="font-semibold text-text-primary">{state.comparison.quoteBreakdown.activities.toLocaleString()}원</span></div>
+                <div className="pt-1 border-t border-[#F1F5F9] text-[12px] text-text-secondary">
                   호텔 평균 {state.comparison.quoteBreakdown.hotelNightlyAverage.toLocaleString()}원/박 · 객실 {state.comparison.quoteBreakdown.occupancyRooms}개 기준
                 </div>
               </div>
@@ -1588,7 +1588,7 @@ export default function FreeTravelClient() {
               <button
                 type="button"
                 onClick={() => setShowPackages(v => !v)}
-                className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl py-2.5 text-[13px] font-semibold text-[#334155] hover:border-[#3182F6] hover:text-[#3182F6] transition-colors"
+                className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl py-2.5 text-[13px] font-semibold text-[#334155] hover:border-brand hover:text-brand transition-colors"
               >
                 {showPackages
                   ? '패키지 비교 접기'
@@ -1619,8 +1619,8 @@ export default function FreeTravelClient() {
           {/* 연락처 수집 — 일정표 카카오 전송 게이트 */}
           {state.status === 'done' && !phoneSent && (
             <section className="bg-white border border-[#E5E7EB] rounded-2xl p-5 shadow-sm">
-              <p className="text-[15px] font-bold text-[#191F28] mb-1">📩 일정표 카카오톡으로 받기</p>
-              <p className="text-[13px] text-[#4E5968] mb-4">
+              <p className="text-[15px] font-bold text-text-primary mb-1">📩 일정표 카카오톡으로 받기</p>
+              <p className="text-[13px] text-text-body mb-4">
                 같은 견적은 링크로 약 7일간 다시 열 수 있습니다. 번호를 남기시면 상세 일정표와 안내를 카카오로 보내드립니다.
               </p>
               <div className="flex gap-2">
@@ -1630,12 +1630,12 @@ export default function FreeTravelClient() {
                   onChange={e => setPhone(e.target.value)}
                   placeholder="010-0000-0000"
                   inputMode="numeric"
-                  className="flex-1 border border-[#E5E7EB] rounded-xl px-4 py-2.5 text-[14px] outline-none focus:border-[#3182F6]"
+                  className="flex-1 border border-[#E5E7EB] rounded-xl px-4 py-2.5 text-[14px] outline-none focus:border-brand"
                 />
                 <button
                   onClick={handlePhoneSave}
                   disabled={phoneSaving || !phone.trim()}
-                  className="px-4 py-2.5 bg-[#FEE500] text-[#191F28] text-[14px] font-bold rounded-xl disabled:opacity-50 hover:brightness-95 transition-all whitespace-nowrap"
+                  className="px-4 py-2.5 bg-[#FEE500] text-text-primary text-[14px] font-bold rounded-xl disabled:opacity-50 hover:brightness-95 transition-all whitespace-nowrap"
                 >
                   {phoneSaving ? '저장 중...' : '카카오 받기'}
                 </button>
@@ -1657,15 +1657,15 @@ export default function FreeTravelClient() {
       {/* ── FAQ: 첫 화면·견적 완료 후 모두 (결제 안내 등) ── */}
       {(state.status === 'idle' || state.status === 'done') && (
         <section className="px-4 pb-12 max-w-[640px] mx-auto">
-          <h2 className="text-[17px] font-bold text-[#191F28] mb-4">자주 묻는 질문</h2>
+          <h2 className="text-[17px] font-bold text-text-primary mb-4">자주 묻는 질문</h2>
           <div className="space-y-2">
             {FAQ.map(({ q, a }) => (
               <details key={q} className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
-                <summary className="px-4 py-3.5 text-[15px] font-semibold text-[#191F28] cursor-pointer list-none flex justify-between items-center">
+                <summary className="px-4 py-3.5 text-[15px] font-semibold text-text-primary cursor-pointer list-none flex justify-between items-center">
                   {q}
                   <span className="text-[#C9D0D6] text-[18px] select-none">+</span>
                 </summary>
-                <p className="px-4 pb-4 text-[14px] text-[#4E5968] leading-relaxed">{a}</p>
+                <p className="px-4 pb-4 text-[14px] text-text-body leading-relaxed">{a}</p>
               </details>
             ))}
           </div>

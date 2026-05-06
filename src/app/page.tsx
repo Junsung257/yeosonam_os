@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
+import { getSecret } from '@/lib/secret-registry';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
@@ -12,6 +13,7 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import BottomTabBar from '@/components/customer/BottomTabBar';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -296,7 +298,7 @@ export default async function HomePage() {
 
   // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
   // ISR 캐시(revalidate=300) + Next.js fetch 캐시(1h)로 실제 Pexels 호출은 드물게 발생
-  if (process.env.PEXELS_API_KEY) {
+  if (getSecret('PEXELS_API_KEY')) {
     const { getRandomPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
 
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
@@ -417,7 +419,7 @@ export default async function HomePage() {
   const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
 
   return (
-    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
+    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto pb-[72px] md:pb-0">
       {/* Schema.org */}
       <script
         suppressHydrationWarning
@@ -460,19 +462,13 @@ export default async function HomePage() {
 
       <GlobalNav />
 
-      {/* ── 카테고리 아이콘 ── */}
-      <CategoryIcons />
-
-      {/* ── 섹션 구분 ── */}
-      <div className="h-2 bg-[#F2F4F6] w-full" />
-
-      {/* ── 히어로 배너 ── */}
+      {/* ── 히어로 배너 — 감성 훅 먼저 ── */}
       {heroSlides.length > 0 && (
         <HeroBanner slides={heroSlides} />
       )}
 
-      {/* ── 검색바 — 히어로 하단 오버랩 ── */}
-      <div className="px-4 md:px-6 -mt-7 md:-mt-10 relative z-10 pb-3 md:pb-5">
+      {/* ── 검색바 — 히어로 바로 아래 독립 섹션 (오버랩 제거) ── */}
+      <div className="bg-white border-b border-[#F2F4F6] px-4 md:px-6 py-4 md:py-5">
         <div className="max-w-[768px] mx-auto">
           <HomeHeroSearchCluster>
             <HomeHeroUrgencyStrip items={homeUrgencyTop3} />
@@ -480,12 +476,14 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* ── 섹션 구분 ── */}
-      <div className="h-2 bg-[#F2F4F6] w-full mt-2 md:mt-4" />
+      {/* ── 카테고리 아이콘 — 1줄 가로 스크롤 ── */}
+      <div className="bg-white border-b border-[#F2F4F6]">
+        <CategoryIcons />
+      </div>
 
       {/* ── 인기 패키지 랭킹 ── */}
       {(overseas.length > 0 || domestic.length > 0) && (
-        <section className="pt-6 pb-2 max-w-[1200px] mx-auto">
+        <section className="bg-white pt-6 pb-2 max-w-[1200px] mx-auto">
           <SectionHeader
             title="이번 주 인기 패키지"
             subtitle="실시간 등록 TOP"
@@ -497,14 +495,11 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* ── 섹션 구분 ── */}
-      <div className="h-2 bg-[#F2F4F6] w-full mt-4" />
+      <main>
 
-      <main className="px-4 md:px-8 max-w-[1200px] mx-auto">
-
-        {/* ── 추천 여행지 TOP 4 ── */}
+        {/* ── 추천 여행지 TOP 4 — Zebra: 연회색 배경 ── */}
         {topDests.length > 0 && (
-          <section className="pt-6 pb-8 md:pt-8 md:pb-12">
+          <section className="bg-[#F8FAFC] px-4 md:px-8 max-w-[1200px] mx-auto pt-6 pb-8 md:pt-8 md:pb-12">
             <SectionHeader
               title="추천 여행지"
               subtitle="완벽 가이드 · 관광지 · 엄선 패키지"
@@ -516,7 +511,7 @@ export default async function HomePage() {
                 <Link
                   key={d.destination}
                   href={`/destinations/${encodeURIComponent(d.destination)}`}
-                  className="group relative h-52 md:h-64 rounded-[16px] overflow-hidden bg-[#F2F4F6] shadow-card hover:shadow-card-hover transition-shadow card-touch"
+                  className="group relative h-52 md:h-64 rounded-[16px] overflow-hidden bg-bg-section shadow-card hover:shadow-card-hover transition-shadow card-touch"
                 >
                   {d.image ? (
                     <Image
@@ -528,7 +523,7 @@ export default async function HomePage() {
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
                     />
                   ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#3182F6]/20 flex items-center justify-center text-5xl">🌍</div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-brand-light to-brand/20 flex items-center justify-center text-5xl">🌍</div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
@@ -556,12 +551,12 @@ export default async function HomePage() {
           </section>
         )}
 
-        {/* ── 인기 여행지 ── */}
-        <section className="pb-8 md:pb-12">
+        {/* ── 인기 여행지 — Zebra: 흰 배경 ── */}
+        <section className="bg-white px-4 md:px-8 max-w-[1200px] mx-auto pt-2 pb-8 md:pb-12">
           <SectionHeader title="인기 여행지" subtitle="실시간 패키지 등록순" />
 
           {destsWithImages.length === 0 ? (
-            <div className="text-center py-12 text-[#8B95A1] text-[14px]">현재 판매 중인 상품이 없습니다</div>
+            <div className="text-center py-12 text-text-secondary text-[14px]">현재 판매 중인 상품이 없습니다</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {destsWithImages.map((dest, index) => {
@@ -572,7 +567,7 @@ export default async function HomePage() {
                     href={`/packages?destination=${encodeURIComponent(dest.destination)}`}
                     className="group rounded-[16px] overflow-hidden shadow-card hover:shadow-card-hover transition-shadow card-touch bg-white"
                   >
-                    <div className="relative h-36 md:h-52 lg:h-56 bg-[#F2F4F6]">
+                    <div className="relative h-36 md:h-52 lg:h-56 bg-bg-section">
                       <SafeCoverImg
                         src={dest.image}
                         alt={dest.destination}
@@ -580,8 +575,8 @@ export default async function HomePage() {
                         loading={index < 4 ? 'eager' : 'lazy'}
                         fetchPriority={index < 4 ? 'high' : undefined}
                         fallback={
-                          <div className="absolute inset-0 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center">
-                            <span className="text-[22px] md:text-[28px] font-extrabold text-[#3182F6]/35 tracking-tight">
+                          <div className="absolute inset-0 bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center">
+                            <span className="text-[22px] md:text-[28px] font-extrabold text-brand/35 tracking-tight">
                               {initial}
                             </span>
                           </div>
@@ -595,7 +590,7 @@ export default async function HomePage() {
                       </div>
                       {/* 상품 수 배지 — 소수 노출은 이탈 유발 가능, 임계값 이상만 숫자 표기 */}
                       <div className="absolute top-2.5 right-2.5">
-                        <span className="bg-white/90 text-[11px] font-bold text-[#3182F6] px-2 py-0.5 rounded-full">
+                        <span className="bg-white/90 text-[11px] font-bold text-brand px-2 py-0.5 rounded-full">
                           {dest.count >= PKG_COUNT_DISCLOSE_MIN ? `${dest.count}개` : '보러가기'}
                         </span>
                       </div>
@@ -604,13 +599,13 @@ export default async function HomePage() {
                       <div className="flex items-baseline gap-0.5">
                         {dest.minPrice > 0 ? (
                           <>
-                            <span className="text-[18px] md:text-[20px] font-extrabold text-[#3182F6] tabular-nums tracking-[-0.02em]">
+                            <span className="text-[18px] md:text-[20px] font-extrabold text-brand tabular-nums tracking-[-0.02em]">
                               {dest.minPrice.toLocaleString()}
                             </span>
-                            <span className="text-[12px] font-medium text-[#8B95A1] ml-0.5">원~</span>
+                            <span className="text-[12px] font-medium text-text-secondary ml-0.5">원~</span>
                           </>
                         ) : (
-                          <span className="text-[13px] text-[#8B95A1]">가격 문의</span>
+                          <span className="text-[13px] text-text-secondary">가격 문의</span>
                         )}
                       </div>
                     </div>
@@ -623,11 +618,11 @@ export default async function HomePage() {
       </main>
 
       {/* ── 패키지 중심 CTA (자유여행/AI는 보조 링크로 — 기대치 정렬) ── */}
-      <section className="px-4 md:px-8 pb-8 max-w-[1200px] mx-auto">
+      <section className="bg-[#F8FAFC] px-4 md:px-8 pb-8 pt-6 max-w-[1200px] mx-auto">
         <div className="rounded-2xl overflow-hidden border border-[#E5E7EB] shadow-card bg-white">
           <Link
             href="/packages"
-            className="group flex items-center justify-between bg-gradient-to-r from-[#3182F6] to-[#60A5FA] px-5 py-4 md:px-6 md:py-5 hover:shadow-lg transition-shadow"
+            className="group flex items-center justify-between bg-gradient-to-r from-brand to-[#60A5FA] px-5 py-4 md:px-6 md:py-5 hover:shadow-lg transition-shadow"
           >
             <div>
               <p className="text-[11px] font-semibold text-white/80 tracking-wide mb-0.5">패키지·단체 여행</p>
@@ -642,13 +637,13 @@ export default async function HomePage() {
               </svg>
             </div>
           </Link>
-          <div className="px-4 py-3 md:px-6 md:py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-[#F9FAFB]">
-            <p className="text-[12px] md:text-[13px] text-[#4E5968]">
+          <div className="px-4 py-3 md:px-6 md:py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-admin-bg">
+            <p className="text-[12px] md:text-[13px] text-text-body">
               항공+호텔 맞춤 조합은 단계적으로 준비 중입니다.
             </p>
             <Link
               href="/free-travel"
-              className="text-[12px] md:text-[13px] font-semibold text-[#3182F6] shrink-0 underline-offset-2 hover:underline"
+              className="text-[12px] md:text-[13px] font-semibold text-brand shrink-0 underline-offset-2 hover:underline"
             >
               자유여행 베타 페이지 →
             </Link>
@@ -657,42 +652,24 @@ export default async function HomePage() {
       </section>
 
       {/* ── 푸터 ── */}
-      <footer className="px-6 py-8 md:py-12 text-center border-t border-[#F2F4F6]">
-        <p className="text-[13px] text-[#8B95A1]">부산 출발 단체·패키지 여행 전문</p>
-        <p className="text-[12px] text-[#8B95A1] mt-1">yeosonam.co.kr</p>
-        <div className="mt-4 flex justify-center gap-4">
-          <Link href="/packages" className="text-[13px] text-[#4E5968] hover:text-[#3182F6] transition-colors">전체 상품</Link>
-          <Link href="/blog" className="text-[13px] text-[#4E5968] hover:text-[#3182F6] transition-colors">매거진</Link>
-          <Link href="/group-inquiry" className="text-[13px] text-[#4E5968] hover:text-[#3182F6] transition-colors">단체 문의</Link>
+      <footer className="px-6 py-8 md:py-12 text-center border-t border-admin-border bg-white">
+        <p className="text-[13px] text-text-secondary font-medium">부산 출발 단체·패키지 여행 전문</p>
+        {/* 신뢰 뱃지 */}
+        <div className="mt-3 flex justify-center gap-2 flex-wrap">
+          <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">🛡️ 출발 보장</span>
+          <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">📋 관광사업자 등록</span>
+          <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">🔒 안전 결제</span>
+        </div>
+        <p className="text-[11px] text-text-secondary/50 mt-2">yeosonam.co.kr</p>
+        <div className="mt-3 flex justify-center gap-4">
+          <Link href="/packages" className="text-[13px] text-text-body hover:text-brand transition-colors">전체 상품</Link>
+          <Link href="/blog" className="text-[13px] text-text-body hover:text-brand transition-colors">매거진</Link>
+          <Link href="/group-inquiry" className="text-[13px] text-text-body hover:text-brand transition-colors">단체 문의</Link>
         </div>
       </footer>
 
-      {/* ── 모바일 플로팅 CTA ── */}
-      <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm z-50 border-t border-[#F2F4F6] safe-area-bottom"
-        aria-label="문의하기"
-      >
-        <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
-          {consultTelHref ? (
-            <a
-              href={consultTelHref}
-              className="w-[48px] h-[48px] flex items-center justify-center rounded-full border border-[#E5E7EB] hover:bg-[#F2F4F6] shrink-0 transition-colors"
-              aria-label={consultPhoneLabel ? `전화 상담 ${consultPhoneLabel}` : '전화 상담'}
-            >
-              <span className="text-lg">📞</span>
-            </a>
-          ) : null}
-          <a
-            href="https://pf.kakao.com/_xcFxkBG/chat"
-            target="_blank"
-            rel="noopener"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="flex-1 bg-[#FEE500] h-[52px] rounded-full text-[#3C1E1E] font-bold text-[15px] flex items-center justify-center gap-2 shadow-lg card-touch"
-          >
-            💬 카카오톡 상담
-          </a>
-        </div>
-      </nav>
+      {/* ── 모바일 하단 탭바 ── */}
+      <BottomTabBar />
     </div>
   );
 }

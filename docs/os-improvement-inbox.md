@@ -1,14 +1,12 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-07T00:05:44+09:00
-- actionable_changed_files: 443
+- generated_at_kst: 2026-05-07T00:15:59+09:00
+- actionable_changed_files: 389
 - todo_markers: 0
-- areas: APP 169, API 126, LIB 76, UI 59, ETC 10, DOCS 3
+- areas: APP 163, API 106, LIB 63, UI 53, ETC 4
 
 ## 1) Actionable Changed Files
 
-- `M ` `docs/env-variables-reference.md`
-- ` M` `docs/pending-settings-tracker.md`
 - ` M` `src/app/(customer)/products/page.tsx`
 - ` M` `src/app/admin/AdminPageClient.tsx`
 - ` M` `src/app/admin/affiliate-analytics/page.tsx`
@@ -207,6 +205,8 @@
 - ` M` `src/app/api/ops/console-links/route.ts`
 - ` M` `src/app/api/ops/cron-health/route.ts`
 - ` M` `src/app/api/orchestrator/auto-publish/route.ts`
+- ` M` `src/app/api/packages/[id]/approve/route.ts`
+- ` M` `src/app/api/packages/route.ts`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -236,14 +236,14 @@
 - [ ] P0 ` M` `src/app/review/[booking_id]/page.tsx`
 - [ ] P0 ` M` `src/lib/booking-automation-policy.ts`
 - [ ] P0 ` M` `src/lib/booking-portal-session.ts`
-- [ ] P0 `??` `src/app/api/auth/google-callback/`
-- [ ] P0 `??` `src/app/api/auth/google-oauth-start/`
-- [ ] P0 `??` `src/app/api/auth/meta-callback/`
-- [ ] P0 `??` `src/app/api/auth/meta-oauth-start/`
-- [ ] P0 `??` `src/app/api/auth/naver-callback/`
-- [ ] P0 `??` `src/app/api/auth/naver-oauth-start/`
 - [ ] P1 ` M` `src/app/admin/affiliate-analytics/page.tsx`
 - [ ] P1 ` M` `src/app/admin/affiliate-promo-report/page.tsx`
+- [ ] P1 ` M` `src/app/admin/affiliates/AffiliatesPageClient.tsx`
+- [ ] P1 ` M` `src/app/admin/affiliates/[id]/page.tsx`
+- [ ] P1 ` M` `src/app/admin/affiliates/page.tsx`
+- [ ] P1 ` M` `src/app/api/cron/ad-optimizer/route.ts`
+- [ ] P1 ` M` `src/app/api/cron/blog-daily-summary/route.ts`
+- [ ] P1 ` M` `src/app/api/cron/blog-publisher/route.ts`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

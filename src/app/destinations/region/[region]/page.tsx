@@ -252,7 +252,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex gap-2 overflow-x-auto scrollbar-hide">
               <Link
                 href={`/destinations/region/${slug}`}
-                className="flex-shrink-0 text-sm bg-[#3182F6] text-white px-3 py-1.5 rounded-md font-medium"
+                className="flex-shrink-0 text-sm bg-brand text-white px-3 py-1.5 rounded-md font-medium"
                 aria-current="page"
               >
                 전체
@@ -261,7 +261,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                 <Link
                   key={c.destination}
                   href={getDestinationUrl(c.destination)}
-                  className="flex-shrink-0 text-sm bg-white text-gray-700 border border-gray-200 px-3 py-1.5 rounded-md hover:shadow-card-hover hover:text-[#3182F6] transition"
+                  className="flex-shrink-0 text-sm bg-white text-gray-700 border border-gray-200 px-3 py-1.5 rounded-md hover:shadow-card-hover hover:text-brand transition"
                 >
                   {c.destination}
                 </Link>
@@ -292,11 +292,11 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
                         fallback={
-                          <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">{region.emoji}</div>
+                          <div className="absolute inset-0 bg-gradient-to-br from-brand to-brand-dark flex items-center justify-center text-5xl">{region.emoji}</div>
                         }
                       />
                     ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">{region.emoji}</div>
+                      <div className="absolute inset-0 bg-gradient-to-br from-brand to-brand-dark flex items-center justify-center text-5xl">{region.emoji}</div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
                     <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5 text-white">
@@ -316,7 +316,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
             <section className="py-12 text-center">
               <p className="text-base text-slate-600 mb-2">{region.label} 패키지 준비 중입니다</p>
               <p className="text-[13px] text-slate-400 mb-4">곧 운영팀이 {region.label} 여행지를 정식 오픈합니다.</p>
-              <Link href="/group-inquiry" className="inline-block px-5 py-2 bg-[#3182F6] text-white text-sm rounded-full hover:opacity-90">
+              <Link href="/group-inquiry" className="inline-block px-5 py-2 bg-brand text-white text-sm rounded-full hover:opacity-90">
                 맞춤 문의하기 →
               </Link>
             </section>
@@ -348,7 +348,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                   <Link key={p.id} href={`/blog/${p.slug}`} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
                     <SafeMagazineThumb url={p.og_image_url} title={p.seo_title || ''} />
                     <div className="p-4">
-                      <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-[#3182F6] tracking-tight">
+                      <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-brand tracking-tight">
                         {p.seo_title || '여행 가이드'}
                       </h3>
                     </div>

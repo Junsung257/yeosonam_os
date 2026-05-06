@@ -16,7 +16,7 @@ export default function FreeTravelPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[40vh] flex items-center justify-center text-[#8B95A1] text-sm">
+        <div className="min-h-[40vh] flex items-center justify-center text-text-secondary text-sm">
           불러오는 중...
         </div>
       }

@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { loadLpPackageForPage } from '@/lib/load-lp-package';
+import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { LandingClient } from './LandingClient';
 import { LpRouteSkeleton } from './LpRouteSkeleton';
 
@@ -49,9 +50,19 @@ export default async function LpPage({ params }: { params: { id: string } }) {
   const data = await loadLpPackageForPage(params.id);
   if (!data) notFound();
 
+  // Tier 1 플랫폼 기본약관 서버사이드 pre-fetch (바텀시트 waterfall 방지)
+  // LP는 Tier 1(플랫폼 공통)만 로드 — id만 전달하면 platform tier 조회 가능
+  let initialNotices: NoticeBlock[] = [];
+  try {
+    const resolved = await resolveTermsForPackage({ id: data.id }, 'mobile');
+    initialNotices = formatCancellationDates(resolved, data.departureFullDate ?? null);
+  } catch {
+    // 약관 로드 실패는 무시 (바텀시트는 동작)
+  }
+
   return (
     <Suspense fallback={<LpRouteSkeleton />}>
-      <LandingClient initialData={data} />
+      <LandingClient initialData={data} initialNotices={initialNotices} />
     </Suspense>
   );
 }

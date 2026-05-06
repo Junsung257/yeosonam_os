@@ -22,32 +22,37 @@ interface RegionEntry {
 
 async function getRegions(): Promise<RegionEntry[]> {
   if (!isSupabaseConfigured) return [];
-  const { data } = await supabaseAdmin
+  const { data: regionRows } = await supabaseAdmin
+    .from('attractions')
+    .select('region')
+    .not('region', 'is', null)
+    .order('mention_count', { ascending: false })
+    .limit(4000);
+
+  if (!regionRows) return [];
+  const { data: coverRows } = await supabaseAdmin
     .from('attractions')
     .select('region, photos')
     .not('region', 'is', null)
+    .not('photos', 'is', null)
     .order('mention_count', { ascending: false })
-    .limit(2000);
+    .limit(450);
 
-  if (!data) return [];
   const map = new Map<string, RegionEntry>();
-  for (const r of data) {
+  for (const r of regionRows) {
     if (!r.region) continue;
-    if (!map.has(r.region)) {
-      const photos = r.photos as Array<{ src_medium?: string; src_large?: string }> | null;
-      map.set(r.region, {
-        region: r.region,
-        count: 0,
-        cover: pickAttractionPhotoUrl(photos ?? undefined),
-      });
-    }
+    if (!map.has(r.region)) map.set(r.region, { region: r.region, count: 0, cover: null });
     const e = map.get(r.region)!;
     e.count += 1;
-    if (!e.cover) {
+  }
+
+  for (const r of coverRows ?? []) {
+    if (!r.region) continue;
+    const e = map.get(r.region);
+    if (!e || e.cover) continue;
       const photos = r.photos as Array<{ src_medium?: string; src_large?: string }> | null;
       const u = pickAttractionPhotoUrl(photos ?? undefined);
       if (u) e.cover = u;
-    }
   }
   return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }

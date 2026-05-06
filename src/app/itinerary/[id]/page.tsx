@@ -473,7 +473,7 @@ export default function ItineraryPage() {
                         attr?.badge_type === 'special' ? 'bg-violet-500' :
                         attr?.badge_type === 'shopping' ? 'bg-purple-500' :
                         attr?.badge_type === 'meal' || attr?.badge_type === 'restaurant' ? 'bg-orange-500' :
-                        attr?.badge_type === 'hotel' ? 'bg-[#3182F6]/60' :
+                        attr?.badge_type === 'hotel' ? 'bg-brand/60' :
                         attr?.badge_type === 'golf' ? 'bg-emerald-500' :
                         item.type === 'flight' ? 'bg-blue-500' :
                         item.type === 'hotel' ? 'bg-green-500' :
@@ -553,7 +553,7 @@ export default function ItineraryPage() {
                                 attr.badge_type === 'shopping' ? 'border-purple-300 text-purple-700 bg-purple-50' :
                                 attr.badge_type === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
                                 attr.badge_type === 'restaurant' ? 'border-orange-300 text-orange-700 bg-orange-50' :
-                                attr.badge_type === 'hotel' ? 'border-[#DBEAFE] text-[#1B64DA] bg-[#EBF3FE]' :
+                                attr.badge_type === 'hotel' ? 'border-blue-200 text-[#1B64DA] bg-brand-light' :
                                 attr.badge_type === 'golf' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
                                 'border-gray-300 text-gray-600 bg-gray-50'
                               }`}>{

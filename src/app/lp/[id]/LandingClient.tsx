@@ -17,6 +17,7 @@ import { trackKakaoViewContent } from '@/lib/kakao-moment-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { sanitizeUtmTermForDisplay } from '@/lib/sanitize-ad-copy';
 import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package-to-lp';
+import type { NoticeBlock } from '@/lib/standard-terms';
 
 const PriceSectionCard = dynamic(() => import('@/components/lp/PriceSection'));
 const LeadBottomSheet = dynamic(() => import('@/components/lp/LeadBottomSheet'), { ssr: false });
@@ -163,12 +164,26 @@ function Highlights({ items }: { items: string[] }) {
 // 메인 (RSC가 initialData 주입 — 클라이언트는 채널·트래킹·시트만)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function LandingClient({ initialData }: { initialData: LandingProductData }) {
+const TERMS_SUMMARY_TYPES = ['RESERVATION', 'AUTO_TICKETING', 'BUSINESS_HOURS'];
+
+export function LandingClient({
+  initialData,
+  initialNotices = [],
+}: {
+  initialData: LandingProductData;
+  initialNotices?: NoticeBlock[];
+}) {
   const searchParams = useSearchParams();
   const source = (searchParams.get('source') ?? 'default') as ChannelSource;
   const validSource: ChannelSource = ['insta', 'kakao'].includes(source) ? source : 'default';
 
   const data = initialData;
+
+  const hasSpecialTerms = initialNotices.some(n => (n._tier ?? 1) >= 3);
+  const termsSummary = initialNotices
+    .filter(n => TERMS_SUMMARY_TYPES.includes(n.type))
+    .map(n => `【${n.title}】\n${n.text}`)
+    .join('\n\n') || undefined;
 
   useEffect(() => {
     trackViewContent({
@@ -211,8 +226,7 @@ export function LandingClient({ initialData }: { initialData: LandingProductData
   const isKakao = validSource === 'kakao';
   const heroImage = isInsta ? data.heroImageA : data.heroImageB;
 
-  // 채널별 FAB 텍스트 (시트 = 일정·인원·연락처 정밀 리드)
-  const fabText = isInsta ? '일정·인원 입력하고 상담받기' : '일정·인원 입력하고 상담받기';
+  const fabText = '일정·인원 입력하고 상담받기';
 
   const hasReviewStats = data.reviewCount >= 1;
 
@@ -240,7 +254,7 @@ export function LandingClient({ initialData }: { initialData: LandingProductData
           className="absolute inset-0 h-full w-full object-cover"
           loading="eager"
           fetchPriority="high"
-          fallback={<div className="absolute inset-0 bg-gradient-to-br from-[#191F28] via-[#1B64DA] to-[#3182F6]" />}
+          fallback={<div className="absolute inset-0 bg-gradient-to-br from-text-primary via-brand-dark to-brand" />}
         />
         <div
           className={`absolute inset-0 pointer-events-none ${
@@ -277,7 +291,7 @@ export function LandingClient({ initialData }: { initialData: LandingProductData
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-[#191F28] active:scale-[0.98] transition-transform shadow-md"
+              className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-text-primary active:scale-[0.98] transition-transform shadow-md"
               onClick={async () => {
                 trackLead({
                   content_name: data.customMessage.default.headline,
@@ -379,6 +393,8 @@ export function LandingClient({ initialData }: { initialData: LandingProductData
         onClose={() => setSheetOpen(false)}
         defaultDate={data.departureFullDate}
         priceDates={data.price_dates}
+        hasSpecialTerms={hasSpecialTerms}
+        termsSummary={termsSummary}
         onSubmit={async (form) => {
           await submitLeadPipeline(
             data.id,

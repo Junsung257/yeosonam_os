@@ -16,11 +16,12 @@ import {
   estimateHeights,
   type PriceTier,
 } from '@/components/itinerary/A4PosterLayout';
+import { getSecret } from '@/lib/secret-registry';
 
 // ── Supabase 서버사이드 클라이언트 (Service Role — RLS 우회) ────────────────
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
+  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !key) return null;
   return createClient(url, key);
 }

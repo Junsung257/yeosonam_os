@@ -172,7 +172,7 @@ export default function SharePage() {
           <p className="text-sm text-gray-500 mb-6">{error}</p>
           <a
             href="/concierge"
-            className="inline-block bg-[#3182F6] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#1B64DA] transition"
+            className="inline-block bg-brand text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#1B64DA] transition"
           >
             AI 컨시어지로 이동 →
           </a>
@@ -260,12 +260,12 @@ export default function SharePage() {
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 bg-[#EBF3FE] font-bold">
-                    <td colSpan={3} className="px-4 py-3 text-[#191F28]">합계</td>
-                    <td className="px-4 py-3 text-[#3182F6]">
+                  <tr className="border-t-2 bg-brand-light font-bold">
+                    <td colSpan={3} className="px-4 py-3 text-text-primary">합계</td>
+                    <td className="px-4 py-3 text-brand">
                       ₩{fmt(shared.items.reduce((s, i) => s + i.price * i.quantity, 0))}
                     </td>
-                    <td className="px-4 py-3 text-[#3182F6]">
+                    <td className="px-4 py-3 text-brand">
                       {refreshedPrices.size > 0 && (
                         `₩${fmt([...refreshedPrices.entries()].reduce((s, [pid, p]) => {
                           const item = shared.items!.find(i => i.product_id === pid);
@@ -281,7 +281,7 @@ export default function SharePage() {
             <button
               onClick={handleAddAllToCart}
               disabled={addingToCart}
-              className="w-full bg-[#3182F6] text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition disabled:opacity-50"
+              className="w-full bg-brand text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition disabled:opacity-50"
             >
               {addingToCart ? '장바구니에 추가 중...' : '이 구성으로 예약하기 →'}
             </button>
@@ -362,7 +362,7 @@ export default function SharePage() {
 
         {/* 푸터 */}
         <div className="text-center">
-          <a href="/concierge" className="text-sm text-[#3182F6] hover:underline">
+          <a href="/concierge" className="text-sm text-brand hover:underline">
             여소남 AI 컨시어지로 돌아가기
           </a>
         </div>

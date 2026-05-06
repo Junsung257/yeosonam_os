@@ -388,7 +388,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 className="w-full h-full object-cover scale-105 origin-center"
                 fetchPriority="high"
                 loading="eager"
-                fallback={<div className="w-full h-full bg-gradient-to-br from-[#1e3a5f] to-[#3182F6]" aria-hidden />}
+                fallback={<div className="w-full h-full bg-gradient-to-br from-[#1e3a5f] to-brand" aria-hidden />}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/65 to-slate-900/25" />
             </div>
@@ -496,7 +496,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
               ))}
               <Link
                 href={getRegionUrl(region.slug)}
-                className="flex-shrink-0 text-sm md:text-base text-[#3182F6] font-bold px-4 py-2 hover:underline whitespace-nowrap"
+                className="flex-shrink-0 text-sm md:text-base text-brand font-bold px-4 py-2 hover:underline whitespace-nowrap"
               >
                 {region.label} 전체 →
               </Link>
@@ -552,11 +552,11 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                           <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                         </div>
                       ) : (
-                        <div className="aspect-[4/3] bg-gradient-to-br from-[#3182F6]/10 to-[#3182F6]/20 flex flex-col items-center justify-center gap-2">
-                          <span className="text-5xl font-bold text-[#3182F6]/40 drop-shadow-sm select-none">
+                        <div className="aspect-[4/3] bg-gradient-to-br from-brand/10 to-brand/20 flex flex-col items-center justify-center gap-2">
+                          <span className="text-5xl font-bold text-brand/40 drop-shadow-sm select-none">
                             {a.name.charAt(0)}
                           </span>
-                          <span className="text-[11px] text-[#3182F6]/40 font-medium">사진 준비중</span>
+                          <span className="text-[11px] text-brand/40 font-medium">사진 준비중</span>
                         </div>
                       )}
                       <div className="p-4">
@@ -607,12 +607,12 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                         />
                       </div>
                     ) : (
-                      <div className="aspect-[16/9] bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl">
+                      <div className="aspect-[16/9] bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center text-3xl">
                         📖
                       </div>
                     )}
                     <div className="p-4">
-                      <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-[#3182F6] tracking-tight transition-colors">
+                      <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-brand tracking-tight transition-colors">
                         {p.seo_title || '블로그 가이드'}
                       </h3>
                     </div>
@@ -623,7 +623,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
           )}
 
           {/* ── 6. 하단 CTA ───────────────────────────────────────────────── */}
-          <section className="bg-[#EBF5FF] border border-[#3182F6]/15 rounded-3xl p-8 md:p-12 text-center overflow-hidden relative">
+          <section className="bg-[#EBF5FF] border border-brand/15 rounded-3xl p-8 md:p-12 text-center overflow-hidden relative">
             <div className="relative z-10 max-w-2xl mx-auto">
               <h3 className="text-2xl md:text-3xl font-black text-slate-900 mb-4 tracking-tight break-keep">
                 어떤 상품이 우리한테 맞을지 모르겠다면
@@ -634,17 +634,17 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 운영팀이 딱 맞는 패키지 골라드려요
               </p>
 
-              <div className="flex justify-center gap-8 md:gap-14 mb-8 border-y border-[#3182F6]/10 py-5 max-w-sm mx-auto">
+              <div className="flex justify-center gap-8 md:gap-14 mb-8 border-y border-brand/10 py-5 max-w-sm mx-auto">
                 <div className="text-center">
-                  <div className="text-2xl md:text-3xl font-black text-[#3182F6]">3분</div>
+                  <div className="text-2xl md:text-3xl font-black text-brand">3분</div>
                   <div className="text-[12px] md:text-[13px] font-bold text-slate-500 mt-0.5">평균 응답</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl md:text-3xl font-black text-[#3182F6]">무료</div>
+                  <div className="text-2xl md:text-3xl font-black text-brand">무료</div>
                   <div className="text-[12px] md:text-[13px] font-bold text-slate-500 mt-0.5">상담 비용</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl md:text-3xl font-black text-[#3182F6]">10년+</div>
+                  <div className="text-2xl md:text-3xl font-black text-brand">10년+</div>
                   <div className="text-[12px] md:text-[13px] font-bold text-slate-500 mt-0.5">운영 경력</div>
                 </div>
               </div>
@@ -653,7 +653,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 href="https://pf.kakao.com/_yeosonam"
                 target="_blank"
                 rel="noopener"
-                className="inline-flex justify-center items-center gap-2 w-full md:w-auto md:px-14 py-4 bg-[#3182F6] text-white font-bold text-base md:text-lg rounded-2xl hover:bg-[#2563eb] transition shadow-lg shadow-[#3182F6]/25"
+                className="inline-flex justify-center items-center gap-2 w-full md:w-auto md:px-14 py-4 bg-brand text-white font-bold text-base md:text-lg rounded-2xl hover:bg-brand-dark transition shadow-lg shadow-brand/25"
               >
                 💬 카카오톡으로 무료 상담받기
               </a>

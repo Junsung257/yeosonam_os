@@ -103,7 +103,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
 
       <GlobalNav />
       <main className="min-h-screen bg-white">
-        <header className="border-b bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white">
+        <header className="border-b bg-gradient-to-r from-brand to-brand-dark text-white">
           <div className="mx-auto max-w-6xl px-4 md:px-6 py-14 md:py-20">
             <div className="flex items-center gap-2 text-[13px] md:text-sm text-blue-200 mb-4">
               <Link href="/" className="hover:text-white">홈</Link>
@@ -125,7 +125,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
               <div className="grid gap-4 md:gap-6 sm:grid-cols-3">
                 {packages.map(pkg => (
                   <Link key={pkg.id} href={`/packages/${pkg.id}`}
-                    className="rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-[#3182F6] transition">
+                    className="rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-brand transition">
                     <p className="text-base font-bold text-slate-900 line-clamp-2 leading-snug tracking-tight">{pkg.title}</p>
                     {pkg.price && <p className="mt-2 text-lg md:text-xl font-black text-slate-900 tabular-nums">{pkg.price.toLocaleString()}원~</p>}
                   </Link>
@@ -144,14 +144,14 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
                 {posts.map(post => (
                   <Link key={post.id} href={`/blog/${post.slug}`}
                     className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
-                    <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
+                    <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
                         src={post.og_image_url}
                         alt={post.seo_title || ''}
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
                         fallback={
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-light to-[#F2F4F6]">
                             <span className="text-4xl">✈️</span>
                           </div>
                         }
@@ -161,7 +161,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 mb-3 inline-block">
                         {ANGLE_LABELS[post.angle_type] || post.angle_type}
                       </span>
-                      <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-[#3182F6] tracking-tight leading-snug">
+                      <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-brand tracking-tight leading-snug">
                         {post.seo_title || '여행 가이드'}
                       </h2>
                       {post.seo_description && (

@@ -138,13 +138,13 @@ export default async function DestinationsIndexPage() {
                           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           loading="lazy"
                           fallback={
-                            <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">
+                            <div className="absolute inset-0 bg-gradient-to-br from-brand to-brand-dark flex items-center justify-center text-5xl">
                               🌍
                             </div>
                           }
                         />
                       ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-[#3182F6] to-[#1B64DA] flex items-center justify-center text-5xl">
+                        <div className="absolute inset-0 bg-gradient-to-br from-brand to-brand-dark flex items-center justify-center text-5xl">
                           🌍
                         </div>
                       )}

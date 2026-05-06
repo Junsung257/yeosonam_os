@@ -95,16 +95,16 @@ const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '선택관광', 
 
 // 보라색 테마 아이콘
 function getTimelineIcon(type?: string, activity?: string) {
-  if (type === 'flight' && activity && /출발|향발/.test(activity)) return { icon: '✈️', bg: 'bg-[#3182F6]' };
-  if (type === 'flight') return { icon: '🛬', bg: 'bg-[#EBF3FE]' };
+  if (type === 'flight' && activity && /출발|향발/.test(activity)) return { icon: '✈️', bg: 'bg-brand' };
+  if (type === 'flight') return { icon: '🛬', bg: 'bg-brand-light' };
   if (type === 'golf') return { icon: '⛳', bg: 'bg-emerald-500' };
   if (type === 'optional') return { icon: '💎', bg: 'bg-pink-500' };
   if (type === 'shopping') return { icon: '🛍️', bg: 'bg-[#8B95A1]' };
   if (type === 'cruise' || type === 'spa') return { icon: '✨', bg: 'bg-cyan-500' };
-  if (activity && /호텔.*체크|투숙|휴식/.test(activity)) return { icon: '🏨', bg: 'bg-[#3182F6]/60' };
+  if (activity && /호텔.*체크|투숙|휴식/.test(activity)) return { icon: '🏨', bg: 'bg-brand/60' };
   if (activity && /식사|중식|석식|조식/.test(activity)) return { icon: '🍽️', bg: 'bg-orange-400' };
   if (activity && /이동|출발|공항/.test(activity)) return { icon: '🚌', bg: 'bg-gray-400' };
-  return { icon: '📍', bg: 'bg-[#3182F6]' };
+  return { icon: '📍', bg: 'bg-brand' };
 }
 
 interface RelatedBlogPost {
@@ -197,27 +197,27 @@ function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; 
   if (variant === 'row') {
     if (!ok) {
       return (
-        <div className="flex h-20 w-28 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
+        <div className="flex h-20 w-28 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-light to-[#F2F4F6]">
           <span className="text-3xl">📖</span>
         </div>
       );
     }
     return (
-      <div className="h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
-        <img src={url!} alt={title || ''} className="h-full w-full object-cover" loading="lazy" onError={() => setHide(true)} />
+      <div className="relative h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+        <Image src={url!} alt={title || ''} fill className="object-cover" sizes="112px" loading="lazy" onError={() => setHide(true)} />
       </div>
     );
   }
   if (!ok) {
     return (
-      <div className="aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-[#F2F4F6] to-[#EBF3FE]">
+      <div className="aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-[#F2F4F6] to-brand-light">
         <span className="text-2xl">📖</span>
       </div>
     );
   }
   return (
-    <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
-      <img src={url!} alt={title || ''} className="w-full h-full object-cover" loading="lazy" onError={() => setHide(true)} />
+    <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
+      <Image src={url!} alt={title || ''} fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" loading="lazy" onError={() => setHide(true)} />
     </div>
   );
 }
@@ -430,6 +430,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       : Infinity;
     return Math.min(minTier, minDate, pkg.price || Infinity);
   }, [pkg, tiers]);
+  const nextConfirmedDate = useMemo(() => {
+    if (!pkg?.price_dates) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const confirmed = pkg.price_dates
+      .filter(d => d.confirmed && d.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (!confirmed.length) return null;
+    const d = new Date(confirmed[0].date);
+    return `${d.getMonth() + 1}/${d.getDate()} 확정`;
+  }, [pkg]);
   const heroUrl = useMemo(() => {
     if (!pkg) return null;
     // destination "다낭/호이안", "방콕/파타야" 등 slash/공백 구분 → 토큰 분리 후 양방향 매칭
@@ -610,7 +620,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               onError={() => setHeroImgBroken(true)}
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#191F28] via-[#1B64DA] to-[#3182F6]" />
+            <div className="absolute inset-0 bg-gradient-to-br from-text-primary via-brand-dark to-brand" />
           )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
@@ -638,7 +648,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         {/* 히어로 콘텐츠 */}
         <div className="absolute bottom-0 left-0 right-0 p-5 pb-8">
           {pkg.product_type && (
-            <span className="bg-[#3182F6] text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 inline-block">{pkg.product_type}</span>
+            <span className="bg-brand text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 inline-block">{pkg.product_type}</span>
           )}
           {/* 2-tier hero (2026-04-29):
               ① Headline (h1, 큰 굵은 글씨, 8~14자) — display_title
@@ -732,7 +742,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
                 {items.map((h, i) => {
                   const icon = /직항/.test(h) ? '✈️' : /마사지/.test(h) ? '💆' : /무료|업그레이드/.test(h) ? '🎁' : /팁.*포함|포함.*팁|팁전부/.test(h) ? '✅' : /호텔|리조트|스파/.test(h) ? '🏨' : /가이드/.test(h) ? '👤' : '✨';
-                  return <span key={i} className="bg-[#EBF3FE] text-[#3182F6] px-2.5 py-1 rounded-lg text-xs font-medium">{icon} {h}</span>;
+                  return <span key={i} className="bg-brand-light text-brand px-2.5 py-1 rounded-lg text-xs font-medium">{icon} {h}</span>;
                 })}
               </div>
             );
@@ -812,7 +822,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div className="absolute top-0 right-5 text-4xl opacity-5">❞</div>
             <h2 className="text-lg font-extrabold text-gray-900 mb-3">여소남의 추천 코멘트 ✍️</h2>
             {header && (
-              <p className="text-base font-bold text-[#3182F6] mb-3 leading-snug break-keep">
+              <p className="text-base font-bold text-brand mb-3 leading-snug break-keep">
                 {header}
               </p>
             )}
@@ -855,7 +865,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
             {/* 가는편 */}
             <div className="p-4">
-              <p className="text-xs font-bold text-[#3182F6] mb-2.5">가는편</p>
+              <p className="text-xs font-bold text-brand mb-2.5">가는편</p>
               <div className="flex items-center justify-between">
                 <div className="text-center min-w-[60px]">
                   {flightDep.time && <p className="text-xl font-black text-gray-900 tabular-nums">{flightDep.time}</p>}
@@ -863,11 +873,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 </div>
                 <div className="flex flex-col items-center flex-1 px-2">
                   <div className="flex items-center w-full gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6] shrink-0" />
-                    <div className="flex-1 h-[1px] bg-[#EBF3FE]" />
-                    <span className="text-[#3182F6] text-sm shrink-0">✈</span>
-                    <div className="flex-1 h-[1px] bg-[#EBF3FE]" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6] shrink-0" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
+                    <div className="flex-1 h-[1px] bg-brand-light" />
+                    <span className="text-brand text-sm shrink-0">✈</span>
+                    <div className="flex-1 h-[1px] bg-brand-light" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
                   </div>
                   <div className="text-center mt-1">
                     {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
@@ -923,7 +933,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {NAV_SECTIONS.map(section => (
             <button key={section} onClick={() => scrollToSection(section)}
               className={`flex-1 py-3.5 text-xs font-semibold text-center transition-colors border-b-2 ${
-                activeSection === section ? 'text-[#3182F6] border-[#3182F6]' : 'text-gray-500 border-transparent'
+                activeSection === section ? 'text-brand border-brand' : 'text-gray-500 border-transparent'
               }`}>{section}</button>
           ))}
         </div>
@@ -941,7 +951,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 const isMin = t.adult_price === minPrice;
                 return (
                   <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
-                    className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-[#3182F6] bg-[#EBF3FE] ring-1 ring-[#3182F6]' : 'border-gray-200 bg-white'}`}>
+                    className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-brand bg-brand-light ring-1 ring-brand' : 'border-gray-200 bg-white'}`}>
                     <div>
                       <p className="text-sm font-medium text-gray-800">
                         {t.period_label}
@@ -951,8 +961,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       {t.departure_day_of_week && <p className="text-xs text-gray-500">{t.departure_day_of_week}</p>}
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-bold ${t.status === 'soldout' ? 'text-gray-500 line-through' : isMin ? 'text-[#3182F6]' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
-                      {isMin && t.status !== 'soldout' && <span className="text-xs bg-[#EBF3FE] text-[#3182F6] px-1.5 py-0.5 rounded-full">최저가</span>}
+                      <p className={`text-sm font-bold ${t.status === 'soldout' ? 'text-gray-500 line-through' : isMin ? 'text-brand' : 'text-gray-900'}`}>₩{t.adult_price?.toLocaleString()}</p>
+                      {isMin && t.status !== 'soldout' && <span className="text-xs bg-brand-light text-brand px-1.5 py-0.5 rounded-full">최저가</span>}
                     </div>
                   </button>
                 );
@@ -986,7 +996,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       {selectedDateInfo.confirmed && <span className="ml-1.5 text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
                     </p>
                   </div>
-                  <p className="text-base font-extrabold text-[#3182F6]">₩{selectedDateInfo.price.toLocaleString()}</p>
+                  <p className="text-base font-extrabold text-brand">₩{selectedDateInfo.price.toLocaleString()}</p>
                 </div>
               )}
             </div>
@@ -999,16 +1009,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {(view.inclusions.basic.length || view.inclusions.program.length || view.excludes.basic.length || view.surchargesMerged.length) ? (
         <div className="px-4 py-6 space-y-3">
           {(view.inclusions.basic.length > 0 || view.inclusions.program.length > 0) && (
-            <div className="bg-[#EBF3FE]/50 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-[#191F28] mb-3">✅ 포함 사항</h3>
+            <div className="bg-brand-light/50 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-text-primary mb-3">✅ 포함 사항</h3>
               <ul className="space-y-1.5">
                 {view.inclusions.basic.map((item, i) => (
-                  <li key={i} className="text-sm text-[#191F28] flex gap-2 leading-relaxed">
+                  <li key={i} className="text-sm text-text-primary flex gap-2 leading-relaxed">
                     <span className="shrink-0 text-base leading-snug">{item.icon}</span>{item.text}
                   </li>
                 ))}
                 {view.inclusions.program.length > 0 && (
-                  <li className="pt-2 mt-1.5 border-t border-[#EBF3FE] text-xs text-[#3182F6] leading-relaxed">
+                  <li className="pt-2 mt-1.5 border-t border-brand-light text-xs text-brand leading-relaxed">
                     <span className="mr-1">✨</span>{view.inclusions.program.join(' · ')}
                   </li>
                 )}
@@ -1064,9 +1074,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {/* ERR-HET-mobile-shopping-missing@2026-04-22 — A4 에는 있지만 모바일엔 쇼핑센터 섹션이 누락돼
               품격 상품의 "쇼핑 3회" 정보가 고객 화면에 안 노출됨. view.shopping(CRC) 를 소비해 추가. */}
           {view.shopping.text && !/노쇼핑/.test(view.shopping.text) && (
-            <div className="bg-[#EBF3FE]/50 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-[#191F28] mb-2">🛍️ 쇼핑센터</h3>
-              <p className="text-sm text-[#191F28] leading-relaxed">{view.shopping.text}</p>
+            <div className="bg-brand-light/50 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-text-primary mb-2">🛍️ 쇼핑센터</h3>
+              <p className="text-sm text-text-primary leading-relaxed">{view.shopping.text}</p>
             </div>
           )}
         </div>
@@ -1090,12 +1100,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     }}
                     className={`flex-shrink-0 flex flex-col items-center px-4 py-2.5 rounded-2xl transition-all border ${
                       isActive
-                        ? 'bg-[#3182F6] text-white border-[#3182F6] shadow-lg'
-                        : 'bg-white text-gray-500 border-gray-200 hover:border-[#EBF3FE]'
+                        ? 'bg-brand text-white border-brand shadow-lg'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-brand-light'
                     }`}>
                     {thumb ? (
-                      <div className={`w-8 h-8 rounded-full overflow-hidden mb-1.5 ring-2 ${isActive ? 'ring-white/50' : 'ring-gray-100'}`}>
-                        <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      <div className={`relative w-8 h-8 rounded-full overflow-hidden mb-1.5 ring-2 ${isActive ? 'ring-white/50' : 'ring-gray-100'}`}>
+                        <Image src={thumb} alt="" fill className="object-cover" sizes="32px" />
                       </div>
                     ) : null}
                     <span className="text-xs font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
@@ -1118,7 +1128,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div key={currentDay.day} id={`day-${currentDay.day}`} ref={el => { dayRefs.current[currentDay.day] = el; }} data-day={currentDay.day} className="scroll-mt-[160px] mb-10">
               {/* Day 헤더 */}
               <div className="flex items-center gap-2 mb-4">
-                <span className="bg-[#3182F6] text-white text-xs font-bold px-2.5 py-1 rounded-lg">DAY {currentDay.day}</span>
+                <span className="bg-brand text-white text-xs font-bold px-2.5 py-1 rounded-lg">DAY {currentDay.day}</span>
                 {currentDay.regions?.[0] && <span className="text-sm text-gray-500">{currentDay.regions.join(' → ')}</span>}
               </div>
 
@@ -1169,23 +1179,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
                     return (
                       <div key={sIdx} className="relative pl-8">
-                        <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#3182F6] ring-2 ring-[#EBF3FE] z-10" />
+                        <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-brand ring-2 ring-[#EBF3FE] z-10" />
                         <div className="bg-white rounded-xl border border-gray-200 p-3">
                           <div className="flex gap-3">
                             <div className="flex flex-col items-center shrink-0 w-12">
                               <p className="text-sm font-black text-gray-900">{item.time}</p>
-                              <div className="w-[2px] flex-1 bg-[#EBF3FE] my-1 min-h-[28px]" />
+                              <div className="w-[2px] flex-1 bg-brand-light my-1 min-h-[28px]" />
                               <p className="text-sm font-black text-gray-900">{arrTimeFinal || '—'}</p>
                             </div>
                             <div className="flex flex-col items-center shrink-0 pt-1">
-                              <div className={`w-2.5 h-2.5 rounded-full border-2 ${isOutbound ? 'border-[#3182F6]' : 'border-orange-400'} bg-white`} />
-                              <div className={`w-[2px] flex-1 ${isOutbound ? 'bg-[#EBF3FE]' : 'bg-orange-200'} min-h-[28px]`} />
-                              <div className={`w-2.5 h-2.5 rounded-full ${isOutbound ? 'bg-[#3182F6]' : 'bg-orange-400'}`} />
+                              <div className={`w-2.5 h-2.5 rounded-full border-2 ${isOutbound ? 'border-brand' : 'border-orange-400'} bg-white`} />
+                              <div className={`w-[2px] flex-1 ${isOutbound ? 'bg-brand-light' : 'bg-orange-200'} min-h-[28px]`} />
+                              <div className={`w-2.5 h-2.5 rounded-full ${isOutbound ? 'bg-brand' : 'bg-orange-400'}`} />
                             </div>
                             <div className="flex-1 flex flex-col justify-between py-0.5">
                               <div>
                                 <p className="font-bold text-sm text-gray-900">{depCity} 출발</p>
-                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-[#3182F6]' : 'text-orange-500'}`}>✈ {formatFlightLabel(item.transport)} 직항</p>
+                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-brand' : 'text-orange-500'}`}>✈ {formatFlightLabel(item.transport)} 직항</p>
                               </div>
                               <p className="font-bold text-sm text-gray-900">{arrCityParsed} 도착</p>
                             </div>
@@ -1232,21 +1242,21 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   return (
                     <div key={sIdx} className="relative pl-8">
                       {/* 보라 dot */}
-                      <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#3182F6] ring-2 ring-[#EBF3FE] z-10" />
+                      <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-brand ring-2 ring-[#EBF3FE] z-10" />
 
                       <div>
                         {/* 시간 */}
                         {item.time && (
-                          <p className="text-[#3182F6] text-xs font-bold mb-0.5">{item.time}</p>
+                          <p className="text-brand text-xs font-bold mb-0.5">{item.time}</p>
                         )}
 
                         {/* [특전] 하이라이트 카드 */}
                         {/\[특전\]|특전\)/.test(item.activity) ? (
-                          <div className="bg-[#EBF3FE] border border-[#EBF3FE] rounded-xl px-3 py-2.5 flex items-start gap-2">
+                          <div className="bg-brand-light border border-brand-light rounded-xl px-3 py-2.5 flex items-start gap-2">
                             <span className="text-lg shrink-0">🎁</span>
                             <div>
-                              <span className="text-xs font-bold text-[#3182F6] bg-[#EBF3FE] px-1.5 py-0.5 rounded-full">스페셜 포함</span>
-                              <p className="font-bold text-base text-[#191F28] mt-1">{item.activity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
+                              <span className="text-xs font-bold text-brand bg-brand-light px-1.5 py-0.5 rounded-full">스페셜 포함</span>
+                              <p className="font-bold text-base text-text-primary mt-1">{item.activity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
                             </div>
                           </div>
                         ) : (
@@ -1309,11 +1319,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             {/* 배지 */}
                             {effectiveBadge && effectiveBadge !== 'tour' && (
                               <span className={`inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full font-bold border ${
-                                effectiveBadge === 'special' ? 'border-[#EBF3FE] text-[#3182F6] bg-[#EBF3FE]' :
-                                effectiveBadge === 'shopping' ? 'border-[#EBF3FE] text-[#3182F6] bg-[#EBF3FE]' :
+                                effectiveBadge === 'special' ? 'border-brand-light text-brand bg-brand-light' :
+                                effectiveBadge === 'shopping' ? 'border-brand-light text-brand bg-brand-light' :
                                 effectiveBadge === 'optional' ? 'border-pink-300 text-pink-700 bg-pink-50' :
                                 effectiveBadge === 'restaurant' ? 'border-orange-300 text-orange-700 bg-orange-50' :
-                                effectiveBadge === 'hotel' ? 'border-[#DBEAFE] text-[#1B64DA] bg-[#EBF3FE]' :
+                                effectiveBadge === 'hotel' ? 'border-blue-200 text-[#1B64DA] bg-brand-light' :
                                 effectiveBadge === 'golf' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
                                 'border-gray-300 text-gray-600 bg-gray-50'
                               }`}>{
@@ -1328,7 +1338,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             
                             {/* 지역 스토리 매거진 뷰 (long_desc 상시 노출) */}
                             {attr.long_desc && (
-                              <div className="mt-2 bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] rounded-xl p-3 border border-[#DBEAFE]/50">
+                              <div className="mt-2 bg-gradient-to-br from-brand-light to-[#F2F4F6] rounded-xl p-3 border border-blue-200/50">
                                 <p className="text-sm text-gray-700 leading-loose break-keep">
                                   {attr.long_desc}
                                 </p>
@@ -1354,11 +1364,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const gradeLabel = card.grade != null && card.grade !== '' ? String(card.grade) : '';
                   return (
                     <div className="relative pl-8">
-                      <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-[#3182F6] ring-2 ring-[#EBF3FE] z-10" />
+                      <div className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full bg-brand ring-2 ring-[#EBF3FE] z-10" />
                       <div>
                         <h3 className="font-bold text-base text-gray-900 mb-2">{card.title}</h3>
                         <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
-                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#EBF3FE] to-[#3182F6]/30 flex items-center justify-center text-xl shrink-0">
+                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-brand-light to-brand/30 flex items-center justify-center text-xl shrink-0">
                             {/* ERR-HET-hotel-ger-star@2026-04-22 — 게르는 성급 표기가 없는 숙소라 별 대신 🛖 아이콘 */}
                             {gradeLabel && /게르/.test(gradeLabel) ? '🛖' : '🏨'}
                           </div>
@@ -1573,8 +1583,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {/* ① 이 상품 직접 관련 글 — 큰 가로형 카드 (소셜 프루프 강조) */}
           {relatedBlogPosts.length > 0 && (
             <div className="mb-6">
-              <p className="text-[11px] font-bold text-[#3182F6] mb-2 flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-[#3182F6]" />
+              <p className="text-[11px] font-bold text-brand mb-2 flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-brand" />
                 이 상품을 다룬 글
               </p>
               <div className="space-y-2.5">
@@ -1582,11 +1592,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   <Link
                     key={bp.slug}
                     href={`/blog/${bp.slug}`}
-                    className="flex gap-3 rounded-2xl border border-[#EBF3FE] bg-[#EBF3FE]/30 p-3 hover:bg-white hover:shadow-md hover:border-[#EBF3FE] transition"
+                    className="flex gap-3 rounded-2xl border border-brand-light bg-brand-light/30 p-3 hover:bg-white hover:shadow-md hover:border-brand-light transition"
                   >
                     <BlogOgThumb url={bp.og_image_url} title={bp.seo_title || ''} variant="row" />
                     <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5">
-                      <span className="self-start mb-1 inline-block rounded-full bg-[#3182F6] px-2 py-0.5 text-[10px] font-bold text-white">
+                      <span className="self-start mb-1 inline-block rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-white">
                         {ANGLE_LABELS[bp.angle_type] || bp.angle_type}
                       </span>
                       <p className="line-clamp-2 text-sm font-bold text-gray-900 leading-snug">{bp.seo_title || '여행 가이드'}</p>
@@ -1610,7 +1620,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   <Link
                     key={bp.slug}
                     href={`/blog/${bp.slug}`}
-                    className="block rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-md hover:border-[#EBF3FE] transition"
+                    className="block rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-md hover:border-brand-light transition"
                   >
                     <BlogOgThumb url={bp.og_image_url} title={bp.seo_title || ''} variant="grid" />
                     <div className="p-3">
@@ -1645,12 +1655,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약하기 (Jiwonnote 분석 P3) ═══ */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-40 border-t border-gray-100 safe-area-bottom">
         {/* 신뢰 배너 — 상품 타입별 보장 문구 */}
-        <div className="bg-[#EBF3FE] text-[#1d4ed8] text-[10px] text-center py-1.5 font-semibold flex items-center justify-center gap-2.5 flex-wrap px-3">
+        <div className="bg-brand-light text-blue-700 text-[10px] text-center py-1.5 font-semibold flex items-center justify-center gap-2.5 flex-wrap px-3">
           <span>✅ 숨은 수수료 없음</span>
           {pkg.product_type && /노팁|no.?tip/i.test(pkg.product_type) && <span>✅ 팁 없음</span>}
           {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
           {pkg.product_type && /노옵션|no.?option/i.test(pkg.product_type) && <span>✅ 선택관광 강요 없음</span>}
-          <span>✅ 출발 확정 후 안심 예약</span>
+          <span>✅ {nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약'}</span>
         </div>
         <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-4 pt-3 flex items-center gap-2">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
@@ -1724,7 +1734,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="h-11 px-5 rounded-full bg-[#3182F6] text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
+            className="h-11 px-5 rounded-full bg-brand text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
             aria-label="예약 문의 폼 열기"
           >
             {selectedDate
@@ -1782,7 +1792,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <>
                 <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
                 <h3 className="text-lg font-bold text-gray-900 mb-3">예약 문의</h3>
-                <div className="bg-[#EBF3FE] rounded-xl p-3 mb-4 text-xs text-[#191F28]">
+                <div className="bg-brand-light rounded-xl p-3 mb-4 text-xs text-text-primary">
                   <p className="font-bold">{pkg.title}</p>
                   {selectedTier ? (
                     <p className="mt-1">📅 {selectedTier.period_label} — ₩{selectedTier.adult_price?.toLocaleString()}</p>
@@ -1800,7 +1810,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   <textarea placeholder="요청사항 (선택)" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
                     rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
                   <button onClick={handleSubmit} disabled={!formData.name || !formData.phone || isSubmitting}
-                    className="w-full py-3 bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white font-bold rounded-xl text-sm disabled:opacity-50 shadow-lg flex items-center justify-center gap-2">
+                    className="w-full py-3 bg-gradient-to-r from-brand to-brand-dark text-white font-bold rounded-xl text-sm disabled:opacity-50 shadow-lg flex items-center justify-center gap-2">
                     {isSubmitting ? (
                       <>
                         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />

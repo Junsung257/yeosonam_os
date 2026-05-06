@@ -105,7 +105,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
 
       <GlobalNav />
       <main className="min-h-screen bg-white">
-        <header className="border-b bg-gradient-to-r from-[#3182F6] to-[#1B64DA] text-white">
+        <header className="border-b bg-gradient-to-r from-brand to-brand-dark text-white">
           <div className="mx-auto max-w-6xl px-4 md:px-6 py-14 md:py-20">
             <div className="flex items-center gap-2 text-[13px] md:text-sm text-blue-200 mb-4">
               <Link href="/" className="hover:text-white">홈</Link>
@@ -136,10 +136,10 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                   <Link
                     key={pkg.id}
                     href={`/packages/${pkg.id}`}
-                    className="block rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-[#3182F6] transition"
+                    className="block rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-brand transition"
                   >
                     {pkg.destination && (
-                      <span className="inline-block rounded-full bg-[#EBF3FE] px-2.5 py-1 text-xs font-medium text-[#3182F6] mb-2">
+                      <span className="inline-block rounded-full bg-brand-light px-2.5 py-1 text-xs font-medium text-brand mb-2">
                         📍 {pkg.destination}
                       </span>
                     )}
@@ -184,14 +184,14 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                 {posts.map(post => (
                   <Link key={post.id} href={`/blog/${post.slug}`}
                     className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
-                    <div className="aspect-[16/9] overflow-hidden bg-gray-100 relative">
+                    <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
                         src={post.og_image_url}
                         alt={post.seo_title || ''}
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
                         fallback={
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6]">
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-light to-[#F2F4F6]">
                             <span className="text-4xl">{meta.emoji}</span>
                           </div>
                         }
@@ -199,11 +199,11 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                     </div>
                     <div className="p-5">
                       {post.travel_packages?.destination && (
-                        <span className="rounded-full bg-[#EBF3FE] px-2.5 py-1 text-xs font-medium text-[#3182F6] mb-3 inline-block">
+                        <span className="rounded-full bg-brand-light px-2.5 py-1 text-xs font-medium text-brand mb-3 inline-block">
                           {post.travel_packages.destination}
                         </span>
                       )}
-                      <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-[#3182F6] tracking-tight leading-snug">
+                      <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-brand tracking-tight leading-snug">
                         {post.seo_title || '여행 가이드'}
                       </h2>
                       {post.seo_description && (

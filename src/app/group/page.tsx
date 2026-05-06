@@ -102,7 +102,7 @@ export default function GroupLandingPage() {
   return (
     <main className="min-h-screen bg-white text-slate-900">
       {/* ─── 섹션 A. Hero ──────────────────────────────────── */}
-      <section className="relative bg-gradient-to-br from-[#3182F6] to-[#1B64DA] text-white">
+      <section className="relative bg-gradient-to-br from-brand to-brand-dark text-white">
         <div className="max-w-4xl mx-auto px-4 py-20 md:py-28">
           <span className="inline-block bg-white/15 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
             ✈️ 김해공항 출발 전용
@@ -138,7 +138,7 @@ export default function GroupLandingPage() {
           <div className="flex flex-col md:flex-row gap-3">
             <a
               href="#group-inquiry-form"
-              className="flex-1 bg-white text-[#3182F6] font-bold py-4 px-6 rounded-2xl text-center hover:bg-white/90 transition"
+              className="flex-1 bg-white text-brand font-bold py-4 px-6 rounded-2xl text-center hover:bg-white/90 transition"
             >
               견적 요청하기
             </a>
@@ -202,10 +202,10 @@ export default function GroupLandingPage() {
               <a
                 key={g.value}
                 href={`#group-inquiry-form?preset=${encodeURIComponent(g.value)}`}
-                className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md hover:border-[#3182F6]/30 transition"
+                className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md hover:border-brand/30 transition"
               >
                 <div className="text-4xl mb-3">{g.icon}</div>
-                <h3 className="font-bold text-lg mb-1 group-hover:text-[#3182F6] transition">
+                <h3 className="font-bold text-lg mb-1 group-hover:text-brand transition">
                   {g.title}
                 </h3>
                 <p className="text-sm text-slate-600 mb-3">{g.sub}</p>
@@ -228,14 +228,14 @@ export default function GroupLandingPage() {
           <div className="grid md:grid-cols-4 gap-5">
             {PROCESS_STEPS.map((p, i) => (
               <div key={p.step} className="relative">
-                <div className="bg-gradient-to-br from-[#3182F6]/5 to-[#1B64DA]/5 rounded-2xl p-5 border border-[#3182F6]/10 h-full">
-                  <div className="text-xs font-bold text-[#3182F6] mb-2">{p.step}</div>
+                <div className="bg-gradient-to-br from-brand/5 to-brand-dark/5 rounded-2xl p-5 border border-brand/10 h-full">
+                  <div className="text-xs font-bold text-brand mb-2">{p.step}</div>
                   <h3 className="font-bold text-base mb-2">{p.title}</h3>
                   <p className="text-xs text-slate-600 leading-relaxed mb-3">{p.desc}</p>
                   <p className="text-xs text-slate-500">{p.after}</p>
                 </div>
                 {i < PROCESS_STEPS.length - 1 && (
-                  <div className="hidden md:block absolute top-1/2 -right-3 text-[#3182F6]/30 text-xl">
+                  <div className="hidden md:block absolute top-1/2 -right-3 text-brand/30 text-xl">
                     →
                   </div>
                 )}
@@ -294,7 +294,7 @@ export default function GroupLandingPage() {
       <GroupLandingClient />
 
       {/* ─── 섹션 G. 하단 CTA ───────────────────────────────── */}
-      <section className="bg-gradient-to-br from-[#3182F6] to-[#1B64DA] text-white py-16 md:py-20 px-4">
+      <section className="bg-gradient-to-br from-brand to-brand-dark text-white py-16 md:py-20 px-4">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-bold mb-4">
             지금 바로 상담하세요
@@ -305,7 +305,7 @@ export default function GroupLandingPage() {
           <div className="flex flex-col md:flex-row gap-3 max-w-lg mx-auto">
             <a
               href="#group-inquiry-form"
-              className="flex-1 bg-white text-[#3182F6] font-bold py-4 px-6 rounded-2xl text-center hover:bg-white/90 transition"
+              className="flex-1 bg-white text-brand font-bold py-4 px-6 rounded-2xl text-center hover:bg-white/90 transition"
             >
               견적 요청하기
             </a>

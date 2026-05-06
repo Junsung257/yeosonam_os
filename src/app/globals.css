@@ -59,6 +59,18 @@ body {
 }
 .scroll-x::-webkit-scrollbar { display: none; }
 
+/* 스크롤바 완전 숨김 유틸 (카테고리 아이콘 가로 스크롤 등) */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* iOS 홈 인디케이터 safe-area 패딩 (모바일 탭바) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* 카드 터치 피드백 (scale 0.98) — touch-action으로 모바일 300ms 탭 지연 완화 */
 .card-touch {
   touch-action: manipulation;

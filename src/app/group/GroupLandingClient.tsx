@@ -218,7 +218,7 @@ export default function GroupLandingClient() {
               value={form.contact_name}
               onChange={(e) => update('contact_name', e.target.value)}
               placeholder="홍길동"
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
           </div>
@@ -233,7 +233,7 @@ export default function GroupLandingClient() {
               value={form.contact_phone}
               onChange={(e) => update('contact_phone', e.target.value)}
               placeholder="010-0000-0000"
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
           </div>
@@ -248,7 +248,7 @@ export default function GroupLandingClient() {
               value={form.group_name}
               onChange={(e) => update('group_name', e.target.value)}
               placeholder="OO 연수원"
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
           </div>
@@ -261,7 +261,7 @@ export default function GroupLandingClient() {
             <select
               value={form.purpose}
               onChange={(e) => update('purpose', e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             >
               <option value="">선택해주세요</option>
@@ -283,7 +283,7 @@ export default function GroupLandingClient() {
               value={form.destination}
               onChange={(e) => update('destination', e.target.value)}
               placeholder="다낭, 세부, 장가계 등"
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
           </div>
@@ -297,7 +297,7 @@ export default function GroupLandingClient() {
               type="date"
               value={form.departure_date}
               onChange={(e) => update('departure_date', e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
           </div>
@@ -310,7 +310,7 @@ export default function GroupLandingClient() {
             <select
               value={form.pax_label}
               onChange={(e) => update('pax_label', e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             >
               <option value="">선택해주세요</option>
@@ -330,7 +330,7 @@ export default function GroupLandingClient() {
             <select
               value={form.budget_label}
               onChange={(e) => update('budget_label', e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             >
               <option value="">선택해주세요</option>
@@ -358,8 +358,8 @@ export default function GroupLandingClient() {
                   onClick={() => update('hotel_grade', form.hotel_grade === h ? '' : h)}
                   className={`py-2.5 rounded-xl text-sm font-semibold transition border ${
                     form.hotel_grade === h
-                      ? 'bg-[#3182F6] text-white border-[#3182F6]'
-                      : 'bg-white text-slate-700 border-gray-200 hover:border-[#3182F6]/40'
+                      ? 'bg-brand text-white border-brand'
+                      : 'bg-white text-slate-700 border-gray-200 hover:border-brand/40'
                   }`}
                 >
                   {h}
@@ -379,8 +379,8 @@ export default function GroupLandingClient() {
                   onClick={() => update('shopping', form.shopping === s ? '' : s)}
                   className={`py-2.5 rounded-xl text-sm font-semibold transition border ${
                     form.shopping === s
-                      ? 'bg-[#3182F6] text-white border-[#3182F6]'
-                      : 'bg-white text-slate-700 border-gray-200 hover:border-[#3182F6]/40'
+                      ? 'bg-brand text-white border-brand'
+                      : 'bg-white text-slate-700 border-gray-200 hover:border-brand/40'
                   }`}
                 >
                   {s}
@@ -397,7 +397,7 @@ export default function GroupLandingClient() {
               onChange={(e) => update('notes', e.target.value)}
               placeholder="특별히 요청하실 사항이 있으시면 자유롭게 입력해주세요"
               rows={4}
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182F6] focus:border-transparent transition resize-none"
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition resize-none"
             />
           </div>
 
@@ -412,7 +412,7 @@ export default function GroupLandingClient() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-[#3182F6] hover:bg-[#1B64DA] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl text-lg transition"
+            className="w-full bg-brand hover:bg-[#1B64DA] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl text-lg transition"
           >
             {submitting ? '전송 중...' : '견적 요청하기'}
           </button>

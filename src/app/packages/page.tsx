@@ -159,12 +159,32 @@ export default async function PackagesPage({
   }));
 
   // 관광지 사진 서버사이드 fetch
-  // 사진 있는 관광지만 — 행 수가 적으면 목록 카드 다수가 이미지 없이 노출됨 (기존 300 → 상한 확대)
-  const { data: attractions } = await sb
+  // Next 데이터 캐시(약 2MB) 초과를 피하기 위해 payload 상한을 둔다.
+  // 기존 4000건은 photos JSON 포함 시 캐시 실패를 유발할 수 있어, 목적지 힌트 기반으로 축소 조회한다.
+  const attractionLimit = destination || q ? 420 : 650;
+  let attractionQuery = sb
     .from('attractions')
-    .select('name, short_desc, photos, country, region, mention_count')
+    .select('name, photos, country, region, mention_count')
     .not('photos', 'is', null)
-    .limit(4000);
+    .order('mention_count', { ascending: false })
+    .limit(attractionLimit);
+
+  const hintParts = Array.from(
+    new Set(
+      (aliveRaw ?? [])
+        .flatMap((p: any) => String(p?.destination || '').split(/[\/,\s]/))
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length >= 2),
+    ),
+  ).slice(0, 6);
+  if (hintParts.length > 0) {
+    const ors = hintParts
+      .map((part) => `region.ilike.%${part}%,country.ilike.%${part}%`)
+      .join(',');
+    attractionQuery = attractionQuery.or(ors);
+  }
+
+  const { data: attractions } = await attractionQuery;
 
   // 그룹 1위 패키지 ID + 추천 사유 (추천 뱃지 + 툴팁용)
   const pkgIds = (packages ?? []).map((p: { id?: string }) => p.id).filter(Boolean) as string[];

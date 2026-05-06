@@ -143,7 +143,7 @@ export default function GroupInquiryPage() {
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#3182F6] rounded-full transition-all duration-500"
+                className="h-full bg-brand rounded-full transition-all duration-500"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -157,7 +157,7 @@ export default function GroupInquiryPage() {
                     key={f.key}
                     className={`text-xs px-2 py-0.5 rounded-full ${
                       collected
-                        ? 'bg-[#EBF3FE] text-[#3182F6]'
+                        ? 'bg-brand-light text-brand'
                         : 'bg-gray-100 text-gray-400'
                     }`}
                   >
@@ -179,15 +179,15 @@ export default function GroupInquiryPage() {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {msg.role === 'ai' && (
-                <div className="w-8 h-8 rounded-full bg-[#EBF3FE] flex items-center justify-center text-sm mr-2 mt-1 flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-brand-light flex items-center justify-center text-sm mr-2 mt-1 flex-shrink-0">
                   🤖
                 </div>
               )}
               <div
                 className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
-                    ? 'bg-[#3182F6] text-white rounded-tr-sm'
-                    : 'bg-[#F8FAFC] text-[#191F28] rounded-tl-sm'
+                    ? 'bg-brand text-white rounded-tr-sm'
+                    : 'bg-[#F8FAFC] text-text-primary rounded-tl-sm'
                 }`}
               >
                 {msg.content}
@@ -197,7 +197,7 @@ export default function GroupInquiryPage() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="w-8 h-8 rounded-full bg-[#EBF3FE] flex items-center justify-center text-sm mr-2 flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-brand-light flex items-center justify-center text-sm mr-2 flex-shrink-0">
                 🤖
               </div>
               <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-tl-sm">
@@ -212,7 +212,7 @@ export default function GroupInquiryPage() {
 
           {/* RFQ 요약 카드 */}
           {rfqReady && (
-            <div className="bg-white border border-[#DBEAFE] shadow-sm rounded-xl p-5 mt-4">
+            <div className="bg-white border border-blue-200 shadow-sm rounded-xl p-5 mt-4">
               <h3 className="font-semibold text-gray-900 mb-3">📋 수집된 여행 요건 요약</h3>
               <div className="grid grid-cols-2 gap-3 text-sm mb-4">
                 {[
@@ -238,7 +238,7 @@ export default function GroupInquiryPage() {
               <button
                 onClick={registerRfq}
                 disabled={submitting}
-                className="w-full bg-[#3182F6] hover:bg-[#1B64DA] disabled:opacity-50 text-white font-medium py-3 rounded-xl transition-colors"
+                className="w-full bg-brand hover:bg-[#1B64DA] disabled:opacity-50 text-white font-medium py-3 rounded-xl transition-colors"
               >
                 {submitting ? '등록 중...' : '🚀 공고 등록하기'}
               </button>
@@ -261,12 +261,12 @@ export default function GroupInquiryPage() {
               disabled={loading}
               placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
               rows={2}
-              className="flex-1 resize-none border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#3182F6]/30 disabled:opacity-50"
+              className="flex-1 resize-none border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-50"
             />
             <button
               onClick={sendMessage}
               disabled={loading || !input.trim()}
-              className="bg-[#3182F6] hover:bg-[#1B64DA] disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"
+              className="bg-brand hover:bg-[#1B64DA] disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"
             >
               전송
             </button>

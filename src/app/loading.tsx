@@ -9,7 +9,7 @@ export default function Loading() {
       aria-label="페이지 로딩 중"
       className="fixed top-0 left-0 right-0 h-[3px] z-[9999] overflow-hidden bg-transparent pointer-events-none"
     >
-      <div className="h-full w-1/3 bg-gradient-to-r from-[#3182F6] via-[#3182F6] to-[#1B64DA] animate-[loading-bar_1.2s_ease-in-out_infinite]" />
+      <div className="h-full w-1/3 bg-gradient-to-r from-brand via-brand to-brand-dark animate-[loading-bar_1.2s_ease-in-out_infinite]" />
       <style>{`
         @keyframes loading-bar {
           0% { transform: translateX(-100%); }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
@@ -141,6 +141,11 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
   const attractions = initialAttractions;
   const [activeFilter, setActiveFilter] = useState(resolveLegacyFilterLabel(filter || '전체'));
   const [sortBy, setSortBy] = useState('recommended');
+  const listTopRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [activeFilter, sortBy]);
   const priceMinNum = priceMin ? Number(priceMin) : 0;
   const priceMaxNum = priceMax ? Number(priceMax) : 0;
   const consultTelHref = getConsultTelHref();
@@ -252,14 +257,14 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
       <GlobalNav />
 
       {/* 통합 헤더 — 타이틀 + 출발 허브 + 검색 폼을 하나의 파란 존으로 */}
-      <div className="bg-gradient-to-b from-[#EBF3FE] to-[#F5F9FF] border-b border-[#DBEAFE]/50">
+      <div className="bg-gradient-to-b from-brand-light to-[#F5F9FF] border-b border-blue-200/50">
         <div className="px-4 pt-5 pb-4 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:pt-8 md:pb-6">
           {/* 페이지 타이틀 */}
           <div className="mb-4">
-            <h1 className="text-[22px] md:text-3xl lg:text-4xl font-bold text-[#191F28] tracking-[-0.03em]">
+            <h1 className="text-h1 md:text-3xl lg:text-4xl font-bold text-text-primary tracking-[-0.03em]">
               {destParam || '전체 상품'}
             </h1>
-            <p className="text-[13px] text-[#4E5968] mt-1">{filteredPackages.length}개 상품</p>
+            <p className="text-[13px] text-text-body mt-1">{filteredPackages.length}개 상품</p>
           </div>
 
           {/* 출발 허브 — 가로 스크롤 pill 행 */}
@@ -278,8 +283,8 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
                   onClick={() => navigateWithHub(id)}
                   className={`shrink-0 h-[34px] px-4 text-[13px] font-semibold rounded-full border transition-all card-touch ${
                     isSelected
-                      ? 'bg-[#3182F6] text-white border-[#3182F6] shadow-sm'
-                      : 'bg-white text-[#4E5968] border-[#D1DCE8] hover:border-[#3182F6]/60 hover:text-[#3182F6]'
+                      ? 'bg-brand text-white border-brand shadow-sm'
+                      : 'bg-white text-text-body border-[#D1DCE8] hover:border-brand/60 hover:text-brand'
                   }`}
                 >
                   {label}
@@ -308,16 +313,16 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
         <div className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8">
           <div className="flex items-center gap-2">
             {urgency === '1' && (
-              <span className="inline-flex items-center gap-1.5 bg-[#FFF1F2] text-[#F04452] text-[13px] font-semibold px-3 py-1.5 rounded-full">
+              <span className="inline-flex items-center gap-1.5 bg-danger-light text-danger text-[13px] font-semibold px-3 py-1.5 rounded-full">
                 🔥 마감특가 모아보기
               </span>
             )}
             {category && CATEGORY_LABELS[category] && (
-              <span className="inline-flex items-center gap-1.5 bg-[#EBF3FE] text-[#3182F6] text-[13px] font-semibold px-3 py-1.5 rounded-full">
+              <span className="inline-flex items-center gap-1.5 bg-brand-light text-brand text-[13px] font-semibold px-3 py-1.5 rounded-full">
                 {CATEGORY_LABELS[category]}
               </span>
             )}
-            <Link href={hrefPackagesClearUrgencyCategory} className="text-[12px] text-[#8B95A1] hover:text-[#3182F6] transition ml-1">
+            <Link href={hrefPackagesClearUrgencyCategory} className="text-micro text-text-secondary hover:text-brand transition ml-1">
               전체 보기 →
             </Link>
           </div>
@@ -331,7 +336,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
             <div className="relative shrink-0">
               <select
                 aria-label="정렬 순서"
-                className="h-[34px] text-[13px] border border-[#E5E7EB] rounded-full pl-3 pr-7 bg-white text-[#191F28] appearance-none cursor-pointer font-medium"
+                className="h-[34px] text-[13px] border border-[#E5E7EB] rounded-full pl-3 pr-7 bg-white text-text-primary appearance-none cursor-pointer font-medium"
                 value={sortBy}
                 onChange={e => setSortBy(e.target.value)}
                 style={{
@@ -352,8 +357,8 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
                 type="button"
                 className={`shrink-0 h-[34px] px-3.5 text-[13px] font-medium rounded-full border transition card-touch ${
                   activeFilter === f
-                    ? 'bg-[#3182F6] text-white border-[#3182F6] shadow-sm'
-                    : 'bg-white text-[#4E5968] border-[#E5E7EB] hover:border-[#3182F6]/40 hover:text-[#3182F6]'
+                    ? 'bg-brand text-white border-brand shadow-sm'
+                    : 'bg-white text-text-body border-[#E5E7EB] hover:border-brand/40 hover:text-brand'
                 }`}
                 onClick={() => setActiveFilter(f)}
               >
@@ -365,26 +370,48 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
       </div>
 
       {/* 상품 카드 리스트 */}
+      <div ref={listTopRef} />
       {filteredPackages.length === 0 ? (
         <div className="text-center py-20 px-6">
           {urgency === '1' ? (
             <>
               <p className="text-[32px] mb-3">🔥</p>
-              <p className="text-[#191F28] font-bold text-[17px] mb-1">현재 마감특가 상품이 모두 매진되었습니다</p>
-              <p className="text-[#8B95A1] text-[14px] mb-6">아래 인기 패키지를 확인해 보세요</p>
-              <Link href={hrefPackagesClearUrgencyCategory} className="inline-block bg-[#3182F6] text-white font-semibold text-[14px] px-6 py-3 rounded-full hover:bg-[#1B64DA] transition">
+              <p className="text-text-primary font-bold text-[17px] mb-1">현재 마감특가 상품이 모두 매진되었습니다</p>
+              <p className="text-text-secondary text-body mb-6">아래 인기 패키지를 확인해 보세요</p>
+              <Link href={hrefPackagesClearUrgencyCategory} className="inline-block bg-brand text-white font-semibold text-body px-6 py-3 rounded-full hover:bg-[#1B64DA] transition">
                 전체 인기 패키지 보기
               </Link>
             </>
           ) : (
-            <>
-              <p className="text-gray-500 text-base mb-2">{activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '상품이 없습니다'}</p>
-              {activeFilter !== '전체' ? (
-                <button onClick={() => setActiveFilter('전체')} className="text-[#3182F6] text-sm underline">전체 보기</button>
-              ) : (
-                <Link href="/" className="text-[#3182F6] text-sm underline">홈으로</Link>
-              )}
-            </>
+            <div className="flex flex-col items-center gap-4 py-16 px-6">
+              <svg className="w-14 h-14 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 15.803z" />
+              </svg>
+              <div className="text-center space-y-1">
+                <p className="text-[15px] font-semibold text-text-primary">
+                  {activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '조건에 맞는 상품이 없습니다'}
+                </p>
+                <p className="text-[13px] text-text-secondary">필터를 초기화하거나 직접 문의해 보세요</p>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                {activeFilter !== '전체' && (
+                  <button
+                    onClick={() => setActiveFilter('전체')}
+                    className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
+                  >
+                    전체 보기
+                  </button>
+                )}
+                {consultTelHref && (
+                  <a
+                    href={consultTelHref}
+                    className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
+                  >
+                    📞 직접 문의
+                  </a>
+                )}
+              </div>
+            </div>
           )}
         </div>
       ) : (
