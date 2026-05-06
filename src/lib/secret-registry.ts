@@ -1,0 +1,102 @@
+/**
+ * Secret Registry
+ * - 비즈니스 로직에서 process.env 직접 접근 대신 이 레이어를 사용한다.
+ * - 신규 키 추가 시 여기에만 정의하면 감사/검증 지점이 단일화된다.
+ */
+
+export type SecretKey =
+  | 'CRON_SECRET'
+  | 'ADMIN_API_TOKEN'
+  | 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
+  | 'SUPABASE_ANON_KEY'
+  | 'SUPABASE_SERVICE_ROLE_KEY'
+  | 'SUPABASE_JWT_SECRET'
+  | 'DESIGN_PREVIEW_SECRET'
+  | 'DEEPSEEK_API_KEY'
+  | 'ANTHROPIC_API_KEY'
+  | 'GEMINI_API_KEY'
+  | 'GOOGLE_AI_API_KEY'
+  | 'PEXELS_API_KEY'
+  | 'SOLAPI_API_KEY'
+  | 'SOLAPI_API_SECRET'
+  | 'KAKAO_CHANNEL_ID'
+  | 'KAKAO_SENDER_NUMBER'
+  | 'META_ACCESS_TOKEN'
+  | 'META_PIXEL_ID'
+  | 'META_IG_USER_ID'
+  | 'META_AD_ACCOUNT_ID'
+  | 'META_PAGE_ID'
+  | 'META_APP_ID'
+  | 'META_APP_SECRET'
+  | 'META_WEBHOOK_VERIFY_TOKEN'
+  | 'META_GRAPH_ACCESS_TOKEN'
+  | 'META_ADS_ACCESS_TOKEN'
+  | 'THREADS_ACCESS_TOKEN'
+  | 'THREADS_USER_ID'
+  | 'OAUTH_STATE_SECRET'
+  | 'NAVER_CLIENT_ID'
+  | 'NAVER_CLIENT_SECRET'
+  | 'NAVER_BLOG_ACCESS_TOKEN'
+  | 'RESEND_API_KEY'
+  | 'VA_EMAILS'
+  | 'SERPAPI_KEY'
+  | 'TOSS_SECRET_KEY'
+  | 'LTR_TRAINING_SECRET'
+  | 'SLACK_SIGNING_SECRET'
+  | 'SLACK_BOT_TOKEN'
+  | 'SLACK_CHANNEL_ID'
+  | 'SLACK_ALERT_WEBHOOK_URL'
+  | 'SLACK_ALERTS_WEBHOOK'
+  | 'SLACK_GROUP_RFQ_WEBHOOK_URL'
+  | 'SLACK_PAYMENTS_WEBHOOK_URL'
+  | 'SLACK_WEBHOOK_URL'
+  | 'SMS_WEBHOOK_SECRET'
+  | 'KAKAO_CHANNEL_SECRET'
+  | 'GOOGLE_ADS_CLIENT_ID'
+  | 'GOOGLE_ADS_CLIENT_SECRET'
+  | 'VAPID_PRIVATE_KEY'
+  | 'NEXT_PUBLIC_VAPID_PUBLIC_KEY'
+  | 'REVALIDATE_SECRET'
+  | 'NEXT_PUBLIC_CRON_SECRET'
+  | 'GUEST_PORTAL_SESSION_SECRET'
+  | 'MYREALTRIP_API_KEY'
+  | 'GOOGLE_API_KEY'
+  | 'GOOGLE_GEMINI_API_KEY'
+  | 'EXCHANGE_RATE_API_KEY'
+  | 'GUIDEBOOK_TOKEN_SECRET'
+  | 'INDEXNOW_KEY'
+  | 'ENCRYPTION_SECRET_KEY'
+  | 'NEXT_PUBLIC_APP_URL'
+  | 'NEXT_PUBLIC_BASE_URL'
+  | 'NEXT_PUBLIC_NAVER_ADS_API_KEY'
+  | 'NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN'
+  | 'NEXT_PUBLIC_SITE_URL'
+  | 'AFFILIATE_IP_SALT'
+  | 'AFFILIATE_INVITE_CODES'
+  | 'BAND_RSS_URL'
+  | 'COMPANY_ACCOUNT'
+  | 'GOOGLE_CONVERSION_ID'
+  | 'MYREALTRIP_MYLINK_ID'
+  | 'NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'
+  | 'NEXT_PUBLIC_SUPABASE_URL'
+  | 'OPS_VERCEL_DASHBOARD_URL'
+  | 'RESEND_FROM_EMAIL'
+  | 'SUPABASE_URL'
+  | 'VA_EMAIL_FROM'
+  | 'VAPID_SUBJECT';
+
+export function getSecret(key: SecretKey): string | null {
+  const value = process.env[key];
+  return value && value.trim() ? value : null;
+}
+
+export function hasSecrets(keys: SecretKey[]): boolean {
+  return keys.every((k) => !!getSecret(k));
+}
+
+export function getAiProviderSecret(provider: 'deepseek' | 'claude' | 'gemini'): string | null {
+  if (provider === 'deepseek') return getSecret('DEEPSEEK_API_KEY');
+  if (provider === 'claude') return getSecret('ANTHROPIC_API_KEY');
+  return getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
+}
+
