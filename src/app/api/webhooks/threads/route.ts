@@ -16,6 +16,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 import {
   verifyWebhookChallenge,
   verifyWebhookSignature,
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  const result = verifyWebhookChallenge(mode, token, challenge, process.env.META_WEBHOOK_VERIFY_TOKEN);
+  const result = verifyWebhookChallenge(mode, token, challenge, getSecret('META_WEBHOOK_VERIFY_TOKEN') ?? undefined);
   if (!result.ok) {
     console.warn('[webhook:threads] verify 실패:', result.error);
     return new NextResponse(result.error ?? 'verify failed', { status: 403 });
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const sig = request.headers.get('x-hub-signature-256');
 
-  const sigCheck = verifyWebhookSignature(rawBody, sig, process.env.META_APP_SECRET);
+  const sigCheck = verifyWebhookSignature(rawBody, sig, getSecret('META_APP_SECRET') ?? undefined);
   if (!sigCheck.ok) {
     console.warn('[webhook:threads] 서명 실패:', sigCheck.error);
     return new NextResponse(sigCheck.error ?? 'invalid signature', { status: 403 });

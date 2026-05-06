@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { uploadCreativeToMeta, createAd, isMetaConfigured } from '@/lib/meta-api';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -20,8 +21,8 @@ export async function POST(request: NextRequest) {
 
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
 
     // 소재 조회
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       ? `${creative.headline}\n\n${creative.body_copy}`
       : creative.body_copy;
 
-    const targetUrl = package_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://yeosonam.com'}/packages`;
+    const targetUrl = package_url ?? `${getSecret('NEXT_PUBLIC_APP_URL') ?? 'https://yeosonam.com'}/packages`;
 
     // Meta에 소재 업로드
     const metaCreative = await uploadCreativeToMeta({
@@ -97,8 +98,8 @@ export async function POST(request: NextRequest) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
         const sb = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+          getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
         );
         await sb.from('audit_logs').insert({
           action: 'META_TOKEN_EXPIRED',

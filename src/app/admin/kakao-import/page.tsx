@@ -78,7 +78,7 @@ interface SaveResult {
 const SENTIMENT_COLOR: Record<string, string> = {
   positive: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   negative: 'bg-rose-50 text-rose-700 border-rose-200',
-  neutral: 'bg-gray-50 text-gray-600 border-gray-200',
+  neutral: 'bg-slate-50 text-slate-600 border-slate-200',
   mixed: 'bg-amber-50 text-amber-700 border-amber-200',
   concern: 'bg-orange-50 text-orange-700 border-orange-200',
 };
@@ -396,12 +396,12 @@ export default function KakaoImportPage() {
     + (preview?.redaction_report?.emails_masked ?? 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-slate-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">카카오톡 대화 → 일괄 등록</h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <h1 className="text-2xl font-bold text-slate-900">카카오톡 대화 → 일괄 등록</h1>
+            <p className="text-sm text-slate-500 mt-1">
               붙여넣기 → 자동 추출 → 일행 확인 → 1클릭으로 Bronze + 고객 등록 + 예약 생성
             </p>
           </div>
@@ -414,7 +414,7 @@ export default function KakaoImportPage() {
             {/* 텍스트 입력 */}
             <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-900">카카오톡 전문 붙여넣기</h2>
+                <h2 className="font-semibold text-slate-900">카카오톡 전문 붙여넣기</h2>
                 {autoExtracting && (
                   <span className="text-xs text-blue-600 flex items-center gap-1.5">
                     <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
@@ -430,9 +430,9 @@ export default function KakaoImportPage() {
                 onChange={e => setRawText(e.target.value)}
                 placeholder="카카오톡 채팅 export 텍스트를 붙여넣으세요. 3초 후 일행 + KTKG 자동 추출이 시작됩니다."
                 rows={12}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
-              <div className="text-xs text-gray-500 flex items-center justify-between">
+              <div className="text-xs text-slate-500 flex items-center justify-between">
                 <span>{rawText.length.toLocaleString()}자</span>
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -451,8 +451,8 @@ export default function KakaoImportPage() {
               <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="font-semibold text-gray-900">일행 확인 · 수정</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <h2 className="font-semibold text-slate-900">일행 확인 · 수정</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
                       별표(★) 클릭으로 대표자 지정 · 모든 일행이 고객으로 등록됩니다
                     </p>
                   </div>
@@ -464,7 +464,7 @@ export default function KakaoImportPage() {
                 </div>
 
                 {autoExtracting && passengers.length === 0 && (
-                  <p className="text-xs text-gray-400 text-center py-4">일행 정보 추출 중…</p>
+                  <p className="text-xs text-slate-400 text-center py-4">일행 정보 추출 중…</p>
                 )}
 
                 <div className="space-y-2">
@@ -474,7 +474,7 @@ export default function KakaoImportPage() {
                       className={`border rounded-lg p-3 space-y-2 text-xs transition-colors ${
                         p.isRep
                           ? 'border-amber-300 bg-amber-50/50'
-                          : 'border-gray-200'
+                          : 'border-slate-200'
                       }`}
                     >
                       {/* 헤더 행: 대표자 라디오 + 성인/소아/유아 + 성별 + 삭제 */}
@@ -484,7 +484,7 @@ export default function KakaoImportPage() {
                           onClick={() => setRep(p.id)}
                           title="대표자로 지정"
                           className={`text-base leading-none transition-colors ${
-                            p.isRep ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400'
+                            p.isRep ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'
                           }`}
                         >
                           ★
@@ -497,7 +497,7 @@ export default function KakaoImportPage() {
                         <select
                           value={p.ageGroup}
                           onChange={e => updateRow(p.id, 'ageGroup', e.target.value)}
-                          className="border border-gray-300 rounded px-1.5 py-1 text-xs bg-white"
+                          className="border border-slate-300 rounded px-1.5 py-1 text-xs bg-white"
                         >
                           {Object.entries(AGE_GROUP_LABEL).map(([v, l]) => (
                             <option key={v} value={v}>{l}</option>
@@ -506,7 +506,7 @@ export default function KakaoImportPage() {
                         <select
                           value={p.gender}
                           onChange={e => updateRow(p.id, 'gender', e.target.value)}
-                          className="border border-gray-300 rounded px-1.5 py-1 text-xs bg-white w-16"
+                          className="border border-slate-300 rounded px-1.5 py-1 text-xs bg-white w-16"
                         >
                           {Object.entries(GENDER_LABEL).map(([v, l]) => (
                             <option key={v} value={v}>{l}</option>
@@ -517,7 +517,7 @@ export default function KakaoImportPage() {
                         )}
                         <button
                           onClick={() => removeRow(p.id)}
-                          className="ml-auto text-gray-400 hover:text-rose-500 text-[11px]"
+                          className="ml-auto text-slate-400 hover:text-rose-500 text-[11px]"
                         >
                           삭제
                         </button>
@@ -526,54 +526,54 @@ export default function KakaoImportPage() {
                       {/* 정보 입력 필드 */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">이름</label>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">이름</label>
                           <input
                             type="text"
                             value={p.name}
                             onChange={e => updateRow(p.id, 'name', e.target.value)}
                             placeholder="홍길동"
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">전화번호</label>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">전화번호</label>
                           <input
                             type="tel"
                             value={p.phone}
                             onChange={e => updateRow(p.id, 'phone', e.target.value)}
                             placeholder="010-1234-5678"
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">생년월일</label>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">생년월일</label>
                           <input
                             type="text"
                             value={p.birth_date}
                             onChange={e => updateRow(p.id, 'birth_date', e.target.value)}
                             placeholder="YYYY-MM-DD"
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-gray-500 mb-0.5">여권번호</label>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">여권번호</label>
                           <input
                             type="text"
                             value={p.passport_no}
                             onChange={e => updateRow(p.id, 'passport_no', e.target.value)}
                             placeholder="M12345678"
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
                         </div>
                         {p.passport_no && (
                           <div className="col-span-2">
-                            <label className="block text-[10px] text-gray-500 mb-0.5">여권만료일</label>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">여권만료일</label>
                             <input
                               type="text"
                               value={p.passport_expiry}
                               onChange={e => updateRow(p.id, 'passport_expiry', e.target.value)}
                               placeholder="YYYY-MM-DD"
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                             />
                           </div>
                         )}
@@ -593,7 +593,7 @@ export default function KakaoImportPage() {
               <button
                 onClick={() => setShowModal(true)}
                 disabled={saving || autoExtracting || !canSave}
-                className="w-full bg-emerald-600 text-white py-3 rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="w-full bg-emerald-600 text-white py-3 rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
               >
                 {saving
                   ? '저장 중…'
@@ -602,7 +602,7 @@ export default function KakaoImportPage() {
                     : 'Bronze 저장'}
               </button>
               {!canSave && rawText.trim().length >= 10 && !autoExtracting && (
-                <p className="text-xs text-gray-400 text-center">추출 완료 후 활성화됩니다.</p>
+                <p className="text-xs text-slate-400 text-center">추출 완료 후 활성화됩니다.</p>
               )}
               {error && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-700">{error}</div>
@@ -632,15 +632,15 @@ export default function KakaoImportPage() {
 
           {/* ── 우측: KTKG 추출 결과 ── */}
           <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
-            <h2 className="font-semibold text-gray-900">추출 결과 (자동 미리보기)</h2>
+            <h2 className="font-semibold text-slate-900">추출 결과 (자동 미리보기)</h2>
 
             {!preview && !autoExtracting && (
-              <p className="text-sm text-gray-400 py-12 text-center">
+              <p className="text-sm text-slate-400 py-12 text-center">
                 대화를 붙여넣으면 3초 후 결과가 표시됩니다.
               </p>
             )}
             {!preview && autoExtracting && (
-              <div className="py-12 flex flex-col items-center gap-3 text-gray-400">
+              <div className="py-12 flex flex-col items-center gap-3 text-slate-400">
                 <svg className="animate-spin h-6 w-6 text-blue-500" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
@@ -652,17 +652,17 @@ export default function KakaoImportPage() {
             {preview && (
               <>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-gray-500">메시지</div>
-                    <div className="text-lg font-bold text-gray-900">{preview.message_count ?? 0}</div>
+                  <div className="bg-slate-50 rounded p-2">
+                    <div className="text-slate-500">메시지</div>
+                    <div className="text-lg font-bold text-slate-900">{preview.message_count ?? 0}</div>
                   </div>
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-gray-500">KTKG 트리플</div>
-                    <div className="text-lg font-bold text-gray-900">{preview.triple_count ?? 0}</div>
+                  <div className="bg-slate-50 rounded p-2">
+                    <div className="text-slate-500">KTKG 트리플</div>
+                    <div className="text-lg font-bold text-slate-900">{preview.triple_count ?? 0}</div>
                   </div>
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-gray-500">PII 마스킹</div>
-                    <div className="text-lg font-bold text-gray-900">{piiTotal}</div>
+                  <div className="bg-slate-50 rounded p-2">
+                    <div className="text-slate-500">PII 마스킹</div>
+                    <div className="text-lg font-bold text-slate-900">{piiTotal}</div>
                   </div>
                 </div>
 
@@ -689,38 +689,38 @@ export default function KakaoImportPage() {
                 )}
 
                 {preview.booking_draft && (
-                  <div className="border border-gray-200 rounded-lg p-3 space-y-2">
-                    <h3 className="text-sm font-semibold text-gray-900">예약 Draft</h3>
+                  <div className="border border-slate-200 rounded-lg p-3 space-y-2">
+                    <h3 className="text-sm font-semibold text-slate-900">예약 Draft</h3>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                      <div><span className="text-gray-500">목적지:</span> {preview.booking_draft.destination ?? '—'}</div>
-                      <div><span className="text-gray-500">출발지:</span> {preview.booking_draft.departure_region ?? '—'}</div>
-                      <div><span className="text-gray-500">출발일:</span> {preview.booking_draft.departure_date ?? '—'}</div>
-                      <div><span className="text-gray-500">기간:</span> {preview.booking_draft.duration_nights ? `${preview.booking_draft.duration_nights}박` : '—'}</div>
-                      <div><span className="text-gray-500">성인/소아:</span> {preview.booking_draft.adult_count ?? 0}/{preview.booking_draft.child_count ?? 0}</div>
-                      <div><span className="text-gray-500">상태:</span> {preview.booking_draft.status ?? '—'}</div>
-                      <div><span className="text-gray-500">단가:</span> {fmtKRW(preview.booking_draft.unit_price_krw)}</div>
-                      <div><span className="text-gray-500">총액:</span> {fmtKRW(preview.booking_draft.total_price_krw)}</div>
-                      <div><span className="text-gray-500">계약금:</span> {fmtKRW(preview.booking_draft.deposit_krw)}</div>
-                      <div><span className="text-gray-500">잔금:</span> {fmtKRW(preview.booking_draft.balance_krw)}</div>
+                      <div><span className="text-slate-500">목적지:</span> {preview.booking_draft.destination ?? '—'}</div>
+                      <div><span className="text-slate-500">출발지:</span> {preview.booking_draft.departure_region ?? '—'}</div>
+                      <div><span className="text-slate-500">출발일:</span> {preview.booking_draft.departure_date ?? '—'}</div>
+                      <div><span className="text-slate-500">기간:</span> {preview.booking_draft.duration_nights ? `${preview.booking_draft.duration_nights}박` : '—'}</div>
+                      <div><span className="text-slate-500">성인/소아:</span> {preview.booking_draft.adult_count ?? 0}/{preview.booking_draft.child_count ?? 0}</div>
+                      <div><span className="text-slate-500">상태:</span> {preview.booking_draft.status ?? '—'}</div>
+                      <div><span className="text-slate-500">단가:</span> {fmtKRW(preview.booking_draft.unit_price_krw)}</div>
+                      <div><span className="text-slate-500">총액:</span> {fmtKRW(preview.booking_draft.total_price_krw)}</div>
+                      <div><span className="text-slate-500">계약금:</span> {fmtKRW(preview.booking_draft.deposit_krw)}</div>
+                      <div><span className="text-slate-500">잔금:</span> {fmtKRW(preview.booking_draft.balance_krw)}</div>
                     </div>
                     {preview.booking_draft.product_title_hint && (
-                      <div className="text-xs pt-1 border-t border-gray-100">
-                        <span className="text-gray-500">상품 hint:</span> {preview.booking_draft.product_title_hint}
+                      <div className="text-xs pt-1 border-t border-slate-100">
+                        <span className="text-slate-500">상품 hint:</span> {preview.booking_draft.product_title_hint}
                       </div>
                     )}
                     {preview.booking_draft.notes && (
-                      <div className="text-xs text-gray-600 pt-1 border-t border-gray-100">{preview.booking_draft.notes}</div>
+                      <div className="text-xs text-slate-600 pt-1 border-t border-slate-100">{preview.booking_draft.notes}</div>
                     )}
                   </div>
                 )}
 
                 {(preview.triples?.length ?? 0) > 0 && (
                   <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-                    <h3 className="text-sm font-semibold text-gray-900 sticky top-0 bg-white py-1">
+                    <h3 className="text-sm font-semibold text-slate-900 sticky top-0 bg-white py-1">
                       KTKG 트리플 ({preview.triples?.length ?? 0})
                     </h3>
                     {(preview.triples ?? []).map((t, i) => (
-                      <div key={i} className={`border rounded p-2 text-xs ${SENTIMENT_COLOR[t.sentiment_label] ?? 'bg-gray-50 border-gray-200'}`}>
+                      <div key={i} className={`border rounded p-2 text-xs ${SENTIMENT_COLOR[t.sentiment_label] ?? 'bg-slate-50 border-slate-200'}`}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-semibold">
                             {t.entity_name}
@@ -752,13 +752,13 @@ export default function KakaoImportPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <h3 className="text-base font-bold text-gray-900">일괄 등록 확인</h3>
+            <h3 className="text-base font-bold text-slate-900">일괄 등록 확인</h3>
             <div className="space-y-2.5 text-sm">
               <div className="flex gap-2">
                 <span className="text-blue-500 font-bold shrink-0">①</span>
                 <div>
                   <span className="font-medium">Bronze 저장</span>
-                  <div className="text-xs text-gray-500">{preview?.triple_count ?? 0}개 KTKG 트리플 + PII 제거 원문 (불가역)</div>
+                  <div className="text-xs text-slate-500">{preview?.triple_count ?? 0}개 KTKG 트리플 + PII 제거 원문 (불가역)</div>
                 </div>
               </div>
               {hasPassengers && repRow?.name.trim() && (
@@ -767,14 +767,14 @@ export default function KakaoImportPage() {
                     <span className="text-emerald-500 font-bold shrink-0">②</span>
                     <div>
                       <span className="font-medium">고객 등록</span>
-                      <span className="text-xs text-gray-500 ml-1">{passengers.filter(p => p.name.trim() || p.phone.trim()).length}명</span>
-                      <div className="text-xs text-gray-500 mt-0.5 space-y-0.5">
+                      <span className="text-xs text-slate-500 ml-1">{passengers.filter(p => p.name.trim() || p.phone.trim()).length}명</span>
+                      <div className="text-xs text-slate-500 mt-0.5 space-y-0.5">
                         {passengers.filter(p => p.name.trim() || p.phone.trim()).map(p => (
                           <div key={p.id} className="flex items-center gap-1">
                             {p.isRep && <span className="text-amber-500 text-[10px]">★</span>}
                             <span>{p.name || '이름미상'}</span>
-                            <span className="text-gray-400">({AGE_GROUP_LABEL[p.ageGroup]})</span>
-                            {p.phone && <span className="text-gray-400">{p.phone}</span>}
+                            <span className="text-slate-400">({AGE_GROUP_LABEL[p.ageGroup]})</span>
+                            {p.phone && <span className="text-slate-400">{p.phone}</span>}
                           </div>
                         ))}
                       </div>
@@ -784,7 +784,7 @@ export default function KakaoImportPage() {
                     <span className="text-emerald-500 font-bold shrink-0">③</span>
                     <div>
                       <span className="font-medium">예약 생성</span>
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-slate-500 mt-0.5">
                         {preview?.booking_draft?.destination ?? '목적지미상'}
                         {preview?.booking_draft?.departure_date ? ` · ${preview.booking_draft.departure_date}` : ''}
                         {preview?.booking_draft?.total_price_krw ? ` · ${preview.booking_draft.total_price_krw.toLocaleString()}원` : ''}
@@ -802,7 +802,7 @@ export default function KakaoImportPage() {
             <div className="flex gap-2 pt-1">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-lg text-sm hover:bg-gray-50"
+                className="flex-1 border border-slate-300 text-slate-700 py-2.5 rounded-lg text-sm hover:bg-slate-50"
               >
                 취소
               </button>

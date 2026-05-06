@@ -5,6 +5,7 @@ import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPay
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { checkSelfReferral } from '@/lib/affiliate/self-referral';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -101,7 +102,7 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
       paid_amount:    paidAmount,
       total_paid_out: (booking as any).total_paid_out || 0,
     });
-    console.log(`[소급매칭] ${booking.booking_no} — ${totalMatchedAmount.toLocaleString()}원 자동 연결, 상태: ${newStatus}`);
+    console.log(`[소급매칭] ${booking.booking_no?.slice(0, 4)}**** — ${Math.round(totalMatchedAmount / 10000)}만원대 자동 연결, 상태: ${newStatus}`);
   }
 }
 
@@ -781,7 +782,7 @@ export async function PATCH(request: NextRequest) {
           packageTitle: b.package_title || '여행 상품',
           balance,
           dueDate,
-          account: process.env.COMPANY_ACCOUNT || '계좌 정보 미설정',
+          account: getSecret('COMPANY_ACCOUNT') || '계좌 정보 미설정',
         }).catch(e => console.warn('[잔금 알림톡 실패]', e));
       }
     }

@@ -193,37 +193,46 @@ export default function BlogEditPage() {
     }
   };
 
-  if (loading) return <div className="text-center py-12 text-slate-400">로딩 중...</div>;
+  if (loading) return (
+    <div className="space-y-4">
+      <div className="h-8 bg-slate-100 rounded animate-pulse w-64" />
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${85 - i * 8}%` }} />
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
       {/* 상단 바 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/blog')} className="text-[12px] text-slate-500 hover:text-slate-700">← 목록</button>
-          <h1 className="text-[16px] font-bold text-slate-800">블로그 편집</h1>
+          <button onClick={() => router.push('/admin/blog')} className="text-admin-xs text-slate-500 hover:text-slate-700">← 목록</button>
+          <h1 className="text-admin-lg font-bold text-slate-800">블로그 편집</h1>
           <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${status === 'published' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
             {status === 'published' ? '발행됨' : '초안'}
           </span>
         </div>
         <div className="flex gap-2">
           <button onClick={() => handleSave('draft')} disabled={saving}
-            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[12px] rounded-lg hover:bg-slate-50 disabled:opacity-40 transition">
+            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-xs rounded-lg hover:bg-slate-50 disabled:opacity-40 transition">
             저장
           </button>
           <button onClick={() => handleSave('published')} disabled={saving || !slug}
-            className="px-4 py-2 bg-[#001f3f] text-white text-[12px] font-semibold rounded-lg hover:bg-blue-900 disabled:opacity-40 transition">
+            className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
             {status === 'published' ? '업데이트' : '발행하기'}
           </button>
           {status === 'published' && slug && (
             <>
               <button onClick={handleReindex} disabled={reindexing}
                 title="Google + IndexNow + Bing에 색인 요청 (색인 가속)"
-                className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-[12px] rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
+                className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-admin-xs rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
                 {reindexing ? '요청 중...' : '🔄 재색인 요청'}
               </button>
               <a href={`/blog/${slug}`} target="_blank" rel="noopener noreferrer"
-                className="px-4 py-2 bg-white border border-blue-300 text-blue-600 text-[12px] rounded-lg hover:bg-blue-50 transition">
+                className="px-4 py-2 bg-white border border-blue-300 text-blue-600 text-admin-xs rounded-lg hover:bg-blue-50 transition">
                 ↗ 보기
               </a>
             </>
@@ -241,7 +250,7 @@ export default function BlogEditPage() {
           <textarea
             value={blogHtml}
             onChange={e => setBlogHtml(e.target.value)}
-            className="flex-1 border border-t-0 border-slate-200 rounded-b-lg p-4 text-[13px] font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
+            className="flex-1 border border-t-0 border-slate-200 rounded-b-lg p-4 text-admin-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
           />
         </div>
         <div className="flex flex-col">
@@ -253,19 +262,19 @@ export default function BlogEditPage() {
               <div className="prose prose-sm prose-indigo max-w-none"
                 dangerouslySetInnerHTML={{ __html: previewHtml }} />
             ) : (
-              <p className="text-[13px] text-slate-300 italic">본문을 입력하면 미리보기가 표시됩니다</p>
+              <p className="text-admin-sm text-slate-300 italic">본문을 입력하면 미리보기가 표시됩니다</p>
             )}
           </div>
         </div>
       </div>
 
       {/* SEO 설정 */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[12px] font-semibold text-slate-700">SEO 설정</p>
+          <p className="text-admin-xs font-semibold text-slate-700">SEO 설정</p>
           {grade && seoScore && (
             <div className="flex items-center gap-2">
-              <span className={`text-[12px] font-bold ${grade.color}`}>{seoScore.overall}/100 {grade.label}</span>
+              <span className={`text-admin-xs font-bold ${grade.color}`}>{seoScore.overall}/100 {grade.label}</span>
               <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full ${seoScore.overall >= 80 ? 'bg-emerald-500' : seoScore.overall >= 60 ? 'bg-blue-500' : seoScore.overall >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
                   style={{ width: `${seoScore.overall}%` }} />
@@ -280,23 +289,23 @@ export default function BlogEditPage() {
               <span className="text-[11px] text-slate-400">/blog/</span>
               <input value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
-                className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+                className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
             </div>
           </div>
           <div>
             <label className="block text-[10px] text-slate-400 mb-1">OG 이미지</label>
             <input value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
             <label className="block text-[10px] text-slate-400 mb-1">SEO 제목 <span className="text-slate-300">{seoTitle.length}/60</span></label>
             <input value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
             <label className="block text-[10px] text-slate-400 mb-1">SEO 설명 <span className="text-slate-300">{seoDescription.length}/160</span></label>
             <input value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
         </div>
         {seoScore && seoScore.recommendations.length > 0 && (
@@ -311,27 +320,27 @@ export default function BlogEditPage() {
 
       {/* 카드뉴스 연결 패널 — 상품 블로그일 때만 노출 */}
       {productId && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-[12px] font-semibold text-slate-700">카드뉴스 연결</p>
+              <p className="text-admin-xs font-semibold text-slate-700">카드뉴스 연결</p>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 같은 상품의 카드뉴스를 본문에 첨부하거나 새로 만들 수 있어요
               </p>
             </div>
             <Link
               href={`/admin/marketing/card-news/new?package_id=${productId}${angleType ? `&angle=${angleType}` : ''}`}
-              className="px-3 py-1.5 bg-[#001f3f] text-white text-[11px] font-semibold rounded-lg hover:bg-blue-900 transition"
+              className="px-3 py-1.5 bg-blue-600 text-white text-[11px] font-semibold rounded-lg hover:bg-blue-700 transition"
             >
               + 이 글로 새 카드뉴스 만들기
             </Link>
           </div>
 
           {cardNewsLoading ? (
-            <p className="text-[12px] text-slate-400 py-4 text-center">카드뉴스 불러오는 중…</p>
+            <p className="text-admin-xs text-slate-400 py-4 text-center">카드뉴스 불러오는 중…</p>
           ) : cardNewsList.length === 0 ? (
             <div className="border border-dashed border-slate-200 rounded-lg p-4 text-center">
-              <p className="text-[12px] text-slate-500">첨부 가능한 카드뉴스가 없습니다</p>
+              <p className="text-admin-xs text-slate-500">첨부 가능한 카드뉴스가 없습니다</p>
               <p className="text-[11px] text-slate-400 mt-1">
                 슬라이드 이미지가 렌더된 카드뉴스만 노출됩니다. 위 버튼으로 새로 만들거나, 기존 카드뉴스를 확정·렌더해 주세요.
               </p>
@@ -355,7 +364,7 @@ export default function BlogEditPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-slate-700 truncate">{cn.title || '(제목없음)'}</p>
+                      <p className="text-admin-xs font-medium text-slate-700 truncate">{cn.title || '(제목없음)'}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {cn.variant_angle && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded">
@@ -393,7 +402,7 @@ export default function BlogEditPage() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-[13px] shadow-lg bg-slate-800">
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-lg bg-slate-800">
           {toast}
         </div>
       )}

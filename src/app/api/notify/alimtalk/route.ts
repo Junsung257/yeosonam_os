@@ -11,13 +11,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { sendPreparationGuide, sendPassportExpiryNotice } from '@/lib/kakao';
 
 export async function POST(request: NextRequest) {
   // cron secret 검증
   const secret = request.headers.get('x-cron-secret');
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+  const cronSecret = getSecret('CRON_SECRET');
+  if (!cronSecret || secret !== cronSecret) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 

@@ -11,9 +11,14 @@ export async function POST(request: NextRequest) {
 
     if (!creative_id) return NextResponse.json({ error: 'creative_id 필요' }, { status: 400 });
 
-    const status = action === 'archive' ? 'archived' : 'published';
+    const status =
+      action === 'archive' ? 'archived' :
+      action === 'manually_published' ? 'manually_published' :
+      'published';
     const updateData: Record<string, unknown> = { status };
-    if (status === 'published') updateData.published_at = new Date().toISOString();
+    if (status === 'published' || status === 'manually_published') {
+      updateData.published_at = new Date().toISOString();
+    }
 
     const { error } = await supabaseAdmin
       .from('content_creatives')
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     // 발행 시 블로그 캐시 즉시 갱신
-    if (status === 'published') {
+    if (status === 'published' || status === 'manually_published') {
       revalidatePath('/blog');
 
       // slug가 있으면 상세 페이지도 갱신

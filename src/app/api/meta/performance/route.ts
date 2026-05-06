@@ -4,6 +4,7 @@ import { fetchCampaignInsights, isMetaConfigured } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { getMonthlyAdStats } from '@/lib/roas-calculator';
 import { parseBasis, getBasisMeta } from '@/lib/kpi-basis';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -50,8 +51,8 @@ export async function POST(request: NextRequest) {
     // 캠페인 조회
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
     const { data: campaign } = await sb
       .from('ad_campaigns')

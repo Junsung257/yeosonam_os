@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { parseShinhanSMS } from '@/lib/sms-parser';
 import { matchPaymentToBookings, classifyMatch, BookingCandidate } from '@/lib/payment-matcher';
@@ -22,7 +23,8 @@ import { matchPaymentToBookings, classifyMatch, BookingCandidate } from '@/lib/p
 export async function POST(request: NextRequest) {
   // 웹훅 시크릿 검증
   const secret = request.headers.get('x-webhook-secret');
-  if (!process.env.SMS_WEBHOOK_SECRET || secret !== process.env.SMS_WEBHOOK_SECRET) {
+  const expected = getSecret('SMS_WEBHOOK_SECRET');
+  if (!expected || secret !== expected) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 
@@ -121,7 +123,7 @@ export async function POST(request: NextRequest) {
     if (rpcErr) {
       console.error('[SMS 자동매칭] update_booking_ledger 실패:', rpcErr.message);
     } else {
-      console.log(`[SMS 자동매칭] 예약 ${bestMatch.booking.booking_no} — ${parsed.amount.toLocaleString()}원 (신뢰도 ${Math.round(confidence * 100)}%)`);
+      console.log(`[SMS 자동매칭] 예약 ${bestMatch.booking.booking_no?.slice(0, 4)}**** 연결 완료 (신뢰도 ${Math.round(confidence * 100)}%)`);
     }
   }
 

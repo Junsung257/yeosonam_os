@@ -16,6 +16,7 @@ import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
 import * as XLSX from 'xlsx';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 // ─── 코드 매핑 테이블 ─────────────────────────────────────────
 
@@ -142,7 +143,7 @@ async function analyzeWithDeepSeek(
   rawText: string,
   hints: FilenameHints,
 ): Promise<AIExtracted> {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
   const client = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 

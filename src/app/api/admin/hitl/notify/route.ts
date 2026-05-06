@@ -14,6 +14,14 @@ const RISK_EMOJI: Record<string, string> = {
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: false });
 
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  if (!userData?.user?.id) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { taskId, riskLevel = 'medium', message, conversationId, toolName } = body as {

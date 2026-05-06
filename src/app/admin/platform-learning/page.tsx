@@ -87,7 +87,14 @@ export default function PlatformLearningPage() {
       </div>
 
       {loading ? (
-        <p className="text-slate-500 text-sm">불러오는 중…</p>
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 flex items-center gap-3">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-20" />
+            </div>
+          ))}
+        </div>
       ) : events.length === 0 ? (
         <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
       ) : (

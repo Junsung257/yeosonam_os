@@ -49,7 +49,7 @@ interface Transaction {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  PENDING:        'bg-gray-100 text-gray-700',
+  PENDING:        'bg-slate-100 text-slate-700',
   CUSTOMER_PAID:  'bg-blue-100 text-blue-700',
   API_PROCESSING: 'bg-yellow-100 text-yellow-700',
   COMPLETED:      'bg-green-100 text-green-700',
@@ -58,7 +58,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const ORDER_STATUS_BADGE: Record<string, string> = {
-  PENDING:   'bg-gray-100 text-gray-600',
+  PENDING:   'bg-slate-100 text-slate-600',
   CONFIRMED: 'bg-green-100 text-green-700',
   CANCELLED: 'bg-red-100 text-red-700',
   REFUNDED:  'bg-purple-100 text-purple-700',
@@ -117,9 +117,16 @@ export default function TransactionDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-400">
-        <p className="text-4xl mb-3">⏳</p>
-        <p>로딩 중...</p>
+      <div className="p-6 space-y-4 max-w-3xl">
+        <div className="h-6 bg-slate-100 rounded animate-pulse w-40" />
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-24 shrink-0" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -138,9 +145,9 @@ export default function TransactionDetailPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/admin/concierge" className="text-gray-400 hover:text-gray-600 text-sm">← 목록</Link>
-          <h1 className="text-xl font-bold text-gray-900">트랜잭션 상세</h1>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[txn.status] ?? 'bg-gray-100 text-gray-600'}`}>
+          <Link href="/admin/concierge" className="text-slate-400 hover:text-slate-600 text-sm">← 목록</Link>
+          <h1 className="text-xl font-bold text-slate-900">트랜잭션 상세</h1>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[txn.status] ?? 'bg-slate-100 text-slate-600'}`}>
             {txn.status}
           </span>
         </div>
@@ -162,25 +169,25 @@ export default function TransactionDetailPage() {
       {/* 고객 · 결제 요약 */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border p-4 space-y-2">
-          <h3 className="text-sm font-semibold text-gray-700 border-b pb-2">고객 정보</h3>
-          <p className="text-sm"><span className="text-gray-500">이름:</span> <span className="font-medium">{txn.customer_name ?? '-'}</span></p>
-          <p className="text-sm"><span className="text-gray-500">연락처:</span> {txn.customer_phone ?? '-'}</p>
-          <p className="text-sm"><span className="text-gray-500">이메일:</span> {txn.customer_email ?? '-'}</p>
-          <p className="text-sm text-gray-400 font-mono text-xs">{txn.id}</p>
+          <h3 className="text-sm font-semibold text-slate-700 border-b pb-2">고객 정보</h3>
+          <p className="text-sm"><span className="text-slate-500">이름:</span> <span className="font-medium">{txn.customer_name ?? '-'}</span></p>
+          <p className="text-sm"><span className="text-slate-500">연락처:</span> {txn.customer_phone ?? '-'}</p>
+          <p className="text-sm"><span className="text-slate-500">이메일:</span> {txn.customer_email ?? '-'}</p>
+          <p className="text-sm text-slate-400 font-mono text-xs">{txn.id}</p>
         </div>
         <div className="bg-white rounded-xl border p-4 space-y-2">
-          <h3 className="text-sm font-semibold text-gray-700 border-b pb-2">결제 요약</h3>
-          <p className="text-sm"><span className="text-gray-500">판매가:</span> <span className="font-bold text-indigo-700">₩{txn.total_price.toLocaleString()}</span></p>
-          <p className="text-sm"><span className="text-gray-500">원가:</span> ₩{txn.total_cost.toLocaleString()}</p>
-          <p className="text-sm"><span className="text-gray-500">순마진:</span> <span className="font-semibold text-green-600">₩{txn.net_margin.toLocaleString()}</span></p>
-          <p className="text-sm text-gray-400 text-xs">{new Date(txn.created_at).toLocaleString('ko-KR')}</p>
+          <h3 className="text-sm font-semibold text-slate-700 border-b pb-2">결제 요약</h3>
+          <p className="text-sm"><span className="text-slate-500">판매가:</span> <span className="font-bold text-indigo-700">₩{txn.total_price.toLocaleString()}</span></p>
+          <p className="text-sm"><span className="text-slate-500">원가:</span> ₩{txn.total_cost.toLocaleString()}</p>
+          <p className="text-sm"><span className="text-slate-500">순마진:</span> <span className="font-semibold text-green-600">₩{txn.net_margin.toLocaleString()}</span></p>
+          <p className="text-sm text-slate-400 text-xs">{new Date(txn.created_at).toLocaleString('ko-KR')}</p>
         </div>
       </div>
 
       {/* 바우처 */}
       {txn.status === 'COMPLETED' && txn.vouchers && txn.vouchers.length > 0 && (
         <div className="bg-white rounded-xl border p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">발행된 바우처</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">발행된 바우처</h3>
           <div className="grid grid-cols-2 gap-3">
             {txn.vouchers.map((v, i) => (
               <div key={i} className={`rounded-lg p-3 border-2 ${
@@ -188,8 +195,8 @@ export default function TransactionDetailPage() {
                 : v.product_type === 'HOTEL' ? 'border-amber-200 bg-amber-50'
                 : 'border-green-200 bg-green-50'
               }`}>
-                <div className="text-xs text-gray-500">{PRODUCT_TYPE_LABELS[v.product_type] ?? v.product_type}</div>
-                <div className="font-medium text-sm text-gray-800 mt-0.5">{v.product_name}</div>
+                <div className="text-xs text-slate-500">{PRODUCT_TYPE_LABELS[v.product_type] ?? v.product_type}</div>
+                <div className="font-medium text-sm text-slate-800 mt-0.5">{v.product_name}</div>
                 <div className="font-mono font-bold text-indigo-700 tracking-widest mt-1">{v.code}</div>
               </div>
             ))}
@@ -199,8 +206,8 @@ export default function TransactionDetailPage() {
 
       {/* API 주문 목록 */}
       <div className="bg-white rounded-xl border overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b">
-          <h3 className="text-sm font-semibold text-gray-700">API 주문 상세 ({txn.api_orders.length}건)</h3>
+        <div className="px-4 py-3 bg-slate-50 border-b">
+          <h3 className="text-sm font-semibold text-slate-700">API 주문 상세 ({txn.api_orders.length}건)</h3>
         </div>
         <div className="divide-y">
           {txn.api_orders.map(order => (
@@ -208,19 +215,19 @@ export default function TransactionDetailPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs text-gray-500">{PRODUCT_TYPE_LABELS[order.product_type] ?? order.product_type}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ORDER_STATUS_BADGE[order.status] ?? 'bg-gray-100'}`}>
+                    <span className="text-xs text-slate-500">{PRODUCT_TYPE_LABELS[order.product_type] ?? order.product_type}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ORDER_STATUS_BADGE[order.status] ?? 'bg-slate-100'}`}>
                       {order.status}
                     </span>
                   </div>
-                  <p className="font-medium text-gray-900">{order.product_name}</p>
+                  <p className="font-medium text-slate-900">{order.product_name}</p>
                   {order.external_ref && (
-                    <p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {order.external_ref}</p>
+                    <p className="text-xs text-slate-400 mt-0.5 font-mono">Ref: {order.external_ref}</p>
                   )}
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-indigo-700">₩{order.price.toLocaleString()}</p>
-                  <p className="text-xs text-gray-400">원가 ₩{order.cost.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">원가 ₩{order.cost.toLocaleString()}</p>
                 </div>
               </div>
               {/* 크루즈 상세 */}
@@ -239,7 +246,7 @@ export default function TransactionDetailPage() {
 
       {/* Saga 로그 타임라인 */}
       <div className="bg-white rounded-xl border p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Saga 이벤트 로그</h3>
+        <h3 className="text-sm font-semibold text-slate-700 mb-4">Saga 이벤트 로그</h3>
         <div className="space-y-3">
           {(txn.saga_log ?? []).map((event, i) => (
             <div key={i} className="flex gap-3">
@@ -251,18 +258,18 @@ export default function TransactionDetailPage() {
                   : 'bg-indigo-400'
                 }`} />
                 {i < (txn.saga_log?.length ?? 0) - 1 && (
-                  <div className="w-0.5 h-full bg-gray-200 mt-1" />
+                  <div className="w-0.5 h-full bg-slate-200 mt-1" />
                 )}
               </div>
               <div className="pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-900">{event.event}</span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-sm font-semibold text-slate-900">{event.event}</span>
+                  <span className="text-xs text-slate-400">
                     {new Date(event.timestamp).toLocaleString('ko-KR')}
                   </span>
                 </div>
                 {event.detail && (
-                  <p className="text-xs text-gray-500 mt-0.5">{event.detail}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{event.detail}</p>
                 )}
               </div>
             </div>

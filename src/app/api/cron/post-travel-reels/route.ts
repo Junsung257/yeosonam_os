@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { getSecret } from '@/lib/secret-registry';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return returnDate === today;
     });
 
-    const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
+    const slackWebhookUrl = getSecret('SLACK_WEBHOOK_URL');
     let slackSent = 0;
 
     for (const booking of returned) {

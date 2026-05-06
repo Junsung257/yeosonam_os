@@ -61,7 +61,7 @@ export default function JarvisRagSearchPage() {
         <Link href="/admin/jarvis" className="text-xs text-violet-600 hover:underline">← 자비스</Link>
       </div>
 
-      <form onSubmit={search} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row gap-2">
+      <form onSubmit={search} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-col md:flex-row gap-2">
         <input
           type="text"
           value={query}
@@ -108,7 +108,7 @@ export default function JarvisRagSearchPage() {
         <section className="space-y-2">
           <p className="text-xs text-slate-500">{hits.length}건 hit · RRF 점수 순</p>
           {hits.map((h, i) => (
-            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4">
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
               <div className="flex items-baseline gap-2 mb-2 flex-wrap">
                 <span className="text-[11px] font-bold bg-slate-100 px-2 py-0.5 rounded">{i + 1}</span>
                 <span className="text-[11px] font-semibold text-slate-600">

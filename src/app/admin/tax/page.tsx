@@ -130,8 +130,8 @@ export default function TaxPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-[16px] font-semibold text-slate-800">세무 / 송금 관리</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">출발일(행사일) 기준 매출 인식 / 양방향 증빙 관리</p>
+          <h1 className="text-admin-lg font-semibold text-slate-800">세무 / 송금 관리</h1>
+          <p className="text-admin-sm text-slate-500 mt-0.5">출발일(행사일) 기준 매출 인식 / 양방향 증빙 관리</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -139,7 +139,7 @@ export default function TaxPage() {
             <select
               value={month}
               onChange={e => setMonth(e.target.value)}
-              className="border border-slate-200 rounded px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="border border-slate-200 rounded px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               {monthOptions.map(m => (
                 <option key={m} value={m}>{m}</option>
@@ -148,7 +148,7 @@ export default function TaxPage() {
           </div>
           <button
             onClick={downloadCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-[#001f3f] text-white rounded text-[13px] font-medium hover:bg-blue-900 transition"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded text-admin-sm font-medium hover:bg-blue-700 transition"
           >
             세무사 제출용 엑셀 다운로드
           </button>
@@ -158,22 +158,22 @@ export default function TaxPage() {
       {/* KPI 카드 4개 */}
       {kpis && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
             <p className="text-[11px] text-slate-500 font-medium">총 입금액 (판매가)</p>
             <p className="text-xl font-bold text-indigo-700 mt-1">₩{fmt(kpis.total_price)}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">출발일 기준</p>
           </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
             <p className="text-[11px] text-slate-500 font-medium">총 송금액 (원가)</p>
             <p className="text-xl font-bold text-orange-600 mt-1">₩{fmt(kpis.total_cost)}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">랜드사 지불 원가</p>
           </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
             <p className="text-[11px] text-slate-500 font-medium">순매출</p>
             <p className="text-xl font-bold text-green-600 mt-1">₩{fmt(kpis.net_sales)}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">판매가 - 원가</p>
           </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
             <p className="text-[11px] text-slate-500 font-medium">예상 부가세 (10%)</p>
             <p className="text-xl font-bold text-red-500 mt-1">₩{fmt(kpis.vat_estimate)}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">순매출 x 10% 절사</p>
@@ -184,7 +184,7 @@ export default function TaxPage() {
       {/* To-Do 경고 알림 */}
       {todos && (todos.pending_transfers.length > 0 || todos.not_issued_receipts.length > 0) && (
         <div className="bg-white border border-red-200 rounded-lg p-4 space-y-3">
-          <h2 className="text-[13px] font-semibold text-red-700 flex items-center gap-2">
+          <h2 className="text-admin-sm font-semibold text-red-700 flex items-center gap-2">
             처리 필요 항목 (To-Do)
           </h2>
           {todos.pending_transfers.length > 0 && (
@@ -231,20 +231,20 @@ export default function TaxPage() {
        todos.not_issued_receipts.length === 0 &&
        bookings.length > 0 && (
         <div className="bg-green-50 border border-slate-200 rounded-lg p-3 flex items-center gap-2">
-          <span className="text-green-600 text-[13px] font-medium">{month} 이 달 처리 필요 항목 없음</span>
+          <span className="text-green-600 text-admin-sm font-medium">{month} 이 달 처리 필요 항목 없음</span>
         </div>
       )}
 
       {/* 예약 목록 테이블 */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-800 text-[14px]">
+          <h2 className="font-semibold text-slate-800 text-admin-base">
             예약 목록 - {month} 출발 ({bookings.length}건)
           </h2>
           {loading && <span className="text-[11px] text-slate-500 animate-pulse">로딩 중...</span>}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-admin-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 {[
@@ -258,7 +258,7 @@ export default function TaxPage() {
             <tbody>
               {bookings.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-slate-500 text-[13px]">
+                  <td colSpan={11} className="px-3 py-10 text-center text-slate-500 text-admin-sm">
                     {month}에 출발하는 예약이 없습니다.
                   </td>
                 </tr>
@@ -394,7 +394,7 @@ export default function TaxPage() {
             {/* 합계 행 */}
             {bookings.length > 0 && kpis && (
               <tfoot>
-                <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-[13px]">
+                <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-admin-sm">
                   <td className="px-3 py-2 text-slate-800" colSpan={3}>합계 ({bookings.length}건)</td>
                   <td className="px-3 py-2 text-right text-indigo-700">₩{fmt(kpis.total_price)}</td>
                   <td className="px-3 py-2 text-right text-orange-600">₩{fmt(kpis.total_cost)}</td>

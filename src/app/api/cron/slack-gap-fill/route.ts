@@ -24,6 +24,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ingestSlackRawEvent } from '@/lib/slack-ingest';
 
@@ -95,13 +97,12 @@ function unescapeSlackEntities(text: string): string {
 // ─── 메인 핸들러 ─────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
-  const botToken = process.env.SLACK_BOT_TOKEN;
-  const channelId = process.env.SLACK_CHANNEL_ID;
+  const botToken = getSecret('SLACK_BOT_TOKEN');
+  const channelId = getSecret('SLACK_CHANNEL_ID');
 
   if (!botToken || !channelId) {
     console.warn('[slack-gap-fill] SLACK_BOT_TOKEN/CHANNEL_ID 미설정 — 스킵 (gap-fill 비활성)');

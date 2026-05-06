@@ -28,6 +28,10 @@ export async function GET(request: NextRequest) {
       userId = userData?.user?.id ?? null;
     }
 
+    if (!userId) {
+      return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+    }
+
     // ── 2. admin_users에서 role 조회 ───────────────────────────
     let role: AdminRole = 'cs_agent'; // 기본값 (role 판단 불가 시)
 

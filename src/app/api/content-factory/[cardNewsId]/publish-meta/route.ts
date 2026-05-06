@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { publishToMetaAds } from '@/lib/content-pipeline/publishers/meta-ads-publisher';
+import { getSecret } from '@/lib/secret-registry';
 
 // ── POST /api/content-factory/[cardNewsId]/publish-meta ────────────────────
 // Content Hub 메타 광고 직접 발행.
@@ -46,7 +47,7 @@ export async function POST(
     }
 
     // 2. landing URL 결정
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+    const appUrl = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
     const landingUrl = cn.package_id
       ? `${appUrl}/packages/${cn.package_id}`
       : appUrl;

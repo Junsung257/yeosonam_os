@@ -125,32 +125,43 @@ export default function BrandKitsPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">브랜드킷 관리</h1>
-          <p className="text-sm text-gray-500">카드뉴스·블로그·인스타에 주입되는 브랜드 토큰·보이스 가이드</p>
+          <h1 className="text-2xl font-bold text-slate-900">브랜드킷 관리</h1>
+          <p className="text-sm text-slate-500">카드뉴스·블로그·인스타에 주입되는 브랜드 토큰·보이스 가이드</p>
         </div>
         <button
           onClick={() => router.push('/admin/marketing')}
-          className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          className="px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
         >
           ← 대시보드
         </button>
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+              <div className="h-4 bg-slate-100 rounded animate-pulse w-36" />
+              <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
+              <div className="h-3 bg-slate-100 rounded animate-pulse w-2/3" />
+            </div>
+          ))}
+        </div>
       ) : kits.length === 0 ? (
-        <div className="py-20 text-center text-sm text-gray-400">브랜드킷이 없습니다.</div>
+        <div className="flex flex-col items-center gap-3 py-16">
+          <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 005.304 0l6.401-6.402M6.75 21A3.75 3.75 0 013 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 003.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008z" /></svg>
+          <p className="text-admin-sm font-medium text-slate-500">브랜드킷이 없습니다.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {kits.map(kit => (
-            <div key={kit.id} className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <div key={kit.id} className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{kit.code}</span>
-                  <p className="font-semibold text-gray-800 mt-1">{kit.name}</p>
-                  {kit.domain && <p className="text-xs text-gray-400">{kit.domain}</p>}
+                  <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{kit.code}</span>
+                  <p className="font-semibold text-slate-800 mt-1">{kit.name}</p>
+                  {kit.domain && <p className="text-xs text-slate-400">{kit.domain}</p>}
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${kit.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                <span className={`text-xs px-2 py-1 rounded-full ${kit.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                   {kit.is_active ? '활성' : '비활성'}
                 </span>
               </div>
@@ -166,12 +177,12 @@ export default function BrandKitsPage() {
                 ))}
               </div>
 
-              <p className="text-xs text-gray-400 line-clamp-2">
+              <p className="text-xs text-slate-400 line-clamp-2">
                 {kit.voice_guide ? `"${kit.voice_guide.slice(0, 100)}${kit.voice_guide.length > 100 ? '…' : ''}"` : '보이스 가이드 없음'}
               </p>
 
               <div className="flex items-center justify-between">
-                <p className="text-[10px] text-gray-300">{kit.updated_at?.slice(0, 10)}</p>
+                <p className="text-[10px] text-slate-300">{kit.updated_at?.slice(0, 10)}</p>
                 <button
                   onClick={() => openEdit(kit)}
                   className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium"
@@ -191,8 +202,8 @@ export default function BrandKitsPage() {
           <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white z-50 flex flex-col border-l border-slate-200 shadow-xl">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <span className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{editing.code}</span>
-                <h2 className="text-[16px] font-bold text-slate-800 mt-1">{editing.name} 편집</h2>
+                <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{editing.code}</span>
+                <h2 className="text-admin-lg font-bold text-slate-800 mt-1">{editing.name} 편집</h2>
               </div>
               <button onClick={() => setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>

@@ -132,7 +132,7 @@ function CapitalRing({ current, goal }: { current: number; goal: number }) {
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs space-y-1">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 text-xs space-y-1">
       <p className="font-semibold text-slate-700 mb-1">{fmtMonth(label)}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color }}>
@@ -355,7 +355,7 @@ export default function LedgerPage() {
       {!loading && isAssetWarning && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
-          <p className="text-[14px] text-red-600 font-medium">
+          <p className="text-admin-base text-red-600 font-medium">
             가용 자산이 부족합니다. 현재 <strong>{fmtW(availableAssets)}</strong> 상태입니다.
             미지급 원가 또는 운영비 검토가 필요합니다.
           </p>
@@ -366,7 +366,7 @@ export default function LedgerPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">AI 재무 대시보드</h1>
-          <p className="text-[14px] text-slate-500 mt-0.5">실계좌 현금흐름 / 자본금 / 가용자산 분석</p>
+          <p className="text-admin-base text-slate-500 mt-0.5">실계좌 현금흐름 / 자본금 / 가용자산 분석</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -389,8 +389,8 @@ export default function LedgerPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
         {/* 가용 자산 */}
-        <div className={`rounded-lg p-5 ${
-          isAssetWarning ? 'bg-red-600' : 'bg-[#001f3f]'
+        <div className={`rounded-xl p-5 ${
+          isAssetWarning ? 'bg-red-600' : 'bg-slate-900'
         } text-white`}>
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="w-4 h-4 opacity-70" />
@@ -401,7 +401,7 @@ export default function LedgerPage() {
         </div>
 
         {/* 총 입금 */}
-        <div className="bg-white rounded-lg border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
           <div className="flex items-center gap-2 mb-1">
             <ArrowDownCircle className="w-4 h-4 text-emerald-500" />
             <p className="text-xs text-slate-500 font-medium">총 입금액</p>
@@ -414,7 +414,7 @@ export default function LedgerPage() {
         </div>
 
         {/* MoM 성장 */}
-        <div className="bg-white rounded-lg border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
           <div className="flex items-center gap-2 mb-1">
             {momPct > 0
               ? <TrendingUp className="w-4 h-4 text-emerald-500" />
@@ -436,10 +436,10 @@ export default function LedgerPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Recharts AreaChart */}
-        <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-5">
-          <h2 className="text-[16px] font-semibold text-slate-800 mb-4">12개월 현금흐름 추이</h2>
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <h2 className="text-admin-lg font-semibold text-slate-800 mb-4">12개월 현금흐름 추이</h2>
           {chartData.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-slate-500 text-[14px]">
+            <div className="flex items-center justify-center h-40 text-slate-500 text-admin-base">
               {loading ? '로딩 중...' : '데이터 없음'}
             </div>
           ) : (
@@ -469,9 +469,9 @@ export default function LedgerPage() {
         </div>
 
         {/* 자본금 카드 */}
-        <div className="bg-white rounded-lg border border-slate-200 p-5 flex flex-col">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[16px] font-semibold text-slate-800">자본금 관리</h2>
+            <h2 className="text-admin-lg font-semibold text-slate-800">자본금 관리</h2>
             <button
               onClick={() => setShowCapForm(v => !v)}
               className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
@@ -499,24 +499,24 @@ export default function LedgerPage() {
                 placeholder="금액 (예: 5,000,000)"
                 value={capitalForm.amount}
                 onChange={e => setCapitalForm(p => ({ ...p, amount: e.target.value }))}
-                className="w-full text-[14px] border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full text-admin-base border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <input
                 type="text"
                 placeholder="메모 (예: 대표이사 초기 투자)"
                 value={capitalForm.note}
                 onChange={e => setCapitalForm(p => ({ ...p, note: e.target.value }))}
-                className="w-full text-[14px] border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full text-admin-base border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <input
                 type="date"
                 value={capitalForm.date}
                 onChange={e => setCapitalForm(p => ({ ...p, date: e.target.value }))}
-                className="w-full text-[14px] border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full text-admin-base border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <button
                 onClick={handleAddCapital}
-                className="w-full bg-[#001f3f] text-white text-[14px] rounded-lg py-2 hover:bg-blue-900 transition"
+                className="w-full bg-blue-600 text-white text-admin-base rounded-lg py-2 hover:bg-blue-700 transition"
               >
                 등록
               </button>
@@ -544,7 +544,7 @@ export default function LedgerPage() {
       </div>
 
       {/* ── 거래 내역 탭 ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
 
         {/* 탭 헤더 */}
         <div className="flex items-center border-b border-slate-200 px-4 pt-3 gap-1">
@@ -561,7 +561,7 @@ export default function LedgerPage() {
                 tab === t.id
                   ? t.id === 'trash'
                     ? 'border-red-500 text-red-600'
-                    : 'border-[#001f3f] text-slate-800'
+                    : 'border-blue-600 text-slate-800'
                   : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -600,13 +600,38 @@ export default function LedgerPage() {
 
         {/* 테이블 */}
         {loading ? (
-          <div className="py-16 text-center text-slate-500 text-[14px]">로딩 중...</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-admin-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-100">
+                  <th className="px-3 py-3 w-8 bg-slate-50/80" />
+                  {['일시', '구분', '거래처', '금액', '상태', '예약'].map(h => (
+                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap bg-slate-50/80">{h}</th>
+                  ))}
+                  <th className="px-3 py-3 w-16 bg-slate-50/80" />
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i} className="border-b border-slate-100">
+                    <td className="px-3 py-3" />
+                    {[80, 40, 120, 70, 56, 60].map((w, j) => (
+                      <td key={j} className="px-3 py-3">
+                        <div className={`h-3 bg-slate-100 rounded animate-pulse`} style={{ width: w }} />
+                      </td>
+                    ))}
+                    <td className="px-3 py-3" />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-admin-sm">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-3 py-2 w-8">
+                <tr className="border-b-2 border-slate-100">
+                  <th className="px-3 py-3 w-8 bg-slate-50/80 backdrop-blur-sm">
                     <button onClick={toggleAll} className="text-slate-400 hover:text-slate-700">
                       {selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length
                         ? <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -615,9 +640,9 @@ export default function LedgerPage() {
                     </button>
                   </th>
                   {['일시', '구분', '거래처', '금액', '상태', '예약'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-medium text-slate-500 whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap bg-slate-50/80 backdrop-blur-sm">{h}</th>
                   ))}
-                  <th className="px-3 py-2 w-16" />
+                  <th className="px-3 py-3 w-16 bg-slate-50/80 backdrop-blur-sm" />
                 </tr>
               </thead>
               <tbody>
@@ -631,7 +656,7 @@ export default function LedgerPage() {
                         }
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-[13px] text-slate-500 whitespace-nowrap">{fmtDate(tx.received_at)}</td>
+                    <td className="px-3 py-2 text-admin-sm text-slate-500 whitespace-nowrap">{fmtDate(tx.received_at)}</td>
                     <td className="px-3 py-2">
                       <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                         tx.transaction_type === '입금'
@@ -661,7 +686,7 @@ export default function LedgerPage() {
                          tx.match_status === 'review' ? '검토' : '미매칭'}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-[13px] text-slate-500 max-w-[100px] truncate">
+                    <td className="px-3 py-2 text-admin-sm text-slate-500 max-w-[100px] truncate">
                       {(tx.bookings as any)?.booking_no ?? '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -696,8 +721,16 @@ export default function LedgerPage() {
                 ))}
                 {(tab === 'trash' ? trashTxs : displayTxs).length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-500 text-[14px]">
-                      {tab === 'trash' ? '휴지통이 비어 있습니다.' : '거래 내역이 없습니다.'}
+                    <td colSpan={8} className="py-14 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        {tab === 'trash'
+                          ? <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                          : <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>
+                        }
+                        <p className="text-admin-sm font-medium text-slate-500">
+                          {tab === 'trash' ? '휴지통이 비어 있습니다.' : '거래 내역이 없습니다.'}
+                        </p>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -716,14 +749,14 @@ export default function LedgerPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-purple-600" />
-                  <h2 className="text-[16px] font-semibold text-slate-800">AI 스마트 클리닝 결과</h2>
+                  <h2 className="text-admin-lg font-semibold text-slate-800">AI 스마트 클리닝 결과</h2>
                 </div>
                 <button onClick={() => setShowAI(false)} className="text-slate-400 hover:text-slate-600">
                   <X className="w-4 h-4" />
                 </button>
               </div>
               {anomalies.length === 0 ? (
-                <p className="text-[14px] text-emerald-600 font-medium">이상 거래가 감지되지 않았습니다.</p>
+                <p className="text-admin-base text-emerald-600 font-medium">이상 거래가 감지되지 않았습니다.</p>
               ) : (
                 <div className="space-y-2">
                   {anomalies.map((a, i) => (
@@ -749,13 +782,13 @@ export default function LedgerPage() {
                         bg-slate-900 text-white px-5 py-3.5 rounded-lg
                         animate-in slide-in-from-bottom-4 duration-300">
           <Trash2 className="w-4 h-4 text-slate-400 shrink-0" />
-          <span className="text-[14px]">
+          <span className="text-admin-base">
             {undoInfo.ids.length}건 이동 중
             <span className="text-slate-400 ml-1">({undoInfo.countdown}초 후 확정)</span>
           </span>
           <button
             onClick={handleUndo}
-            className="text-blue-400 hover:text-blue-300 text-[14px] font-semibold ml-2 transition"
+            className="text-blue-400 hover:text-blue-300 text-admin-base font-semibold ml-2 transition"
           >
             실행 취소
           </button>
@@ -764,7 +797,7 @@ export default function LedgerPage() {
 
       {/* ── 일반 Toast ──────────────────────────────────────────────────── */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-[14px] font-medium
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-admin-base font-medium
                          text-white animate-in slide-in-from-bottom-4 duration-200 ${
           toast.ok ? 'bg-emerald-600' : 'bg-red-600'
         }`}>

@@ -12,6 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { searchPexelsPhotos } from '@/lib/pexels';
 import { generateAdVariants } from '@/lib/ai';
 import { checkAiCopyConsistency } from '@/lib/ai-consistency-checker';
+import { getSecret } from '@/lib/secret-registry';
 
 // ─── VA 검수 체크리스트 계산 ──────────────────────────────────────────────
 // 각 상품이 ACTIVE 진입해도 안전한지 자동 검증
@@ -275,7 +276,7 @@ async function handleFaq(body: { product_id: string }) {
   const rawText = ((product as any).raw_extracted_text ?? '') as string;
   const snippet = rawText.slice(0, 8000);
 
-  const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+  const apiKey = getSecret('GOOGLE_GEMINI_API_KEY') || getSecret('GOOGLE_API_KEY') || '';
   if (!apiKey) {
     // API 키 없으면 더미 FAQ 반환
     return NextResponse.json({

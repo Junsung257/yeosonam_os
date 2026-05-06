@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { reconcileOtaReport } from '@/lib/free-travel/reconcile';
+import { requireAdminApiToken } from '@/lib/api-auth';
 
 const ItemSchema = z.object({
   ref_id:       z.string().optional(),
@@ -24,16 +25,9 @@ const RequestSchema = z.object({
   totalKrw:    z.number().int().min(0).optional(),
 });
 
-function assertAdminApiToken(request: NextRequest): boolean {
-  const token = process.env.ADMIN_API_TOKEN;
-  if (!token) return false;
-  return request.headers.get('x-admin-token') === token;
-}
-
 export async function POST(request: NextRequest) {
-  if (!assertAdminApiToken(request)) {
-    return NextResponse.json({ code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' }, { status: 403 });
-  }
+  const unauthorized = requireAdminApiToken(request);
+  if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -75,9 +69,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!assertAdminApiToken(request)) {
-    return NextResponse.json({ code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' }, { status: 403 });
-  }
+  const unauthorized = requireAdminApiToken(request);
+  if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return NextResponse.json({ reports: [] });
   }

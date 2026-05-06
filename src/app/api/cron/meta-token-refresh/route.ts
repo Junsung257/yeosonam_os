@@ -28,6 +28,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { invalidateMetaTokenCache } from '@/lib/meta-token-resolver';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -49,9 +51,8 @@ interface DebugTokenResponse {
 }
 
 async function runMetaTokenRefresh(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   const summary = {
@@ -63,8 +64,8 @@ async function runMetaTokenRefresh(request: NextRequest) {
     new_expires_at: null as string | null,
   };
 
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
+  const appId = getSecret('META_APP_ID');
+  const appSecret = getSecret('META_APP_SECRET');
   if (!appId || !appSecret) {
     summary.skipped_no_config += 1;
     summary.errors.push('META_APP_ID 또는 META_APP_SECRET 미설정');
@@ -85,7 +86,7 @@ async function runMetaTokenRefresh(request: NextRequest) {
       tokenSource = 'db';
     }
   }
-  if (!currentToken) currentToken = process.env.META_ACCESS_TOKEN ?? null;
+  if (!currentToken) currentToken = getSecret('META_ACCESS_TOKEN');
   if (!currentToken) {
     summary.skipped_no_config += 1;
     summary.errors.push('META_ACCESS_TOKEN 소스 없음 (DB/env 모두)');

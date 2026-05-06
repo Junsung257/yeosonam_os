@@ -3,6 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { collectAllTrends, classifyKeywordTier, detectDestination } from '@/lib/keyword-research';
 import { classifySearchIntent } from '@/lib/blog-search-intent';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 /**
  * 트렌드 토픽 마이너 — 매일 06:00 KST (21:00 UTC) 실행
@@ -27,9 +28,8 @@ const MIN_TREND_SCORE = 30;
 const PRIORITY_TREND = 70;
 
 async function runTrendMiner(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {

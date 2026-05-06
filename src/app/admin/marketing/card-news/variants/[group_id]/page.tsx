@@ -174,7 +174,21 @@ export default function VariantGroupComparePage() {
   };
 
   if (loading) {
-    return <div className="p-10 text-slate-500">변형 그룹 불러오는 중...</div>;
+    return (
+      <div className="p-6 space-y-4">
+        <div className="h-6 bg-slate-100 rounded animate-pulse w-48" />
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div className="aspect-[9/16] bg-slate-100 animate-pulse" />
+              <div className="p-2 space-y-1.5">
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-2/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
   if (error) {
     return (
@@ -210,13 +224,13 @@ export default function VariantGroupComparePage() {
         <div className="flex gap-2">
           <button
             onClick={fetchVariants}
-            className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
           >
             🔄 새로고침
           </button>
           <Link
             href="/admin/marketing/card-news"
-            className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
           >
             ← 목록
           </Link>

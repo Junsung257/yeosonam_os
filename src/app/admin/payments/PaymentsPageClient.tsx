@@ -159,11 +159,11 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
         onChange={e => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="이름, 상품명, 출발일 검색..."
-        className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <ul ref={listRef} className="max-h-56 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100">
         {filtered.length === 0 && (
-          <li className="px-3 py-3 text-[13px] text-slate-400 text-center">검색 결과 없음</li>
+          <li className="px-3 py-3 text-admin-sm text-slate-400 text-center">검색 결과 없음</li>
         )}
         {filtered.map((b, i) => {
           const rec = isRecommended(b);
@@ -175,7 +175,7 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
               key={b.id}
               onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
               onMouseEnter={() => setFocusedIdx(i)}
-              className={`px-3 py-2 cursor-pointer text-[13px] transition
+              className={`px-3 py-2 cursor-pointer text-admin-sm transition
                 ${rec ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}
                 ${isFocused && !rec ? 'bg-slate-50' : ''}
                 ${isFocused && rec ? 'bg-emerald-100' : ''}
@@ -185,12 +185,12 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
                 <div className="flex items-center gap-2">
                   {multiMode && (
                     <input type="checkbox" readOnly checked={isChecked}
-                      className="rounded border-slate-300 text-[#3182F6]" />
+                      className="rounded border-slate-300 text-brand" />
                   )}
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-slate-800 tabular-nums">{fmtBookingAnchor({ customers: b.customers, departure_date: b.departure_date })}</span>
-                      {b.package_title && <span className="text-slate-500 text-[12px]">· {b.package_title}</span>}
+                      {b.package_title && <span className="text-slate-500 text-admin-xs">· {b.package_title}</span>}
                       {rec && <span className="text-[11px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-semibold">추천</span>}
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
@@ -698,26 +698,26 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[16px] font-semibold text-slate-800">입금 관리</h1>
+            <h1 className="text-admin-lg font-semibold text-slate-800">입금 관리</h1>
             <LedgerStatusChip />
           </div>
-          <p className="text-[13px] text-slate-500 mt-0.5">Slack(Clobe.ai) 입출금 자동 파싱 및 예약 매칭</p>
+          <p className="text-admin-sm text-slate-500 mt-0.5">Slack(Clobe.ai) 입출금 자동 파싱 및 예약 매칭</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={handleResync} disabled={bulkProcessing}
-            className="px-3 py-2 bg-[#3182F6] text-white text-[13px] rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
+            className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '입금 재동기화'}
           </button>
           <button onClick={handleBulkAuto} disabled={bulkProcessing}
-            className="px-3 py-2 bg-[#3182F6] text-white text-[13px] rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
+            className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '일괄 자동 매칭'}
           </button>
           <button onClick={() => setShowImport(true)}
-            className="px-3 py-2 bg-[#3182F6] text-white text-[13px] rounded hover:bg-[#1B64DA] transition">
+            className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
             과거 내역 가져오기
           </button>
           <button onClick={() => { load(); loadErp(); }}
-            className="px-3 py-2 text-[13px] text-slate-700 border border-slate-300 rounded bg-white hover:bg-slate-50 transition">
+            className="px-3 py-2 text-admin-sm text-slate-700 border border-slate-300 rounded bg-white hover:bg-slate-50 transition">
             새로고침
           </button>
         </div>
@@ -729,7 +729,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         {/* 좌: 매출 vs 수금 현황 */}
         <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-5">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-[14px] font-semibold text-slate-800">매출 vs 수금 현황</span>
+            <span className="text-admin-base font-semibold text-slate-800">매출 vs 수금 현황</span>
             <span className="text-[11px] text-slate-400">취소 제외 {erp?.bookingCount ?? 0}건</span>
           </div>
 
@@ -745,7 +745,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           <div className="mb-3">
             <div className="flex justify-between text-[11px] text-slate-500 mb-1.5">
               <span>수금률</span>
-              <span className="font-semibold text-[#3182F6]">{collectionRate}%</span>
+              <span className="font-semibold text-brand">{collectionRate}%</span>
             </div>
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -759,13 +759,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           <div className="grid grid-cols-2 gap-3 mt-4">
             <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] px-3 py-2.5">
               <p className="text-[11px] text-slate-500 font-medium mb-0.5">매칭 완료</p>
-              <p className="text-[14px] font-bold text-[#3182F6] tabular-nums">
+              <p className="text-admin-base font-bold text-brand tabular-nums">
                 {erp ? `${(erp.totalPaid / 10000).toFixed(0)}만원` : '—'}
               </p>
             </div>
             <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] px-3 py-2.5">
               <p className="text-[11px] text-slate-500 font-medium mb-0.5">미입금 잔액</p>
-              <p className="text-[14px] font-bold text-red-600 tabular-nums">
+              <p className="text-admin-base font-bold text-red-600 tabular-nums">
                 {erp ? `${(safeRemaining / 10000).toFixed(0)}만원` : '—'}
               </p>
             </div>
@@ -786,7 +786,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <button
                 onClick={() => { if (tab !== 'unmatched') setDateDropdown(o => !o); }}
                 disabled={tab === 'unmatched'}
-                className={`flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded text-[13px] transition
+                className={`flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded text-admin-sm transition
                   ${tab === 'unmatched' ? 'opacity-40 cursor-not-allowed text-slate-400' : 'text-slate-700 hover:bg-slate-50'}`}
               >
                 <span>{tab === 'unmatched' ? '전체' : dateFilter}</span>
@@ -796,8 +796,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded z-20 py-1 min-w-[110px]">
                   {DATE_FILTERS.map(f => (
                     <button key={f} onClick={() => { setDateFilter(f); setDateDropdown(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-[13px] hover:bg-slate-50 transition
-                        ${dateFilter === f ? 'text-[#3182F6] font-medium' : 'text-slate-700'}`}>
+                      className={`w-full text-left px-3 py-1.5 text-admin-sm hover:bg-slate-50 transition
+                        ${dateFilter === f ? 'text-brand font-medium' : 'text-slate-700'}`}>
                       {f}
                     </button>
                   ))}
@@ -848,7 +848,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             <div className={`text-2xl font-bold tabular-nums ${tab === card.id ? card.num : 'text-slate-800'}`}>
               {card.count}
             </div>
-            <div className="text-[13px] text-slate-500 mt-1.5 font-medium">
+            <div className="text-admin-sm text-slate-500 mt-1.5 font-medium">
               {card.label}
             </div>
           </button>
@@ -864,7 +864,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             ['all',       '전체',          outflowCount,          'slate'],
           ] as [typeof outflowSubTab, string, number, string][]).map(([id, label, cnt, color]) => (
             <button key={id} onClick={() => setOutflowSubTab(id)}
-              className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition flex items-center gap-1.5 whitespace-nowrap
+              className={`px-3 py-1.5 rounded-full text-admin-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap
                 ${outflowSubTab === id
                   ? `bg-${color}-600 text-white`
                   : `bg-${color}-50 text-${color}-700 border border-${color}-200 hover:bg-${color}-100`}`}>
@@ -879,17 +879,28 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {/* 트랜잭션 테이블 */}
       {isLoading ? (
-        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-slate-400 text-[14px]">불러오는 중...</div>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex gap-4 py-2 border-b border-slate-50 last:border-0">
+              {[80, 120, 160, 80, 60, 60].map((w, j) => (
+                <div key={j} className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
+              ))}
+            </div>
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-lg border border-slate-200 p-12 text-center text-slate-500">
-          <p className="text-[14px]">해당 항목이 없습니다</p>
-          {tab === 'unmatched' && <p className="text-[13px] text-slate-400 mt-2">일괄 자동 매칭 버튼을 눌러보세요</p>}
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] py-14 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+            <p className="text-admin-sm font-medium text-slate-500">해당 항목이 없습니다.</p>
+            {tab === 'unmatched' && <p className="text-admin-xs text-slate-400">일괄 자동 매칭 버튼을 눌러보세요.</p>}
+          </div>
         </div>
       ) : (
         <>
         {checkedTxIds.size > 0 && (
           <div className="flex items-center gap-3 bg-slate-800 text-white px-4 py-2 rounded-lg mb-2">
-            <span className="text-[13px] font-medium">{checkedTxIds.size}건 선택</span>
+            <span className="text-admin-sm font-medium">{checkedTxIds.size}건 선택</span>
             <button
               disabled={bulkDeleting}
               onClick={async () => {
@@ -909,18 +920,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 } catch { showToast('삭제 실패', 'err'); }
                 finally { setBulkDeleting(false); }
               }}
-              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-[12px] rounded transition disabled:bg-red-300"
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-admin-xs rounded transition disabled:bg-red-300"
             >
               {bulkDeleting ? '처리 중...' : '일괄 삭제'}
             </button>
             <button onClick={() => setCheckedTxIds(new Set())}
-              className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white text-[12px] rounded transition">
+              className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white text-admin-xs rounded transition">
               선택 해제
             </button>
           </div>
         )}
 
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -933,13 +944,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     }}
                     className="rounded border-slate-300" />
                 </th>
-                <th className="text-left px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">수신 시각</th>
-                <th className="text-left px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">구분</th>
-                <th className="text-left px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">거래처</th>
-                <th className="text-right px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">금액</th>
-                <th className="text-left px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">연결된 예약</th>
-                <th className="text-center px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">신뢰도</th>
-                <th className="text-center px-3 py-2 text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">상태</th>
+                <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">수신 시각</th>
+                <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">구분</th>
+                <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">거래처</th>
+                <th className="text-right px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">금액</th>
+                <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">연결된 예약</th>
+                <th className="text-center px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">신뢰도</th>
+                <th className="text-center px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">상태</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -956,27 +967,27 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       }}
                       className="rounded border-slate-300" />
                   </td>
-                  <td className="px-3 py-2 text-[13px] text-slate-500 whitespace-nowrap">
+                  <td className="px-3 py-2 text-admin-sm text-slate-500 whitespace-nowrap">
                     {fmtTs(tx.received_at)}
                   </td>
                   <td className="px-3 py-2">
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full
                       ${tx.transaction_type === '입금'
-                        ? tx.is_refund ? 'bg-orange-50 text-orange-600' : 'bg-[#EBF3FE] text-[#3182F6]'
+                        ? tx.is_refund ? 'bg-orange-50 text-orange-600' : 'bg-brand-light text-brand'
                         : tx.is_fee ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-600'}`}>
                       {tx.is_refund ? '환불' : tx.is_fee ? '수수료' : tx.transaction_type}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-[13px] font-medium text-slate-800">{tx.counterparty_name || '-'}</td>
+                  <td className="px-3 py-2 text-admin-sm font-medium text-slate-800">{tx.counterparty_name || '-'}</td>
                   <td className="px-3 py-2 text-right">
-                    <span className={`text-[13px] font-bold tabular-nums
+                    <span className={`text-admin-sm font-bold tabular-nums
                       ${tx.transaction_type === '입금'
-                        ? tx.is_refund ? 'text-orange-600' : 'text-[#3182F6]'
+                        ? tx.is_refund ? 'text-orange-600' : 'text-brand'
                         : tx.is_fee ? 'text-slate-500' : 'text-red-500'}`}>
                       {tx.transaction_type === '입금' ? '+' : '-'}{tx.amount.toLocaleString()}원
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-[13px] text-slate-500 group relative">
+                  <td className="px-3 py-2 text-admin-sm text-slate-500 group relative">
                     {tx.bookings ? (
                       <>
                         {/* 핵심 앵커: 고객명 / 260507 */}
@@ -988,7 +999,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                           {tx.bookings.booking_no && ` · ${tx.bookings.booking_no}`}
                         </div>
                         {/* Hover 프리뷰 (B-4) */}
-                        <div className="hidden group-hover:block absolute left-0 top-full mt-1 z-10 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] shadow-lg p-3 min-w-[260px] text-[12px]">
+                        <div className="hidden group-hover:block absolute left-0 top-full mt-1 z-10 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] shadow-lg p-3 min-w-[260px] text-admin-xs">
                           <div className="font-semibold text-slate-800 mb-1">
                             {tx.bookings.customers?.name} · {tx.bookings.package_title || '미지정'}
                           </div>
@@ -1050,12 +1061,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             <>
                               <button onClick={() => setBundleTx(tx)}
                                 title="이 랜드사의 미정산 booking N건을 묶어서 정산"
-                                className="px-3 py-1 bg-blue-50 border border-blue-300 text-blue-700 hover:bg-blue-100 rounded text-[13px] font-medium transition-colors whitespace-nowrap">
+                                className="px-3 py-1 bg-blue-50 border border-blue-300 text-blue-700 hover:bg-blue-100 rounded text-admin-sm font-medium transition-colors whitespace-nowrap">
                                 출금 묶기
                               </button>
                               <button onClick={() => openMatchModal(tx)}
                                 title="단건 booking 에 직접 매칭 (total_paid_out 증가)"
-                                className="px-3 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded text-[13px] font-medium transition-colors whitespace-nowrap">
+                                className="px-3 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded text-admin-sm font-medium transition-colors whitespace-nowrap">
                                 수동 매칭
                               </button>
                               <button onClick={() => paymentBarRef.current?.openWithTransaction(tx.id, { txType: '출금', isRefund: false })}
@@ -1067,7 +1078,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                           ) : (
                             <>
                               <button onClick={() => openMatchModal(tx)}
-                                className="px-3 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded text-[13px] font-medium transition-colors whitespace-nowrap">
+                                className="px-3 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded text-admin-sm font-medium transition-colors whitespace-nowrap">
                                 {tx.is_refund ? '환불 매칭' : '수동 매칭'}
                               </button>
                               <button onClick={() => paymentBarRef.current?.openWithTransaction(tx.id, { txType: tx.transaction_type, isRefund: tx.is_refund })}
@@ -1081,7 +1092,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       )}
                       {(tx.match_status === 'auto' || tx.match_status === 'manual') && (
                         <button onClick={() => handleUndo(tx.id)}
-                          className="px-3 py-1 bg-white border border-slate-300 text-red-500 hover:bg-red-50 rounded text-[13px] font-medium transition-colors whitespace-nowrap">
+                          className="px-3 py-1 bg-white border border-slate-300 text-red-500 hover:bg-red-50 rounded text-admin-sm font-medium transition-colors whitespace-nowrap">
                           매칭 취소
                         </button>
                       )}
@@ -1108,7 +1119,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         <div className="mt-4">
           <button
             onClick={() => setTrashOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-lg border border-slate-200 text-[13px] text-slate-500 hover:bg-slate-50 transition"
+            className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] text-admin-sm text-slate-500 hover:bg-slate-50 transition"
           >
             <span className="flex items-center gap-2">
               <span>제외된 내역 {trashTxs.length}건 보기</span>
@@ -1117,8 +1128,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           </button>
 
           {trashOpen && (
-            <div className="mt-2 bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <table className="w-full text-[13px]">
+            <div className="mt-2 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+              <table className="w-full text-admin-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="text-left px-3 py-2 text-slate-500 font-medium text-[11px]">수신 시각</th>
@@ -1142,7 +1153,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <div className="flex items-center gap-2 justify-end">
                           <button onClick={() => handleRestoreSingle(tx)}
-                            className="text-[11px] text-[#3182F6] hover:underline">복원</button>
+                            className="text-[11px] text-brand hover:underline">복원</button>
                           <button onClick={() => handleHardDeleteSingle(tx)}
                             className="text-[11px] text-red-400 hover:text-red-600 hover:underline">영구삭제</button>
                         </div>
@@ -1165,10 +1176,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           >
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <h3 className="text-[16px] font-semibold text-slate-800">
+                <h3 className="text-admin-lg font-semibold text-slate-800">
                   {selectedTx.is_refund ? '환불 매칭' : selectedTx.transaction_type === '출금' ? '출금 매칭' : '수동 예약 매칭'}
                 </h3>
-                <p className="text-[13px] text-slate-500 mt-0.5">
+                <p className="text-admin-sm text-slate-500 mt-0.5">
                   {selectedTx.is_refund ? '환불 송금' : selectedTx.transaction_type === '입금' ? '고객 입금' : '랜드사 출금'} —&nbsp;
                   <strong className="text-slate-800">{selectedTx.counterparty_name}</strong>&nbsp;
                   <span className="font-bold text-slate-800">{selectedTx.amount.toLocaleString()}원</span>
@@ -1180,7 +1191,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
               {/* 출금/환불 경고 배너 — 매칭 시 예약 원장에 어떻게 반영되는지 명시 */}
               {(selectedTx.is_refund || selectedTx.transaction_type === '출금') && (
-                <div className={`rounded-lg p-3 text-[12px] border ${
+                <div className={`rounded-lg p-3 text-admin-xs border ${
                   selectedTx.is_refund
                     ? 'bg-orange-50 border-orange-300 text-orange-800'
                     : 'bg-red-50 border-red-300 text-red-800'
@@ -1200,13 +1211,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               {/* 단일/다중 모드 토글 */}
               <div className="flex gap-2">
                 <button onClick={() => setMatchMode('single')}
-                  className={`flex-1 py-1.5 rounded text-[13px] font-medium transition
-                    ${matchMode === 'single' ? 'bg-[#3182F6] text-white' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
+                  className={`flex-1 py-1.5 rounded text-admin-sm font-medium transition
+                    ${matchMode === 'single' ? 'bg-brand text-white' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
                   단일 예약
                 </button>
                 <button onClick={() => setMatchMode('multi')}
-                  className={`flex-1 py-1.5 rounded text-[13px] font-medium transition
-                    ${matchMode === 'multi' ? 'bg-[#3182F6] text-white' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
+                  className={`flex-1 py-1.5 rounded text-admin-sm font-medium transition
+                    ${matchMode === 'multi' ? 'bg-brand text-white' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
                   다중 합산 결제
                 </button>
               </div>
@@ -1232,14 +1243,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     setShowQuickCreate(true);
                     setQuickForm({ packageTitle: '', departureDate: '', phone: '' });
                   }}
-                  className="w-full py-2 border border-dashed border-slate-300 rounded text-[13px] text-slate-500 hover:border-[#001f3f] hover:text-[#001f3f] transition"
+                  className="w-full py-2 border border-dashed border-slate-300 rounded text-admin-sm text-slate-500 hover:border-blue-500 hover:text-blue-600 transition"
                 >
                   + 신규 고객 & 예약 생성 후 매칭
                 </button>
               ) : (
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-[13px] font-semibold text-slate-800">신규 예약 생성</h4>
+                    <h4 className="text-admin-sm font-semibold text-slate-800">신규 예약 생성</h4>
                     <button onClick={() => setShowQuickCreate(false)} className="text-slate-400 hover:text-slate-600 text-[11px]">닫기</button>
                   </div>
 
@@ -1254,7 +1265,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       value={quickForm.packageTitle}
                       onChange={e => setQuickForm(f => ({ ...f, packageTitle: e.target.value }))}
                       placeholder="미입력 시 '미지정 상품'"
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                     />
                   </div>
 
@@ -1265,7 +1276,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         type="date"
                         value={quickForm.departureDate}
                         onChange={e => setQuickForm(f => ({ ...f, departureDate: e.target.value }))}
-                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                       />
                     </div>
                     <div>
@@ -1274,7 +1285,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         value={quickForm.phone}
                         onChange={e => setQuickForm(f => ({ ...f, phone: e.target.value }))}
                         placeholder="010-0000-0000"
-                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                       />
                     </div>
                   </div>
@@ -1353,7 +1364,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         setQuickCreating(false);
                       }
                     }}
-                    className="w-full py-2 bg-[#3182F6] text-white rounded text-[13px] font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition"
+                    className="w-full py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition"
                   >
                     {quickCreating ? '처리 중...' : `고객 생성 + 예약 생성 + ${selectedTx.amount.toLocaleString()}원 매칭`}
                   </button>
@@ -1362,7 +1373,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
               {/* 단일 모드: 금액 비교 */}
               {matchMode === 'single' && selectedBooking && (
-                <div className={`rounded-lg p-3 text-[13px] border ${overflow > 0 ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-300'}`}>
+                <div className={`rounded-lg p-3 text-admin-sm border ${overflow > 0 ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-300'}`}>
                   {overflow > 0 ? (
                     <div>
                       <p className="font-semibold text-amber-800 mb-2">
@@ -1397,7 +1408,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 const isOverflow = diff < -500;
 
                 return (
-                  <div className={`rounded-lg p-3 text-[13px] border ${
+                  <div className={`rounded-lg p-3 text-admin-sm border ${
                     isMatched ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                       : isOverflow ? 'bg-orange-50 border-orange-300 text-orange-800'
                       : 'bg-amber-50 border-amber-300 text-amber-800'
@@ -1451,11 +1462,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               </button>
               <div className="flex-1" />
               <button onClick={() => setSelectedTx(null)}
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-[13px] hover:bg-slate-50 transition">
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-admin-sm hover:bg-slate-50 transition">
                 취소
               </button>
               <button onClick={handleMatch} disabled={matchBtnDisabled}
-                className="px-4 py-2 bg-[#3182F6] text-white rounded text-[13px] font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
+                className="px-4 py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
                 {processing ? '처리 중...' : '매칭 확정'}
               </button>
             </div>
@@ -1467,12 +1478,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       {undoInfo && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-4
                         bg-slate-800 text-white px-5 py-3.5 rounded-lg">
-          <span className="text-[13px]">
+          <span className="text-admin-sm">
             1건 휴지통 이동 중
             <span className="text-slate-400 ml-1">({undoInfo.countdown}초 후 확정)</span>
           </span>
           <button onClick={handleUndoTrash}
-            className="text-blue-400 hover:text-blue-300 text-[13px] font-semibold ml-2 transition">
+            className="text-blue-400 hover:text-blue-300 text-admin-sm font-semibold ml-2 transition">
             실행 취소
           </button>
         </div>
@@ -1486,7 +1497,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             onClick={e => e.stopPropagation()}
           >
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-slate-800">과거 입출금 내역 일괄 등록</h3>
+              <h3 className="text-admin-lg font-semibold text-slate-800">과거 입출금 내역 일괄 등록</h3>
               <button onClick={closeImport} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
             </div>
 
@@ -1500,10 +1511,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   className="flex-1 min-h-[280px] border border-slate-200 rounded px-3 py-2 text-[11px] font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 <div className="flex gap-3">
                   <button onClick={handlePreview} disabled={importing || !pasteText.trim()}
-                    className="flex-1 bg-[#3182F6] text-white py-2 rounded text-[13px] font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
+                    className="flex-1 bg-brand text-white py-2 rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
                     {importing ? '파싱 중...' : '미리보기'}
                   </button>
-                  <button onClick={closeImport} className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-[13px] hover:bg-slate-50 transition">취소</button>
+                  <button onClick={closeImport} className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition">취소</button>
                 </div>
               </div>
             )}
@@ -1557,9 +1568,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <div className="p-4 border-t border-slate-200 flex items-center gap-3">
                   <span className="text-[11px] text-slate-500">선택 {importRows.filter(r => r.include).length}건 / 전체 {importRows.length}건</span>
                   <div className="flex gap-2 ml-auto">
-                    <button onClick={() => setImportStep('paste')} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-[13px] hover:bg-slate-50 transition">뒤로</button>
+                    <button onClick={() => setImportStep('paste')} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-admin-sm hover:bg-slate-50 transition">뒤로</button>
                     <button onClick={handleImport} disabled={importing || importRows.filter(r => r.include).length === 0}
-                      className="px-4 py-2 bg-[#3182F6] text-white rounded text-[13px] font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
+                      className="px-4 py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
                       {importing ? '등록 중...' : `등록하기 (${importRows.filter(r => r.include).length}건)`}
                     </button>
                   </div>
@@ -1569,7 +1580,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
             {importStep === 'done' && importResult && (
               <div className="p-8 text-center">
-                <p className="text-[16px] font-semibold text-slate-800 mb-4">등록 완료</p>
+                <p className="text-admin-lg font-semibold text-slate-800 mb-4">등록 완료</p>
                 <div className="grid grid-cols-4 gap-4 mb-6">
                   {[
                     { label: '신규 등록', val: importResult.inserted, cls: 'bg-white border-emerald-200 text-emerald-700' },
@@ -1588,7 +1599,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     <strong>오류 메시지:</strong> {importResult.firstError}
                   </div>
                 )}
-                <button onClick={closeImport} className="px-6 py-2 bg-[#3182F6] text-white rounded text-[13px] font-medium hover:bg-[#1B64DA] transition">닫기</button>
+                <button onClick={closeImport} className="px-6 py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] transition">닫기</button>
               </div>
             )}
           </div>

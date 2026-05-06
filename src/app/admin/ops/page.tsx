@@ -72,14 +72,14 @@ export default function AdminOpsCronPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">크론·백그라운드 작업</h1>
-          <p className="text-[12px] text-slate-500 mt-0.5">
+          <p className="text-admin-xs text-slate-500 mt-0.5">
             Vercel Cron 로그 대신 DB에 쌓인 실행 기록을 봅니다. 스케줄 변경·환경 변수는 여전히 Vercel에서 합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
             href="/admin/blog/system"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50"
           >
             블로그 시스템
           </Link>
@@ -87,7 +87,7 @@ export default function AdminOpsCronPage() {
             type="button"
             onClick={() => load()}
             disabled={loading}
-            className="px-3 py-2 bg-slate-800 text-white text-[12px] rounded-lg hover:bg-slate-900 disabled:opacity-50"
+            className="px-3 py-2 bg-slate-800 text-white text-admin-xs rounded-lg hover:bg-slate-900 disabled:opacity-50"
           >
             새로고침
           </button>
@@ -96,19 +96,19 @@ export default function AdminOpsCronPage() {
 
       {links && (
         <div className="rounded-lg border border-blue-200 bg-blue-50/80 px-4 py-3 space-y-2">
-          <p className="text-[12px] font-semibold text-slate-800">외부 콘솔 (새 탭)</p>
+          <p className="text-admin-xs font-semibold text-slate-800">외부 콘솔 (새 탭)</p>
           <div className="flex flex-wrap gap-2">
             {links.supabase_dashboard ? (
               <a
                 href={links.supabase_dashboard}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-3 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-medium hover:bg-emerald-700"
+                className="inline-flex items-center px-3 py-2 rounded-lg bg-emerald-600 text-white text-admin-xs font-medium hover:bg-emerald-700"
               >
                 Supabase 프로젝트
               </a>
             ) : (
-              <span className="inline-flex items-center px-3 py-2 rounded-lg bg-slate-200 text-slate-500 text-[12px] cursor-not-allowed" title="SUPABASE_URL 형식이 아니면 링크를 만들 수 없습니다">
+              <span className="inline-flex items-center px-3 py-2 rounded-lg bg-slate-200 text-slate-500 text-admin-xs cursor-not-allowed" title="SUPABASE_URL 형식이 아니면 링크를 만들 수 없습니다">
                 Supabase (URL 없음)
               </span>
             )}
@@ -116,7 +116,7 @@ export default function AdminOpsCronPage() {
               href={links.vercel_project}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center px-3 py-2 rounded-lg bg-slate-700 text-white text-[12px] font-medium hover:bg-slate-800"
+              className="inline-flex items-center px-3 py-2 rounded-lg bg-slate-700 text-white text-admin-xs font-medium hover:bg-slate-800"
             >
               Vercel 프로젝트
             </a>
@@ -124,7 +124,7 @@ export default function AdminOpsCronPage() {
               href={links.vercel_cron}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center px-3 py-2 rounded-lg bg-black text-white text-[12px] font-medium hover:bg-slate-900"
+              className="inline-flex items-center px-3 py-2 rounded-lg bg-black text-white text-admin-xs font-medium hover:bg-slate-900"
             >
               Vercel Cron
             </a>
@@ -132,7 +132,7 @@ export default function AdminOpsCronPage() {
               href={links.vercel_environment}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center px-3 py-2 rounded-lg bg-violet-700 text-white text-[12px] font-medium hover:bg-violet-800"
+              className="inline-flex items-center px-3 py-2 rounded-lg bg-violet-700 text-white text-admin-xs font-medium hover:bg-violet-800"
             >
               Vercel 환경 변수
             </a>
@@ -140,7 +140,7 @@ export default function AdminOpsCronPage() {
               href={links.vercel_cron_docs}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 text-[12px] font-medium hover:bg-slate-50"
+              className="inline-flex items-center px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 text-admin-xs font-medium hover:bg-slate-50"
             >
               Cron 문서
             </a>
@@ -158,15 +158,21 @@ export default function AdminOpsCronPage() {
         </div>
       )}
 
-      {loading && !data && <p className="text-slate-400 text-[13px]">불러오는 중…</p>}
+      {loading && !data && (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${85 - i * 8}%` }} />
+          ))}
+        </div>
+      )}
       {error && (
-        <pre className="text-rose-700 text-[12px] whitespace-pre-wrap bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</pre>
+        <pre className="text-rose-700 text-admin-xs whitespace-pre-wrap bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</pre>
       )}
 
       {data && (
         <>
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-admin-xs font-semibold text-slate-700">
               cron_health (전체)
             </div>
             <div className="max-h-[420px] overflow-y-auto text-[11px] font-mono">
@@ -186,12 +192,12 @@ export default function AdminOpsCronPage() {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-admin-xs font-semibold text-slate-700">
               최근 24시간 비성공 실행 (전체 크론)
             </div>
             {(data.recent_failures_24h || []).length === 0 ? (
-              <p className="px-3 py-4 text-[12px] text-slate-400">없음</p>
+              <p className="px-3 py-4 text-admin-xs text-slate-400">없음</p>
             ) : (
               <ul className="divide-y divide-slate-100 max-h-72 overflow-y-auto text-[11px]">
                 {data.recent_failures_24h.map((f, i) => (
@@ -209,8 +215,8 @@ export default function AdminOpsCronPage() {
             )}
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
-            <h2 className="text-[12px] font-semibold text-slate-700 mb-2">7일 성공률 (%)</h2>
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+            <h2 className="text-admin-xs font-semibold text-slate-700 mb-2">7일 성공률 (%)</h2>
             <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
               {Object.entries(data.success_rate_7d_percent || {})
                 .sort(([a], [b]) => a.localeCompare(b))

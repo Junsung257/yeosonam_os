@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getSecret } from '@/lib/secret-registry';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -31,9 +32,9 @@ interface PassportData {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 503 });
+    return NextResponse.json({ error: 'GEMINI_API_KEY 또는 GOOGLE_AI_API_KEY 미설정' }, { status: 503 });
   }
 
   try {

@@ -98,7 +98,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">로드 중...</div>
+  if (loading) return <div className="p-6 text-sm text-slate-500">로드 중...</div>
   if (!profile) return <div className="p-6 text-sm text-red-500">프로파일 로드 실패</div>
 
   return (
@@ -106,7 +106,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">자비스 봇 설정</h1>
-          <p className="text-sm text-gray-500 mt-1">테넌트 ID: <code>{tenantId}</code></p>
+          <p className="text-sm text-slate-500 mt-1">테넌트 ID: <code>{tenantId}</code></p>
         </div>
         <button
           onClick={handleSave}
@@ -118,7 +118,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
       </header>
 
       {message && (
-        <div className="p-3 rounded bg-gray-100 text-sm">{message}</div>
+        <div className="p-3 rounded bg-slate-100 text-sm">{message}</div>
       )}
 
       {/* ── 사용량 대시보드 ─────────────────────── */}
@@ -273,7 +273,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
       {usage?.history && usage.history.length > 0 && (
         <Section title="월별 사용량 히스토리">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-slate-50">
               <tr>
                 <th className="text-left px-3 py-2">월</th>
                 <th className="text-right px-3 py-2">토큰</th>
@@ -315,7 +315,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <div className="space-y-1">
       <label className="text-sm font-medium">{label}</label>
-      {hint && <p className="text-xs text-gray-500">{hint}</p>}
+      {hint && <p className="text-xs text-slate-500">{hint}</p>}
       {children}
     </div>
   )
@@ -328,14 +328,14 @@ function UsageCard({ usage, quota }: { usage: UsageData | null; quota: number })
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-green-500'
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-gray-50 rounded-lg">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-slate-50 rounded-lg">
       <Stat label="이번 달 토큰" value={c.totalTokens.toLocaleString()} />
       <Stat label="이번 달 비용" value={`$${c.totalCostUsd.toFixed(4)}`} />
       <Stat label="호출 수" value={c.callCount.toLocaleString()} />
       <div className="col-span-2 md:col-span-1">
-        <div className="text-xs text-gray-500">쿼터 사용률</div>
+        <div className="text-xs text-slate-500">쿼터 사용률</div>
         <div className="text-xl font-semibold">{pct}%</div>
-        <div className="h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+        <div className="h-2 bg-slate-200 rounded mt-1 overflow-hidden">
           <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
         </div>
       </div>
@@ -346,7 +346,7 @@ function UsageCard({ usage, quota }: { usage: UsageData | null; quota: number })
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xs text-slate-500">{label}</div>
       <div className="text-xl font-semibold">{value}</div>
     </div>
   )

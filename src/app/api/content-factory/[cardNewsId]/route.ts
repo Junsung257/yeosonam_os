@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { updateFactoryJobStep } from '@/lib/content-factory-step';
+import { getSecret } from '@/lib/secret-registry';
 
 // ── GET /api/content-factory/[cardNewsId] ──────────────────────────────────
 // Content Hub 폴링 API: 카드뉴스 1개의 전 채널 상태를 집계해 반환
@@ -193,7 +194,7 @@ export async function POST(
 
     // orchestrator 호출 (fire-and-forget)
     if (cn.package_id) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+      const appUrl = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
       fetch(`${appUrl}/api/orchestrator/auto-publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

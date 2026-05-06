@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendFreeTravelRetarget } from '@/lib/kakao';
 
@@ -22,7 +23,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const CRON_SECRET = process.env.CRON_SECRET;
 const BASE_URL    = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';
 
 interface FtsRow {
@@ -34,9 +34,8 @@ interface FtsRow {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = request.headers.get('authorization');
-  if (CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
-    return NextResponse.json({ error: '인증 실패' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });

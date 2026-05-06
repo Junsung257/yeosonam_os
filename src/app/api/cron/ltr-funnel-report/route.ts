@@ -11,6 +11,7 @@
  * 현재는 stub — 데이터 누적 시작점.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { postAlert } from '@/lib/admin-alerts';
@@ -21,9 +22,7 @@ export const maxDuration = 60;
 
 async function handle(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
-  const auth = req.headers.get('authorization') ?? '';
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (expected && auth !== expected) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
 
   const { data: funnel, error } = await supabaseAdmin
     .from('v_recommendation_funnel')

@@ -146,12 +146,12 @@ export default function ApplicationsPage() {
         )}
 
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-900">파트너 신청 관리</h1>
+          <h1 className="text-lg font-bold text-slate-900">파트너 신청 관리</h1>
           <div className="flex gap-2">
             {['', 'PENDING', 'APPROVED', 'REJECTED'].map(s => (
               <button key={s} onClick={() => setFilter(s)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  filter === s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  filter === s ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}>
                 {s === '' ? '전체' : STATUS_BADGE[s]?.label || s}
               </button>
@@ -160,22 +160,36 @@ export default function ApplicationsPage() {
         </div>
 
         {loading ? (
-          <div className="text-center py-10 text-gray-400">불러오는 중...</div>
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl border border-slate-100 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-4 bg-slate-100 rounded animate-pulse w-32" />
+                  <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+                </div>
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
+              </div>
+            ))}
+          </div>
         ) : applications.length === 0 ? (
-          <div className="text-center py-10 text-gray-400">신청 내역이 없습니다</div>
+          <div className="flex flex-col items-center gap-3 py-14">
+            <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" /></svg>
+            <p className="text-admin-sm font-medium text-slate-500">신청 내역이 없습니다.</p>
+          </div>
         ) : (
           <div className="space-y-3">
             {applications.map(app => (
-              <div key={app.id} className="bg-white rounded-xl border border-gray-200 p-4">
+              <div key={app.id} className="bg-white rounded-xl border border-slate-200 p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900">{app.name}</h3>
+                      <h3 className="font-semibold text-slate-900">{app.name}</h3>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[app.status]?.color}`}>
                         {STATUS_BADGE[app.status]?.label}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{app.phone} · 신청일 {new Date(app.applied_at).toLocaleDateString('ko-KR')}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{app.phone} · 신청일 {new Date(app.applied_at).toLocaleDateString('ko-KR')}</p>
                   </div>
                   {app.status === 'PENDING' && (
                     <div className="flex gap-2">
@@ -192,17 +206,17 @@ export default function ApplicationsPage() {
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                  <div><span className="text-gray-400">채널: </span>{CHANNEL_LABELS[app.channel_type] || app.channel_type}</div>
-                  <div><span className="text-gray-400">팔로워: </span>{app.follower_count?.toLocaleString() || '-'}</div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <div><span className="text-slate-400">채널: </span>{CHANNEL_LABELS[app.channel_type] || app.channel_type}</div>
+                  <div><span className="text-slate-400">팔로워: </span>{app.follower_count?.toLocaleString() || '-'}</div>
                   <div className="col-span-2">
-                    <span className="text-gray-400">URL: </span>
+                    <span className="text-slate-400">URL: </span>
                     <a href={app.channel_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                       {app.channel_url}
                     </a>
                   </div>
-                  {app.intro && <div className="col-span-2"><span className="text-gray-400">소개: </span>{app.intro}</div>}
-                  <div><span className="text-gray-400">유형: </span>{app.business_type === 'business' ? '사업자' : '개인'}</div>
+                  {app.intro && <div className="col-span-2"><span className="text-slate-400">소개: </span>{app.intro}</div>}
+                  <div><span className="text-slate-400">유형: </span>{app.business_type === 'business' ? '사업자' : '개인'}</div>
                   {app.reject_reason && (
                     <div className="col-span-2 text-red-600"><span className="text-red-400">거절 사유: </span>{app.reject_reason}</div>
                   )}
@@ -226,17 +240,17 @@ export default function ApplicationsPage() {
         {rejectTarget && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full">
-              <h3 className="font-bold text-gray-900 mb-3">거절 사유</h3>
+              <h3 className="font-bold text-slate-900 mb-3">거절 사유</h3>
               <textarea
                 value={rejectReason}
                 onChange={e => setRejectReason(e.target.value)}
                 rows={3}
                 placeholder="거절 사유를 입력하세요 (선택)"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 resize-none"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-4 resize-none"
               />
               <div className="flex gap-2 justify-end">
                 <button onClick={() => { setRejectTarget(null); setRejectReason(''); }}
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">취소</button>
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">취소</button>
                 <button onClick={handleReject}
                   disabled={processingId === rejectTarget}
                   className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg disabled:opacity-50">거절 확정</button>

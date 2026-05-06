@@ -212,19 +212,19 @@ export default function CardNewsNewWizardPage() {
           {[1, 2, 3].map(n => (
             <div key={n} className="flex items-center gap-2 flex-1">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                step >= n ? 'bg-[#001f3f] text-white' : 'bg-slate-200 text-slate-500'
+                step >= n ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'
               }`}>{n}</div>
               <div className="text-sm font-medium text-slate-700">
                 {n === 1 ? '입력' : n === 2 ? 'Brief 검토' : '카드뉴스 생성'}
               </div>
-              {n < 3 && <div className={`flex-1 h-px ${step > n ? 'bg-[#001f3f]' : 'bg-slate-200'}`} />}
+              {n < 3 && <div className={`flex-1 h-px ${step > n ? 'bg-blue-600' : 'bg-slate-200'}`} />}
             </div>
           ))}
         </div>
 
         {/* Step 1: 입력 */}
         {step === 1 && (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-5">
             {/* 모드 */}
             <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
               <button
@@ -301,7 +301,7 @@ export default function CardNewsNewWizardPage() {
                         onClick={() => setAngle(a.key)}
                         className={`px-3 py-2 text-sm rounded-lg border transition ${
                           angle === a.key
-                            ? 'border-[#001f3f] bg-[#001f3f] text-white'
+                            ? 'border-blue-600 bg-blue-600 text-white'
                             : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                         }`}
                       >
@@ -345,12 +345,12 @@ export default function CardNewsNewWizardPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">
-                  슬라이드 개수: <span className="font-bold text-[#001f3f]">{slideCount}장</span>
+                  슬라이드 개수: <span className="font-bold text-blue-600">{slideCount}장</span>
                 </label>
                 <input
                   type="range" min={3} max={10} value={slideCount}
                   onChange={e => setSlideCount(parseInt(e.target.value))}
-                  className="w-full accent-[#001f3f]"
+                  className="w-full accent-blue-600"
                 />
               </div>
               <div>
@@ -386,7 +386,7 @@ export default function CardNewsNewWizardPage() {
               <button
                 onClick={handleGenerateBrief}
                 disabled={!step1Valid || loadingBrief}
-                className="px-5 py-2.5 bg-[#001f3f] text-white text-sm font-medium rounded-lg hover:bg-blue-900 disabled:opacity-50"
+                className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {loadingBrief ? 'Brief 생성 중...' : 'Brief 생성 →'}
               </button>
@@ -396,7 +396,7 @@ export default function CardNewsNewWizardPage() {
 
         {/* Step 2: Brief 검토 + 편집 */}
         {step === 2 && brief && (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-5">
             {/* 메타 */}
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">H1 (블로그 제목)</label>
@@ -514,7 +514,7 @@ export default function CardNewsNewWizardPage() {
               <button
                 onClick={handleCreateCardNews}
                 disabled={creating}
-                className="px-5 py-2.5 bg-[#001f3f] text-white text-sm font-medium rounded-lg hover:bg-blue-900 disabled:opacity-50"
+                className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {creating ? '생성 중...' : '카드뉴스 생성 →'}
               </button>
@@ -524,8 +524,8 @@ export default function CardNewsNewWizardPage() {
 
         {/* Step 3: 생성 중 */}
         {step === 3 && (
-          <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-            <div className="inline-block w-10 h-10 border-4 border-[#001f3f] border-t-transparent rounded-full animate-spin mb-4" />
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-12 text-center">
+            <div className="inline-block w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
             <p className="text-slate-700 font-medium">카드뉴스 생성 중...</p>
             <p className="text-xs text-slate-500 mt-1">AI가 각 슬라이드 카피 + Pexels 이미지를 준비하고 있습니다.</p>
           </div>

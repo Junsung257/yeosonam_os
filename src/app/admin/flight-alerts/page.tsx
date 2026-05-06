@@ -166,19 +166,19 @@ export default function FlightAlertsAdminPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">항공 지연 트래킹</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">오늘·내일 출발 항공편 상태 관리</p>
+          <p className="text-admin-xs text-slate-400 mt-0.5">오늘·내일 출발 항공편 상태 관리</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => void fetchFlights()}
             disabled={loading}
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50 transition disabled:opacity-50"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition disabled:opacity-50"
           >
             새로고침
           </button>
           <button
             onClick={() => setShowAddForm(v => !v)}
-            className="px-3 py-2 bg-indigo-600 text-white text-[12px] rounded-lg hover:bg-indigo-700 transition"
+            className="px-3 py-2 bg-blue-600 text-white text-admin-xs rounded-lg hover:bg-blue-700 transition"
           >
             + 항공편 등록
           </button>
@@ -187,19 +187,19 @@ export default function FlightAlertsAdminPage() {
 
       {/* KPI */}
       <div className="grid grid-cols-4 gap-3">
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <p className="text-[11px] text-slate-400 uppercase tracking-wide">오늘 출발</p>
           <p className="text-[24px] font-bold text-slate-800 mt-1">{todayFlights.length}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <p className="text-[11px] text-slate-400 uppercase tracking-wide">내일 출발</p>
           <p className="text-[24px] font-bold text-slate-800 mt-1">{tomorrowFlights.length}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <p className="text-[11px] text-slate-400 uppercase tracking-wide">지연</p>
           <p className="text-[24px] font-bold text-amber-600 mt-1">{delayedCount}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <p className="text-[11px] text-slate-400 uppercase tracking-wide">취소</p>
           <p className="text-[24px] font-bold text-red-600 mt-1">{cancelledCount}</p>
         </div>
@@ -207,8 +207,8 @@ export default function FlightAlertsAdminPage() {
 
       {/* 항공편 등록 폼 */}
       {showAddForm && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h2 className="text-[14px] font-semibold text-slate-700 mb-3">새 항공편 등록</h2>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+          <h2 className="text-admin-base font-semibold text-slate-700 mb-3">새 항공편 등록</h2>
           <form onSubmit={(e) => void handleAddFlight(e)} className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-slate-500 mb-1">편명 *</label>
@@ -218,7 +218,7 @@ export default function FlightAlertsAdminPage() {
                 value={formData.flightNumber}
                 onChange={e => setFormData(p => ({ ...p, flightNumber: e.target.value }))}
                 required
-                className="w-full border border-slate-300 rounded px-2 py-1.5 text-[13px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-slate-300 rounded px-2 py-1.5 text-admin-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>
             <div>
@@ -229,7 +229,7 @@ export default function FlightAlertsAdminPage() {
                 value={formData.route}
                 onChange={e => setFormData(p => ({ ...p, route: e.target.value }))}
                 required
-                className="w-full border border-slate-300 rounded px-2 py-1.5 text-[13px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-slate-300 rounded px-2 py-1.5 text-admin-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>
             <div>
@@ -239,7 +239,7 @@ export default function FlightAlertsAdminPage() {
                 value={formData.scheduledDeparture}
                 onChange={e => setFormData(p => ({ ...p, scheduledDeparture: e.target.value }))}
                 required
-                className="w-full border border-slate-300 rounded px-2 py-1.5 text-[13px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-slate-300 rounded px-2 py-1.5 text-admin-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>
             <div>
@@ -249,7 +249,7 @@ export default function FlightAlertsAdminPage() {
                 placeholder="UUID"
                 value={formData.bookingId}
                 onChange={e => setFormData(p => ({ ...p, bookingId: e.target.value }))}
-                className="w-full border border-slate-300 rounded px-2 py-1.5 text-[13px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-slate-300 rounded px-2 py-1.5 text-admin-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>
             <div className="col-span-2">
@@ -258,21 +258,21 @@ export default function FlightAlertsAdminPage() {
                 type="text"
                 value={formData.note}
                 onChange={e => setFormData(p => ({ ...p, note: e.target.value }))}
-                className="w-full border border-slate-300 rounded px-2 py-1.5 text-[13px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-slate-300 rounded px-2 py-1.5 text-admin-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>
             <div className="col-span-2 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowAddForm(false)}
-                className="px-3 py-1.5 border border-slate-300 text-slate-600 text-[12px] rounded hover:bg-slate-50"
+                className="px-3 py-1.5 border border-slate-300 text-slate-600 text-admin-xs rounded hover:bg-slate-50"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-4 py-1.5 bg-indigo-600 text-white text-[12px] rounded hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-1.5 bg-blue-600 text-white text-admin-xs rounded hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting ? '등록 중…' : '등록'}
               </button>
@@ -282,7 +282,7 @@ export default function FlightAlertsAdminPage() {
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-[12px] text-red-600">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-admin-xs text-red-600">
           {error}
         </div>
       )}
@@ -327,14 +327,23 @@ function FlightSection({
 }) {
   return (
     <div>
-      <h2 className="text-[13px] font-semibold text-slate-600 mb-2">{title}</h2>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <h2 className="text-admin-sm font-semibold text-slate-600 mb-2">{title}</h2>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         {loading ? (
-          <div className="p-6 text-center text-slate-400 text-[12px]">불러오는 중…</div>
+          <div className="divide-y divide-slate-50">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-16" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-24" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-28" />
+                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-14" />
+              </div>
+            ))}
+          </div>
         ) : flights.length === 0 ? (
-          <div className="p-6 text-center text-slate-300 text-[12px]">항공편 없음</div>
+          <div className="p-6 text-center text-slate-300 text-admin-xs">항공편 없음</div>
         ) : (
-          <table className="w-full text-[12px]">
+          <table className="w-full text-admin-xs">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="text-left px-4 py-2.5 text-slate-500 font-medium">편명</th>

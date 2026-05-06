@@ -72,7 +72,7 @@ export default function PolicyPage() {
     }
   };
 
-  if (!policy) return <div className="text-slate-400 text-[13px]">로딩...</div>;
+  if (!policy) return <div className="text-slate-400 text-admin-sm">로딩...</div>;
 
   const dailyTotal = policy.posts_per_day;
   const product = Math.round(dailyTotal * policy.product_ratio);
@@ -83,56 +83,56 @@ export default function PolicyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">발행 정책 (Global)</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">
+          <p className="text-admin-xs text-slate-400 mt-0.5">
             정보성/상품 발행 빈도, destination 제한, multi-angle 분산 설정
           </p>
         </div>
-        <Link href="/admin/blog/queue" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+        <Link href="/admin/blog/queue" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
           ← 큐
         </Link>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-4">
         {/* posts_per_day */}
         <div>
-          <label className="text-[12px] font-semibold text-slate-700">하루 발행 편수</label>
+          <label className="text-admin-xs font-semibold text-slate-700">하루 발행 편수</label>
           <p className="text-[10px] text-slate-400 mb-1">SEO 안전선 8-12편/일. 12편 이상은 thin content 위험</p>
           <input
             type="number" min="1" max="20"
             value={policy.posts_per_day}
             onChange={e => update({ posts_per_day: parseInt(e.target.value) })}
-            className="w-24 px-3 py-2 text-[13px] border border-slate-300 rounded"
+            className="w-24 px-3 py-2 text-admin-sm border border-slate-300 rounded"
           />
           <span className="ml-3 text-[11px] text-slate-500">→ 정보성 {info}편 + 상품 {product}편</span>
         </div>
 
         {/* product_ratio */}
         <div>
-          <label className="text-[12px] font-semibold text-slate-700">상품 블로그 비율</label>
+          <label className="text-admin-xs font-semibold text-slate-700">상품 블로그 비율</label>
           <p className="text-[10px] text-slate-400 mb-1">전체 발행 중 상품 블로그 비중 (0.0 ~ 1.0)</p>
           <input
             type="number" step="0.05" min="0" max="1"
             value={policy.product_ratio}
             onChange={e => update({ product_ratio: parseFloat(e.target.value) })}
-            className="w-24 px-3 py-2 text-[13px] border border-slate-300 rounded"
+            className="w-24 px-3 py-2 text-admin-sm border border-slate-300 rounded"
           />
         </div>
 
         {/* per_destination_daily_cap */}
         <div>
-          <label className="text-[12px] font-semibold text-slate-700">목적지별 1일 최대 편수</label>
+          <label className="text-admin-xs font-semibold text-slate-700">목적지별 1일 최대 편수</label>
           <p className="text-[10px] text-slate-400 mb-1">같은 destination 노출 분산 (카니발리제이션 방지). 권장 2-3</p>
           <input
             type="number" min="1" max="5"
             value={policy.per_destination_daily_cap}
             onChange={e => update({ per_destination_daily_cap: parseInt(e.target.value) })}
-            className="w-24 px-3 py-2 text-[13px] border border-slate-300 rounded"
+            className="w-24 px-3 py-2 text-admin-sm border border-slate-300 rounded"
           />
         </div>
 
         {/* multi_angle */}
         <div className="border-t border-slate-100 pt-4">
-          <p className="text-[12px] font-semibold text-slate-700 mb-2">신규 상품 Multi-Angle Drip</p>
+          <p className="text-admin-xs font-semibold text-slate-700 mb-2">신규 상품 Multi-Angle Drip</p>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -142,7 +142,7 @@ export default function PolicyPage() {
                 type="number" min="1" max="7"
                 value={policy.multi_angle_count}
                 onChange={e => update({ multi_angle_count: parseInt(e.target.value) })}
-                className="w-20 px-3 py-2 text-[13px] border border-slate-300 rounded"
+                className="w-20 px-3 py-2 text-admin-sm border border-slate-300 rounded"
               />
             </div>
             <div>
@@ -152,7 +152,7 @@ export default function PolicyPage() {
                 type="number" min="1" max="14"
                 value={policy.multi_angle_gap_days}
                 onChange={e => update({ multi_angle_gap_days: parseInt(e.target.value) })}
-                className="w-20 px-3 py-2 text-[13px] border border-slate-300 rounded"
+                className="w-20 px-3 py-2 text-admin-sm border border-slate-300 rounded"
               />
             </div>
           </div>
@@ -160,19 +160,19 @@ export default function PolicyPage() {
 
         {/* slot_times */}
         <div className="border-t border-slate-100 pt-4">
-          <label className="text-[12px] font-semibold text-slate-700">슬롯 시간 (KST)</label>
+          <label className="text-admin-xs font-semibold text-slate-700">슬롯 시간 (KST)</label>
           <p className="text-[10px] text-slate-400 mb-1">하루 안에 분산 발행할 시각. 콤마 구분, HH:MM 형식</p>
           <input
             type="text"
             value={policy.slot_times.join(', ')}
             onChange={e => update({ slot_times: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-            className="w-full px-3 py-2 text-[13px] border border-slate-300 rounded font-mono"
+            className="w-full px-3 py-2 text-admin-sm border border-slate-300 rounded font-mono"
           />
         </div>
 
         {/* 자동 트리거 (cost 발생) */}
         <div className="border-t border-slate-100 pt-4 space-y-2">
-          <p className="text-[12px] font-semibold text-slate-700 mb-2">상품 승인 시 자동 트리거 (cost 발생)</p>
+          <p className="text-admin-xs font-semibold text-slate-700 mb-2">상품 승인 시 자동 트리거 (cost 발생)</p>
 
           <label className="flex items-start gap-2 cursor-pointer hover:bg-slate-50 p-1.5 rounded">
             <input type="checkbox"
@@ -181,7 +181,7 @@ export default function PolicyPage() {
               className="mt-0.5"
             />
             <div className="flex-1">
-              <span className="text-[12px] text-slate-700">🎴 카드뉴스 5변형 자동 생성</span>
+              <span className="text-admin-xs text-slate-700">🎴 카드뉴스 5변형 자동 생성</span>
               <p className="text-[10px] text-slate-400">Claude Sonnet — 건당 ~$0.05 (월 50상품 = ~$2.5)</p>
             </div>
           </label>
@@ -193,7 +193,7 @@ export default function PolicyPage() {
               className="mt-0.5"
             />
             <div className="flex-1">
-              <span className="text-[12px] text-slate-700">🚀 7플랫폼 콘텐츠 일괄 생성 (IG/Threads/Meta Ads/Google RSA/카카오/블로그)</span>
+              <span className="text-admin-xs text-slate-700">🚀 7플랫폼 콘텐츠 일괄 생성 (IG/Threads/Meta Ads/Google RSA/카카오/블로그)</span>
               <p className="text-[10px] text-slate-400">Gemini + Claude — 건당 ~$0.02 (월 50상품 = ~$1)</p>
             </div>
           </label>
@@ -205,7 +205,7 @@ export default function PolicyPage() {
               className="mt-0.5"
             />
             <div className="flex-1">
-              <span className="text-[12px] text-slate-700">🔁 저성과 글 자동 재생성 (7일 GSC 클릭 0건)</span>
+              <span className="text-admin-xs text-slate-700">🔁 저성과 글 자동 재생성 (7일 GSC 클릭 0건)</span>
               <p className="text-[10px] text-slate-400">매일 09 KST 최대 5건 — 무료 (Gemini)</p>
             </div>
           </label>
@@ -213,14 +213,14 @@ export default function PolicyPage() {
 
         {/* Webhook */}
         <div className="border-t border-slate-100 pt-4">
-          <label className="text-[12px] font-semibold text-slate-700">일일 발행 요약 Webhook</label>
+          <label className="text-admin-xs font-semibold text-slate-700">일일 발행 요약 Webhook</label>
           <p className="text-[10px] text-slate-400 mb-1">Slack/Discord webhook URL — 매일 09 KST 발송. 비워두면 발송 X</p>
           <input
             type="text"
             value={policy.daily_summary_webhook || ''}
             onChange={e => update({ daily_summary_webhook: e.target.value || null })}
             placeholder="https://hooks.slack.com/services/..."
-            className="w-full px-3 py-2 text-[12px] border border-slate-300 rounded font-mono"
+            className="w-full px-3 py-2 text-admin-xs border border-slate-300 rounded font-mono"
           />
         </div>
 
@@ -231,7 +231,7 @@ export default function PolicyPage() {
             checked={policy.enabled}
             onChange={e => update({ enabled: e.target.checked })}
           />
-          <label htmlFor="enabled" className="text-[12px] text-slate-700">정책 활성</label>
+          <label htmlFor="enabled" className="text-admin-xs text-slate-700">정책 활성</label>
         </div>
 
         <div className="flex justify-end items-center gap-3 border-t border-slate-100 pt-4">
@@ -239,7 +239,7 @@ export default function PolicyPage() {
           <button
             onClick={save}
             disabled={saving}
-            className="px-4 py-2 bg-indigo-600 text-white text-[13px] rounded font-semibold disabled:opacity-50"
+            className="px-4 py-2 bg-blue-600 text-white text-admin-sm rounded font-semibold disabled:opacity-50"
           >
             {saving ? '저장중...' : '저장'}
           </button>

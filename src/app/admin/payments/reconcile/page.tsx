@@ -69,7 +69,17 @@ export default function LedgerReconcilePage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading && !data) {
-    return <div className="p-6 text-slate-500 text-sm">불러오는 중…</div>;
+    return (
+      <div className="p-6 space-y-3 max-w-3xl">
+        <div className="h-5 bg-slate-100 rounded animate-pulse w-36" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-3">
+            <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+            <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+          </div>
+        ))}
+      </div>
+    );
   }
   if (error) {
     return (

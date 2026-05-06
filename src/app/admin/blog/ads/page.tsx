@@ -124,17 +124,17 @@ export default function BlogAdsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">블로그 광고 매핑</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">
+          <p className="text-admin-xs text-slate-400 mt-0.5">
             광고 키워드 × 블로그 랜딩페이지 매핑 + UTM 자동 생성 + DKI 헤드라인
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
             ← 블로그 목록
           </Link>
           <button
             onClick={() => setFormOpen(!formOpen)}
-            className="px-4 py-2 bg-[#001f3f] text-white text-[13px] font-semibold rounded-lg hover:bg-blue-900"
+            className="px-4 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded-lg hover:bg-blue-700"
           >
             + 매핑 추가
           </button>
@@ -145,7 +145,7 @@ export default function BlogAdsPage() {
       {formOpen && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <select value={fBlog} onChange={e => setFBlog(e.target.value)} className="px-3 py-2 text-[12px] border rounded">
+            <select value={fBlog} onChange={e => setFBlog(e.target.value)} className="px-3 py-2 text-admin-xs border rounded">
               <option value="">블로그 선택</option>
               {blogs.map(b => (
                 <option key={b.id} value={b.id}>
@@ -153,7 +153,7 @@ export default function BlogAdsPage() {
                 </option>
               ))}
             </select>
-            <select value={fPlatform} onChange={e => setFPlatform(e.target.value)} className="px-3 py-2 text-[12px] border rounded">
+            <select value={fPlatform} onChange={e => setFPlatform(e.target.value)} className="px-3 py-2 text-admin-xs border rounded">
               {PLATFORMS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
             </select>
           </div>
@@ -162,28 +162,28 @@ export default function BlogAdsPage() {
               value={fKeyword}
               onChange={e => setFKeyword(e.target.value)}
               placeholder="광고 키워드 (예: 다낭 패키지)"
-              className="px-3 py-2 text-[12px] border rounded"
+              className="px-3 py-2 text-admin-xs border rounded"
             />
             <input
               value={fCampaignSlug}
               onChange={e => setFCampaignSlug(e.target.value)}
               placeholder="캠페인 슬러그 (선택, 미입력시 자동)"
-              className="px-3 py-2 text-[12px] border rounded"
+              className="px-3 py-2 text-admin-xs border rounded"
             />
           </div>
           <input
             value={fDkiHeadline}
             onChange={e => setFDkiHeadline(e.target.value)}
             placeholder="DKI 헤드라인 (선택) — 이 키워드로 들어오면 H1을 이걸로 교체"
-            className="w-full px-3 py-2 text-[12px] border rounded"
+            className="w-full px-3 py-2 text-admin-xs border rounded"
           />
           <input
             value={fDkiSubtitle}
             onChange={e => setFDkiSubtitle(e.target.value)}
             placeholder="DKI 부제 (선택)"
-            className="w-full px-3 py-2 text-[12px] border rounded"
+            className="w-full px-3 py-2 text-admin-xs border rounded"
           />
-          <button onClick={createMapping} className="w-full px-4 py-2 bg-indigo-600 text-white text-[13px] rounded font-semibold">
+          <button onClick={createMapping} className="w-full px-4 py-2 bg-blue-600 text-white text-admin-sm rounded font-semibold">
             생성 + UTM URL 자동 발급
           </button>
         </div>
@@ -195,7 +195,7 @@ export default function BlogAdsPage() {
           <button
             key={v}
             onClick={() => setFilterPlatform(v)}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md ${
+            className={`px-3 py-1.5 text-admin-xs font-medium rounded-md ${
               filterPlatform === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
             }`}
           >
@@ -206,13 +206,13 @@ export default function BlogAdsPage() {
 
       {/* 목록 */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">로딩...</div>
+        <div className="text-center py-12 text-slate-400 text-admin-sm">로딩...</div>
       ) : mappings.length === 0 ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">
+        <div className="text-center py-12 text-slate-400 text-admin-sm">
           매핑이 없습니다. "매핑 추가" 버튼으로 광고 키워드를 블로그에 연결하세요.
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -234,7 +234,7 @@ export default function BlogAdsPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5">
-                    <p className="text-[13px] font-semibold text-slate-800">{m.keyword}</p>
+                    <p className="text-admin-sm font-semibold text-slate-800">{m.keyword}</p>
                     <Link href={`/blog/${m.content_creatives?.slug}`} target="_blank" className="text-[11px] text-blue-600 hover:underline">
                       /blog/{m.content_creatives?.slug}
                     </Link>
@@ -248,8 +248,8 @@ export default function BlogAdsPage() {
                       <span className="text-slate-300">(기본 타이틀 사용)</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums font-semibold">{m.clicks.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums font-semibold text-emerald-600">{m.conversions.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-right text-admin-xs tabular-nums font-semibold">{m.clicks.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-right text-admin-xs tabular-nums font-semibold text-emerald-600">{m.conversions.toLocaleString()}</td>
                   <td className="px-3 py-2.5 text-center">
                     <button
                       onClick={() => toggleActive(m.id, m.active)}

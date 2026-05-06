@@ -90,7 +90,7 @@ export default function AdminAlertsPage() {
       )}
 
       {/* 필터 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-wrap items-center gap-3">
         <label className="text-xs font-semibold text-slate-700">카테고리:</label>
         <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
           className="text-xs border border-slate-300 rounded px-2 py-1">

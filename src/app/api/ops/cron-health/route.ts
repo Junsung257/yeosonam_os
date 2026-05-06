@@ -7,6 +7,7 @@
  * 인증: admin 세션 또는 CRON_SECRET Bearer (Vercel cron 내부 점검용).
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -14,7 +15,8 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   // admin 세션은 middleware 가 보장 (비공개 경로). CRON_SECRET 는 서버-to-서버 용.
   const authHeader = request.headers.get('authorization');
-  const hasCronSecret = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const cronSecret = getSecret('CRON_SECRET');
+  const hasCronSecret = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`);
   // middleware 에서 이 경로를 통과시킨 상태 (admin 세션 있음) OR cron secret 일치 → 허용
   // 그 외 (/api/ ops 이므로 middleware 가 차단) → 여기 도달 못함
 

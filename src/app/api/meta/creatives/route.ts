@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, getAdCreatives, saveCreatives } from '@/lib/supabase';
 import { generateAdVariants } from '@/lib/ai';
 import type { AiModel, CreativePlatform } from '@/types/meta-ads';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -44,8 +45,8 @@ export async function POST(request: NextRequest) {
     // 상품 정보 조회
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
     const { data: pkg } = await sb
       .from('travel_packages')

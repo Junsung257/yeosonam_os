@@ -27,6 +27,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { appendVoiceSample } from '@/lib/content-pipeline/brand-voice';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -70,9 +72,8 @@ interface CardNewsPublishedRow {
 }
 
 async function runSyncEngagement(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
@@ -400,7 +401,7 @@ function normalizePlatform(platform: string): string {
 // 신규 미디어는 `views` 로 대체. `reach` + `saved` + `likes` + `comments` + `shares` 는 계속 지원.
 // docs: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/
 async function fetchInstagramMetrics(mediaId: string): Promise<NormalizedMetrics | null> {
-  const accessToken = process.env.META_GRAPH_ACCESS_TOKEN ?? process.env.META_ACCESS_TOKEN;
+  const accessToken = getSecret('META_GRAPH_ACCESS_TOKEN') ?? getSecret('META_ACCESS_TOKEN');
   if (!accessToken) return null;
   try {
     const metricList = ['views', 'reach', 'saved', 'likes', 'comments', 'shares'].join(',');
@@ -452,7 +453,7 @@ function computeInstagramScore(m: NormalizedMetrics): number {
 // Threads Media Insights
 // docs: https://developers.facebook.com/docs/threads/insights
 async function fetchThreadsMetrics(mediaId: string): Promise<NormalizedMetrics | null> {
-  const accessToken = process.env.THREADS_ACCESS_TOKEN ?? process.env.META_ACCESS_TOKEN;
+  const accessToken = getSecret('THREADS_ACCESS_TOKEN') ?? getSecret('META_ACCESS_TOKEN');
   if (!accessToken) return null;
   try {
     const metricList = ['views', 'likes', 'replies', 'reposts', 'quotes'].join(',');
@@ -482,7 +483,7 @@ function computeThreadsScore(m: NormalizedMetrics): number {
 }
 
 async function fetchMetaAdsMetrics(adId: string): Promise<NormalizedMetrics | null> {
-  const accessToken = process.env.META_ADS_ACCESS_TOKEN ?? process.env.META_ACCESS_TOKEN;
+  const accessToken = getSecret('META_ADS_ACCESS_TOKEN') ?? getSecret('META_ACCESS_TOKEN');
   if (!accessToken) return null;
   try {
     const fields = ['impressions', 'clicks', 'ctr', 'spend'].join(',');

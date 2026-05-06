@@ -150,8 +150,8 @@ export default function LandSettlementsPage() {
 
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-[16px] font-semibold text-slate-800">랜드사 송금 정산 묶음</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">
+          <h1 className="text-admin-lg font-semibold text-slate-800">랜드사 송금 정산 묶음</h1>
+          <p className="text-admin-sm text-slate-500 mt-0.5">
             은행 송금 1건 = 묶인 예약들의 합산 정산. 메인 대시보드의 "랜드사 미지급(payable)"과는 다른 배치 단위 뷰.
           </p>
         </div>
@@ -161,7 +161,7 @@ export default function LandSettlementsPage() {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 text-[13px] rounded transition ${
+                className={`px-3 py-1 text-admin-sm rounded transition ${
                   statusFilter === s
                     ? 'bg-blue-600 text-white'
                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -173,7 +173,7 @@ export default function LandSettlementsPage() {
           </div>
           <a
             href={buildExportUrl(statusFilter)}
-            className="px-3 py-1 text-[13px] bg-emerald-50 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 transition whitespace-nowrap"
+            className="px-3 py-1 text-admin-sm bg-emerald-50 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 transition whitespace-nowrap"
             title="이번 달 settlement CSV 다운로드 (UTF-8 BOM, Excel 호환)"
           >
             📥 CSV 다운로드
@@ -184,11 +184,11 @@ export default function LandSettlementsPage() {
       {loading ? (
         <div className="text-sm text-slate-500 py-12 text-center">로드 중…</div>
       ) : settlements.length === 0 ? (
-        <div className="text-sm text-slate-500 py-12 text-center bg-white rounded-lg border border-slate-200">
+        <div className="text-sm text-slate-500 py-12 text-center bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
           {STATUS_LABELS[statusFilter]} settlement 이 없습니다
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <div className="px-4 pt-3 pb-2 text-[11px] text-slate-500 border-b border-slate-100 bg-slate-50/60">
             <span className="font-medium text-slate-600">용어 정의:</span>
             {' '}

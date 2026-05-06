@@ -6,7 +6,7 @@
  * 처리:
  *   1. 아직 winner 미결정 그룹 (winner_decided_at IS NULL) 조회
  *   2. 그룹 내 모든 카드가 발행 후 72h+ 경과한 경우만 시도
- *   3. detectVariantWinner 호출 — 변별력(1.2x)이 있을 때만 결정
+ *   3. detectVariantWinner 호출 — Bayesian A/B (prob_best ≥ 0.95) 기준으로 결정
  *   4. winner = is_winner=true, 나머지 ARCHIVED (자동)
  *
  * Vercel cron: 매일 05:00 UTC (sync-engagement 04:00 UTC 직후).
@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronOrVercelAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { detectVariantWinner } from '@/lib/card-news-html/winner-detector';
 
@@ -24,15 +25,8 @@ export const maxDuration = 300;
 const MIN_GROUP_HOURS = 72;
 
 export async function GET(request: NextRequest) {
-  // 인증
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  const authorized =
-    isVercelCron ||
-    (cronSecret && authHeader === `Bearer ${cronSecret}`);
-  if (!authorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronOrVercelAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {

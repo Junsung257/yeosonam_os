@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useToast } from '@/components/ui/Toast';
 import nextDynamic from 'next/dynamic';
 import type { MarketingCopy } from '@/lib/ai';
 import { useVendors } from '@/hooks/useVendors';
@@ -369,7 +370,7 @@ const MarketingToggle = React.memo(function MarketingToggle({
       onClick={() => onToggle(pkgId, platform.key)}
       className={`relative w-7 h-7 rounded text-[10px] font-bold flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 ${
         isActive
-          ? 'bg-[#001f3f] text-white'
+          ? 'bg-blue-600 text-white'
           : 'bg-white border border-slate-200 text-slate-400 hover:border-slate-400'
       }`}
       title={auditInfo || `${platform.label} 토글`}
@@ -530,7 +531,7 @@ const PackageRow = React.memo(function PackageRow({
         {inlineEditPkgId === pkg.id ? (
           <select
             autoFocus
-            className="w-full border border-blue-400 rounded px-2 py-1 text-[13px] text-slate-800"
+            className="w-full border border-blue-400 rounded px-2 py-1 text-admin-sm text-slate-800"
             defaultValue={pkg.land_operator_id ?? ''}
             onChange={e => onHandleInlineLandOperator(pkg.id, e.target.value)}
             onBlur={() => onSetInlineEditPkgId(null)}
@@ -547,7 +548,7 @@ const PackageRow = React.memo(function PackageRow({
               className="flex items-center gap-1 text-left hover:bg-blue-50 rounded px-1 py-0.5 w-full group/vendor"
               onClick={() => onSetInlineEditPkgId(pkg.id)}
             >
-              <span className="text-[13px] text-blue-700 font-medium">{op.name}</span>
+              <span className="text-admin-sm text-blue-700 font-medium">{op.name}</span>
               {!op.is_active && (
                 <span className="text-[10px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
               )}
@@ -569,7 +570,7 @@ const PackageRow = React.memo(function PackageRow({
           const color  = marginColor(rate);
           return (
             <div className="text-right">
-              <div className={`text-[13px] ${color}`}>
+              <div className={`text-admin-sm ${color}`}>
                 +{profit.toLocaleString()}원
               </div>
               <div className="text-[11px] text-slate-400">
@@ -583,12 +584,12 @@ const PackageRow = React.memo(function PackageRow({
           const color  = marginColor(rate);
           return (
             <div className="text-right">
-              <div className={`text-[13px] ${color}`}>+{profit.toLocaleString()}원</div>
+              <div className={`text-admin-sm ${color}`}>+{profit.toLocaleString()}원</div>
               <div className="text-[11px] text-slate-400">({pkg.commission_rate}%)</div>
             </div>
           );
         })() : pkg.commission_rate != null ? (
-          <span className={`text-[13px] ${marginColor(pkg.commission_rate / 100)}`}>{pkg.commission_rate}%</span>
+          <span className={`text-admin-sm ${marginColor(pkg.commission_rate / 100)}`}>{pkg.commission_rate}%</span>
         ) : (
           <span className="text-[11px] text-slate-300">-</span>
         )}
@@ -717,7 +718,7 @@ const PackageRow = React.memo(function PackageRow({
               title="플랫폼별 AI 프롬프트 복사"
             >복사</button>
             {copyDropdownId === pkg.id && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg z-50 py-1 min-w-[120px]">
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] z-50 py-1 min-w-[120px]">
                 {PLATFORMS.map(p => (
                   <button key={p.key} type="button"
                     className="w-full text-left px-3 py-2 text-[11px] text-slate-700 hover:bg-slate-50 flex items-center gap-2"
@@ -736,7 +737,7 @@ const PackageRow = React.memo(function PackageRow({
                         onShowToast('error', `복사 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
                       }
                     }}>
-                    <span className="w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center bg-[#001f3f] text-white">{p.icon}</span>
+                    <span className="w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center bg-slate-700 text-white">{p.icon}</span>
                     {p.label}
                   </button>
                 ))}
@@ -767,7 +768,7 @@ const PackageRow = React.memo(function PackageRow({
             <button
               onClick={() => onHandleAction(pkg.id, 'extend')}
               disabled={!!actionLoading}
-              className="px-2 py-1 bg-[#001f3f] text-white rounded text-[11px] hover:bg-blue-900 disabled:opacity-50"
+              className="px-2 py-1 bg-blue-600 text-white rounded text-[11px] hover:bg-blue-700 disabled:opacity-50"
             >연장</button>
           )}
           {pkg.status === 'pending_review' && !expired && (
@@ -902,11 +903,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [approvalTarget, setApprovalTarget] = useState<Package | null>(null);
 
   // Toast
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const { toast: _t } = useToast();
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3500);
-  }, []);
+    _t(message, type);
+  }, [_t]);
 
   // 전체 콘텐츠 일괄 생성 (블로그 + 카드뉴스 + 광고카피)
   const handleBulkContentGen = useCallback(async (pkg: Package) => {
@@ -1312,8 +1312,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[16px] font-bold text-slate-800">상품 관리</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">업로드된 여행 상품 검토 및 승인</p>
+          <h1 className="text-admin-lg font-bold text-slate-800">상품 관리</h1>
+          <p className="text-admin-sm text-slate-500 mt-0.5">업로드된 여행 상품 검토 및 승인</p>
         </div>
         <div className="flex items-center gap-2">
           {reviewCount > 0 && (
@@ -1333,7 +1333,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           )}
           <button
             onClick={() => { window.location.href = '/admin/upload'; }}
-            className="ml-2 px-4 py-1.5 bg-[#001f3f] text-white text-[13px] font-medium rounded-lg hover:bg-blue-900 transition"
+            className="ml-2 px-4 py-1.5 bg-blue-600 text-white text-admin-sm font-medium rounded-lg hover:bg-blue-700 transition"
           >
             + 문서 업로드로 상품 등록
           </button>
@@ -1352,7 +1352,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <select
           value={landOperatorFilter}
           onChange={e => setLandOperatorFilter(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-[13px] focus:outline-none bg-white text-slate-500 min-w-[110px]"
+          className="px-3 py-2 border border-slate-200 rounded-lg text-admin-sm focus:outline-none bg-white text-slate-500 min-w-[110px]"
         >
           <option value="">전체 랜드사</option>
           {LAND_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
@@ -1360,7 +1360,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-[13px] focus:outline-none bg-white text-slate-500"
+          className="px-3 py-2 border border-slate-200 rounded-lg text-admin-sm focus:outline-none bg-white text-slate-500"
         >
           {SORT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -1368,9 +1368,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         </select>
         <button
           onClick={() => setShowExpired(v => !v)}
-          className={`px-3 py-2 rounded-lg text-[13px] font-medium border transition ${
+          className={`px-3 py-2 rounded-lg text-admin-sm font-medium border transition ${
             showExpired
-              ? 'bg-[#001f3f] text-white border-[#001f3f]'
+              ? 'bg-blue-600 text-white border-blue-600'
               : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
           }`}
         >
@@ -1378,13 +1378,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         </button>
         <button
           onClick={() => setBrainOpen(true)}
-          className="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[13px] font-medium hover:bg-emerald-100 transition"
+          className="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-admin-sm font-medium hover:bg-emerald-100 transition"
         >
           Ad-Brain
         </button>
         <button
           onClick={() => setMetaLiveOpen(true)}
-          className="px-3 py-2 bg-[#001f3f] text-white border border-[#001f3f] rounded-lg text-[13px] font-medium hover:bg-blue-900 transition"
+          className="px-3 py-2 bg-blue-600 text-white border border-blue-600 rounded-lg text-admin-sm font-medium hover:bg-blue-700 transition"
         >
           Meta Live
         </button>
@@ -1393,11 +1393,11 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* 일괄 처리 액션 바 */}
       {checkedIds.size > 0 && (
         <div className="flex items-center gap-2 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <span className="text-[13px] font-medium text-blue-700">{checkedIds.size}개 선택됨</span>
+          <span className="text-admin-sm font-medium text-blue-700">{checkedIds.size}개 선택됨</span>
           <button
             onClick={() => { setBulkLandOperator(''); setBulkCommission(''); setBulkEditOpen(true); }}
             disabled={bulkLoading}
-            className="px-2.5 py-1 bg-[#001f3f] text-white rounded-lg text-[11px] font-medium hover:bg-blue-900 disabled:opacity-50"
+            className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
           >일괄 수정</button>
           <button
             onClick={() => handleBulk('bulk_approve')}
@@ -1429,9 +1429,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           <button
             key={opt.value}
             onClick={() => setStatusFilter(opt.value)}
-            className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition ${
+            className={`px-3 py-1.5 rounded-lg text-admin-sm font-medium transition ${
               statusFilter === opt.value
-                ? 'bg-[#001f3f] text-white'
+                ? 'bg-blue-600 text-white'
                 : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
             }`}
           >
@@ -1439,7 +1439,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           </button>
         ))}
       </div>
-      <div className="flex items-center justify-between mb-2 text-[12px] text-slate-500">
+      <div className="flex items-center justify-between mb-2 text-admin-xs text-slate-500">
         <span>총 {totalCount.toLocaleString()}건 · {currentPage}/{totalPages} 페이지</span>
         <div className="flex items-center gap-1.5">
           <button
@@ -1458,16 +1458,28 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* 목록 */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-slate-400 text-[14px]">로딩 중...</div>
+          <div className="divide-y divide-slate-50">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <div className="w-4 h-4 bg-slate-100 rounded animate-pulse shrink-0" />
+                <div className="w-8 h-8 bg-slate-100 rounded-lg animate-pulse shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-slate-100 rounded animate-pulse w-48" />
+                  <div className="h-2.5 bg-slate-100 rounded animate-pulse w-32" />
+                </div>
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-16" />
+                <div className="h-5 bg-slate-100 rounded-full animate-pulse w-14" />
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
-            <p className="text-[14px]">상품이 없습니다</p>
-            <p className="text-[13px] mt-1">
-              {searchQuery ? '검색 조건을 바꿔보세요' : '문서 업로드 후 AI가 자동으로 등록합니다'}
-            </p>
+          <div className="py-14 flex flex-col items-center gap-3">
+            <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+            <p className="text-admin-sm font-medium text-slate-500">상품이 없습니다.</p>
+            <p className="text-admin-xs text-slate-400">{searchQuery ? '검색 조건을 바꿔보세요.' : '문서 업로드 후 AI가 자동으로 등록합니다.'}</p>
           </div>
         ) : (
-          <table className="w-full text-[13px]">
+          <table className="w-full text-admin-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-3 py-2 w-8">
@@ -1559,25 +1571,25 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-slate-200 flex flex-col">
             <div className="p-6 border-b border-slate-200">
               <div className="flex items-center justify-between">
-                <h3 className="text-[16px] font-bold text-slate-800">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
+                <h3 className="text-admin-lg font-bold text-slate-800">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
                 <button onClick={() => setBulkEditOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
               </div>
-              <p className="text-[13px] text-slate-500 mt-1">변경할 항목만 선택하세요. 비워두면 해당 필드는 유지됩니다.</p>
+              <p className="text-admin-sm text-slate-500 mt-1">변경할 항목만 선택하세요. 비워두면 해당 필드는 유지됩니다.</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">랜드사</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">랜드사</label>
                 <select
                   value={bulkLandOperator}
                   onChange={e => setBulkLandOperator(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- 변경 안 함 --</option>
                   {LAND_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">커미션 (%)</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">커미션 (%)</label>
                 <input
                   type="number"
                   min="0"
@@ -1586,19 +1598,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   value={bulkCommission}
                   onChange={e => setBulkCommission(e.target.value)}
                   placeholder="변경 안 함"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
             <div className="p-6 border-t border-slate-200 flex gap-2 justify-end">
               <button
                 onClick={() => setBulkEditOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-[13px] text-slate-700 hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-admin-sm text-slate-700 hover:bg-slate-50"
               >취소</button>
               <button
                 onClick={handleBulkEdit}
                 disabled={bulkLoading || (!bulkLandOperator && bulkCommission === '')}
-                className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[13px] font-medium hover:bg-blue-900 disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
               >{bulkLoading ? '저장 중...' : '일괄 저장'}</button>
             </div>
           </div>
@@ -1612,37 +1624,37 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-slate-200 flex flex-col">
             <div className="p-6 border-b border-slate-200">
               <div className="flex items-center justify-between">
-                <h3 className="text-[16px] font-bold text-slate-800">상품 수정</h3>
+                <h3 className="text-admin-lg font-bold text-slate-800">상품 수정</h3>
                 <button onClick={() => setEditPkg(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
               </div>
-              <p className="text-[13px] text-slate-500 truncate mt-0.5">{editPkg.title}</p>
+              <p className="text-admin-sm text-slate-500 truncate mt-0.5">{editPkg.title}</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">상품명</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">상품명</label>
                 <input
                   type="text"
                   value={editForm.title}
                   onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">목적지</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">목적지</label>
                 <input
                   type="text"
                   value={editForm.destination}
                   onChange={e => setEditForm(f => ({ ...f, destination: e.target.value }))}
                   placeholder="예: 베트남 다낭"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">랜드사</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">랜드사</label>
                 <select
                   value={editForm.land_operator_id}
                   onChange={e => setEditForm(f => ({ ...f, land_operator_id: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- 선택 안 함 --</option>
                   {activeVendors.map(op => (
@@ -1651,7 +1663,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 </select>
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">커미션 (%)</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">커미션 (%)</label>
                 <input
                   type="number"
                   min="0"
@@ -1660,28 +1672,28 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   value={editForm.commission_rate}
                   onChange={e => setEditForm(f => ({ ...f, commission_rate: e.target.value }))}
                   placeholder="예: 10"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-[13px] font-medium text-slate-800 mb-1">발권기한</label>
+                <label className="block text-admin-sm font-medium text-slate-800 mb-1">발권기한</label>
                 <input
                   type="date"
                   value={editForm.ticketing_deadline}
                   onChange={e => setEditForm(f => ({ ...f, ticketing_deadline: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
             <div className="p-6 border-t border-slate-200 flex gap-2 justify-end">
               <button
                 onClick={() => setEditPkg(null)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-[13px] text-slate-700 hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-admin-sm text-slate-700 hover:bg-slate-50"
               >취소</button>
               <button
                 onClick={handleSingleEdit}
                 disabled={editSaving}
-                className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[13px] font-medium hover:bg-blue-900 disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
               >{editSaving ? '저장 중...' : '저장'}</button>
             </div>
           </div>
@@ -1695,7 +1707,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-slate-200 flex flex-col">
             <div className="p-6 border-b border-slate-200 flex items-start justify-between">
               <div>
-                <h2 className="text-[16px] font-bold text-slate-800">{selected.title}</h2>
+                <h2 className="text-admin-lg font-bold text-slate-800">{selected.title}</h2>
                 <div className="flex gap-2 mt-1 flex-wrap">
                   <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[selected.status] || 'bg-slate-100 text-slate-500'}`}>
                     {STATUS_LABEL[selected.status] ?? selected.status}
@@ -1719,9 +1731,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-[13px]">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-admin-sm">
               {selected.product_summary && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-[13px] text-blue-800">
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-admin-sm text-blue-800">
                   {selected.product_summary}
                 </div>
               )}
@@ -1737,7 +1749,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 text-[13px]">
+              <div className="grid grid-cols-2 gap-2 text-admin-sm">
                 {selected.land_operator && (
                   <div className="col-span-2 flex items-center gap-4">
                     <div><span className="text-slate-500">랜드사:</span> <span className="font-medium text-blue-700">{selected.land_operator}</span></div>
@@ -1803,13 +1815,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               {selected.inclusions && selected.inclusions.length > 0 && (
                 <div>
                   <p className="font-semibold text-slate-800 mb-1">포함사항</p>
-                  <p className="text-slate-500 text-[13px]">{selected.inclusions.join(', ')}</p>
+                  <p className="text-slate-500 text-admin-sm">{selected.inclusions.join(', ')}</p>
                 </div>
               )}
               {selected.excludes && selected.excludes.length > 0 && (
                 <div>
                   <p className="font-semibold text-slate-800 mb-1">불포함사항</p>
-                  <p className="text-slate-500 text-[13px]">{selected.excludes.join(', ')}</p>
+                  <p className="text-slate-500 text-admin-sm">{selected.excludes.join(', ')}</p>
                 </div>
               )}
 
@@ -1832,7 +1844,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <button
                   onClick={() => handleGenerateImage(selected, 'detail')}
                   disabled={imgGenerating}
-                  className="px-3 py-1.5 bg-[#001f3f] text-white rounded-lg text-[13px] hover:bg-blue-900 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm hover:bg-blue-700 disabled:opacity-50"
                 >{imgGenerating ? '생성 중...' : 'A4 이미지'}</button>
               ) : (
                 <button
@@ -1856,33 +1868,33 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     }
                   }}
                   disabled={reextracting}
-                  className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-[13px] hover:bg-orange-600 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-admin-sm hover:bg-orange-600 disabled:opacity-50"
                 >{reextracting ? 'AI 추출 중...' : '일정표 재추출'}</button>
               )}
               <a
                 href={`/itinerary/${selected.id}`}
                 target="_blank"
-                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] hover:bg-slate-50"
+                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50"
               >듀얼뷰</a>
               <a
                 href={`/itinerary/${selected.id}/print?mode=detail`}
                 target="_blank"
-                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] hover:bg-slate-50"
+                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50"
               >A4 인쇄</a>
               <button
                 onClick={e => { setSelected(null); openSingleEdit(selected, e); }}
-                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] hover:bg-slate-50"
+                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50"
               >수정</button>
               <button
                 onClick={() => handleAction(selected.id, 'delete')}
                 disabled={!!actionLoading}
-                className="px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-[13px] hover:bg-red-50 disabled:opacity-50"
+                className="px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-admin-sm hover:bg-red-50 disabled:opacity-50"
               >삭제</button>
               {isExpired(selected) && (
                 <button
                   onClick={() => handleAction(selected.id, 'extend')}
                   disabled={!!actionLoading}
-                  className="px-3 py-1.5 bg-[#001f3f] text-white rounded-lg text-[13px] hover:bg-blue-900 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm hover:bg-blue-700 disabled:opacity-50"
                 >판매 연장 (+30일)</button>
               )}
               {selected.status === 'pending' && (
@@ -1890,12 +1902,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   <button
                     onClick={() => handleAction(selected.id, 'reject')}
                     disabled={!!actionLoading}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] hover:bg-slate-50 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50 disabled:opacity-50"
                   >거부</button>
                   <button
                     onClick={() => handleAction(selected.id, 'approve')}
                     disabled={!!actionLoading}
-                    className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-[13px] font-medium hover:bg-green-700 disabled:opacity-50"
+                    className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-admin-sm font-medium hover:bg-green-700 disabled:opacity-50"
                   >승인</button>
                 </>
               )}
@@ -1903,14 +1915,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <button
                   onClick={() => handleAction(selected.id, 'reject')}
                   disabled={!!actionLoading}
-                  className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] hover:bg-slate-50 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50 disabled:opacity-50"
                 >비활성화</button>
               )}
               {selected.status === 'rejected' && (
                 <button
                   onClick={() => handleAction(selected.id, 'approve')}
                   disabled={!!actionLoading}
-                  className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-[13px] font-medium hover:bg-green-700 disabled:opacity-50"
+                  className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-admin-sm font-medium hover:bg-green-700 disabled:opacity-50"
                 >다시 승인</button>
               )}
             </div>
@@ -1953,15 +1965,15 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             <div className="p-5 border-b flex justify-between items-start">
               <div>
                 <h3 className="font-bold text-lg">📝 카톡 마케팅 문구</h3>
-                <p className="text-xs text-gray-400 mt-1">{kakaoCopyTarget.title}</p>
+                <p className="text-xs text-slate-400 mt-1">{kakaoCopyTarget.title}</p>
               </div>
-              <button onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <button onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
             </div>
 
             {/* 생성 버튼 */}
             {!kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-6 text-center">
-                <p className="text-sm text-gray-500 mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
+                <p className="text-sm text-slate-500 mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
                 <button onClick={async () => {
                   setKakaoCopyLoading(true);
                   try {
@@ -1998,7 +2010,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             {kakaoCopyLoading && (
               <div className="p-10 text-center">
                 <div className="animate-spin w-8 h-8 border-4 border-pink-300 border-t-pink-600 rounded-full mx-auto mb-3" />
-                <p className="text-sm text-gray-500">AI가 문구를 생성하고 있습니다...</p>
+                <p className="text-sm text-slate-500">AI가 문구를 생성하고 있습니다...</p>
               </div>
             )}
 
@@ -2031,7 +2043,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                       setKakaoCopyText(data.copy || '문구 생성 실패');
                     } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                     finally { setKakaoCopyLoading(false); }
-                  }} className="py-2.5 px-4 bg-gray-100 text-gray-700 text-sm rounded-xl hover:bg-gray-200">
+                  }} className="py-2.5 px-4 bg-slate-100 text-slate-700 text-sm rounded-xl hover:bg-slate-200">
                     🔄 재생성
                   </button>
                 </div>
@@ -2056,18 +2068,6 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <MetaAutoPublisher onClose={() => setMetaLiveOpen(false)} />
       )}
 
-      {/* ── Toast ─────────────────────────────────────────────────────── */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl text-[13px] font-medium transition-all animate-in slide-in-from-bottom-4 ${
-            toast.type === 'success'
-              ? 'bg-green-600 text-white'
-              : 'bg-red-600 text-white'
-          }`}
-        >
-          {toast.message}
-        </div>
-      )}
     </div>
   );
 }

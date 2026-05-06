@@ -90,7 +90,14 @@ export default function TermsTemplatesPage() {
       </div>
 
       {loading ? (
-        <p className="text-slate-400">로딩 중...</p>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
+              <div className="h-4 bg-slate-100 rounded animate-pulse w-48" />
+              <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
+            </div>
+          ))}
+        </div>
       ) : templates.length === 0 ? (
         <p className="text-slate-400">약관 템플릿이 없습니다.</p>
       ) : (
@@ -99,7 +106,7 @@ export default function TermsTemplatesPage() {
             <Link
               key={t.id}
               href={`/admin/terms-templates/${t.id}`}
-              className="block bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-400 transition"
+              className="block bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 hover:border-slate-400 transition"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -108,7 +115,7 @@ export default function TermsTemplatesPage() {
                       T{t.tier} · {TIER_LABELS[t.tier]}
                     </span>
                     {!t.is_active && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-500">비활성</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-500">비활성</span>
                     )}
                     <span className="text-[10px] text-slate-400">v{t.version} · priority {t.priority}</span>
                   </div>

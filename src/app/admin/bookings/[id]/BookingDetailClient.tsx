@@ -69,7 +69,7 @@ const LOG_TYPE_LABEL: Record<string, string> = {
 const LOG_TYPE_COLOR: Record<string, string> = {
   system:    'bg-blue-100 text-blue-600',
   kakao:     'bg-yellow-100 text-yellow-700',
-  mock:      'bg-gray-100 text-gray-500',
+  mock:      'bg-slate-100 text-slate-500',
   scheduler: 'bg-purple-100 text-purple-600',
   manual:    'bg-green-100 text-green-700',
 };
@@ -92,12 +92,12 @@ function ProgressBar({ status }: { status: string }) {
 
   if (isCancelled) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
         <div className="flex items-center gap-3">
           <span className="text-2xl">❌</span>
           <div>
             <p className="font-semibold text-red-600">예약 취소됨</p>
-            <p className="text-xs text-gray-400 mt-0.5">이 예약은 취소 처리되었습니다.</p>
+            <p className="text-xs text-slate-400 mt-0.5">이 예약은 취소 처리되었습니다.</p>
           </div>
         </div>
       </div>
@@ -105,11 +105,11 @@ function ProgressBar({ status }: { status: string }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <p className="text-xs font-medium text-gray-500 mb-4">예약 진행 상태</p>
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <p className="text-xs font-medium text-slate-500 mb-4">예약 진행 상태</p>
       <div className="relative flex items-center justify-between">
         {/* 연결선 */}
-        <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 z-0" />
+        <div className="absolute top-4 left-0 right-0 h-0.5 bg-slate-200 z-0" />
         <div
           className="absolute top-4 left-0 h-0.5 bg-blue-500 z-0 transition-all duration-500"
           style={{ width: `${currentStep === 0 ? 0 : (currentStep / (JOURNEY_STEPS.length - 1)) * 100}%` }}
@@ -123,12 +123,12 @@ function ProgressBar({ status }: { status: string }) {
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                 isDone    ? 'bg-blue-500 text-white' :
                 isCurrent ? 'bg-blue-600 text-white ring-4 ring-blue-100' :
-                             'bg-white text-gray-400 border-2 border-gray-200'
+                             'bg-white text-slate-400 border-2 border-slate-200'
               }`}>
                 {isDone ? '✓' : step.step + 1}
               </div>
               <p className={`mt-2 text-xs text-center max-w-16 leading-tight ${
-                isCurrent ? 'font-semibold text-blue-700' : isDone ? 'text-blue-500' : 'text-gray-400'
+                isCurrent ? 'font-semibold text-blue-700' : isDone ? 'text-blue-500' : 'text-slate-400'
               }`}>
                 {step.label}
               </p>
@@ -295,15 +295,26 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-400">불러오는 중...</div>
+      <div className="max-w-4xl mx-auto p-6 space-y-4">
+        <div className="h-8 bg-slate-100 rounded animate-pulse w-48" />
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex gap-4">
+              <div className="h-3 bg-slate-100 rounded animate-pulse w-24 shrink-0" />
+              <div className="h-3 bg-slate-100 rounded animate-pulse flex-1" />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   if (!booking) {
     return (
-      <div className="p-8 text-center">
-        <p className="text-gray-500">예약을 찾을 수 없습니다.</p>
-        <Link href="/admin/bookings" className="mt-4 inline-block text-blue-600 text-sm hover:underline">← 목록으로</Link>
+      <div className="p-12 text-center flex flex-col items-center gap-3">
+        <svg className="w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" /></svg>
+        <p className="text-admin-base font-medium text-slate-500">예약을 찾을 수 없습니다.</p>
+        <Link href="/admin/bookings" className="mt-1 text-admin-sm text-blue-600 hover:underline">← 예약 목록으로</Link>
       </div>
     );
   }
@@ -326,16 +337,16 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/admin/bookings" className="text-sm text-gray-500 hover:text-gray-700">← 예약 목록</Link>
-          <span className="text-gray-300">|</span>
-          <span className="font-mono text-sm text-gray-500">{booking.booking_no || id.slice(0, 8)}</span>
+          <Link href="/admin/bookings" className="text-sm text-slate-500 hover:text-slate-700">← 예약 목록</Link>
+          <span className="text-slate-300">|</span>
+          <span className="font-mono text-sm text-slate-500">{booking.booking_no || id.slice(0, 8)}</span>
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getStatusBadgeClass(booking.status)}`}>
             {getStatusLabel(booking.status)}
           </span>
         </div>
         <Link
           href={`/admin/bookings/${id}/edit`}
-          className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+          className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition"
         >
           편집 →
         </Link>
@@ -373,9 +384,9 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
       {/* 수배 확정 체크리스트 + 명단 */}
       {!isCancelled && (
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold text-slate-800">수배 체크리스트</h3>
+            <h3 className="text-admin-sm font-semibold text-slate-800">수배 체크리스트</h3>
             {booking.status === 'fully_paid' && !booking.is_manifest_sent && (
               <button
                 onClick={async () => {
@@ -404,7 +415,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                     showToast('명단이 클립보드에 복사되었습니다. 네이트온에 붙여넣기 하세요.');
                   } catch { showToast('복사 실패'); }
                 }}
-                className="px-3 py-1.5 bg-[#001f3f] text-white text-[12px] rounded hover:bg-blue-900 transition font-medium"
+                className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs rounded hover:bg-blue-700 transition font-medium"
               >
                 랜드사 명단 복사
               </button>
@@ -455,7 +466,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                     className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                   />
                 )}
-                <span className={`text-[12px] font-medium ${item.checked ? 'text-emerald-700' : 'text-slate-500'}`}>
+                <span className={`text-admin-xs font-medium ${item.checked ? 'text-emerald-700' : 'text-slate-500'}`}>
                   {item.label}
                 </span>
                 {item.auto && <span className="text-[10px] text-slate-400 ml-auto">자동</span>}
@@ -467,13 +478,13 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           {(booking.flight_out || booking.flight_in) && (
             <div className="mt-3 pt-3 border-t border-slate-100 flex gap-6">
               {booking.flight_out && (
-                <div className="text-[12px]">
+                <div className="text-admin-xs">
                   <span className="text-slate-400">출발</span>
                   <span className="ml-2 font-medium text-slate-700">{booking.flight_out} {booking.flight_out_time}</span>
                 </div>
               )}
               {booking.flight_in && (
-                <div className="text-[12px]">
+                <div className="text-admin-xs">
                   <span className="text-slate-400">도착</span>
                   <span className="ml-2 font-medium text-slate-700">{booking.flight_in} {booking.flight_in_time}</span>
                 </div>
@@ -486,33 +497,33 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       {/* 정보 카드 2열 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 고객 정보 */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">고객 정보</h3>
+        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-2">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">고객 정보</h3>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">대표 예약자</span>
-            <span className="font-medium text-gray-900">{booking.customers?.name ?? '—'}</span>
+            <span className="text-slate-500">대표 예약자</span>
+            <span className="font-medium text-slate-900">{booking.customers?.name ?? '—'}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">연락처</span>
-            <span className="text-gray-700">{booking.customers?.phone ?? '—'}</span>
+            <span className="text-slate-500">연락처</span>
+            <span className="text-slate-700">{booking.customers?.phone ?? '—'}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">상품</span>
-            <span className="text-gray-700 text-right max-w-40 truncate">{booking.package_title ?? '—'}</span>
+            <span className="text-slate-500">상품</span>
+            <span className="text-slate-700 text-right max-w-40 truncate">{booking.package_title ?? '—'}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">출발일</span>
-            <span className="text-gray-700">{booking.departure_date ?? '—'}</span>
+            <span className="text-slate-500">출발일</span>
+            <span className="text-slate-700">{booking.departure_date ?? '—'}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">인원</span>
-            <span className="text-gray-700">성인 {booking.adult_count}명 {booking.child_count > 0 ? `+ 소아 ${booking.child_count}명` : ''}</span>
+            <span className="text-slate-500">인원</span>
+            <span className="text-slate-700">성인 {booking.adult_count}명 {booking.child_count > 0 ? `+ 소아 ${booking.child_count}명` : ''}</span>
           </div>
 
           {/* 일행 목록 */}
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-gray-500 uppercase">일행 ({(booking.passengers || []).length}명)</span>
+              <span className="text-xs font-bold text-slate-500 uppercase">일행 ({(booking.passengers || []).length}명)</span>
               <button onClick={() => setShowAddPassenger(!showAddPassenger)}
                 className="text-xs text-blue-600 hover:text-blue-800">
                 {showAddPassenger ? '닫기' : '+ 일행 추가'}
@@ -522,19 +533,19 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             {(booking.passengers || []).length > 0 ? (
               <div className="space-y-1">
                 {(booking.passengers || []).map((p, i) => (
-                  <div key={p.customer_id || i} className="flex items-center justify-between text-sm bg-gray-50 rounded px-2 py-1.5">
+                  <div key={p.customer_id || i} className="flex items-center justify-between text-sm bg-slate-50 rounded px-2 py-1.5">
                     <div>
-                      <span className="font-medium text-gray-800">{p.name}</span>
-                      <span className="text-xs text-gray-400 ml-2">
+                      <span className="font-medium text-slate-800">{p.name}</span>
+                      <span className="text-xs text-slate-400 ml-2">
                         {p.passenger_type === 'child_n' ? '소아' : p.passenger_type === 'infant' ? '유아' : '성인'}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-400">{p.phone || p.passport_no || ''}</span>
+                    <span className="text-xs text-slate-400">{p.phone || p.passport_no || ''}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-400">등록된 일행이 없습니다</p>
+              <p className="text-xs text-slate-400">등록된 일행이 없습니다</p>
             )}
 
             {/* 일행 추가 폼 */}
@@ -542,26 +553,26 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
               <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-500">이름 *</label>
+                    <label className="text-xs text-slate-500">이름 *</label>
                     <input value={passengerForm.name} onChange={e => setPassengerForm(f => ({...f, name: e.target.value}))}
-                      placeholder="홍길동" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      placeholder="홍길동" className="w-full border border-slate-200 rounded px-2 py-1 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">전화번호</label>
+                    <label className="text-xs text-slate-500">전화번호</label>
                     <input value={passengerForm.phone} onChange={e => setPassengerForm(f => ({...f, phone: e.target.value}))}
-                      placeholder="010-0000-0000" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      placeholder="010-0000-0000" className="w-full border border-slate-200 rounded px-2 py-1 text-sm" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-500">여권번호</label>
+                    <label className="text-xs text-slate-500">여권번호</label>
                     <input value={passengerForm.passport_no} onChange={e => setPassengerForm(f => ({...f, passport_no: e.target.value}))}
-                      placeholder="M12345678" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      placeholder="M12345678" className="w-full border border-slate-200 rounded px-2 py-1 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">구분</label>
+                    <label className="text-xs text-slate-500">구분</label>
                     <select value={passengerForm.type} onChange={e => setPassengerForm(f => ({...f, type: e.target.value}))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
+                      className="w-full border border-slate-200 rounded px-2 py-1 text-sm">
                       <option value="adult">성인</option>
                       <option value="child_n">소아</option>
                       <option value="infant">유아</option>
@@ -616,7 +627,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                       showToast(err instanceof Error ? err.message : '추가 실패');
                     } finally { setAddingPassenger(false); }
                   }}
-                  className="w-full py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:bg-gray-300 transition"
+                  className="w-full py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:bg-slate-300 transition"
                 >
                   {addingPassenger ? '처리 중...' : '고객 등록 + 일행 추가'}
                 </button>
@@ -631,16 +642,16 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           <div className="bg-white rounded-xl border border-blue-100 p-4 space-y-2">
             <h3 className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">💰 고객 결제 요약</h3>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">총 판매가</span>
-              <span className="font-semibold text-gray-900">{(booking.total_price ?? 0).toLocaleString()}원</span>
+              <span className="text-slate-500">총 판매가</span>
+              <span className="font-semibold text-slate-900">{(booking.total_price ?? 0).toLocaleString()}원</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">입금 완료액</span>
+              <span className="text-slate-500">입금 완료액</span>
               <span className="text-blue-600 font-medium">{(booking.paid_amount ?? 0).toLocaleString()}원</span>
             </div>
             {balance > 0 && (
-              <div className="flex justify-between text-sm border-t border-gray-100 pt-1">
-                <span className="text-gray-600 font-medium">미수금 잔액</span>
+              <div className="flex justify-between text-sm border-t border-slate-100 pt-1">
+                <span className="text-slate-600 font-medium">미수금 잔액</span>
                 <span className="font-bold text-orange-600">{balance.toLocaleString()}원</span>
               </div>
             )}
@@ -649,16 +660,16 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             )}
             {depositLeft !== null && depositLeft > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">계약금 미납</span>
+                <span className="text-slate-500">계약금 미납</span>
                 <span className="text-red-500">{depositLeft.toLocaleString()}원</span>
               </div>
             )}
             {/* 수금 게이지 */}
             <div className="mt-2">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
                 <span>수금률</span><span className="font-medium text-blue-600">{custPct}%</span>
               </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-blue-500 rounded-full transition-all duration-500"
                   style={{ width: `${custPct}%` }} />
               </div>
@@ -669,16 +680,16 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           <div className="bg-white rounded-xl border border-orange-100 p-4 space-y-2">
             <h3 className="text-xs font-bold text-orange-600 uppercase tracking-wide mb-2">🏢 랜드사 정산 요약</h3>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">총 원가</span>
-              <span className="font-semibold text-gray-900">{(booking.total_cost ?? 0).toLocaleString()}원</span>
+              <span className="text-slate-500">총 원가</span>
+              <span className="font-semibold text-slate-900">{(booking.total_cost ?? 0).toLocaleString()}원</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">송금 완료액</span>
+              <span className="text-slate-500">송금 완료액</span>
               <span className="text-orange-600 font-medium">{(booking.total_paid_out ?? 0).toLocaleString()}원</span>
             </div>
             {agencyUnpaid > 0 && (
-              <div className="flex justify-between text-sm border-t border-gray-100 pt-1">
-                <span className="text-gray-600 font-medium">미지급 잔액</span>
+              <div className="flex justify-between text-sm border-t border-slate-100 pt-1">
+                <span className="text-slate-600 font-medium">미지급 잔액</span>
                 <span className="font-bold text-red-600">{agencyUnpaid.toLocaleString()}원</span>
               </div>
             )}
@@ -687,10 +698,10 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             )}
             {/* 송금 게이지 */}
             <div className="mt-2">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
                 <span>송금률</span><span className="font-medium text-orange-600">{agencyPct}%</span>
               </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-orange-400 rounded-full transition-all duration-500"
                   style={{ width: `${agencyPct}%` }} />
               </div>
@@ -700,8 +711,8 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       </div>
 
       {/* Action 버튼 패널 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4">상태 제어</h3>
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">상태 제어</h3>
         <div className="flex flex-wrap gap-3">
           {/* 상태 전이 버튼 */}
           {transitions.map(t => (
@@ -741,46 +752,49 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         </div>
 
         {transitions.length === 0 && !isCancelled && (
-          <p className="text-xs text-gray-400 mt-3">현재 상태에서 가능한 전이가 없습니다.</p>
+          <p className="text-xs text-slate-400 mt-3">현재 상태에서 가능한 전이가 없습니다.</p>
         )}
       </div>
 
       <BookingConciergeAdminPanel bookingId={id} onToast={showToast} />
 
       {/* 고객 응대 타임라인 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4">고객 응대 타임라인</h3>
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">고객 응대 타임라인</h3>
 
         <div ref={timelineRef} className="space-y-3 max-h-80 overflow-y-auto pr-1">
           {logs.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">아직 기록이 없습니다.</p>
+            <div className="flex flex-col items-center gap-2 py-8">
+              <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <p className="text-admin-xs text-slate-400">아직 기록이 없습니다.</p>
+            </div>
           ) : (
             logs.map((log, idx) => (
               <div key={log.id} className="flex gap-3">
                 {/* 타임라인 라인 */}
                 <div className="flex flex-col items-center">
-                  <div className="w-7 h-7 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-sm flex-shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-sm flex-shrink-0">
                     {EVENT_ICON[log.event_type] ?? '💬'}
                   </div>
                   {idx < logs.length - 1 && (
-                    <div className="w-px flex-1 bg-gray-100 mt-1" />
+                    <div className="w-px flex-1 bg-slate-100 mt-1" />
                   )}
                 </div>
 
                 <div className="flex-1 pb-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold text-gray-800">{log.title}</span>
+                    <span className="text-xs font-semibold text-slate-800">{log.title}</span>
                     {log.is_mock && (
                       <span className="text-xs px-1.5 py-0.5 bg-yellow-50 text-yellow-600 rounded border border-yellow-200">Mock</span>
                     )}
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${LOG_TYPE_COLOR[log.log_type] ?? 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${LOG_TYPE_COLOR[log.log_type] ?? 'bg-slate-100 text-slate-500'}`}>
                       {LOG_TYPE_LABEL[log.log_type] ?? log.log_type}
                     </span>
                   </div>
                   {log.content && (
-                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{log.content}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{log.content}</p>
                   )}
-                  <p className="text-xs text-gray-300 mt-1">
+                  <p className="text-xs text-slate-300 mt-1">
                     {new Date(log.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     {' · '}{log.created_by}
                   </p>
@@ -791,7 +805,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         </div>
 
         {/* 수동 메모 입력 */}
-        <div className="mt-4 pt-4 border-t border-gray-100">
+        <div className="mt-4 pt-4 border-t border-slate-100">
           <div className="flex gap-2">
             <input
               type="text"
@@ -799,7 +813,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
               onChange={e => setMemo(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddMemo(); } }}
               placeholder="수동 메모 입력 (엔터로 추가)"
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
             <button
               onClick={handleAddMemo}
@@ -814,7 +828,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-lg z-50 animate-fade-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-sm px-5 py-3 rounded-xl shadow-lg z-50 animate-fade-in">
           {toast}
         </div>
       )}
@@ -823,42 +837,42 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       {showCancelModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">예약 취소 및 환불 처리</h2>
-            <p className="text-sm text-gray-500 mb-5">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">예약 취소 및 환불 처리</h2>
+            <p className="text-sm text-slate-500 mb-5">
               취소 후 복구가 불가능합니다. 위약금/환불액을 정확히 입력하세요.
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">환불액 (원)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">환불액 (원)</label>
                 <input
                   type="number"
                   min={0}
                   value={cancelForm.refund}
                   onChange={e => setCancelForm(f => ({ ...f, refund: e.target.value }))}
                   placeholder="0"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">위약금 (원)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">위약금 (원)</label>
                 <input
                   type="number"
                   min={0}
                   value={cancelForm.penalty}
                   onChange={e => setCancelForm(f => ({ ...f, penalty: e.target.value }))}
                   placeholder="0"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">취소 사유</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">취소 사유</label>
                 <textarea
                   value={cancelForm.reason}
                   onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="예: 고객 단순 변심, 랜드사 취소, 항공 결항 등"
                   rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
                 />
               </div>
             </div>
@@ -866,7 +880,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowCancelModal(false)}
-                className="flex-1 border border-gray-200 text-sm text-gray-600 py-2.5 rounded-xl hover:bg-gray-50"
+                className="flex-1 border border-slate-200 text-sm text-slate-600 py-2.5 rounded-xl hover:bg-slate-50"
               >
                 취소
               </button>

@@ -110,7 +110,7 @@ export default function ScoringTrendsPage() {
       </section>
 
       {/* 트렌드 테이블 */}
-      <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full text-xs">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr className="text-slate-600">

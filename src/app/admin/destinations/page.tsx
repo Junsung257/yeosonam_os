@@ -234,7 +234,7 @@ export default function AdminDestinationsPage() {
             ) : (
               <button
                 onClick={bulkAutoGen}
-                className="text-sm font-semibold bg-[#3182F6] text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition"
+                className="text-sm font-semibold bg-brand text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition"
               >
                 ✨ 미설정 전체 자동생성
               </button>
@@ -244,7 +244,7 @@ export default function AdminDestinationsPage() {
 
         {/* 알림 */}
         {msg && (
-          <div className="mb-4 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700">
+          <div className="mb-4 px-4 py-2.5 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] text-sm text-slate-700">
             {msg}
           </div>
         )}
@@ -272,13 +272,21 @@ export default function AdminDestinationsPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="여행지 검색..."
-            className="ml-auto text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#3182F6] w-40"
+            className="ml-auto text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand w-40"
           />
         </div>
 
         {/* 목록 */}
         {loading ? (
-          <div className="text-center py-20 text-slate-400">로딩 중...</div>
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-xl px-5 py-4 flex items-center gap-4">
+                <div className="h-4 bg-slate-100 rounded animate-pulse w-40" />
+                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+                <div className="ml-auto h-4 bg-slate-100 rounded animate-pulse w-24" />
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="space-y-2">
             {filtered.map(row => {
@@ -288,7 +296,7 @@ export default function AdminDestinationsPage() {
               const ps = photoSearch[row.destination];
 
               return (
-                <div key={row.destination} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div key={row.destination} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
                   {/* 요약 행 */}
                   <div
                     className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-slate-50 transition"
@@ -319,7 +327,7 @@ export default function AdminDestinationsPage() {
                               value={edit.tagline ?? row.metadata?.tagline ?? ''}
                               onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], tagline: e.target.value } }))}
                               placeholder="감성 타이틀 입력..."
-                              className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#3182F6]"
+                              className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                             />
                             <button
                               onClick={() => autoGenTagline(row.destination)}
@@ -336,7 +344,7 @@ export default function AdminDestinationsPage() {
                             value={edit.hero_tagline ?? row.metadata?.hero_tagline ?? ''}
                             onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], hero_tagline: e.target.value } }))}
                             placeholder="1~2문장 서브 설명..."
-                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#3182F6]"
+                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                           />
                         </div>
                       </div>
@@ -361,7 +369,7 @@ export default function AdminDestinationsPage() {
                             <img
                               src={row.metadata.hero_image_url}
                               alt="현재 히어로"
-                              className="w-40 h-24 object-cover rounded-lg border border-slate-200"
+                              className="w-40 h-24 object-cover rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
                             />
                             <div className="flex flex-col gap-2">
                               <span className={`text-xs font-bold px-2.5 py-1 rounded-full w-fit ${
@@ -390,13 +398,13 @@ export default function AdminDestinationsPage() {
                             value={ps?.keyword ?? DEFAULT_KEYWORD(row.destination)}
                             onChange={e => setPhotoSearch(p => ({ ...p, [row.destination]: { ...p[row.destination], keyword: e.target.value, results: p[row.destination]?.results || [] } }))}
                             placeholder="Pexels 검색 키워드..."
-                            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#3182F6]"
+                            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                             onKeyDown={e => e.key === 'Enter' && searchPexels(row.destination)}
                           />
                           <button
                             onClick={() => searchPexels(row.destination)}
                             disabled={ps?.loading}
-                            className="text-sm font-bold bg-[#3182F6] text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition disabled:opacity-50"
+                            className="text-sm font-bold bg-brand text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition disabled:opacity-50"
                           >
                             {ps?.loading ? '검색 중...' : '🔍 검색'}
                           </button>
@@ -410,7 +418,7 @@ export default function AdminDestinationsPage() {
                                 <img
                                   src={photo.src_thumb}
                                   alt={photo.alt}
-                                  className="w-full aspect-video object-cover rounded-lg border border-slate-200 cursor-pointer group-hover:border-[#3182F6] transition"
+                                  className="w-full aspect-video object-cover rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] cursor-pointer group-hover:border-brand transition"
                                   title={`© ${photo.photographer}`}
                                 />
                                 <button
@@ -435,7 +443,7 @@ export default function AdminDestinationsPage() {
                           href={`/destinations/${encodeURIComponent(row.destination)}`}
                           target="_blank"
                           rel="noopener"
-                          className="text-xs text-[#3182F6] hover:underline font-medium"
+                          className="text-xs text-brand hover:underline font-medium"
                         >
                           → 고객 페이지 미리보기
                         </a>

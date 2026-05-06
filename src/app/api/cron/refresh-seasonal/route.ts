@@ -23,6 +23,7 @@
  *   - 한 destination이 실패해도 나머지 진행
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import {
@@ -84,11 +85,8 @@ function rangeForLast12Months() {
 async function handleRefresh(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'supabase 미설정' }, { status: 500 });
 
-  // Vercel Cron 인증
-  const auth = req.headers.get('authorization') ?? '';
-  const expectedSecret = process.env.CRON_SECRET;
-  if (expectedSecret && auth !== `Bearer ${expectedSecret}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
   }
 
   const { data: rows, error } = await supabaseAdmin

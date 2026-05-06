@@ -120,7 +120,7 @@ export default function AgentActionsPanel() {
           <button
             key={tab.key}
             onClick={() => setStatusFilter(tab.key)}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition ${
+            className={`px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${
               statusFilter === tab.key
                 ? 'bg-white text-slate-800 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
@@ -133,7 +133,7 @@ export default function AgentActionsPanel() {
 
       {/* 카운트 */}
       <div className="flex items-center justify-between">
-        <p className="text-[12px] text-slate-500">
+        <p className="text-admin-xs text-slate-500">
           총 {total}건 {loading && '(로딩 중...)'}
         </p>
         <button
@@ -146,7 +146,7 @@ export default function AgentActionsPanel() {
 
       {/* 액션 리스트 */}
       {actions.length === 0 && !loading ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">
+        <div className="text-center py-12 text-slate-400 text-admin-sm">
           {statusFilter === 'pending' ? '대기 중인 결재 건이 없습니다.' : '해당 상태의 건이 없습니다.'}
         </div>
       ) : (
@@ -179,7 +179,7 @@ export default function AgentActionsPanel() {
                   </span>
                 </div>
                 {/* 요약 */}
-                <p className="text-[13px] font-medium text-slate-800">{action.summary}</p>
+                <p className="text-admin-sm font-medium text-slate-800">{action.summary}</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   {action.action_type} · {action.requested_by}
                   {action.reviewed_by && ` · 처리: ${action.reviewed_by}`}
@@ -227,7 +227,7 @@ export default function AgentActionsPanel() {
                           value={rejectReason}
                           onChange={e => setRejectReason(e.target.value)}
                           placeholder="반려 사유 (선택)"
-                          className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90] focus:outline-none resize-none"
+                          className="w-full border border-slate-200 rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90] focus:outline-none resize-none"
                           rows={2}
                         />
                       )}
@@ -235,7 +235,7 @@ export default function AgentActionsPanel() {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleAction(action.id, 'approve') }}
                           disabled={processingId === action.id}
-                          className="flex-1 bg-[#001f3f] text-white py-1.5 rounded text-[11px] font-medium hover:bg-blue-900 disabled:bg-slate-300 transition"
+                          className="flex-1 bg-blue-600 text-white py-1.5 rounded text-[11px] font-medium hover:bg-blue-700 disabled:bg-slate-300 transition"
                         >
                           {processingId === action.id ? '처리 중...' : '승인'}
                         </button>
@@ -288,7 +288,7 @@ export default function AgentActionsPanel() {
 
       {/* 토스트 */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-[13px] shadow-lg ${
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-lg ${
           toast.type === 'err' ? 'bg-red-600' : 'bg-slate-800'
         }`}>
           {toast.msg}

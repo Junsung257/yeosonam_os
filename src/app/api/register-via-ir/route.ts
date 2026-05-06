@@ -18,6 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -86,9 +87,8 @@ function loadOperators(): Record<string, { uuid: string; code: string }> {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 500 });

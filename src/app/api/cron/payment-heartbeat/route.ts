@@ -24,6 +24,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sendSlackAlert } from '@/lib/slack-alert';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,24 +51,9 @@ function isBusinessHours(): boolean {
   return h >= 9 && h < 20 && !isKSTWeekend();
 }
 
-async function sendSlackAlert(message: string): Promise<void> {
-  const url = process.env.SLACK_ALERT_WEBHOOK_URL;
-  if (!url) return;
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: message }),
-    });
-  } catch (e) {
-    console.warn('[payment-heartbeat] Slack alert 실패:', e);
-  }
-}
-
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });

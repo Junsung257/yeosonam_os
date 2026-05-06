@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,9 +59,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
 
-  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  if (!userData?.user?.id) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  }
+
+  const geminiApiKey = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
   if (!geminiApiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY 환경변수가 설정되지 않았습니다.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'GEMINI_API_KEY 또는 GOOGLE_AI_API_KEY가 설정되지 않았습니다.' },
+      { status: 500 },
+    );
   }
 
   try {

@@ -22,6 +22,7 @@ import {
 } from '@/lib/revalidate-lp-package';
 import { invalidateQaChatPackageCache } from '@/lib/qa-chat-packages';
 import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
+import { getSecret } from '@/lib/secret-registry';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -377,7 +378,7 @@ export async function POST(request: NextRequest) {
     // ?force=true 쿼리로 우회 가능 (VA가 "새 상품으로 등록" 선택 시)
     const { searchParams: postParams } = new URL(request.url);
     const forceDuplicate = postParams.get('force') === 'true';
-    if (!forceDuplicate && supabaseAdmin && process.env.GOOGLE_AI_API_KEY) {
+    if (!forceDuplicate && supabaseAdmin && getSecret('GOOGLE_AI_API_KEY')) {
       try {
         const embedSource = [
           body.title,
@@ -387,7 +388,7 @@ export async function POST(request: NextRequest) {
           (body.rawText ?? body.raw_text ?? '').slice(0, 1000),
         ].filter(Boolean).join(' ');
 
-        const vec = await embedText(embedSource, process.env.GOOGLE_AI_API_KEY, 'SEMANTIC_SIMILARITY');
+        const vec = await embedText(embedSource, getSecret('GOOGLE_AI_API_KEY')!, 'SEMANTIC_SIMILARITY');
         if (vec && vec.length > 0) {
           const { data: similar, error: simErr } = await supabaseAdmin.rpc('match_travel_packages_duplicate', {
             query_embedding: vec,

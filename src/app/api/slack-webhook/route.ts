@@ -21,13 +21,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac } from 'crypto';
+import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { ingestSlackRawEvent } from '@/lib/slack-ingest';
 
 // ─── [1] Slack HMAC-SHA256 서명 검증 ─────────────────────────────────────────
 
 async function verifySlackSignature(req: NextRequest, body: string): Promise<boolean> {
-  const signingSecret = process.env.SLACK_SIGNING_SECRET;
+  const signingSecret = getSecret('SLACK_SIGNING_SECRET');
   if (!signingSecret) return true; // 개발 환경: 서명 없으면 통과
 
   const timestamp = req.headers.get('x-slack-request-timestamp');

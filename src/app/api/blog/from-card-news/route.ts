@@ -11,6 +11,7 @@ import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { ContentBrief } from '@/lib/validators/content-brief';
 import { pickMarketingPrice } from '@/lib/marketing-price';
+import { getSecret } from '@/lib/secret-registry';
 import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/blog-review-quotes';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
@@ -19,7 +20,7 @@ export const maxDuration = 240;
 /** blog-publisher 크론만: 본문 생성만 하고 DB INSERT는 호출자(멱등 단일 커밋)가 담당 */
 function isPublisherBridge(request: NextRequest, body: { publisher_bridge?: boolean }): boolean {
   if (!body.publisher_bridge) return false;
-  const secret = process.env.CRON_SECRET;
+  const secret = getSecret('CRON_SECRET');
   if (!secret) return false;
   return request.headers.get('authorization') === `Bearer ${secret}`;
 }
@@ -204,49 +205,11 @@ export async function POST(request: NextRequest) {
         seoTitle = brief.seo.title;
         seoDesc = brief.seo.description;
       } catch (err) {
-        console.warn('[from-card-news] generateBlogBody 실패, legacy fallback 사용:', err instanceof Error ? err.message : err);
-        brief = null;  // legacy fallback 트리거
-      }
-    }
-
-    // ── Legacy Fallback (Brief 생성 자체가 실패한 경우만) ──
-    if (!brief && !blogHtml) {
-      if (cardMode === 'product' && productData) {
-        const destParts = (productData.destination || '').split(/[\/\s]+/).filter(Boolean);
-        const orFilters = destParts
-          .flatMap((part: string) => [`region.ilike.%${part}%`, `country.ilike.%${part}%`])
-          .join(',');
-        const { data: attrData } = await supabaseAdmin
-          .from('attractions')
-          .select('name, short_desc, photos, country, region, badge_type, emoji, aliases, category')
-          .or(orFilters || 'region.ilike.%xxx%')
-          .limit(500);
-        const attractions: any[] = attrData || [];
-        const baseBlog = generateBlogPost(productData, angleType as any, attractions);
-        blogHtml = await geminiRewriteWithHybridImages({
-          baseBlog, cardNewsImages, pkg: productData, angle: angleType, isProduct: true,
-        });
-        const seo = generateBlogSeo(productData, angleType as any);
-        slug = seo.slug + '-cn';
-        seoTitle = seo.seoTitle;
-        seoDesc = seo.seoDescription;
-      } else {
-        const topic = cn.topic || cn.title || '여행 정보';
-        let categoryLabel = '';
-        if (categoryId) {
-          const { data: cat } = await supabaseAdmin
-            .from('blog_categories')
-            .select('label')
-            .eq('id', categoryId)
-            .limit(1);
-          if (cat?.[0]) categoryLabel = cat[0].label;
-        }
-        blogHtml = await generateInfoBlog({ topic, categoryLabel, cardNewsImages });
-        const slugBase = topic.toLowerCase().replace(/[^a-z0-9가-힣\s]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
-        slug = `${slugBase}-cn`;
-        const year = new Date().getFullYear();
-        seoTitle = `${topic} | ${year} 여소남 가이드`.substring(0, 60);
-        seoDesc = `${topic} 완벽 가이드. 실용 정보와 팁을 여소남에서 확인하세요.`.substring(0, 160);
+        console.error('[from-card-news] generateBlogBody 실패:', err instanceof Error ? err.message : err);
+        return NextResponse.json(
+          { error: 'Brief 생성 실패 — 재시도 크론이 자동 처리합니다.', retryable: true },
+          { status: 500 },
+        );
       }
     }
 

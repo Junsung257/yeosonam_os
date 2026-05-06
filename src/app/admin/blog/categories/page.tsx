@@ -67,16 +67,16 @@ export default function BlogCategoriesPage() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <Link href="/admin/blog" className="text-[12px] text-slate-500 hover:text-slate-700">← 블로그</Link>
+            <Link href="/admin/blog" className="text-admin-xs text-slate-500 hover:text-slate-700">← 블로그</Link>
           </div>
           <h1 className="text-[18px] font-bold text-slate-800 mt-1">블로그 카테고리 관리</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">
+          <p className="text-admin-xs text-slate-400 mt-0.5">
             정보성 블로그 + 상품 블로그에 사용되는 카테고리를 관리합니다.
           </p>
         </div>
         <button
           onClick={() => { setEditing(null); setShowForm(true); }}
-          className="px-4 py-2 bg-[#001f3f] text-white text-[13px] font-semibold rounded-lg hover:bg-blue-900 transition"
+          className="px-4 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded-lg hover:bg-blue-700 transition"
         >
           + 새 카테고리
         </button>
@@ -93,9 +93,17 @@ export default function BlogCategoriesPage() {
 
       {/* 목록 */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">로딩 중...</div>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+              <div className="h-7 bg-slate-100 rounded-lg animate-pulse w-12" />
+            </div>
+          ))}
+        </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -110,9 +118,9 @@ export default function BlogCategoriesPage() {
             <tbody>
               {categories.map(cat => (
                 <tr key={cat.id} className={`border-b border-slate-100 hover:bg-slate-50 transition ${!cat.is_active ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3 text-[12px] text-slate-500 tabular-nums">{cat.display_order}</td>
+                  <td className="px-4 py-3 text-admin-xs text-slate-500 tabular-nums">{cat.display_order}</td>
                   <td className="px-3 py-3">
-                    <p className="text-[13px] font-medium text-slate-800">{cat.label}</p>
+                    <p className="text-admin-sm font-medium text-slate-800">{cat.label}</p>
                     {cat.description && <p className="text-[11px] text-slate-400 mt-0.5">{cat.description}</p>}
                   </td>
                   <td className="px-3 py-3">
@@ -143,7 +151,7 @@ export default function BlogCategoriesPage() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-[13px] shadow-lg bg-slate-800">
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-lg bg-slate-800">
           {toast}
         </div>
       )}
@@ -193,10 +201,10 @@ function CategoryForm({ initial, onClose, onSaved }: {
   return (
     <div className="bg-white border border-indigo-200 rounded-lg p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-[14px] font-semibold text-slate-800">
+        <h2 className="text-admin-base font-semibold text-slate-800">
           {isEdit ? '카테고리 수정' : '새 카테고리'}
         </h2>
-        <button onClick={onClose} className="text-[12px] text-slate-500 hover:text-slate-700">✕ 취소</button>
+        <button onClick={onClose} className="text-admin-xs text-slate-500 hover:text-slate-700">✕ 취소</button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -205,24 +213,24 @@ function CategoryForm({ initial, onClose, onSaved }: {
           <input value={key} onChange={e => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
             disabled={isEdit}
             placeholder="예: accommodation"
-            className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] font-mono disabled:bg-slate-50 disabled:text-slate-400" />
+            className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm font-mono disabled:bg-slate-50 disabled:text-slate-400" />
         </div>
         <div>
           <label className="block text-[10px] text-slate-400 mb-1">라벨 (화면 표시)</label>
           <input value={label} onChange={e => setLabel(e.target.value)}
             placeholder="예: 숙박"
-            className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+            className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
         </div>
         <div className="md:col-span-2">
           <label className="block text-[10px] text-slate-400 mb-1">설명 (선택)</label>
           <input value={description} onChange={e => setDescription(e.target.value)}
             placeholder="카테고리에 대한 간단한 설명"
-            className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+            className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
         </div>
         <div>
           <label className="block text-[10px] text-slate-400 mb-1">범위</label>
           <select value={scope} onChange={e => setScope(e.target.value as any)}
-            className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]">
+            className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm">
             <option value="info">정보성 전용</option>
             <option value="product">상품 전용</option>
             <option value="both">공용</option>
@@ -231,19 +239,19 @@ function CategoryForm({ initial, onClose, onSaved }: {
         <div>
           <label className="block text-[10px] text-slate-400 mb-1">표시 순서</label>
           <input type="number" value={displayOrder} onChange={e => setDisplayOrder(parseInt(e.target.value) || 0)}
-            className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+            className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
         </div>
       </div>
 
-      {error && <p className="text-[12px] text-red-600">{error}</p>}
+      {error && <p className="text-admin-xs text-red-600">{error}</p>}
 
       <div className="flex gap-2 justify-end">
         <button onClick={onClose}
-          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-600 text-[12px] rounded hover:bg-slate-50">
+          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded hover:bg-slate-50">
           취소
         </button>
         <button onClick={handleSave} disabled={saving}
-          className="px-4 py-1.5 bg-[#001f3f] text-white text-[12px] font-medium rounded hover:bg-blue-900 disabled:opacity-40">
+          className="px-4 py-1.5 bg-blue-600 text-white text-admin-xs font-medium rounded hover:bg-blue-700 disabled:opacity-40">
           {saving ? '저장 중...' : '저장'}
         </button>
       </div>

@@ -14,6 +14,7 @@
  * 현재 stub — env LTR_TRAINING_SERVICE_URL 있으면 외부 호출, 없으면 데이터만 export.
  */
 import { NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { postAlert } from '@/lib/admin-alerts';
 
@@ -48,13 +49,14 @@ export async function POST() {
 
   // 외부 학습 서비스 연동 (env 있을 때만)
   const serviceUrl = process.env.LTR_TRAINING_SERVICE_URL;
+  const ltrTrainingSecret = getSecret('LTR_TRAINING_SECRET');
   if (serviceUrl) {
     try {
       const res = await fetch(serviceUrl, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(process.env.LTR_TRAINING_SECRET ? { authorization: `Bearer ${process.env.LTR_TRAINING_SECRET}` } : {}),
+          ...(ltrTrainingSecret ? { authorization: `Bearer ${ltrTrainingSecret}` } : {}),
         },
         body: JSON.stringify({ signals: signals ?? [], target: 'lightfm' }),
       });

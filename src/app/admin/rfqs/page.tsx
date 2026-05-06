@@ -59,9 +59,9 @@ function KpiCard({
   color: string;
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
       <div className={`text-xl font-bold ${color}`}>{value}</div>
-      <div className="text-[13px] mt-0.5 text-slate-500">{label}</div>
+      <div className="text-admin-sm mt-0.5 text-slate-500">{label}</div>
     </div>
   );
 }
@@ -106,8 +106,8 @@ export default function AdminRfqsPage() {
     <div className="space-y-6">
       {/* 헤더 */}
       <div>
-        <h1 className="text-[16px] font-bold text-slate-800">단체 RFQ 관리</h1>
-        <p className="text-[13px] text-slate-500 mt-1">단체여행 견적 요청 및 입찰 현황을 관리합니다</p>
+        <h1 className="text-admin-lg font-bold text-slate-800">단체 RFQ 관리</h1>
+        <p className="text-admin-sm text-slate-500 mt-1">단체여행 견적 요청 및 입찰 현황을 관리합니다</p>
       </div>
 
       {/* KPI 카드 */}
@@ -124,7 +124,7 @@ export default function AdminRfqsPage() {
           <button
             key={tab.value}
             onClick={() => setStatusFilter(tab.value)}
-            className={`px-4 py-1.5 rounded-md text-[13px] font-medium transition-colors ${
+            className={`px-4 py-1.5 rounded-md text-admin-sm font-medium transition-colors ${
               statusFilter === tab.value
                 ? 'bg-white border border-slate-200 text-slate-800 font-semibold'
                 : 'text-slate-500 hover:text-slate-700'
@@ -136,17 +136,26 @@ export default function AdminRfqsPage() {
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         {loading ? (
-          <div className="text-center text-slate-500 py-12 text-[14px]">불러오는 중...</div>
+          <div className="divide-y divide-slate-50">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3">
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-28" />
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
+              </div>
+            ))}
+          </div>
         ) : error ? (
-          <div className="text-center text-red-600 py-12 text-[14px]">{error}</div>
+          <div className="text-center text-red-600 py-12 text-admin-base">{error}</div>
         ) : rfqs.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-slate-500 text-[14px]">해당하는 RFQ가 없습니다.</p>
+            <p className="text-slate-500 text-admin-base">해당하는 RFQ가 없습니다.</p>
           </div>
         ) : (
-          <table className="w-full text-[13px]">
+          <table className="w-full text-admin-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '등록일'].map(

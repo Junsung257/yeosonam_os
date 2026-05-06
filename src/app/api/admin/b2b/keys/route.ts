@@ -7,15 +7,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
+async function requireAdmin(request: NextRequest): Promise<string | null> {
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  return userData?.user?.id ?? null;
+}
+
 function hashKey(rawKey: string): string {
   return createHash('sha256').update(rawKey).digest('hex');
 }
 
 // ─── GET: 키 목록 ────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ data: [] });
+  }
+
+  const userId = await requireAdmin(request);
+  if (!userId) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
   }
 
   try {
@@ -52,6 +65,11 @@ interface KeyCreateBody {
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+
+  const userId = await requireAdmin(request);
+  if (!userId) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
   }
 
   let body: KeyCreateBody;

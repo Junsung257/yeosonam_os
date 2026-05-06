@@ -125,40 +125,40 @@ export default function CompetitorPricesPage() {
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">경쟁사 가격 비교</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900">경쟁사 가격 비교</h1>
+        <p className="text-sm text-slate-500 mt-1">
           경쟁사 가격을 수동 입력하고 여소남 최저가와 비교합니다.
         </p>
       </div>
 
       {/* 가격 입력 폼 */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <h2 className="font-semibold text-gray-800 mb-4">새 가격 입력</h2>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <h2 className="font-semibold text-slate-800 mb-4">새 가격 입력</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">목적지 *</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">목적지 *</label>
             <input
               value={form.destination}
               onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))}
               placeholder="싱가포르"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">기간 *</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">기간 *</label>
             <input
               value={form.duration}
               onChange={(e) => setForm((f) => ({ ...f, duration: e.target.value }))}
               placeholder="4박5일"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">경쟁사 *</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">경쟁사 *</label>
             <select
               value={form.competitor}
               onChange={(e) => setForm((f) => ({ ...f, competitor: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">선택</option>
               {COMPETITORS.map((c) => (
@@ -167,33 +167,33 @@ export default function CompetitorPricesPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">가격 (원) *</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">가격 (원) *</label>
             <input
               value={form.price}
               onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
               placeholder="1290000"
               type="number"
               min={0}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">출발일 (선택)</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">출발일 (선택)</label>
             <input
               value={form.departureDate}
               onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))}
               type="date"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">참고 URL (선택)</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">참고 URL (선택)</label>
             <input
               value={form.sourceUrl}
               onChange={(e) => setForm((f) => ({ ...f, sourceUrl: e.target.value }))}
               placeholder="https://..."
               type="url"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="col-span-2 sm:col-span-3 flex items-center gap-3 pt-1">
@@ -212,11 +212,11 @@ export default function CompetitorPricesPage() {
 
       {/* 필터 */}
       <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700">목적지 필터:</label>
+        <label className="text-sm font-medium text-slate-700">목적지 필터:</label>
         <select
           value={filterDest}
           onChange={(e) => setFilterDest(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">전체</option>
           {destinations.map((d) => (
@@ -233,9 +233,18 @@ export default function CompetitorPricesPage() {
 
       {/* 비교 테이블 */}
       {loading ? (
-        <div className="text-center py-12 text-gray-400">불러오는 중...</div>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-32" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-24" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
+            </div>
+          ))}
+        </div>
       ) : Object.keys(grouped).length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-slate-400">
           등록된 경쟁사 가격이 없습니다. 위 폼에서 입력해주세요.
         </div>
       ) : (
@@ -245,9 +254,9 @@ export default function CompetitorPricesPage() {
             const yeosonamMin = yeosonamMap[destName];
 
             return (
-              <div key={groupKey} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800">{groupKey}</h3>
+              <div key={groupKey} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-800">{groupKey}</h3>
                   {yeosonamMin != null && (
                     <span className="text-xs bg-blue-100 text-blue-700 font-medium px-2.5 py-1 rounded-full">
                       여소남 최저가: {fmt만(yeosonamMin)}
@@ -257,17 +266,17 @@ export default function CompetitorPricesPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">경쟁사</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">가격</th>
+                      <tr className="border-b border-slate-100">
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase">경쟁사</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-slate-500 uppercase">가격</th>
                         {yeosonamMin != null && (
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-slate-500 uppercase">
                             여소남 대비
                           </th>
                         )}
-                        <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">출발일</th>
-                        <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">입력일</th>
-                        <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">출처</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase">출발일</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase">입력일</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase">출처</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -279,9 +288,9 @@ export default function CompetitorPricesPage() {
                             : null;
 
                         return (
-                          <tr key={row.id} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="px-4 py-3 font-medium text-gray-800">{row.competitor}</td>
-                            <td className="px-4 py-3 text-right font-mono font-semibold text-gray-900">
+                          <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="px-4 py-3 font-medium text-slate-800">{row.competitor}</td>
+                            <td className="px-4 py-3 text-right font-mono font-semibold text-slate-900">
                               {fmt만(row.price)}
                             </td>
                             {yeosonamMin != null && (
@@ -293,7 +302,7 @@ export default function CompetitorPricesPage() {
                                         ? 'bg-red-100 text-red-600'
                                         : diff < 0
                                         ? 'bg-green-100 text-green-600'
-                                        : 'bg-gray-100 text-gray-500'
+                                        : 'bg-slate-100 text-slate-500'
                                     }`}
                                   >
                                     {diff > 0 ? '+' : ''}{fmt만(diff)} ({diffPct}%)
@@ -301,10 +310,10 @@ export default function CompetitorPricesPage() {
                                 )}
                               </td>
                             )}
-                            <td className="px-4 py-3 text-gray-500 text-xs">
+                            <td className="px-4 py-3 text-slate-500 text-xs">
                               {row.departure_date ?? '—'}
                             </td>
-                            <td className="px-4 py-3 text-gray-400 text-xs">
+                            <td className="px-4 py-3 text-slate-400 text-xs">
                               {new Date(row.recorded_at).toLocaleDateString('ko-KR')}
                             </td>
                             <td className="px-4 py-3">
@@ -318,7 +327,7 @@ export default function CompetitorPricesPage() {
                                   링크
                                 </a>
                               ) : (
-                                <span className="text-gray-300 text-xs">—</span>
+                                <span className="text-slate-300 text-xs">—</span>
                               )}
                             </td>
                           </tr>

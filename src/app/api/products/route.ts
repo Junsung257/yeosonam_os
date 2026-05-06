@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { getSecret } from '@/lib/secret-registry';
 
 // ─── B2B 필드 목록 (VA 역할에게 숨겨야 하는 필드) ────────────────────────────
 const B2B_FIELDS = ['net_price', 'margin_rate', 'discount_amount', 'b2b_notes', 'supplier_code'] as const;
@@ -20,8 +21,8 @@ async function getUserRole(authHeader: string | null): Promise<'admin' | 'va'> {
   if (!authHeader?.startsWith('Bearer ')) return 'admin';
   const token = authHeader.slice(7);
   try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
+    const key  = getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
     if (!url || !key) return 'admin';
     const client = createClient(url, key);
     const { data: { user } } = await client.auth.getUser(token);

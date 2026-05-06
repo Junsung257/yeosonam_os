@@ -21,6 +21,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronOrVercelAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSeasonalContext } from '@/lib/card-news-html/seasonal';
 import { getPackageRawText } from '@/lib/packages/raw-text';
@@ -33,18 +35,13 @@ const MAX_GROUPS_PER_RUN = 2;
 const SAME_DESTINATION_LOOKBACK_DAYS = 14;
 
 export async function GET(request: NextRequest) {
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  const authorized =
-    isVercelCron || (cronSecret && authHeader === `Bearer ${cronSecret}`);
-  if (!authorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronOrVercelAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
-  if (!process.env.DEEPSEEK_API_KEY) {
+  if (!getSecret('DEEPSEEK_API_KEY')) {
     return NextResponse.json(
       { error: 'DEEPSEEK_API_KEY 미설정' },
       { status: 503 },

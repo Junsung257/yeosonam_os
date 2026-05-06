@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { z } from 'zod';
+import { getSecret } from '@/lib/secret-registry';
 
 const RowSchema = z.object({
   mrt_gid:          z.string(),
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   // 서비스 역할 키 인증
   const auth = request.headers.get('authorization');
-  const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const svcKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
   if (svcKey && auth !== `Bearer ${svcKey}`) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }

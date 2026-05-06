@@ -4,6 +4,7 @@ import { pauseAd, updateAdsetBudget, isMetaConfigured, krwToMetaCents } from '@/
 import { getRolling7DayRoas } from '@/lib/roas-calculator';
 import { getRateInfo } from '@/lib/exchange-rate';
 import type { OptimizeResult } from '@/types/meta-ads';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function POST(_request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -28,8 +29,8 @@ export async function POST(_request: NextRequest) {
 
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
 
     await Promise.allSettled(

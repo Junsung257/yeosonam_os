@@ -6,6 +6,7 @@
  * 인증: Bearer CRON_SECRET (서버·스크립트용)
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { normalizeImageFromUrl } from '@/lib/blog-image-normalize';
 
 export const runtime = 'nodejs';
@@ -13,7 +14,8 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const auth = request.headers.get('authorization');
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = getSecret('CRON_SECRET');
+  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

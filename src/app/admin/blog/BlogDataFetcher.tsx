@@ -51,7 +51,7 @@ export default async function BlogDataFetcher({
 }) {
   if (!isSupabaseConfigured) {
     return (
-      <div className="text-center py-12 text-slate-400 text-[13px]">DB 미연결 상태입니다.</div>
+      <div className="text-center py-12 text-slate-400 text-admin-sm">DB 미연결 상태입니다.</div>
     );
   }
 
@@ -75,7 +75,7 @@ export default async function BlogDataFetcher({
 
   if (error) {
     return (
-      <div className="text-center py-12 text-red-400 text-[13px]">
+      <div className="text-center py-12 text-red-400 text-admin-sm">
         데이터 로드 오류: {error.message}
       </div>
     );
@@ -87,9 +87,10 @@ export default async function BlogDataFetcher({
 
   if (!posts || posts.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-slate-400 text-[13px] mb-3">블로그 글이 없습니다.</p>
-        <Link href="/admin/blog/write" className="text-blue-600 text-[13px] hover:underline">
+      <div className="flex flex-col items-center gap-3 py-14">
+        <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+        <p className="text-admin-sm font-medium text-slate-500">블로그 글이 없습니다.</p>
+        <Link href="/admin/blog/write" className="text-blue-600 text-admin-sm hover:underline">
           첫 글을 작성해보세요 →
         </Link>
       </div>
@@ -98,7 +99,7 @@ export default async function BlogDataFetcher({
 
   return (
     <>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
@@ -114,7 +115,7 @@ export default async function BlogDataFetcher({
             {(posts as BlogPost[]).map(post => (
               <tr key={post.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                 <td className="px-4 py-3">
-                  <p className="text-[13px] font-medium text-slate-800 truncate max-w-md">
+                  <p className="text-admin-sm font-medium text-slate-800 truncate max-w-md">
                     {post.seo_title || post.travel_packages?.title || '(제목 없음)'}
                   </p>
                   {post.slug && (
@@ -131,7 +132,7 @@ export default async function BlogDataFetcher({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-right text-[12px] tabular-nums font-semibold text-slate-700">
+                <td className="px-3 py-3 text-right text-admin-xs tabular-nums font-semibold text-slate-700">
                   {(post.view_count ?? 0).toLocaleString()}
                 </td>
                 <td className="px-3 py-3">
@@ -162,18 +163,18 @@ export default async function BlogDataFetcher({
           {page > 1 && (
             <Link
               href={`?page=${page - 1}${statusQS}`}
-              className="px-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded hover:bg-slate-50 transition"
+              className="px-3 py-1.5 text-admin-xs bg-white border border-slate-200 rounded hover:bg-slate-50 transition"
             >
               이전
             </Link>
           )}
-          <span className="text-[12px] text-slate-500">
+          <span className="text-admin-xs text-slate-500">
             {page} / {totalPages} ({total.toLocaleString()}건)
           </span>
           {page < totalPages && (
             <Link
               href={`?page=${page + 1}${statusQS}`}
-              className="px-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded hover:bg-slate-50 transition"
+              className="px-3 py-1.5 text-admin-xs bg-white border border-slate-200 rounded hover:bg-slate-50 transition"
             >
               다음
             </Link>

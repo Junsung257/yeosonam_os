@@ -22,6 +22,7 @@ import { maybeApplyChainOfDensity } from '@/lib/blog-chain-of-density';
 import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from '@/lib/card-news-render-readiness';
 import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -498,7 +499,7 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
 
   if (cnErr || !cn?.[0]) throw new Error(`카드뉴스 로드 실패: ${item.card_news_id}`);
 
-  const slideUrls = await getSlideImagePublicUrlsForBlog(item.card_news_id);
+  const slideUrls = await getSlideImagePublicUrlsForBlog(item.card_news_id, ['blog', '1x1']);
   if (slideUrls.length === 0) {
     throw new Error('카드뉴스 PNG 아직 렌더링 안 됨. 어드민에서 "확정+블로그 생성" 먼저 클릭하세요.');
   }
@@ -513,7 +514,7 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = getSecret('CRON_SECRET');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;
 

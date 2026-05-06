@@ -211,33 +211,33 @@ export default function BlogWritePage() {
       {/* 상단 바 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/blog')} className="text-[12px] text-slate-500 hover:text-slate-700">← 목록</button>
-          <h1 className="text-[16px] font-bold text-slate-800">블로그 에디터</h1>
+          <button onClick={() => router.push('/admin/blog')} className="text-admin-xs text-slate-500 hover:text-slate-700">← 목록</button>
+          <h1 className="text-admin-lg font-bold text-slate-800">블로그 에디터</h1>
         </div>
         <div className="flex gap-2">
           <button onClick={() => handleSave('draft')} disabled={saving || !blogHtml}
-            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[12px] rounded-lg hover:bg-slate-50 disabled:opacity-40 transition">
+            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-xs rounded-lg hover:bg-slate-50 disabled:opacity-40 transition">
             {saving ? '저장 중...' : '초안 저장'}
           </button>
           <button onClick={() => handleSave('published')} disabled={saving || !blogHtml || !slug}
-            className="px-4 py-2 bg-[#001f3f] text-white text-[12px] font-semibold rounded-lg hover:bg-blue-900 disabled:opacity-40 transition">
+            className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
             {saving ? '발행 중...' : '발행하기'}
           </button>
         </div>
       </div>
 
       {/* 글 유형 + 설정 */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
         {/* 유형 선택 */}
         <div className="flex gap-4">
-          <label className="flex items-center gap-1.5 text-[13px] cursor-pointer">
+          <label className="flex items-center gap-1.5 text-admin-sm cursor-pointer">
             <input type="radio" checked={postType === 'product'} onChange={() => setPostType('product')}
-              className="text-[#001f3f]" />
+              className="text-blue-600" />
             상품 소개
           </label>
-          <label className="flex items-center gap-1.5 text-[13px] cursor-pointer">
+          <label className="flex items-center gap-1.5 text-admin-sm cursor-pointer">
             <input type="radio" checked={postType === 'info'} onChange={() => setPostType('info')}
-              className="text-[#001f3f]" />
+              className="text-blue-600" />
             정보성 콘텐츠
           </label>
         </div>
@@ -248,7 +248,7 @@ export default function BlogWritePage() {
             <div className="flex-1">
               <label className="block text-[10px] text-slate-400 mb-1">상품 선택</label>
               <select value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]">
+                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm">
                 <option value="">상품 선택...</option>
                 {packages.map(p => (
                   <option key={p.id} value={p.id}>
@@ -260,7 +260,7 @@ export default function BlogWritePage() {
             <div className="w-28">
               <label className="block text-[10px] text-slate-400 mb-1">앵글</label>
               <select value={angle} onChange={e => setAngle(e.target.value as AngleType)}
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]">
+                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm">
                 {ANGLES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
             </div>
@@ -269,14 +269,14 @@ export default function BlogWritePage() {
                 생성 개수 <span className="text-slate-300">?</span>
               </label>
               <select value={bulkCount} onChange={e => setBulkCount(parseInt(e.target.value))}
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]">
+                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm">
                 <option value={1}>1개</option>
                 <option value={3}>3개 (권장)</option>
                 <option value={5}>5개 (최대)</option>
               </select>
             </div>
             <button onClick={handleGenerate} disabled={generating || !selectedPkgId}
-              className="px-4 py-2 bg-indigo-600 text-white text-[12px] font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition whitespace-nowrap">
+              className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition whitespace-nowrap">
               {generating ? (bulkCount > 1 ? `${bulkCount}개 생성 중...` : 'AI 생성 중...') : (bulkCount > 1 ? `${bulkCount}개 일괄 생성` : 'AI 자동 생성')}
             </button>
           </div>
@@ -292,17 +292,17 @@ export default function BlogWritePage() {
               <label className="block text-[10px] text-slate-400 mb-1">주제</label>
               <input value={topic} onChange={e => setTopic(e.target.value)}
                 placeholder="예: 베트남 비자 신청 방법, 다낭 맛집 추천 10곳"
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]" />
+                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm" />
             </div>
             <div className="w-32">
               <label className="block text-[10px] text-slate-400 mb-1">카테고리</label>
               <select value={category} onChange={e => setCategory(e.target.value)}
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]">
+                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm">
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
             <button onClick={handleGenerate} disabled={generating || !topic.trim()}
-              className="px-4 py-2 bg-indigo-600 text-white text-[12px] font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition whitespace-nowrap">
+              className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition whitespace-nowrap">
               {generating ? 'AI 생성 중...' : 'AI 초안 생성'}
             </button>
           </div>
@@ -321,7 +321,7 @@ export default function BlogWritePage() {
             value={blogHtml}
             onChange={e => setBlogHtml(e.target.value)}
             placeholder="# 제목을 입력하세요&#10;&#10;## 소제목&#10;&#10;본문을 작성하세요..."
-            className="flex-1 border border-t-0 border-slate-200 rounded-b-lg p-4 text-[13px] font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
+            className="flex-1 border border-t-0 border-slate-200 rounded-b-lg p-4 text-admin-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
           />
         </div>
 
@@ -335,19 +335,19 @@ export default function BlogWritePage() {
               <div className="prose prose-sm prose-indigo max-w-none"
                 dangerouslySetInnerHTML={{ __html: previewHtml }} />
             ) : (
-              <p className="text-[13px] text-slate-300 italic">AI 생성 또는 직접 작성하면 미리보기가 표시됩니다</p>
+              <p className="text-admin-sm text-slate-300 italic">AI 생성 또는 직접 작성하면 미리보기가 표시됩니다</p>
             )}
           </div>
         </div>
       </div>
 
       {/* SEO 설정 + 점수 */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[12px] font-semibold text-slate-700">SEO 설정</p>
+          <p className="text-admin-xs font-semibold text-slate-700">SEO 설정</p>
           {grade && seoScore && (
             <div className="flex items-center gap-2">
-              <span className={`text-[12px] font-bold ${grade.color}`}>{seoScore.overall}/100 {grade.label}</span>
+              <span className={`text-admin-xs font-bold ${grade.color}`}>{seoScore.overall}/100 {grade.label}</span>
               <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full ${seoScore.overall >= 80 ? 'bg-emerald-500' : seoScore.overall >= 60 ? 'bg-blue-500' : seoScore.overall >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
                   style={{ width: `${seoScore.overall}%` }} />
@@ -363,26 +363,26 @@ export default function BlogWritePage() {
               <input value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
                 placeholder="danang-hoian-value-trip"
-                className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+                className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
             </div>
           </div>
           <div>
             <label className="block text-[10px] text-slate-400 mb-1">OG 이미지 (선택)</label>
             <input value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
               placeholder="https://images.pexels.com/..."
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
             <label className="block text-[10px] text-slate-400 mb-1">SEO 제목 <span className="text-slate-300">{seoTitle.length}/60</span></label>
             <input value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
               placeholder="다낭 호이안 3박5일 가성비 여행 | 2026 가이드"
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
             <label className="block text-[10px] text-slate-400 mb-1">SEO 설명 <span className="text-slate-300">{seoDescription.length}/160</span></label>
             <input value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
               placeholder="다낭 호이안 가성비 패키지 729,000원~. 여소남에서 비교하세요."
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
         </div>
 
@@ -399,7 +399,7 @@ export default function BlogWritePage() {
 
       {/* 토스트 */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-[13px] shadow-lg bg-slate-800">
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-lg bg-slate-800">
           {toast}
         </div>
       )}

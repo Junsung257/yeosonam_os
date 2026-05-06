@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거 — 매일 09:00 KST (00:00 UTC)
@@ -16,9 +17,8 @@ export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 async function runDailySummary(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {

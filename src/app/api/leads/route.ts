@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { findOrCreateCustomerByPhone } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { getSecret } from '@/lib/secret-registry';
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+  getSecret('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
 export async function POST(req: NextRequest) {
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
       utm_medium: tracking?.utmMedium || null,
       utm_campaign: tracking?.utmCampaign || null,
       utm_content: tracking?.utmContent || null,
+      utm_term: tracking?.utmTerm || null,
       referrer: tracking?.referrer || null,
       landing_url: tracking?.landingUrl || null,
       scroll_depth_reached: tracking?.scrollDepthReached || 0,

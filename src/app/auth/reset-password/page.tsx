@@ -43,11 +43,11 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#DBEAFE] flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-[#DBEAFE] flex items-center justify-center p-4">
       <div className="bg-white shadow-xl rounded-2xl p-8 w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">비밀번호 재설정</h1>
-          <p className="text-sm text-gray-500 mt-1">새 비밀번호를 입력해주세요</p>
+          <h1 className="text-2xl font-bold text-slate-900">비밀번호 재설정</h1>
+          <p className="text-sm text-slate-500 mt-1">새 비밀번호를 입력해주세요</p>
         </div>
 
         {done ? (
@@ -57,7 +57,7 @@ export default function ResetPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">새 비밀번호</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">새 비밀번호</label>
               <input
                 type="password"
                 required
@@ -65,18 +65,18 @@ export default function ResetPasswordPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="8자 이상"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">비밀번호 확인</label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">비밀번호 확인</label>
               <input
                 type="password"
                 required
                 value={confirm}
                 onChange={e => setConfirm(e.target.value)}
                 placeholder="동일하게 입력"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
@@ -89,7 +89,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm"
+              className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors text-sm"
             >
               {loading ? '변경 중...' : '비밀번호 변경'}
             </button>

@@ -11,6 +11,7 @@
  *   - 24시간 윈도우만 (오래된 변경은 batch script 로 처리)
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { indexPackage, indexBlog, indexAttraction, indexPolicy } from '@/lib/jarvis/rag/indexer';
@@ -23,9 +24,7 @@ const MAX_PER_RUN = 50;
 
 async function handle(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
-  const auth = req.headers.get('authorization') ?? '';
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (expected && auth !== expected) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
 
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 

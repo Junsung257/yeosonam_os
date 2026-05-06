@@ -36,6 +36,7 @@ import {
   checkThreadsPublishingLimit,
 } from '@/lib/threads-publisher';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -55,9 +56,8 @@ interface ScheduledRow {
 }
 
 async function runPublishScheduled(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });

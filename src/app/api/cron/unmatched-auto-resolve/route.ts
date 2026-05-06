@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
 
@@ -12,10 +13,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true, scanned: 0, resolved: 0 });
 
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = request.headers.get('authorization');
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {

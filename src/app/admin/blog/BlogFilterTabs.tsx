@@ -25,7 +25,7 @@ export default function BlogFilterTabs({ currentStatus }: { currentStatus: strin
         <button
           key={tab.key}
           onClick={() => setStatus(tab.key)}
-          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition ${
+          className={`px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${
             currentStatus === tab.key
               ? 'bg-white text-slate-800 shadow-sm'
               : 'text-slate-500 hover:text-slate-700'

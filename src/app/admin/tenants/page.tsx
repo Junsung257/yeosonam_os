@@ -132,35 +132,43 @@ export default function TenantsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-bold text-slate-800">테넌트 관리</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">입점 랜드사(테넌트) 목록 및 현황을 관리합니다.</p>
+          <h1 className="text-admin-lg font-bold text-slate-800">테넌트 관리</h1>
+          <p className="text-admin-sm text-slate-500 mt-0.5">입점 랜드사(테넌트) 목록 및 현황을 관리합니다.</p>
         </div>
         <button
           onClick={openCreate}
-          className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[13px] font-medium hover:bg-blue-900 transition"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 transition"
         >
           + 테넌트 등록
         </button>
       </div>
 
       {loading ? (
-        <div className="text-center py-16 text-slate-500 text-[14px]">로딩 중...</div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-4">
+              <div className="h-4 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-20" />
+              <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
+            </div>
+          ))}
+        </div>
       ) : tenants.length === 0 ? (
-        <div className="text-center py-16 text-slate-500 bg-white rounded-lg border border-slate-200">
-          <p className="text-[14px] font-medium">등록된 테넌트가 없습니다.</p>
-          <p className="text-[13px] mt-1">+ 테넌트 등록 버튼으로 랜드사를 추가하세요.</p>
+        <div className="text-center py-16 text-slate-500 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <p className="text-admin-base font-medium">등록된 테넌트가 없습니다.</p>
+          <p className="text-admin-sm mt-1">+ 테넌트 등록 버튼으로 랜드사를 추가하세요.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {tenants.map(t => {
             const s = stats[t.id] ?? { product_count: 0, sale_count: 0, settlement_cost: 0 };
             return (
-              <div key={t.id} className="bg-white rounded-lg border border-slate-200 p-5 flex flex-col gap-4 hover:border-slate-300 transition">
+              <div key={t.id} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex flex-col gap-4 hover:border-slate-300 transition">
                 {/* 헤더 */}
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[16px] font-bold text-slate-800">{t.name}</span>
+                      <span className="text-admin-lg font-bold text-slate-800">{t.name}</span>
                       <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[t.status] ?? 'bg-slate-100 text-slate-600'}`}>
                         {t.status}
                       </span>
@@ -186,7 +194,7 @@ export default function TenantsPage() {
                   </div>
                   <div className="bg-blue-50 border border-slate-200 rounded-lg p-2">
                     <p className="text-[11px] text-slate-500">정산 예정</p>
-                    <p className="text-[13px] font-bold text-slate-800">{fmt(s.settlement_cost)}원</p>
+                    <p className="text-admin-sm font-bold text-slate-800">{fmt(s.settlement_cost)}원</p>
                   </div>
                 </div>
 
@@ -194,13 +202,13 @@ export default function TenantsPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => router.push(`/tenant/${t.id}/products`)}
-                    className="flex-1 bg-[#001f3f] text-white py-2 rounded-lg text-[13px] font-medium hover:bg-blue-900 transition"
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-admin-sm font-medium hover:bg-blue-700 transition"
                   >
                     테넌트 뷰 열기
                   </button>
                   <button
                     onClick={() => openEdit(t)}
-                    className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] hover:bg-slate-50 transition"
+                    className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50 transition"
                   >
                     수정
                   </button>
@@ -218,7 +226,7 @@ export default function TenantsPage() {
           <div className="relative w-full max-w-md bg-white h-full overflow-y-auto border-l border-slate-200">
             <div className="p-6">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-[16px] font-bold text-slate-800">
+                <h3 className="text-admin-lg font-bold text-slate-800">
                   {form.id ? '테넌트 수정' : '새 테넌트 등록'}
                 </h3>
                 <button onClick={() => setPanel(false)} className="text-slate-500 hover:text-slate-700 text-lg">&times;</button>
@@ -229,7 +237,7 @@ export default function TenantsPage() {
                   <input
                     type="text" required value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="예: 가나다 투어"
                   />
                 </div>
@@ -239,7 +247,7 @@ export default function TenantsPage() {
                     <input
                       type="text" value={form.contact_name}
                       onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -247,7 +255,7 @@ export default function TenantsPage() {
                     <input
                       type="text" value={form.contact_phone}
                       onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="예: 051-000-0000"
                     />
                   </div>
@@ -257,7 +265,7 @@ export default function TenantsPage() {
                   <input
                     type="email" value={form.contact_email}
                     onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -266,7 +274,7 @@ export default function TenantsPage() {
                     <input
                       type="number" min="0" max="100" step="0.01" value={form.commission_rate}
                       onChange={e => setForm(f => ({ ...f, commission_rate: Number(e.target.value) }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -274,7 +282,7 @@ export default function TenantsPage() {
                     <select
                       value={form.status}
                       onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="active">active -- 운영 중</option>
                       <option value="inactive">inactive -- 비활성</option>
@@ -287,24 +295,24 @@ export default function TenantsPage() {
                   <textarea
                     value={form.description} rows={2}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {error && <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-[13px] text-red-700">{error}</div>}
+                {error && <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-admin-sm text-red-700">{error}</div>}
 
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => setPanel(false)}
-                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-lg text-[14px] hover:bg-slate-50"
+                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-lg text-admin-base hover:bg-slate-50"
                   >
                     취소
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 bg-[#001f3f] text-white py-2 rounded-lg text-[14px] font-medium hover:bg-blue-900 disabled:opacity-50"
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-admin-base font-medium hover:bg-blue-700 disabled:opacity-50"
                   >
                     {saving ? '저장 중...' : (form.id ? '수정 저장' : '등록')}
                   </button>

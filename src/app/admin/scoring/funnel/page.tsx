@@ -137,7 +137,7 @@ export default function ScoringFunnelPage() {
 
       {/* 학습 샘플 진행도 */}
       {summary && (
-        <section className="bg-white border border-slate-200 rounded-xl p-5">
+        <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
           <h2 className="text-sm font-semibold text-slate-800 mb-3">LTR 학습 샘플 진행</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
             <KpiCard label="총 노출" value={summary.total_exposures.toLocaleString()} />
@@ -164,7 +164,7 @@ export default function ScoringFunnelPage() {
       )}
 
       {/* 필터 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center gap-3">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-wrap items-center gap-3">
         <span className="text-xs font-semibold text-slate-700">필터:</span>
         <select
           value={filterSource}
@@ -188,7 +188,7 @@ export default function ScoringFunnelPage() {
       </section>
 
       {/* funnel 테이블 */}
-      <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full text-xs">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr className="text-slate-600">
@@ -237,7 +237,7 @@ export default function ScoringFunnelPage() {
 
       {/* 정책 A/B 비교 결과 (최근 10건) */}
       {abResults.length > 0 && (
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100">
             <h2 className="text-sm font-semibold text-slate-800">정책 A/B 비교 결과</h2>
             <p className="text-xs text-slate-500 mt-0.5">매주 토요일 자동 측정 · 통계적 winner 판정 시 ✓ 표시</p>

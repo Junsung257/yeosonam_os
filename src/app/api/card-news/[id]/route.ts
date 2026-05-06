@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin, getCardNewsById } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 function resolveAppOriginForInternalFetch(): string {
-  const u = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+  const u = getSecret('NEXT_PUBLIC_APP_URL') || getSecret('NEXT_PUBLIC_BASE_URL');
   if (u) return u.replace(/\/$/, '');
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return `http://127.0.0.1:${process.env.PORT ?? 3000}`;

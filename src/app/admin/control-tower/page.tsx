@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from '@/components/ui/Toast';
 
 // ── 타입 ─────────────────────────────────────────────────
 type PolicyCategory = 'pricing' | 'mileage' | 'booking' | 'notification' | 'display' | 'product' | 'operations' | 'marketing' | 'saas' | 'commission';
@@ -72,9 +73,8 @@ export default function ControlTowerPage() {
   const [editTarget, setEditTarget] = useState<Partial<Policy> | null>(null);
   const [editReason, setEditReason] = useState('');
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState('');
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+  const { toast: _t } = useToast();
+  const showToast = (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|활성화|비활성화|생성|수정|삭제/.test(msg) ? 'success' : /입력해주세요|취소됨/.test(msg) ? 'warning' : 'info');
 
   // ── 커미션 정책 미리보기 (저장 전 영향 시뮬레이션) ────
   const [previewing, setPreviewing] = useState(false);
@@ -237,16 +237,16 @@ export default function ControlTowerPage() {
       {/* ── 헤더 ──────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-semibold text-slate-800">OS 관제탑</h1>
+          <h1 className="text-admin-lg font-semibold text-slate-800">OS 관제탑</h1>
           <p className="text-[11px] text-slate-500 mt-0.5">가격, 마일리지, 알림, 노출 등 OS 전체 정책을 한 곳에서 관리</p>
         </div>
         <div className="flex gap-2">
           <button onClick={handlePreview} disabled={previewing}
-            className="px-3 py-1.5 bg-rose-50 text-rose-700 text-[13px] rounded hover:bg-rose-100 transition font-medium border border-rose-200 disabled:opacity-50">
+            className="px-3 py-1.5 bg-rose-50 text-rose-700 text-admin-sm rounded hover:bg-rose-100 transition font-medium border border-rose-200 disabled:opacity-50">
             {previewing ? '시뮬레이션 중...' : '🔍 커미션 영향 미리보기'}
           </button>
           <button onClick={() => { setEditTarget({ ...EMPTY_POLICY }); setEditOpen(true); }}
-            className="px-4 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 transition font-medium">
+            className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
             + 새 정책
           </button>
         </div>
@@ -254,19 +254,19 @@ export default function ControlTowerPage() {
 
       {/* ── KPI ────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
           <p className="text-[10px] text-slate-400">전체 정책</p>
           <p className="text-[20px] font-bold text-slate-800">{policies.length}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
           <p className="text-[10px] text-emerald-600">활성</p>
           <p className="text-[20px] font-bold text-emerald-600">{totalActive}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
           <p className="text-[10px] text-slate-400">비활성</p>
           <p className="text-[20px] font-bold text-slate-400">{totalInactive}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
           <p className="text-[10px] text-slate-400">카테고리</p>
           <p className="text-[20px] font-bold text-slate-800">{Object.keys(catCounts).length}</p>
         </div>
@@ -277,7 +277,7 @@ export default function ControlTowerPage() {
         <div className="flex gap-1 flex-wrap">
           {CATEGORIES.map(c => (
             <button key={c.key} onClick={() => setCatFilter(c.key as PolicyCategory | 'all')}
-              className={`px-2.5 py-1 text-[11px] rounded transition ${catFilter === c.key ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+              className={`px-2.5 py-1 text-[11px] rounded transition ${catFilter === c.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
               {c.label} {c.key !== 'all' && catCounts[c.key] ? `(${catCounts[c.key]})` : ''}
             </button>
           ))}
@@ -290,30 +290,45 @@ export default function ControlTowerPage() {
             <option value="inactive">비활성만</option>
           </select>
           <input type="text" placeholder="검색..." value={search} onChange={e => setSearch(e.target.value)}
-            className="px-2.5 py-1 border border-slate-200 rounded text-[12px] w-40 focus:ring-1 focus:ring-[#001f3f]" />
+            className="px-2.5 py-1 border border-slate-200 rounded text-admin-xs w-40 focus:ring-1 focus:ring-blue-500" />
         </div>
       </div>
 
       {/* ── 정책 목록 ─────────────────────────────────── */}
       <div className="space-y-2">
         {loading ? (
-          <div className="text-center py-12 text-slate-400 text-[13px]">로딩 중...</div>
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white border border-slate-100 rounded-lg px-4 py-3 flex items-center gap-3">
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-100 animate-pulse shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-slate-100 rounded animate-pulse w-48" />
+                  <div className="h-2.5 bg-slate-100 rounded animate-pulse w-64" />
+                </div>
+                <div className="h-5 bg-slate-100 rounded-full animate-pulse w-16" />
+                <div className="h-5 bg-slate-100 rounded animate-pulse w-8" />
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-[13px]">
-            {policies.length === 0 ? 'Supabase에서 os_policies 테이블 SQL을 실행해주세요.' : '조건에 맞는 정책이 없습니다.'}
+          <div className="flex flex-col items-center gap-3 py-14">
+            <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <p className="text-admin-sm font-medium text-slate-500">
+              {policies.length === 0 ? 'os_policies 테이블이 없습니다. Supabase SQL을 먼저 실행해주세요.' : '조건에 맞는 정책이 없습니다.'}
+            </p>
           </div>
         ) : (
           filtered.map(policy => {
             const catInfo = getCategoryInfo(policy.category);
             return (
-              <div key={policy.id} className={`bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center gap-3 group hover:border-slate-300 transition ${!policy.is_active ? 'opacity-60' : ''}`}>
+              <div key={policy.id} className={`bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 flex items-center gap-3 group hover:border-slate-300 transition ${!policy.is_active ? 'opacity-60' : ''}`}>
                 {/* 상태 점 */}
                 <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getStatusDot(policy)}`} />
 
                 {/* 정보 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[13px] font-semibold text-slate-800 truncate">{policy.name}</span>
+                    <span className="text-admin-sm font-semibold text-slate-800 truncate">{policy.name}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${catInfo.color}`}>{catInfo.label}</span>
                     <span className="px-1.5 py-0.5 rounded text-[9px] bg-slate-50 text-slate-500">{ACTION_LABELS[policy.action_type] || policy.action_type}</span>
                   </div>
@@ -352,7 +367,7 @@ export default function ControlTowerPage() {
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
           <div className="relative w-full max-w-lg bg-white shadow-xl border-l border-slate-200 h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-[16px] font-semibold text-slate-800">{editTarget.id ? '정책 편집' : '새 정책'}</h2>
+              <h2 className="text-admin-lg font-semibold text-slate-800">{editTarget.id ? '정책 편집' : '새 정책'}</h2>
               <button onClick={() => setEditOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
@@ -364,28 +379,28 @@ export default function ControlTowerPage() {
                 <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-1">정책 이름 *</label>
                 <input type="text" value={editTarget.name || ''} onChange={e => updateField('name', e.target.value)}
                   placeholder="예: 다낭 전 상품 3만원 할인"
-                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#001f3f]" />
+                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-blue-500" />
               </div>
 
               <div>
                 <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-1">설명</label>
                 <input type="text" value={editTarget.description || ''} onChange={e => updateField('description', e.target.value)}
                   placeholder="정책 상세 설명"
-                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-1">카테고리 *</label>
                   <select value={editTarget.category || 'pricing'} onChange={e => updateField('category', e.target.value)}
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]">
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm">
                     {CATEGORIES.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-1">우선순위</label>
                   <input type="number" value={editTarget.priority ?? 100} onChange={e => updateField('priority', parseInt(e.target.value) || 100)}
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                 </div>
               </div>
 
@@ -393,7 +408,7 @@ export default function ControlTowerPage() {
               <div className="border-t border-slate-100 pt-4">
                 <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-2">조건 (Trigger)</label>
                 <select value={editTarget.trigger_type || 'condition'} onChange={e => updateField('trigger_type', e.target.value)}
-                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] mb-2">
+                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm mb-2">
                   {Object.entries(TRIGGER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
 
@@ -402,10 +417,10 @@ export default function ControlTowerPage() {
                     <input type="text" placeholder="필드 (예: destination)"
                       value={(editTarget.trigger_config as Record<string, string>)?.field || ''}
                       onChange={e => updateJsonField('trigger_config', 'field', e.target.value)}
-                      className="border border-slate-200 rounded px-2 py-1.5 text-[12px]" />
+                      className="border border-slate-200 rounded px-2 py-1.5 text-admin-xs" />
                     <select value={(editTarget.trigger_config as Record<string, string>)?.operator || '='}
                       onChange={e => updateJsonField('trigger_config', 'operator', e.target.value)}
-                      className="border border-slate-200 rounded px-2 py-1.5 text-[12px]">
+                      className="border border-slate-200 rounded px-2 py-1.5 text-admin-xs">
                       <option value="=">=</option>
                       <option value="!=">!=</option>
                       <option value=">">{'>'}</option>
@@ -422,7 +437,7 @@ export default function ControlTowerPage() {
                         const num = Number(v);
                         updateJsonField('trigger_config', 'value', isNaN(num) ? v : num);
                       }}
-                      className="border border-slate-200 rounded px-2 py-1.5 text-[12px]" />
+                      className="border border-slate-200 rounded px-2 py-1.5 text-admin-xs" />
                   </div>
                 )}
               </div>
@@ -431,7 +446,7 @@ export default function ControlTowerPage() {
               <div className="border-t border-slate-100 pt-4">
                 <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-2">액션 (Action)</label>
                 <select value={editTarget.action_type || ''} onChange={e => updateField('action_type', e.target.value)}
-                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] mb-2">
+                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm mb-2">
                   {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
 
@@ -441,7 +456,7 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">할인 금액 (원)</label>
                     <input type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
                       onChange={e => updateJsonField('action_config', 'amount', parseInt(e.target.value) || 0)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {(editTarget.action_type?.includes('_pct') || editTarget.action_type === 'mileage_fixed') && (
@@ -449,7 +464,7 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">비율 (소수점, 예: 0.05 = 5%)</label>
                     <input type="number" step="0.01" value={(editTarget.action_config as Record<string, number>)?.rate || 0}
                       onChange={e => updateJsonField('action_config', 'rate', parseFloat(e.target.value) || 0)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_multiply' && (
@@ -457,7 +472,7 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">배수 (예: 2 = 2배)</label>
                     <input type="number" value={(editTarget.action_config as Record<string, number>)?.multiplier || 1}
                       onChange={e => updateJsonField('action_config', 'multiplier', parseInt(e.target.value) || 1)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_grant' && (
@@ -465,7 +480,7 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">지급 포인트</label>
                     <input type="number" value={(editTarget.action_config as Record<string, number>)?.points || 0}
                       onChange={e => updateJsonField('action_config', 'points', parseInt(e.target.value) || 0)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'show_badge' && (
@@ -474,13 +489,13 @@ export default function ControlTowerPage() {
                       <label className="text-[10px] text-slate-400">뱃지 텍스트</label>
                       <input type="text" value={(editTarget.action_config as Record<string, string>)?.text || ''}
                         onChange={e => updateJsonField('action_config', 'text', e.target.value)}
-                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                     </div>
                     <div>
                       <label className="text-[10px] text-slate-400">색상</label>
                       <select value={(editTarget.action_config as Record<string, string>)?.color || 'red'}
                         onChange={e => updateJsonField('action_config', 'color', e.target.value)}
-                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]">
+                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm">
                         <option value="red">빨강</option><option value="blue">파랑</option>
                         <option value="amber">노랑</option><option value="emerald">초록</option>
                         <option value="purple">보라</option>
@@ -493,7 +508,7 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">배너 텍스트</label>
                     <input type="text" value={(editTarget.action_config as Record<string, string>)?.banner_text || ''}
                       onChange={e => updateJsonField('action_config', 'banner_text', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type?.includes('send_') && (
@@ -502,7 +517,7 @@ export default function ControlTowerPage() {
                     <input type="text" value={(editTarget.action_config as Record<string, string>)?.template || ''}
                       onChange={e => updateJsonField('action_config', 'template', e.target.value)}
                       placeholder="예: d7_reminder, birthday_coupon"
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'auto_refund' && (
@@ -510,7 +525,7 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">환불 비율 (1.0 = 전액)</label>
                     <input type="number" step="0.1" value={(editTarget.action_config as Record<string, number>)?.refund_rate || 1}
                       onChange={e => updateJsonField('action_config', 'refund_rate', parseFloat(e.target.value) || 1)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'commission_campaign_bonus' && (
@@ -520,9 +535,9 @@ export default function ControlTowerPage() {
                       <input type="number" step="0.001" min="0" max="0.10"
                         value={(editTarget.action_config as Record<string, number>)?.rate ?? 0}
                         onChange={e => updateJsonField('action_config', 'rate', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                        className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                     </div>
-                    <label className="flex items-center gap-2 text-[12px] text-slate-600">
+                    <label className="flex items-center gap-2 text-admin-xs text-slate-600">
                       <input type="checkbox"
                         checked={(editTarget.action_config as Record<string, boolean>)?.exclusive === true}
                         onChange={e => updateJsonField('action_config', 'exclusive', e.target.checked)} />
@@ -537,7 +552,7 @@ export default function ControlTowerPage() {
                     <input type="number" step="0.001" min="0" max="0.30"
                       value={(editTarget.action_config as Record<string, number>)?.max_rate ?? 0.07}
                       onChange={e => updateJsonField('action_config', 'max_rate', parseFloat(e.target.value) || 0.07)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
                     <p className="text-[10px] text-slate-500 mt-1">상품률 + 등급 + 캠페인 합산 후 이 값 이하로 클램핑됩니다.</p>
                   </div>
                 )}
@@ -553,13 +568,13 @@ export default function ControlTowerPage() {
                       if (e.target.value) updateJsonField('target_scope', 'destination', e.target.value);
                       else updateField('target_scope', { all: true });
                     }}
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px]" />
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-xs" />
                   <input type="text" placeholder="고객 등급 (예: VVIP, 비워두면 전체)"
                     value={(editTarget.target_scope as Record<string, string>)?.customer_grade || ''}
                     onChange={e => {
                       if (e.target.value) updateJsonField('target_scope', 'customer_grade', e.target.value);
                     }}
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px]" />
+                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-xs" />
                 </div>
               </div>
 
@@ -571,13 +586,13 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-slate-400">시작일</label>
                     <input type="date" value={(editTarget.starts_at || '').slice(0, 10)}
                       onChange={e => updateField('starts_at', e.target.value)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-xs" />
                   </div>
                   <div>
                     <label className="text-[10px] text-slate-400">종료일 (비워두면 상시)</label>
                     <input type="date" value={(editTarget.ends_at || '').slice(0, 10)}
                       onChange={e => updateField('ends_at', e.target.value || null)}
-                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px]" />
+                      className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-xs" />
                   </div>
                 </div>
               </div>
@@ -588,7 +603,7 @@ export default function ControlTowerPage() {
                 <textarea value={editReason} onChange={e => setEditReason(e.target.value)}
                   rows={2}
                   placeholder="예: 동남아 비수기 부스터 1.5%로 상향"
-                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-[12px] resize-none" />
+                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-xs resize-none" />
                 <p className="text-[10px] text-slate-400 mt-1">os_policy_audit_log에 누가/언제/왜를 남깁니다.</p>
               </div>
             </div>
@@ -596,11 +611,11 @@ export default function ControlTowerPage() {
             {/* 저장 버튼 */}
             <div className="bg-white border-t border-slate-200 px-5 py-3 flex gap-2 flex-shrink-0">
               <button onClick={handleSave} disabled={saving || !editTarget.name}
-                className="flex-1 py-2 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium">
+                className="flex-1 py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 disabled:bg-slate-300 transition font-medium">
                 {saving ? '저장 중...' : editTarget.id ? '수정 저장' : '정책 생성'}
               </button>
               <button onClick={() => setEditOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] rounded hover:bg-slate-50 transition">
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 transition">
                 취소
               </button>
             </div>
@@ -608,10 +623,6 @@ export default function ControlTowerPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-[100] bg-[#001f3f] text-white px-5 py-3 rounded-lg text-[13px] shadow-lg">{toast}</div>
-      )}
     </div>
   );
 }

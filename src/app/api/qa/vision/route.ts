@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { applyMarkup } from '@/lib/price-dates';
+import { getSecret } from '@/lib/secret-registry';
 
 export const maxDuration = 60;
 
 // 경쟁사 견적서 이미지 → Vision AI 분석 → 여소남 패키지 방어 영업
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GEMINI_API_KEY') ?? getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) {
     return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 });
   }

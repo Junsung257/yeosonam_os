@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-export async function GET() {
+async function requireAdminUser(request: NextRequest): Promise<string | null> {
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  return userData?.user?.id ?? null;
+}
+
+export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+
+  const userId = await requireAdminUser(request);
+  if (!userId) return NextResponse.json({ error: '인증 필요' }, { status: 401 });
 
   try {
     const { data, error } = await supabaseAdmin
@@ -23,6 +34,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+
+  const userId = await requireAdminUser(request);
+  if (!userId) return NextResponse.json({ error: '인증 필요' }, { status: 401 });
 
   try {
     const body = await request.json();

@@ -85,7 +85,7 @@ export default function BlogSystemPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">블로그 시스템 · 크론</h1>
-          <p className="text-[12px] text-slate-500 mt-0.5">
+          <p className="text-admin-xs text-slate-500 mt-0.5">
             Vercel 대신 여기서 발행 파이프라인 상태를 봅니다. 스케줄 시각은 배포의{' '}
             <code className="text-[11px] bg-slate-100 px-1 rounded">vercel.json</code> 과 동일합니다.
           </p>
@@ -93,24 +93,24 @@ export default function BlogSystemPage() {
         <div className="flex flex-wrap gap-2">
           <Link
             href="/admin/ops"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50"
           >
             전체 크론
           </Link>
           <Link
             href="/admin/blog/queue"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50"
           >
             자동 발행 큐
           </Link>
-          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
             ← 블로그 목록
           </Link>
           <button
             type="button"
             onClick={() => load()}
             disabled={loading}
-            className="px-3 py-2 bg-slate-800 text-white text-[12px] rounded-lg hover:bg-slate-900 disabled:opacity-50"
+            className="px-3 py-2 bg-slate-800 text-white text-admin-xs rounded-lg hover:bg-slate-900 disabled:opacity-50"
           >
             새로고침
           </button>
@@ -120,7 +120,7 @@ export default function BlogSystemPage() {
       {/* 환경 힌트 */}
       {data && (
         <div
-          className={`rounded-lg border px-3 py-2 text-[12px] ${
+          className={`rounded-lg border px-3 py-2 text-admin-xs ${
             data.hints.cron_secret_configured
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-amber-50 border-amber-200 text-amber-900'
@@ -134,8 +134,8 @@ export default function BlogSystemPage() {
       )}
 
       {/* 수동 실행 */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
-        <h2 className="text-[13px] font-semibold text-slate-800 mb-2">수동 실행 (큐 페이지와 동일 API)</h2>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <h2 className="text-admin-sm font-semibold text-slate-800 mb-2">수동 실행 (큐 페이지와 동일 API)</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {(
             [
@@ -150,7 +150,7 @@ export default function BlogSystemPage() {
               type="button"
               disabled={running !== null}
               onClick={() => trigger(action)}
-              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[12px] hover:bg-slate-100 disabled:opacity-50"
+              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-admin-xs hover:bg-slate-100 disabled:opacity-50"
             >
               {running === action ? '…' : label}
             </button>
@@ -163,32 +163,38 @@ export default function BlogSystemPage() {
         )}
       </div>
 
-      {loading && !data && <p className="text-slate-400 text-[13px]">불러오는 중…</p>}
+      {loading && !data && (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${90 - i * 10}%` }} />
+          ))}
+        </div>
+      )}
 
       {loadError && !loading && (
-        <pre className="text-rose-700 text-[12px] whitespace-pre-wrap bg-rose-50 border border-rose-200 rounded-lg p-3">{loadError}</pre>
+        <pre className="text-rose-700 text-admin-xs whitespace-pre-wrap bg-rose-50 border border-rose-200 rounded-lg p-3">{loadError}</pre>
       )}
 
       {data && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {Object.entries(data.blog_queue_counts).map(([k, v]) => (
-              <div key={k} className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+              <div key={k} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
                 <p className="text-[10px] text-slate-500 uppercase">{k}</p>
                 <p className="text-[20px] font-bold text-slate-800">{v}</p>
               </div>
             ))}
             {Object.keys(data.blog_queue_counts).length === 0 && (
-              <p className="text-[12px] text-slate-400 col-span-full">큐 집계 없음</p>
+              <p className="text-admin-xs text-slate-400 col-span-full">큐 집계 없음</p>
             )}
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-admin-xs font-semibold text-slate-700">
               블로그 관련 크론 요약 (cron_health)
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table className="w-full text-admin-xs">
                 <tbody>
                   {data.blog_cron_health.length === 0 ? (
                     <tr>
@@ -208,12 +214,12 @@ export default function BlogSystemPage() {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-admin-xs font-semibold text-slate-700">
               최근 24시간 블로그 크론 비성공 로그
             </div>
             {data.blog_failures_24h.length === 0 ? (
-              <p className="px-3 py-4 text-[12px] text-slate-400">없음</p>
+              <p className="px-3 py-4 text-admin-xs text-slate-400">없음</p>
             ) : (
               <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
                 {data.blog_failures_24h.map((f, i) => (
@@ -230,8 +236,8 @@ export default function BlogSystemPage() {
             )}
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
-            <h3 className="text-[12px] font-semibold text-slate-700 mb-2">7일 성공률 (블로그 크론만)</h3>
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+            <h3 className="text-admin-xs font-semibold text-slate-700 mb-2">7일 성공률 (블로그 크론만)</h3>
             <div className="flex flex-wrap gap-2">
               {Object.entries(data.blog_success_rate_7d_percent)
                 .sort(([a], [b]) => a.localeCompare(b))
@@ -247,12 +253,12 @@ export default function BlogSystemPage() {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-admin-xs font-semibold text-slate-700">
               최근 색인 알림 (notifyIndexing)
             </div>
             {data.indexing_recent.length === 0 ? (
-              <p className="px-3 py-4 text-[12px] text-slate-400">기록 없음</p>
+              <p className="px-3 py-4 text-admin-xs text-slate-400">기록 없음</p>
             ) : (
               <ul className="divide-y divide-slate-100 text-[11px] max-h-64 overflow-y-auto">
                 {data.indexing_recent.map((r, i) => (

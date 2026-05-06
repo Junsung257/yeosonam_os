@@ -28,16 +28,16 @@ interface FactoryStatus {
 type Tab = 'card_news' | 'instagram' | 'blog' | 'meta_ads';
 
 const STATUS_BADGE: Record<string, string> = {
-  pending:    'bg-gray-100 text-gray-600',
+  pending:    'bg-slate-100 text-slate-600',
   running:    'bg-blue-100 text-blue-700',
   partial:    'bg-yellow-100 text-yellow-700',
   done:       'bg-green-100 text-green-700',
   failed:     'bg-red-100 text-red-700',
   scheduled:  'bg-purple-100 text-purple-700',
   published:  'bg-green-100 text-green-700',
-  DRAFT:      'bg-gray-100 text-gray-500',
+  DRAFT:      'bg-slate-100 text-slate-500',
   PUBLISHED:  'bg-green-100 text-green-700',
-  idle:       'bg-gray-100 text-gray-400',
+  idle:       'bg-slate-100 text-slate-400',
   queued:     'bg-yellow-100 text-yellow-700',
   publishing: 'bg-blue-100 text-blue-700',
 };
@@ -139,7 +139,7 @@ export default function ContentHubPage() {
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
         <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-sm text-gray-500">{isNew ? '콘텐츠 생성 중...' : '로딩 중'}</p>
+        <p className="text-sm text-slate-500">{isNew ? '콘텐츠 생성 중...' : '로딩 중'}</p>
       </div>
     </div>
   );
@@ -159,14 +159,14 @@ export default function ContentHubPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       {/* 헤더 */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600 text-sm">← 뒤로</button>
+          <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600 text-sm">← 뒤로</button>
           <div>
-            <h1 className="font-semibold text-gray-900 truncate max-w-md">{cn.title}</h1>
-            <p className="text-xs text-gray-400 mt-0.5">콘텐츠 허브</p>
+            <h1 className="font-semibold text-slate-900 truncate max-w-md">{cn.title}</h1>
+            <p className="text-xs text-slate-400 mt-0.5">콘텐츠 허브</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -175,7 +175,7 @@ export default function ContentHubPage() {
               {tenant_channels.brand_kit.name}
             </span>
           )}
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[cn.status] ?? 'bg-gray-100 text-gray-500'}`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[cn.status] ?? 'bg-slate-100 text-slate-500'}`}>
             {cn.status}
           </span>
         </div>
@@ -185,17 +185,17 @@ export default function ContentHubPage() {
       {job && (
         <div className="bg-white border-b px-6 py-3">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-gray-500">파이프라인 진행 ({job.completed_steps}/{job.total_steps})</span>
+            <span className="text-xs text-slate-500">파이프라인 진행 ({job.completed_steps}/{job.total_steps})</span>
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[job.status] ?? ''}`}>{job.status}</span>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
+          <div className="w-full bg-slate-100 rounded-full h-1.5">
             <div className="bg-purple-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${jobProgress ?? 0}%` }} />
           </div>
           <div className="flex gap-4 mt-2">
             {Object.entries(job.steps).map(([key, step]) => (
               <div key={key} className="flex items-center gap-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${step.status === 'done' ? 'bg-green-400' : step.status === 'failed' ? 'bg-red-400' : step.status === 'running' ? 'bg-blue-400 animate-pulse' : 'bg-gray-300'}`} />
-                <span className="text-[10px] text-gray-400">{key.replace('_', ' ')}</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${step.status === 'done' ? 'bg-green-400' : step.status === 'failed' ? 'bg-red-400' : step.status === 'running' ? 'bg-blue-400 animate-pulse' : 'bg-slate-300'}`} />
+                <span className="text-[10px] text-slate-400">{key.replace('_', ' ')}</span>
               </div>
             ))}
           </div>
@@ -206,13 +206,13 @@ export default function ContentHubPage() {
       <div className="flex h-[calc(100vh-120px)]">
         {/* 좌측: 슬라이드 그리드 */}
         <div className="w-64 bg-white border-r p-3 overflow-y-auto flex-shrink-0">
-          <p className="text-xs font-medium text-gray-500 mb-2">슬라이드 ({cn.slide_count}장)</p>
+          <p className="text-xs font-medium text-slate-500 mb-2">슬라이드 ({cn.slide_count}장)</p>
           {allRenders1x1.length > 0 ? (
             <div className="grid grid-cols-2 gap-1.5">
               {allRenders1x1.map(r => (
                 <div key={r.slide_index} className="relative group">
                   <img src={r.url} alt={`슬라이드 ${r.slide_index + 1}`}
-                    className="w-full aspect-square object-cover rounded border border-gray-100" />
+                    className="w-full aspect-square object-cover rounded border border-slate-100" />
                   <span className="absolute bottom-0.5 right-0.5 bg-black/50 text-white text-[9px] px-1 rounded">
                     {r.slide_index + 1}
                   </span>
@@ -220,7 +220,7 @@ export default function ContentHubPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-300">
+            <div className="text-center py-8 text-slate-300">
               <p className="text-xs">렌더링 중...</p>
               <div className="w-5 h-5 border-2 border-purple-300 border-t-transparent rounded-full animate-spin mx-auto mt-2" />
             </div>
@@ -231,7 +231,7 @@ export default function ContentHubPage() {
             <button
               onClick={handleStartFactory}
               disabled={startingFactory || job?.status === 'running'}
-              className="w-full mt-4 py-2 px-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-200 text-white text-xs font-medium rounded-lg transition"
+              className="w-full mt-4 py-2 px-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 text-white text-xs font-medium rounded-lg transition"
             >
               {startingFactory || job?.status === 'running' ? '생성 중...' : '⚡ 전 채널 생성'}
             </button>
@@ -246,11 +246,11 @@ export default function ContentHubPage() {
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
-                className={`px-5 py-3 text-sm font-medium border-b-2 transition flex items-center gap-1.5 ${activeTab === t.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition flex items-center gap-1.5 ${activeTab === t.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
               >
                 {t.label}
                 {t.badge && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_BADGE[t.badge] ?? 'bg-gray-100 text-gray-500'}`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_BADGE[t.badge] ?? 'bg-slate-100 text-slate-500'}`}>
                     {t.badge}
                   </span>
                 )}
@@ -265,17 +265,17 @@ export default function ContentHubPage() {
             {activeTab === 'card_news' && (
               <div className="space-y-5">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-medium text-gray-900">카드뉴스</h2>
+                  <h2 className="font-medium text-slate-900">카드뉴스</h2>
                   <div className="flex gap-2">
                     <a
                       href={`/admin/marketing/card-news/${cn.id}/v2`}
-                      className="text-xs px-3 py-1.5 border rounded-lg text-gray-600 hover:bg-gray-50"
+                      className="text-xs px-3 py-1.5 border rounded-lg text-slate-600 hover:bg-slate-50"
                     >
                       V2 Studio →
                     </a>
                     <a
                       href={`/admin/marketing/card-news/${cn.id}`}
-                      className="text-xs px-3 py-1.5 border rounded-lg text-gray-600 hover:bg-gray-50"
+                      className="text-xs px-3 py-1.5 border rounded-lg text-slate-600 hover:bg-slate-50"
                     >
                       편집 →
                     </a>
@@ -286,38 +286,38 @@ export default function ContentHubPage() {
                   <img src={coverRender.url} alt="커버"
                     className="rounded-xl border max-w-xs shadow-sm" />
                 ) : (
-                  <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-sm animate-pulse">
+                  <div className="w-48 h-48 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-sm animate-pulse">
                     렌더링 중
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-3 text-sm text-gray-600">
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-400 mb-1">슬라이드</p>
+                <div className="grid grid-cols-3 gap-3 text-sm text-slate-600">
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-400 mb-1">슬라이드</p>
                     <p className="font-semibold">{cn.slide_count}장</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-400 mb-1">렌더 수</p>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-400 mb-1">렌더 수</p>
                     <p className="font-semibold">{cn.renders.length}개</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-400 mb-1">템플릿</p>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-400 mb-1">템플릿</p>
                     <p className="font-semibold">{cn.template_family ?? '-'}</p>
                   </div>
                 </div>
 
                 {/* 비율별 포맷 다운로드 */}
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">포맷별 렌더</p>
+                  <p className="text-xs font-medium text-slate-500 mb-2">포맷별 렌더</p>
                   {(['1x1', '4x5', '9x16', 'blog'] as const).map(fmt => {
                     const fmtRenders = cn.renders.filter(r => r.format === fmt);
                     return (
                       <div key={fmt} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <span className="text-sm text-gray-700">{fmt}</span>
+                        <span className="text-sm text-slate-700">{fmt}</span>
                         {fmtRenders.length > 0 ? (
                           <span className="text-xs text-green-600 font-medium">{fmtRenders.length}장 완료</span>
                         ) : (
-                          <span className="text-xs text-gray-400">미생성</span>
+                          <span className="text-xs text-slate-400">미생성</span>
                         )}
                       </div>
                     );
@@ -330,8 +330,8 @@ export default function ContentHubPage() {
             {activeTab === 'instagram' && (
               <div className="space-y-5">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-medium text-gray-900">인스타그램</h2>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[ig.status] ?? 'bg-gray-100'}`}>
+                  <h2 className="font-medium text-slate-900">인스타그램</h2>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[ig.status] ?? 'bg-slate-100'}`}>
                     {ig.status}
                   </span>
                 </div>
@@ -347,12 +347,12 @@ export default function ContentHubPage() {
                 )}
 
                 {ig.scheduled_for && (
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-slate-600">
                     예약 발행: <span className="font-medium">{new Date(ig.scheduled_for).toLocaleString('ko-KR')}</span>
                   </div>
                 )}
                 {ig.post_id && (
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-slate-600">
                     게시물 ID: <span className="font-mono text-xs">{ig.post_id}</span>
                   </div>
                 )}
@@ -377,9 +377,9 @@ export default function ContentHubPage() {
             {activeTab === 'blog' && (
               <div className="space-y-5">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-medium text-gray-900">블로그</h2>
+                  <h2 className="font-medium text-slate-900">블로그</h2>
                   {blog && (
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[blog.status ?? ''] ?? 'bg-gray-100'}`}>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[blog.status ?? ''] ?? 'bg-slate-100'}`}>
                       {blog.status}
                     </span>
                   )}
@@ -388,7 +388,7 @@ export default function ContentHubPage() {
                 {blog ? (
                   <div className="space-y-3">
                     <div className="bg-green-50 border border-green-100 rounded-lg p-4">
-                      <p className="font-medium text-gray-900 text-sm">{blog.title}</p>
+                      <p className="font-medium text-slate-900 text-sm">{blog.title}</p>
                       {blog.url && (
                         <a href={blog.url} target="_blank" rel="noopener noreferrer"
                           className="text-xs text-blue-600 hover:underline mt-1 block">{blog.url}</a>
@@ -397,7 +397,7 @@ export default function ContentHubPage() {
                     <div className="flex gap-2">
                       <a
                         href={`/admin/blog/${blog.id}`}
-                        className="text-sm px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-50"
+                        className="text-sm px-4 py-2 border rounded-lg text-slate-700 hover:bg-slate-50"
                       >
                         블로그 편집 →
                       </a>
@@ -405,7 +405,7 @@ export default function ContentHubPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <p className="text-sm text-gray-500">블로그 초안이 없습니다. 카드뉴스 PNG 렌더가 완료되면 블로그를 자동 생성할 수 있습니다.</p>
+                    <p className="text-sm text-slate-500">블로그 초안이 없습니다. 카드뉴스 PNG 렌더가 완료되면 블로그를 자동 생성할 수 있습니다.</p>
                     <button
                       onClick={handleGenerateBlog}
                       disabled={generatingBlog || allRenders1x1.length === 0}
@@ -421,58 +421,58 @@ export default function ContentHubPage() {
             {/* ── 메타광고 탭 ── */}
             {activeTab === 'meta_ads' && (
               <div className="space-y-5">
-                <h2 className="font-medium text-gray-900">메타 광고 직접 발행</h2>
+                <h2 className="font-medium text-slate-900">메타 광고 직접 발행</h2>
 
                 {/* 발행 폼 */}
-                <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 space-y-4">
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">캠페인명 (선택)</label>
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">캠페인명 (선택)</label>
                       <input
                         value={metaForm.campaign_name}
                         onChange={e => setMetaForm(f => ({ ...f, campaign_name: e.target.value }))}
                         placeholder={cn.title ?? '자동 생성'}
-                        className="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-white"
+                        className="w-full border border-slate-200 rounded px-3 py-2 text-sm bg-white"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">일예산 (KRW)</label>
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">일예산 (KRW)</label>
                       <input
                         type="number" min={1000} step={1000}
                         value={metaForm.daily_budget_krw}
                         onChange={e => setMetaForm(f => ({ ...f, daily_budget_krw: parseInt(e.target.value) || 10000 }))}
-                        className="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-white"
+                        className="w-full border border-slate-200 rounded px-3 py-2 text-sm bg-white"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">광고 문구 (Primary Text)</label>
+                    <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">광고 문구 (Primary Text)</label>
                     <textarea
                       value={metaForm.primary_text}
                       onChange={e => setMetaForm(f => ({ ...f, primary_text: e.target.value }))}
                       placeholder={cn.title ?? '광고 본문을 입력하세요...'}
                       rows={3}
-                      className="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-white resize-none"
+                      className="w-full border border-slate-200 rounded px-3 py-2 text-sm bg-white resize-none"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">헤드라인</label>
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">헤드라인</label>
                       <input
                         value={metaForm.headline}
                         onChange={e => setMetaForm(f => ({ ...f, headline: e.target.value }))}
                         placeholder={cn.title ?? '헤드라인'}
-                        className="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-white"
+                        className="w-full border border-slate-200 rounded px-3 py-2 text-sm bg-white"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">CTA 버튼</label>
+                      <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">CTA 버튼</label>
                       <select
                         value={metaForm.cta_button}
                         onChange={e => setMetaForm(f => ({ ...f, cta_button: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-white"
+                        className="w-full border border-slate-200 rounded px-3 py-2 text-sm bg-white"
                       >
                         <option value="LEARN_MORE">자세히 알아보기</option>
                         <option value="BOOK_TRAVEL">여행 예약하기</option>
@@ -500,19 +500,19 @@ export default function ContentHubPage() {
                 {/* 기존 발행 내역 */}
                 {meta_ads.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">발행 내역</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase mb-2">발행 내역</p>
                     <div className="space-y-2">
                       {meta_ads.map(d => (
                         <div key={d.id} className="bg-white border rounded-lg p-4 flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-medium text-gray-800">{d.platform}</p>
+                            <p className="text-sm font-medium text-slate-800">{d.platform}</p>
                             {d.scheduled_for && (
-                              <p className="text-xs text-gray-400 mt-0.5">
+                              <p className="text-xs text-slate-400 mt-0.5">
                                 예약: {new Date(d.scheduled_for).toLocaleString('ko-KR')}
                               </p>
                             )}
                           </div>
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[d.status] ?? 'bg-gray-100'}`}>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[d.status] ?? 'bg-slate-100'}`}>
                             {d.status}
                           </span>
                         </div>
@@ -524,12 +524,12 @@ export default function ContentHubPage() {
                 {/* 전체 채널 발행 현황 */}
                 {distributions.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">전체 채널 현황</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase mb-2">전체 채널 현황</p>
                     <div className="space-y-1">
                       {distributions.map(d => (
                         <div key={d.id} className="flex items-center justify-between text-xs py-1.5 border-b last:border-0">
-                          <span className="text-gray-600">{d.platform}</span>
-                          <span className={`px-1.5 py-0.5 rounded font-medium ${STATUS_BADGE[d.status] ?? 'bg-gray-100'}`}>
+                          <span className="text-slate-600">{d.platform}</span>
+                          <span className={`px-1.5 py-0.5 rounded font-medium ${STATUS_BADGE[d.status] ?? 'bg-slate-100'}`}>
                             {d.status}
                           </span>
                         </div>

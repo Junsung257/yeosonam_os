@@ -118,7 +118,7 @@ export default function ContentAnalyticsPage() {
     <div className="space-y-4">
       {/* 헤더 */}
       <div>
-        <h1 className="text-[16px] font-semibold text-slate-800">콘텐츠 성과</h1>
+        <h1 className="text-admin-lg font-semibold text-slate-800">콘텐츠 성과</h1>
         <p className="text-[11px] text-slate-500 mt-0.5">블로그 글별 유입 → 전환 → 매출 어트리뷰션 (First-touch + Last-touch)</p>
       </div>
 
@@ -127,7 +127,7 @@ export default function ContentAnalyticsPage() {
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h2 className="text-[13px] font-semibold text-indigo-900 flex items-center gap-1.5">
+              <h2 className="text-admin-sm font-semibold text-indigo-900 flex items-center gap-1.5">
                 🧠 자비스 블로그 학습 엔진
                 {learningStatus.ready ? (
                   <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">학습 가능</span>
@@ -142,7 +142,7 @@ export default function ContentAnalyticsPage() {
             <button
               onClick={runOptimizer}
               disabled={!learningStatus.ready || optimizing}
-              className="px-3 py-1.5 bg-indigo-600 text-white text-[12px] font-medium rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs font-medium rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
               title={learningStatus.ready ? '학습 실행' : '데이터가 더 필요합니다'}
             >
               {optimizing ? '분석 중...' : '학습 실행'}
@@ -189,7 +189,7 @@ export default function ContentAnalyticsPage() {
             { label: '매출', value: fmtKRW(kpi.total_revenue), color: 'text-indigo-600' },
             { label: '순이익', value: fmtKRW(kpi.total_profit), color: kpi.total_profit > 0 ? 'text-green-600' : 'text-red-500' },
           ].map((card, i) => (
-            <div key={i} className="bg-white border border-slate-200 rounded-lg p-3">
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
               <p className="text-[10px] text-slate-400 uppercase">{card.label}</p>
               <p className={`text-[18px] font-bold ${card.color} mt-0.5`}>{card.value}</p>
             </div>
@@ -199,8 +199,8 @@ export default function ContentAnalyticsPage() {
 
       {/* 앵글×목적지 매트릭스 */}
       {matrixDests.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h2 className="text-[13px] font-semibold text-slate-700 mb-3">앵글 × 목적지 전환 매트릭스</h2>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+          <h2 className="text-admin-sm font-semibold text-slate-700 mb-3">앵글 × 목적지 전환 매트릭스</h2>
           <div className="overflow-x-auto">
             <table className="text-[11px] w-full">
               <thead>
@@ -246,8 +246,8 @@ export default function ContentAnalyticsPage() {
           { key: 'profit' as const, label: '순이익순' },
         ]).map(t => (
           <button key={t.key} onClick={() => setSortBy(t.key)}
-            className={`px-3 py-1.5 rounded text-[12px] font-medium transition ${
-              sortBy === t.key ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
+              sortBy === t.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
             }`}>
             {t.label}
           </button>
@@ -256,12 +256,24 @@ export default function ContentAnalyticsPage() {
 
       {/* 테이블 */}
       {loading ? (
-        <p className="py-10 text-center text-[13px] text-slate-400">로딩 중...</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-3">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-16" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-16" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
+            </div>
+          ))}
+        </div>
       ) : sorted.length === 0 ? (
-        <p className="py-10 text-center text-[13px] text-slate-400">발행된 블로그 글이 없습니다</p>
+        <div className="flex flex-col items-center gap-3 py-14">
+          <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+          <p className="text-admin-sm font-medium text-slate-500">발행된 블로그 글이 없습니다</p>
+        </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <table className="w-full text-[12px]">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <table className="w-full text-admin-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-left">
                 <th className="px-3 py-2.5 font-medium">글</th>
@@ -290,10 +302,10 @@ export default function ContentAnalyticsPage() {
                     <td className="px-3 py-2.5">
                       <div className="max-w-xs">
                         <Link href={`/blog/${row.slug}`} target="_blank"
-                          className="text-[12px] font-medium text-slate-800 hover:text-indigo-600 line-clamp-1">
+                          className="text-admin-xs font-medium text-slate-800 hover:text-indigo-600 line-clamp-1">
                           {row.seo_title || '제목 없음'}
                         </Link>
-                        <span className="ml-1.5 rounded bg-gray-50 px-1 py-0.5 text-[9px] text-gray-400">
+                        <span className="ml-1.5 rounded bg-slate-50 px-1 py-0.5 text-[9px] text-slate-400">
                           {ANGLE_LABELS[row.angle_type] || row.angle_type}
                         </span>
                       </div>

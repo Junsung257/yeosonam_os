@@ -175,7 +175,16 @@ export default function DistributePage() {
     showToast(`${label} 클립보드 복사`);
   }, [showToast]);
 
-  if (loading) return <div className="p-10 text-slate-500">로딩 중…</div>;
+  if (loading) return (
+    <div className="p-6 space-y-4 max-w-3xl">
+      <div className="h-6 bg-slate-100 rounded animate-pulse w-48" />
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-10 bg-slate-50 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
 
   // 상품도 카드뉴스도 없으면 완전 404
   if (!product && !linkedCardNews) {
@@ -260,7 +269,7 @@ export default function DistributePage() {
       )}
 
       {/* 전체 생성 */}
-      <div className="bg-white rounded-lg border border-slate-200 p-5 mb-6">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 mb-6">
         <div className="flex items-center justify-between">
           <div>
             <div className="font-bold text-slate-900">🚀 전체 생성 (IG 캡션 + Threads 포스트)</div>
@@ -294,7 +303,7 @@ export default function DistributePage() {
         ))}
 
         {/* 카드뉴스 스튜디오 링크 */}
-        <div className="bg-white rounded-lg border border-slate-200 p-5 flex items-center justify-between col-span-full">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex items-center justify-between col-span-full">
           <div>
             <div className="font-bold text-slate-900">카드뉴스 (별도 스튜디오)</div>
             <div className="text-sm text-slate-500 mt-1">Satori Atom 기반 family 4종 × 포맷 4종 렌더</div>
@@ -491,7 +500,7 @@ function PlatformCard({
   const renderFn = renderers[platform] ?? (() => <div className="text-sm text-slate-400">지원 예정</div>);
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-5">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className={`w-8 h-8 rounded bg-gradient-to-br ${meta.color} text-white flex items-center justify-center text-xs font-bold`}>

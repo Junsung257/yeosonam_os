@@ -109,7 +109,17 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
   }
 
   if (loading) {
-    return <div className="p-6 text-slate-400 text-sm">불러오는 중...</div>;
+    return (
+      <div className="p-6 space-y-4 max-w-3xl">
+        <div className="h-6 bg-slate-100 rounded animate-pulse w-56" />
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${80 - i * 10}%` }} />
+          ))}
+        </div>
+        <div className="h-40 bg-slate-50 rounded-xl animate-pulse" />
+      </div>
+    );
   }
 
   return (

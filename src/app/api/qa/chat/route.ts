@@ -20,6 +20,7 @@ import { detectPromptInjection } from '@/lib/guardrails/prompt-injection';
 import { requiresApproval } from '@/lib/jarvis/risk-scorer';
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing';
 import { allowRateLimit, getClientIpFromRequest } from '@/lib/simple-rate-limit';
+import { getSecret } from '@/lib/secret-registry';
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9);
 
@@ -110,9 +111,9 @@ freeTravel.theme은 "family" | "parents" | "couple" 중 하나 또는 null. dest
 
 function hasAnyLlmKey() {
   return Boolean(
-    process.env.DEEPSEEK_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_AI_API_KEY,
+    getSecret('DEEPSEEK_API_KEY') ||
+      getSecret('GEMINI_API_KEY') ||
+      getSecret('GOOGLE_AI_API_KEY'),
   );
 }
 

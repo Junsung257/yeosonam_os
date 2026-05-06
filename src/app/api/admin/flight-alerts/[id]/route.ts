@@ -17,6 +17,14 @@ export async function PATCH(
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
 
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  if (!userData?.user?.id) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  }
+
   const { id } = params;
   if (!id) {
     return NextResponse.json({ error: 'id 필수' }, { status: 400 });

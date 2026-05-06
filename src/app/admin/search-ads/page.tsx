@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { useToast } from '@/components/ui/Toast';
 
 const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
 const Bar = dynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
@@ -40,9 +41,8 @@ export default function SearchAdsPage() {
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
   const [extractedPreview, setExtractedPreview] = useState<ReturnType<typeof extractKeywords>>([]);
   const [recommendations, setRecommendations] = useState<BidRecommendation[]>([]);
-  const [toast, setToast] = useState('');
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+  const { toast: _t } = useToast();
+  const showToast = (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info');
 
   // 로드
   useEffect(() => {
@@ -176,17 +176,17 @@ export default function SearchAdsPage() {
       {/* ── 헤더 ──────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-semibold text-slate-800">검색광고 최적화</h1>
+          <h1 className="text-admin-lg font-semibold text-slate-800">검색광고 최적화</h1>
           <p className="text-[11px] text-slate-500 mt-0.5">키워드 자동 추출 · 입찰가 최적화 · 여행 빅데이터 학습</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setExtractorOpen(true)} className="px-3 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 transition font-medium">
+          <button onClick={() => setExtractorOpen(true)} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
             키워드 추출
           </button>
-          <button onClick={handleOptimize} disabled={filtered.length === 0} className="px-3 py-1.5 bg-emerald-600 text-white text-[13px] rounded hover:bg-emerald-700 disabled:bg-slate-300 transition font-medium">
+          <button onClick={handleOptimize} disabled={filtered.length === 0} className="px-3 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition font-medium">
             AI 최적화
           </button>
-          <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[13px] rounded hover:bg-slate-50 disabled:opacity-50 transition">
+          <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 disabled:opacity-50 transition">
             {syncing ? '동기화 중...' : '성과 동기화'}
           </button>
         </div>
@@ -197,7 +197,7 @@ export default function SearchAdsPage() {
         <div className="flex border border-slate-200 rounded overflow-hidden">
           {(['naver', 'google'] as Platform[]).map(p => (
             <button key={p} onClick={() => setPlatform(p)}
-              className={`px-4 py-1.5 text-[13px] font-medium transition ${platform === p ? 'bg-[#001f3f] text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+              className={`px-4 py-1.5 text-admin-sm font-medium transition ${platform === p ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
               {p === 'naver' ? '네이버' : '구글'}
             </button>
           ))}
@@ -209,9 +209,9 @@ export default function SearchAdsPage() {
             { label: '총 지출', value: `₩${(totalSpend / 10000).toFixed(0)}만`, sub: '' },
             { label: '동기화', value: lastSync || '-', sub: '' },
           ].map((kpi, i) => (
-            <div key={i} className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
               <p className="text-[10px] text-slate-400">{kpi.label}</p>
-              <p className="text-[16px] font-bold text-slate-800">{kpi.value}</p>
+              <p className="text-admin-lg font-bold text-slate-800">{kpi.value}</p>
               {kpi.sub && <p className="text-[10px] text-slate-400">{kpi.sub}</p>}
             </div>
           ))}
@@ -221,9 +221,9 @@ export default function SearchAdsPage() {
       {/* ── Tier 필터 + 일괄 조작 ─────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
-          <button onClick={() => setTierFilter('all')} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === 'all' ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>전체</button>
+          <button onClick={() => setTierFilter('all')} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>전체</button>
           {(Object.keys(TIER_LABELS) as KeywordTier[]).map(t => (
-            <button key={t} onClick={() => setTierFilter(t)} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === t ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+            <button key={t} onClick={() => setTierFilter(t)} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === t ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
               {TIER_LABELS[t]}
             </button>
           ))}
@@ -241,8 +241,8 @@ export default function SearchAdsPage() {
 
       {/* ── 차트 ──────────────────────────────────────── */}
       {chartData.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-3">
-          <p className="text-[12px] font-semibold text-slate-700 mb-2">CTR 상위 키워드</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+          <p className="text-admin-xs font-semibold text-slate-700 mb-2">CTR 상위 키워드</p>
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <XAxis dataKey="name" tick={{ fontSize: 9 }} />
@@ -257,7 +257,7 @@ export default function SearchAdsPage() {
       )}
 
       {/* ── 키워드 테이블 ─────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
@@ -279,7 +279,7 @@ export default function SearchAdsPage() {
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={11} className="py-12 text-center text-slate-400 text-[13px]">키워드가 없습니다. 상품에서 키워드를 추출하세요.</td></tr>
+              <tr><td colSpan={11} className="py-12 text-center text-slate-400 text-admin-sm">키워드가 없습니다. 상품에서 키워드를 추출하세요.</td></tr>
             ) : (
               filtered.map(k => (
                 <tr key={k.id} className="border-b border-slate-100 hover:bg-slate-50 group">
@@ -288,24 +288,24 @@ export default function SearchAdsPage() {
                     e.target.checked ? next.add(k.id) : next.delete(k.id);
                     setSelectedIds(next);
                   }} className="rounded border-slate-300" /></td>
-                  <td className="text-[12px] text-slate-800 py-1.5 px-2 font-medium">{k.keyword}</td>
+                  <td className="text-admin-xs text-slate-800 py-1.5 px-2 font-medium">{k.keyword}</td>
                   <td className="text-[10px] text-slate-500 py-1.5 px-2 text-center">{k.matchType === 'broad' ? '확장' : k.matchType === 'phrase' ? '구문' : '정확'}</td>
                   <td className="py-1.5 px-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${TIER_COLORS[k.tier]}`}>{TIER_LABELS[k.tier]}</span></td>
-                  <td className="text-[12px] text-slate-700 py-1.5 px-2 text-right">
+                  <td className="text-admin-xs text-slate-700 py-1.5 px-2 text-right">
                     {editingBid === k.id ? (
                       <input type="number" value={editBidValue} onChange={e => setEditBidValue(e.target.value)}
                         onBlur={() => handleBidSave(k.id)} onKeyDown={e => e.key === 'Enter' && handleBidSave(k.id)}
-                        autoFocus className="w-16 px-1 py-0.5 border border-[#005d90] rounded text-[12px] text-right" />
+                        autoFocus className="w-16 px-1 py-0.5 border border-[#005d90] rounded text-admin-xs text-right" />
                     ) : (
                       <button onClick={() => { setEditingBid(k.id); setEditBidValue(String(k.bid)); }}
                         className="hover:bg-blue-50 px-1 rounded transition">₩{k.bid.toLocaleString()}</button>
                     )}
                   </td>
-                  <td className="text-[12px] text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.impressions.toLocaleString()}</td>
-                  <td className="text-[12px] text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.clicks.toLocaleString()}</td>
-                  <td className={`text-[12px] py-1.5 px-2 text-center font-medium ${k.ctr >= 5 ? 'text-emerald-600' : k.ctr >= 3 ? 'text-blue-600' : k.ctr > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{k.ctr > 0 ? `${k.ctr}%` : '-'}</td>
-                  <td className="text-[12px] text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.cpc > 0 ? `₩${k.cpc.toLocaleString()}` : '-'}</td>
-                  <td className="text-[12px] text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.spend > 0 ? `₩${k.spend.toLocaleString()}` : '-'}</td>
+                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.impressions.toLocaleString()}</td>
+                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.clicks.toLocaleString()}</td>
+                  <td className={`text-admin-xs py-1.5 px-2 text-center font-medium ${k.ctr >= 5 ? 'text-emerald-600' : k.ctr >= 3 ? 'text-blue-600' : k.ctr > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{k.ctr > 0 ? `${k.ctr}%` : '-'}</td>
+                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.cpc > 0 ? `₩${k.cpc.toLocaleString()}` : '-'}</td>
+                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.spend > 0 ? `₩${k.spend.toLocaleString()}` : '-'}</td>
                   <td className="py-1.5 px-2 text-center">
                     <button onClick={() => toggleStatus(k.id)}
                       className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition ${k.status === 'active' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
@@ -325,7 +325,7 @@ export default function SearchAdsPage() {
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
           <div className="relative w-full max-w-lg bg-white shadow-xl border-l border-slate-200 h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-[16px] font-semibold text-slate-800">키워드 추출기</h2>
+              <h2 className="text-admin-lg font-semibold text-slate-800">키워드 추출기</h2>
               <button onClick={() => setExtractorOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -335,7 +335,7 @@ export default function SearchAdsPage() {
                 <select value={selectedPkg?.id || ''} onChange={e => {
                   const pkg = packages.find(p => p.id === e.target.value);
                   if (pkg) handleExtract(pkg);
-                }} className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px] focus:ring-1 focus:ring-[#005d90]">
+                }} className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
                   <option value="">상품 선택...</option>
                   {packages.map(p => <option key={p.id} value={p.id}>{p.title || p.display_name} ({p.destination})</option>)}
                 </select>
@@ -344,7 +344,7 @@ export default function SearchAdsPage() {
               {/* 추출 결과 */}
               {extractedPreview.length > 0 && (
                 <>
-                  <p className="text-[12px] text-slate-600">{extractedPreview.length}개 키워드 추출됨</p>
+                  <p className="text-admin-xs text-slate-600">{extractedPreview.length}개 키워드 추출됨</p>
                   {(Object.keys(TIER_LABELS) as KeywordTier[]).map(tier => {
                     const tierKws = extractedPreview.filter(k => k.tier === tier);
                     if (tierKws.length === 0) return null;
@@ -354,7 +354,7 @@ export default function SearchAdsPage() {
                         <div className="space-y-1">
                           {tierKws.map((k, i) => (
                             <div key={i} className="flex items-center gap-2 bg-slate-50 rounded px-2 py-1.5">
-                              <span className="flex-1 text-[12px] text-slate-800">{k.keyword}</span>
+                              <span className="flex-1 text-admin-xs text-slate-800">{k.keyword}</span>
                               <span className="text-[10px] text-slate-400">{k.matchType === 'broad' ? '확장' : k.matchType === 'phrase' ? '구문' : '정확'}</span>
                               {k.suggestedBid > 0 && <span className="text-[10px] text-blue-600">₩{k.suggestedBid}</span>}
                             </div>
@@ -380,11 +380,11 @@ export default function SearchAdsPage() {
 
                   <div className="flex gap-2">
                     <button onClick={() => handleAddExtracted(extractedPreview.filter(k => k.tier !== 'negative'))}
-                      className="flex-1 py-2 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 transition font-medium">
+                      className="flex-1 py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                       키워드 등록 ({extractedPreview.filter(k => k.tier !== 'negative').length}개)
                     </button>
                     <button onClick={() => handleAddExtracted(extractedPreview)}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] rounded hover:bg-slate-50 transition">
+                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 transition">
                       제외 키워드 포함
                     </button>
                   </div>
@@ -401,12 +401,15 @@ export default function SearchAdsPage() {
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
           <div className="relative w-full max-w-lg bg-white shadow-xl border-l border-slate-200 h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-[16px] font-semibold text-slate-800">AI 입찰 최적화</h2>
+              <h2 className="text-admin-lg font-semibold text-slate-800">AI 입찰 최적화</h2>
               <button onClick={() => setOptimizerOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {recommendations.length === 0 ? (
-                <p className="text-center text-slate-400 text-[13px] py-8">최적화할 키워드가 없습니다</p>
+                <div className="flex flex-col items-center gap-2 py-10">
+                  <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+                  <p className="text-admin-sm font-medium text-slate-500">최적화할 키워드가 없습니다</p>
+                </div>
               ) : (
                 recommendations.map(rec => (
                   <div key={rec.keywordId} className={`border rounded-lg p-3 ${
@@ -416,7 +419,7 @@ export default function SearchAdsPage() {
                     'border-slate-200 bg-slate-50'
                   }`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-medium text-slate-800">{rec.keyword}</span>
+                      <span className="text-admin-sm font-medium text-slate-800">{rec.keyword}</span>
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                         rec.action === 'increase' ? 'bg-emerald-100 text-emerald-700' :
                         rec.action === 'decrease' ? 'bg-red-100 text-red-600' :
@@ -436,7 +439,7 @@ export default function SearchAdsPage() {
             </div>
             {recommendations.length > 0 && (
               <div className="bg-white border-t border-slate-200 px-5 py-3 flex-shrink-0">
-                <button onClick={applyRecommendations} className="w-full py-2 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 transition font-medium">
+                <button onClick={applyRecommendations} className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                   {recommendations.filter(r => r.action !== 'maintain').length}개 추천 일괄 적용
                 </button>
               </div>
@@ -445,10 +448,6 @@ export default function SearchAdsPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-[100] bg-[#001f3f] text-white px-5 py-3 rounded-lg text-[13px] shadow-lg">{toast}</div>
-      )}
     </div>
   );
 }

@@ -193,7 +193,7 @@ export default function AgentMasPage() {
             <span className="text-sm text-slate-500">총 {approvalsTotal}건</span>
           </div>
           {loading ? (
-            <p className="text-slate-500 text-sm">불러오는 중…</p>
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/2" /><div className="h-3 bg-slate-100 rounded animate-pulse w-full" /></div>))}</div>
           ) : approvals.length === 0 ? (
             <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
           ) : (
@@ -252,7 +252,7 @@ export default function AgentMasPage() {
             <span className="text-sm text-slate-500">총 {tasksTotal}건</span>
           </div>
           {loading ? (
-            <p className="text-slate-500 text-sm">불러오는 중…</p>
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/2" /><div className="h-3 bg-slate-100 rounded animate-pulse w-full" /></div>))}</div>
           ) : tasks.length === 0 ? (
             <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
           ) : (
@@ -296,7 +296,7 @@ export default function AgentMasPage() {
             <span className="text-sm text-slate-500">총 {incidentsTotal}건</span>
           </div>
           {loading ? (
-            <p className="text-slate-500 text-sm">불러오는 중…</p>
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/2" /><div className="h-3 bg-slate-100 rounded animate-pulse w-full" /></div>))}</div>
           ) : incidents.length === 0 ? (
             <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
           ) : (

@@ -246,7 +246,7 @@ export default function AttractionsPage() {
 
   const countries = [...new Set(attractions.map(a => a.country).filter(Boolean))] as string[];
   const regions = [...new Set(attractions.map(a => a.region).filter(Boolean))] as string[];
-  const badgeStyle = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.color || 'bg-gray-100 text-gray-800';
+  const badgeStyle = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.color || 'bg-slate-100 text-slate-800';
   const badgeLabel = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.label || bt;
   const photoCount = attractions.filter(a => a.photos?.length > 0).length;
   const noPhotoCount = attractions.filter(a => !a.photos || a.photos.length === 0).length;
@@ -335,13 +335,27 @@ export default function AttractionsPage() {
       )}
 
       {/* 카드 리스트 */}
-      {loading ? <p className="text-slate-400 py-16 text-center">로딩 중...</p> : (
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="bg-white border border-slate-100 rounded-xl p-4 flex items-center gap-4">
+              <div className="w-10 h-10 bg-slate-100 rounded-xl animate-pulse shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-40" />
+                <div className="h-2.5 bg-slate-100 rounded animate-pulse w-24" />
+              </div>
+              <div className="h-5 bg-slate-100 rounded-full animate-pulse w-14" />
+              <div className="h-5 bg-slate-100 rounded-full animate-pulse w-10" />
+            </div>
+          ))}
+        </div>
+      ) : (
         <div className="space-y-3">
           {filtered.slice(0, displayCount).map(a => {
             const isExpanded = expandedId === a.id;
             const isPhotoOpen = photoPanel?.id === a.id;
             return (
-              <div key={a.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-sm transition">
+              <div key={a.id} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-sm transition">
                 {/* 메인 행 */}
                 <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : a.id)}>
                   {/* 사진 썸네일 */}

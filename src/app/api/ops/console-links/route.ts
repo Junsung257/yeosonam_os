@@ -8,11 +8,12 @@
  */
 import { NextResponse } from 'next/server';
 import { getVercelOpsProjectBaseUrl } from '@/lib/vercel-ops-defaults';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 
 function supabaseDashboardUrl(): string | null {
-  const raw = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const raw = getSecret('SUPABASE_URL') || getSecret('NEXT_PUBLIC_SUPABASE_URL');
   if (!raw || raw.includes('your_supabase')) return null;
   try {
     const host = new URL(raw).hostname;
@@ -27,7 +28,7 @@ function supabaseDashboardUrl(): string | null {
 export async function GET() {
   const supabase = supabaseDashboardUrl();
   const base = getVercelOpsProjectBaseUrl();
-  const vercelCustom = process.env.OPS_VERCEL_DASHBOARD_URL?.trim();
+  const vercelCustom = getSecret('OPS_VERCEL_DASHBOARD_URL')?.trim();
 
   const vercel_cron =
     vercelCustom && /^https?:\/\//i.test(vercelCustom) ? vercelCustom : `${base}/settings/cron-jobs`;

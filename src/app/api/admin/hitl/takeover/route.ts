@@ -5,6 +5,14 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: false });
 
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  if (!userData?.user?.id) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  }
+
   try {
     const { taskId, adminId, note } = await request.json() as {
       taskId: string;

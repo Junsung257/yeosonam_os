@@ -169,7 +169,16 @@ export default function PackageReviewPage() {
     }
   };
 
-  if (loading) return <div className="p-6 text-slate-400">로딩 중…</div>;
+  if (loading) return (
+    <div className="p-6 space-y-4 max-w-3xl">
+      <div className="h-6 bg-slate-100 rounded animate-pulse w-48" />
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${90 - i * 5}%` }} />
+        ))}
+      </div>
+    </div>
+  );
   if (!pkg) return <div className="p-6 text-slate-400">패키지를 찾을 수 없습니다.</div>;
 
   const fc = pkg.field_confidences;

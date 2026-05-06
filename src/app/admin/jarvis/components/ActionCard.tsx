@@ -39,16 +39,16 @@ export function ActionCard({ action, onApprove, onReject }: ActionCardProps) {
   return (
     <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-4 my-3 max-w-md`}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-gray-700">자비스 실행 요청</span>
+        <span className="text-sm font-semibold text-slate-700">자비스 실행 요청</span>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${style.badge}`}>
           위험도 {style.label}
         </span>
       </div>
 
-      <p className="text-sm font-medium text-gray-900 mb-2">{action.description}</p>
+      <p className="text-sm font-medium text-slate-900 mb-2">{action.description}</p>
 
       {/* 실행 파라미터 요약 */}
-      <div className="bg-white/70 rounded-lg p-2.5 mb-3 text-xs text-gray-600 font-mono">
+      <div className="bg-white/70 rounded-lg p-2.5 mb-3 text-xs text-slate-600 font-mono">
         {Object.entries(action.args).map(([k, v]) => (
           <div key={k}><span className="text-purple-700">{k}</span>: {String(v)}</div>
         ))}
@@ -65,7 +65,7 @@ export function ActionCard({ action, onApprove, onReject }: ActionCardProps) {
         <button
           onClick={handleReject}
           disabled={loading !== null}
-          className="flex-1 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 transition"
+          className="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50 transition"
         >
           {loading === 'reject' ? '처리 중...' : '취소'}
         </button>

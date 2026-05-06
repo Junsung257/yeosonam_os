@@ -44,7 +44,7 @@ export default function BookingGuidePage() {
   }, [selectedPkgId, packages]);
 
   return (
-    <div className="min-h-screen bg-gray-100 py-10">
+    <div className="min-h-screen bg-slate-100 py-10">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center gap-4 mb-6 px-4">
           <h1 className="text-xl font-bold text-slate-800 shrink-0">📋 예약 안내문</h1>

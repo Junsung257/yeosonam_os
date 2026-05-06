@@ -279,10 +279,10 @@ export default function UploadPage() {
   const progressPct = queue.length > 0 ? Math.round((doneCount + errorCount) / queue.length * 100) : 0;
 
   const statusIcon = (status: QueueItem['status']) => {
-    if (status === 'done') return <span className="text-green-600 text-[13px] font-medium">완료</span>;
-    if (status === 'error') return <span className="text-red-600 text-[13px] font-medium">오류</span>;
+    if (status === 'done') return <span className="text-green-600 text-admin-sm font-medium">완료</span>;
+    if (status === 'error') return <span className="text-red-600 text-admin-sm font-medium">오류</span>;
     if (status === 'processing') return <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
-    return <span className="text-slate-500 text-[13px]">대기</span>;
+    return <span className="text-slate-500 text-admin-sm">대기</span>;
   };
 
   const textChunkCount = textInput.split(/={3,}/).filter(s => s.trim().length > 50).length || (textInput.trim().length > 50 ? 1 : 0);
@@ -304,8 +304,8 @@ export default function UploadPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-[16px] font-semibold text-slate-800">문서 업로드</h1>
-        <p className="text-[13px] text-slate-500 mt-1">
+        <h1 className="text-admin-lg font-semibold text-slate-800">문서 업로드</h1>
+        <p className="text-admin-sm text-slate-500 mt-1">
           텍스트를 붙여넣고 &ldquo;큐에 추가&rdquo;를 누르면 즉시 처리 시작 — 처리 중에도 계속 추가 가능, 최대 {MAX_CONCURRENT}개 병렬
         </p>
       </div>
@@ -313,7 +313,7 @@ export default function UploadPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           {/* 드래그 존 */}
-          <div className="bg-white p-5 rounded-lg border border-slate-200">
+          <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
             <div
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
               className={`border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer ${
@@ -324,7 +324,7 @@ export default function UploadPage() {
               <svg className="mx-auto h-10 w-10 text-slate-400 mb-3" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                 <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h24a4 4 0 004-4V20m-18-8v12m0 0l-4-4m4 4l4-4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <p className="text-slate-800 text-[14px] font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
+              <p className="text-slate-800 text-admin-base font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
               <p className="text-[11px] text-slate-500 mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 10MB</p>
               <p className="text-[11px] text-blue-600">[랜드사_커미션%]상품명.pdf 형식으로 파일명 작성 시 자동 추출</p>
               <input
@@ -356,7 +356,7 @@ export default function UploadPage() {
           {/* 텍스트 병렬 처리 영역 */}
           <div className="bg-white p-5 rounded-lg border border-blue-200 ring-1 ring-blue-100">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[13px] font-semibold text-slate-800">텍스트 직접 붙여넣기</p>
+              <p className="text-admin-sm font-semibold text-slate-800">텍스트 직접 붙여넣기</p>
               {processingCount > 0 && (
                 <span className="text-[11px] text-blue-600 font-medium flex items-center gap-1.5">
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
@@ -369,7 +369,7 @@ export default function UploadPage() {
               <span className="text-blue-600 font-medium">처리 중에도 계속 추가</span> — 최대 {MAX_CONCURRENT}개 동시 처리
             </p>
             {addedFlash && (
-              <div className="mb-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700 font-medium flex items-center gap-1.5 animate-pulse">
+              <div className="mb-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-admin-xs text-green-700 font-medium flex items-center gap-1.5 animate-pulse">
                 <span>✓</span> 큐에 추가됨 — 다음 상품 붙여넣기 가능
               </div>
             )}
@@ -384,7 +384,7 @@ export default function UploadPage() {
                 }
               }}
               placeholder={"상품1 원문 (랜드사명·커미션 포함해도 자동 마스킹)\n\n===\n\n상품2 원문...\n\n===\n\n상품3 원문..."}
-              className={`w-full h-48 p-3 border rounded-lg text-[12px] text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+              className={`w-full h-48 p-3 border rounded-lg text-admin-xs text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
                 addedFlash ? 'border-green-300 bg-green-50/30' : 'border-slate-200'
               }`}
             />
@@ -397,11 +397,11 @@ export default function UploadPage() {
               <button
                 onClick={addTextToQueue}
                 disabled={!textInput.trim()}
-                className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[12px] font-medium hover:bg-[#003366] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-xs font-medium hover:bg-[#003366] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 큐에 추가 →
                 {textChunkCount > 0 && (
-                  <span className="bg-white text-[#001f3f] text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  <span className="bg-white text-blue-600 text-[10px] font-bold px-1.5 py-0.5 rounded">
                     {textChunkCount}
                   </span>
                 )}
@@ -411,7 +411,7 @@ export default function UploadPage() {
 
           {/* 큐 컨트롤 */}
           {queue.length > 0 && (
-            <div className="bg-white p-4 rounded-lg border border-slate-200">
+            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
               <div className="mb-3">
                 <div className="flex justify-between text-[11px] text-slate-500 mb-1">
                   <span>
@@ -425,7 +425,7 @@ export default function UploadPage() {
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-2">
                   <div
-                    className="bg-[#001f3f] h-2 rounded-full transition-all"
+                    className="bg-blue-600 h-2 rounded-full transition-all"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
@@ -435,13 +435,13 @@ export default function UploadPage() {
                 {waitingFileCount > 0 && !isRunning && (
                   <button
                     onClick={startQueue}
-                    className="flex-1 bg-[#001f3f] text-white py-2 rounded text-[13px] font-medium hover:bg-blue-900 transition"
+                    className="flex-1 bg-blue-600 text-white py-2 rounded text-admin-sm font-medium hover:bg-blue-700 transition"
                   >
                     파일 {waitingFileCount}개 처리 시작
                   </button>
                 )}
                 {isRunning && (
-                  <div className="flex-1 flex items-center justify-center gap-2 py-2 text-[13px] text-blue-600">
+                  <div className="flex-1 flex items-center justify-center gap-2 py-2 text-admin-sm text-blue-600">
                     <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                     파일 AI 처리 중...
                   </div>
@@ -451,14 +451,14 @@ export default function UploadPage() {
                     {doneCount > 0 && (
                       <button
                         onClick={() => router.push('/admin/packages')}
-                        className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-[13px] hover:bg-slate-50 transition"
+                        className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition"
                       >
                         상품 목록에서 확인
                       </button>
                     )}
                     <button
                       onClick={resetQueue}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-[13px] hover:bg-slate-50 transition"
+                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-admin-sm hover:bg-slate-50 transition"
                     >
                       초기화
                     </button>
@@ -470,7 +470,7 @@ export default function UploadPage() {
 
           {/* 세션 비용 요약 */}
           {completedItems.length > 0 && (
-            <div className="bg-white p-4 rounded-lg border border-slate-200">
+            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
               <p className="text-[11px] font-semibold text-slate-800 mb-2 flex items-center gap-1.5">
                 {dominantProvider === 'deepseek' ? '🔵' : '🟡'} 세션 비용 요약
               </p>
@@ -505,7 +505,7 @@ export default function UploadPage() {
           )}
 
           {/* AI 추출 항목 안내 */}
-          <div className="p-4 bg-white border border-slate-200 rounded-lg">
+          <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
             <p className="text-[11px] font-semibold text-slate-800 mb-2">AI 자동 추출 항목</p>
             <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600">
               <span>- 상품명/카테고리/타입</span>
@@ -524,16 +524,16 @@ export default function UploadPage() {
         </div>
 
         {/* 처리 목록 — 최신순 */}
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800 text-[14px]">처리 목록</h2>
+            <h2 className="font-semibold text-slate-800 text-admin-base">처리 목록</h2>
             {queue.length > 0 && (
               <span className="text-[11px] text-slate-500">{queue.length}개 · 완료 {doneCount}</span>
             )}
           </div>
 
           {queue.length === 0 ? (
-            <div className="text-center text-slate-500 py-16 text-[13px]">
+            <div className="text-center text-slate-500 py-16 text-admin-sm">
               텍스트를 붙여넣고 &ldquo;큐에 추가 →&rdquo;를 누르세요
             </div>
           ) : (
@@ -545,7 +545,7 @@ export default function UploadPage() {
                 >
                   <div className="mt-0.5 flex-shrink-0">{statusIcon(item.status)}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-slate-800 truncate">
+                    <p className="text-admin-sm font-medium text-slate-800 truncate">
                       {item.status === 'done' ? (item.title || item.file.name) : item.file.name}
                     </p>
                     {item.status === 'done' && (

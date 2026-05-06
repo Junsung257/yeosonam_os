@@ -5,6 +5,7 @@ import { updateFactoryJobStep } from '@/lib/content-factory-step';
 import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured, getBrandPlaceholder } from '@/lib/pexels';
 import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { pickMarketingPrice } from '@/lib/marketing-price';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -164,7 +165,7 @@ export async function POST(request: NextRequest) {
             coverApply = await applyCritiqueToCover(cardNews.id, critique);
             // Cover 텍스트 변경 후 자동 재렌더 (fire-and-forget)
             if ((coverApply as { applied?: boolean })?.applied) {
-              const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+              const appUrl = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
               fetch(`${appUrl}/api/card-news/render-v2`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
 
       // ── 최종 Satori 자동 렌더 (fire-and-forget) ─────────────
       if (cardNews?.id && process.env.DISABLE_AUTO_RENDER !== '1') {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+        const appUrl = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
         fetch(`${appUrl}/api/card-news/render-v2`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * Vercel Cron 엔트리포인트
@@ -10,19 +12,14 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
-  // CRON_SECRET 검증
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: '인증 실패' }, { status: 401 });
-    }
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {
     // 내부적으로 optimize API 로직을 직접 호출
     const optimizeResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/api/meta/optimize`,
+      `${getSecret('NEXT_PUBLIC_APP_URL') ?? 'http://localhost:3000'}/api/meta/optimize`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

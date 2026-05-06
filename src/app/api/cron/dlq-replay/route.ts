@@ -22,6 +22,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { parseRawEvent, MAX_PARSE_ATTEMPTS } from '@/lib/slack-ingest';
 
 export const dynamic = 'force-dynamic';
@@ -31,9 +32,8 @@ export const maxDuration = 120;
 const BATCH_SIZE = 50;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });

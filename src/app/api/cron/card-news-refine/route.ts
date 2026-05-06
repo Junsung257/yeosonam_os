@@ -24,6 +24,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { critiqueCover } from '@/lib/content-pipeline/agents/cover-critic';
 import type { SlideV2 } from '@/lib/card-news/v2/types';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { onContentRefinementCreated } from '@/lib/task-hooks';
 
 export const runtime = 'nodejs';
@@ -54,9 +55,8 @@ interface CardNewsRow {
 }
 
 async function runCardNewsRefine(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 

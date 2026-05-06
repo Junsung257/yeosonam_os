@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getKeywordPerformances, isSupabaseConfigured, updateKeywordBid } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -9,9 +10,8 @@ export const dynamic = 'force-dynamic';
  * 실제 입찰 API는 keyword_performances 에 플랫폼 키워드 ID가 연결된 뒤 ad-optimizer 에서 수행.
  */
 async function runMarketingRules(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   const kstHour = (new Date().getUTCHours() + 9) % 24;

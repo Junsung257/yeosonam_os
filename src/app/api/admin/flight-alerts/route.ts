@@ -21,9 +21,17 @@ function todayRange(): { start: string; end: string } {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-export async function GET(_request: NextRequest): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ flights: [] });
+  }
+
+  const token =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
+  if (!userData?.user?.id) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
   }
 
   try {
@@ -50,6 +58,14 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  }
+
+  const tokenPost =
+    request.cookies.get('sb-access-token')?.value ??
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+  const { data: userDataPost } = await supabaseAdmin.auth.getUser(tokenPost ?? '');
+  if (!userDataPost?.user?.id) {
+    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
   }
 
   try {

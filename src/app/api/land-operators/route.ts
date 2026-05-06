@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSecret } from '@/lib/secret-registry';
 
 // 기본 랜드사 목록 (land_operators 테이블이 없을 때 폴백)
 const DEFAULT_OPERATORS = [
@@ -9,8 +10,8 @@ const DEFAULT_OPERATORS = [
 ].map((name, i) => ({ id: `default-${i}`, name, contact: null, regions: [] as string[], is_active: true }));
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
+  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY') ?? getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   if (!url || !key) return null;
   return createClient(url, key);
 }

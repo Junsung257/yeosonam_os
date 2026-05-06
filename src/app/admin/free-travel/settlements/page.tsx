@@ -158,15 +158,15 @@ export default function FreeTravelSettlementsPage() {
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6">
       <div>
-        <h1 className="text-[22px] font-bold text-[#191F28]">자유여행 정산</h1>
-        <p className="text-[13px] text-[#8B95A1] mt-1">패키지 정산과 완전히 분리된 OTA 어필리에이트 커미션 추적</p>
+        <h1 className="text-[22px] font-bold text-text-primary">자유여행 정산</h1>
+        <p className="text-admin-sm text-text-secondary mt-1">패키지 정산과 완전히 분리된 OTA 어필리에이트 커미션 추적</p>
       </div>
 
       {/* 로드 에러 */}
       {loadError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700 font-medium flex items-center gap-2">
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-admin-sm text-red-700 font-medium flex items-center gap-2">
           <span>⚠</span> {loadError}
-          <button onClick={loadData} className="ml-auto text-red-600 underline text-[12px]">다시 시도</button>
+          <button onClick={loadData} className="ml-auto text-red-600 underline text-admin-xs">다시 시도</button>
         </div>
       )}
 
@@ -179,8 +179,8 @@ export default function FreeTravelSettlementsPage() {
           { label: '수동 확인 필요', value: `${unmatchedCount}건`, sub: 'OTA 리포트 불일치' },
         ].map(({ label, value, sub }) => (
           <div key={label} className="bg-white rounded-2xl border border-[#E5E7EB] p-4">
-            <p className="text-[12px] text-[#8B95A1] font-medium">{label}</p>
-            <p className="text-[22px] font-extrabold text-[#191F28] mt-1 tabular-nums">{value}</p>
+            <p className="text-admin-xs text-text-secondary font-medium">{label}</p>
+            <p className="text-[22px] font-extrabold text-text-primary mt-1 tabular-nums">{value}</p>
             <p className="text-[11px] text-[#C9D0D6] mt-0.5">{sub}</p>
           </div>
         ))}
@@ -188,22 +188,22 @@ export default function FreeTravelSettlementsPage() {
 
       {/* OTA 리포트 업로드 */}
       <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5">
-        <h2 className="text-[15px] font-bold text-[#191F28] mb-1">OTA 리포트 업로드</h2>
-        <p className="text-[12px] text-[#8B95A1] mb-4">
+        <h2 className="text-admin-md font-bold text-text-primary mb-1">OTA 리포트 업로드</h2>
+        <p className="text-admin-xs text-text-secondary mb-4">
           MRT 파트너센터에서 다운로드한 JSON 리포트를 업로드하면 자동 매칭합니다.<br />
           포맷: {"{ ota, reportMonth, items: [{ ref_id, sub_id?, amount_krw }] }"}
         </p>
 
-        <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#E5E7EB] rounded-xl py-8 cursor-pointer hover:border-[#3182F6] transition-colors">
+        <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#E5E7EB] rounded-xl py-8 cursor-pointer hover:border-brand transition-colors">
           <span className="text-3xl mb-2">📁</span>
-          <span className="text-[14px] font-semibold text-[#4E5968]">
+          <span className="text-admin-base font-semibold text-text-body">
             {uploading ? '업로드 중...' : 'JSON 파일 선택 또는 드래그'}
           </span>
           <input type="file" accept=".json" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
 
         {reconcileResult && (
-          <div className={`mt-3 px-4 py-3 rounded-xl text-[13px] font-medium ${
+          <div className={`mt-3 px-4 py-3 rounded-xl text-admin-sm font-medium ${
             reconcileResult.startsWith('오류') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
           }`}>
             {reconcileResult}
@@ -213,20 +213,20 @@ export default function FreeTravelSettlementsPage() {
 
       {/* OTA 리포트 이력 */}
       {reports.length === 0 && !loading && !loadError && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] px-5 py-8 text-center text-[13px] text-[#8B95A1]">
+        <div className="bg-white rounded-2xl border border-[#E5E7EB] px-5 py-8 text-center text-admin-sm text-text-secondary">
           아직 업로드된 OTA 리포트가 없습니다. 위에서 JSON 파일을 업로드하세요.
         </div>
       )}
       {reports.length > 0 && (
         <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#F2F4F6]">
-            <h2 className="text-[15px] font-bold text-[#191F28]">OTA 리포트 이력</h2>
+          <div className="px-5 py-4 border-b border-admin-border">
+            <h2 className="text-admin-md font-bold text-text-primary">OTA 리포트 이력</h2>
           </div>
-          <table className="w-full text-[13px]">
+          <table className="w-full text-admin-sm">
             <thead className="bg-[#F7F8FA]">
               <tr>
                 {['OTA', '기간', '총액', '건수', '상태', '처리일'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-[#8B95A1] font-medium">{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left text-text-secondary font-medium">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -242,7 +242,7 @@ export default function FreeTravelSettlementsPage() {
                       {r.reconciled ? '매칭 완료' : '처리 전'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#8B95A1]">{r.reconciled_at?.slice(0, 10) ?? '−'}</td>
+                  <td className="px-4 py-3 text-text-secondary">{r.reconciled_at?.slice(0, 10) ?? '−'}</td>
                 </tr>
               ))}
             </tbody>
@@ -252,21 +252,29 @@ export default function FreeTravelSettlementsPage() {
 
       {/* 커미션 현황 */}
       <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#F2F4F6] flex items-center justify-between">
-          <h2 className="text-[15px] font-bold text-[#191F28]">커미션 현황</h2>
-          <span className="text-[12px] text-[#8B95A1]">{commissions.length}건</span>
+        <div className="px-5 py-4 border-b border-admin-border flex items-center justify-between">
+          <h2 className="text-admin-md font-bold text-text-primary">커미션 현황</h2>
+          <span className="text-admin-xs text-text-secondary">{commissions.length}건</span>
         </div>
         {loading ? (
-          <p className="px-5 py-8 text-center text-[#8B95A1]">불러오는 중...</p>
+          <div className="divide-y divide-slate-50">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
+                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+              </div>
+            ))}
+          </div>
         ) : commissions.length === 0 ? (
-          <p className="px-5 py-8 text-center text-[#8B95A1]">자유여행 검색 후 커미션이 생성됩니다.</p>
+          <p className="px-5 py-8 text-center text-text-secondary">자유여행 검색 후 커미션이 생성됩니다.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-admin-sm">
               <thead className="bg-[#F7F8FA]">
                 <tr>
                   {['여행지', 'OTA', '클릭', '예상 커미션', '확정', '상태', '생성일'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[#8B95A1] font-medium whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-4 py-2.5 text-left text-text-secondary font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -279,11 +287,11 @@ export default function FreeTravelSettlementsPage() {
                     <td className="px-4 py-3 tabular-nums">{c.estimated_krw?.toLocaleString() ?? '−'}원</td>
                     <td className="px-4 py-3 tabular-nums font-semibold">{c.confirmed_krw?.toLocaleString() ?? '−'}원</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_COLOR[c.status] ?? 'bg-gray-50 text-gray-600'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_COLOR[c.status] ?? 'bg-slate-50 text-slate-600'}`}>
                         {STATUS_LABEL[c.status] ?? c.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-[#8B95A1] tabular-nums">{c.created_at.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-text-secondary tabular-nums">{c.created_at.slice(0, 10)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -294,34 +302,34 @@ export default function FreeTravelSettlementsPage() {
 
       {/* unmatched 복구 큐 */}
       <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#F2F4F6] flex items-center justify-between">
-          <h2 className="text-[15px] font-bold text-[#191F28]">Unmatched 복구 큐</h2>
-          <span className="text-[12px] text-[#8B95A1]">{unmatchedRows.length}건</span>
+        <div className="px-5 py-4 border-b border-admin-border flex items-center justify-between">
+          <h2 className="text-admin-md font-bold text-text-primary">Unmatched 복구 큐</h2>
+          <span className="text-admin-xs text-text-secondary">{unmatchedRows.length}건</span>
         </div>
         {unmatchedRows.length === 0 ? (
-          <p className="px-5 py-6 text-[13px] text-[#8B95A1] text-center">수동 복구가 필요한 항목이 없습니다.</p>
+          <p className="px-5 py-6 text-admin-sm text-text-secondary text-center">수동 복구가 필요한 항목이 없습니다.</p>
         ) : (
           <div className="divide-y divide-[#F2F4F6]">
             {unmatchedRows.map(u => (
               <div key={u.id} className="px-5 py-4">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[13px] font-semibold text-[#191F28]">
+                  <p className="text-admin-sm font-semibold text-text-primary">
                     {u.ota.toUpperCase()} · 리포트금액 {Number(u.confirmed_krw ?? 0).toLocaleString()}원
                   </p>
-                  <span className="text-[11px] text-[#8B95A1]">{u.created_at.slice(0, 10)}</span>
+                  <span className="text-[11px] text-text-secondary">{u.created_at.slice(0, 10)}</span>
                 </div>
                 {u.candidates.length === 0 ? (
-                  <p className="text-[12px] text-[#8B95A1]">추천 후보가 없습니다. 보류 처리 후 재검토하세요.</p>
+                  <p className="text-admin-xs text-text-secondary">추천 후보가 없습니다. 보류 처리 후 재검토하세요.</p>
                 ) : (
                   <div className="space-y-1.5">
                     {u.candidates.map(c => (
                       <div key={c.id} className="flex items-center justify-between border border-[#E5E7EB] rounded-lg px-3 py-2">
-                        <p className="text-[12px] text-[#4E5968]">
+                        <p className="text-admin-xs text-text-body">
                           후보 {c.id.slice(0, 8)} · 예상 {Number(c.estimated_krw ?? 0).toLocaleString()}원
                         </p>
                         <button
                           onClick={() => handleResolveUnmatched(u.id, c.id)}
-                          className="text-[11px] font-semibold bg-[#3182F6] text-white px-2.5 py-1 rounded-md hover:bg-[#1b6cf2]"
+                          className="text-[11px] font-semibold bg-brand text-white px-2.5 py-1 rounded-md hover:bg-[#1b6cf2]"
                         >
                           수동 연결
                         </button>

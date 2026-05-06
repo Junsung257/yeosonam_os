@@ -262,7 +262,7 @@ export default function CorrectionsPage() {
 
       {/* 통계 */}
       <div className="grid grid-cols-4 gap-3 mb-5">
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <div className="text-xs text-slate-500">활성 정정 (현재 필터)</div>
           <div className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</div>
         </div>
@@ -282,7 +282,7 @@ export default function CorrectionsPage() {
       </div>
 
       {/* 필터 */}
-      <div className="flex gap-3 mb-4 items-center bg-white border border-slate-200 rounded-xl p-3">
+      <div className="flex gap-3 mb-4 items-center bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
         <input
           type="text"
           value={filterDestination}
@@ -300,8 +300,21 @@ export default function CorrectionsPage() {
         </div>
       </div>
 
-      {loading ? <p className="text-slate-400 py-10 text-center">로딩 중...</p> : items.length === 0 ? (
-        <p className="text-slate-400 py-10 text-center">활성 정정 메모리가 없습니다. 패키지를 인라인 편집하면 자동 적립됩니다.</p>
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-2/3" />
+              <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
+            </div>
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-14">
+          <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>
+          <p className="text-admin-sm font-medium text-slate-500">활성 정정 메모리가 없습니다.</p>
+          <p className="text-admin-xs text-slate-400">패키지를 인라인 편집하면 자동 적립됩니다.</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {items.map(c => (

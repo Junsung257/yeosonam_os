@@ -8,7 +8,7 @@ export default function Loading() {
           <div className="h-8 bg-slate-100 rounded w-20" />
         </div>
       </div>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="h-10 bg-slate-50 border-b border-slate-100" />
         {[...Array(8)].map((_, i) => (
           <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-slate-50">

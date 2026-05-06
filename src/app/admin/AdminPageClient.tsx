@@ -159,14 +159,14 @@ function TwoTrackKPI({
       {/* 카드 1: 출발일 기준 확정매출 (회계, IFRS 15) */}
       <Link href="/admin/bookings?mode=recognized" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">확정매출 · 출발일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">확정매출 · 출발일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
           {recognizedGrowth !== 0 && (
-            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${recognizedGrowth >= 0 ? 'bg-[#E9FAF4] text-[#04C584]' : 'bg-[#FFF1F2] text-[#F04452]'}`}>
+            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${recognizedGrowth >= 0 ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
               {recognizedGrowth >= 0 ? '+' : ''}{recognizedGrowth}%
             </span>
           )}
         </div>
-        <p className="text-[28px] font-bold text-[#04C584] tabular-nums leading-none">
+        <p className="text-[28px] font-bold text-success tabular-nums leading-none">
           {thisRecognized ? `₩${fmt만(thisRecognized.gmv)}` : '—'}
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
@@ -178,14 +178,14 @@ function TwoTrackKPI({
       {/* 카드 2: 생성일 기준 신규예약 (영업, 취소 가능) */}
       <Link href="/admin/bookings?mode=new" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">신규예약 · 생성일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">신규예약 · 생성일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
           {bookingsGrowth !== 0 && (
-            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${bookingsGrowth >= 0 ? 'bg-[#E9FAF4] text-[#04C584]' : 'bg-[#FFF1F2] text-[#F04452]'}`}>
+            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${bookingsGrowth >= 0 ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
               {bookingsGrowth >= 0 ? '+' : ''}{bookingsGrowth}%
             </span>
           )}
         </div>
-        <p className="text-[28px] font-bold text-[#191F28] tabular-nums leading-none">
+        <p className="text-[28px] font-bold text-text-primary tabular-nums leading-none">
           {thisBookings?.live_bookings ?? 0}<span className="text-[18px] text-slate-400 ml-1">건</span>
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
@@ -210,7 +210,7 @@ function CashflowChart({ chartData, periodLabel }: { chartData: MonthlyChartData
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[14px] font-semibold text-[#191F28]">캐시플로우 ({periodLabel})</h2>
+        <h2 className="text-admin-base font-semibold text-text-primary">캐시플로우 ({periodLabel})</h2>
         <span className="text-[10px] text-slate-400">출발일 기준 / 직접·제휴 합산</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -261,7 +261,7 @@ function BookingPaceWidget({
       {/* Booking Pace — 향후 출발 분포 */}
       <Link href="/admin/bookings?mode=upcoming" className="md:col-span-2 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[14px] font-semibold text-[#191F28]">Booking Pace · 향후 출발</h2>
+          <h2 className="text-admin-base font-semibold text-text-primary">Booking Pace · 향후 출발</h2>
           <span className="text-[11px] text-slate-500 tabular-nums">
             {totalBookings}건 · ₩{(totalGmv / 10000).toFixed(0)}만
           </span>
@@ -271,7 +271,7 @@ function BookingPaceWidget({
             const ratio = p.bookings / maxBucket;
             const heightPct = Math.max(8, ratio * 100);
             // 비율에 따라 막대 색상 강도 차별화
-            const barColor = ratio >= 0.8 ? 'bg-[#3182F6]' : ratio >= 0.5 ? 'bg-[#5B9EF8]' : ratio >= 0.2 ? 'bg-[#93BFF9]' : 'bg-[#EBF3FE]';
+            const barColor = ratio >= 0.8 ? 'bg-brand' : ratio >= 0.5 ? 'bg-[#5B9EF8]' : ratio >= 0.2 ? 'bg-[#93BFF9]' : 'bg-brand-light';
             return (
               <div key={p.bucket} className="flex flex-col items-center" title={`GMV: \u20a9${(p.gmv / 10000).toFixed(0)}\ub9cc`}>
                 <div className="h-12 w-full flex items-end mb-1">
@@ -291,11 +291,11 @@ function BookingPaceWidget({
       {/* 90일 Cancellation Rate */}
       <Link href="/admin/bookings?lifecycle=cancelled" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">취소율 (최근 90일)</h2>
+          <h2 className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">취소율 (최근 90일)</h2>
           <span className="text-[10px] text-slate-400">Booking.com 표준</span>
         </div>
         <p className={`text-[28px] font-bold tabular-nums leading-none ${cancelColor}`}>
-          {cancelPct}<span className="text-[16px] ml-0.5">%</span>
+          {cancelPct}<span className="text-admin-lg ml-0.5">%</span>
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
           {cancellation90d
@@ -357,7 +357,7 @@ function OperationsKPI({
       {/* 정산 잔여 — Payable (랜드사 미지급) */}
       <Link href="/admin/land-settlements" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">랜드사 미지급</span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">랜드사 미지급</span>
           <span className="text-[10px] text-slate-400">payable</span>
         </div>
         <p className="text-[24px] font-bold text-amber-700 tabular-nums leading-none">
@@ -383,7 +383,7 @@ function OperationsKPI({
       {/* 정산 잔여 — Receivable (고객 미입금) */}
       <Link href="/admin/payments?filter=outstanding" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">고객 미입금</span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">고객 미입금</span>
           <span className="text-[10px] text-slate-400">receivable</span>
         </div>
         <p className="text-[24px] font-bold text-red-600 tabular-nums leading-none">
@@ -409,7 +409,7 @@ function OperationsKPI({
       {/* AI 비용 추이 + 프로바이더 크레딧 */}
       <Link href="/admin/jarvis" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">AI 비용 (30일)</span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">AI 비용 (30일)</span>
           <span className="text-[10px] text-slate-400">자비스 V2 ledger</span>
         </div>
         <p className="text-[24px] font-bold text-purple-700 tabular-nums leading-none">
@@ -507,7 +507,7 @@ function OperatorTakeRatesWidget({ rows }: { rows: OperatorTakeRate[] }) {
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[14px] font-semibold text-[#191F28]">랜드사별 GMV · Take Rate</h2>
+        <h2 className="text-admin-base font-semibold text-text-primary">랜드사별 GMV · Take Rate</h2>
         <span className="text-[10px] text-slate-400">최근 6개월 출발 완료 기준</span>
       </div>
       <div className="space-y-1.5">
@@ -522,7 +522,7 @@ function OperatorTakeRatesWidget({ rows }: { rows: OperatorTakeRate[] }) {
               className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 group hover:bg-slate-50 px-1.5 py-1 rounded transition"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[12px] text-slate-700 font-medium truncate w-20 shrink-0">{r.operator_name}</span>
+                <span className="text-admin-xs text-slate-700 font-medium truncate w-20 shrink-0">{r.operator_name}</span>
                 <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-400 group-hover:bg-blue-500 transition-colors" style={{ width: `${widthPct}%` }} />
                 </div>
@@ -552,11 +552,11 @@ function RepeatBookingCard({ stats }: { stats: RepeatBookingStats | null }) {
   return (
     <Link href="/admin/customers?sort=mileage" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">재방문 고객</span>
+        <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">재방문 고객</span>
         <span className="text-[10px] text-slate-400">retention</span>
       </div>
       <p className={`text-[24px] font-bold tabular-nums leading-none ${repeatColor}`}>
-        {repeatPct}<span className="text-[16px] ml-0.5">%</span>
+        {repeatPct}<span className="text-admin-lg ml-0.5">%</span>
       </p>
       <p className="text-[11px] text-slate-500 mt-1">
         {stats.repeat_customers} / {stats.total_customers}명 · 매출비중 {repeatRevPct}%
@@ -594,8 +594,8 @@ function DataQualityMonitor({ report }: { report: DataQualityReport | null }) {
   if (report.issues.length === 0) {
     return (
       <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 flex items-center gap-2">
-        <span className="text-emerald-600 text-[14px]">✅</span>
-        <span className="text-[12px] text-emerald-700 font-medium">
+        <span className="text-emerald-600 text-admin-base">✅</span>
+        <span className="text-admin-xs text-emerald-700 font-medium">
           데이터 품질 양호 · live {report.total_live}건 모두 정상
         </span>
         <span className="ml-auto text-[11px] text-emerald-600 font-bold">건강도 {report.health_score}/100</span>
@@ -618,7 +618,7 @@ function DataQualityMonitor({ report }: { report: DataQualityReport | null }) {
     <div className={`border rounded-lg p-4 ${scoreBg}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-[14px] font-semibold text-[#191F28]">데이터 품질 모니터</h2>
+          <h2 className="text-admin-base font-semibold text-text-primary">데이터 품질 모니터</h2>
           <span className="text-[10px] text-slate-500">live 예약 {report.total_live}건 기준</span>
         </div>
         <div className="flex items-center gap-2">
@@ -640,8 +640,8 @@ function DataQualityMonitor({ report }: { report: DataQualityReport | null }) {
             <span className="text-[10px] font-bold uppercase w-10 shrink-0">
               {sevLabel[issue.severity]}
             </span>
-            <span className="text-[12px] flex-1 min-w-0 truncate">{issue.label}</span>
-            <span className="text-[12px] tabular-nums font-bold shrink-0">{issue.affected}건</span>
+            <span className="text-admin-xs flex-1 min-w-0 truncate">{issue.label}</span>
+            <span className="text-admin-xs tabular-nums font-bold shrink-0">{issue.affected}건</span>
             <span className="text-[10px] tabular-nums opacity-70 w-12 text-right shrink-0">{issue.pct}%</span>
             <span className="text-[10px] opacity-60 truncate hidden md:block w-44 shrink-0">→ {issue.hint}</span>
           </Link>
@@ -717,35 +717,44 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
   ];
 
   const severityStyles = {
-    red:   { card: 'border-red-200 bg-red-50',    icon: 'text-red-500 bg-red-100',    count: 'text-red-600',   btn: 'bg-red-600 hover:bg-red-700 text-white' },
-    amber: { card: 'border-amber-200 bg-amber-50', icon: 'text-amber-500 bg-amber-100', count: 'text-amber-600', btn: 'bg-amber-500 hover:bg-amber-600 text-white' },
-    blue:  { card: 'border-blue-200 bg-blue-50',  icon: 'text-blue-500 bg-blue-100',  count: 'text-blue-600',  btn: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    red:   { card: 'border-red-200 bg-red-50',    icon: 'text-red-500 bg-red-100',    count: 'text-red-600',   btn: 'bg-red-600 hover:bg-red-700 text-white',   pulse: 'bg-red-500' },
+    amber: { card: 'border-amber-200 bg-amber-50', icon: 'text-amber-500 bg-amber-100', count: 'text-amber-600', btn: 'bg-amber-500 hover:bg-amber-600 text-white', pulse: 'bg-amber-500' },
+    blue:  { card: 'border-blue-200 bg-blue-50',  icon: 'text-blue-500 bg-blue-100',  count: 'text-blue-600',  btn: 'bg-blue-600 hover:bg-blue-700 text-white',  pulse: 'bg-blue-500' },
   };
 
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
-      <h2 className="text-[14px] font-semibold text-[#191F28] mb-3">실무자 경고판</h2>
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-admin-base font-semibold text-text-primary">실무자 경고판</h2>
+        {cards.some(c => c.count > 0) && (
+          <span className="text-[11px] text-slate-400">{cards.filter(c => c.count > 0).length}개 항목 처리 필요</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {cards.map((c, i) => {
           const s = severityStyles[c.severity];
+          const isEmpty = c.count === 0;
           return (
-            <div key={i} className={`rounded-xl border p-3.5 flex flex-col gap-2 ${s.card}`}>
+            <div key={i} className={`rounded-xl border p-3.5 flex flex-col gap-2 transition-opacity ${isEmpty ? 'opacity-40 border-slate-100 bg-slate-50' : s.card}`}>
               <div className="flex items-start justify-between">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.icon}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center relative ${isEmpty ? 'text-slate-400 bg-slate-100' : s.icon}`}>
                   {c.icon}
+                  {!isEmpty && c.severity === 'red' && (
+                    <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${s.pulse} animate-ping opacity-75`} />
+                  )}
                 </div>
-                <span className={`text-[24px] font-black tabular-nums leading-none ${s.count}`}>
+                <span className={`text-[26px] font-black tabular-nums leading-none ${isEmpty ? 'text-slate-300' : s.count}`}>
                   {c.count.toLocaleString()}
-                  <span className="text-[12px] font-medium ml-0.5">{c.unit}</span>
+                  <span className="text-admin-xs font-medium ml-0.5">{c.unit}</span>
                 </span>
               </div>
               <div>
-                <p className="text-[12px] font-semibold text-slate-700">{c.label}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">{c.desc}</p>
+                <p className={`text-admin-xs font-semibold ${isEmpty ? 'text-slate-400' : 'text-slate-700'}`}>{c.label}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">{c.desc}</p>
               </div>
               <Link href={c.href}
-                className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${s.btn}`}>
-                {c.btnLabel}
+                className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${isEmpty ? 'bg-slate-100 text-slate-400 pointer-events-none' : s.btn}`}>
+                {isEmpty ? '이상 없음' : c.btnLabel}
               </Link>
             </div>
           );
@@ -823,7 +832,7 @@ function SocialMetricsWidget() {
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[14px] font-semibold text-[#191F28] flex items-center gap-1.5">
+        <h2 className="text-admin-base font-semibold text-text-primary flex items-center gap-1.5">
           SNS 채널 현황
           <span className="text-[10px] text-slate-300 font-normal" title="이 데이터는 이 브라우저에만 저장됩니다. 기기가 바뀌면 초기화됩니다.">⚠ 로컬</span>
         </h2>
@@ -840,7 +849,7 @@ function SocialMetricsWidget() {
           return (
             <div key={i} className="text-center">
               <p className="text-[10px] text-slate-400">{ch.name}</p>
-              <p className="text-[16px] font-bold text-slate-800 tabular-nums">{ch.current.toLocaleString()}</p>
+              <p className="text-admin-lg font-bold text-slate-800 tabular-nums">{ch.current.toLocaleString()}</p>
               {ch.prev > 0 && (
                 <div className="mt-0.5">
                   <span className={`text-[11px] font-medium ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -877,15 +886,15 @@ function SocialMetricsWidget() {
                   next[i] = { ...next[i], name: e.target.value };
                   setChannels(next);
                 }}
-                className="w-20 border border-slate-200 rounded px-2 py-1 text-[12px] text-slate-600 focus:ring-1 focus:ring-[#005d90]" />
+                className="w-20 border border-slate-200 rounded px-2 py-1 text-admin-xs text-slate-600 focus:ring-1 focus:ring-[#005d90]" />
               <input type="number" value={formValues[i]}
                 onChange={e => { const next = [...formValues]; next[i] = e.target.value; setFormValues(next); }}
-                className="flex-1 border border-slate-200 rounded px-2 py-1 text-[13px] focus:ring-1 focus:ring-[#005d90]" />
+                className="flex-1 border border-slate-200 rounded px-2 py-1 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
               {channels.length > 1 && (
                 <button onClick={() => {
                   setChannels(channels.filter((_, idx) => idx !== i));
                   setFormValues(formValues.filter((_, idx) => idx !== i));
-                }} className="text-slate-300 hover:text-red-500 text-[13px]">x</button>
+                }} className="text-slate-300 hover:text-red-500 text-admin-sm">x</button>
               )}
             </div>
           ))}
@@ -895,7 +904,7 @@ function SocialMetricsWidget() {
           }} className="w-full py-1 border border-dashed border-slate-300 rounded text-[11px] text-slate-400 hover:text-slate-600 hover:border-slate-400 transition">
             + 채널 추가
           </button>
-          <button onClick={handleSave} className="w-full py-1.5 bg-[#3182F6] text-white rounded text-[12px] hover:bg-blue-900 transition">저장</button>
+          <button onClick={handleSave} className="w-full py-1.5 bg-brand text-white rounded text-admin-xs hover:bg-blue-700 transition">저장</button>
         </div>
       )}
     </div>
@@ -925,12 +934,12 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
 
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
-      <h2 className="text-[14px] font-semibold text-[#191F28] mb-3">AI 인사이트</h2>
+      <h2 className="text-admin-base font-semibold text-text-primary mb-3">AI 인사이트</h2>
       <div className="grid grid-cols-3 gap-3">
         <div>
           <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">판매중 상품 Top 3</p>
           {top3.length === 0 ? (
-            <p className="text-[12px] text-slate-400">데이터 없음</p>
+            <p className="text-admin-xs text-slate-400">데이터 없음</p>
           ) : (
             <div className="space-y-1.5">
               {top3.map((p, i) => (
@@ -939,7 +948,7 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
                     i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-slate-400' : 'bg-amber-700'
                   }`}>{i + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] text-slate-700 truncate">{p.title}</p>
+                    <p className="text-admin-xs text-slate-700 truncate">{p.title}</p>
                     <p className="text-[10px] text-slate-400">₩{(p.price ?? 0).toLocaleString()}</p>
                   </div>
                 </div>
@@ -957,7 +966,7 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
               return (
                 <div key={status} className="flex items-center justify-between">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>{label}</span>
-                  <span className="text-[13px] font-bold text-slate-700 tabular-nums">{count}</span>
+                  <span className="text-admin-sm font-bold text-slate-700 tabular-nums">{count}</span>
                 </div>
               );
             })}
@@ -1027,8 +1036,8 @@ function RecentFailuresWidget() {
         className="w-full flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-2">
-          <span className="text-[14px]">⚠️</span>
-          <span className="text-[13px] font-semibold text-red-800">
+          <span className="text-admin-base">⚠️</span>
+          <span className="text-admin-sm font-semibold text-red-800">
             최근 24시간 자비스 실패 {items.length}건
           </span>
         </div>
@@ -1039,7 +1048,7 @@ function RecentFailuresWidget() {
           {items.slice(0, 5).map(item => {
             const errMsg = item.reject_reason || item.result_log?.error || '(원문 없음)';
             return (
-              <li key={item.id} className="bg-white border border-red-100 rounded p-2 text-[12px]">
+              <li key={item.id} className="bg-white border border-red-100 rounded p-2 text-admin-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[10px] text-red-500">{item.action_type}</span>
                   <span className="text-[10px] text-slate-400">
@@ -1262,7 +1271,7 @@ export default function AdminPage({
       {/* BUG-4: fetch 실패 배너 */}
       {fetchErrors.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-center justify-between">
-          <span className="text-[12px] text-amber-800">
+          <span className="text-admin-xs text-amber-800">
             일부 데이터 로드 실패 ({fetchErrors.join(', ')}) — 새로고침 후 재시도
           </span>
           <button onClick={() => setFetchErrors([])} className="text-amber-600 text-[11px] hover:underline ml-4">닫기</button>
@@ -1272,7 +1281,7 @@ export default function AdminPage({
       {/* UX-2 + E: sticky frosted-glass 헤더 + 기간 필터 + 새로고침 버튼 */}
       <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-[16px] font-bold text-[#191F28]">어드민 대시보드</h1>
+          <h1 className="text-admin-lg font-bold text-text-primary">어드민 대시보드</h1>
           {lastRefreshed && (
             <p className="text-[11px] text-slate-400 mt-0.5">
               마지막 새로고침: {lastRefreshed.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -1281,7 +1290,7 @@ export default function AdminPage({
         </div>
 
         {/* 글로벌 기간 필터 — revenue-recognition + chart 공통 적용 */}
-        <div className="flex items-center gap-1 bg-[#F2F4F6] rounded-[8px] p-0.5 ml-auto">
+        <div className="flex items-center gap-1 bg-bg-section rounded-[8px] p-0.5 ml-auto">
           {(['3m', '6m', '12m'] as const).map((p) => (
             <button
               key={p}
@@ -1294,8 +1303,8 @@ export default function AdminPage({
               disabled={isRefreshing || isLoading}
               className={`px-2.5 py-1 rounded-[6px] text-[11px] font-semibold transition-all disabled:opacity-50 ${
                 period === p
-                  ? 'bg-white text-[#191F28] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
-                  : 'text-[#8B95A1] hover:text-[#4E5968]'
+                  ? 'bg-white text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                  : 'text-text-secondary hover:text-text-body'
               }`}
             >
               {p === '3m' ? '3개월' : p === '6m' ? '6개월' : '12개월'}
@@ -1310,7 +1319,7 @@ export default function AdminPage({
             loadAll(m);
           }}
           disabled={isRefreshing || isLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-[10px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-[12px] text-[#4E5968] hover:bg-[#F9FAFB] disabled:opacity-50 transition-shadow"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-[10px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-admin-xs text-text-body hover:bg-admin-bg disabled:opacity-50 transition-shadow"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             className={isRefreshing ? 'animate-spin' : ''}>
@@ -1322,7 +1331,11 @@ export default function AdminPage({
         </button>
       </div>
 
-      {/* ── Zone 1: 긴급 액션 (스크롤 없이 바로 처리) ─────────────────── */}
+      {/* ── Zone 1: 긴급 액션 ────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-1">
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">긴급 처리</span>
+        <div className="flex-1 h-px bg-slate-100" />
+      </div>
 
       {/* 자비스 실패 위젯 (실패 0건이면 자동 숨김) */}
       <RecentFailuresWidget />
@@ -1334,11 +1347,11 @@ export default function AdminPage({
       {pendingActions.length > 0 && (
         <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[14px] font-semibold text-[#191F28] flex items-center gap-2">
+            <h2 className="text-admin-base font-semibold text-text-primary flex items-center gap-2">
               자비스 결재 대기
               <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingActions.length}</span>
             </h2>
-            <Link href="/admin/jarvis?tab=actions" className="text-[12px] text-blue-600 hover:underline">전체 보기</Link>
+            <Link href="/admin/jarvis?tab=actions" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingActions.slice(0, 6).map((act: any) => (
@@ -1361,7 +1374,7 @@ export default function AdminPage({
                     </span>
                   )}
                 </div>
-                <p className="text-[13px] font-medium text-slate-800 truncate">{act.summary}</p>
+                <p className="text-admin-sm font-medium text-slate-800 truncate">{act.summary}</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">{act.action_type}</p>
                 <div className="mt-2 flex gap-1">
                   <button
@@ -1373,7 +1386,7 @@ export default function AdminPage({
                       } catch {} finally { setActionProcessingId(null); }
                     }}
                     disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-[#3182F6] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition"
+                    className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition"
                   >
                     승인
                   </button>
@@ -1401,14 +1414,14 @@ export default function AdminPage({
       {pendingPackages.length > 0 && (
         <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[14px] font-semibold text-[#191F28]">승인 대기 ({pendingPackages.length})</h2>
-            <Link href="/admin/packages" className="text-[12px] text-blue-600 hover:underline">전체 보기</Link>
+            <h2 className="text-admin-base font-semibold text-text-primary">승인 대기 ({pendingPackages.length})</h2>
+            <Link href="/admin/packages" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingPackages.slice(0, 6).map(pkg => (
               <div key={pkg.id} className="rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] cursor-pointer transition-shadow"
                 onClick={() => setSelectedPackage(pkg)}>
-                <p className="text-[13px] font-medium text-slate-800 truncate">{pkg.title}</p>
+                <p className="text-admin-sm font-medium text-slate-800 truncate">{pkg.title}</p>
                 <div className="flex items-center gap-2 mt-1">
                   {pkg.destination && <span className="text-[11px] text-slate-500">{pkg.destination}</span>}
                   {pkg.price && <span className="text-[11px] text-slate-500">₩{pkg.price.toLocaleString()}</span>}
@@ -1419,7 +1432,7 @@ export default function AdminPage({
                 </div>
                 <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
                   <button onClick={() => handleAction(pkg.id, 'approve')} disabled={processingId === pkg.id}
-                    className="flex-1 bg-[#3182F6] text-white py-1 rounded text-[11px] hover:bg-blue-900 disabled:bg-slate-300 transition">
+                    className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
                     승인
                   </button>
                   <button onClick={() => handleAction(pkg.id, 'reject')} disabled={processingId === pkg.id}
@@ -1433,7 +1446,11 @@ export default function AdminPage({
         </div>
       )}
 
-      {/* ── Zone 2: 현황 KPI (오늘 비즈니스 상태) ──────────────────────── */}
+      {/* ── Zone 2: 현황 KPI ─────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-1 mt-2">
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">현황 KPI</span>
+        <div className="flex-1 h-px bg-slate-100" />
+      </div>
 
       {/* 매출 인식 분리 KPI (IFRS 15 / ASC 606) */}
       <TwoTrackKPI recognized={recognized} newBookings={newBookings} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
@@ -1456,46 +1473,66 @@ export default function AdminPage({
           </span>
         );
         return (
-          <div className="grid grid-cols-4 gap-2">
-            {/* B: 이번달 마진 — featured navy card */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {/* 이번달 마진 — featured card */}
             <Link href="/admin/ledger"
-              className="bg-[#3182F6] rounded-xl p-3 shadow-[0_8px_24px_rgba(0,31,63,0.25)] hover:bg-[#1B64DA] transition block">
-              <p className="text-[10px] text-blue-200 uppercase font-medium">이번달 마진</p>
-              <p className={`text-[16px] font-bold tabular-nums mt-0.5 ${
-                stats && stats.margin < 0 ? 'text-red-300' : 'text-white'
-              }`}>{stats ? `₩${fmt만(stats.margin)}` : '—'}</p>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[9px] text-blue-300">출발일 기준 전체 예약</p>
+              className="bg-brand rounded-xl p-4 shadow-[0_8px_24px_rgba(0,31,63,0.25)] hover:bg-[#1B64DA] transition block">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] text-blue-200 font-medium">이번달 마진</p>
+                <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+                </svg>
+              </div>
+              <p className={`text-[22px] font-black tabular-nums leading-tight ${stats && stats.margin < 0 ? 'text-red-300' : 'text-white'}`}>
+                {stats ? `₩${fmt만(stats.margin)}` : '—'}
+              </p>
+              <div className="flex items-center justify-between mt-1.5">
+                <p className="text-[10px] text-blue-300">출발일 기준</p>
                 <Badge pct={marginMoM} />
               </div>
             </Link>
             {/* 자본 잔액 */}
             <Link href="/admin/ledger"
-              className="bg-white border border-slate-200 rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-300 transition block">
-              <p className="text-[10px] text-slate-400 uppercase">자본 잔액</p>
-              <p className="text-[16px] font-bold tabular-nums mt-0.5 text-emerald-700">
+              className="bg-white border border-slate-100 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] text-slate-400 font-medium">자본 잔액</p>
+                <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-[22px] font-black tabular-nums leading-tight text-emerald-700">
                 {capitalTotal !== null ? `₩${fmt만(capitalTotal)}` : '—'}
               </p>
-              <p className="text-[9px] text-slate-400 mt-1">자본 관리 → 장부</p>
+              <p className="text-[10px] text-slate-400 mt-1.5">자본 관리 → 장부</p>
             </Link>
             {/* 미수금 */}
             <Link href="/admin/payments?filter=outstanding"
-              className="bg-white border border-slate-200 rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-300 transition block">
-              <p className="text-[10px] text-slate-400 uppercase">미수금</p>
-              <p className={`text-[16px] font-bold tabular-nums mt-0.5 ${
-                stats && stats.totalOutstanding > 0 ? 'text-red-600' : 'text-emerald-700'
-              }`}>{stats ? `₩${fmt만(stats.totalOutstanding)}` : '—'}</p>
-              <p className="text-[9px] text-slate-400 mt-1">이번달 잔금 미납</p>
+              className="bg-white border border-slate-100 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] text-slate-400 font-medium">미수금</p>
+                <svg className={`w-4 h-4 ${stats && stats.totalOutstanding > 0 ? 'text-red-400' : 'text-slate-300'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <p className={`text-[22px] font-black tabular-nums leading-tight ${stats && stats.totalOutstanding > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                {stats ? `₩${fmt만(stats.totalOutstanding)}` : '—'}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1.5">이번달 잔금 미납</p>
             </Link>
             {/* 진행 예약 */}
             <Link href="/admin/bookings?status=pending,confirmed"
-              className="bg-white border border-slate-200 rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-300 transition block">
-              <p className="text-[10px] text-slate-400 uppercase">진행 예약</p>
-              <p className="text-[16px] font-bold tabular-nums mt-0.5 text-[#191F28]">
-                {stats?.activeBookings ?? 0}건
+              className="bg-white border border-slate-100 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] text-slate-400 font-medium">진행 예약</p>
+                <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                </svg>
+              </div>
+              <p className="text-[22px] font-black tabular-nums leading-tight text-text-primary">
+                {stats?.activeBookings ?? 0}<span className="text-admin-base font-semibold ml-0.5">건</span>
               </p>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[9px] text-slate-400">이번달 총 {stats?.totalMonthBookings ?? 0}건 중</p>
+              <div className="flex items-center justify-between mt-1.5">
+                <p className="text-[10px] text-slate-400">이번달 총 {stats?.totalMonthBookings ?? 0}건 중</p>
                 <Badge pct={bkMoM} />
               </div>
             </Link>
@@ -1514,7 +1551,11 @@ export default function AdminPage({
       {/* 운영 KPI — 정산 잔여(payable/receivable) + AI 비용 */}
       <OperationsKPI aiUsage={aiUsage} settlement={settlement} aiCredits={aiCredits} />
 
-      {/* ── Zone 3: 분석 (주간·월간 리뷰) ─────────────────────────────── */}
+      {/* ── Zone 3: 분석 ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-1 mt-2">
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">분석</span>
+        <div className="flex-1 h-px bg-slate-100" />
+      </div>
 
       {/* Retention + Take Rate (Tufte Small Multiples) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -1538,7 +1579,7 @@ export default function AdminPage({
 
       {/* 바로가기 */}
       <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4">
-        <h2 className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide tracking-wide mb-3">바로가기</h2>
+        <h2 className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide tracking-wide mb-3">바로가기</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { title: '운영', links: [
@@ -1567,10 +1608,10 @@ export default function AdminPage({
             ]},
           ].map(group => (
             <div key={group.title} className="space-y-1">
-              <p className="text-[11px] font-semibold text-[#8B95A1] uppercase tracking-wide">{group.title}</p>
+              <p className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">{group.title}</p>
               {group.links.map(l => (
                 <Link key={l.href} href={l.href}
-                  className="block text-[12px] px-2 py-1 text-slate-500 rounded hover:bg-slate-50 hover:text-slate-700 truncate">
+                  className="block text-admin-xs px-2 py-1 text-slate-500 rounded hover:bg-slate-50 hover:text-slate-700 truncate">
                   {l.label}
                 </Link>
               ))}
@@ -1608,7 +1649,7 @@ export default function AdminPage({
               <p className="text-[11px] font-semibold text-blue-400 uppercase">{group.title}</p>
               {group.links.map(l => (
                 <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
-                  className="block text-[12px] px-2 py-1 text-blue-600 rounded hover:bg-blue-50 hover:text-blue-800 truncate">
+                  className="block text-admin-xs px-2 py-1 text-blue-600 rounded hover:bg-blue-50 hover:text-blue-800 truncate">
                   ↗ {l.label}
                 </a>
               ))}
@@ -1625,7 +1666,7 @@ export default function AdminPage({
             onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-start justify-between">
               <div className="flex-1 pr-4">
-                <h2 className="text-[16px] font-semibold text-slate-800 leading-snug">{selectedPackage.title}</h2>
+                <h2 className="text-admin-lg font-semibold text-slate-800 leading-snug">{selectedPackage.title}</h2>
                 <span className={`px-2 py-0.5 text-[11px] rounded font-medium ${
                   selectedPackage.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
                   selectedPackage.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
@@ -1636,7 +1677,7 @@ export default function AdminPage({
               </button>
             </div>
 
-            <div className="px-5 py-4 space-y-4 text-[13px]">
+            <div className="px-5 py-4 space-y-4 text-admin-sm">
               <div className="grid grid-cols-2 gap-2">
                 {selectedPackage.destination && <div><span className="text-slate-500">목적지</span><p className="text-slate-800 font-medium">{selectedPackage.destination}</p></div>}
                 {selectedPackage.duration && <div><span className="text-slate-500">기간</span><p className="text-slate-800 font-medium">{selectedPackage.duration}일</p></div>}
@@ -1671,13 +1712,13 @@ export default function AdminPage({
               {selectedPackage.status === 'pending' && (
                 <>
                   <button onClick={() => handleAction(selectedPackage.id, 'approve')} disabled={processingId === selectedPackage.id}
-                    className="flex-1 bg-[#3182F6] text-white py-2 rounded text-[13px] hover:bg-blue-900 disabled:bg-slate-300 transition">승인</button>
+                    className="flex-1 bg-brand text-white py-2 rounded text-admin-sm hover:bg-blue-700 disabled:bg-slate-300 transition">승인</button>
                   <button onClick={() => handleAction(selectedPackage.id, 'reject')} disabled={processingId === selectedPackage.id}
-                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-[13px] hover:bg-slate-50 transition">반려</button>
+                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition">반려</button>
                 </>
               )}
               <button onClick={() => setSelectedPackage(null)}
-                className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-[13px] hover:bg-slate-50 transition">닫기</button>
+                className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition">닫기</button>
             </div>
           </div>
         </div>

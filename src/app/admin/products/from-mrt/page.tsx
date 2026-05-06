@@ -108,18 +108,18 @@ export default function FromMrtPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">MRT에서 상품 가져오기</h1>
-      <p className="text-sm text-gray-500 mb-6">마이리얼트립 검색 결과에서 호텔·투어를 직접 상품으로 등록합니다.<br />CS 필터: 평점 4.5↑ + 리뷰 100건↑ 강제</p>
+      <h1 className="text-2xl font-bold text-slate-900 mb-2">MRT에서 상품 가져오기</h1>
+      <p className="text-sm text-slate-500 mb-6">마이리얼트립 검색 결과에서 호텔·투어를 직접 상품으로 등록합니다.<br />CS 필터: 평점 4.5↑ + 리뷰 100건↑ 강제</p>
 
       {/* 검색 폼 */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-3 shadow-sm">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 mb-6 space-y-3 shadow-sm">
         <div className="flex gap-2">
           <button onClick={() => setType('stay')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${type === 'stay' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>
+            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${type === 'stay' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
             호텔·숙박
           </button>
           <button onClick={() => setType('tna')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${type === 'tna' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>
+            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${type === 'tna' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
             투어·액티비티
           </button>
         </div>
@@ -129,7 +129,7 @@ export default function FromMrtPage() {
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
             placeholder={type === 'stay' ? '도시명 (예: 다낭, 방콕)' : '검색어 (예: 다낭 쿠킹클래스)'}
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
           />
           {type === 'stay' && (
             <input
@@ -137,7 +137,7 @@ export default function FromMrtPage() {
               min={1} max={14}
               value={nights}
               onChange={e => setNights(parseInt(e.target.value, 10))}
-              className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+              className="w-20 border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
               title="박 수"
             />
           )}
@@ -145,7 +145,7 @@ export default function FromMrtPage() {
             value={destination}
             onChange={e => setDestination(e.target.value)}
             placeholder="목적지 한국어 (예: 다낭)"
-            className="w-36 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+            className="w-36 border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
           />
           <button
             onClick={handleSearch}
@@ -163,7 +163,7 @@ export default function FromMrtPage() {
               className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                 selectedCategory === ''
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
               }`}
             >
               전체
@@ -175,7 +175,7 @@ export default function FromMrtPage() {
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                   selectedCategory === cat.id
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
                 }`}
               >
                 {cat.name}{cat.count ? ` (${cat.count})` : ''}
@@ -192,7 +192,7 @@ export default function FromMrtPage() {
       {/* 결과 목록 */}
       {results.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-500">{results.length}건 검색됨 (CS 통과: {results.filter(r => r.csOk).length}건)</p>
+          <p className="text-sm text-slate-500">{results.length}건 검색됨 (CS 통과: {results.filter(r => r.csOk).length}건)</p>
           {results.map((r, i) => {
             const item = r.item;
             const key  = (item as StayResult).providerId ?? (item as ActivityResult).providerId;
@@ -211,22 +211,22 @@ export default function FromMrtPage() {
               : (item as ActivityResult).imageUrl;
 
             return (
-              <div key={i} className={`bg-white border rounded-xl p-4 shadow-sm flex gap-4 ${r.csOk ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+              <div key={i} className={`bg-white border rounded-xl p-4 shadow-sm flex gap-4 ${r.csOk ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
                 {thumbUrl && (
                   <img src={thumbUrl} alt={name} className="w-20 h-20 object-cover rounded-lg shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-[14px] font-semibold text-gray-900 leading-tight">{name}</p>
+                      <p className="text-admin-base font-semibold text-slate-900 leading-tight">{name}</p>
                       <div className="flex items-center gap-3 mt-1">
                         {rating != null && (
-                          <span className="text-[12px] text-amber-600 font-medium">★ {rating.toFixed(1)}</span>
+                          <span className="text-admin-xs text-amber-600 font-medium">★ {rating.toFixed(1)}</span>
                         )}
                         {reviewCount != null && (
-                          <span className="text-[11px] text-gray-500">리뷰 {reviewCount.toLocaleString()}건</span>
+                          <span className="text-[11px] text-slate-500">리뷰 {reviewCount.toLocaleString()}건</span>
                         )}
-                        <span className="text-[12px] text-blue-600 font-semibold">{price}</span>
+                        <span className="text-admin-xs text-blue-600 font-semibold">{price}</span>
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
@@ -239,7 +239,7 @@ export default function FromMrtPage() {
                         <button
                           onClick={() => handleRegister(r)}
                           disabled={registering === key}
-                          className="block text-[12px] px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold"
+                          className="block text-admin-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold"
                         >
                           {registering === key ? '등록 중...' : '상품 등록'}
                         </button>
@@ -247,10 +247,10 @@ export default function FromMrtPage() {
                     </div>
                   </div>
                   {type === 'stay' && (item as StayResult).location && (
-                    <p className="text-[11px] text-gray-500 mt-1">{(item as StayResult).location}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">{(item as StayResult).location}</p>
                   )}
                   {type === 'tna' && (item as ActivityResult).duration && (
-                    <p className="text-[11px] text-gray-500 mt-1">소요: {(item as ActivityResult).duration}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">소요: {(item as ActivityResult).duration}</p>
                   )}
                 </div>
               </div>
@@ -260,7 +260,7 @@ export default function FromMrtPage() {
       )}
 
       {results.length === 0 && !loading && !error && (
-        <div className="text-center py-12 text-gray-400 text-sm">검색어를 입력하고 검색 버튼을 누르세요.</div>
+        <div className="text-center py-12 text-slate-400 text-sm">검색어를 입력하고 검색 버튼을 누르세요.</div>
       )}
     </div>
   );

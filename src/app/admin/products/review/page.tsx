@@ -79,7 +79,7 @@ function ConfidenceBar({ score }: { score: number | null | undefined }) {
   const label = val >= 80 ? '높음' : val >= 60 ? '보통' : '낮음';
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-[13px]">
+      <div className="flex items-center justify-between text-admin-sm">
         <span className="text-slate-500">AI 신뢰도</span>
         <span className={`font-bold ${val >= 80 ? 'text-emerald-600' : val >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
           {val}% / {label}
@@ -340,15 +340,22 @@ export default function ProductReviewPage() {
         {/* ── 좌측: 상품 리스트 ─────────────────────────────────────────────── */}
         <aside className="w-[260px] flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
           <div className="px-4 py-3 border-b border-slate-200">
-            <h2 className="text-[13px] font-bold text-slate-800">검수 대기</h2>
+            <h2 className="text-admin-sm font-bold text-slate-800">검수 대기</h2>
             <p className="text-[11px] text-slate-400 mt-0.5">{products.length}건 / 신뢰도 낮은 순</p>
           </div>
 
           {loading ? (
-            <div className="flex-1 flex items-center justify-center text-[13px] text-slate-400">로딩 중...</div>
+            <div className="flex-1 p-4 space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 space-y-1.5">
+                  <div className="h-3.5 bg-slate-100 rounded animate-pulse w-3/4" />
+                  <div className="h-3 bg-slate-100 rounded animate-pulse w-1/2" />
+                </div>
+              ))}
+            </div>
           ) : products.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400">
-              <p className="text-[13px]">검수 대기 상품 없음</p>
+              <p className="text-admin-sm">검수 대기 상품 없음</p>
             </div>
           ) : (
             <ul className="flex-1 overflow-y-auto">
@@ -369,7 +376,7 @@ export default function ProductReviewPage() {
                         랜드사 미상
                       </span>
                     )}
-                    <p className="text-[13px] font-semibold text-slate-800 truncate leading-tight">{p.display_name}</p>
+                    <p className="text-admin-sm font-semibold text-slate-800 truncate leading-tight">{p.display_name}</p>
                     <p className="text-[11px] text-slate-400 truncate mt-0.5">{p.source_filename ?? p.internal_code}</p>
                   </button>
                 </li>
@@ -382,7 +389,7 @@ export default function ProductReviewPage() {
         <main className="flex-1 flex flex-col overflow-hidden">
           {!selected ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
-              <p className="text-[14px]">좌측에서 상품을 선택하세요</p>
+              <p className="text-admin-base">좌측에서 상품을 선택하세요</p>
             </div>
           ) : (
             <>
@@ -390,12 +397,12 @@ export default function ProductReviewPage() {
               <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h1 className="text-[16px] font-bold text-slate-800 truncate">{selected.display_name}</h1>
+                    <h1 className="text-admin-lg font-bold text-slate-800 truncate">{selected.display_name}</h1>
                     <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded flex-shrink-0">
                       {selected.internal_code}
                     </span>
                   </div>
-                  <p className="text-[13px] text-slate-500">
+                  <p className="text-admin-sm text-slate-500">
                     {selected.destination ?? '-'} / {selected.duration_days}일 / {selected.net_price?.toLocaleString()}원
                   </p>
                 </div>
@@ -403,14 +410,14 @@ export default function ProductReviewPage() {
                   <button
                     onClick={reject}
                     disabled={approving || rejecting}
-                    className="px-4 py-2 text-[13px] font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors bg-white"
+                    className="px-4 py-2 text-admin-sm font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors bg-white"
                   >
                     반려
                   </button>
                   <button
                     onClick={approve}
                     disabled={approving || rejecting}
-                    className="px-5 py-2 text-[13px] font-bold rounded-lg bg-[#001f3f] text-white hover:bg-blue-900 disabled:opacity-40 transition-colors"
+                    className="px-5 py-2 text-admin-sm font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
                   >
                     {approving ? '처리 중...' : '최종 승인'}
                   </button>
@@ -426,7 +433,7 @@ export default function ProductReviewPage() {
                       <button
                         key={t}
                         onClick={() => setTab(t)}
-                        className={`py-3 text-[13px] font-semibold border-b-2 transition-colors ${tab === t ? 'border-[#001f3f] text-slate-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                        className={`py-3 text-admin-sm font-semibold border-b-2 transition-colors ${tab === t ? 'border-blue-600 text-slate-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                       >
                         {labels[t]}
                       </button>
@@ -444,8 +451,8 @@ export default function ProductReviewPage() {
                     {/* 랜드사 미상 — 수동 지정 카드 */}
                     {(!selected.supplier_code || selected.supplier_code === 'ETC') && (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-5">
-                        <h3 className="text-[13px] font-bold text-red-700 mb-2">랜드사 미상 -- 수동 지정 필요</h3>
-                        <p className="text-[13px] text-red-500 mb-3">
+                        <h3 className="text-admin-sm font-bold text-red-700 mb-2">랜드사 미상 -- 수동 지정 필요</h3>
+                        <p className="text-admin-sm text-red-500 mb-3">
                           파일명/본문에서 랜드사를 자동 식별하지 못했습니다. 아래에서 랜드사를 선택하면 승인 시 영구 학습됩니다.
                         </p>
                         <select
@@ -454,7 +461,7 @@ export default function ProductReviewPage() {
                             const op = landOperators.find(o => o.id === e.target.value) ?? null;
                             setResolvedLandOperator(op);
                           }}
-                          className="w-full border border-red-200 rounded-lg px-3 py-2 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-red-300"
+                          className="w-full border border-red-200 rounded-lg px-3 py-2 text-admin-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-300"
                         >
                           <option value="">-- 랜드사 선택 --</option>
                           {landOperators.map(op => (
@@ -462,7 +469,7 @@ export default function ProductReviewPage() {
                           ))}
                         </select>
                         {resolvedLandOperator && (
-                          <p className="mt-2 text-[13px] text-emerald-700 font-medium">
+                          <p className="mt-2 text-admin-sm text-emerald-700 font-medium">
                             {resolvedLandOperator.name} 선택됨 -- 승인 시 영구 학습됩니다
                           </p>
                         )}
@@ -470,25 +477,25 @@ export default function ProductReviewPage() {
                     )}
 
                     {/* AI 신뢰도 바 */}
-                    <div className="bg-white rounded-lg border border-slate-200 p-5">
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
                       <ConfidenceBar score={selected.ai_confidence_score} />
                     </div>
 
                     {/* selling_points */}
                     {selected.selling_points && (
-                      <div className="bg-white rounded-lg border border-slate-200 p-5">
-                        <h3 className="text-[13px] font-bold text-slate-800 mb-3">핵심 셀링포인트</h3>
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                        <h3 className="text-admin-sm font-bold text-slate-800 mb-3">핵심 셀링포인트</h3>
                         <div className="grid grid-cols-3 gap-3">
                           {selected.selling_points.hotel && (
                             <div className="bg-blue-50 rounded-lg p-3">
                               <p className="text-[11px] text-blue-600 font-medium">호텔</p>
-                              <p className="text-[13px] font-semibold text-slate-800 mt-1">{selected.selling_points.hotel}</p>
+                              <p className="text-admin-sm font-semibold text-slate-800 mt-1">{selected.selling_points.hotel}</p>
                             </div>
                           )}
                           {selected.selling_points.airline && (
                             <div className="bg-sky-50 rounded-lg p-3">
                               <p className="text-[11px] text-sky-600 font-medium">항공</p>
-                              <p className="text-[13px] font-semibold text-slate-800 mt-1">{selected.selling_points.airline}</p>
+                              <p className="text-admin-sm font-semibold text-slate-800 mt-1">{selected.selling_points.airline}</p>
                             </div>
                           )}
                           {(selected.selling_points.unique ?? []).length > 0 && (
@@ -496,7 +503,7 @@ export default function ProductReviewPage() {
                               <p className="text-[11px] text-emerald-600 font-medium">특전</p>
                               <ul className="mt-1 space-y-0.5">
                                 {selected.selling_points.unique!.map((u, i) => (
-                                  <li key={i} className="text-[13px] text-slate-800">- {u}</li>
+                                  <li key={i} className="text-admin-sm text-slate-800">- {u}</li>
                                 ))}
                               </ul>
                             </div>
@@ -506,8 +513,8 @@ export default function ProductReviewPage() {
                     )}
 
                     {/* theme_tags 편집 */}
-                    <div className="bg-white rounded-lg border border-slate-200 p-5">
-                      <h3 className="text-[13px] font-bold text-slate-800 mb-3">테마 태그</h3>
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                      <h3 className="text-admin-sm font-bold text-slate-800 mb-3">테마 태그</h3>
                       <div className="flex flex-wrap gap-2 mb-3">
                         {tags.map(tag => (
                           <span key={tag} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] px-2.5 py-1 rounded-full">
@@ -515,7 +522,7 @@ export default function ProductReviewPage() {
                             <button onClick={() => removeTag(tag)} className="text-blue-400 hover:text-blue-700 leading-none">x</button>
                           </span>
                         ))}
-                        {tags.length === 0 && <span className="text-[13px] text-slate-400">태그 없음</span>}
+                        {tags.length === 0 && <span className="text-admin-sm text-slate-400">태그 없음</span>}
                       </div>
                       <div className="flex gap-2">
                         <input
@@ -523,17 +530,17 @@ export default function ProductReviewPage() {
                           onChange={e => setTagInput(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') addTag(); }}
                           placeholder="태그 추가..."
-                          className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                         />
-                        <button onClick={addTag} className="px-3 py-1.5 bg-[#001f3f] text-white text-[13px] rounded-lg hover:bg-blue-900">추가</button>
+                        <button onClick={addTag} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded-lg hover:bg-blue-700">추가</button>
                       </div>
                     </div>
 
                     {/* flight_info */}
                     {selected.flight_info && (
-                      <div className="bg-white rounded-lg border border-slate-200 p-5">
-                        <h3 className="text-[13px] font-bold text-slate-800 mb-3">항공 정보</h3>
-                        <div className="flex items-center gap-4 text-[13px]">
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                        <h3 className="text-admin-sm font-bold text-slate-800 mb-3">항공 정보</h3>
+                        <div className="flex items-center gap-4 text-admin-sm">
                           <span className="font-semibold text-blue-700">{selected.flight_info.airline ?? '-'}</span>
                           {selected.flight_info.flight_no && <span className="text-slate-500">{selected.flight_info.flight_no}</span>}
                           <div className="flex items-center gap-2">
@@ -544,8 +551,8 @@ export default function ProductReviewPage() {
                           {selected.flight_info.return_depart && (
                             <>
                               <span className="text-slate-300">|</span>
-                              <span className="text-[13px] text-slate-500">귀국 {selected.flight_info.return_depart}</span>
-                              {selected.flight_info.return_arrive && <span className="text-[13px] text-slate-500">-&gt; {selected.flight_info.return_arrive}</span>}
+                              <span className="text-admin-sm text-slate-500">귀국 {selected.flight_info.return_depart}</span>
+                              {selected.flight_info.return_arrive && <span className="text-admin-sm text-slate-500">-&gt; {selected.flight_info.return_arrive}</span>}
                             </>
                           )}
                         </div>
@@ -554,10 +561,10 @@ export default function ProductReviewPage() {
 
                     {/* 가격 테이블 */}
                     {(selected.product_prices?.length ?? 0) > 0 && (
-                      <div className="bg-white rounded-lg border border-slate-200 p-5">
-                        <h3 className="text-[13px] font-bold text-slate-800 mb-3">가격 테이블 ({selected.product_prices!.length}행)</h3>
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                        <h3 className="text-admin-sm font-bold text-slate-800 mb-3">가격 테이블 ({selected.product_prices!.length}행)</h3>
                         <div className="overflow-x-auto">
-                          <table className="w-full text-[13px]">
+                          <table className="w-full text-admin-sm">
                             <thead>
                               <tr className="border-b border-slate-200">
                                 <th className="text-left py-2 pr-4 text-[11px] text-slate-500 font-medium">날짜/요일</th>
@@ -587,13 +594,13 @@ export default function ProductReviewPage() {
                     )}
 
                     {/* 이미지 매칭 */}
-                    <div className="bg-white rounded-lg border border-slate-200 p-5">
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-[13px] font-bold text-slate-800">대표 이미지 선택</h3>
+                        <h3 className="text-admin-sm font-bold text-slate-800">대표 이미지 선택</h3>
                         <button
                           onClick={loadImages}
                           disabled={loadingImages}
-                          className="px-3 py-1.5 text-[13px] font-semibold bg-[#001f3f] text-white rounded-lg hover:bg-blue-900 disabled:opacity-40 transition-colors"
+                          className="px-3 py-1.5 text-admin-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
                         >
                           {loadingImages ? '검색 중...' : '이미지 불러오기'}
                         </button>
@@ -609,14 +616,14 @@ export default function ProductReviewPage() {
                               <img src={img.src.medium} alt={img.alt} className="w-full h-full object-cover" />
                               {selectedImageUrl === img.src.large && (
                                 <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-                                  <span className="text-[13px] font-bold text-white bg-blue-600 px-2 py-0.5 rounded">선택됨</span>
+                                  <span className="text-admin-sm font-bold text-white bg-blue-600 px-2 py-0.5 rounded">선택됨</span>
                                 </div>
                               )}
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <div className="h-24 flex items-center justify-center text-[13px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                        <div className="h-24 flex items-center justify-center text-admin-sm text-slate-400 border border-dashed border-slate-200 rounded-lg">
                           이미지 불러오기 버튼을 클릭하세요
                         </div>
                       )}
@@ -631,32 +638,32 @@ export default function ProductReviewPage() {
                 {tab === 'faq' && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-[14px] font-bold text-slate-800">FAQ 지식 베이스</h3>
+                      <h3 className="text-admin-base font-bold text-slate-800">FAQ 지식 베이스</h3>
                       <button
                         onClick={generateFaq}
                         disabled={loadingFaq}
-                        className="px-4 py-2 text-[13px] font-bold bg-[#001f3f] text-white rounded-lg hover:bg-blue-900 disabled:opacity-40 transition-colors"
+                        className="px-4 py-2 text-admin-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
                       >
                         {loadingFaq ? '생성 중...' : 'FAQ 자동 생성'}
                       </button>
                     </div>
 
                     {faq.length === 0 ? (
-                      <div className="bg-white rounded-lg border border-slate-200 p-10 text-center text-slate-400">
-                        <p className="text-[13px]">FAQ 자동 생성 버튼을 클릭하세요</p>
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-10 text-center text-slate-400">
+                        <p className="text-admin-sm">FAQ 자동 생성 버튼을 클릭하세요</p>
                         <p className="text-[11px] mt-1">상품 원문을 분석해 Q&A 10개를 생성합니다</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {faq.map((item, i) => (
-                          <div key={i} className="bg-white rounded-lg border border-slate-200 p-4">
+                          <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
                             <div className="mb-2">
                               <label className="text-[11px] text-blue-600 font-medium">Q{i + 1}</label>
                               <textarea
                                 value={item.q}
                                 onChange={e => setFaq(fs => fs.map((f, j) => j === i ? { ...f, q: e.target.value } : f))}
                                 rows={1}
-                                className="w-full text-[13px] font-semibold text-slate-800 mt-0.5 resize-none border-none outline-none focus:ring-0 bg-transparent"
+                                className="w-full text-admin-sm font-semibold text-slate-800 mt-0.5 resize-none border-none outline-none focus:ring-0 bg-transparent"
                               />
                             </div>
                             <div>
@@ -665,7 +672,7 @@ export default function ProductReviewPage() {
                                 value={item.a}
                                 onChange={e => setFaq(fs => fs.map((f, j) => j === i ? { ...f, a: e.target.value } : f))}
                                 rows={2}
-                                className="w-full text-[13px] text-slate-600 mt-0.5 resize-none border-none outline-none focus:ring-0 bg-transparent"
+                                className="w-full text-admin-sm text-slate-600 mt-0.5 resize-none border-none outline-none focus:ring-0 bg-transparent"
                               />
                             </div>
                           </div>
@@ -682,50 +689,50 @@ export default function ProductReviewPage() {
                       <button
                         onClick={() => generateMarketing('blog')}
                         disabled={loadingMarketing}
-                        className="px-4 py-2 text-[13px] font-semibold bg-[#001f3f] text-white rounded-lg hover:bg-blue-900 disabled:opacity-40 transition-colors"
+                        className="px-4 py-2 text-admin-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
                       >
                         네이버 블로그 초안
                       </button>
                       <button
                         onClick={() => generateMarketing('instagram')}
                         disabled={loadingMarketing}
-                        className="px-4 py-2 text-[13px] font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                        className="px-4 py-2 text-admin-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
                       >
                         인스타 광고 문구
                       </button>
                       <button
                         onClick={() => generateMarketing('itinerary')}
                         disabled={loadingMarketing}
-                        className="px-4 py-2 text-[13px] font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                        className="px-4 py-2 text-admin-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
                       >
                         A4 일정표 데이터
                       </button>
                     </div>
 
                     {loadingMarketing && (
-                      <div className="bg-white rounded-lg border border-slate-200 p-10 text-center text-slate-400 text-[13px]">생성 중...</div>
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-10 text-center text-slate-400 text-admin-sm">생성 중...</div>
                     )}
 
                     {!loadingMarketing && marketing && (
-                      <div className="bg-white rounded-lg border border-slate-200 p-5">
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-[13px] font-bold text-slate-500 uppercase">{marketing.type}</span>
+                          <span className="text-admin-sm font-bold text-slate-500 uppercase">{marketing.type}</span>
                           <button
                             onClick={() => navigator.clipboard.writeText(marketing.content).then(() => showToast('복사됨!'))}
-                            className="text-[13px] text-blue-700 hover:underline"
+                            className="text-admin-sm text-blue-700 hover:underline"
                           >
                             복사
                           </button>
                         </div>
-                        <pre className="text-[13px] text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
+                        <pre className="text-admin-sm text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
                           {marketing.content}
                         </pre>
                       </div>
                     )}
 
                     {!loadingMarketing && !marketing && (
-                      <div className="bg-white rounded-lg border border-slate-200 p-10 text-center text-slate-400">
-                        <p className="text-[13px]">위 버튼을 클릭해 마케팅 콘텐츠를 생성하세요</p>
+                      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-10 text-center text-slate-400">
+                        <p className="text-admin-sm">위 버튼을 클릭해 마케팅 콘텐츠를 생성하세요</p>
                       </div>
                     )}
                   </div>
@@ -738,7 +745,7 @@ export default function ProductReviewPage() {
 
       {/* ── 토스트 ────────────────────────────────────────────────────────────── */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg border text-[13px] font-semibold text-white z-50 ${toast.type === 'err' ? 'bg-red-600 border-red-700' : 'bg-slate-800 border-slate-700'}`}>
+        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg border text-admin-sm font-semibold text-white z-50 ${toast.type === 'err' ? 'bg-red-600 border-red-700' : 'bg-slate-800 border-slate-700'}`}>
           {toast.msg}
         </div>
       )}

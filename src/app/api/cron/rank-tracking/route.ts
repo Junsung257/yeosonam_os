@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchBlogSearchMetrics, isGSCConfigured, extractSlugFromUrl } from '@/lib/gsc-client';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -28,9 +29,8 @@ const RANK_DROP_THRESHOLD = 5;       // 5계단 이상 하락 시 경보
 const LOOKBACK_AVG_DAYS = 7;
 
 async function runRankTracking(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {

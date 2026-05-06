@@ -140,7 +140,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // TODO: 실제 네이버 광고 API — 키워드 일시 중지
       // await fetch(`https://api.naver.com/ncc/adgroups/keywords/${kw.id}`, {
       //   method: 'PUT',
-      //   headers: { 'X-API-KEY': process.env.NAVER_AD_API_KEY! },
+      //   headers: { 'X-API-KEY': '<NAVER_AD_API_KEY>' },
       //   body: JSON.stringify({ userLock: true }),
       // });
 

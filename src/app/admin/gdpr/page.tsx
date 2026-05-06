@@ -72,16 +72,16 @@ export default function GdprPage() {
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">GDPR — 잊힐 권리 삭제</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900">GDPR — 잊힐 권리 삭제</h1>
+        <p className="text-sm text-slate-500 mt-1">
           고객 데이터를 DB 전체에서 익명화·삭제합니다. 이 작업은 되돌릴 수 없습니다.
         </p>
       </div>
 
       {/* 입력 폼 */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-slate-700 mb-1">
             고객 ID (UUID)
           </label>
           <input
@@ -89,11 +89,11 @@ export default function GdprPage() {
             value={customerId}
             onChange={(e) => setCustomerId(e.target.value)}
             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-slate-700 mb-1">
             삭제 사유 (선택)
           </label>
           <input
@@ -101,7 +101,7 @@ export default function GdprPage() {
             value={adminNote}
             onChange={(e) => setAdminNote(e.target.value)}
             placeholder="고객 요청, 탈퇴 처리 등"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
           />
         </div>
         {errorMsg && (
@@ -130,21 +130,21 @@ export default function GdprPage() {
                 </svg>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">정말로 삭제하시겠습니까?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
+                <h3 className="font-semibold text-slate-900">정말로 삭제하시겠습니까?</h3>
+                <p className="text-xs text-slate-500 mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
               </div>
             </div>
-            <div className="bg-gray-50 rounded-lg px-3 py-2">
-              <p className="text-xs text-gray-500">삭제 대상</p>
-              <p className="text-sm font-mono text-gray-800 break-all mt-0.5">{customerId}</p>
+            <div className="bg-slate-50 rounded-lg px-3 py-2">
+              <p className="text-xs text-slate-500">삭제 대상</p>
+              <p className="text-sm font-mono text-slate-800 break-all mt-0.5">{customerId}</p>
             </div>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600">
               conversations, customers, bookings, booking_companions, agent_tasks의 개인정보가 모두 익명화됩니다.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowConfirm(false)}
-                className="flex-1 border border-gray-300 text-gray-700 font-medium py-2 rounded-lg hover:bg-gray-50 transition"
+                className="flex-1 border border-slate-300 text-slate-700 font-medium py-2 rounded-lg hover:bg-slate-50 transition"
               >
                 취소
               </button>
@@ -161,9 +161,9 @@ export default function GdprPage() {
 
       {/* 삭제 결과 로그 */}
       {result && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">삭제 결과</h2>
+            <h2 className="font-semibold text-slate-900">삭제 결과</h2>
             <span
               className={`text-xs font-medium px-2 py-1 rounded-full ${
                 result.ok
@@ -177,16 +177,16 @@ export default function GdprPage() {
 
           <div className="flex gap-4 text-sm">
             <div className="text-center">
-              <p className="text-2xl font-bold text-gray-900">{result.summary.total}</p>
-              <p className="text-gray-500 text-xs">전체 단계</p>
+              <p className="text-2xl font-bold text-slate-900">{result.summary.total}</p>
+              <p className="text-slate-500 text-xs">전체 단계</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-green-600">{result.summary.succeeded}</p>
-              <p className="text-gray-500 text-xs">성공</p>
+              <p className="text-slate-500 text-xs">성공</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-red-500">{result.summary.failed}</p>
-              <p className="text-gray-500 text-xs">실패</p>
+              <p className="text-slate-500 text-xs">실패</p>
             </div>
           </div>
 
@@ -202,9 +202,9 @@ export default function GdprPage() {
                   {step.ok ? '✓' : '✗'}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-xs text-gray-700">{step.step}</p>
+                  <p className="font-mono text-xs text-slate-700">{step.step}</p>
                   {step.affected !== undefined && (
-                    <p className="text-xs text-gray-500">{step.affected}행 처리됨</p>
+                    <p className="text-xs text-slate-500">{step.affected}행 처리됨</p>
                   )}
                   {step.error && (
                     <p className="text-xs text-red-600 mt-0.5 break-all">{step.error}</p>

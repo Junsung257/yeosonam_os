@@ -363,7 +363,18 @@ export default function InboxPage() {
 
         {/* 카드 리스트 */}
         {loading ? (
-          <div className="text-center py-16 text-slate-400">불러오는 중…</div>
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 bg-slate-100 rounded-full animate-pulse w-20" />
+                  <div className="h-3.5 bg-slate-100 rounded animate-pulse w-36" />
+                </div>
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
+              </div>
+            ))}
+          </div>
         ) : filteredTasks.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-6xl mb-3">🎉</div>

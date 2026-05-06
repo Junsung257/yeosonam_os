@@ -17,13 +17,13 @@ function AffiliatesSkeleton() {
       </div>
       <div className="grid grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
+          <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
             <div className="h-3 bg-slate-100 rounded w-24" />
             <div className="h-6 bg-slate-100 rounded w-20" />
           </div>
         ))}
       </div>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         {[...Array(5)].map((_, i) => (
           <div key={i} className="border-b border-slate-100 px-3 py-3 flex gap-4">
             <div className="h-4 bg-slate-100 rounded w-24" />

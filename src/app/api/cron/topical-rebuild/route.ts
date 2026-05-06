@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { rebuildAllClusters } from '@/lib/topical-authority';
 import { seedProgrammaticTopics, promotePendingTopics } from '@/lib/programmatic-seo';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 
 /**
  * Topical Authority + Programmatic SEO 통합 cron — 매주 일요일 18:00 UTC (월 03:00 KST)
@@ -20,9 +21,8 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 async function runTopicalRebuild(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {

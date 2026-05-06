@@ -255,7 +255,16 @@ export default function ScoringAdminPage() {
     else showToast('error', '삭제 실패');
   };
 
-  if (loading) return <div className="p-8 text-sm text-slate-500">로딩 중...</div>;
+  if (loading) return (
+    <div className="p-6 space-y-4 max-w-3xl">
+      <div className="h-5 bg-slate-100 rounded animate-pulse w-36" />
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-8 bg-slate-50 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
   if (!policy) return <div className="p-8 text-sm text-red-600">활성 정책이 없습니다. 마이그레이션을 확인하세요.</div>;
 
   return (
@@ -275,7 +284,7 @@ export default function ScoringAdminPage() {
       )}
 
       {/* 가중치 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-slate-800">기준 가중치 (10 axis)</h2>
           <p className="text-xs text-slate-500 mt-0.5">합이 1.0이 되도록 자동 정규화. base 6 + P1 4 (climate·popularity·korean_meal·free_time).</p>
@@ -336,7 +345,7 @@ export default function ScoringAdminPage() {
       <PolicyWeightsCompare />
 
       {/* 호텔 프리미엄 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-slate-800">호텔 등급별 등가 금액 (KRW)</h2>
           <p className="text-xs text-slate-500 mt-0.5">실효가격에서 차감되는 호텔 가치. 등급 높을수록 큰 값.</p>
@@ -444,7 +453,7 @@ export default function ScoringAdminPage() {
       </section>
 
       {/* 직항 보너스 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
         <h2 className="text-sm font-semibold text-slate-800 mb-3">직항 프리미엄 (KRW)</h2>
         <input
           type="number" min={0} step={10000}
@@ -519,7 +528,7 @@ export default function ScoringAdminPage() {
       )}
 
       {/* 그룹 미리보기 — 정책 변경 효과 즉시 검증 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-slate-800">그룹 미리보기 (정책 시뮬레이션)</h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -617,7 +626,7 @@ export default function ScoringAdminPage() {
       </section>
 
       {/* 옵션 시장가 카탈로그 */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-slate-800">옵션 시장가 카탈로그</h2>
           <p className="text-xs text-slate-500 mt-0.5">무료로 포함된 옵션의 시장가. 실효가격에서 차감되어 가성비 비교에 사용.</p>

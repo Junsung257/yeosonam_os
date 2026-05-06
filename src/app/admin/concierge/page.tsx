@@ -104,13 +104,13 @@ export default function AdminConciergePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-bold text-slate-800">AI 컨시어지 관제탑</h1>
-          <p className="text-[13px] text-slate-500 mt-1">Mock API 제어판 / 트랜잭션 모니터링</p>
+          <h1 className="text-admin-lg font-bold text-slate-800">AI 컨시어지 관제탑</h1>
+          <p className="text-admin-sm text-slate-500 mt-1">Mock API 제어판 / 트랜잭션 모니터링</p>
         </div>
         <Link
           href="/concierge"
           target="_blank"
-          className="px-4 py-2 bg-[#001f3f] text-white rounded-lg text-[13px] font-medium hover:bg-blue-900"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700"
         >
           컨시어지 열기
         </Link>
@@ -118,25 +118,25 @@ export default function AdminConciergePage() {
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <p className="text-[13px] text-slate-500">완료된 거래</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+          <p className="text-admin-sm text-slate-500">완료된 거래</p>
           <p className="text-2xl font-bold text-emerald-600 mt-1">{completedCount}</p>
         </div>
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <p className="text-[13px] text-slate-500">순마진 합계</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+          <p className="text-admin-sm text-slate-500">순마진 합계</p>
           <p className="text-2xl font-bold text-blue-700 mt-1">{totalMargin.toLocaleString()}원</p>
         </div>
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <p className="text-[13px] text-slate-500">실패 건수</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+          <p className="text-admin-sm text-slate-500">실패 건수</p>
           <p className="text-2xl font-bold text-red-600 mt-1">{failCount}</p>
         </div>
       </div>
 
       {/* Mock API 제어판 */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200">
-          <h2 className="text-[14px] font-semibold text-slate-800">Mock API 에러 주입 제어판</h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">success / fail / timeout 모드 설정 후 저장</p>
+          <h2 className="text-admin-base font-semibold text-slate-800">Mock API 에러 주입 제어판</h2>
+          <p className="text-admin-sm text-slate-500 mt-0.5">success / fail / timeout 모드 설정 후 저장</p>
         </div>
         <div>
           {configs.map(cfg => {
@@ -144,7 +144,7 @@ export default function AdminConciergePage() {
             return (
               <div key={cfg.api_name} className="px-4 py-2 flex items-center gap-6 border-b border-slate-200 last:border-b-0">
                 <div className="flex-1">
-                  <p className="font-medium text-slate-800 text-[13px]">{API_DISPLAY[cfg.api_name] ?? cfg.api_name}</p>
+                  <p className="font-medium text-slate-800 text-admin-sm">{API_DISPLAY[cfg.api_name] ?? cfg.api_name}</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     마지막 수정: {new Date(cfg.updated_at).toLocaleString('ko-KR')}
                   </p>
@@ -153,7 +153,7 @@ export default function AdminConciergePage() {
                   <select
                     value={(local.mode ?? cfg.mode) as string}
                     onChange={e => updateLocal(cfg.api_name, 'mode', e.target.value)}
-                    className={`text-[13px] border border-slate-200 rounded-lg px-3 py-1.5 font-medium ${MODE_BADGE[local.mode ?? cfg.mode]}`}
+                    className={`text-admin-sm border border-slate-200 rounded-lg px-3 py-1.5 font-medium ${MODE_BADGE[local.mode ?? cfg.mode]}`}
                   >
                     <option value="success">success</option>
                     <option value="fail">fail</option>
@@ -168,14 +168,14 @@ export default function AdminConciergePage() {
                       step="500"
                       value={local.delay_ms ?? cfg.delay_ms}
                       onChange={e => updateLocal(cfg.api_name, 'delay_ms', Number(e.target.value))}
-                      className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-[13px] text-center"
+                      className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-admin-sm text-center"
                     />
                     <span className="text-[11px] text-slate-500">ms</span>
                   </div>
                   <button
                     onClick={() => saveConfig(cfg.api_name)}
                     disabled={saving[cfg.api_name]}
-                    className="px-3 py-1.5 bg-[#001f3f] text-white rounded-lg text-[13px] font-medium hover:bg-blue-900 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                   >
                     {saving[cfg.api_name] ? '저장 중...' : '저장'}
                   </button>
@@ -187,14 +187,14 @@ export default function AdminConciergePage() {
       </div>
 
       {/* 트랜잭션 목록 */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-[14px] font-semibold text-slate-800">트랜잭션 목록</h2>
+          <h2 className="text-admin-base font-semibold text-slate-800">트랜잭션 목록</h2>
           <div className="flex items-center gap-2">
             <select
               value={txFilter}
               onChange={e => setTxFilter(e.target.value)}
-              className="text-[13px] border border-slate-200 rounded-lg px-2 py-1.5"
+              className="text-admin-sm border border-slate-200 rounded-lg px-2 py-1.5"
             >
               <option value="">전체</option>
               <option value="COMPLETED">COMPLETED</option>
@@ -204,14 +204,14 @@ export default function AdminConciergePage() {
             </select>
             <button
               onClick={loadData}
-              className="text-[13px] bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
+              className="text-admin-sm bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
             >
               새로고침
             </button>
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-admin-sm">
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">ID</th>
@@ -227,7 +227,7 @@ export default function AdminConciergePage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-slate-400 text-[13px]">
+                  <td colSpan={8} className="px-3 py-8 text-center text-slate-400 text-admin-sm">
                     트랜잭션이 없습니다.
                   </td>
                 </tr>
@@ -259,7 +259,7 @@ export default function AdminConciergePage() {
                     <td className="px-3 py-2">
                       <Link
                         href={`/admin/concierge/transactions/${tx.id}`}
-                        className="text-[13px] text-blue-700 hover:underline"
+                        className="text-admin-sm text-blue-700 hover:underline"
                       >
                         상세
                       </Link>

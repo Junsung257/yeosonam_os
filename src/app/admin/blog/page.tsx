@@ -9,7 +9,7 @@ export const revalidate = 60;
 
 function BlogTableSkeleton() {
   return (
-    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden animate-pulse">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden animate-pulse">
       {[...Array(8)].map((_, i) => (
         <div key={i} className="border-b border-slate-100 px-4 py-3 flex gap-4 items-center">
           <div className="h-4 bg-slate-100 rounded flex-1" />
@@ -38,30 +38,30 @@ export default function BlogAdminPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">블로그 관리</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">SEO 최적화 블로그 글 작성 · 편집 · 발행</p>
+          <p className="text-admin-xs text-slate-400 mt-0.5">SEO 최적화 블로그 글 작성 · 편집 · 발행</p>
         </div>
         <div className="flex gap-2">
           <Link
             href="/admin/blog/system"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50 transition"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition"
           >
             시스템·크론
           </Link>
           <Link
             href="/admin/blog/queue"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50 transition"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition"
           >
             자동 발행 큐
           </Link>
           <Link
             href="/admin/blog/categories"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50 transition"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition"
           >
             카테고리 관리
           </Link>
           <Link
             href="/admin/blog/write"
-            className="px-4 py-2 bg-[#001f3f] text-white text-[13px] font-semibold rounded-lg hover:bg-blue-900 transition"
+            className="px-4 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded-lg hover:bg-blue-700 transition"
           >
             + 새 글 쓰기
           </Link>

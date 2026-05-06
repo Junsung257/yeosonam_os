@@ -111,7 +111,7 @@ export default function EscalationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-[16px] font-bold text-slate-800 flex items-center gap-2">
+          <h1 className="text-admin-lg font-bold text-slate-800 flex items-center gap-2">
             에스컬레이션 관제탑
             {totalPending > 0 && (
               <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
@@ -119,14 +119,14 @@ export default function EscalationsPage() {
               </span>
             )}
           </h1>
-          <p className="text-[13px] text-slate-500 mt-1">
+          <p className="text-admin-sm text-slate-500 mt-1">
             JARVIS 에이전트 일시정지 및 고객 직접 연결 요청을 통합 관리합니다.
           </p>
         </div>
         <button
           type="button"
           onClick={load}
-          className="text-[13px] bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
+          className="text-admin-sm bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
         >
           새로고침
         </button>
@@ -136,7 +136,7 @@ export default function EscalationsPage() {
         <button
           type="button"
           onClick={() => setTab('tasks')}
-          className={`text-[13px] px-4 py-1.5 rounded-md transition ${
+          className={`text-admin-sm px-4 py-1.5 rounded-md transition ${
             tab === 'tasks'
               ? 'bg-white text-slate-800 font-medium shadow-sm'
               : 'text-slate-500 hover:text-slate-700'
@@ -152,7 +152,7 @@ export default function EscalationsPage() {
         <button
           type="button"
           onClick={() => setTab('inquiries')}
-          className={`text-[13px] px-4 py-1.5 rounded-md transition ${
+          className={`text-admin-sm px-4 py-1.5 rounded-md transition ${
             tab === 'inquiries'
               ? 'bg-white text-slate-800 font-medium shadow-sm'
               : 'text-slate-500 hover:text-slate-700'
@@ -168,15 +168,26 @@ export default function EscalationsPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-20 text-slate-500 text-[14px]">불러오는 중...</div>
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-start gap-3">
+              <div className="w-2 h-2 rounded-full bg-slate-100 animate-pulse mt-1.5 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-48" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-72" />
+              </div>
+              <div className="h-5 bg-slate-100 rounded-full animate-pulse w-16" />
+            </div>
+          ))}
+        </div>
       ) : (
         <>
           {tab === 'tasks' && (
             <div className="space-y-2">
               {tasks.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-lg border border-slate-200">
-                  <p className="text-slate-500 text-[14px] font-medium">처리 대기 중인 에스컬레이션이 없습니다</p>
-                  <p className="text-slate-400 text-[13px] mt-1">JARVIS가 모든 요청을 정상 처리 중입니다</p>
+                <div className="text-center py-20 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                  <p className="text-slate-500 text-admin-base font-medium">처리 대기 중인 에스컬레이션이 없습니다</p>
+                  <p className="text-slate-400 text-admin-sm mt-1">JARVIS가 모든 요청을 정상 처리 중입니다</p>
                 </div>
               ) : tasks.map((task) => {
                 const ctx = task.task_context ?? {};
@@ -185,7 +196,7 @@ export default function EscalationsPage() {
                 return (
                   <div
                     key={task.id}
-                    className={`bg-white rounded-lg border border-slate-200 border-l-4 ${RISK_COLOR[task.risk_level]} p-4`}
+                    className={`bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 ${RISK_COLOR[task.risk_level]} p-4`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -202,7 +213,7 @@ export default function EscalationsPage() {
                           </span>
                         </div>
                         {preview && (
-                          <p className="text-slate-800 text-[14px] leading-relaxed break-words line-clamp-3">
+                          <p className="text-slate-800 text-admin-base leading-relaxed break-words line-clamp-3">
                             {preview.slice(0, 300)}
                           </p>
                         )}
@@ -214,7 +225,7 @@ export default function EscalationsPage() {
                         type="button"
                         onClick={() => takeover(task.id)}
                         disabled={takingOver === task.id}
-                        className="shrink-0 bg-[#001f3f] text-white text-[13px] px-4 py-2 rounded-lg hover:bg-blue-900 transition disabled:opacity-50 whitespace-nowrap"
+                        className="shrink-0 bg-blue-600 text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {takingOver === task.id ? '처리 중…' : '직접 대응'}
                       </button>
@@ -228,13 +239,13 @@ export default function EscalationsPage() {
           {tab === 'inquiries' && (
             <div className="space-y-2">
               {inquiries.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-lg border border-slate-200">
-                  <p className="text-slate-500 text-[14px] font-medium">처리 대기 중인 문의가 없습니다</p>
+                <div className="text-center py-20 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                  <p className="text-slate-500 text-admin-base font-medium">처리 대기 중인 문의가 없습니다</p>
                 </div>
               ) : inquiries.map((inq) => (
                 <div
                   key={inq.id}
-                  className="bg-white rounded-lg border border-slate-200 border-l-4 border-l-amber-400 p-4"
+                  className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 border-l-amber-400 p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -244,11 +255,11 @@ export default function EscalationsPage() {
                         </span>
                         <span className="text-[11px] text-slate-400">{fmtDate(inq.created_at)}</span>
                       </div>
-                      <p className="text-slate-800 text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+                      <p className="text-slate-800 text-admin-base leading-relaxed whitespace-pre-wrap break-words">
                         {inq.question}
                       </p>
                       {inq.customer_name && (
-                        <p className="text-[13px] text-slate-500 mt-2">
+                        <p className="text-admin-sm text-slate-500 mt-2">
                           고객: {inq.customer_name}{inq.customer_email ? ` (${inq.customer_email})` : ''}
                         </p>
                       )}
@@ -256,7 +267,7 @@ export default function EscalationsPage() {
                     <button
                       type="button"
                       onClick={() => resolveInquiry(inq.id)}
-                      className="shrink-0 bg-[#001f3f] text-white text-[13px] px-4 py-2 rounded-lg hover:bg-blue-900 transition"
+                      className="shrink-0 bg-blue-600 text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-blue-700 transition"
                     >
                       처리 완료
                     </button>

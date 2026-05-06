@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getSecret } from '@/lib/secret-registry'
 import { supabaseAdmin } from '@/lib/supabase'
 import crypto from 'crypto'
 
 function verifyKakaoSignature(body: string, signature: string): boolean {
-  const secret = process.env.KAKAO_CHANNEL_SECRET || ''
+  const secret = getSecret('KAKAO_CHANNEL_SECRET') || ''
   if (!secret) return true // 시크릿 미설정 시 검증 스킵
   const hash = crypto.createHmac('sha256', secret).update(body).digest('hex')
   return hash === signature

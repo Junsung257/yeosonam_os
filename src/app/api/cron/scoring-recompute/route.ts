@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { recomputeAllScores, snapshotScoreHistory } from '@/lib/scoring/recommend';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -23,10 +24,8 @@ export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
-  const auth = req.headers.get('authorization') ?? '';
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (expected && auth !== expected) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
   }
 
   const startedAt = Date.now();

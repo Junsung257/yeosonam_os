@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -11,13 +12,10 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * 수동 트리거: POST /api/cron/setup-new-destinations (Authorization: Bearer {CRON_SECRET})
  */
 
-const CRON_SECRET = process.env.CRON_SECRET;
-
 export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
-  const auth = req.headers.get('authorization');
-  if (CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
@@ -82,9 +80,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization');
-  if (CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
   }
   return POST(req);
 }

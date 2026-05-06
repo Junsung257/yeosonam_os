@@ -178,25 +178,25 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-slate-50 py-8">
       <div className="max-w-3xl mx-auto px-4">
         <div className="mb-4">
           <Link href="/admin/bookings" className="text-sm text-blue-600 hover:underline">← 예약 목록</Link>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">예약 등록</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-6">예약 등록</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* 어필리에이트 연결 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-semibold text-gray-900 mb-3">예약 경로 (어필리에이트)</h2>
+            <h2 className="font-semibold text-slate-900 mb-3">예약 경로 (어필리에이트)</h2>
             <div className="flex gap-3 items-start">
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">인플루언서/파트너 선택</label>
+                <label className="block text-xs text-slate-500 mb-1">인플루언서/파트너 선택</label>
                 <select
                   value={selectedAffiliateId}
                   onChange={e => setSelectedAffiliateId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">직접 예약 (어필리에이트 없음)</option>
                   {affiliates.map(a => (
@@ -207,7 +207,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                 </select>
               </div>
               <div className="w-40">
-                <label className="block text-xs text-gray-500 mb-1">USD 원가 (자동 환산)</label>
+                <label className="block text-xs text-slate-500 mb-1">USD 원가 (자동 환산)</label>
                 <input
                   type="number"
                   min={0}
@@ -220,7 +220,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                     if (v > 0) setForm(f => ({ ...f, adultCost: Math.round(v * exchangeRate) }));
                   }}
                   placeholder="0.00"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -233,19 +233,19 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
 
           {/* 상품 선택 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-semibold text-gray-900 mb-4">상품 선택</h2>
+            <h2 className="font-semibold text-slate-900 mb-4">상품 선택</h2>
             <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
               {packages.map(pkg => (
                 <button key={pkg.id} type="button" onClick={() => selectPackage(pkg)}
                   className={`text-left p-3 rounded-lg border transition ${
-                    form.packageId === pkg.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    form.packageId === pkg.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'
                   }`}>
-                  <p className="font-medium text-gray-900 text-sm">{pkg.title}</p>
-                  <p className="text-xs text-gray-500">{pkg.destination} {pkg.price && `· ${pkg.price.toLocaleString()}원`}</p>
+                  <p className="font-medium text-slate-900 text-sm">{pkg.title}</p>
+                  <p className="text-xs text-slate-500">{pkg.destination} {pkg.price && `· ${pkg.price.toLocaleString()}원`}</p>
                 </button>
               ))}
               {packages.length === 0 && (
-                <div className="text-center py-4 text-gray-400 text-sm">
+                <div className="text-center py-4 text-slate-400 text-sm">
                   승인된 상품이 없습니다.
                   <Link href="/admin" className="ml-2 text-blue-600 hover:underline">상품 관리</Link>
                 </div>
@@ -262,21 +262,21 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
 
           {/* 대표 예약자 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-semibold text-gray-900 mb-4">대표 예약자</h2>
+            <h2 className="font-semibold text-slate-900 mb-4">대표 예약자</h2>
             <input
               type="text"
               value={customerSearch}
               onChange={e => setCustomerSearch(e.target.value)}
               placeholder="이름 또는 전화번호 검색"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
             />
             {filteredCustomers.length > 0 && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
                 {filteredCustomers.slice(0, 5).map(c => (
                   <button key={c.id} type="button"
                     onClick={() => { setForm(f => ({...f, leadCustomerId: c.id})); setCustomerSearch(c.name); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition ${form.leadCustomerId === c.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
-                    {c.name} {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition ${form.leadCustomerId === c.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'}`}>
+                    {c.name} {c.phone && <span className="text-slate-400 ml-2">{c.phone}</span>}
                   </button>
                 ))}
               </div>
@@ -289,7 +289,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
           {/* 동행자 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900">동행자 (선택)</h2>
+              <h2 className="font-semibold text-slate-900">동행자 (선택)</h2>
               <button type="button" onClick={() => setShowNewCustomerForm(true)}
                 className="text-xs bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg hover:bg-green-100 transition">
                 + 새 고객 등록
@@ -300,15 +300,15 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
               value={passengerSearch}
               onChange={e => setPassengerSearch(e.target.value)}
               placeholder="이름 또는 전화번호 검색"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
             />
             {filteredPassengers.length > 0 && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
+              <div className="border border-slate-200 rounded-lg overflow-hidden mb-2">
                 {filteredPassengers.slice(0, 5).map(c => (
                   <button key={c.id} type="button"
                     onClick={() => { setSelectedPassengers(prev => [...prev, c]); setPassengerSearch(''); }}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 text-gray-700 transition flex items-center gap-2">
-                    <span>+ {c.name} {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}</span>
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 text-slate-700 transition flex items-center gap-2">
+                    <span>+ {c.name} {c.phone && <span className="text-slate-400 ml-2">{c.phone}</span>}</span>
                     {isPassportExpiringSoon(c.passport_expiry) && (
                       <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">여권만료임박</span>
                     )}
@@ -322,12 +322,12 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                   <span key={p.id} className={`flex items-center gap-1 text-xs px-3 py-1 rounded-full ${
                     isPassportExpiringSoon(p.passport_expiry)
                       ? 'bg-red-50 text-red-700 border border-red-200'
-                      : 'bg-gray-100 text-gray-700'
+                      : 'bg-slate-100 text-slate-700'
                   }`}>
                     {isPassportExpiringSoon(p.passport_expiry) && '⚠️ '}
                     {p.name}
                     <button type="button" onClick={() => setSelectedPassengers(prev => prev.filter(x => x.id !== p.id))}
-                      className="text-gray-400 hover:text-gray-600 ml-1">×</button>
+                      className="text-slate-400 hover:text-slate-600 ml-1">×</button>
                   </span>
                 ))}
               </div>
@@ -339,45 +339,45 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl max-w-sm w-full">
                 <div className="p-4 border-b flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900">새 고객 빠른 등록</h3>
-                  <button type="button" onClick={() => setShowNewCustomerForm(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                  <h3 className="font-semibold text-slate-900">새 고객 빠른 등록</h3>
+                  <button type="button" onClick={() => setShowNewCustomerForm(false)} className="text-slate-400 hover:text-slate-600">✕</button>
                 </div>
                 <div className="p-4 space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">이름 *</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">이름 *</label>
                     <input value={newCustomerForm.name} onChange={e => setNewCustomerForm(f => ({...f, name: e.target.value}))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">전화번호</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">전화번호</label>
                     <input value={newCustomerForm.phone} onChange={e => setNewCustomerForm(f => ({...f, phone: e.target.value}))}
                       placeholder="010-0000-0000"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">여권번호</label>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">여권번호</label>
                       <input value={newCustomerForm.passport_no} onChange={e => setNewCustomerForm(f => ({...f, passport_no: e.target.value}))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">여권 만료일</label>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">여권 만료일</label>
                       <input type="date" value={newCustomerForm.passport_expiry} onChange={e => setNewCustomerForm(f => ({...f, passport_expiry: e.target.value}))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">생년월일</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">생년월일</label>
                     <input type="date" value={newCustomerForm.birth_date} onChange={e => setNewCustomerForm(f => ({...f, birth_date: e.target.value}))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="flex gap-2 pt-1">
                     <button type="button" onClick={saveNewCustomer} disabled={savingNewCustomer}
-                      className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 transition">
+                      className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-300 transition">
                       {savingNewCustomer ? '저장 중...' : '등록 후 동행자 추가'}
                     </button>
                     <button type="button" onClick={() => setShowNewCustomerForm(false)}
-                      className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-200 transition">
+                      className="flex-1 bg-slate-100 text-slate-700 py-2 rounded-lg text-sm hover:bg-slate-200 transition">
                       취소
                     </button>
                   </div>
@@ -388,54 +388,54 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
 
           {/* 인원 및 금액 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-semibold text-gray-900 mb-4">인원 및 금액</h2>
+            <h2 className="font-semibold text-slate-900 mb-4">인원 및 금액</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">성인 수</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">성인 수</label>
                 <input type="number" min={1} value={form.adultCount} onChange={e => setForm(f => ({...f, adultCount: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">소아 수</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">소아 수</label>
                 <input type="number" min={0} value={form.childCount} onChange={e => setForm(f => ({...f, childCount: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">성인 원가 (1인)</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">성인 원가 (1인)</label>
                 <input type="number" min={0} value={form.adultCost} onChange={e => setForm(f => ({...f, adultCost: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">성인 판매가 (1인)</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">성인 판매가 (1인)</label>
                 <input type="number" min={0} value={form.adultPrice} onChange={e => setForm(f => ({...f, adultPrice: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">소아 원가 (1인)</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">소아 원가 (1인)</label>
                 <input type="number" min={0} value={form.childCost} onChange={e => setForm(f => ({...f, childCost: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">소아 판매가 (1인)</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">소아 판매가 (1인)</label>
                 <input type="number" min={0} value={form.childPrice} onChange={e => setForm(f => ({...f, childPrice: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">유류할증료</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">유류할증료</label>
                 <input type="number" min={0} value={form.fuelSurcharge} onChange={e => setForm(f => ({...f, fuelSurcharge: +e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">출발일</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">출발일</label>
                 <input type="date" value={form.departureDate} onChange={e => setForm(f => ({...f, departureDate: e.target.value}))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
 
             {/* 추가 비용 항목 (surcharge_breakdown) */}
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-gray-700">추가 비용 항목 (커미션 제외)</label>
+                <label className="text-xs font-medium text-slate-700">추가 비용 항목 (커미션 제외)</label>
                 <button type="button" onClick={addSurchargeItem}
                   className="text-xs text-blue-600 hover:text-blue-800">+ 항목 추가</button>
               </div>
@@ -443,31 +443,31 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                 <div key={idx} className="flex gap-2 mb-2">
                   <input type="text" placeholder="항목명 (싱글차지, 비자비 등)" value={item.name}
                     onChange={e => updateSurchargeItem(idx, 'name', e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                   <input type="number" placeholder="금액" value={item.amount || ''}
                     onChange={e => updateSurchargeItem(idx, 'amount', +e.target.value)}
-                    className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                    className="w-32 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                   <button type="button" onClick={() => removeSurchargeItem(idx)}
                     className="text-red-400 hover:text-red-600 text-sm px-2">✕</button>
                 </div>
               ))}
               {surchargeTotal > 0 && (
-                <p className="text-xs text-gray-500 mt-1">추가 비용 합계: {surchargeTotal.toLocaleString()}원</p>
+                <p className="text-xs text-slate-500 mt-1">추가 비용 합계: {surchargeTotal.toLocaleString()}원</p>
               )}
             </div>
 
             {/* 합계 미리보기 */}
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-500">총 원가</span>
+                <span className="text-slate-500">총 원가</span>
                 <span className="font-medium">{totalCost.toLocaleString()}원</span>
               </div>
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-500">총 판매가</span>
+                <span className="text-slate-500">총 판매가</span>
                 <span className="font-medium">{totalPrice.toLocaleString()}원</span>
               </div>
-              <div className="flex justify-between text-sm pt-2 border-t border-gray-200 mt-1">
-                <span className="text-gray-700 font-medium">마진</span>
+              <div className="flex justify-between text-sm pt-2 border-t border-slate-200 mt-1">
+                <span className="text-slate-700 font-medium">마진</span>
                 <span className={`font-bold ${margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>{margin.toLocaleString()}원</span>
               </div>
             </div>
@@ -475,20 +475,20 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
 
           {/* 메모 */}
           <div className="bg-white rounded-xl shadow-sm p-5">
-            <h2 className="font-semibold text-gray-900 mb-3">메모 (선택)</h2>
+            <h2 className="font-semibold text-slate-900 mb-3">메모 (선택)</h2>
             <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={3}
               placeholder="특이사항, 요청사항 등"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
 
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
           <div className="flex gap-3">
             <button type="submit" disabled={saving}
-              className="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 transition">
+              className="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:bg-slate-300 transition">
               {saving ? '저장 중...' : '예약 등록'}
             </button>
-            <Link href="/admin/bookings" className="flex-1 text-center bg-gray-100 text-gray-700 py-3 rounded-xl text-sm hover:bg-gray-200 transition">
+            <Link href="/admin/bookings" className="flex-1 text-center bg-slate-100 text-slate-700 py-3 rounded-xl text-sm hover:bg-slate-200 transition">
               취소
             </Link>
           </div>

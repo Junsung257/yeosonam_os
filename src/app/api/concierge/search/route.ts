@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchHotels, searchActivities, searchCruises, MockSearchResult } from '@/lib/mock-apis';
 import { searchTenantProducts, isSupabaseConfigured, CrossSearchResult } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 function tenantToMock(r: CrossSearchResult): MockSearchResult {
   return {
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '검색어가 필요합니다.' }, { status: 400 });
     }
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    const apiKey = getSecret('GOOGLE_AI_API_KEY');
     if (!apiKey) {
       // API 키 없을 때 — 기본 검색 (목적지 키워드 추출 없이 전체 반환)
       const [tenantRes, hotelRes, actRes] = await Promise.all([

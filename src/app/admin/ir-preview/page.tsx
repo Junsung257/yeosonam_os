@@ -33,11 +33,11 @@ export default async function IrPreviewPage() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">IR 미리보기 (Phase 1.5-C HITL)</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900">IR 미리보기 (Phase 1.5-C HITL)</h1>
+        <p className="text-sm text-slate-500 mt-1">
           원문 → Normalizer 가 생성한 IR 을 승인/거절/재생성합니다. 승인 시 travel_packages 에 등록됩니다.
         </p>
-        <div className="mt-2 text-xs text-gray-400">
+        <div className="mt-2 text-xs text-slate-400">
           총 {drafts.length}건 ·
           draft {drafts.filter((d: any) => d.status === 'draft').length} /
           converted {drafts.filter((d: any) => d.status === 'converted').length} /

@@ -39,7 +39,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   meta: 'Meta', naver: '네이버', google: '구글',
 };
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  draft: { label: '초안', color: 'bg-gray-100 text-gray-600' },
+  draft: { label: '초안', color: 'bg-slate-100 text-slate-600' },
   review: { label: '검토중', color: 'bg-yellow-100 text-yellow-700' },
   active: { label: '활성', color: 'bg-green-100 text-green-700' },
   paused: { label: '일시정지', color: 'bg-orange-100 text-orange-700' },
@@ -188,8 +188,8 @@ export default function CreativesPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">광고 소재 공장</h1>
-          <p className="text-xs text-gray-500 mt-0.5">상품 → 캐러셀 + 단일이미지 + 텍스트광고 자동 생성</p>
+          <h1 className="text-xl font-bold text-slate-900">광고 소재 공장</h1>
+          <p className="text-xs text-slate-500 mt-0.5">상품 → 캐러셀 + 단일이미지 + 텍스트광고 자동 생성</p>
         </div>
         <button onClick={() => setShowGenerator(!showGenerator)}
           className="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition">
@@ -199,23 +199,23 @@ export default function CreativesPage() {
 
       {/* 생성 패널 */}
       {showGenerator && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700">소재 생성 설정</h2>
+        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-slate-700">소재 생성 설정</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">상품 선택 *</label>
+              <label className="text-xs font-medium text-slate-500 block mb-1">상품 선택 *</label>
               <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
                 <option value="">상품 선택...</option>
                 {packages.map(p => <option key={p.id} value={p.id}>{p.title} ({p.destination})</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">채널</label>
+              <label className="text-xs font-medium text-slate-500 block mb-1">채널</label>
               <div className="flex gap-2">
                 {['meta', 'naver', 'google'].map(ch => (
                   <button key={ch} onClick={() => toggleChannel(ch)}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition ${channels.includes(ch) ? 'bg-violet-50 border-violet-300 text-violet-700' : 'border-gray-200 text-gray-500'}`}>
+                    className={`px-3 py-1.5 text-xs rounded-lg border transition ${channels.includes(ch) ? 'bg-violet-50 border-violet-300 text-violet-700' : 'border-slate-200 text-slate-500'}`}>
                     {CHANNEL_LABELS[ch]}
                   </button>
                 ))}
@@ -225,20 +225,20 @@ export default function CreativesPage() {
           {channels.includes('meta') && (
             <div className="flex gap-6">
               <div>
-                <label className="text-xs text-gray-500">캐러셀 변형 수</label>
+                <label className="text-xs text-slate-500">캐러셀 변형 수</label>
                 <div className="flex items-center gap-2 mt-1">
                   {[1,2,3].map(n => (
                     <button key={n} onClick={() => setCarouselCount(n)}
-                      className={`w-8 h-8 rounded-lg text-xs font-medium transition ${carouselCount === n ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{n}</button>
+                      className={`w-8 h-8 rounded-lg text-xs font-medium transition ${carouselCount === n ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{n}</button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-500">단일이미지 변형 수</label>
+                <label className="text-xs text-slate-500">단일이미지 변형 수</label>
                 <div className="flex items-center gap-2 mt-1">
                   {[1,2,3].map(n => (
                     <button key={n} onClick={() => setSingleCount(n)}
-                      className={`w-8 h-8 rounded-lg text-xs font-medium transition ${singleCount === n ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{n}</button>
+                      className={`w-8 h-8 rounded-lg text-xs font-medium transition ${singleCount === n ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{n}</button>
                   ))}
                 </div>
               </div>
@@ -253,66 +253,76 @@ export default function CreativesPage() {
       )}
 
       {/* 필터 바 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-3 flex flex-wrap items-center gap-3">
-        <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
+        <div className="flex border border-slate-200 rounded-lg overflow-hidden">
           {['all', 'carousel', 'single_image', 'text_ad'].map(t => (
             <button key={t} onClick={() => setFilterType(t)}
-              className={`px-3 py-1.5 text-xs transition ${filterType === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+              className={`px-3 py-1.5 text-xs transition ${filterType === t ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
               {t === 'all' ? '전체' : TYPE_LABELS[t]}
             </button>
           ))}
         </div>
         <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
           <option value="all">전체 채널</option>
           {Object.entries(CHANNEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
           <option value="all">전체 상태</option>
           {Object.entries(STATUS_CONFIG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
         </select>
         <select value={filterProduct} onChange={e => setFilterProduct(e.target.value)}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs min-w-[160px]">
+          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs min-w-[160px]">
           <option value="">전체 상품</option>
           {packages.map(p => <option key={p.id} value={p.id}>{p.title.slice(0, 25)}</option>)}
         </select>
-        <span className="text-xs text-gray-400 ml-auto">{creatives.length}건</span>
+        <span className="text-xs text-slate-400 ml-auto">{creatives.length}건</span>
       </div>
 
       {/* 소재 목록 */}
       {loading ? (
-        <div className="text-center py-16 text-gray-400 text-sm">불러오는 중...</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div className="aspect-square bg-slate-100 animate-pulse" />
+              <div className="p-2 space-y-1.5">
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : creatives.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-slate-400">
           <p className="text-lg mb-2">소재가 없습니다</p>
           <p className="text-xs">상단의 "소재 생성" 버튼을 눌러 시작하세요</p>
         </div>
       ) : (
         <div className="space-y-3">
           {creatives.map(c => (
-            <div key={c.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div key={c.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               {/* 소재 카드 */}
               <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   {/* 좌측: 메타 정보 */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_CONFIG[c.status]?.color ?? 'bg-gray-100 text-gray-500'}`}>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_CONFIG[c.status]?.color ?? 'bg-slate-100 text-slate-500'}`}>
                         {STATUS_CONFIG[c.status]?.label ?? c.status}
                       </span>
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                         {CHANNEL_LABELS[c.channel]} · {TYPE_LABELS[c.creative_type]}
                       </span>
                       {c.hook_type && (
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${HOOK_COLORS[c.hook_type] ?? 'bg-gray-50 text-gray-500'}`}>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${HOOK_COLORS[c.hook_type] ?? 'bg-slate-50 text-slate-500'}`}>
                           {c.hook_type}
                         </span>
                       )}
-                      <span className="text-[10px] text-gray-400">v{c.variant_index}</span>
-                      <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleDateString('ko')}</span>
+                      <span className="text-[10px] text-slate-400">v{c.variant_index}</span>
+                      <span className="text-[10px] text-slate-400">{new Date(c.created_at).toLocaleDateString('ko')}</span>
                     </div>
-                    <p className="text-xs text-gray-500 truncate mb-2">{c.travel_packages?.title}</p>
+                    <p className="text-xs text-slate-500 truncate mb-2">{c.travel_packages?.title}</p>
 
                     {/* 타입별 미리보기 */}
                     {c.creative_type === 'carousel' && c.slides && <CarouselPreview slides={c.slides} />}
@@ -343,7 +353,7 @@ export default function CreativesPage() {
                         className="text-[10px] px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-lg hover:bg-red-100">종료</button>
                     )}
                     <button onClick={() => loadPerformance(c.id)}
-                      className={`text-[10px] px-3 py-1.5 border rounded-lg transition ${expandedId === c.id ? 'bg-gray-900 text-white border-gray-900' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+                      className={`text-[10px] px-3 py-1.5 border rounded-lg transition ${expandedId === c.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
                       성과
                     </button>
                   </div>
@@ -352,7 +362,7 @@ export default function CreativesPage() {
 
               {/* 성과 확장 */}
               {expandedId === c.id && perfData && (
-                <div className="border-t border-gray-100 p-4 bg-gray-50">
+                <div className="border-t border-slate-100 p-4 bg-slate-50">
                   <PerformancePanel data={perfData} />
                 </div>
               )}
@@ -370,14 +380,14 @@ function CarouselPreview({ slides }: { slides: any[] }) {
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
       {slides.map((s: any, i: number) => (
-        <div key={i} className="shrink-0 w-36 bg-gray-50 rounded-lg p-2 border border-gray-100">
+        <div key={i} className="shrink-0 w-36 bg-slate-50 rounded-lg p-2 border border-slate-100">
           {s.image_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={s.image_url} alt="" className="w-full h-16 object-cover rounded mb-1" />
           )}
-          <p className="text-[10px] font-semibold text-gray-800 truncate">{s.headline || `슬라이드 ${i + 1}`}</p>
-          <p className="text-[10px] text-gray-500 truncate">{s.body}</p>
-          <span className="text-[9px] text-gray-400">{s.role}</span>
+          <p className="text-[10px] font-semibold text-slate-800 truncate">{s.headline || `슬라이드 ${i + 1}`}</p>
+          <p className="text-[10px] text-slate-500 truncate">{s.body}</p>
+          <span className="text-[9px] text-slate-400">{s.role}</span>
         </div>
       ))}
     </div>
@@ -394,9 +404,9 @@ function SingleImagePreview({ creative }: { creative: Creative }) {
         <img src={creative.image_url} alt="" className="w-20 h-20 object-cover rounded-lg shrink-0" />
       )}
       <div className="min-w-0">
-        {creative.headline && <p className="text-sm font-semibold text-gray-800 mb-0.5">{creative.headline}</p>}
-        {creative.primary_text && <p className="text-xs text-gray-600 line-clamp-2 mb-0.5">{creative.primary_text}</p>}
-        {creative.description && <p className="text-xs text-gray-400">{creative.description}</p>}
+        {creative.headline && <p className="text-sm font-semibold text-slate-800 mb-0.5">{creative.headline}</p>}
+        {creative.primary_text && <p className="text-xs text-slate-600 line-clamp-2 mb-0.5">{creative.primary_text}</p>}
+        {creative.description && <p className="text-xs text-slate-400">{creative.description}</p>}
       </div>
     </div>
   );
@@ -417,9 +427,9 @@ function TextAdPreview({ creative }: { creative: Creative }) {
       {creative.ad_copies && creative.ad_copies.length > 0 && (
         <div className="space-y-1.5">
           {creative.ad_copies.slice(0, 3).map((copy: any, i: number) => (
-            <div key={i} className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+            <div key={i} className="bg-slate-50 rounded-lg p-2 border border-slate-100">
               <p className="text-xs font-semibold text-blue-700">{copy.title1} | {copy.title2}</p>
-              <p className="text-[10px] text-gray-500">{copy.description}</p>
+              <p className="text-[10px] text-slate-500">{copy.description}</p>
             </div>
           ))}
         </div>
@@ -435,7 +445,7 @@ function PerformancePanel({ data }: { data: any }) {
   const rows = data.performance ?? [];
 
   if (rows.length === 0 && !totals) {
-    return <p className="text-xs text-gray-400 text-center py-4">성과 데이터가 아직 없습니다. 배포 후 수집됩니다.</p>;
+    return <p className="text-xs text-slate-400 text-center py-4">성과 데이터가 아직 없습니다. 배포 후 수집됩니다.</p>;
   }
 
   return (
@@ -448,9 +458,9 @@ function PerformancePanel({ data }: { data: any }) {
             { label: '비용', value: `${Math.round(totals.spend).toLocaleString()}원` },
             { label: '전환율', value: `${totals.conv_rate}%` },
           ].map(m => (
-            <div key={m.label} className="bg-white rounded-lg p-3 text-center border border-gray-100">
-              <p className="text-[10px] text-gray-400">{m.label}</p>
-              <p className="text-sm font-bold text-gray-800">{m.value}</p>
+            <div key={m.label} className="bg-white rounded-lg p-3 text-center border border-slate-100">
+              <p className="text-[10px] text-slate-400">{m.label}</p>
+              <p className="text-sm font-bold text-slate-800">{m.value}</p>
             </div>
           ))}
         </div>
@@ -459,7 +469,7 @@ function PerformancePanel({ data }: { data: any }) {
         <div className="overflow-x-auto">
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-gray-400 border-b border-gray-200">
+              <tr className="text-slate-400 border-b border-slate-200">
                 <th className="text-left py-1.5 font-medium">날짜</th>
                 <th className="text-right py-1.5 font-medium">노출</th>
                 <th className="text-right py-1.5 font-medium">클릭</th>
@@ -469,12 +479,12 @@ function PerformancePanel({ data }: { data: any }) {
             </thead>
             <tbody>
               {rows.slice(0, 7).map((r: any) => (
-                <tr key={r.id} className="border-b border-gray-50">
-                  <td className="py-1.5 text-gray-600">{r.date}</td>
-                  <td className="py-1.5 text-right text-gray-600">{r.impressions?.toLocaleString()}</td>
-                  <td className="py-1.5 text-right text-gray-600">{r.clicks?.toLocaleString()}</td>
-                  <td className="py-1.5 text-right text-gray-600">{Number(r.ctr).toFixed(2)}%</td>
-                  <td className="py-1.5 text-right text-gray-600">{Math.round(Number(r.spend)).toLocaleString()}원</td>
+                <tr key={r.id} className="border-b border-slate-100">
+                  <td className="py-1.5 text-slate-600">{r.date}</td>
+                  <td className="py-1.5 text-right text-slate-600">{r.impressions?.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-slate-600">{r.clicks?.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-slate-600">{Number(r.ctr).toFixed(2)}%</td>
+                  <td className="py-1.5 text-right text-slate-600">{Math.round(Number(r.spend)).toLocaleString()}원</td>
                 </tr>
               ))}
             </tbody>

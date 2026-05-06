@@ -4,12 +4,13 @@ import { getBookingPortalSessionFromRequest } from '@/lib/booking-portal-request
 import { allowRateLimit, getClientIpFromRequest } from '@/lib/simple-rate-limit';
 import { llmCall } from '@/lib/llm-gateway';
 import { buildBookingConciergeSystemPrompt } from '@/lib/booking-concierge-prompt';
+import { getSecret } from '@/lib/secret-registry';
 
 function hasAnyLlmKey() {
   return Boolean(
-    process.env.DEEPSEEK_API_KEY?.trim() ||
-      process.env.GEMINI_API_KEY?.trim() ||
-      process.env.GOOGLE_AI_API_KEY?.trim(),
+    getSecret('DEEPSEEK_API_KEY')?.trim() ||
+      getSecret('GEMINI_API_KEY')?.trim() ||
+      getSecret('GOOGLE_AI_API_KEY')?.trim(),
   );
 }
 

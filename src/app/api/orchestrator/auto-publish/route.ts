@@ -29,6 +29,7 @@ import { generateMetaAds } from '@/lib/content-pipeline/agents/meta-ads';
 import { generateKakaoChannelMessage } from '@/lib/content-pipeline/agents/kakao-channel';
 import { generateGoogleAdsRSA } from '@/lib/content-pipeline/agents/google-ads-rsa';
 import { recommendPublishSlot } from '@/lib/best-time-engine';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
-  if (!process.env.GOOGLE_AI_API_KEY) {
+  if (!getSecret('GOOGLE_AI_API_KEY')) {
     return NextResponse.json({ error: 'GOOGLE_AI_API_KEY 미설정' }, { status: 503 });
   }
 

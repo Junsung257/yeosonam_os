@@ -115,8 +115,8 @@ export default function SettlementsPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-semibold text-slate-800">정산 관리</h1>
-          <p className="text-[13px] text-slate-500 mt-1">월간 어필리에이트 수수료 정산</p>
+          <h1 className="text-admin-lg font-semibold text-slate-800">정산 관리</h1>
+          <p className="text-admin-sm text-slate-500 mt-1">월간 어필리에이트 수수료 정산</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -139,7 +139,7 @@ export default function SettlementsPage() {
           { label: '지급 대기', value: `${readyCount}건`, color: 'text-blue-600' },
           { label: '이월 대기', value: `${pendingCount}건`, color: 'text-slate-600' },
         ].map(card => (
-          <div key={card.label} className="bg-white border border-slate-200 rounded-lg p-4">
+          <div key={card.label} className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
             <p className="text-[11px] text-slate-500">{card.label}</p>
             <p className={`text-xl font-bold mt-1 ${card.color}`}>{card.value}</p>
           </div>
@@ -147,24 +147,39 @@ export default function SettlementsPage() {
       </div>
 
       {/* 정산 현황 테이블 */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-[14px] font-semibold text-slate-800">{period} 정산 현황</h2>
+          <h2 className="text-admin-base font-semibold text-slate-800">{period} 정산 현황</h2>
           <span className="text-[11px] text-slate-500">{settlements.length}건</span>
         </div>
-        <table className="w-full text-[13px]">
-          <thead className="bg-slate-50">
-            <tr>
+        <table className="w-full text-admin-sm">
+          <thead>
+            <tr className="border-b-2 border-slate-100">
               {['파트너', '건수', '발생 수수료', '이월 포함', '원천세', '실지급액', '상태', '액션'].map(h => (
-                <th key={h} className="text-left px-3 py-2 text-[11px] font-medium text-slate-500">{h}</th>
+                <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-500 text-[13px]">불러오는 중...</td></tr>
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-slate-100">
+                  {[100, 40, 80, 80, 60, 80, 56, 80].map((w, j) => (
+                    <td key={j} className="px-3 py-3">
+                      <div className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : settlements.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-6 text-slate-500 text-[13px]">이번 달 정산 데이터 없음</td></tr>
+              <tr>
+                <td colSpan={8} className="py-14 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>
+                    <p className="text-admin-sm font-medium text-slate-500">이번 달 정산 데이터가 없습니다.</p>
+                  </div>
+                </td>
+              </tr>
             ) : settlements.map(s => (
               <tr key={s.id} className="border-b border-slate-200 hover:bg-slate-50">
                 <td className="px-3 py-2">
@@ -189,7 +204,7 @@ export default function SettlementsPage() {
                       <button
                         onClick={() => updateStatus(s.id, 'COMPLETED')}
                         disabled={statusUpdating === s.id}
-                        className="text-[11px] px-2 py-1 bg-[#001f3f] text-white rounded hover:bg-blue-900 disabled:opacity-50"
+                        className="text-[11px] px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                       >
                         지급 완료
                       </button>
@@ -219,9 +234,9 @@ export default function SettlementsPage() {
 
       {/* 미마감 어필리에이트 */}
       {unsettledAffiliates.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200">
-            <h2 className="text-[14px] font-semibold text-slate-800">정산 마감 대기 ({unsettledAffiliates.length}명)</h2>
+            <h2 className="text-admin-base font-semibold text-slate-800">정산 마감 대기 ({unsettledAffiliates.length}명)</h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
               아래 파트너는 {period} 정산 마감이 실행되지 않았습니다.
             </p>
@@ -230,13 +245,13 @@ export default function SettlementsPage() {
             {unsettledAffiliates.map(a => (
               <div key={a.id} className="px-4 py-2 flex items-center justify-between border-b border-slate-200 last:border-b-0">
                 <div>
-                  <span className="font-medium text-slate-800 text-[13px]">{a.name}</span>
+                  <span className="font-medium text-slate-800 text-admin-sm">{a.name}</span>
                   <span className="ml-2 text-[11px] text-slate-500 font-mono">{a.referral_code}</span>
                 </div>
                 <button
                   onClick={() => closeSettlement(a.id)}
                   disabled={closing === a.id}
-                  className="px-3 py-1.5 bg-[#001f3f] text-white text-[11px] rounded hover:bg-blue-900 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-blue-600 text-white text-[11px] rounded hover:bg-blue-700 disabled:opacity-50"
                 >
                   {closing === a.id ? '마감 중...' : '정산 마감 실행'}
                 </button>

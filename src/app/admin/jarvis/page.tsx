@@ -149,14 +149,14 @@ export default function JarvisPage() {
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center text-white font-bold text-sm">J</div>
         <div>
-          <h1 className="font-semibold text-gray-900">자비스 AI</h1>
-          <p className="text-xs text-gray-400">여소남 OS 전체 통합제어</p>
+          <h1 className="font-semibold text-slate-900">자비스 AI</h1>
+          <p className="text-xs text-slate-400">여소남 OS 전체 통합제어</p>
         </div>
         {/* 탭 */}
         <div className="ml-4 flex gap-1 bg-slate-100 rounded-lg p-0.5">
           <button
             onClick={() => setActiveTab('chat')}
-            className={`px-3 py-1 text-[12px] font-medium rounded-md transition ${
+            className={`px-3 py-1 text-admin-xs font-medium rounded-md transition ${
               activeTab === 'chat' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -164,7 +164,7 @@ export default function JarvisPage() {
           </button>
           <button
             onClick={() => setActiveTab('actions')}
-            className={`px-3 py-1 text-[12px] font-medium rounded-md transition flex items-center gap-1 ${
+            className={`px-3 py-1 text-admin-xs font-medium rounded-md transition flex items-center gap-1 ${
               activeTab === 'actions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -210,7 +210,7 @@ export default function JarvisPage() {
       {activeTab === 'chat' && (
         <>
           {/* 메시지 영역 */}
-          <div className="flex-1 overflow-y-auto bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-2' : ''}`}>
@@ -224,7 +224,7 @@ export default function JarvisPage() {
                   <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
                     msg.role === 'user'
                       ? 'bg-purple-700 text-white rounded-tr-sm'
-                      : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm'
+                      : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm'
                   }`}>
                     {msg.content}
                   </div>
@@ -242,7 +242,7 @@ export default function JarvisPage() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3">
+                <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3">
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
                     <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.1s]" />
@@ -279,7 +279,7 @@ export default function JarvisPage() {
                 }
               }}
               placeholder="자비스에게 명령하세요... (카카오 채팅 내역 붙여넣기 가능)"
-              className="flex-1 resize-none border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-purple-400 min-h-[42px] max-h-[120px]"
+              className="flex-1 resize-none border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-purple-400 min-h-[42px] max-h-[120px]"
               rows={1}
             />
             <button

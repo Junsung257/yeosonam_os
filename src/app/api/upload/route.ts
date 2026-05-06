@@ -19,6 +19,7 @@ import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
+import { getSecret } from '@/lib/secret-registry';
 
 /** 파싱 실패·BLOCKED 건 DLQ (비동기 적재, 실패해도 업로드 응답은 유지) */
 function scheduleUploadReviewInsert(row: {
@@ -256,7 +257,7 @@ async function identifySupplierFromText(
 
   // ── Phase 3: LLM Inference — Gemini Flash 헤더+푸터 추론 ────────────────────
   try {
-    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+    const apiKey = getSecret('GOOGLE_AI_API_KEY') || getSecret('GOOGLE_GEMINI_API_KEY') || getSecret('GOOGLE_API_KEY') || '';
     if (!apiKey) return UNKNOWN;
 
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -1039,7 +1040,7 @@ export async function POST(request: NextRequest) {
           }
 
           if (newActivities.length > 0) {
-            const apiKey = process.env.GOOGLE_AI_API_KEY;
+            const apiKey = getSecret('GOOGLE_AI_API_KEY');
             if (apiKey) {
               const { GoogleGenerativeAI } = await import('@google/generative-ai');
               const genAI = new GoogleGenerativeAI(apiKey);

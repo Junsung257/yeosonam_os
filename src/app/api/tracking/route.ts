@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import {
   supabaseAdmin,
   isSupabaseConfigured,
@@ -50,6 +51,13 @@ type TrackingPayload =
       page_url?: string;
       cart_added?: boolean;
       lead_time_days?: number;
+      /** 콘텐츠 어트리뷰션: 카드뉴스·블로그 방문/클릭 이벤트 */
+      content_id?: string;
+      content_type?: 'card_news' | 'blog' | 'email';
+      tenant_id?: string;
+      utm_source?: string;
+      utm_medium?: string;
+      utm_campaign?: string;
     }
   | {
       type: 'conversion';
@@ -153,6 +161,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         page_url: body.page_url ?? null,
         lead_time_days: body.lead_time_days ?? null,
       });
+      // 콘텐츠 어트리뷰션: view/click 이벤트만 기록
+      if (
+        body.content_id &&
+        body.content_type &&
+        (body.event_type === 'view' || body.event_type === 'click' || body.event_type === 'inquiry')
+      ) {
+        const attrEventType =
+          body.event_type === 'inquiry' ? 'inquiry' :
+          body.event_type === 'click' ? 'click' : 'view';
+        void supabaseAdmin.from('content_attribution_events').insert({
+          tenant_id: body.tenant_id ?? null,
+          content_id: body.content_id,
+          content_type: body.content_type,
+          session_id: body.session_id,
+          utm_source: body.utm_source ?? null,
+          utm_medium: body.utm_medium ?? null,
+          utm_campaign: body.utm_campaign ?? null,
+          event_type: attrEventType,
+        });
+      }
       return NextResponse.json({ ok: true }, { status: 202 });
     }
 
@@ -216,28 +244,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // ── Postback (fire-and-forget) ──────────────────────
       // 외부 광고 플랫폼 전환 통보. await 차단으로 응답 지연 방지 — 실패해도 Conversion DB 기록은 이미 적재됨.
       // Google Ads 전환 Postback
-      if (attributed_gclid && process.env.GOOGLE_CONVERSION_ID) {
+      if (attributed_gclid && getSecret('GOOGLE_CONVERSION_ID')) {
         fetch(
-          `https://www.googleadservices.com/pagead/conversion/${process.env.GOOGLE_CONVERSION_ID}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
+          `https://www.googleadservices.com/pagead/conversion/${getSecret('GOOGLE_CONVERSION_ID')}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
         )
-          .then(() => console.log(`[Postback] Google Ads 전환: gclid=${attributed_gclid}, value=${final_sales_price}`))
+          .then(() => console.log('[Postback] Google Ads 전환 완료'))
           .catch(e => console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e));
       }
 
       // Meta Conversions API Postback
-      if (attributed_fbclid && process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
-        fetch(`https://graph.facebook.com/v18.0/${process.env.META_PIXEL_ID}/events`, {
+      const metaPixelId = getSecret('META_PIXEL_ID');
+      const metaAccessToken = getSecret('META_ACCESS_TOKEN');
+      if (attributed_fbclid && metaPixelId && metaAccessToken) {
+        fetch(`https://graph.facebook.com/v18.0/${metaPixelId}/events`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
               user_data: { fbclid: attributed_fbclid },
               custom_data: { value: final_sales_price, currency: 'KRW' } }],
-            access_token: process.env.META_ACCESS_TOKEN,
+            access_token: metaAccessToken,
           }),
         })
-          .then(() => console.log(`[Postback] Meta CAPI 전환: fbclid=${attributed_fbclid}, value=${final_sales_price}`))
+          .then(() => console.log('[Postback] Meta CAPI 전환 완료'))
           .catch(e => console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e));
+      }
+
+      // 콘텐츠 → 예약 어트리뷰션 기록
+      if (content_creative_id) {
+        void supabaseAdmin.from('content_attribution_events').insert({
+          content_id: content_creative_id,
+          content_type: 'blog',
+          session_id,
+          event_type: 'booking',
+          utm_source: attributed_source,
+        });
       }
 
       const net_profit = final_sales_price - base_cost - allocated_ad_spend;

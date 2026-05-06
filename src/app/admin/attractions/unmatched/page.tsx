@@ -313,7 +313,7 @@ export default function UnmatchedPage() {
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-center">
             <div className="text-2xl font-bold text-slate-800">{summary.counts.pending}</div>
             <div className="text-xs text-slate-500">대기중</div>
           </div>
@@ -334,7 +334,7 @@ export default function UnmatchedPage() {
             </div>
             <div className="text-xs text-slate-500 mt-1">누적 별칭 연결</div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-3 text-left text-xs text-slate-600">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-left text-xs text-slate-600">
             <div className="font-semibold text-slate-700 mb-1">최근 자동 처리</div>
             {summary.recent_auto_alias.length === 0 ? (
               <span className="text-slate-400">아직 없음</span>
@@ -423,8 +423,20 @@ export default function UnmatchedPage() {
         </span>
       </div>
 
-      {loading ? <p className="text-slate-400 py-10 text-center">로딩 중...</p> : displayedItems.length === 0 ? (
-        <p className="text-slate-400 py-10 text-center">미매칭 항목이 없습니다.</p>
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 flex items-center gap-3">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-14" />
+            </div>
+          ))}
+        </div>
+      ) : displayedItems.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-14">
+          <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <p className="text-admin-sm font-medium text-slate-500">미매칭 항목이 없습니다.</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {displayedItems.map(item => (

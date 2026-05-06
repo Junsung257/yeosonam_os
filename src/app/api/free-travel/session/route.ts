@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminApiToken } from '@/lib/api-auth';
 
 const PHONE_RE = /^01[0-9]-?\d{3,4}-?\d{4}$/;
 
@@ -25,12 +26,6 @@ function maskPhone(phone: string | null): string | null {
   const digits = phone.replace(/\D/g, '');
   if (digits.length < 10) return '***';
   return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
-}
-
-function assertAdminApiToken(request: NextRequest): boolean {
-  const token = process.env.ADMIN_API_TOKEN;
-  if (!token) return false;
-  return request.headers.get('x-admin-token') === token;
 }
 
 export async function POST(request: NextRequest) {
@@ -84,12 +79,8 @@ export async function GET(request: NextRequest) {
 
   // 목록 조회 모드 (어드민 페이지용)
   if (list) {
-    if (!assertAdminApiToken(request)) {
-      return NextResponse.json(
-        { code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' },
-        { status: 403 },
-      );
-    }
+    const unauthorized = requireAdminApiToken(request);
+    if (unauthorized) return unauthorized;
     try {
       const limit  = Math.min(Number(searchParams.get('limit') ?? 100), 500);
       const status = searchParams.get('status') ?? undefined;

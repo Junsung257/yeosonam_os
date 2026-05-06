@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 
 // GET /api/attractions — 전체 관광지 목록
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 🆕 Pexels 자동 사진 fetch — photos 없이 등록된 경우 비동기로 채움 (등록을 블로킹하지 않음)
-    if (!body.photos?.length && process.env.PEXELS_API_KEY) {
+    if (!body.photos?.length && getSecret('PEXELS_API_KEY')) {
       void (async () => {
         try {
           const { searchPexelsPhotos, destToEnKeyword } = await import('@/lib/pexels');

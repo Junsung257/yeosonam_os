@@ -13,6 +13,8 @@
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
@@ -20,10 +22,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
   }
 
-  // Vercel Cron 인증 (Authorization: Bearer ${CRON_SECRET})
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {
@@ -67,9 +67,10 @@ export async function GET(request: Request) {
     };
 
     // 알림 발송 (옵션)
-    if (staleCount > 0 && process.env.SLACK_WEBHOOK_URL) {
+    const slackUrl = getSecret('SLACK_WEBHOOK_URL');
+    if (staleCount > 0 && slackUrl) {
       try {
-        await fetch(process.env.SLACK_WEBHOOK_URL, {
+        await fetch(slackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

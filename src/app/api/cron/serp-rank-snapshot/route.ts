@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * 순위 스냅샷 크론 — SERPAPI_KEY 설정 시에만 동작
@@ -11,16 +13,16 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 async function runSerpRankSnapshot(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
-  if (!process.env.SERPAPI_KEY) {
+  const serpApiKey = getSecret('SERPAPI_KEY');
+  if (!serpApiKey) {
     return { skipped: true, reason: 'SERPAPI_KEY 미설정', errors: [] as string[] };
   }
 
@@ -40,7 +42,7 @@ async function runSerpRankSnapshot(request: NextRequest) {
 
   for (const kw of keywords) {
     try {
-      const url = `https://serpapi.com/search.json?engine=naver&q=${encodeURIComponent(kw)}&api_key=${process.env.SERPAPI_KEY}`;
+      const url = `https://serpapi.com/search.json?engine=naver&q=${encodeURIComponent(kw)}&api_key=${serpApiKey}`;
       const res = await fetch(url, { next: { revalidate: 0 } });
       if (!res.ok) {
         errors.push(`serpapi HTTP ${res.status} (${kw})`);

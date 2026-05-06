@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { revalidatePath } from 'next/cache';
 
 export async function POST(request: NextRequest) {
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
     const { paths, secret } = body;
 
     // 시크릿 검증 (환경변수 REVALIDATE_SECRET 필수)
-    const expectedSecret = process.env.REVALIDATE_SECRET;
+    const expectedSecret = getSecret('REVALIDATE_SECRET');
     if (!expectedSecret) {
       return NextResponse.json({ error: 'REVALIDATE_SECRET 미설정' }, { status: 500 });
     }

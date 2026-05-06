@@ -74,7 +74,7 @@ interface CronHealth {
 }
 
 const GRADE_LABELS = ['', '브론즈', '실버', '골드', '플래티넘', '다이아'];
-const GRADE_COLORS = ['', 'text-gray-500', 'text-slate-600', 'text-yellow-600', 'text-purple-600', 'text-blue-600'];
+const GRADE_COLORS = ['', 'text-slate-500', 'text-slate-600', 'text-yellow-600', 'text-purple-600', 'text-blue-600'];
 
 export default function AffiliateAnalyticsPage() {
   const [kpi, setKpi] = useState<KPI | null>(null);
@@ -142,7 +142,17 @@ export default function AffiliateAnalyticsPage() {
   if (loading) {
     return (
       <AdminLayout>
-        <div className="flex items-center justify-center py-20 text-gray-400">불러오는 중...</div>
+        <div className="space-y-4 p-1">
+          <div className="grid grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-24" />
+                <div className="h-6 bg-slate-100 rounded animate-pulse w-32" />
+              </div>
+            ))}
+          </div>
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 h-40 animate-pulse" />
+        </div>
       </AdminLayout>
     );
   }
@@ -154,22 +164,22 @@ export default function AffiliateAnalyticsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">어필리에이트 퍼널 분석</h1>
-            <p className="text-[11px] text-gray-400 mt-0.5">{basisMeta.description}</p>
+            <h1 className="text-lg font-bold text-slate-900">어필리에이트 퍼널 분석</h1>
+            <p className="text-[11px] text-slate-400 mt-0.5">{basisMeta.description}</p>
           </div>
           <div className="flex items-center gap-2">
-            {refetching && <span className="text-[11px] text-gray-400">갱신 중…</span>}
+            {refetching && <span className="text-[11px] text-slate-400">갱신 중…</span>}
             <KPIBasisToggle value={basis} onChange={setBasis} />
           </div>
         </div>
 
         {modelCompare && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h2 className="font-semibold text-gray-900 text-sm mb-3">귀속 모델 비교 (최근 30일 샘플)</h2>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <h2 className="font-semibold text-slate-900 text-sm mb-3">귀속 모델 비교 (최근 30일 샘플)</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-center">
-              <div className="rounded-lg bg-gray-50 py-3">
-                <p className="text-xs text-gray-500">샘플 예약</p>
-                <p className="text-lg font-bold text-gray-900">{modelCompare.sample_size}</p>
+              <div className="rounded-lg bg-slate-50 py-3">
+                <p className="text-xs text-slate-500">샘플 예약</p>
+                <p className="text-lg font-bold text-slate-900">{modelCompare.sample_size}</p>
               </div>
               <div className="rounded-lg bg-blue-50 py-3">
                 <p className="text-xs text-blue-600">First-touch 일치</p>
@@ -198,31 +208,31 @@ export default function AffiliateAnalyticsPage() {
         )}
 
         {cronHealth.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900 text-sm">어필리에이트 크론 헬스 (최근 7일)</h2>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-900 text-sm">어필리에이트 크론 헬스 (최근 7일)</h2>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table className="w-full text-admin-xs">
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">크론</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">성공</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">실패</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">성공률</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">마지막 실패</th>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">크론</th>
+                    <th className="text-right px-3 py-2 font-medium text-slate-600">성공</th>
+                    <th className="text-right px-3 py-2 font-medium text-slate-600">실패</th>
+                    <th className="text-right px-3 py-2 font-medium text-slate-600">성공률</th>
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">마지막 실패</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cronHealth.map((c) => (
-                    <tr key={c.cron} className="border-b border-gray-50">
-                      <td className="px-4 py-2 font-mono text-gray-700">{c.cron}</td>
+                    <tr key={c.cron} className="border-b border-slate-100">
+                      <td className="px-4 py-2 font-mono text-slate-700">{c.cron}</td>
                       <td className="px-3 py-2 text-right text-emerald-700">{c.success_count_7d.toLocaleString()}</td>
                       <td className="px-3 py-2 text-right text-rose-700">{c.failure_count_7d.toLocaleString()}</td>
                       <td className={`px-3 py-2 text-right font-semibold ${c.success_rate_7d >= 95 ? 'text-emerald-700' : c.success_rate_7d >= 80 ? 'text-amber-700' : 'text-rose-700'}`}>
                         {c.success_rate_7d.toFixed(1)}%
                       </td>
-                      <td className="px-4 py-2 text-gray-600">
+                      <td className="px-4 py-2 text-slate-600">
                         {c.last_failure_at
                           ? `${new Date(c.last_failure_at).toLocaleString()} · ${c.last_failure_message || '실패'}`
                           : '-'}
@@ -235,8 +245,8 @@ export default function AffiliateAnalyticsPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-500">멀티터치 귀속 모델</span>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500">멀티터치 귀속 모델</span>
           {(['last_touch', 'first_touch', 'linear'] as AttributionModel[]).map((m) => (
             <button
               key={m}
@@ -244,14 +254,14 @@ export default function AffiliateAnalyticsPage() {
               onClick={() => void saveAttributionModel(m)}
               className={`px-3 py-1.5 text-xs rounded-lg border transition ${
                 attributionModel === m
-                  ? 'bg-[#001f3f] text-white border-[#001f3f]'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}
             >
               {m}
             </button>
           ))}
-          <span className="text-[11px] text-gray-400 ml-auto">
+          <span className="text-[11px] text-slate-400 ml-auto">
             저장 시 다음 재계산 크론부터 적용
           </span>
         </div>
@@ -278,21 +288,21 @@ export default function AffiliateAnalyticsPage() {
 
         {/* 월별 추세 */}
         {monthly.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="font-semibold text-gray-900 text-sm mb-4">월별 어필리에이트 매출 추세</h2>
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h2 className="font-semibold text-slate-900 text-sm mb-4">월별 어필리에이트 매출 추세</h2>
             <div className="flex items-end gap-3 h-40">
               {monthly.map(m => (
                 <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-[10px] text-gray-500">{(m.revenue / 10000).toFixed(0)}만</span>
+                  <span className="text-[10px] text-slate-500">{(m.revenue / 10000).toFixed(0)}만</span>
                   <div className="w-full bg-blue-100 rounded-t-lg relative" style={{ height: `${Math.max((m.revenue / maxRevenue) * 100, 4)}%` }}>
                     <div className="absolute inset-0 bg-blue-500 rounded-t-lg" style={{ height: `${m.commission > 0 ? Math.min((m.commission / m.revenue) * 100, 100) : 0}%` }} />
                   </div>
-                  <span className="text-[10px] text-gray-400">{m.month.slice(5)}월</span>
-                  <span className="text-[10px] text-gray-500">{m.count}건</span>
+                  <span className="text-[10px] text-slate-400">{m.month.slice(5)}월</span>
+                  <span className="text-[10px] text-slate-500">{m.count}건</span>
                 </div>
               ))}
             </div>
-            <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
+            <div className="flex gap-4 mt-3 text-[10px] text-slate-500">
               <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-100 rounded" />매출</span>
               <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-500 rounded" />커미션</span>
             </div>
@@ -300,26 +310,26 @@ export default function AffiliateAnalyticsPage() {
         )}
 
         {subStats.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900 text-sm">최근 30일 Sub-ID 상위 성과</h2>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-900 text-sm">최근 30일 Sub-ID 상위 성과</h2>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table className="w-full text-admin-xs">
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Referral</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">Sub-ID</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">클릭</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">유니크 세션</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-600">터치 상품수</th>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">Referral</th>
+                    <th className="text-left px-3 py-2 font-medium text-slate-600">Sub-ID</th>
+                    <th className="text-right px-3 py-2 font-medium text-slate-600">클릭</th>
+                    <th className="text-right px-3 py-2 font-medium text-slate-600">유니크 세션</th>
+                    <th className="text-right px-4 py-2 font-medium text-slate-600">터치 상품수</th>
                   </tr>
                 </thead>
                 <tbody>
                   {subStats.map((s, idx) => (
-                    <tr key={`${s.referral_code}_${s.sub_id}_${idx}`} className="border-b border-gray-50">
-                      <td className="px-4 py-2 font-mono text-gray-700">{s.referral_code}</td>
-                      <td className="px-3 py-2 text-gray-700">{s.sub_id}</td>
+                    <tr key={`${s.referral_code}_${s.sub_id}_${idx}`} className="border-b border-slate-100">
+                      <td className="px-4 py-2 font-mono text-slate-700">{s.referral_code}</td>
+                      <td className="px-3 py-2 text-slate-700">{s.sub_id}</td>
                       <td className="px-3 py-2 text-right">{s.clicks_30d.toLocaleString()}</td>
                       <td className="px-3 py-2 text-right">{s.unique_sessions_30d.toLocaleString()}</td>
                       <td className="px-4 py-2 text-right">{s.touched_packages_30d.toLocaleString()}</td>
@@ -332,14 +342,14 @@ export default function AffiliateAnalyticsPage() {
         )}
 
         {subTrend.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="font-semibold text-gray-900 text-sm mb-3">Sub-ID 일별 트렌드 (최근 30일)</h2>
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h2 className="font-semibold text-slate-900 text-sm mb-3">Sub-ID 일별 트렌드 (최근 30일)</h2>
             <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
               {subTrend.slice(-12).map((d) => (
-                <div key={d.day} className="rounded-lg bg-gray-50 p-2">
-                  <p className="text-[10px] text-gray-500">{d.day.slice(5)}</p>
-                  <p className="text-sm font-bold text-gray-900">{d.clicks.toLocaleString()} 클릭</p>
-                  <p className="text-[10px] text-gray-500">{d.unique_sessions.toLocaleString()} 유니크</p>
+                <div key={d.day} className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-[10px] text-slate-500">{d.day.slice(5)}</p>
+                  <p className="text-sm font-bold text-slate-900">{d.clicks.toLocaleString()} 클릭</p>
+                  <p className="text-[10px] text-slate-500">{d.unique_sessions.toLocaleString()} 유니크</p>
                 </div>
               ))}
             </div>
@@ -347,27 +357,27 @@ export default function AffiliateAnalyticsPage() {
         )}
 
         {/* 파트너별 성과 테이블 */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900 text-sm">파트너별 성과</h2>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-900 text-sm">파트너별 성과</h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-admin-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-4 py-2.5 font-medium text-gray-600">파트너</th>
-                  <th className="text-left px-3 py-2.5 font-medium text-gray-600">등급</th>
-                  <th className="text-right px-3 py-2.5 font-medium text-gray-600">클릭</th>
-                  <th className="text-right px-3 py-2.5 font-medium text-gray-600">전환</th>
-                  <th className="text-right px-3 py-2.5 font-medium text-gray-600">전환율</th>
-                  <th className="text-right px-3 py-2.5 font-medium text-gray-600">기여매출</th>
-                  <th className="text-right px-3 py-2.5 font-medium text-gray-600">커미션</th>
-                  <th className="text-right px-4 py-2.5 font-medium text-gray-600">평균단가</th>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="text-left px-4 py-2.5 font-medium text-slate-600">파트너</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-slate-600">등급</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-slate-600">클릭</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-slate-600">전환</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-slate-600">전환율</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-slate-600">기여매출</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-slate-600">커미션</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-slate-600">평균단가</th>
                 </tr>
               </thead>
               <tbody>
                 {partners.map(p => (
-                  <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-2.5">
                       <a href={`/admin/affiliates/${p.id}`} className="text-blue-600 hover:underline font-medium">{p.name}</a>
                       {!p.is_active && <span className="ml-1 text-[10px] text-red-400">비활성</span>}
@@ -375,20 +385,20 @@ export default function AffiliateAnalyticsPage() {
                     <td className={`px-3 py-2.5 font-medium ${GRADE_COLORS[p.grade] || ''}`}>
                       {GRADE_LABELS[p.grade] || '-'}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-gray-700">{p.clicks.toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-700">{p.conversions.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-slate-700">{p.clicks.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-slate-700">{p.conversions.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right">
-                      <span className={p.conversion_rate >= 5 ? 'text-green-600 font-medium' : p.conversion_rate >= 2 ? 'text-gray-700' : 'text-red-500'}>
+                      <span className={p.conversion_rate >= 5 ? 'text-green-600 font-medium' : p.conversion_rate >= 2 ? 'text-slate-700' : 'text-red-500'}>
                         {p.conversion_rate}%
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-right text-gray-700">₩{(p.revenue / 10000).toFixed(0)}만</td>
+                    <td className="px-3 py-2.5 text-right text-slate-700">₩{(p.revenue / 10000).toFixed(0)}만</td>
                     <td className="px-3 py-2.5 text-right font-medium text-purple-600">₩{p.commission.toLocaleString()}</td>
-                    <td className="px-4 py-2.5 text-right text-gray-500">₩{p.avg_commission.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-500">₩{p.avg_commission.toLocaleString()}</td>
                   </tr>
                 ))}
                 {partners.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-8 text-gray-400">데이터 없음</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-slate-400">데이터 없음</td></tr>
                 )}
               </tbody>
             </table>
@@ -401,10 +411,10 @@ export default function AffiliateAnalyticsPage() {
 
 function KpiCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-xl font-bold ${color || 'text-gray-900'}`}>{value}</p>
-      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <p className="text-xs text-slate-500 mb-1">{label}</p>
+      <p className={`text-xl font-bold ${color || 'text-slate-900'}`}>{value}</p>
+      {sub && <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>}
     </div>
   );
 }

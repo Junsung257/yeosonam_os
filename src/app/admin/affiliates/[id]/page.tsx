@@ -34,7 +34,7 @@ interface PromoPerformance {
 }
 
 const GRADE_COLORS: Record<number, string> = {
-  1: 'bg-amber-100 text-amber-800', 2: 'bg-gray-200 text-gray-700',
+  1: 'bg-amber-100 text-amber-800', 2: 'bg-slate-200 text-slate-700',
   3: 'bg-yellow-200 text-yellow-800', 4: 'bg-blue-100 text-blue-800',
   5: 'bg-purple-100 text-purple-800',
 };
@@ -48,7 +48,7 @@ const GRADE_NEXT: Record<number, { label: string; target: number; prevTarget: nu
 };
 
 const STATUS_BADGES: Record<string, string> = {
-  PENDING: 'bg-gray-100 text-gray-600',
+  PENDING: 'bg-slate-100 text-slate-600',
   READY: 'bg-blue-100 text-blue-700',
   COMPLETED: 'bg-green-100 text-green-700',
   VOID: 'bg-red-100 text-red-700',
@@ -237,7 +237,24 @@ export default function AffiliateDetailPage() {
   const thisMonth = new Date().toISOString().substring(0, 7);
   const thisMonthSettlement = settlements.find(s => s.settlement_period === thisMonth);
 
-  if (loading) return <div className="p-6 text-gray-400">불러오는 중...</div>;
+  if (loading) return (
+    <div className="p-6 space-y-4 max-w-3xl">
+      <div className="h-6 bg-slate-100 rounded animate-pulse w-40" />
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4">
+            <div className="h-3.5 bg-slate-100 rounded animate-pulse w-28 shrink-0" />
+            <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+          </div>
+        ))}
+      </div>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-10 bg-slate-50 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
   if (!affiliate) return <div className="p-6 text-red-500">어필리에이트를 찾을 수 없습니다.</div>;
 
   const gradeInfo = GRADE_NEXT[affiliate.grade];
@@ -252,22 +269,22 @@ export default function AffiliateDetailPage() {
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       {/* 뒤로가기 */}
-      <Link href="/admin/affiliates" className="text-sm text-gray-500 hover:text-gray-700">
+      <Link href="/admin/affiliates" className="text-sm text-slate-500 hover:text-slate-700">
         ← 파트너 목록
       </Link>
 
       {/* 파트너 기본 정보 */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-gray-900">{affiliate.name}</h1>
+              <h1 className="text-xl font-bold text-slate-900">{affiliate.name}</h1>
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${GRADE_COLORS[affiliate.grade]}`}>
                 {affiliate.grade_label}
               </span>
             </div>
-            <p className="text-sm text-gray-500 font-mono mt-1">코드: {affiliate.referral_code}</p>
-            {affiliate.phone && <p className="text-sm text-gray-500">{affiliate.phone}</p>}
+            <p className="text-sm text-slate-500 font-mono mt-1">코드: {affiliate.referral_code}</p>
+            {affiliate.phone && <p className="text-sm text-slate-500">{affiliate.phone}</p>}
           </div>
           <button
             onClick={() => setEditMode(!editMode)}
@@ -285,55 +302,55 @@ export default function AffiliateDetailPage() {
               { label: '이메일', key: 'email', type: 'email' },
             ].map(f => (
               <div key={f.key} className="flex items-center gap-3">
-                <label className="w-16 text-xs text-gray-500">{f.label}</label>
+                <label className="w-16 text-xs text-slate-500">{f.label}</label>
                 <input
                   type={f.type}
                   value={(form as any)[f.key]}
                   onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                  className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
                 />
               </div>
             ))}
             <div className="flex items-center gap-3">
-              <label className="w-16 text-xs text-gray-500">정산유형</label>
+              <label className="w-16 text-xs text-slate-500">정산유형</label>
               <select
                 value={form.payout_type}
                 onChange={e => setForm(prev => ({ ...prev, payout_type: e.target.value as 'PERSONAL'|'BUSINESS' }))}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
               >
                 <option value="PERSONAL">개인 (3.3%)</option>
                 <option value="BUSINESS">사업자</option>
               </select>
             </div>
             <div className="flex items-center gap-3">
-              <label className="w-16 text-xs text-gray-500">커미션율</label>
+              <label className="w-16 text-xs text-slate-500">커미션율</label>
               <input type="number" step="0.01" min={0} max={0.5}
                 value={form.commission_rate}
                 onChange={e => setForm(prev => ({ ...prev, commission_rate: +e.target.value }))}
-                className="w-24 border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
-              <span className="text-xs text-gray-400">({(form.commission_rate * 100).toFixed(1)}%)</span>
+                className="w-24 border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
+              <span className="text-xs text-slate-400">({(form.commission_rate * 100).toFixed(1)}%)</span>
             </div>
             {form.payout_type === 'BUSINESS' && (
               <div className="flex items-center gap-3">
-                <label className="w-16 text-xs text-gray-500">사업자번호</label>
+                <label className="w-16 text-xs text-slate-500">사업자번호</label>
                 <input type="text" value={form.business_number}
                   onChange={e => setForm(prev => ({ ...prev, business_number: e.target.value }))}
                   placeholder="000-00-00000"
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                  className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
               </div>
             )}
             <div className="flex items-start gap-3">
-              <label className="w-16 text-xs text-gray-500 shrink-0 pt-2">메모</label>
+              <label className="w-16 text-xs text-slate-500 shrink-0 pt-2">메모</label>
               <textarea
                 value={form.memo}
                 onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
                 rows={3}
                 placeholder="내부 메모 (고객에게 노출되지 않음)"
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
               />
             </div>
             <div className="flex items-center gap-3">
-              <label className="w-16 text-xs text-gray-500">활성상태</label>
+              <label className="w-16 text-xs text-slate-500">활성상태</label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.is_active}
                   onChange={e => setForm(prev => ({ ...prev, is_active: e.target.checked }))}
@@ -351,18 +368,18 @@ export default function AffiliateDetailPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 border-t pt-4 text-sm">
-            <div><span className="text-gray-400">이메일 </span>{affiliate.email || '-'}</div>
-            <div><span className="text-gray-400">정산유형 </span>
+            <div><span className="text-slate-400">이메일 </span>{affiliate.email || '-'}</div>
+            <div><span className="text-slate-400">정산유형 </span>
               {affiliate.payout_type === 'PERSONAL' ? '개인 (원천세 3.3%)' : '사업자'}
             </div>
-            <div><span className="text-gray-400">커미션율 </span>{((affiliate as any).commission_rate * 100 || 9).toFixed(1)}%</div>
-            <div><span className="text-gray-400">상태 </span>
+            <div><span className="text-slate-400">커미션율 </span>{((affiliate as any).commission_rate * 100 || 9).toFixed(1)}%</div>
+            <div><span className="text-slate-400">상태 </span>
               {(affiliate as any).is_active !== false
                 ? <span className="text-green-600">활성</span>
                 : <span className="text-red-500">비활성</span>}
             </div>
             <div>
-              <span className="text-gray-400">계좌 </span>
+              <span className="text-slate-400">계좌 </span>
               {showBankInfo
                 ? <span className="font-mono text-red-600">{affiliate.bank_info || '등록 없음'}</span>
                 : <button onClick={toggleBankInfo} className="text-blue-500 hover:underline text-xs">
@@ -370,17 +387,17 @@ export default function AffiliateDetailPage() {
                   </button>
               }
             </div>
-            {affiliate.memo && <div className="col-span-2 text-gray-500">{affiliate.memo}</div>}
+            {affiliate.memo && <div className="col-span-2 text-slate-500">{affiliate.memo}</div>}
           </div>
         )}
       </div>
 
       {/* 코브랜딩 랜딩 /with/[추천코드] */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-gray-900">코브랜딩 랜딩</h2>
-            <p className="text-xs text-gray-500 mt-1">
+            <h2 className="font-semibold text-slate-900">코브랜딩 랜딩</h2>
+            <p className="text-xs text-slate-500 mt-1">
               고객용 URL — 인스타·유튜브 바이오에 걸기 좋은 전용 페이지입니다. (검색엔진 noindex)
             </p>
           </div>
@@ -401,50 +418,50 @@ export default function AffiliateDetailPage() {
             </a>
           </div>
         </div>
-        <p className="text-xs font-mono text-gray-600 break-all bg-gray-50 rounded-lg px-3 py-2">
+        <p className="text-xs font-mono text-slate-600 break-all bg-slate-50 rounded-lg px-3 py-2">
           {(siteOrigin || (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '') || '(배포 도메인)')}/with/{affiliate.referral_code}
         </p>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">상단 영상 URL (YouTube)</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">상단 영상 URL (YouTube)</label>
           <input
             type="url"
             value={landingVideoUrl}
             onChange={e => setLandingVideoUrl(e.target.value)}
             placeholder="https://www.youtube.com/watch?v=..."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
           />
-          <p className="text-[11px] text-gray-400 mt-1">
+          <p className="text-[11px] text-slate-400 mt-1">
             입력하면 /with 랜딩 상단에 자동 임베드됩니다. 비우면 영상 없이 텍스트만 노출됩니다.
           </p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">랜딩 인사말 · 소개</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">랜딩 인사말 · 소개</label>
           <textarea
             value={landingIntro}
             onChange={e => setLandingIntro(e.target.value)}
             rows={5}
             maxLength={4000}
             placeholder={`예: 안녕하세요, ${affiliate.name}입니다. 제가 다녀온 여행지를 여소남과 함께 엄선했습니다.`}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
           />
-          <p className="text-[11px] text-gray-400 mt-1">비워 두면 랜딩 페이지에 기본 문구가 표시됩니다. HTML 대신 줄바꿈만 사용하세요.</p>
+          <p className="text-[11px] text-slate-400 mt-1">비워 두면 랜딩 페이지에 기본 문구가 표시됩니다. HTML 대신 줄바꿈만 사용하세요.</p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Pick 상품 (순서대로 최대 12개)</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Pick 상품 (순서대로 최대 12개)</label>
           {pickPackageIds.length === 0 ? (
-            <p className="text-sm text-gray-400 py-2">선택된 상품 없음 — 아래 검색에서 추가하면 랜딩 상단에만 노출됩니다. 비우면 최신 상품 자동.</p>
+            <p className="text-sm text-slate-400 py-2">선택된 상품 없음 — 아래 검색에서 추가하면 랜딩 상단에만 노출됩니다. 비우면 최신 상품 자동.</p>
           ) : (
             <ul className="space-y-2 mb-3">
               {pickPackageIds.map((id, idx) => (
-                <li key={id} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-                  <span className="text-gray-400 w-6 text-center">{idx + 1}</span>
+                <li key={id} className="flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                  <span className="text-slate-400 w-6 text-center">{idx + 1}</span>
                   <span className="flex-1 truncate" title={pickTitles[id] || id}>
                     {pickTitles[id] || id}
                   </span>
-                  <button type="button" className="text-xs text-gray-500 hover:text-gray-800 px-1" onClick={() => movePick(idx, -1)} disabled={idx === 0}>
+                  <button type="button" className="text-xs text-slate-500 hover:text-slate-800 px-1" onClick={() => movePick(idx, -1)} disabled={idx === 0}>
                     ↑
                   </button>
-                  <button type="button" className="text-xs text-gray-500 hover:text-gray-800 px-1" onClick={() => movePick(idx, 1)} disabled={idx === pickPackageIds.length - 1}>
+                  <button type="button" className="text-xs text-slate-500 hover:text-slate-800 px-1" onClick={() => movePick(idx, 1)} disabled={idx === pickPackageIds.length - 1}>
                     ↓
                   </button>
                   <button type="button" className="text-red-600 text-xs hover:underline" onClick={() => removePick(id)}>
@@ -459,22 +476,22 @@ export default function AffiliateDetailPage() {
             value={pkgQuery}
             onChange={e => setPkgQuery(e.target.value)}
             placeholder="상품명·코드 검색…"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2"
           />
           {pkgResults.length > 0 && (
-            <ul className="max-h-52 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+            <ul className="max-h-52 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-gray-100">
               {pkgResults.map(p => {
                 const title = p.display_title || p.title || p.id;
                 const on = pickPackageIds.includes(p.id);
                 return (
-                  <li key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
+                  <li key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
                     <span className="flex-1 truncate" title={title}>{title}</span>
-                    <span className="text-[10px] text-gray-400 shrink-0">{p.destination || ''}</span>
+                    <span className="text-[10px] text-slate-400 shrink-0">{p.destination || ''}</span>
                     <button
                       type="button"
                       disabled={on || pickPackageIds.length >= 12}
                       onClick={() => addPick(p.id)}
-                      className="text-xs text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline shrink-0"
+                      className="text-xs text-blue-600 hover:underline disabled:text-slate-300 disabled:no-underline shrink-0"
                     >
                       {on ? '추가됨' : '추가'}
                     </button>
@@ -497,23 +514,23 @@ export default function AffiliateDetailPage() {
       {/* KPI 카드 3종 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 등급 & 진행률 */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-500 mb-2">등급 진행률</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <p className="text-xs text-slate-500 mb-2">등급 진행률</p>
           <div className="flex items-center gap-2 mb-3">
             <span className={`px-2 py-0.5 rounded-full text-sm font-bold ${GRADE_COLORS[affiliate.grade]}`}>
               {affiliate.grade_label}
             </span>
             {affiliate.grade < 5 && (
-              <span className="text-xs text-gray-400">→ {gradeInfo.label}</span>
+              <span className="text-xs text-slate-400">→ {gradeInfo.label}</span>
             )}
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-3 mb-2">
+          <div className="w-full bg-slate-100 rounded-full h-3 mb-2">
             <div
               className="bg-purple-500 h-3 rounded-full transition-all"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-slate-500">
             {affiliate.grade < 5
               ? `${affiliate.booking_count}건 완료 · ${gradeInfo.label}까지 ${remaining}건 남음`
               : '최고 등급 달성!'}
@@ -521,14 +538,14 @@ export default function AffiliateDetailPage() {
         </div>
 
         {/* 이번 달 정산 예정 */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-500 mb-2">이번 달 정산 예정</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <p className="text-xs text-slate-500 mb-2">이번 달 정산 예정</p>
           {thisMonthSettlement ? (
             <>
-              <p className="text-xl font-bold text-gray-900">
+              <p className="text-xl font-bold text-slate-900">
                 ₩{thisMonthSettlement.final_total.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-slate-400 mt-1">
                 세전 · 이월 포함
               </p>
               <p className="text-sm font-medium text-green-600 mt-2">
@@ -541,17 +558,17 @@ export default function AffiliateDetailPage() {
               )}
             </>
           ) : (
-            <p className="text-gray-400 text-sm">정산 데이터 없음</p>
+            <p className="text-slate-400 text-sm">정산 데이터 없음</p>
           )}
         </div>
 
         {/* 누적 수수료 */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-500 mb-2">누적 수수료 수익</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <p className="text-xs text-slate-500 mb-2">누적 수수료 수익</p>
           <p className="text-xl font-bold text-purple-700">
             ₩{Number(affiliate.total_commission).toLocaleString()}
           </p>
-          <p className="text-xs text-gray-400 mt-1">총 {affiliate.booking_count}건 연결</p>
+          <p className="text-xs text-slate-400 mt-1">총 {affiliate.booking_count}건 연결</p>
           <p className="text-xs text-blue-500 mt-2">
             기본 요율 + 보너스 +{(affiliate.bonus_rate * 100).toFixed(1)}%
           </p>
@@ -559,23 +576,23 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 정산 이력 */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">정산 이력</h2>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-800">정산 이력</h2>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-slate-50">
             <tr>
               {['기간', '건수', '발생 수수료', '이월', '합계(세전)', '원천세', '실지급액', '상태'].map(h => (
-                <th key={h} className="text-left px-4 py-2 text-xs text-gray-500">{h}</th>
+                <th key={h} className="text-left px-4 py-2 text-xs text-slate-500">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {settlements.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-6 text-gray-400">정산 이력 없음</td></tr>
+              <tr><td colSpan={8} className="text-center py-6 text-slate-400">정산 이력 없음</td></tr>
             ) : settlements.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50">
+              <tr key={s.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs">{s.settlement_period}</td>
                 <td className="px-4 py-3">{s.qualified_booking_count}건</td>
                 <td className="px-4 py-3">₩{s.total_amount.toLocaleString()}</td>
@@ -599,23 +616,23 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 프로모코드 성과 */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">프로모코드 성과</h2>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-800">프로모코드 성과</h2>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-slate-50">
             <tr>
               {['코드', '할인', '사용', '예약', '매출', '커미션'].map(h => (
-                <th key={h} className="text-left px-4 py-2 text-xs text-gray-500">{h}</th>
+                <th key={h} className="text-left px-4 py-2 text-xs text-slate-500">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {promoRows.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-6 text-gray-400">프로모코드 성과 없음</td></tr>
+              <tr><td colSpan={6} className="text-center py-6 text-slate-400">프로모코드 성과 없음</td></tr>
             ) : promoRows.map((r, idx) => (
-              <tr key={`${r.code}_${idx}`} className="hover:bg-gray-50">
+              <tr key={`${r.code}_${idx}`} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{r.code}</td>
                 <td className="px-4 py-3">
                   {r.discount_type === 'percent' ? `${r.discount_value}%` : `₩${Number(r.discount_value).toLocaleString()}`}

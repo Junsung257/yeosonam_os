@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSingleFlight } from '@/lib/async-single-flight';
+import { getSupabasePublicConfig } from '@/lib/app-config';
 
 const IS_SECURE = process.env.NODE_ENV === 'production';
 
@@ -39,10 +40,7 @@ function fail(status: number, error: string, extra?: Record<string, unknown>) {
 // Supabase JS SDK를 경유하지 않고 REST Auth 엔드포인트를 직접 호출하여
 // HttpOnly 쿠키 체계를 그대로 유지한다.
 export async function POST(request: NextRequest) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const { url: supabaseUrl, anonKey } = getSupabasePublicConfig();
 
   if (!supabaseUrl || !anonKey) {
     return fail(500, 'Supabase 설정 없음');

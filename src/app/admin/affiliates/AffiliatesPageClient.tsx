@@ -86,12 +86,12 @@ export default function AffiliatesPageClient({
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-bold text-slate-800">어필리에이트 관리</h1>
-          <p className="text-[13px] text-slate-500 mt-1">인플루언서/파트너 등급 및 수수료 관리</p>
+          <h1 className="text-admin-lg font-bold text-slate-800">어필리에이트 관리</h1>
+          <p className="text-admin-sm text-slate-500 mt-1">인플루언서/파트너 등급 및 수수료 관리</p>
         </div>
         <button
           onClick={() => setShowPanel(true)}
-          className="px-4 py-2 bg-[#001f3f] text-white rounded-lg hover:bg-blue-900 text-[13px] font-medium"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-admin-sm font-medium"
         >
           + 파트너 등록
         </button>
@@ -108,7 +108,7 @@ export default function AffiliatesPageClient({
           { label: '다이아 등급', value: `${totalStats.diamond}명`, color: 'text-purple-600' },
           { label: '플래티넘 등급', value: `${totalStats.platinum}명`, color: 'text-blue-600' },
         ].map(card => (
-          <div key={card.label} className="bg-white border border-slate-200 rounded-lg p-4">
+          <div key={card.label} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
             <p className="text-[11px] text-slate-500">{card.label}</p>
             <p className={`text-xl font-bold mt-1 ${card.color}`}>{card.value}</p>
           </div>
@@ -116,8 +116,8 @@ export default function AffiliatesPageClient({
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <table className="w-full text-[13px]">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <table className="w-full text-admin-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               {['이름', '추천코드', '프론트', '등급', '예약수', '보너스요율', '정산유형', '누적수수료', ''].map(h => (
@@ -128,7 +128,7 @@ export default function AffiliatesPageClient({
           <tbody>
             {affiliates.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-8 text-slate-500 text-[14px]">
+                <td colSpan={9} className="text-center py-8 text-slate-500 text-admin-base">
                   등록된 파트너가 없습니다.
                 </td>
               </tr>
@@ -220,11 +220,11 @@ export default function AffiliatesPageClient({
           <div className="relative w-full max-w-md bg-white h-full overflow-y-auto border-l border-slate-200">
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-[16px] font-bold text-slate-800">파트너 신규 등록</h2>
+                <h2 className="text-admin-lg font-bold text-slate-800">파트너 신규 등록</h2>
                 <button onClick={() => { setShowPanel(false); setError(''); }} className="text-slate-500 hover:text-slate-700 text-lg">&times;</button>
               </div>
               {error && (
-                <p className="text-[13px] text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{error}</p>
+                <p className="text-admin-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{error}</p>
               )}
               <form onSubmit={handleSubmit} className="space-y-3">
                 {[
@@ -242,7 +242,7 @@ export default function AffiliatesPageClient({
                       value={(form as Record<string, string>)[f.key]}
                       onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                       required={f.label.includes('*')}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px] focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                 ))}
@@ -251,7 +251,7 @@ export default function AffiliatesPageClient({
                   <select
                     value={form.payout_type}
                     onChange={e => setForm(prev => ({ ...prev, payout_type: e.target.value as 'PERSONAL' | 'BUSINESS' }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px]"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base"
                   >
                     <option value="PERSONAL">개인 (원천세 3.3% 공제)</option>
                     <option value="BUSINESS">사업자 (세금계산서 별도)</option>
@@ -263,7 +263,7 @@ export default function AffiliatesPageClient({
                     value={form.memo}
                     onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
                     rows={2}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[14px]"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base"
                     placeholder="특이사항..."
                   />
                 </div>
@@ -271,14 +271,14 @@ export default function AffiliatesPageClient({
                   <button
                     type="button"
                     onClick={() => { setShowPanel(false); setError(''); }}
-                    className="flex-1 py-2 bg-white border border-slate-300 rounded-lg text-[14px] text-slate-700 hover:bg-slate-50"
+                    className="flex-1 py-2 bg-white border border-slate-300 rounded-lg text-admin-base text-slate-700 hover:bg-slate-50"
                   >
                     취소
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 py-2 bg-[#001f3f] text-white rounded-lg text-[14px] font-medium hover:bg-blue-900 disabled:opacity-50"
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-admin-base font-medium hover:bg-blue-700 disabled:opacity-50"
                   >
                     {saving ? '등록 중...' : '등록하기'}
                   </button>

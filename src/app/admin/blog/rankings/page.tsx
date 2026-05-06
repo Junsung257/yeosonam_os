@@ -74,18 +74,18 @@ export default function BlogRankingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">블로그 순위 대시보드</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">
+          <p className="text-admin-xs text-slate-400 mt-0.5">
             GSC 기반 일일 순위 추적 · 5계단 이상 하락 자동 경보
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin/blog/queue" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+          <Link href="/admin/blog/queue" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
             ← 발행 큐
           </Link>
           <button
             onClick={triggerCron}
             disabled={running}
-            className="px-3 py-2 bg-indigo-600 text-white text-[12px] rounded-lg disabled:opacity-50"
+            className="px-3 py-2 bg-blue-600 text-white text-admin-xs rounded-lg disabled:opacity-50"
           >
             {running ? '추적중...' : '🔍 순위 즉시 추적'}
           </button>
@@ -97,7 +97,7 @@ export default function BlogRankingsPage() {
         {[7, 14, 30].map(d => (
           <button key={d}
             onClick={() => setDays(d)}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md ${days === d ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
+            className={`px-3 py-1.5 text-admin-xs font-medium rounded-md ${days === d ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
             {d}일
           </button>
         ))}
@@ -106,15 +106,15 @@ export default function BlogRankingsPage() {
       {/* 누적 요약 */}
       {summary && (
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
             <p className="text-[11px] text-slate-400">총 클릭</p>
             <p className="text-[22px] font-bold text-slate-800">{(summary.totals?.total_clicks || 0).toLocaleString()}</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
             <p className="text-[11px] text-slate-400">총 노출</p>
             <p className="text-[22px] font-bold text-slate-800">{(summary.totals?.total_impressions || 0).toLocaleString()}</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
             <p className="text-[11px] text-slate-400">추적 중인 글</p>
             <p className="text-[22px] font-bold text-slate-800">{summary.totals?.tracked_slugs || 0}</p>
           </div>
@@ -124,7 +124,7 @@ export default function BlogRankingsPage() {
       {/* 미해결 경보 */}
       {alerts.length > 0 && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-          <p className="text-[12px] font-semibold text-rose-700 mb-2">🚨 순위 하락 경보 ({alerts.length}건)</p>
+          <p className="text-admin-xs font-semibold text-rose-700 mb-2">🚨 순위 하락 경보 ({alerts.length}건)</p>
           <table className="w-full text-[11px]">
             <thead>
               <tr className="border-b border-rose-200">
@@ -152,9 +152,9 @@ export default function BlogRankingsPage() {
 
       {/* Top performers */}
       {summary?.top && summary.top.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
-            <p className="text-[12px] font-semibold text-slate-700">Top 30 — {days}일 누적 클릭 순</p>
+            <p className="text-admin-xs font-semibold text-slate-700">Top 30 — {days}일 누적 클릭 순</p>
           </div>
           <table className="w-full">
             <thead>
@@ -191,7 +191,7 @@ export default function BlogRankingsPage() {
       {movers && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-            <p className="text-[12px] font-semibold text-emerald-700 mb-2">📈 순위 상승 TOP 20</p>
+            <p className="text-admin-xs font-semibold text-emerald-700 mb-2">📈 순위 상승 TOP 20</p>
             <div className="space-y-1 max-h-72 overflow-y-auto">
               {movers.ups.length === 0 && <p className="text-[11px] text-emerald-600">데이터 부족</p>}
               {movers.ups.map((m, i) => (
@@ -203,7 +203,7 @@ export default function BlogRankingsPage() {
             </div>
           </div>
           <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-            <p className="text-[12px] font-semibold text-rose-700 mb-2">📉 순위 하락 TOP 20</p>
+            <p className="text-admin-xs font-semibold text-rose-700 mb-2">📉 순위 하락 TOP 20</p>
             <div className="space-y-1 max-h-72 overflow-y-auto">
               {movers.downs.length === 0 && <p className="text-[11px] text-rose-600">데이터 부족</p>}
               {movers.downs.map((m, i) => (

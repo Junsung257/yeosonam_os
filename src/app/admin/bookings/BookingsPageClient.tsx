@@ -1,6 +1,24 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, Component, type ReactNode } from 'react';
+
+// ── 행 단위 에러 안전망 — 1행 오류가 전체 테이블을 날리지 않도록 ─────────────
+class BookingRowBoundary extends Component<{ children: ReactNode; bookingNo?: string; colSpan?: number }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <tr style={{ height: 88 }} className="border-b border-slate-200 bg-red-50/40">
+          <td colSpan={this.props.colSpan ?? 19} className="px-4 text-admin-xs text-red-400 italic">
+            ⚠️ 데이터 오류 — 이 행을 표시할 수 없습니다{this.props.bookingNo ? ` (${this.props.bookingNo})` : ''}
+          </td>
+        </tr>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -246,7 +264,7 @@ const DateInputCell = React.memo(function DateInputCell({
         if (e.key === 'Tab')    { e.preventDefault(); handleCommit((e.target as HTMLInputElement).value); }
       }}
       onBlur={e => handleCommit(e.target.value)}
-      className="w-28 border border-blue-500 rounded px-2 py-1.5 text-[13px] font-mono tracking-widest focus:outline-none bg-white"
+      className="w-28 border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-mono tracking-widest focus:outline-none bg-white"
     />
   );
 });
@@ -308,7 +326,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
     onCommit(bookingId, adult, child);
   }, [bookingId, onCommit]);
 
-  const inputCls = 'w-14 border border-blue-500 rounded px-2 py-1 text-[13px] font-bold text-center focus:outline-none bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+  const inputCls = 'w-14 border border-blue-500 rounded px-2 py-1 text-admin-sm font-bold text-center focus:outline-none bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   return (
     <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
@@ -396,7 +414,7 @@ function LocationSelectCell({ initialId, locations, onCommit, onCancel }: {
       onChange={e => { e.stopPropagation(); onCommit(e.target.value); }}
       onBlur={onCancel}
       onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); onCancel(); } }}
-      className="border border-blue-500 rounded px-2 py-1.5 text-[13px] font-medium focus:outline-none bg-white cursor-pointer"
+      className="border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-medium focus:outline-none bg-white cursor-pointer"
     >
       <option value="">-- 선택 안 함 --</option>
       {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -419,7 +437,7 @@ function VendorSelectCell({ initialId, vendors, onCommit, onCancel }: {
       onChange={e => { e.stopPropagation(); onCommit(e.target.value); }}
       onBlur={onCancel}
       onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); onCancel(); } }}
-      className="border border-blue-500 rounded px-2 py-1.5 text-[13px] font-medium focus:outline-none bg-white cursor-pointer"
+      className="border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-medium focus:outline-none bg-white cursor-pointer"
     >
       <option value="">-- 선택 안 함 --</option>
       {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
@@ -510,7 +528,7 @@ function SmartProductSelect({
           if (e.key === 'Enter' && hits[0]) { e.preventDefault(); onCommit(hits[0]); }
         }}
         onBlur={() => setTimeout(onCancel, 180)}
-        className="w-48 border border-blue-500 rounded px-2 py-1.5 text-[13px] font-medium focus:outline-none bg-white"
+        className="w-48 border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-medium focus:outline-none bg-white"
       />
 
       {dropPos && createPortal(
@@ -520,10 +538,10 @@ function SmartProductSelect({
           onMouseDown={e => e.stopPropagation()}
         >
           {loading && (
-            <p className="px-4 py-3 text-[13px] text-slate-500 text-center">상품 불러오는 중...</p>
+            <p className="px-4 py-3 text-admin-sm text-slate-500 text-center">상품 불러오는 중...</p>
           )}
           {!loading && hits.length === 0 && (
-            <p className="px-4 py-3 text-[13px] text-slate-500 text-center">
+            <p className="px-4 py-3 text-admin-sm text-slate-500 text-center">
               {departureDate ? `출발일 ±60일 내 활성 상품 없음` : '활성 상품 없음'}
             </p>
           )}
@@ -542,7 +560,7 @@ function SmartProductSelect({
                   </span>
                 )}
               </div>
-              <p className="text-[13px] font-semibold text-slate-800 mt-0.5 truncate">{p.display_name}</p>
+              <p className="text-admin-sm font-semibold text-slate-800 mt-0.5 truncate">{p.display_name}</p>
               <div className="flex items-center gap-3 mt-1">
                 {p.supplier_name && (
                   <span className="text-[11px] text-blue-600 font-medium">{p.supplier_name}</span>
@@ -617,7 +635,7 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
         onBlur={commit}
         placeholder="SKU 붙여넣기..."
         disabled={saving}
-        className="w-full border border-blue-400 rounded px-2 py-1 text-[13px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+        className="w-full border border-blue-400 rounded px-2 py-1 text-admin-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
       />
     );
   }
@@ -632,12 +650,12 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
           <span className="text-[11px] font-mono text-blue-500 truncate">
             [{booking.product_id}]
           </span>
-          <span className="text-[13px] text-slate-800 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
+          <span className="text-admin-sm text-slate-800 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
             {booking.package_title || '(미지정)'}
           </span>
         </>
       ) : (
-        <span className="text-[13px] text-slate-800 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
+        <span className="text-admin-sm text-slate-800 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
           {booking.package_title || <span className="text-slate-300">(미지정)</span>}
         </span>
       )}
@@ -708,7 +726,7 @@ function SortTh({ label, field, sortField, sortDir, onSort, className = '' }: {
   return (
     <th onClick={() => onSort(field)}
       className={`cursor-pointer select-none px-3 py-2 whitespace-nowrap hover:bg-slate-50 group text-left ${className}`}>
-      <span className="flex items-center gap-1 text-[13px] text-slate-800 font-semibold">
+      <span className="flex items-center gap-1 text-admin-sm text-slate-800 font-semibold">
         {label}
         <span className={active ? 'text-blue-500' : 'text-slate-300 group-hover:text-slate-400'}>
           {!active ? '↕' : sortDir === 'asc' ? '↑' : '↓'}
@@ -823,7 +841,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const [drawerBookingId, setDrawerBookingId] = useState<string | null>(
     searchParams?.get('id') ?? null,
   );
-  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef  = useRef<HTMLDivElement>(null);
+  const lastClickedRowRef  = useRef<string | null>(null);
   const [scrollTop, setScrollTop]   = useState(0);
   const [containerH, setContainerH] = useState(600);
 
@@ -1542,7 +1561,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   }, [parsedDateRange, searchTarget]);
 
   // 공통 NumInput 스타일
-  const numInputCls = 'w-32 border border-blue-500 rounded px-2 py-1.5 text-[14px] font-bold text-slate-800 focus:outline-none bg-white tabular-nums text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+  const numInputCls = 'w-32 border border-blue-500 rounded px-2 py-1.5 text-admin-base font-bold text-slate-800 focus:outline-none bg-white tabular-nums text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   // ── JSX ─────────────────────────────────────────────────────────────────────
   return (
@@ -1551,27 +1570,44 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-3 flex-nowrap gap-4 shrink-0">
         <div className="shrink-0">
-          <h1 className="text-[16px] font-bold text-slate-800 whitespace-nowrap">{isTrash ? '휴지통' : '예약 관리'}</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5 whitespace-nowrap">전체 {bookings.length}건 / 조회 {filtered.length}건</p>
+          <h1 className="text-admin-lg font-bold text-slate-800 whitespace-nowrap">{isTrash ? '휴지통' : '예약 관리'}</h1>
+          <p className="text-admin-sm text-slate-500 mt-0.5 whitespace-nowrap">전체 {bookings.length}건 / 조회 {filtered.length}건</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Link href="/admin/customers" className="text-[13px] text-slate-700 border border-slate-300 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 whitespace-nowrap">고객 관리</Link>
-          <Link href="/admin/bookings/new" className="bg-[#3182F6] text-white text-[13px] px-4 py-2 rounded-lg hover:bg-[#1B64DA] transition whitespace-nowrap font-semibold">+ 예약 등록</Link>
+          <Link href="/admin/customers" className="text-admin-sm text-slate-700 border border-slate-300 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 whitespace-nowrap">고객 관리</Link>
+          <Link href="/admin/bookings/new" className="bg-brand text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-[#1B64DA] transition whitespace-nowrap font-semibold">+ 예약 등록</Link>
         </div>
       </div>
 
       {/* 요약 카드 */}
       {!isTrash && (
         <div className="grid grid-cols-4 gap-3 mb-3 shrink-0">
-          {[
-            { label: '진행 중 예약', value: cardStats.activeCnt + '건',    color: 'text-blue-600' },
-            { label: '총 판매가',    value: fmtK(cardStats.totalSales),     color: 'text-slate-800' },
-            { label: '입금 완료액',  value: fmtK(cardStats.totalPaid),      color: 'text-emerald-600' },
-            { label: '미수금 잔금',  value: fmtK(cardStats.totalBalance),   color: 'text-red-500' },
-          ].map(c => (
-            <div key={c.label} className="bg-white rounded-lg border border-slate-200 px-4 py-3 text-center">
-              <p className={`text-[16px] font-bold ${c.color}`}>{c.value}</p>
-              <p className="text-[13px] text-slate-500 mt-0.5">{c.label}</p>
+          {([
+            {
+              label: '진행 중 예약', value: cardStats.activeCnt + '건', color: 'text-blue-600', bg: 'bg-blue-50',
+              icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>,
+            },
+            {
+              label: '총 판매가', value: fmtK(cardStats.totalSales), color: 'text-slate-800', bg: 'bg-slate-50',
+              icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>,
+            },
+            {
+              label: '입금 완료액', value: fmtK(cardStats.totalPaid), color: 'text-emerald-600', bg: 'bg-emerald-50',
+              icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            },
+            {
+              label: '미수금 잔금', value: fmtK(cardStats.totalBalance), color: cardStats.totalBalance > 0 ? 'text-red-500' : 'text-slate-400', bg: cardStats.totalBalance > 0 ? 'bg-red-50' : 'bg-slate-50',
+              icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>,
+            },
+          ] as { label: string; value: string; color: string; bg: string; icon: React.ReactNode }[]).map(c => (
+            <div key={c.label} className="bg-white rounded-xl border border-slate-100 px-4 py-3 flex items-center gap-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <div className={`shrink-0 w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center ${c.color}`}>
+                {c.icon}
+              </div>
+              <div className="min-w-0">
+                <p className={`text-[18px] font-bold leading-tight tabular-nums ${c.color}`}>{c.value}</p>
+                <p className="text-admin-xs text-slate-400 mt-0.5 leading-none">{c.label}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -1580,7 +1616,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       {/* 통합 검색바 */}
       <div className="flex items-center gap-2 mb-2.5 shrink-0">
         <select value={searchTarget} onChange={e => setSearchTarget(e.target.value as typeof searchTarget)}
-          className="rounded-[10px] border border-[#E5E7EB] px-2 py-2 text-[13px] text-[#191F28] bg-white focus:outline-none focus:ring-2 focus:ring-[#EBF3FE] focus:border-[#3182F6] shrink-0 cursor-pointer">
+          className="rounded-[10px] border border-[#E5E7EB] px-2 py-2 text-admin-sm text-text-primary bg-white focus:outline-none focus:ring-2 focus:ring-[#EBF3FE] focus:border-brand shrink-0 cursor-pointer">
           <option value="all">전체</option>
           <option value="departure">출발일</option>
           <option value="booking">예약일</option>
@@ -1595,7 +1631,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           )}
         </div>
         {dateRangeBadge && (
-          <span className="shrink-0 text-[13px] text-blue-700 font-semibold bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg whitespace-nowrap">
+          <span className="shrink-0 text-admin-sm text-blue-700 font-semibold bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg whitespace-nowrap">
             {dateRangeBadge}
           </span>
         )}
@@ -1605,7 +1641,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       <div className="flex items-center border-b border-slate-200 shrink-0">
         {/* DQ 진입 인디케이터 배너 */}
         {dqFilter && (
-          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-[12px] text-amber-800 flex items-center justify-between gap-3 flex-wrap">
+          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-admin-xs text-amber-800 flex items-center justify-between gap-3 flex-wrap">
             <span>
               <span className="font-semibold">데이터 품질 진단 모드</span>
               {' · '}
@@ -1626,11 +1662,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           return (
             <button key={tab.id}
               onClick={() => { setLifecycleTab(tab.id); setActiveTab(''); setDoneSubTab(tab.id === 'done' ? 'unsettled' : ''); }}
-              className={`px-5 py-2.5 text-[13px] font-semibold border-b-2 transition-colors whitespace-nowrap -mb-px
-                ${isActive ? 'border-[#3182F6] text-[#3182F6]' : 'border-transparent text-[#8B95A1] hover:text-[#191F28] hover:border-[#E5E7EB]'}`}>
+              className={`px-5 py-2.5 text-admin-sm font-semibold border-b-2 transition-colors whitespace-nowrap -mb-px
+                ${isActive ? 'border-brand text-brand' : 'border-transparent text-text-secondary hover:text-text-primary hover:border-[#E5E7EB]'}`}>
               {tab.label}
               {cnt > 0 && (
-                <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#EBF3FE] text-[#3182F6]' : 'bg-[#F2F4F6] text-[#8B95A1]'}`}>
+                <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-brand-light text-brand' : 'bg-bg-section text-text-secondary'}`}>
                   {cnt}
                 </span>
               )}
@@ -1710,9 +1746,44 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-slate-500 font-medium text-[14px]">{isTrash ? '삭제된 예약 없음' : rawSearch ? '검색 결과 없음' : '예약 없음'}</p>
-            {!rawSearch && !isTrash && <Link href="/admin/bookings/new" className="mt-4 inline-block text-blue-600 text-[14px] hover:underline">첫 예약 등록 →</Link>}
+          <div className="text-center px-8 py-12 max-w-sm">
+            {isTrash ? (
+              <svg className="mx-auto mb-4 w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            ) : rawSearch || activeTab ? (
+              <svg className="mx-auto mb-4 w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 15.803z" />
+              </svg>
+            ) : (
+              <svg className="mx-auto mb-4 w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+              </svg>
+            )}
+            <p className="text-slate-700 font-semibold text-admin-md mb-1">
+              {isTrash ? '삭제된 예약 없음' : rawSearch ? `"${rawSearch}" 검색 결과 없음` : activeTab ? '해당 조건의 예약 없음' : '예약 없음'}
+            </p>
+            <p className="text-slate-400 text-admin-sm mb-5">
+              {isTrash ? '최근 삭제된 예약이 없습니다.' : rawSearch ? '다른 검색어로 시도하거나 필터를 초기화하세요.' : activeTab ? '현재 필터 조건에 해당하는 예약이 없습니다.' : '아직 등록된 예약이 없습니다.'}
+            </p>
+            {(rawSearch || activeTab) && (
+              <button onClick={() => { setRawSearch(''); setActiveTab(''); setDoneSubTab(''); }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-admin-sm font-medium rounded-lg transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                필터 초기화
+              </button>
+            )}
+            {!rawSearch && !isTrash && !activeTab && (
+              <Link href="/admin/bookings/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-[#1B64DA] text-white text-admin-sm font-medium rounded-lg transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                첫 예약 등록
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -1729,21 +1800,21 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 </th>
                 <SortTh label="예약일"     field="booking_date"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[52px] z-30 bg-white min-w-[130px]" />
                 <SortTh label="출발일"     field="departure_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[182px] z-30 bg-white min-w-[150px]" />
-                <th className="sticky left-[332px] z-30 bg-white text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">고객명</th>
-                <th className="sticky left-[492px] z-30 bg-white text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[180px]">랜드사</th>
-                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[200px]">상품명</th>
-                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">예약번호</th>
-                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">출발지역</th>
-                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">담당자</th>
-                <th className="text-left px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">인원</th>
+                <th className="sticky left-[332px] z-30 bg-white text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">고객명</th>
+                <th className="sticky left-[492px] z-30 bg-white text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[180px]">랜드사</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[200px]">상품명</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">예약번호</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">출발지역</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">담당자</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">인원</th>
                 <SortTh label="1인 판매가" field="adult_price"    sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[170px]" />
                 <SortTh label="전체 판매가" field="total_price"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[170px]" />
-                <th className="text-right px-3 py-2 text-[13px] font-semibold text-slate-800 whitespace-nowrap min-w-[140px]">예상 마진</th>
-                <th className="text-center px-3 py-2 text-[13px] font-semibold text-slate-800 whitespace-nowrap min-w-[110px]">마진율</th>
+                <th className="text-right px-3 py-2 text-admin-sm font-semibold text-slate-800 whitespace-nowrap min-w-[140px]">예상 마진</th>
+                <th className="text-center px-3 py-2 text-admin-sm font-semibold text-slate-800 whitespace-nowrap min-w-[110px]">마진율</th>
                 <SortTh label="입금액"      field="paid_amount"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
-                <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-[13px] text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
+                <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
                 <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]" />
               </tr>
             </thead>
@@ -1781,16 +1852,19 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 const hasBusanRec     = busanRec.has(b.id);
                 const isEditing       = (field: string) => editingCell?.id === b.id && editingCell.field === field;
 
-                const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-slate-50';
+                const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : isMissing ? 'bg-yellow-50/70 hover:bg-yellow-50' : isDepositUnpaid ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50';
                 const rowBorder  = isLandBomb ? 'outline outline-2 outline-red-400 outline-offset-[-1px]' : '';
                 const isFoc      = (col: number) => focusedCell?.row === ri && focusedCell.col === col;
                 const focusCls   = (col: number) => isFoc(col) ? 'ring-2 ring-inset ring-blue-400 rounded' : '';
 
                 return (
-                  // [1] CSS style로 ROW_H 고정 — 편집 시 레이아웃 흔들림 방지
-                  <tr key={b.id} style={{ height: ROW_H }}
+                  <BookingRowBoundary key={b.id} bookingNo={b.booking_no} colSpan={19}>
+                  {/* [1] CSS style로 ROW_H 고정 — 편집 시 레이아웃 흔들림 방지 */}
+                  <tr style={{ height: ROW_H }}
+                    data-booking-id={b.id}
                     className={`${rowBg} ${rowBorder} border-b border-slate-200 transition-colors group cursor-pointer`}
-                    onClick={() => setDrawerBookingId(b.id)}
+                    onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }}
+                    onMouseEnter={() => { fetch(`/api/bookings/${b.id}`).catch(() => {}); }}
                     onContextMenu={e => {
                       e.preventDefault();
                       setCtxMenu({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 180), b });
@@ -1805,7 +1879,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     {/* 예약일 (sticky) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 1)} onFocus={() => setFocusedCell({ row: ri, col: 1 })}
                       className={`sticky left-[52px] z-10 bg-inherit px-3 min-w-[130px] whitespace-nowrap outline-none ${focusCls(1)}`}>
-                      <span className="text-[13px] font-medium text-slate-500">{fmtDate(b.booking_date || b.created_at)}</span>
+                      <span className="text-admin-sm font-medium text-slate-500">{fmtDate(b.booking_date || b.created_at)}</span>
                     </td>
 
                     {/* 출발일 — Full-Cell Hitbox (sticky) */}
@@ -1823,7 +1897,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       ) : (
                         <div onClick={() => { setEditingCell({ id: b.id, field: 'departure_date' }); setCellValue(b.departure_date || ''); }}
                           className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-1.5">
-                          <span className={`font-mono tabular-nums ${isRisk ? 'text-[13px] font-bold text-red-700' : 'text-[13px] font-semibold text-slate-800'} ${!b.departure_date ? 'text-slate-300 font-normal' : ''}`}>
+                          <span className={`font-mono tabular-nums ${isRisk ? 'text-admin-sm font-bold text-red-700' : 'text-admin-sm font-semibold text-slate-800'} ${!b.departure_date ? 'text-slate-300 font-normal' : ''}`}>
                             {fmtDateKo(b.departure_date)}
                           </span>
                           {dDiff !== null && dDiff >= 0 && dDiff <= 14 && (
@@ -1838,11 +1912,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       className={`sticky left-[332px] z-10 bg-inherit px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(3)}`}
                       onClick={e => e.stopPropagation()}>
                       {b.customers?.id
-                        ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-[14px] text-slate-800 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
-                        : <span className="font-bold text-[14px] text-slate-800">{b.customers?.name || '-'}</span>}
+                        ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-admin-base text-slate-800 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
+                        : <span className="font-bold text-admin-base text-slate-800">{b.customers?.name || '-'}</span>}
                       {b.customers?.phone
-                        ? <p className="text-[13px] text-slate-500 mt-0.5">{b.customers.phone}</p>
-                        : <p className="text-[13px] text-amber-400 mt-0.5">번호 없음</p>}
+                        ? <p className="text-admin-sm text-slate-500 mt-0.5">{b.customers.phone}</p>
+                        : <p className="text-admin-sm text-amber-400 mt-0.5">번호 없음</p>}
                     </td>
 
                     {/* 랜드사 — FK 기반 인라인 선택 (sticky left) */}
@@ -1865,7 +1939,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         return (
                           <div onClick={() => setEditingCell({ id: b.id, field: 'land_operator_id' })}
                             className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-2">
-                            <span className={`text-[13px] font-semibold ${displayName ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
+                            <span className={`text-admin-sm font-semibold ${displayName ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
                               {displayName || '+ 선택'}
                             </span>
                             {op && !op.is_active && (
@@ -1893,7 +1967,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       className={`px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(6)}`}
                       onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
-                        <Link href={`/admin/bookings/${b.id}`} className="font-mono text-[13px] text-blue-600 hover:underline font-bold">
+                        <Link href={`/admin/bookings/${b.id}`} className="font-mono text-admin-sm text-blue-600 hover:underline font-bold">
                           {b.booking_no || b.id.slice(0, 8)}
                         </Link>
                         <button onClick={e => { e.stopPropagation(); copyText(b.booking_no || b.id.slice(0, 8)); }}
@@ -1942,7 +2016,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           <div className="flex flex-col gap-0.5">
                             <div onClick={() => setEditingCell({ id: b.id, field: 'departing_location_id' })}
                               className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded flex items-center gap-1">
-                              <span className="text-[13px] font-semibold text-slate-800">
+                              <span className="text-admin-sm font-semibold text-slate-800">
                                 {displayName || <span className="text-slate-300 font-medium">+ 출발지</span>}
                               </span>
                               {loc && !loc.is_active && (
@@ -1964,12 +2038,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           <input autoFocus value={cellValue} onChange={e => setCellValue(e.target.value)}
                             onBlur={() => commitCell(b.id, 'manager_name')}
                             onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitAndDown(b.id, 'manager_name', cellValue, ri); } if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); } }}
-                            className="w-32 border border-blue-500 rounded px-2 py-1.5 text-[13px] font-medium focus:outline-none bg-white" />
+                            className="w-32 border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-medium focus:outline-none bg-white" />
                         </div>
                       ) : (
                         <div onClick={() => { setEditingCell({ id: b.id, field: 'manager_name' }); setCellValue(b.manager_name || ''); }}
                           className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors">
-                          <span className={`text-[13px] font-semibold ${b.manager_name ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
+                          <span className={`text-admin-sm font-semibold ${b.manager_name ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
                             {b.manager_name || '+ 입력'}
                           </span>
                         </div>
@@ -1994,7 +2068,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       ) : (
                         <div onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_count' }); }}
                           className={`w-full h-[88px] flex items-center px-3 transition-colors ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''}`}>
-                          <span className="text-[13px] font-bold text-slate-800">
+                          <span className="text-admin-sm font-bold text-slate-800">
                             성인 {b.adult_count ?? 0}{(b.child_count ?? 0) > 0 ? ` / 아동 ${b.child_count}` : ''}
                           </span>
                         </div>
@@ -2019,7 +2093,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         </div>
                       ) : (
                         <div onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_price' }); }}
-                          className={`w-full h-[88px] flex items-center justify-end px-3 transition-colors tabular-nums ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''} ${!b.adult_price ? 'text-slate-300 font-normal text-[13px]' : 'font-bold text-[14px] text-slate-800'}`}>
+                          className={`w-full h-[88px] flex items-center justify-end px-3 transition-colors tabular-nums ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''} ${!b.adult_price ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-slate-800'}`}>
                           {fmt(b.adult_price)}
                         </div>
                       )}
@@ -2027,7 +2101,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
                     {/* 전체 판매가 */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 11)} onFocus={() => setFocusedCell({ row: ri, col: 11 })}
-                      className={`px-3 min-w-[170px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(11)} ${!(b.total_price) ? 'text-slate-300 font-normal text-[13px]' : 'font-bold text-[14px] text-slate-800'}`}
+                      className={`px-3 min-w-[170px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(11)} ${!(b.total_price) ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-slate-800'}`}
                       style={getCellStyle(`${b.id}-total_price`)}>
                       {fmt(b.total_price)}
                     </td>
@@ -2036,28 +2110,28 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     <td className="px-3 min-w-[140px] text-right whitespace-nowrap tabular-nums"
                         title={`실현 현금 마진 = 입금 ${(b.paid_amount||0).toLocaleString()}원 − 출금 ${(b.total_paid_out||0).toLocaleString()}원`}>
                       {hasCashData ? (
-                        <span className={`font-bold text-[13px] tabular-nums ${margin >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                        <span className={`font-bold text-admin-sm tabular-nums ${margin >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                           {margin >= 0 ? '+' : ''}{Math.round(margin / 10000)}만원
                         </span>
-                      ) : <span className="text-slate-300 text-[13px]">—</span>}
+                      ) : <span className="text-slate-300 text-admin-sm">—</span>}
                     </td>
 
                     {/* 마진율 — 입금액 대비 */}
                     <td className="px-3 min-w-[110px] text-center whitespace-nowrap">
                       {mHasPaid ? (
                         <MarginBadge rate={parseFloat(mRate)} />
-                      ) : <span className="text-slate-300 text-[13px]">—</span>}
+                      ) : <span className="text-slate-300 text-admin-sm">—</span>}
                     </td>
 
                     {/* 입금액 */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 12)} onFocus={() => setFocusedCell({ row: ri, col: 12 })}
-                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(12)} ${!(b.paid_amount) ? 'text-slate-300 font-normal text-[13px]' : 'font-bold text-[14px] text-emerald-700'}`}>
+                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(12)} ${!(b.paid_amount) ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-emerald-700'}`}>
                       {fmt(b.paid_amount)}
                     </td>
 
                     {/* 출금액 — 랜드사 송금액 (total_paid_out) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 13)} onFocus={() => setFocusedCell({ row: ri, col: 13 })}
-                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(13)} ${!(b.total_paid_out) ? 'text-slate-300 font-normal text-[13px]' : 'font-bold text-[14px] text-orange-700'}`}
+                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(13)} ${!(b.total_paid_out) ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-orange-700'}`}
                       title={`랜드사 송금액 (원가 ${(b.total_cost||0).toLocaleString()}원 중)`}>
                       {fmt(b.total_paid_out)}
                     </td>
@@ -2067,7 +2141,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       className={`sticky right-[280px] z-10 bg-inherit px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(14)}`}>
                       {isCancelled ? (
                         <div>
-                          <span className={`font-bold text-[13px] ${
+                          <span className={`font-bold text-admin-sm ${
                             netCashflow < -5000 ? 'text-red-600' :
                             netCashflow > 5000  ? 'text-amber-600' :
                             'text-slate-500'
@@ -2079,12 +2153,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           </div>
                         </div>
                       ) : isPaid ? (
-                        <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full font-bold text-[13px]">완납</span>
+                        <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full font-bold text-admin-sm">완납</span>
                       ) : (
                         <div>
                           <span className={balance > 0 && (b.total_price ?? 0) > 0
-                            ? `font-bold text-[14px] ${isDepositUnpaid ? 'text-red-600' : isRisk ? 'text-red-600' : 'text-red-500'}`
-                            : 'font-normal text-[13px] text-slate-300'}>
+                            ? `font-bold text-admin-base ${isDepositUnpaid ? 'text-red-600' : isRisk ? 'text-red-600' : 'text-red-500'}`
+                            : 'font-normal text-admin-sm text-slate-300'}>
                             {fmt(balance)}
                           </span>
                           {isDepositUnpaid && <span className="ml-1 text-[11px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-bold">계약금 미납</span>}
@@ -2096,7 +2170,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           )}
                         </div>
                       )}
-                      <div className="hidden group-hover/bal:block absolute bottom-full right-0 z-50 bg-slate-800 text-white text-[13px] rounded-lg px-3.5 py-2.5 whitespace-nowrap mb-1.5 pointer-events-none min-w-[220px]">
+                      <div className="hidden group-hover/bal:block absolute bottom-full right-0 z-50 bg-slate-800 text-white text-admin-sm rounded-lg px-3.5 py-2.5 whitespace-nowrap mb-1.5 pointer-events-none min-w-[220px]">
                         {isCancelled ? (
                           <>
                             <p className="text-slate-300 font-semibold mb-1">취소/환불 정산</p>
@@ -2131,7 +2205,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           onChange={e => { setCellValue(e.target.value); commitCell(b.id, 'status', e.target.value); }}
                           onBlur={cancelEdit}
                           onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') cancelEdit(); }}
-                          className="text-[13px] border border-blue-500 rounded px-2 py-1.5 focus:outline-none bg-white">
+                          className="text-admin-sm border border-blue-500 rounded px-2 py-1.5 focus:outline-none bg-white">
                           {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
                       ) : (
@@ -2148,7 +2222,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         )}
                         {!isTrash && b.status === 'confirmed' && (
                           <button onClick={() => patchStatus(b.id, 'completed')} disabled={processing === b.id}
-                            className="text-[11px] bg-[#3182F6] text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1B64DA] disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
+                            className="text-[11px] bg-brand text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1B64DA] disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
                         )}
                         {!isTrash ? (
                           <>
@@ -2174,27 +2248,28 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       </div>
                     </td>
                   </tr>
+                  </BookingRowBoundary>
                 );
               })}
               {vPadBottom > 0 && <tr style={{ height: vPadBottom }}><td colSpan={19} /></tr>}
             </tbody>
 
             <tfoot className="sticky bottom-0 z-10">
-              <tr className="bg-[#3182F6] text-white text-[13px] font-semibold border-t border-[#F2F4F6]">
-                <td className="sticky left-0 bg-[#3182F6] px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
+              <tr className="bg-brand text-white text-admin-sm font-semibold border-t border-admin-border">
+                <td className="sticky left-0 bg-brand px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
                 <td colSpan={9} />
-                <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap tabular-nums font-bold">{footerStats.totalSales.toLocaleString()}원</td>
+                <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap tabular-nums font-bold">{footerStats.totalSales.toLocaleString()}원</td>
                 {/* 예상마진 합계 (입금 − 출금) */}
-                <td className="px-3 py-2 text-right text-[13px] whitespace-nowrap tabular-nums font-bold"
+                <td className="px-3 py-2 text-right text-admin-sm whitespace-nowrap tabular-nums font-bold"
                     title="실현 현금 마진 합계 (입금액 − 출금액)">
                   <span className={footerStats.totalNetMargin >= 0 ? 'text-emerald-300' : 'text-red-300'}>
                     {footerStats.totalNetMargin >= 0 ? '+' : ''}{Math.round(footerStats.totalNetMargin / 10000)}만원
                   </span>
                 </td>
                 <td /> {/* 마진율 */}
-                <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap text-blue-200 tabular-nums font-bold">{footerStats.totalPaid.toLocaleString()}원</td>
-                <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap text-orange-200 tabular-nums font-bold">{footerStats.totalPaidOut > 0 ? footerStats.totalPaidOut.toLocaleString() + '원' : '—'}</td>
-                <td className="px-3 py-2 text-right text-[14px] whitespace-nowrap text-red-200 tabular-nums font-bold">{footerStats.totalBalance > 0 ? footerStats.totalBalance.toLocaleString() + '원' : '—'}</td>
+                <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-blue-200 tabular-nums font-bold">{footerStats.totalPaid.toLocaleString()}원</td>
+                <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-orange-200 tabular-nums font-bold">{footerStats.totalPaidOut > 0 ? footerStats.totalPaidOut.toLocaleString() + '원' : '—'}</td>
+                <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-red-200 tabular-nums font-bold">{footerStats.totalBalance > 0 ? footerStats.totalBalance.toLocaleString() + '원' : '—'}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -2204,7 +2279,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
       {/* 다중 선택 툴바 */}
       {selected.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-lg text-[13px]">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm">
           <span className="font-bold text-blue-300 whitespace-nowrap">{selected.size}건 선택됨</span>
           <div className="w-px h-4 bg-white/20 mx-1" />
           {bulkField === 'departing_location_id' ? (
@@ -2271,18 +2346,18 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         <div className="fixed z-[100] bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-1 w-48"
           style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <button onClick={() => { copyText(ctxMenu.b.booking_no || ctxMenu.b.id.slice(0, 8)); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">예약번호 복사</button>
+            className="w-full text-left px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">예약번호 복사</button>
           <button onClick={() => { sendAlimtalk(ctxMenu.b); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">알림톡 발송</button>
+            className="w-full text-left px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">알림톡 발송</button>
           <button onClick={() => { window.open(`/admin/bookings/${ctxMenu.b.id}`, '_blank'); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">새 탭에서 열기</button>
+            className="w-full text-left px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">새 탭에서 열기</button>
           <div className="border-t border-slate-200 my-1" />
           {ctxMenu.b.status !== 'cancelled' ? (
             <button onClick={() => { openCancelModal(ctxMenu.b); setCtxMenu(null); }}
-              className="w-full text-left px-4 py-2 text-[13px] text-red-600 hover:bg-red-50 flex items-center gap-2.5">예약 취소…</button>
+              className="w-full text-left px-4 py-2 text-admin-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5">예약 취소…</button>
           ) : (
             <button onClick={() => { handleRestoreBooking(ctxMenu.b); setCtxMenu(null); }}
-              className="w-full text-left px-4 py-2 text-[13px] text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5">↺ 예약 복구</button>
+              className="w-full text-left px-4 py-2 text-admin-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5">↺ 예약 복구</button>
           )}
         </div>
       )}
@@ -2300,13 +2375,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4"
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-[16px] font-bold text-slate-900">예약 취소 처리</h2>
+                <h2 className="text-admin-lg font-bold text-slate-900">예약 취소 처리</h2>
                 <button onClick={() => !cancelling && setCancelTarget(null)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 text-[16px]">✕</button>
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 text-admin-lg">✕</button>
               </div>
 
               {/* 컨텍스트 — 누구의 어떤 예약인지 */}
-              <div className="bg-slate-50 rounded-lg p-3 text-[13px] space-y-1">
+              <div className="bg-slate-50 rounded-lg p-3 text-admin-sm space-y-1">
                 <div className="flex justify-between gap-2">
                   <span className="text-slate-500">예약번호</span>
                   <span className="font-mono font-semibold text-slate-800">{cancelTarget.booking_no || cancelTarget.id.slice(0, 8)}</span>
@@ -2330,23 +2405,23 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               {/* 환불 / 위약금 입력 */}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="text-[12px] font-semibold text-slate-700 mb-1 block">환불액 (고객에게 돌려줄 금액)</span>
+                  <span className="text-admin-xs font-semibold text-slate-700 mb-1 block">환불액 (고객에게 돌려줄 금액)</span>
                   <input type="number" min={0}
                     value={cancelForm.refund}
                     onChange={e => setCancelForm(f => ({ ...f, refund: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </label>
                 <label className="block">
-                  <span className="text-[12px] font-semibold text-slate-700 mb-1 block">위약금 (랜드사 차감액)</span>
+                  <span className="text-admin-xs font-semibold text-slate-700 mb-1 block">위약금 (랜드사 차감액)</span>
                   <input type="number" min={0}
                     value={cancelForm.penalty}
                     onChange={e => setCancelForm(f => ({ ...f, penalty: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </label>
               </div>
 
               {/* 순현금 미리보기 */}
-              <div className={`text-[12px] rounded-md px-3 py-2 ${
+              <div className={`text-admin-xs rounded-md px-3 py-2 ${
                 netCash >= 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'
               }`}>
                 <span className="font-semibold">순현금 영향: </span>
@@ -2356,20 +2431,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
               {/* 사유 */}
               <label className="block">
-                <span className="text-[12px] font-semibold text-slate-700 mb-1 block">취소 사유</span>
+                <span className="text-admin-xs font-semibold text-slate-700 mb-1 block">취소 사유</span>
                 <textarea rows={3}
                   value={cancelForm.reason}
                   onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="예: 고객 일정 변경 / 항공편 결항 / 단순 변심"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
               </label>
 
               {/* 액션 */}
               <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
                 <button onClick={() => !cancelling && setCancelTarget(null)}
-                  className="px-4 py-2 text-[13px] text-slate-700 hover:bg-slate-100 rounded-lg">닫기</button>
+                  className="px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-100 rounded-lg">닫기</button>
                 <button onClick={handleCancelBooking} disabled={cancelling}
-                  className="px-4 py-2 text-[13px] bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
+                  className="px-4 py-2 text-admin-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
                   {cancelling ? '처리 중...' : '취소 처리 확정'}
                 </button>
               </div>
@@ -2380,14 +2455,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-[13px] font-semibold ${toast.type === 'err' ? 'bg-red-600' : 'bg-slate-800'}`}>
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm font-semibold ${toast.type === 'err' ? 'bg-red-600' : 'bg-slate-800'}`}>
           {toast.msg}
         </div>
       )}
 
       {/* Undo Toast */}
       {undoToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 bg-slate-800 text-white rounded-lg text-[13px]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm">
           <span className="text-slate-300">{undoToast.count}건의 예약이 삭제되었습니다.</span>
           <button onClick={handleUndoDelete} className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition whitespace-nowrap">실행 취소</button>
         </div>
@@ -2396,7 +2471,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       <CommandPalette bookings={bookings} onSelect={id => setDrawerBookingId(id)} />
       <BookingDrawer
         bookingId={drawerBookingId}
-        onClose={() => setDrawerBookingId(null)}
+        onClose={() => {
+          setDrawerBookingId(null);
+          const id = lastClickedRowRef.current;
+          if (id && tableContainerRef.current) {
+            const row = tableContainerRef.current.querySelector(`tr[data-booking-id="${id}"]`);
+            row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }}
         onStatusChange={(id, newStatus) => setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b))}
         onSave={(id, updated) => {
           // 드로어에서 저장된 최신 booking 필드를 리스트 state 에 머지 — 드로어를 닫지 않아도

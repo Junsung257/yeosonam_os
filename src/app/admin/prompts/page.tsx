@@ -79,7 +79,15 @@ export default function PromptsPage() {
       </div>
 
       {loading ? (
-        <div className="text-slate-400 text-sm py-10 text-center">불러오는 중...</div>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3">
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-40" />
+              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-14" />
+            </div>
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-slate-400 text-sm py-10 text-center">
           프롬프트 없음. Supabase migration 적용 후 시드 데이터를 확인하세요.

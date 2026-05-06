@@ -6,18 +6,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { dailySync } from '@/lib/creative-engine/sync-performance';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  // CRON_SECRET 인증
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: '인증 실패' }, { status: 401 });
-    }
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {

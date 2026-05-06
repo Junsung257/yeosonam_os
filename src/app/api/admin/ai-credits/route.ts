@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 const CNY_TO_USD = 0.138; // 고정환율 — 표시용 근사값
 
@@ -67,7 +68,7 @@ async function fetchDeepSeekBalance(): Promise<{
   balance_usd: number;
   available: boolean;
 } | null> {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) return null;
   try {
     const res = await fetch('https://api.deepseek.com/user/balance', {
@@ -100,7 +101,7 @@ export async function GET() {
 
   const credits: Record<ProviderId, ProviderCredit> = {
     deepseek: {
-      key_configured: !!process.env.DEEPSEEK_API_KEY,
+      key_configured: !!getSecret('DEEPSEEK_API_KEY'),
       balance_available: deepseekBalance !== null,
       balance_raw: deepseekBalance?.balance_cny,
       balance_currency: 'CNY',
@@ -110,14 +111,14 @@ export async function GET() {
       ...(!deepseekBalance && { note: 'Balance API 조회 실패 또는 키 미설정' }),
     },
     gemini: {
-      key_configured: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY),
+      key_configured: !!(getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY')),
       balance_available: false,
       month_cost_usd: Math.round(geminiUsage.cost_usd * 1000000) / 1000000,
       month_calls: geminiUsage.calls,
       note: 'Google AI API는 잔여 크레딧 조회 미지원 — GCP 콘솔(console.cloud.google.com/billing)에서 확인',
     },
     anthropic: {
-      key_configured: !!process.env.ANTHROPIC_API_KEY,
+      key_configured: !!getSecret('ANTHROPIC_API_KEY'),
       balance_available: false,
       month_cost_usd: Math.round(claudeUsage.cost_usd * 1000000) / 1000000,
       month_calls: claudeUsage.calls,

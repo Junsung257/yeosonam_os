@@ -17,6 +17,7 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'edge';
 
@@ -35,9 +36,9 @@ export async function GET(request: NextRequest) {
   let affiliateName = '여소남 파트너';
 
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseUrl = getSecret('NEXT_PUBLIC_SUPABASE_URL');
     const restKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      getSecret('SUPABASE_SERVICE_ROLE_KEY') || getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
     if (supabaseUrl && restKey) {
       const headers = { apikey: restKey, Authorization: `Bearer ${restKey}` };
       // 어필리에이터

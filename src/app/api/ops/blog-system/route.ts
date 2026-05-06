@@ -5,6 +5,7 @@
  * (Vercel 대시보드 대신 내부에서 크론·큐·색인 상태 확인)
  */
 import { NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -90,7 +91,7 @@ export async function GET() {
       blog_queue_counts: queueCounts,
       indexing_recent: indexingRecent || [],
       hints: {
-        cron_secret_configured: Boolean(process.env.CRON_SECRET),
+        cron_secret_configured: Boolean(getSecret('CRON_SECRET')),
         base_url_for_cron_fetch: process.env.NEXT_PUBLIC_BASE_URL || null,
       },
       generated_at: new Date().toISOString(),

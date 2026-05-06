@@ -6,7 +6,7 @@ import Link from 'next/link';
 import type { CardNews } from '@/lib/supabase';
 
 const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600',
+  DRAFT: 'bg-slate-100 text-slate-600',
   CONFIRMED: 'bg-blue-100 text-blue-700',
   LAUNCHED: 'bg-green-100 text-green-700',
   ARCHIVED: 'bg-red-100 text-red-500',
@@ -154,13 +154,13 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">카드뉴스 관리</h1>
-          <p className="text-sm text-gray-500">상품 데이터 기반 자동 생성 → Meta Ads 즉시 배포</p>
+          <h1 className="text-2xl font-bold text-slate-900">카드뉴스 관리</h1>
+          <p className="text-sm text-slate-500">상품 데이터 기반 자동 생성 → Meta Ads 즉시 배포</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={() => router.push('/admin/marketing')}
-            className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
           >
             ← 대시보드
           </button>
@@ -189,9 +189,19 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
 
       {/* 카드뉴스 그리드 */}
       {loading ? (
-        <div className="py-20 text-center text-sm text-gray-400">불러오는 중...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div className="aspect-[9/16] bg-slate-100 animate-pulse" />
+              <div className="p-3 space-y-2">
+                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-3/4" />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : list.length === 0 ? (
-        <div className="py-20 text-center text-sm text-gray-400">
+        <div className="py-20 text-center text-sm text-slate-400">
           카드뉴스가 없습니다. 상품을 선택해 첫 카드뉴스를 만들어보세요.
         </div>
       ) : (
@@ -199,15 +209,15 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
           {list.map(cn => {
             const cover = cn.slides?.[0];
             return (
-              <div key={cn.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div key={cn.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div
-                  className="relative h-40 bg-gray-200 flex items-center justify-center overflow-hidden"
+                  className="relative h-40 bg-slate-200 flex items-center justify-center overflow-hidden"
                   style={cover?.bg_image_url ? { backgroundImage: `url(${cover.bg_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
                 >
                   {cover?.bg_image_url ? (
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   ) : (
-                    <span className="text-gray-400 text-sm">이미지 없음</span>
+                    <span className="text-slate-400 text-sm">이미지 없음</span>
                   )}
                   <div className="absolute bottom-2 left-3 right-3">
                     <p className="text-white text-sm font-bold truncate drop-shadow">{cover?.headline}</p>
@@ -236,11 +246,11 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                 </div>
 
                 <div className="p-4">
-                  <p className="font-semibold text-gray-800 text-sm truncate">{cn.title}</p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="font-semibold text-slate-800 text-sm truncate">{cn.title}</p>
+                  <p className="text-xs text-slate-400 mt-1">
                     {cn.package_destination ?? '—'} · {cn.slides?.length ?? 0}장
                   </p>
-                  <p className="text-xs text-gray-300 mt-0.5">{cn.created_at?.slice(0, 10)}</p>
+                  <p className="text-xs text-slate-300 mt-0.5">{cn.created_at?.slice(0, 10)}</p>
 
                   <div className="flex gap-2 mt-3">
                     <Link
@@ -251,14 +261,14 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                     </Link>
                     <Link
                       href={`/admin/marketing/card-news/${cn.id}`}
-                      className="text-xs px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium"
+                      className="text-xs px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100 font-medium"
                     >
                       편집
                     </Link>
                     {cn.status !== 'ARCHIVED' && (
                       <button
                         onClick={() => handleArchive(cn.id)}
-                        className="text-xs px-3 py-1.5 bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-100"
+                        className="text-xs px-3 py-1.5 bg-slate-50 text-slate-500 rounded-lg hover:bg-slate-100"
                       >
                         보관
                       </button>
@@ -277,24 +287,24 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50" onClick={() => setShowCreate(false)} />
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-slate-200">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-[16px] font-bold text-slate-800">새 카드뉴스 생성</h2>
+              <h2 className="text-admin-lg font-bold text-slate-800">새 카드뉴스 생성</h2>
               <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600 text-xl">x</button>
             </div>
             <div className="p-6 space-y-5 flex-1 overflow-y-auto">
-            <p className="text-[12px] text-slate-500">
+            <p className="text-admin-xs text-slate-500">
               AI가 상품 또는 주제를 분석해 슬라이드 카피와 배경 이미지를 자동 생성합니다.
             </p>
 
             <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
               <button
                 onClick={() => setCreateMode('product')}
-                className={`flex-1 px-3 py-1.5 text-[12px] font-medium rounded-md transition ${createMode === 'product' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${createMode === 'product' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 상품 카드뉴스
               </button>
               <button
                 onClick={() => setCreateMode('info')}
-                className={`flex-1 px-3 py-1.5 text-[12px] font-medium rounded-md transition ${createMode === 'info' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${createMode === 'info' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 정보성 카드뉴스
               </button>
@@ -306,7 +316,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                 <select
                   value={selectedPkg}
                   onChange={e => setSelectedPkg(e.target.value)}
-                  className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                  className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                 >
                   <option value="">상품 선택...</option>
                   {packages.map(p => (
@@ -324,7 +334,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                     value={createTopic}
                     onChange={e => setCreateTopic(e.target.value)}
                     placeholder="예: 베트남 비자 신청 방법, 다낭 여행 준비물"
-                    className="w-full border border-slate-200 rounded px-3 py-2 text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                    className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                   />
                 </div>
                 <div>
@@ -332,7 +342,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                   <select
                     value={createCategoryId}
                     onChange={e => setCreateCategoryId(e.target.value)}
-                    className="w-full border border-slate-200 rounded px-3 py-2 text-[13px]"
+                    className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm"
                   >
                     {categories.length === 0 ? (
                       <option value="">(카테고리 없음)</option>
@@ -351,11 +361,11 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
 
             <div>
               <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
-                슬라이드 개수: <span className="text-[#001f3f] font-bold">{createSlideCount}장</span>
+                슬라이드 개수: <span className="text-blue-600 font-bold">{createSlideCount}장</span>
               </label>
               <input type="range" min={3} max={10} value={createSlideCount}
                 onChange={e => setCreateSlideCount(parseInt(e.target.value))}
-                className="w-full accent-[#001f3f]" />
+                className="w-full accent-blue-600" />
             </div>
 
             <div>
@@ -363,7 +373,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
               <div className="flex gap-2">
                 {(['1:1', '4:5', '9:16'] as const).map(r => (
                   <button key={r} onClick={() => setCreateRatio(r)}
-                    className={`px-3 py-1.5 rounded text-[12px] transition ${createRatio === r ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    className={`px-3 py-1.5 rounded text-admin-xs transition ${createRatio === r ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                     {r === '1:1' ? '1:1 피드' : r === '4:5' ? '4:5 세로' : '9:16 릴스'}
                   </button>
                 ))}
@@ -373,7 +383,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             <div>
               <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">톤</label>
               <select value={createTone} onChange={e => setCreateTone(e.target.value)}
-                className="w-full border border-slate-200 rounded px-3 py-1.5 text-[13px]">
+                className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm">
                 <option value="professional">전문가 (신뢰감)</option>
                 <option value="casual">캐주얼 (친근)</option>
                 <option value="emotional">감성적 (감동)</option>
@@ -385,7 +395,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
               <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">추가 지시사항 (선택)</label>
               <textarea value={createExtra} onChange={e => setCreateExtra(e.target.value)}
                 placeholder="예: 5성급 호텔 강조, 마감임박 느낌으로, 20대 타겟..."
-                className="w-full border border-slate-200 rounded px-3 py-2 text-[12px] h-20 resize-none focus:ring-1 focus:ring-[#005d90]" />
+                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-xs h-20 resize-none focus:ring-1 focus:ring-[#005d90]" />
             </div>
 
             </div>
@@ -393,14 +403,14 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             <div className="px-6 py-4 border-t border-slate-200 flex gap-3">
               <button
                 onClick={() => setShowCreate(false)}
-                className="flex-1 border border-slate-200 text-[13px] text-slate-600 py-2.5 rounded-lg hover:bg-slate-50"
+                className="flex-1 border border-slate-200 text-admin-sm text-slate-600 py-2.5 rounded-lg hover:bg-slate-50"
               >
                 취소
               </button>
               <button
                 onClick={handleCreate}
                 disabled={creating || (createMode === 'product' ? !selectedPkg : !createTopic.trim())}
-                className="flex-1 bg-[#001f3f] text-white text-[13px] py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50 font-medium"
+                className="flex-1 bg-blue-600 text-white text-admin-sm py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
               >
                 {creating ? 'AI 생성 중...' : `AI 카드뉴스 ${createSlideCount}장 생성`}
               </button>

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSecret } from '@/lib/secret-registry';
 
 const DEFAULT_LOCATIONS = ['부산', '인천', '청주', '대구', '무안', '기타']
   .map((name, i) => ({ id: `default-${i}`, name, is_active: true }));
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
+  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY') ?? getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   if (!url || !key) return null;
   return createClient(url, key);
 }

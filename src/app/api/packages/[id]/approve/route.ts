@@ -5,6 +5,8 @@ import { revalidateLandingPagesForPackage } from '@/lib/revalidate-lp-package';
 import type { MarketingCopy } from '@/lib/ai';
 import { recomputeGroupForPackage } from '@/lib/scoring/recommend';
 import { indexPackage } from '@/lib/jarvis/rag/indexer';
+import { sendVaContentPackage } from '@/lib/va-email';
+import { getSecret } from '@/lib/secret-registry';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
@@ -193,7 +195,7 @@ export async function PATCH(
     // 2) 카드뉴스 자동 변형 (정책 ON 시 + DEEPSEEK_API_KEY 있을 때)
     // HTTP로 /api/card-news/generate-variants 를 치면 rawText 필수 + 어드민 인증이 필요해 항상 실패함.
     // 오케스트레이터와 동일: agent_actions 에 적재 → /api/cron/agent-executor 가 executeGenerateVariantsJob 실행.
-    if (policy?.auto_trigger_card_news && process.env.DEEPSEEK_API_KEY) {
+    if (policy?.auto_trigger_card_news && getSecret('DEEPSEEK_API_KEY')) {
       try {
         const { data: pkgRow, error: pkgRowErr } = await supabaseAdmin
           .from('travel_packages')
@@ -241,7 +243,7 @@ export async function PATCH(
     }
 
     // 3) 7플랫폼 orchestrator (정책 ON 시 + GOOGLE_AI_API_KEY 있을 때 — 건당 ~$0.02)
-    if (policy?.auto_trigger_orchestrator && process.env.GOOGLE_AI_API_KEY) {
+    if (policy?.auto_trigger_orchestrator && getSecret('GOOGLE_AI_API_KEY')) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
         // 비동기 트리거 — 응답 안 기다림 (orchestrator는 30~120s 소요)
@@ -258,6 +260,12 @@ export async function PATCH(
       orchestratorInfo = { triggered: false, reason: 'policy disabled — /admin/blog/policy에서 활성' };
     }
 
+    // VA 이메일 알림 — fire-and-forget (비중단)
+    const vaNotification = await sendVaContentPackage(id).catch(e => {
+      console.warn('[Approve] VA email failed (non-blocking):', e instanceof Error ? e.message : e);
+      return { sent: false, reason: 'error' };
+    });
+
     return NextResponse.json({
       ok: true,
       status: 'active',
@@ -267,6 +275,7 @@ export async function PATCH(
       drip: dripInfo,
       card_news: cardNewsInfo,
       orchestrator: orchestratorInfo,
+      va_notification: vaNotification,
     });
   }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Invite-only 운영: AFFILIATE_INVITE_CODES="CODE1,CODE2"
-    const invitePolicy = (process.env.AFFILIATE_INVITE_CODES || '').trim();
+    const invitePolicy = (getSecret('AFFILIATE_INVITE_CODES') || '').trim();
     if (invitePolicy) {
       const allow = invitePolicy
         .split(',')

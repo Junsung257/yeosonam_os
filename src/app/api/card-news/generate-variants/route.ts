@@ -37,6 +37,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { executeGenerateVariantsJob, type GenerateVariantsJobPayload } from '@/lib/card-news-html/variant-job';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; 
@@ -48,8 +49,16 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
-  if (!process.env.DEEPSEEK_API_KEY) {
-    return NextResponse.json({ error: 'DEEPSEEK_API_KEY 미설정' }, { status: 503 });
+  const hasLlmKey = !!(
+    getSecret('DEEPSEEK_API_KEY') ||
+    getSecret('GEMINI_API_KEY') ||
+    getSecret('GOOGLE_AI_API_KEY')
+  );
+  if (!hasLlmKey) {
+    return NextResponse.json(
+      { error: 'LLM API 키 미설정 (DEEPSEEK_API_KEY, GEMINI_API_KEY, GOOGLE_AI_API_KEY 중 하나 필요)' },
+      { status: 503 },
+    );
   }
 
   let body: GenerateVariantsJobPayload;

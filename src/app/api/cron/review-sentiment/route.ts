@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
@@ -30,7 +31,7 @@ interface SentimentResult {
 }
 
 async function analyzeReviewSentiment(content: string, rating: number): Promise<SentimentResult | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getSecret('GEMINI_API_KEY');
   if (!apiKey) return null;
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getSecret('GEMINI_API_KEY');
   if (!apiKey) {
     return NextResponse.json({ ok: false, error: 'GEMINI_API_KEY 미설정', analyzed: 0 });
   }

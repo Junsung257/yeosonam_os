@@ -95,7 +95,7 @@ export default function PartnerPreviewClient() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+      <div className="rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-white p-4 space-y-3">
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">추천코드 (슬러그)</label>
         <input
           type="text"
@@ -124,7 +124,7 @@ export default function PartnerPreviewClient() {
       </div>
 
       {siteOrigin ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-2">
+        <div className="rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-slate-50/80 p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">공유용 전체 URL 복사</p>
             {copiedHint ? (

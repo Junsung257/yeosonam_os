@@ -87,10 +87,10 @@ function CallbackHandler() {
   }, [router, searchParams]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#DBEAFE] flex items-center justify-center">
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-[#DBEAFE] flex items-center justify-center">
       <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-gray-600 text-sm">인증 처리 중...</p>
+        <p className="text-slate-600 text-sm">인증 처리 중...</p>
       </div>
     </main>
   );
@@ -99,10 +99,10 @@ function CallbackHandler() {
 export default function AuthCallbackPage() {
   return (
     <Suspense fallback={
-      <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#DBEAFE] flex items-center justify-center">
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-[#DBEAFE] flex items-center justify-center">
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 text-sm">인증 처리 중...</p>
+          <p className="text-slate-600 text-sm">인증 처리 중...</p>
         </div>
       </main>
     }>

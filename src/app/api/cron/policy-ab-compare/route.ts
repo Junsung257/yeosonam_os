@@ -8,6 +8,7 @@
  * 사장님이 /admin/scoring/funnel 에서 결과 보고 수동 활성 전환.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { postAlert } from '@/lib/admin-alerts';
@@ -59,9 +60,7 @@ async function loadKpi(policyId: string, since: string): Promise<PolicyKpi> {
 
 async function handle(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
-  const auth = req.headers.get('authorization') ?? '';
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (expected && auth !== expected) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
 
   // 정책 목록
   const { data: policies, error } = await supabaseAdmin

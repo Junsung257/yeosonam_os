@@ -140,20 +140,20 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-bold text-slate-800">자동 발행 큐</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">
+          <p className="text-admin-xs text-slate-400 mt-0.5">
             시즌 · 커버리지 갭 · 상품 기반 자동 토픽 생성 및 예약 발행
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Link href="/admin/blog/system" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+          <Link href="/admin/blog/system" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
             시스템·크론
           </Link>
-          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
+          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
             ← 블로그 목록
           </Link>
           <button
             onClick={() => setSeedOpen(!seedOpen)}
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50"
+            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50"
           >
             + 토픽 수동 추가
           </button>
@@ -167,16 +167,16 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
             value={seedTopic}
             onChange={e => setSeedTopic(e.target.value)}
             placeholder="토픽 (예: 6월 다낭 비 오는 날 실내 코스)"
-            className="w-full px-3 py-2 text-[13px] border border-slate-300 rounded bg-white"
+            className="w-full px-3 py-2 text-admin-sm border border-slate-300 rounded bg-white"
           />
           <div className="flex gap-2">
             <input
               value={seedDest}
               onChange={e => setSeedDest(e.target.value)}
               placeholder="목적지 (선택)"
-              className="flex-1 px-3 py-2 text-[13px] border border-slate-300 rounded bg-white"
+              className="flex-1 px-3 py-2 text-admin-sm border border-slate-300 rounded bg-white"
             />
-            <button onClick={addSeed} className="px-4 py-2 bg-indigo-600 text-white text-[13px] rounded font-semibold">
+            <button onClick={addSeed} className="px-4 py-2 bg-blue-600 text-white text-admin-sm rounded font-semibold">
               추가 (priority 95)
             </button>
           </div>
@@ -188,7 +188,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
         <button
           onClick={() => trigger('run_scheduler')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
         >
           {running === 'run_scheduler' ? '실행중...' : '🗓️ 스케줄러'}
           <p className="text-[10px] text-slate-400 mt-0.5">큐 충전 + 슬롯</p>
@@ -196,7 +196,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
         <button
           onClick={() => trigger('run_trend_miner')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
         >
           {running === 'run_trend_miner' ? '실행중...' : '🔥 트렌드 마이너'}
           <p className="text-[10px] text-slate-400 mt-0.5">최신 검색 트렌드</p>
@@ -204,7 +204,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
         <button
           onClick={() => trigger('run_publisher')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
         >
           {running === 'run_publisher' ? '실행중...' : '✍️ 발행자'}
           <p className="text-[10px] text-slate-400 mt-0.5">지금 발행 처리</p>
@@ -212,7 +212,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
         <button
           onClick={() => trigger('run_lifecycle')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-[12px] hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
         >
           {running === 'run_lifecycle' ? '실행중...' : '🗄️ 라이프사이클'}
           <p className="text-[10px] text-slate-400 mt-0.5">만료 글 아카이브</p>
@@ -220,7 +220,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
       </div>
 
       {/* 카운트 요약 */}
-      <div className="flex gap-2 bg-white border border-slate-200 rounded-lg p-3 text-[12px]">
+      <div className="flex gap-2 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-admin-xs">
         <span><span className="text-slate-400">대기</span> <b>{counts.queued ?? 0}</b></span>
         <span className="text-slate-200">·</span>
         <span><span className="text-slate-400">생성중</span> <b className="text-blue-600">{counts.generating ?? 0}</b></span>
@@ -236,7 +236,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition ${
+            className={`px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${
               tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
             }`}
           >
@@ -247,13 +247,13 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
 
       {/* 목록 */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">로딩...</div>
+        <div className="text-center py-12 text-slate-400 text-admin-sm">로딩...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">
+        <div className="text-center py-12 text-slate-400 text-admin-sm">
           큐에 항목이 없습니다. 스케줄러를 실행해서 토픽을 채워보세요.
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -273,7 +273,7 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
                     {SOURCE_LABELS[it.source] || it.source}
                   </td>
                   <td className="px-3 py-2.5">
-                    <p className="text-[12px] text-slate-800 truncate max-w-md">{it.topic}</p>
+                    <p className="text-admin-xs text-slate-800 truncate max-w-md">{it.topic}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {it.keyword_tier && TIER_BADGES[it.keyword_tier] && (
                         <span className={`px-1.5 py-0.5 text-[9px] rounded border font-mono ${TIER_BADGES[it.keyword_tier].cls}`}>
