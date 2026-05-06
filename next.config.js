@@ -35,9 +35,9 @@ const nextConfig = {
     optimizePackageImports: [
       'lucide-react',
     ],
-    // webpackBuildWorker 는 개발에 넣지 않음 — Windows 등에서 pack 캐시 복구 실패·
-    // options.factory undefined(손상 청크)가 나기 쉬움. 프로덕션 빌드에서만 켠다.
-    ...(isProd ? { webpackBuildWorker: true } : {}),
+    // Windows 환경에서 prod 빌드 중 manifest 누락(ENOENT) 재현이 있어 당분간 비활성화.
+    // 안정화 후 CI/Linux에서만 조건부 재활성화 검토.
+    webpackBuildWorker: false,
   },
   images: {
     formats: ['image/avif', 'image/webp'],

@@ -26,12 +26,8 @@
 - 🔑 `KAKAO_TEMPLATE_AFFILIATE_CELEBRATION` — 제휴 축하 템플릿 ID
 
 ### 외부 API
-- 🔑 `REVALIDATE_SECRET` — ISR 강제 무효화용 (아무 긴 랜덤 문자열)
-- 🔑 `PEXELS_API_KEY` — 이미지 fallback (블로그·카드뉴스)
 - 🔑 `ANTHROPIC_API_KEY` — Claude API (IR 파이프라인용, 기존 키 만료됨)
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림
-- 🔑 `INDEX_NOW_KEY` — Bing/네이버 IndexNow 색인 API 키
-- 🔑 `GOOGLE_INDEXING_CREDENTIALS` — Google Indexing API 서비스 계정 JSON
 - 🔑 `NEXT_PUBLIC_CONSULT_PHONE` — QA 채팅 전화 상담 버튼 (없으면 카톡만)
 
 ### Meta 광고 (미확인 — 이미 설정됐으면 삭제)
@@ -42,9 +38,7 @@
 ### Session 2/3: 멀티테넌트 OAuth + 마케팅 파이프라인
 - 🔑 `GOOGLE_ADS_CLIENT_ID` — Google Cloud Console → OAuth 2.0 클라이언트 ID (Ads + Analytics scope)
 - 🔑 `GOOGLE_ADS_CLIENT_SECRET` — Google OAuth 앱 시크릿
-- 🔑 `META_APP_ID` — Meta 앱 ID (기존 `META_APP_SECRET`과 페어, developers.facebook.com에서 확인)
 - 🔑 `RESEND_FROM_EMAIL` — 리타겟 이메일 발신 주소 (예: noreply@yeosonam.com, Resend에서 도메인 인증 필요)
-- 🔑 `OAUTH_STATE_SECRET` — OAuth CSRF state HMAC 서명 전용 시크릿 (CRON_SECRET과 분리, 32자 이상 랜덤 문자열)
 
 ### Sprint 2-A (Naver OAuth) + Sprint 4-B (TossPayments) + Inngest
 - 🔑 `NAVER_CLIENT_ID` — 네이버 개발자센터 > 애플리케이션 ID (블로그 API 스코프)
