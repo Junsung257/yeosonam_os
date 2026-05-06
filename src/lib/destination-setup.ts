@@ -8,9 +8,10 @@
 
 import OpenAI from 'openai';
 import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured, type PexelsPhoto } from '@/lib/pexels';
+import { getSecret } from '@/lib/secret-registry';
 
 function getDeepSeekClient() {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = getSecret('DEEPSEEK_API_KEY');
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
   return new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
 }

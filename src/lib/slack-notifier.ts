@@ -8,6 +8,8 @@
  * 키 없으면 silent skip (개발 환경 등). 실패도 throw 안 함 — best-effort.
  */
 
+import { getSecret } from '@/lib/secret-registry';
+
 export type SlackKind = 'reverse' | 'rules-learned' | 'stale' | 'critical' | 'info';
 
 const KIND_PREFIX: Record<SlackKind, string> = {
@@ -24,7 +26,7 @@ export async function notifySlack(
   context?: Record<string, unknown>,
 ): Promise<{ sent: boolean; reason?: string }> {
   const url =
-    process.env.SLACK_PAYMENTS_WEBHOOK_URL ?? process.env.SLACK_WEBHOOK_URL ?? '';
+    getSecret('SLACK_PAYMENTS_WEBHOOK_URL') ?? getSecret('SLACK_WEBHOOK_URL') ?? '';
   if (!url) return { sent: false, reason: 'no webhook configured' };
 
   const text = `${KIND_PREFIX[kind]} ${message}`;

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { CartItem } from './db/concierge';
+import { getSecret } from '@/lib/secret-registry';
 
 /** 목록·검색·자비스 도구 공통 — select('*') 대비 페이로드 절감 */
 const PACKAGE_LIST_SELECT = `
@@ -13,11 +14,12 @@ const PACKAGE_LIST_SELECT = `
   audit_status, internal_code
 `.replace(/\s+/g, ' ').trim();
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
+const supabaseKey =
+  getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY') || getSecret('SUPABASE_ANON_KEY');
+const supabaseServiceKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
 
-function isValidUrl(url?: string) {
+function isValidUrl(url?: string | null): url is string {
   return typeof url === 'string' && /^https?:\/\//.test(url);
 }
 

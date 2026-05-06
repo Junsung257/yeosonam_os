@@ -8,6 +8,7 @@ import OpenAI from 'openai';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requiresHITL, getHITLInfo } from './hitl';
 import { AgentType, AgentRunParams, AgentRunResult, PendingActionInfo } from './types';
+import { getSecret } from '@/lib/secret-registry';
 
 const MAX_ROUNDS = Number.parseInt(process.env.JARVIS_MAX_ROUNDS ?? '10', 10);
 const HISTORY_TURNS = Number.parseInt(process.env.JARVIS_HISTORY_TURNS ?? '10', 10);
@@ -28,7 +29,7 @@ export async function runDeepSeekAgentLoop(
   const { agentType, systemPrompt, tools, executeTool, contextExtractor } = config;
   const { message, session } = params;
 
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) {
     return { response: 'API 키 미설정', toolsUsed: [], pendingAction: null, pendingActionId: null, contextUpdate: {} };
   }

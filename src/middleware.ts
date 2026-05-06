@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+import { getSecret } from '@/lib/secret-registry';
 
 function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: string, isSecure: boolean) {
   const maxAge = getAffiliateRefCookieMaxAgeSec(request);
@@ -142,6 +143,20 @@ const PUBLIC_EXACT = new Set([
   '/api/passport/ocr',
   // Phase 3-H: 사기 탐지 크론
   '/api/cron/fraud-detect',
+  // 멀티테넌트 OAuth 콜백 (인증 전 리다이렉트)
+  '/api/auth/google-oauth-start',
+  '/api/auth/google-callback',
+  '/api/auth/meta-oauth-start',
+  '/api/auth/meta-callback',
+  // 마케팅 자동화 파이프라인 크론
+  '/api/cron/daily-marketing',
+  // Inngest webhook (서버-to-서버, 자체 서명 검증)
+  '/api/inngest',
+  // Naver OAuth (Sprint 2-A)
+  '/api/auth/naver-oauth-start',
+  '/api/auth/naver-callback',
+  // TossPayments Webhook (Sprint 4-B) — 자체 서명 검증
+  '/api/billing/toss-webhook',
 ]);
 
 // 하위 경로까지 공개가 필요한 prefix — 짧은 배열, 정확 일치 실패 시에만 검사
@@ -226,6 +241,8 @@ async function accessTokenAllowsRequest(token: string): Promise<boolean> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
+  const isDev = process.env.NODE_ENV !== 'production';
+  const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/m/admin');
 
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급
@@ -246,6 +263,15 @@ export async function middleware(request: NextRequest) {
       maxAge: 30 * 24 * 60 * 60, // 30일
       path: '/',
     });
+  }
+
+  // ── 1-1. /admin/_dev/ui-kit 호환 경로 (Next private segment 우회) ─────────
+  // app 디렉터리에서 "_" 세그먼트는 private folder라 직접 라우팅되지 않는다.
+  // 기존 점검 URL 호환을 위해 공개 가능한 /admin/dev/ui-kit 으로 리라이트한다.
+  if (pathname === '/admin/_dev/ui-kit') {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = '/admin/dev/ui-kit';
+    return NextResponse.rewrite(rewriteUrl);
   }
 
   // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
@@ -277,8 +303,38 @@ export async function middleware(request: NextRequest) {
     res.headers.set('Content-Security-Policy', "frame-ancestors *");
   }
 
+  // ── 2-3. 개발 전용: 어드민 우회 토글 쿠키 발급/해제 (프로덕션 완전 차단) ──
+  if (isDev && pathname === '/api/debug/dev-admin-login') {
+    const mode = request.nextUrl.searchParams.get('mode') || 'on';
+    const res = NextResponse.json({
+      ok: true,
+      dev_admin_bypass: mode !== 'off',
+      message:
+        mode === 'off'
+          ? 'dev admin bypass disabled'
+          : 'dev admin bypass enabled',
+    });
+    if (mode === 'off') {
+      res.cookies.set('ys-dev-admin', '', { path: '/', maxAge: 0 });
+    } else {
+      res.cookies.set('ys-dev-admin', '1', {
+        httpOnly: false,
+        secure: isSecure,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 4 * 60 * 60, // 4h
+      });
+    }
+    return res;
+  }
+
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(request)) {
+    return response || NextResponse.next();
+  }
+
+  // ── 3-1. 개발 전용: 어드민 페이지 우회 쿠키 허용 (프로덕션 완전 차단) ──
+  if (isDev && isAdminPath && request.cookies.get('ys-dev-admin')?.value === '1') {
     return response || NextResponse.next();
   }
 
@@ -298,7 +354,7 @@ export async function middleware(request: NextRequest) {
   // 디자인 미리보기: 프로덕션은 DESIGN_PREVIEW_SECRET 일치 시에만, 개발은 ?preview=1 만으로 허용
   const previewOn = request.nextUrl.searchParams.get('preview') === '1';
   if (previewOn) {
-    const secret = process.env.DESIGN_PREVIEW_SECRET;
+    const secret = getSecret('DESIGN_PREVIEW_SECRET');
     if (secret && request.nextUrl.searchParams.get('preview_secret') === secret) {
       return response || NextResponse.next();
     }

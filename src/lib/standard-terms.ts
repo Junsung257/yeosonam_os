@@ -319,6 +319,9 @@ export const NOTICE_DOT_COLOR: Record<string, string> = {
   NOSHOW: 'bg-red-500',
   PANDEMIC: 'bg-blue-500',
   SURCHARGE: 'bg-rose-500',
+  AUTO_TICKETING: 'bg-red-600',
+  BUSINESS_HOURS: 'bg-orange-600',
+  MIN_PARTICIPANTS: 'bg-gray-400',
   CRITICAL: 'bg-red-500',
   POLICY: 'bg-blue-500',
   INFO: 'bg-gray-400',
@@ -328,17 +331,20 @@ export const NOTICE_DOT_COLOR: Record<string, string> = {
 // 아코디언이 닫혀 있어도 한눈에 type 구분 가능. 모든 항목이 동일한 "[상품 특약]" 라벨이어도
 // CRITICAL(빨강) / PAYMENT(주황) / POLICY(파랑) / INFO(회색) 차별화로 우선순위 시각화.
 export const NOTICE_CARD_TONE: Record<string, { border: string; bg: string }> = {
-  RESERVATION: { border: 'border-l-purple-400', bg: 'bg-purple-50/40' },
-  PAYMENT:     { border: 'border-l-orange-400', bg: 'bg-orange-50/40' },
-  PASSPORT:    { border: 'border-l-amber-400',  bg: 'bg-amber-50/40' },
-  LIABILITY:   { border: 'border-l-slate-400',  bg: 'bg-slate-50/60' },
-  COMPLAINT:   { border: 'border-l-emerald-400',bg: 'bg-emerald-50/40' },
-  NOSHOW:      { border: 'border-l-red-400',    bg: 'bg-red-50/40' },
-  PANDEMIC:    { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
-  SURCHARGE:   { border: 'border-l-rose-400',   bg: 'bg-rose-50/40' },
-  CRITICAL:    { border: 'border-l-red-500',    bg: 'bg-red-50/60' },
-  POLICY:      { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
-  INFO:        { border: 'border-l-gray-300',   bg: 'bg-white' },
+  RESERVATION:      { border: 'border-l-purple-400', bg: 'bg-purple-50/40' },
+  PAYMENT:          { border: 'border-l-orange-400', bg: 'bg-orange-50/40' },
+  PASSPORT:         { border: 'border-l-amber-400',  bg: 'bg-amber-50/40' },
+  LIABILITY:        { border: 'border-l-slate-400',  bg: 'bg-slate-50/60' },
+  COMPLAINT:        { border: 'border-l-emerald-400',bg: 'bg-emerald-50/40' },
+  NOSHOW:           { border: 'border-l-red-400',    bg: 'bg-red-50/40' },
+  PANDEMIC:         { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
+  SURCHARGE:        { border: 'border-l-rose-400',   bg: 'bg-rose-50/40' },
+  AUTO_TICKETING:   { border: 'border-l-red-500',    bg: 'bg-red-50/60' },
+  BUSINESS_HOURS:   { border: 'border-l-orange-500', bg: 'bg-orange-50/50' },
+  MIN_PARTICIPANTS: { border: 'border-l-gray-300',   bg: 'bg-gray-50/60' },
+  CRITICAL:         { border: 'border-l-red-500',    bg: 'bg-red-50/60' },
+  POLICY:           { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
+  INFO:             { border: 'border-l-gray-300',   bg: 'bg-white' },
 };
 
 export function getSourceBadgeColor(source?: string, tier?: number): string {

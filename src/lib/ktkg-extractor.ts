@@ -8,6 +8,7 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { callWithZodValidation } from './llm-validate-retry';
+import { getSecret } from '@/lib/secret-registry';
 
 const ENTITY_TYPES = [
   'hotel', 'tour', 'attraction', 'airline', 'restaurant',
@@ -270,10 +271,11 @@ const USER_PROMPT_TEMPLATE = `다음은 PII가 이미 제거된 카카오톡 대
 }`;
 
 function getDeepSeek(): OpenAI {
-  if (!process.env.DEEPSEEK_API_KEY) {
+  const key = getSecret('DEEPSEEK_API_KEY');
+  if (!key) {
     throw new Error('DEEPSEEK_API_KEY 미설정 — KTKG 추출 불가');
   }
-  return new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: 'https://api.deepseek.com' });
+  return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
 export interface ExtractKtkgArgs {

@@ -34,6 +34,7 @@ import { retrieveSimilarExamples, buildFewShotPromptFragment, type SimilarExampl
 import { getRelevantReflections, buildReflectionPromptFragment, trackReflectionApplied } from './reflection-memory';
 import { createClient } from '@supabase/supabase-js';
 import { getPrompt } from './prompt-loader';
+import { getSecret } from '@/lib/secret-registry';
 
 const SYSTEM_PROMPT_FALLBACK = `당신은 여행 상품 원문을 구조화된 IR(Intermediate Representation) 로 변환하는 전문 정형화 Agent 입니다.
 
@@ -116,13 +117,13 @@ function sha256(text: string): string {
 }
 
 function getDeepSeekClient(): OpenAI {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) throw new Error('DEEPSEEK_API_KEY 누락 — .env.local 확인');
   return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
 function getGeminiClient(): GoogleGenerativeAI {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+  const key = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY 누락 — .env.local 확인');
   return new GoogleGenerativeAI(key);
 }
@@ -150,9 +151,9 @@ export async function normalizeWithLlm(
 
   // ── Supabase client (EPR + Reflexion 공유) ─
   let sb: ReturnType<typeof createClient> | null = null;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+  const supabaseUrl = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
+  const supabaseKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
+  const geminiKey = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
   if (supabaseUrl && supabaseKey) {
     sb = createClient(supabaseUrl, supabaseKey);
   }
@@ -409,7 +410,7 @@ async function runClaudeLegacy(
   Anthropic: any,
   zodToClaudeSchema: any,
 ): Promise<NormalizerResult> {
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = getSecret('ANTHROPIC_API_KEY');
   if (!key) return { success: false, errors: ['ANTHROPIC_API_KEY 누락 — Claude 레거시 엔진 사용 불가'] };
   const client = new Anthropic({ apiKey: key });
   const schema = zodToClaudeSchema(NormalizedIntakeSchema);

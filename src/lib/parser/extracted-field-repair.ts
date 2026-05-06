@@ -5,6 +5,7 @@
 
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import type { ExtractedData } from '@/lib/parser';
+import { getSecret } from '@/lib/secret-registry';
 
 const REPAIR_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
@@ -57,7 +58,7 @@ export async function repairExtractedDataWithGemini(
   rawExcerpt: string,
 ): Promise<boolean> {
   if (process.env.UPLOAD_ZOD_REPAIR === '0') return false;
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey || zodErrors.length === 0) return false;
 
   const genAI = new GoogleGenerativeAI(apiKey);

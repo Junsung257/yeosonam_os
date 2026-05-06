@@ -8,6 +8,7 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { callWithZodValidation } from './llm-validate-retry';
+import { getSecret } from '@/lib/secret-registry';
 
 const ROLE_VALUES = ['representative', 'adult', 'child', 'infant'] as const;
 const GENDER_VALUES = ['male', 'female', 'unknown'] as const;
@@ -89,8 +90,9 @@ const USER_TEMPLATE = `다음 카카오톡 대화에서 모든 탑승자 정보�
 }`;
 
 function getDeepSeek(): OpenAI {
-  if (!process.env.DEEPSEEK_API_KEY) throw new Error('DEEPSEEK_API_KEY 미설정');
-  return new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: 'https://api.deepseek.com' });
+  const key = getSecret('DEEPSEEK_API_KEY');
+  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
+  return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
 export async function extractPassengers(rawMessages: string): Promise<PassengerExtraction> {

@@ -10,10 +10,14 @@
 import { createClient } from '@supabase/supabase-js';
 import type { RoasResult, MonthlyAdStats } from '@/types/meta-ads';
 import { type KPIBasis, bookingMonthByBasis, bookingPassesBasis } from './kpi-basis';
+import { getSecret } from '@/lib/secret-registry';
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
+  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY') ?? getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  if (!url || !key) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL 또는 Supabase 키(SERVICE_ROLE / ANON) 미설정');
+  }
   return createClient(url, key);
 }
 

@@ -19,6 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabasePublicConfig } from '@/lib/app-config';
 
 export interface AuthGuardSuccess {
   userId: string;
@@ -32,8 +33,7 @@ export interface AuthGuardSuccess {
 export async function requireAuthenticatedRoute(
   request: NextRequest
 ): Promise<AuthGuardSuccess | NextResponse> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { url, anonKey: key } = getSupabasePublicConfig();
 
   if (!url || !key) {
     if (process.env.NODE_ENV === 'production') {

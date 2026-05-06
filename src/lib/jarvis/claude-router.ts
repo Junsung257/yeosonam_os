@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { RouterResult } from './types';
 import { getRouterPrompt } from './prompts';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * 자비스 의도 라우터 (DeepSeek V4-Flash)
@@ -11,7 +12,7 @@ export async function routeMessage(
   userMessage: string,
   context: Record<string, any>
 ): Promise<RouterResult> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = getSecret('DEEPSEEK_API_KEY');
   if (!apiKey) {
     return { agent: 'operations', confidence: 0.5, reasoning: 'API 키 미설정' };
   }

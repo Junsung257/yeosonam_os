@@ -8,13 +8,14 @@
  * 저장 형식: "iv_hex:authTag_hex:ciphertext_hex"
  */
 import crypto from 'crypto';
+import { getSecret } from '@/lib/secret-registry';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;   // GCM 권장 12바이트
 const TAG_LENGTH = 16;  // 128비트 인증 태그
 
 function getKey(): Buffer {
-  const hex = process.env.ENCRYPTION_SECRET_KEY;
+  const hex = getSecret('ENCRYPTION_SECRET_KEY');
   if (!hex || hex.length !== 64) {
     // 키 없으면 경고 후 랜덤 임시키 (개발 환경 대응)
     if (process.env.NODE_ENV === 'development') {

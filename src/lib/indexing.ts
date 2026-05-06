@@ -10,8 +10,9 @@
  */
 
 import { requestGoogleIndexing, IndexingResult } from './gsc-client';
+import { getSecret } from '@/lib/secret-registry';
 
-const INDEXNOW_KEY = process.env.INDEXNOW_KEY ?? '';
+const INDEXNOW_KEY = getSecret('INDEXNOW_KEY') ?? '';
 
 export interface IndexingReport {
   url: string;

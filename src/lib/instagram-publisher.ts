@@ -22,6 +22,7 @@
 import { resolveMetaToken } from './meta-token-resolver';
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
 import { decrypt } from './encryption';
+import { getSecret } from './secret-registry';
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
 
@@ -42,8 +43,8 @@ export interface PublishResult {
 export function isInstagramConfigured(): boolean {
   // 동기 버전 — env 만 체크. 실 토큰 조회는 getInstagramConfig() async.
   return !!(
-    (process.env.META_ACCESS_TOKEN || process.env.META_IG_USER_ID) &&
-    process.env.META_IG_USER_ID
+    (getSecret('META_ACCESS_TOKEN') || getSecret('META_IG_USER_ID')) &&
+    getSecret('META_IG_USER_ID')
   );
 }
 
@@ -78,7 +79,7 @@ export async function getInstagramConfig(
   }
 
   // 공용 계정 (env → DB system_secrets)
-  const userId = process.env.META_IG_USER_ID;
+  const userId = getSecret('META_IG_USER_ID');
   if (!userId) return null;
   const token = await resolveMetaToken('META_ACCESS_TOKEN');
   if (!token) return null;

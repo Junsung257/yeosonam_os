@@ -1,3 +1,5 @@
+import { getSecret } from './secret-registry';
+
 /**
  * 네이버 블로그 외부 발행(스마트에디터 HTML) — 어댑터 스텁
  *
@@ -24,7 +26,7 @@ export type NaverBlogPublishResult =
  * 현재는 항상 미구현 스킵 — 키·엔드포인트 확정 후 구현
  */
 export async function publishToNaverBlogIfConfigured(_input: NaverBlogPublishInput): Promise<NaverBlogPublishResult> {
-  if (!process.env.NAVER_BLOG_ACCESS_TOKEN) {
+  if (!getSecret('NAVER_BLOG_ACCESS_TOKEN')) {
     return { ok: false, reason: 'NAVER_BLOG_ACCESS_TOKEN 미설정(스텁)' };
   }
   return { ok: false, reason: '어댑터 미구현 — naver-blog-export.ts 에 API 연동 추가' };

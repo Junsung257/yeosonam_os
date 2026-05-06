@@ -24,6 +24,9 @@
  * 주의: 실제 광고 발행은 돈을 씀. 사장님이 env 설정 전까지 항상 stub 모드 동작.
  */
 
+import { getSecret } from '@/lib/secret-registry';
+import { isMetaAdsTestMode } from '@/lib/app-config';
+
 export interface MetaAdsPublishInput {
   primary_texts: string[];
   headlines: string[];
@@ -47,10 +50,10 @@ export interface MetaAdsPublishResult {
 }
 
 export async function publishToMetaAds(input: MetaAdsPublishInput): Promise<MetaAdsPublishResult> {
-  const accountId = process.env.META_AD_ACCOUNT_ID;
-  const token = process.env.META_ADS_ACCESS_TOKEN;
-  const pageId = process.env.META_PAGE_ID;
-  const testMode = process.env.META_ADS_TEST_MODE === '1';
+  const accountId = getSecret('META_AD_ACCOUNT_ID');
+  const token = getSecret('META_ADS_ACCESS_TOKEN');
+  const pageId = getSecret('META_PAGE_ID');
+  const testMode = isMetaAdsTestMode();
 
   if (!accountId || !token || !pageId) {
     return {

@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
+import { getSecret } from '@/lib/secret-registry';
 
 const JUDGE_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
@@ -19,7 +20,7 @@ export async function judgeCatalogProductCountConsistency(
   if (process.env.UPLOAD_CATALOG_JUDGE !== '1') {
     return { consistent: true, skipped: true };
   }
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey || extractedProductCount < 1) {
     return { consistent: true, skipped: true };
   }

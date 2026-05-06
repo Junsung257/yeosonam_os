@@ -64,9 +64,9 @@ export function computeReadability(blogHtml: string): ReadabilityResult {
     };
   }
 
-  // 1) 문장 분리 — 마침표/물음표/느낌표
+  // 1) 문장 분리 — 마침표/물음표/느낌표 OR 줄바꿈 (마크다운 목록/단락 분리)
   const sentences = text
-    .split(/[.!?。!?]\s+/)
+    .split(/[.!?。！？]\s+|\n+/)
     .map(s => s.trim())
     .filter(s => s.length >= 5);
 

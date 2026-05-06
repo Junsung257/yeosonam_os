@@ -67,7 +67,7 @@ describe('mapTravelPackageToLandingData', () => {
       },
     } as const;
 
-    const view = renderPackage(pkg);
+    const view = renderPackage(pkg as unknown as Parameters<typeof renderPackage>[0]);
     const mapped = mapTravelPackageToLandingData(pkg as unknown as Record<string, unknown>, null);
 
     expect(mapped.internalCode).toBe('PUS-TEST-0001');

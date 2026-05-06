@@ -26,6 +26,7 @@ export interface SeasonalSignal {
   label: string;             // "한국인 매우 인기 시즌" 등 자동 라벨
   badge: string | null;      // 시즌 칩 텍스트 (예: "❄️ 눈여행 시즌") — climate 충돌 시 표시
 }
+import { getSecret } from './secret-registry';
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -48,8 +49,8 @@ export async function fetchNaverTrend(
   startDate: string,
   endDate: string,
 ): Promise<NaverDataLabResp> {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const clientId = getSecret('NAVER_CLIENT_ID');
+  const clientSecret = getSecret('NAVER_CLIENT_SECRET');
   if (!clientId || !clientSecret) throw new Error('NAVER_CLIENT_ID/SECRET 미설정');
 
   const res = await fetch('https://openapi.naver.com/v1/datalab/search', {

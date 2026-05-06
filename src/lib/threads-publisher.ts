@@ -26,6 +26,7 @@
  */
 
 import { resolveMetaToken } from './meta-token-resolver';
+import { getSecret } from './secret-registry';
 
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
 
@@ -45,8 +46,8 @@ export interface ThreadsPublishResult {
 
 export function isThreadsConfigured(): boolean {
   return !!(
-    (process.env.THREADS_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN) &&
-    process.env.THREADS_USER_ID
+    (getSecret('THREADS_ACCESS_TOKEN') || getSecret('META_ACCESS_TOKEN')) &&
+    getSecret('THREADS_USER_ID')
   );
 }
 
@@ -56,7 +57,7 @@ export function isThreadsConfigured(): boolean {
  * Phase 7 자동 refresh 크론이 DB 에 최신 값을 유지.
  */
 export async function getThreadsConfig(): Promise<{ threadsUserId: string; accessToken: string } | null> {
-  const userId = process.env.THREADS_USER_ID;
+  const userId = getSecret('THREADS_USER_ID');
   if (!userId) return null;
   const token =
     (await resolveMetaToken('THREADS_ACCESS_TOKEN')) ||

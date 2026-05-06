@@ -59,7 +59,7 @@ export async function getAffiliateByCode(referralCode: string): Promise<Affiliat
     if (!code) return null;
     const { data, error } = await supabase
       .from('affiliates')
-      .select('*')
+      .select('id, name, phone, email, referral_code, grade, bonus_rate, payout_type, booking_count, total_commission, memo')
       .eq('referral_code', code)
       .single();
     if (error) throw error;
@@ -71,41 +71,50 @@ export async function getAffiliateByCode(referralCode: string): Promise<Affiliat
 
 // ─── 대시보드 통계 ───────────────────────────────────────────
 
-/** 대시보드 차트용 월별 직판/인플 통계 (최근 N개월) */
+/** 대시보드 차트용 월별 직판/인플 통계 (최근 N개월) — 단일 쿼리 */
 export async function getDashboardStatsV2(months = 6): Promise<MonthlyChartData[]> {
   try {
-    const result: MonthlyChartData[] = [];
     const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+    const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
 
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+
+    const { data: bookings, error } = await supabase
+      .from('bookings')
+      .select('total_price, margin, influencer_commission, booking_type, departure_date')
+      .gte('departure_date', start)
+      .lte('departure_date', end)
+      .neq('status', 'cancelled')
+      .or('is_deleted.is.null,is_deleted.eq.false');
+
+    if (error) throw error;
+
+    // 결과 슬롯 초기화
+    const monthMap = new Map<string, MonthlyChartData>();
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-      const endDate = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
-      const monthLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('total_price, margin, influencer_commission, booking_type')
-        .gte('departure_date', start)
-        .lte('departure_date', end)
-        .neq('status', 'cancelled')
-        .or('is_deleted.is.null,is_deleted.eq.false');
-
-      const rows = bookings || [];
-      const direct = rows.filter((b: any) => b.booking_type !== 'AFFILIATE');
-      const affiliate = rows.filter((b: any) => b.booking_type === 'AFFILIATE');
-
-      result.push({
-        month: monthLabel,
-        direct_sales: direct.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        affiliate_sales: affiliate.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        direct_margin: direct.reduce((s: number, b: any) => s + (b.margin || 0), 0),
-        affiliate_margin: affiliate.reduce((s: number, b: any) => s + (b.margin || 0), 0),
-        total_commission: affiliate.reduce((s: number, b: any) => s + (b.influencer_commission || 0), 0),
-      });
+      const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthMap.set(label, { month: label, direct_sales: 0, affiliate_sales: 0, direct_margin: 0, affiliate_margin: 0, total_commission: 0 });
     }
-    return result;
+
+    // 단일 루프로 집계
+    for (const b of (bookings || []) as { total_price?: number; margin?: number; influencer_commission?: number; booking_type?: string; departure_date?: string }[]) {
+      if (!b.departure_date) continue;
+      const slot = monthMap.get(b.departure_date.slice(0, 7));
+      if (!slot) continue;
+      if (b.booking_type === 'AFFILIATE') {
+        slot.affiliate_sales += b.total_price || 0;
+        slot.affiliate_margin += b.margin || 0;
+        slot.total_commission += b.influencer_commission || 0;
+      } else {
+        slot.direct_sales += b.total_price || 0;
+        slot.direct_margin += b.margin || 0;
+      }
+    }
+
+    return Array.from(monthMap.values());
   } catch (error) {
     console.error('차트 통계 조회 실패:', error);
     return [];

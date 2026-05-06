@@ -13,6 +13,7 @@
  */
 
 import { supabaseAdmin } from './supabase';
+import { getSecret } from './secret-registry';
 
 // ── 타입 ──────────────────────────────────────────────────
 
@@ -187,8 +188,8 @@ export async function fetchNaverDataLabTrends(
   keywords: string[],
 ): Promise<Map<string, { score: number; volume: number }>> {
   const result = new Map<string, { score: number; volume: number }>();
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const clientId = getSecret('NAVER_CLIENT_ID');
+  const clientSecret = getSecret('NAVER_CLIENT_SECRET');
   if (!clientId || !clientSecret || keywords.length === 0) return result;
 
   try {
@@ -254,8 +255,8 @@ export async function fetchNaverDataLabTrends(
  *   /v1/search/news.json — env: NAVER_CLIENT_ID/SECRET 동일
  */
 export async function fetchNaverTravelNews(query: string = '해외여행'): Promise<TrendKeyword[]> {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const clientId = getSecret('NAVER_CLIENT_ID');
+  const clientSecret = getSecret('NAVER_CLIENT_SECRET');
   if (!clientId || !clientSecret) return [];
 
   try {

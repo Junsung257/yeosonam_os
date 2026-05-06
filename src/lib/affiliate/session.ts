@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import type { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 
 const SID_COOKIE = 'aff_sid';
 const SID_MAX_AGE = 30 * 24 * 60 * 60;
@@ -23,7 +24,7 @@ export function getOrCreateAffiliateSid(
 
 export function hashIp(ip: string | null | undefined): string | null {
   if (!ip) return null;
-  const salt = process.env.AFFILIATE_IP_SALT ?? 'yeosonam-fallback-salt';
+  const salt = getSecret('AFFILIATE_IP_SALT') ?? 'yeosonam-fallback-salt';
   const day = new Date().toISOString().slice(0, 10);
   return crypto
     .createHash('sha256')

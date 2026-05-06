@@ -8,14 +8,12 @@
 
 import { type NextRequest } from 'next/server';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function isAdminRequest(req: NextRequest): Promise<boolean> {
+  const serviceRole = getSecret('SUPABASE_SERVICE_ROLE_KEY');
   const auth = req.headers.get('authorization') ?? '';
-  if (
-    auth.startsWith('Bearer ') &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    auth.slice(7) === process.env.SUPABASE_SERVICE_ROLE_KEY
-  ) {
+  if (auth.startsWith('Bearer ') && serviceRole && auth.slice(7) === serviceRole) {
     return true;
   }
 
@@ -42,12 +40,9 @@ export async function isAdminRequest(req: NextRequest): Promise<boolean> {
 
 /** 정책 감사 로그용: 검증된 이메일 또는 service / 기본값 */
 export async function resolveAdminActorLabel(req: NextRequest): Promise<string> {
+  const serviceRole = getSecret('SUPABASE_SERVICE_ROLE_KEY');
   const auth = req.headers.get('authorization') ?? '';
-  if (
-    auth.startsWith('Bearer ') &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    auth.slice(7) === process.env.SUPABASE_SERVICE_ROLE_KEY
-  ) {
+  if (auth.startsWith('Bearer ') && serviceRole && auth.slice(7) === serviceRole) {
     return 'service_role';
   }
 

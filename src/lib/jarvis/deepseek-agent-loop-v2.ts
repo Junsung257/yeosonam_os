@@ -12,16 +12,41 @@
 
 import OpenAI from 'openai';
 import { supabaseAdmin } from '@/lib/supabase';
+import { withTimeout } from '@/lib/utils/timeout';
 import { requiresHITL, getHITLInfo } from './hitl';
 import { buildTenantSystemPrompt, isAgentAllowed } from './persona';
 import { trackCost, assertQuota, QuotaExceededError } from './cost-tracker';
 import type { StreamEvent } from './stream-encoder';
+import { getSecret } from '@/lib/secret-registry';
 import type { AgentType, AgentRunResult, JarvisContext, PendingActionInfo } from './types';
 
 const MAX_ROUNDS = Number.parseInt(process.env.JARVIS_V2_MAX_ROUNDS ?? '5', 10);
 const HISTORY_TURNS = Number.parseInt(process.env.JARVIS_V2_HISTORY_TURNS ?? '5', 10);
+const TOOL_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_TOOL_TIMEOUT_MS ?? '20000', 10);
 const FALLBACK_MSG = '일시적인 오류가 발생했어요. 잠시 후 다시 시도해주세요.';
 const ESCALATE_MSG = '요청이 조금 복잡하네요. 담당자에게 확인 후 정확히 안내드릴게요.';
+
+async function logIncident(
+  ctx: JarvisContext,
+  sessionId: string | undefined,
+  category: string,
+  message: string,
+  details: Record<string, unknown>,
+) {
+  try {
+    await supabaseAdmin.from('agent_incidents').insert({
+      session_id: sessionId ?? null,
+      tenant_id: ctx.tenantId ?? null,
+      severity: 'warning',
+      category,
+      message,
+      details,
+      detected_by: 'deepseek-agent-loop-v2',
+    });
+  } catch {
+    // incident 로깅 실패 자체는 무시 (non-critical)
+  }
+}
 
 export interface DeepSeekAgentV2Config {
   agentType: AgentType;
@@ -40,7 +65,7 @@ export interface V2RunParams {
 }
 
 function getDeepSeek(): OpenAI {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
   return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
@@ -230,7 +255,11 @@ export async function* runDeepSeekAgentLoopV2(
         const args = JSON.parse(tc.function.arguments || '{}');
         toolsUsed.push(name);
         try {
-          const result = await config.executeTool(name, args, params.ctx);
+          const result = await withTimeout(
+            () => config.executeTool(name, args, params.ctx),
+            TOOL_TIMEOUT_MS,
+            name,
+          );
           if (config.contextExtractor) {
             Object.assign(contextUpdate, config.contextExtractor(name, result));
           }
@@ -244,6 +273,10 @@ export async function* runDeepSeekAgentLoopV2(
           });
           return { id: tc.id, name, ok: true as const, result };
         } catch (err: any) {
+          const isTimeout = String(err?.message ?? '').startsWith('TIMEOUT:');
+          if (isTimeout) {
+            void logIncident(params.ctx, params.session?.id, 'tool_timeout', err.message, { tool: name, args });
+          }
           return { id: tc.id, name, ok: false as const, error: humanizeError(name, String(err?.message ?? err)) };
         }
       })

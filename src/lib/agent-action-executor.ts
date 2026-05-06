@@ -1,9 +1,10 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { applySettlementApproval, type SettlementDraft } from '@/lib/affiliate/settlement-calc'
 import { executeGenerateVariantsJob } from '@/lib/card-news-html/variant-job'
+import { getSecret } from '@/lib/secret-registry'
 
 function resolveAppOriginForInternalFetch(): string {
-  const explicit = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL
+  const explicit = getSecret('NEXT_PUBLIC_APP_URL') || getSecret('NEXT_PUBLIC_BASE_URL')
   if (explicit) return explicit.replace(/\/$/, '')
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   return `http://127.0.0.1:${process.env.PORT ?? 3000}`

@@ -3,6 +3,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';
+import { getSecret } from '@/lib/secret-registry';
 
 export const BOOKING_PORTAL_SESSION_COOKIE = 'yn_bp_sess';
 
@@ -19,8 +20,7 @@ export type BookingPortalSessionPayload = {
 
 function sessionSecret(): string {
   const s =
-    process.env.GUEST_PORTAL_SESSION_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim() ||
+    getSecret('GUEST_PORTAL_SESSION_SECRET') ||
     (process.env.NODE_ENV !== 'production' ? 'dev-guest-portal-session-insecure' : '');
   return s;
 }
@@ -31,7 +31,7 @@ export function isBookingPortalSessionConfigured(): boolean {
 
 export function signBookingPortalSession(payload: BookingPortalSessionPayload): string {
   const secret = sessionSecret();
-  if (!secret) throw new Error('GUEST_PORTAL_SESSION_SECRET 또는 CRON_SECRET 필요');
+  if (!secret) throw new Error('GUEST_PORTAL_SESSION_SECRET 필요');
   const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   const sig = createHmac('sha256', secret).update(body).digest('base64url');
   return `${body}.${sig}`;

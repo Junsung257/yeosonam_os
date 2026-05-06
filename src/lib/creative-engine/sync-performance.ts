@@ -7,6 +7,7 @@
  */
 
 import { updateWinningPatterns } from './update-patterns';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function dailySync(): Promise<{
   meta: number;
@@ -42,7 +43,7 @@ async function syncMeta(): Promise<number> {
 
   if (!ads?.length) return 0;
 
-  const accessToken = process.env.META_ACCESS_TOKEN;
+  const accessToken = getSecret('META_ACCESS_TOKEN');
   if (!accessToken) return 0;
 
   let synced = 0;

@@ -10,6 +10,7 @@
  */
 
 import type { MessageEventType } from './booking-state-machine';
+import { getSecret, hasSecrets } from '@/lib/secret-registry';
 
 export interface NotificationPayload {
   bookingId: string;
@@ -88,7 +89,7 @@ class KakaoNotificationAdapter implements NotificationAdapter {
     try {
       if (payload.customerPhone && payload.customerName) {
         const { sendBalanceNotice, sendDepositNoticeAlimtalk } = await import('./kakao');
-        const account = process.env.COMPANY_ACCOUNT;
+        const account = getSecret('COMPANY_ACCOUNT');
 
         if (payload.eventType === 'DEPOSIT_NOTICE') {
           if (!account) {
@@ -97,7 +98,7 @@ class KakaoNotificationAdapter implements NotificationAdapter {
           } else {
             let portalUrl = await this.mintTripPortalUrl(payload.bookingId);
             if (!portalUrl) {
-              const base = (process.env.NEXT_PUBLIC_BASE_URL ?? '').replace(/\/$/, '');
+              const base = (getSecret('NEXT_PUBLIC_BASE_URL') ?? '').replace(/\/$/, '');
               portalUrl = base ? `${base}/` : '';
             }
             if (!portalUrl) {
@@ -171,12 +172,12 @@ class KakaoNotificationAdapter implements NotificationAdapter {
 // 팩토리: 환경변수에 따라 어댑터 자동 선택
 // ─────────────────────────────────────────────
 function isSolapiConfigured(): boolean {
-  return !!(
-    process.env.SOLAPI_API_KEY &&
-    process.env.SOLAPI_API_SECRET &&
-    process.env.KAKAO_CHANNEL_ID &&
-    process.env.KAKAO_SENDER_NUMBER
-  );
+  return hasSecrets([
+    'SOLAPI_API_KEY',
+    'SOLAPI_API_SECRET',
+    'KAKAO_CHANNEL_ID',
+    'KAKAO_SENDER_NUMBER',
+  ]);
 }
 
 export function getNotificationAdapter(): NotificationAdapter {

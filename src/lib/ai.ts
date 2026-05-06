@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { getSecret } from '@/lib/secret-registry';
 
 // AI 모델 타입 (V3: DeepSeek 전면 전환, 레거시 호환 유지)
 export type AIModel = 'openai' | 'claude' | 'gemini' | 'deepseek';
@@ -24,7 +25,7 @@ export interface TravelPackage {
 
 // AI 클라이언트 lazy 초기화 (V3: DeepSeek primary)
 function getDeepSeek() {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
   return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
@@ -394,7 +395,7 @@ function fallbackCopies(destination: string): MarketingCopy[] {
 export async function generateMarketingCopies(
   params: MarketingCopyParams,
 ): Promise<MarketingCopy[]> {
-  if (!process.env.DEEPSEEK_API_KEY) {
+  if (!getSecret('DEEPSEEK_API_KEY')) {
     console.warn('[generateMarketingCopies] DEEPSEEK_API_KEY 미설정 — 기본 카피 반환');
     return fallbackCopies(params.destination);
   }
@@ -514,7 +515,7 @@ ${p.specialNotes ? `[유의사항]\n${p.specialNotes.slice(0, 300)}` : ''}`;
  * 카톡방용 마케팅 문구 생성 (Gemini)
  */
 export async function generateKakaoCopy(params: KakaoCopyParams): Promise<string> {
-  if (!process.env.DEEPSEEK_API_KEY) {
+  if (!getSecret('DEEPSEEK_API_KEY')) {
     return fallbackKakaoCopy(params);
   }
 

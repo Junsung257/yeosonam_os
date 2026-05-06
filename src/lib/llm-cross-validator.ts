@@ -16,6 +16,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getSecret } from '@/lib/secret-registry';
 
 export interface SuspiciousField {
   field_path: string;       // 'inclusions[2]', 'min_participants', 'days[1].schedule[0].activity'
@@ -67,7 +68,7 @@ export async function crossValidateWithGemini(
   input: ValidatorInput,
   options: { model?: string; maxRetries?: number } = {},
 ): Promise<CrossValidationResult> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY') || getSecret('GEMINI_API_KEY');
   if (!apiKey) {
     return {
       available: false, recommendation: 'pass', overall_confidence: 0, suspicious_fields: [], reasoning: '',

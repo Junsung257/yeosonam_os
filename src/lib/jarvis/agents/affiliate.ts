@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 import { AgentRunParams, AgentRunResult } from '../types';
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop';
 
@@ -251,7 +252,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         method: 'GET',
         headers: {
           // 서버-to-서버 admin 인증 (route handler 가 isAdmin 체크)
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || ''}`,
+          Authorization: `Bearer ${getSecret('SUPABASE_SERVICE_ROLE_KEY') || ''}`,
         },
       });
       return await res.json();

@@ -12,6 +12,7 @@ import {
   splitCatalogByItineraryHeaders,
 } from './parser/catalog-pre-split';
 import { judgeCatalogProductCountConsistency } from './parser/upload-consistency-judge';
+import { getSecret } from '@/lib/secret-registry';
 
 export interface ParseOptions {
   reflections?: CorrectionRecord[];
@@ -654,7 +655,7 @@ export async function parsePDF(buffer: Buffer): Promise<string> {
 // ─── 이미지 파싱 (Gemini Vision) ────────────────────────────
 
 export async function parseImage(buffer: Buffer, mimeType = 'image/jpeg'): Promise<{ rawText: string; extractedData: ExtractedData }> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) throw new Error('GOOGLE_AI_API_KEY가 설정되지 않았습니다.');
 
   console.log('[Parser] 이미지 AI 파싱 시작:', buffer.length, '바이트');
@@ -713,7 +714,7 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
     }
 
     // llm-gateway 전체 실패 → Gemini 직접 fallback
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    const apiKey = getSecret('GOOGLE_AI_API_KEY');
     if (apiKey) {
       console.warn('[Parser] llm-gateway 실패, Gemini 직접 fallback');
       const raw = await callGeminiText(apiKey, text, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
@@ -956,7 +957,7 @@ export async function extractItineraryData(
   base64Image?: string,
   mimeType?: string,
 ): Promise<TravelItinerary | null> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) return null;
 
   try {
@@ -1274,7 +1275,7 @@ export async function extractMultipleProducts(
   mimeType?: string,
   options?: ParseOptions,
 ): Promise<MultiProductResult[]> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) return [];
 
   const truncatedText = rawText.slice(0, 30000);
@@ -1736,7 +1737,7 @@ export async function classifyDocument(rawText: string): Promise<ClassificationR
     return { ...DEFAULT, estimatedConfidence: 0.5 };
   }
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) return regexIsTravel ? DEFAULT : { ...DEFAULT, isTravel: false, estimatedConfidence: 0.3 };
 
   try {

@@ -17,6 +17,7 @@
 
 import { supabaseAdmin } from './supabase';
 import { detectDestination } from './keyword-research';
+import { getSecret } from './secret-registry';
 
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -65,8 +66,8 @@ async function fetchNaverSerp(
   keyword: string,
   source: 'naver_blog' | 'naver_web' = 'naver_blog',
 ): Promise<SerpSnippet[]> {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const clientId = getSecret('NAVER_CLIENT_ID');
+  const clientSecret = getSecret('NAVER_CLIENT_SECRET');
   if (!clientId || !clientSecret) return [];
 
   const path = source === 'naver_blog' ? 'blog' : 'webkr';

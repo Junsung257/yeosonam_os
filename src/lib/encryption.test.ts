@@ -15,7 +15,7 @@ import { encrypt, decrypt, maskBankInfo, maskEncryptedBankInfo } from './encrypt
 
 beforeAll(() => {
   // 테스트 전용 고정 키 (각 테스트가 같은 키 사용 → encrypt/decrypt 라운드트립 검증 가능)
-  process.env.ENCRYPTION_SECRET_KEY = crypto.randomBytes(32).toString('hex');
+  process.env['ENCRYPTION_SECRET_KEY'] = crypto.randomBytes(32).toString('hex');
 });
 
 describe('encrypt → decrypt 라운드트립', () => {

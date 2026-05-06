@@ -2,6 +2,7 @@
  * 개발 전용: 쿠키·JWT 검증 상태 요약 (비밀 값·전체 토큰 미노출).
  */
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+import { getSecret } from '@/lib/secret-registry';
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
@@ -17,7 +18,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 }
 
 function refFromSupabaseUrl(): string | null {
-  const u = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const u = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL') || '';
   const m = u.match(/https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
   return m ? m[1].toLowerCase() : null;
 }
@@ -55,7 +56,7 @@ export async function getAuthSessionDebugReport(
   refreshToken: string | undefined,
   runtime: AuthSessionDebugReport['runtime'],
 ): Promise<AuthSessionDebugReport> {
-  const secret = process.env.SUPABASE_JWT_SECRET;
+  const secret = getSecret('SUPABASE_JWT_SECRET');
   const trimmed = typeof secret === 'string' ? secret.trim() : '';
   const urlHost = refFromSupabaseUrl();
   const decoded = accessToken ? decodeJwtPayload(accessToken) : null;

@@ -15,6 +15,7 @@ export interface LeadFormData {
   name: string;
   phone: string;             // "010-XXXX-XXXX"
   privacyConsent: boolean;
+  termsConsent?: boolean;
 }
 
 export interface LeadPayload {

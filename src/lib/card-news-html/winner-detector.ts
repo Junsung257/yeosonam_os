@@ -14,6 +14,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { selectBayesianWinner, snapshotToVariant } from '@/lib/creative-engine/ab-bayesian';
 
 const MIN_HOURS_AFTER_PUBLISH = 24;
 
@@ -154,27 +155,26 @@ export async function detectVariantWinner(input: {
     };
   }
 
-  // 5. 최고 점수 식별
-  const sortedEligible = [...eligible].sort(
-    (a, b) => b.engagement_score_raw - a.engagement_score_raw,
+  // 5. Bayesian A/B 결정 (Thompson Sampling, prob_best >= 0.95)
+  const bayesVariants = eligible.map((e) =>
+    snapshotToVariant({ id: e.id, engagement_raw: e.engagement_raw }),
   );
-  const winner = sortedEligible[0];
-  const runnerUp = sortedEligible[1];
+  const bayesResult = selectBayesianWinner(bayesVariants);
 
-  // 6. 변별력 검증 — 1위가 2위 대비 충분히 우월해야 결정
-  const advantage = winner.engagement_score_raw / Math.max(runnerUp.engagement_score_raw, 1);
-  if (advantage < 1.2) {
+  if (!bayesResult.decided || !bayesResult.winnerId) {
     return {
       variant_group_id: variantGroupId,
       variants: enriched,
       winner: null,
       decided: false,
-      reason: `변별력 부족 (1위/2위 = ${advantage.toFixed(2)}배, 최소 1.2배 필요)`,
+      reason: bayesResult.reason,
       archived_ids: [],
     };
   }
 
-  // 7. 실제 DB 업데이트
+  const winner = eligible.find((e) => e.id === bayesResult.winnerId) ?? eligible[0];
+
+  // 6. 실제 DB 업데이트
   const archived_ids: string[] = [];
   if (!dryRun) {
     await supabaseAdmin
@@ -207,7 +207,7 @@ export async function detectVariantWinner(input: {
     variants: enriched,
     winner,
     decided: true,
-    reason: `1위 ${winner.variant_angle} (raw ${winner.engagement_score_raw}) vs 2위 ${runnerUp.variant_angle} (raw ${runnerUp.engagement_score_raw}), ${advantage.toFixed(2)}배 우위`,
+    reason: bayesResult.reason,
     archived_ids,
   };
 }

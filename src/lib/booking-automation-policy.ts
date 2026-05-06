@@ -23,7 +23,7 @@ export function initialDepositNoticeBlockedForNewBooking(): boolean {
 const DEFAULT_TTL_DAYS = 90;
 
 export function guestPortalTokenTtlDays(): number {
-  const n = Number(process.env.BOOKING_GUEST_TOKEN_TTL_DAYS);
+  const n = Number(process.env['BOOKING_GUEST_TOKEN_TTL_DAYS']);
   if (Number.isFinite(n) && n >= 1 && n <= 365) return Math.floor(n);
   return DEFAULT_TTL_DAYS;
 }

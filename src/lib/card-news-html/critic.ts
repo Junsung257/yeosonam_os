@@ -9,6 +9,7 @@
  */
 
 import OpenAI from 'openai';
+import { getSecret } from '@/lib/secret-registry';
 
 export interface CardCritique {
   index: number;            // 0-5
@@ -116,7 +117,7 @@ function calcCost(usage: FullCritique['usage']): number {
 }
 
 function getDeepSeek(): OpenAI {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getSecret('DEEPSEEK_API_KEY');
   if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
   return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }

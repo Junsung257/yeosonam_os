@@ -15,6 +15,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSecret } from '@/lib/secret-registry'
 
 const EMBED_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent'
 const RERANK_MODEL = 'gemini-2.5-flash'
@@ -46,7 +47,7 @@ export interface RetrievalHit {
 
 /** 쿼리 → 임베딩 벡터. 실패 시 null (retrieval 은 BM25 only 로 폴백). */
 async function embedQuery(query: string): Promise<number[] | null> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY
+  const apiKey = getSecret('GOOGLE_AI_API_KEY')
   if (!apiKey) return null
 
   try {
@@ -115,7 +116,7 @@ export async function retrieve(q: RetrievalQuery): Promise<RetrievalHit[]> {
  * 실패 시 원본 RRF 순서 유지 (fail-open).
  */
 async function rerankWithFlash(query: string, hits: RetrievalHit[], limit: number): Promise<RetrievalHit[]> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY
+  const apiKey = getSecret('GOOGLE_AI_API_KEY')
   if (!apiKey) return hits.slice(0, limit)
 
   const prompt = `다음 여행 문서들을 "${query}"와의 관련성 순으로 재정렬.

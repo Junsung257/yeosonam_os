@@ -7,9 +7,10 @@
  * Legacy secret 은 Key ID / ECC 공개키 / anon 키가 아니라, 대시보드에서 reveal 한 공유 비밀 한 덩어리다.
  */
 import * as jose from 'jose';
+import { getSecret } from '@/lib/secret-registry';
 
 function supabaseOrigin(): string | null {
-  const u = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const u = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
   if (!u || !/^https?:\/\//.test(u)) return null;
   return u.replace(/\/$/, '');
 }
@@ -90,7 +91,7 @@ export async function verifySupabaseAccessToken(
   }
 
   // ── HS256 (Legacy JWT secret) ─────────────────────────────────
-  const secret = process.env.SUPABASE_JWT_SECRET;
+  const secret = getSecret('SUPABASE_JWT_SECRET');
   if (!secret?.trim()) {
     if (process.env.NODE_ENV === 'production') {
       return { ok: false };

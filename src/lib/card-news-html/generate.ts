@@ -8,11 +8,11 @@
  * DeepSeek는 OpenAI 호환 API 사용, thinking 대신 일반 CoT 프롬프트
  */
 
-import OpenAI from 'openai';
 import { getCardNewsSystemPrompt } from './system-prompt';
 import { checkFaithfulness, type FaithfulnessReport } from './faithfulness-check';
 import { getBrandVoiceBlock } from '@/lib/content-pipeline/brand-voice';
 import { extractCompetitorSeed, formatCompetitorSeedAsPrompt } from './competitor-seed';
+import { llmCall } from '@/lib/llm-gateway';
 
 export interface GenerateInput {
   rawText: string;
@@ -60,28 +60,22 @@ export interface GenerateOutput {
   faithfulness: FaithfulnessReport;
 }
 
-const MODEL = 'deepseek-v4-pro';
 const MAX_TOKENS = 16384;
 
-// DeepSeek V4-Pro 가격 (USD per Million tokens)
-const PRICE_USD_PER_M = {
-  input: 1.74,
-  output: 3.48,
-  cacheHit: 0.17,
+const PRICE_USD_PER_M: Record<string, { input: number; output: number; cacheHit: number }> = {
+  'deepseek-v4-flash': { input: 0.014, output: 0.028, cacheHit: 0.0014 },
+  'deepseek-v4-pro': { input: 0.14, output: 0.28, cacheHit: 0.014 },
+  'gemini-2.5-flash': { input: 0.075, output: 0.30, cacheHit: 0.019 },
+  'claude-sonnet-4-6': { input: 3.0, output: 15.0, cacheHit: 0.3 },
 };
 
-function calcCost(usage: GenerateOutput['usage']): number {
+function calcCost(usage: GenerateOutput['usage'], model: string): number {
+  const price = PRICE_USD_PER_M[model] ?? PRICE_USD_PER_M['deepseek-v4-flash'];
   return (
-    (usage.input_tokens / 1_000_000) * PRICE_USD_PER_M.input +
-    (usage.output_tokens / 1_000_000) * PRICE_USD_PER_M.output +
-    (usage.cache_read_input_tokens / 1_000_000) * PRICE_USD_PER_M.cacheHit
+    (usage.input_tokens / 1_000_000) * price.input +
+    (usage.output_tokens / 1_000_000) * price.output +
+    (usage.cache_read_input_tokens / 1_000_000) * price.cacheHit
   );
-}
-
-function getDeepSeek(): OpenAI {
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
-  return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
 async function buildUserMessage(input: GenerateInput): Promise<string> {
@@ -167,7 +161,6 @@ function extractHtml(text: string): string {
 export async function generateCardNewsHtml(
   input: GenerateInput,
 ): Promise<GenerateOutput> {
-  const client = getDeepSeek();
   const userMessage = await buildUserMessage(input);
   const startedAt = Date.now();
 
@@ -185,22 +178,19 @@ export async function generateCardNewsHtml(
     }
   }
 
-  // DeepSeek V4-Pro로 생성 (thinking 대신 CoT를 system prompt에 포함)
-  const response = await client.chat.completions.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
+  const gateway = await llmCall<string>({
+    task: 'card-news',
+    maxTokens: MAX_TOKENS,
     temperature: 0.7,
-    messages: [
-      {
-        role: 'system',
-        content: `먼저 <thinking> 태그 안에 각도·카피·레이아웃 전략을 300자 이내로 짧게 정리한 뒤, 최종 HTML을 출력하세요.\n\n${systemPrompt}`,
-      },
-      { role: 'user', content: userMessage },
-    ],
+    systemPrompt: `먼저 <thinking> 태그 안에 각도·카피·레이아웃 전략을 300자 이내로 짧게 정리한 뒤, 최종 HTML을 출력하세요.\n\n${systemPrompt}`,
+    userPrompt: userMessage,
+    autoEscalate: false,
   });
+  if (!gateway.success || !gateway.rawText) {
+    throw new Error(`[card-news] 생성 실패: ${gateway.errors?.join(', ') || 'unknown'}`);
+  }
 
-  const textOut = response.choices?.[0]?.message?.content || '';
-  const usage = response.usage;
+  const textOut = gateway.rawText;
 
   // <thinking> 태그 분리
   let thinking = '';
@@ -214,10 +204,10 @@ export async function generateCardNewsHtml(
   const html = extractHtml(htmlRaw);
 
   const usageData = {
-    input_tokens: usage?.prompt_tokens || 0,
-    output_tokens: usage?.completion_tokens || 0,
+    input_tokens: gateway._usage?.input || 0,
+    output_tokens: gateway._usage?.output || 0,
     cache_creation_input_tokens: 0,
-    cache_read_input_tokens: (usage as any)?.prompt_cache_hit_tokens || 0,
+    cache_read_input_tokens: gateway._usage?.cache_hit || 0,
   };
 
   // Faithfulness 자동 후처리 (regex 환각 검출, API 호출 0)
@@ -228,8 +218,8 @@ export async function generateCardNewsHtml(
     thinking,
     rawText: textOut,
     usage: usageData,
-    costUsd: calcCost(usageData),
-    model: MODEL,
+    costUsd: calcCost(usageData, gateway.model || 'deepseek-v4-flash'),
+    model: gateway.model || 'deepseek-v4-flash',
     durationMs: Date.now() - startedAt,
     faithfulness,
   };

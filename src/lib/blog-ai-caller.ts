@@ -9,7 +9,9 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { getProviderApiKey, resolveAiPolicy } from '@/lib/ai-provider-policy';
 
 export interface BlogCallOptions {
   temperature?: number;
@@ -19,6 +21,9 @@ export interface BlogCallOptions {
 
 function isDeepSeekModel(model: string): boolean {
   return model.startsWith('deepseek');
+}
+function isClaudeModel(model: string): boolean {
+  return model.startsWith('claude');
 }
 
 /**
@@ -32,11 +37,12 @@ export async function generateBlogJSON(
   prompt: string,
   opts: BlogCallOptions = {},
 ): Promise<string> {
-  const model = BLOG_AI_MODEL;
+  const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
+  const model = policy.model;
   const temperature = opts.temperature ?? 0.85;
 
   if (isDeepSeekModel(model)) {
-    const apiKey = process.env.DEEPSEEK_API_KEY;
+    const apiKey = getProviderApiKey('deepseek');
     if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
 
     const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
@@ -54,8 +60,23 @@ export async function generateBlogJSON(
     return r.choices[0]?.message?.content ?? '{}';
   }
 
+  if (isClaudeModel(model)) {
+    const apiKey = getProviderApiKey('claude');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY 미설정');
+    const client = new Anthropic({ apiKey });
+    const r = await client.messages.create({
+      model,
+      max_tokens: opts.maxTokens || 2000,
+      temperature,
+      system: opts.systemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = r.content.filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+    return text || '{}';
+  }
+
   // Gemini
-  const apiKey = process.env.GOOGLE_AI_API_KEY ?? process.env.GEMINI_API_KEY;
+  const apiKey = getProviderApiKey('gemini');
   if (!apiKey) throw new Error('GOOGLE_AI_API_KEY 미설정');
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -80,11 +101,12 @@ export async function generateBlogText(
   prompt: string,
   opts: BlogCallOptions = {},
 ): Promise<string> {
-  const model = BLOG_AI_MODEL;
+  const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
+  const model = policy.model;
   const temperature = opts.temperature ?? 0.85;
 
   if (isDeepSeekModel(model)) {
-    const apiKey = process.env.DEEPSEEK_API_KEY;
+    const apiKey = getProviderApiKey('deepseek');
     if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
 
     const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
@@ -101,8 +123,22 @@ export async function generateBlogText(
     return r.choices[0]?.message?.content ?? '';
   }
 
+  if (isClaudeModel(model)) {
+    const apiKey = getProviderApiKey('claude');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY 미설정');
+    const client = new Anthropic({ apiKey });
+    const r = await client.messages.create({
+      model,
+      max_tokens: opts.maxTokens || 2000,
+      temperature,
+      system: opts.systemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return r.content.filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+  }
+
   // Gemini
-  const apiKey = process.env.GOOGLE_AI_API_KEY ?? process.env.GEMINI_API_KEY;
+  const apiKey = getProviderApiKey('gemini');
   if (!apiKey) throw new Error('GOOGLE_AI_API_KEY 미설정');
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -120,6 +156,6 @@ export async function generateBlogText(
 
 /** API 키가 설정돼 있는지 확인 (fallback 분기용) */
 export function hasBlogApiKey(): boolean {
-  if (isDeepSeekModel(BLOG_AI_MODEL)) return !!process.env.DEEPSEEK_API_KEY;
-  return !!(process.env.GOOGLE_AI_API_KEY ?? process.env.GEMINI_API_KEY);
+  const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
+  return !!getProviderApiKey(policy.provider);
 }

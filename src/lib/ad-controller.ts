@@ -104,32 +104,7 @@ export async function syncAdAccountBalance(
     naver: 300000, google: 200000, meta: 150000,
   };
 
-  // TODO: 실제 네이버 API 연동
-  // if (platform === 'naver' && process.env.NAVER_AD_API_KEY) {
-  //   const res = await fetch('https://api.naver.com/ncc/accounts', {
-  //     headers: { 'X-API-KEY': process.env.NAVER_AD_API_KEY!, 'X-SECRET-KEY': process.env.NAVER_AD_SECRET! },
-  //   });
-  //   const data = await res.json();
-  //   return { platform, account_name: accountName, current_balance: data.balance, ... };
-  // }
-
-  // TODO: 실제 구글 Ads API 연동
-  // if (platform === 'google' && process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
-  //   const { GoogleAdsClient } = await import('google-ads-api');
-  //   const client = new GoogleAdsClient({ developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN! });
-  //   const customer = client.Customer({ customer_id: process.env.GOOGLE_ADS_CUSTOMER_ID! });
-  //   const [campaign] = await customer.report({ entity: 'campaign', attributes: ['campaign.status'], metrics: ['metrics.cost_micros'] });
-  //   return { platform, current_balance: Number(campaign.metrics.cost_micros) / 1_000_000, ... };
-  // }
-
-  // TODO: 실제 Meta Marketing API 연동
-  // if (platform === 'meta' && process.env.META_ACCESS_TOKEN) {
-  //   const res = await fetch(
-  //     `https://graph.facebook.com/v18.0/act_${process.env.META_AD_ACCOUNT_ID}?fields=balance&access_token=${process.env.META_ACCESS_TOKEN}`
-  //   );
-  //   const data = await res.json();
-  //   return { platform, current_balance: parseInt(data.balance), ... };
-  // }
+  // TODO: 실제 네이버·구글·Meta 광고 잔액 API — 연동 시 secret-registry·전용 클라이언트 경유
 
   const balance = mockBalances[platform] ?? 100000;
   const dailyBudget = mockDailyBudgets[platform] ?? 100000;
@@ -165,22 +140,7 @@ export async function checkAndAlertLowBalance(
 
   console.error('[AdController] 잔액 긴급 알림:\n' + message);
 
-  // TODO: 이메일 발송
-  // if (process.env.ADMIN_ALERT_EMAIL) {
-  //   await sendEmail({
-  //     to: process.env.ADMIN_ALERT_EMAIL,
-  //     subject: `[여소남] ${snapshot.platform} 광고 잔액 부족 경고`,
-  //     text: message,
-  //   });
-  // }
-
-  // TODO: 슬랙 Webhook 발송
-  // if (process.env.SLACK_WEBHOOK_URL) {
-  //   await fetch(process.env.SLACK_WEBHOOK_URL, {
-  //     method: 'POST',
-  //     body: JSON.stringify({ text: message }),
-  //   });
-  // }
+  // TODO: 이메일 / Slack — sendSlackAlert·notifySlack 등 공통 유틸로 발송
 
   return { alerted: true, message };
 }
@@ -299,18 +259,7 @@ export async function discoverLongtailKeywords(params: {
     `시드: ${params.seedKeywords.join(', ')} / 최대CPC: ₩${maxCpc}`
   );
 
-  // TODO: 네이버 키워드 도구 API 연동
-  // if (params.platform === 'naver' && process.env.NAVER_AD_API_KEY) {
-  //   const res = await fetch('https://api.naver.com/keywordstool', {
-  //     method: 'POST',
-  //     headers: { 'X-API-KEY': process.env.NAVER_AD_API_KEY!, 'Content-Type': 'application/json' },
-  //     body: JSON.stringify({ hintKeywords: params.seedKeywords, showDetail: 1 }),
-  //   });
-  //   const { keywordList } = await res.json();
-  //   return keywordList
-  //     .filter((k: any) => k.monthlyPcQcCnt > 100 && k.pcQualityIndex * 100 < maxCpc)
-  //     .map((k: any) => ({ keyword: k.relKeyword, estimated_cpc: k.pcQualityIndex * 100, monthly_search: k.monthlyPcQcCnt }));
-  // }
+  // TODO: 네이버 키워드 도구 API — 연동 시 별도 모듈·시크릿 레지스트리 경유
 
   // Mock: 시드 키워드 기반 롱테일 샘플 생성
   const mockResults = params.seedKeywords.flatMap((seed) => [

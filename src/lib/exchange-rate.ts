@@ -3,13 +3,14 @@
  * 우선순위: 1) 외부 API → 2) Supabase 캐시 (24h TTL) → 3) 폴백 1,400
  */
 import { createClient } from '@supabase/supabase-js';
+import { getSecret } from '@/lib/secret-registry';
 
 const FALLBACK_RATE = 1400;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24시간
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
+  const key = getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   if (!url || !key) return null;
   return createClient(url, key);
 }
@@ -17,7 +18,7 @@ function getSupabase() {
 /** 외부 API에서 환율 조회 (exchangerate-api.com 무료 플랜) */
 async function fetchRateFromApi(): Promise<number | null> {
   try {
-    const apiKey = process.env.EXCHANGE_RATE_API_KEY;
+    const apiKey = getSecret('EXCHANGE_RATE_API_KEY');
     const url = apiKey
       ? `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/KRW`
       : 'https://open.er-api.com/v6/latest/USD'; // 무료 플랜 (API 키 불필요)

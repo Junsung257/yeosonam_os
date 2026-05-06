@@ -9,8 +9,10 @@
  * RESERVATIONS:WRITE 미보유 → 예약 생성/취소 불가 (MRT 파트너팀 신청 필요)
  */
 
+import { getSecret } from '@/lib/secret-registry';
+
 const BASE = 'https://partner-ext-api.myrealtrip.com';
-const API_KEY = process.env.MYREALTRIP_API_KEY ?? '';
+const API_KEY = getSecret('MYREALTRIP_API_KEY') ?? '';
 
 function authHeaders() {
   return {

@@ -1,3 +1,5 @@
+import { hasSecrets } from '@/lib/secret-registry';
+
 /**
  * 카카오 알림톡 발송 라이브러리 (Solapi 사용)
  *
@@ -19,12 +21,12 @@
  */
 
 function isSolapiConfigured() {
-  return !!(
-    process.env.SOLAPI_API_KEY &&
-    process.env.SOLAPI_API_SECRET &&
-    process.env.KAKAO_CHANNEL_ID &&
-    process.env.KAKAO_SENDER_NUMBER
-  );
+  return hasSecrets([
+    'SOLAPI_API_KEY',
+    'SOLAPI_API_SECRET',
+    'KAKAO_CHANNEL_ID',
+    'KAKAO_SENDER_NUMBER',
+  ]);
 }
 
 async function sendAlimtalk(params: {
@@ -50,8 +52,8 @@ async function sendAlimtalk(params: {
   // 3. 아래 주석 해제
   //
   // const { default: SolapiMessageService } = await import('solapi');
-  // const service = new SolapiMessageService(process.env.SOLAPI_API_KEY, process.env.SOLAPI_API_SECRET);
-  // return service.send({ to: params.to, from: process.env.KAKAO_SENDER_NUMBER!, kakaoOptions: { pfId: process.env.KAKAO_CHANNEL_ID!, templateId: params.templateId, variables: params.variables } });
+  // const service = new SolapiMessageService(/* SOLAPI_API_KEY */, /* SOLAPI_API_SECRET */); // 활성화 시 getSecret 사용
+  // return service.send({ to: params.to, from: /* KAKAO_SENDER_NUMBER */, kakaoOptions: { pfId: /* KAKAO_CHANNEL_ID */, templateId: params.templateId, variables: params.variables } });
 
   console.log('[알림톡 수기모드] 발송 대상:', params.to, '| 템플릿:', params.templateId, '| 변수:', params.variables);
   return { skipped: true, mode: 'manual' };

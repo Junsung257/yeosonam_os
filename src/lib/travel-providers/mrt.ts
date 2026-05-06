@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import { getSecret } from '@/lib/secret-registry';
 import type {
   TravelProvider,
   FlightSearchParams,
@@ -24,8 +25,8 @@ import type {
 
 const MCP_URL   = 'https://mcp-servers.myrealtrip.com/mcp';
 const API_URL   = 'https://partner-ext-api.myrealtrip.com';
-const API_KEY   = process.env.MYREALTRIP_API_KEY ?? '';
-const MYLINK_ID = process.env.MYREALTRIP_MYLINK_ID ?? '';
+const API_KEY   = getSecret('MYREALTRIP_API_KEY') ?? '';
+const MYLINK_ID = getSecret('MYREALTRIP_MYLINK_ID') ?? '';
 
 // ─── MCP JSON-RPC 헬퍼 ───────────────────────────────────────────────────────
 

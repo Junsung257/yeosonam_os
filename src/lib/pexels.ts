@@ -5,6 +5,7 @@
  * - 무료 플랜: 200 req/hour, 20,000 req/month
  */
 
+import { getSecret } from '@/lib/secret-registry';
 const PEXELS_API_BASE = 'https://api.pexels.com/v1';
 
 export interface PexelsPhoto {
@@ -36,7 +37,7 @@ interface PexelsSearchResponse {
 }
 
 function getPexelsHeaders() {
-  const apiKey = process.env.PEXELS_API_KEY;
+  const apiKey = getSecret('PEXELS_API_KEY');
   if (!apiKey) {
     throw new Error('PEXELS_API_KEY 환경변수가 설정되지 않았습니다.');
   }
@@ -105,7 +106,7 @@ export function buildPexelsKeyword(destination: string, slideType: string): stri
 }
 
 export function isPexelsConfigured(): boolean {
-  return !!process.env.PEXELS_API_KEY;
+  return !!getSecret('PEXELS_API_KEY');
 }
 
 /**

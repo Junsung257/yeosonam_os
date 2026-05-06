@@ -13,7 +13,10 @@
 
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Anthropic from '@anthropic-ai/sdk';
 import { trackDeepSeekCost, trackCost } from '@/lib/jarvis/cost-tracker';
+import { getProviderApiKey, resolveAiPolicy, resolveAiPolicyRuntime } from '@/lib/ai-provider-policy';
+import { getSecret } from '@/lib/secret-registry';
 
 // ─── 모델 상수 ───────────────────────────────────────────────────────────────
 
@@ -48,7 +51,7 @@ export type LlmTask =
   | 'customer-fact-extract'; // 고객 팩트 Mem0 스타일 추출 (원시 JSON 배열)
 
 interface ModelRef {
-  provider: 'deepseek' | 'gemini';
+  provider: 'deepseek' | 'gemini' | 'claude';
   model: string;
 }
 
@@ -224,7 +227,7 @@ export interface GatewayResult<T = unknown> {
   success: boolean;
   data?: T;
   rawText?: string;
-  provider?: 'deepseek' | 'gemini';
+  provider?: 'deepseek' | 'gemini' | 'claude';
   model?: string;
   fallbackUsed?: boolean;
   advisorUsed?: boolean;
@@ -240,7 +243,7 @@ export interface GatewayResult<T = unknown> {
 // ─── 클라이언트 팩토리 ────────────────────────────────────────────────────────
 
 function getDeepSeek(): OpenAI | null {
-  const key = process.env.DEEPSEEK_API_KEY;
+  const key = getProviderApiKey('deepseek');
   if (!key) return null;
   return new OpenAI({
     apiKey: key,
@@ -250,9 +253,15 @@ function getDeepSeek(): OpenAI | null {
 }
 
 function getGemini(): GoogleGenerativeAI | null {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+  const key = getProviderApiKey('gemini');
   if (!key) return null;
   return new GoogleGenerativeAI(key);
+}
+
+function getClaude(): Anthropic | null {
+  const key = getProviderApiKey('claude');
+  if (!key) return null;
+  return new Anthropic({ apiKey: key });
 }
 
 // ─── DeepSeek 호출 (OpenAI 호환) ──────────────────────────────────────────────
@@ -375,6 +384,74 @@ async function callGemini(
   }
 }
 
+async function callClaude(
+  client: Anthropic,
+  model: string,
+  params: GatewayCallParams,
+): Promise<GatewayResult> {
+  const start = Date.now();
+  try {
+    const response = await client.messages.create({
+      model,
+      system: params.systemPrompt,
+      max_tokens: params.maxTokens || 2000,
+      temperature: params.temperature ?? 0.3,
+      messages: [{ role: 'user', content: params.userPrompt }],
+    });
+
+    const text = response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n');
+
+    const usage = response.usage;
+    const _usage = {
+      input: usage.input_tokens ?? 0,
+      output: usage.output_tokens ?? 0,
+      cache_hit: usage.cache_read_input_tokens ?? 0,
+    };
+
+    if (params.jsonSchema) {
+      try {
+        return {
+          success: true,
+          data: JSON.parse(text),
+          provider: 'claude',
+          model,
+          _usage,
+          elapsed_ms: Date.now() - start,
+        };
+      } catch {
+        return {
+          success: false,
+          rawText: text,
+          provider: 'claude',
+          model,
+          errors: [`JSON 파싱 실패: ${text.slice(0, 200)}`],
+          elapsed_ms: Date.now() - start,
+        };
+      }
+    }
+
+    return {
+      success: true,
+      rawText: text,
+      provider: 'claude',
+      model,
+      _usage,
+      elapsed_ms: Date.now() - start,
+    };
+  } catch (e) {
+    return {
+      success: false,
+      provider: 'claude',
+      model,
+      errors: [e instanceof Error ? e.message : String(e)],
+      elapsed_ms: Date.now() - start,
+    };
+  }
+}
+
 // ─── 단건 호출 헬퍼 ──────────────────────────────────────────────────────────
 
 async function callModel(ref: ModelRef, params: GatewayCallParams): Promise<GatewayResult> {
@@ -383,10 +460,35 @@ async function callModel(ref: ModelRef, params: GatewayCallParams): Promise<Gate
     if (!client) return { success: false, errors: ['DEEPSEEK_API_KEY 없음'] };
     return callDeepSeek(client, ref.model, params);
   }
-  // gemini fallback
-  const client = getGemini();
-  if (!client) return { success: false, errors: ['Gemini API 키 없음'] };
-  return callGemini(client, ref.model, params);
+  if (ref.provider === 'gemini') {
+    const client = getGemini();
+    if (!client) return { success: false, errors: ['Gemini API 키 없음'] };
+    return callGemini(client, ref.model, params);
+  }
+  const client = getClaude();
+  if (!client) return { success: false, errors: ['ANTHROPIC_API_KEY 없음'] };
+  return callClaude(client, ref.model, params);
+}
+
+async function callModelWithTimeout(
+  ref: ModelRef,
+  params: GatewayCallParams,
+  timeoutMs?: number | null,
+): Promise<GatewayResult> {
+  if (!timeoutMs || timeoutMs <= 0) return callModel(ref, params);
+  return Promise.race([
+    callModel(ref, params),
+    new Promise<GatewayResult>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          success: false,
+          provider: ref.provider,
+          model: ref.model,
+          errors: [`timeout(${timeoutMs}ms)`],
+        });
+      }, timeoutMs);
+    }),
+  ]);
 }
 
 // ─── Advisor 단일 호출 ────────────────────────────────────────────────────────
@@ -434,11 +536,21 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
 
   const complexityScore = estimateComplexity(params.userPrompt);
   const route = ROUTING[effectiveTask];
+  const policy = await resolveAiPolicyRuntime(
+    effectiveTask,
+    route.executor.model.includes('pro') ? 'pro' : 'fast',
+  );
+  const executor: ModelRef = { provider: policy.provider, model: policy.model };
+  const fallback: ModelRef | null = policy.fallbackProvider
+    ? { provider: policy.fallbackProvider, model: policy.fallbackModel || route.fallback?.model || route.executor.model }
+    : route.fallback;
+  const envTimeout = Number(process.env.AI_EXECUTOR_TIMEOUT_MS || 0);
+  const timeoutMs = policy.timeoutMs ?? (envTimeout > 0 ? envTimeout : null);
   const errors: string[] = [];
   const maxRetries = route.maxRetries ?? 2;
 
   // ─── 비용 기록 헬퍼 (fail-open) ────────────────────────────────────────────
-  function recordCost(result: GatewayResult, model: string, provider: 'deepseek' | 'gemini') {
+  function recordCost(result: GatewayResult, model: string, provider: 'deepseek' | 'gemini' | 'claude') {
     if (!result._usage) return;
     const { input, output, cache_hit } = result._usage;
     if (provider === 'deepseek') {
@@ -464,18 +576,18 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
   }
 
   // 1차~N차: executor 재시도 (DeepSeek는 저렴하므로 재시도 부담 없음)
-  const skipExecutor = route.executor.provider === 'deepseek' && !process.env.DEEPSEEK_API_KEY?.trim();
+  const skipExecutor = !getProviderApiKey(executor.provider)?.trim();
   if (skipExecutor) {
-    errors.push('[executor skipped] DEEPSEEK_API_KEY 빈 값 또는 미설정');
-    console.warn(`[llm-gateway] DeepSeek executor 스킵 → 즉시 fallback (task=${effectiveTask})`);
+    errors.push(`[executor skipped] ${executor.provider} API 키 빈 값 또는 미설정`);
+    console.warn(`[llm-gateway] ${executor.provider} executor 스킵 → 즉시 fallback (task=${effectiveTask})`);
   } else {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const primary = await callModel(route.executor, params);
+      const primary = await callModelWithTimeout(executor, params, timeoutMs);
       if (primary.success) {
-        recordCost(primary, route.executor.model, route.executor.provider);
+        recordCost(primary, executor.model, executor.provider);
         return { ...primary, complexityScore, retryCount: attempt } as GatewayResult<T>;
       }
-      errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${route.executor.provider}/${route.executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);
+      errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${executor.provider}/${executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);
 
       // 2회 이상 실패하고 advisor 있으면 조언 구해서 재시도
       if (attempt >= 1 && route.advisor) {
@@ -485,9 +597,9 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
             ...params,
             systemPrompt: `${params.systemPrompt}\n\n[전략 가이드]\n${advice}`,
           };
-          const retried = await callModel(route.executor, enhancedParams);
+          const retried = await callModelWithTimeout(executor, enhancedParams, timeoutMs);
           if (retried.success) {
-            recordCost(retried, route.executor.model, route.executor.provider);
+            recordCost(retried, executor.model, executor.provider);
             return { ...retried, advisorUsed: true, complexityScore, retryCount: attempt + 1 } as GatewayResult<T>;
           }
           errors.push(`[executor+advisor retry] ${retried.errors?.join(',') ?? 'unknown'}`);
@@ -497,14 +609,14 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
   }
 
   // 최종: Gemini fallback
-  if (route.fallback) {
-    console.warn(`[llm-gateway fallback] ${route.executor.provider}→${route.fallback.provider} (task=${effectiveTask})`);
-    const fb = await callModel(route.fallback, params);
+  if (fallback) {
+    console.warn(`[llm-gateway fallback] ${executor.provider}→${fallback.provider} (task=${effectiveTask})`);
+    const fb = await callModel(fallback, params);
     if (fb.success) {
-      recordCost(fb, route.fallback.model, route.fallback.provider);
+      recordCost(fb, fallback.model, fallback.provider);
       return { ...fb, fallbackUsed: true, complexityScore } as GatewayResult<T>;
     }
-    errors.push(`[fallback ${route.fallback.provider}/${route.fallback.model}] ${fb.errors?.join(',') ?? 'unknown'}`);
+    errors.push(`[fallback ${fallback.provider}/${fallback.model}] ${fb.errors?.join(',') ?? 'unknown'}`);
   }
 
   return { success: false, errors, complexityScore };
@@ -525,7 +637,10 @@ export function getAllRoutes(): Record<LlmTask, { executor: string; advisor?: st
     Object.entries(ROUTING).map(([task, r]) => [
       task,
       {
-        executor: `${r.executor.provider}/${r.executor.model}`,
+        executor: (() => {
+          const p = resolveAiPolicy(task, r.executor.model.includes('pro') ? 'pro' : 'fast');
+          return `${p.provider}/${p.model}`;
+        })(),
         ...(r.advisor ? { advisor: `${r.advisor.provider}/${r.advisor.model}` } : {}),
         ...(r.fallback ? { fallback: `${r.fallback.provider}/${r.fallback.model}` } : {}),
       },
@@ -669,7 +784,7 @@ export async function tryDeepSeekStream(
     : params.task;
   const route = ROUTING[effectiveTask];
   const client = getDeepSeek();
-  if (!client || !process.env.DEEPSEEK_API_KEY?.trim()) {
+  if (!client || !getSecret('DEEPSEEK_API_KEY')) {
     return { success: false, errors: ['DEEPSEEK_API_KEY 없음'] };
   }
   if (route.executor.provider !== 'deepseek') {

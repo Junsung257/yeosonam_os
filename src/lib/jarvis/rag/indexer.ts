@@ -11,6 +11,7 @@
  *   - /api/cron/rag-incremental (매시간 누락 보호)
  */
 import { supabaseAdmin } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 const FLASH_MODEL = 'gemini-2.5-flash';
 const EMBED_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';
@@ -67,7 +68,7 @@ function hashContent(s: string): string {
 }
 
 async function contextualize(docTitle: string, docSummary: string, chunk: string): Promise<string> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) return chunk;
   try {
     const res = await fetch(
@@ -92,7 +93,7 @@ async function contextualize(docTitle: string, docSummary: string, chunk: string
 }
 
 async function embed(text: string): Promise<number[] | null> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) return null;
   try {
     const res = await fetch(`${EMBED_ENDPOINT}?key=${apiKey}`, {
