@@ -237,20 +237,27 @@ function CardImage({
 }) {
   const safeSrc = img && isSafeImageSrc(img) ? img.trim() : null;
   const [imgBroken, setImgBroken] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   useEffect(() => {
     setImgBroken(false);
+    setImgLoaded(false);
   }, [safeSrc]);
   const showImage = Boolean(safeSrc && !imgBroken);
 
   return (
     <div className={`relative flex-shrink-0 overflow-hidden bg-bg-section ${sizeClass}`}>
+      {/* shimmer skeleton — 이미지 존재하고 로드 전일 때만 표시 */}
+      {safeSrc && !imgLoaded && !imgBroken && (
+        <div className="absolute inset-0 z-10 bg-gradient-to-r from-[#F2F4F6] via-[#E5E7EB] to-[#F2F4F6] animate-shimmer bg-[length:200%_100%]" aria-hidden />
+      )}
       {showImage && safeSrc ? (
         <Image
           src={safeSrc}
           alt={title}
           fill
-          className="object-cover group-hover:scale-105 transition-transform duration-300"
+          className={`object-cover group-hover:scale-105 transition-transform duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
           sizes={sizes}
+          onLoad={() => setImgLoaded(true)}
           onError={() => setImgBroken(true)}
         />
       ) : (

@@ -27,13 +27,19 @@ function isTabActive(href: string, pathname: string | null): boolean {
   return pathname.startsWith(href);
 }
 
+// /packages/[id] 는 DetailClient 자체 CTA바가 있어 탭바 제외
+const EXCLUDED_PATHS = ['/admin', '/login', '/tenant', '/packages/'];
+
 export default function BottomTabBar() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
+  const excluded = EXCLUDED_PATHS.some(p => pathname?.startsWith(p));
+
   // 스크롤 다운 → 숨김, 스크롤 업 → 노출
   useEffect(() => {
+    if (excluded) return;
     const onScroll = () => {
       const current = window.scrollY;
       if (current < 60) {
@@ -47,11 +53,13 @@ export default function BottomTabBar() {
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [lastScrollY]);
+  }, [lastScrollY, excluded]);
+
+  if (excluded) return null;
 
   return (
     <nav
-      className={`md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] safe-area-bottom transition-transform duration-200 ${
+      className={`bottom-tab-bar md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] safe-area-bottom transition-transform duration-200 ${
         visible ? 'translate-y-0' : 'translate-y-full'
       }`}
       aria-label="하단 탭 메뉴"

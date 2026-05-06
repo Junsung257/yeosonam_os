@@ -11,6 +11,7 @@ import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
+const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'), { ssr: false });
 // ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
 // PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
 
@@ -152,6 +153,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MsClarity />
         <AffiliateAttributionBanner />
         {children}
+        <BottomTabBar />
         <ChatWidget />
         <JarvisFloatingWidget />
       </body>

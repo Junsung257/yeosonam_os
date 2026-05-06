@@ -13,7 +13,6 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
-import BottomTabBar from '@/components/customer/BottomTabBar';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -140,7 +139,7 @@ export default async function HomePage() {
       .not('photos', 'is', null)
       .limit(300),
     sb.from('travel_packages')
-      .select('id, title, display_title, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
+      .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
       .in('status', ['active', 'approved'])
       .order('created_at', { ascending: false })
       .limit(30),
@@ -341,16 +340,30 @@ export default async function HomePage() {
   }
 
   // HeroBanner 슬라이드 — Pexels 폴백 이후에 생성해야 빈 슬롯이 채워진 topDests를 사용
+  // display_title / hero_tagline 이 있는 대표 패키지를 목적지별로 먼저 찾아 타이틀 품질 향상
+  const bestPkgByDest: Record<string, { display_title?: string; hero_tagline?: string; title?: string }> = {};
+  (rankingPkgs as any[]).forEach(p => {
+    if (!p.destination) return;
+    if (!bestPkgByDest[p.destination] && (p.display_title || p.hero_tagline || p.title)) {
+      bestPkgByDest[p.destination] = { display_title: p.display_title, hero_tagline: p.hero_tagline, title: p.title };
+    }
+  });
+
   const heroSlides: HeroSlide[] = topDests
     .filter(d => d.image)
     .slice(0, 5)
-    .map(d => ({
-      image: d.image!,
-      destination: d.destination,
-      title: `${d.destination} 특가 패키지`,
-      minPrice: d.min_price ?? undefined,
-      href: `/packages?destination=${encodeURIComponent(d.destination)}`,
-    }));
+    .map(d => {
+      const best = bestPkgByDest[d.destination];
+      const slideTitle = best?.display_title || best?.title || `${d.destination} 특가 패키지`;
+      return {
+        image: d.image!,
+        destination: d.destination,
+        title: slideTitle,
+        tagline: best?.hero_tagline || undefined,
+        minPrice: d.min_price ?? undefined,
+        href: `/packages?destination=${encodeURIComponent(d.destination)}`,
+      };
+    });
 
   const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
@@ -419,7 +432,7 @@ export default async function HomePage() {
   const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
 
   return (
-    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto pb-[72px] md:pb-0">
+    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
       {/* Schema.org */}
       <script
         suppressHydrationWarning
@@ -668,8 +681,6 @@ export default async function HomePage() {
         </div>
       </footer>
 
-      {/* ── 모바일 하단 탭바 ── */}
-      <BottomTabBar />
     </div>
   );
 }

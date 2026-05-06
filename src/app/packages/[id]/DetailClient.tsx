@@ -23,6 +23,7 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import TimezoneCard from '@/components/customer/TimezoneCard';
 import PackingTipsCard from '@/components/customer/PackingTipsCard';
+import PackageFAQ from '@/components/customer/PackageFAQ';
 import RecommendationCard from '@/components/customer/RecommendationCard';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
@@ -58,6 +59,7 @@ interface Package {
   departure_airport?: string;
   departure_days?: string;
   min_participants?: number;
+  min_people?: number;
   ticketing_deadline?: string;
   product_type?: string;
   price_tiers?: PriceTier[];
@@ -136,8 +138,8 @@ interface DetailClientProps {
   representativeMonth?: number;
   /** 출발월 분포 (월→횟수). mini bar 의 보조 마커용 */
   departureDistribution?: Record<number, number>;
-  /** 사회적 증거 — destination 단위 30일 카운트 (Cialdini 4) */
-  socialProof?: { bookings: number; interest: number };
+  /** 사회적 증거 — destination 단위 30일 카운트 + 오늘 조회수 + 다음 출발일 예약 현황 */
+  socialProof?: { bookings: number; interest: number; todayViews?: number; nextDepartureBookings?: number; nextDepartureDate?: string | null };
   /** 같은 날 그룹의 다른 패키지 (pairwise 비교 UI용). { '2026-07-08': [rival1, rival2] } */
   rivalsByDate?: Record<string, Array<{
     package_id: string; title: string; rank_in_group: number;
@@ -696,17 +698,40 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 가격 카드 (플로팅) ═══ */}
       <section className="px-4 -mt-6 relative z-10">
         <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
-          {/* Social Proof — 서버에서 내려온 실제 데이터만 표시 */}
-          {socialProof && (socialProof.bookings > 0 || socialProof.interest > 0) && (
-            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-50">
-              {socialProof!.bookings > 0 && (
-                <span className="text-xs text-gray-500 flex items-center gap-1">
-                  🔥 최근 30일 <strong className="text-gray-800">{socialProof!.bookings}명</strong> 예약
-                </span>
-              )}
-              {socialProof!.interest > 0 && (
-                <span className="text-xs text-gray-400">· 관심 {socialProof!.interest}명</span>
-              )}
+          {/* Social Proof + 희소성 신호 — 서버에서 내려온 실제 데이터만 표시 */}
+          {socialProof && (socialProof.bookings > 0 || socialProof.interest > 0 || (socialProof.todayViews ?? 0) > 0 || (socialProof.nextDepartureBookings ?? 0) > 0) && (
+            <div className="mb-3 pb-3 border-b border-gray-50 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {(socialProof.todayViews ?? 0) > 2 && (
+                  <span className="text-xs text-orange-600 flex items-center gap-1 font-medium">
+                    👀 오늘 <strong>{socialProof.todayViews}명</strong> 조회 중
+                  </span>
+                )}
+                {socialProof.bookings > 0 && (
+                  <span className="text-xs text-gray-500 flex items-center gap-1">
+                    🔥 이번달 <strong className="text-gray-800">{socialProof.bookings}명</strong> 예약
+                  </span>
+                )}
+              </div>
+              {(socialProof.nextDepartureBookings ?? 0) > 0 && socialProof.nextDepartureDate && (() => {
+                const minP = pkg.min_people ?? 4;
+                const booked = socialProof!.nextDepartureBookings!;
+                const remaining = Math.max(0, minP - booked);
+                const m = parseInt(socialProof!.nextDepartureDate!.split('-')[1]);
+                const d = parseInt(socialProof!.nextDepartureDate!.split('-')[2]);
+                return remaining > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand rounded-full transition-all" style={{ width: `${Math.min(100, (booked / minP) * 100)}%` }} />
+                    </div>
+                    <span className="text-[11px] text-brand font-bold whitespace-nowrap">
+                      {m}/{d} 출발 확정까지 {remaining}명
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-emerald-600 font-bold">✅ {m}/{d} 출발 확정!</span>
+                );
+              })()}
             </div>
           )}
           <div className="flex justify-between items-start">
@@ -749,6 +774,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           })()}
         </div>
       </section>
+
+      {/* ═══ 인라인 CTA #1 — 가격 카드 바로 아래 (구매 충동 포착) ═══ */}
+      <div className="px-4 mt-3 mb-1">
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="w-full h-11 rounded-2xl bg-brand text-white font-bold text-sm shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+        >
+          <span>예약 문의하기</span>
+          <span className="text-white/70 text-xs font-normal">— 날짜·인원 선택</span>
+        </button>
+      </div>
 
       {/* ═══ 추천 카드 — 출발일별 동적 점수 (v3 옵션 A) ═══
           selectedDate가 있으면 그 날의 score, 없으면 가장 가까운 미래 출발일.
@@ -1000,6 +1037,37 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 </div>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ 인라인 CTA #2 — 달력 섹션 바로 아래 (날짜 선택 직후 포착) ═══ */}
+      {(tiers.length > 0 || allPriceDates.length > 0) && (
+        <div className="px-4 -mt-2 mb-2">
+          {selectedDate ? (
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="w-full h-12 rounded-2xl bg-brand text-white font-bold text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <span>
+                {parseInt(selectedDate.split('-')[1])}/{parseInt(selectedDate.split('-')[2])} 출발 예약하기
+              </span>
+              {selectedDateInfo && (
+                <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                  ₩{selectedDateInfo.price.toLocaleString()}
+                </span>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="w-full h-10 rounded-2xl border-2 border-brand text-brand font-semibold text-sm active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+            >
+              <span>💬</span>
+              <span>날짜 미정 — 카톡으로 먼저 상담하기</span>
+            </button>
           )}
         </div>
       )}
@@ -1513,6 +1581,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         );
       })()}
 
+      {/* ═══ FAQ ═══ */}
+      <PackageFAQ
+        destination={pkg.destination ?? ''}
+        kakaoChannel={() => openKakaoChannel({
+          internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
+          productTitle: pkg.products?.display_name || pkg.title,
+          departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+        })}
+      />
+
       {/* ═══ 유의사항 (독립 토글 다중 열림) + 예약 약관 ═══ */}
       <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-[108px]">
         {(() => {
@@ -1638,6 +1716,47 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           )}
         </div>
       )}
+
+      {/* ═══ 취소·환불 요약 카드 — CTA 직전 (불안 제거, 신뢰↑) ═══ */}
+      {(() => {
+        // initialNotices에서 취소 수수료 항목 탐색
+        const cancelNotice = initialNotices.find(n =>
+          n.type === 'CANCEL_FEE' || /취소.*수수료|환불.*규정|cancell/i.test(n.title || '')
+        );
+        // 취소 약관 텍스트에서 핵심 줄만 추출 (숫자+일 패턴)
+        const lines = (cancelNotice?.text || '').split('\n')
+          .map(l => l.trim()).filter(Boolean)
+          .filter(l => /[0-9]+일|전액|무료|%|수수료/.test(l))
+          .slice(0, 4);
+        if (lines.length === 0) return null;
+        return (
+          <div className="px-4 mb-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-slate-700 mb-2.5 flex items-center gap-1.5">
+                📋 취소·환불 한눈에 보기
+              </h3>
+              <ul className="space-y-1.5">
+                {lines.map((line, i) => (
+                  <li key={i} className="text-xs text-slate-600 flex gap-2 leading-relaxed">
+                    <span className="text-slate-300 shrink-0">•</span>
+                    {line.replace(/^[•·▪\-]\s*/, '')}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => {
+                  // 유의사항 섹션으로 스크롤
+                  sectionRefs.current['유의사항']?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="mt-2.5 text-[11px] text-brand font-medium hover:underline"
+              >
+                전체 약관 보기 →
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 클립보드 복사 토스트 */}
       {clipboardToast && (

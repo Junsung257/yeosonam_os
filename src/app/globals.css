@@ -71,6 +71,22 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* 하단 탭바가 마운트된 페이지 — 콘텐츠가 탭바에 가리지 않도록 자동 여백 */
+@media (max-width: 767px) {
+  body:has(.bottom-tab-bar) {
+    padding-bottom: 72px;
+  }
+}
+
+/* 이미지 skeleton shimmer 애니메이션 */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.animate-shimmer {
+  animation: shimmer 1.4s linear infinite;
+}
+
 /* 카드 터치 피드백 (scale 0.98) — touch-action으로 모바일 300ms 탭 지연 완화 */
 .card-touch {
   touch-action: manipulation;

@@ -8,6 +8,7 @@ export interface HeroSlide {
   image: string;
   destination: string;
   title: string;
+  tagline?: string;
   minPrice?: number;
   href: string;
 }
@@ -71,11 +72,16 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
       <Link href={slide.href} className="absolute inset-0 flex flex-col justify-end p-6 md:p-12 pb-10 md:pb-14">
         <div>
           <p className="text-micro md:text-body font-semibold text-white/80 uppercase tracking-widest mb-2">{slide.destination}</p>
-          <h2 className="text-[32px] md:text-[48px] font-extrabold text-white leading-[1.15] tracking-[-0.03em] line-clamp-2">
+          <h2 className="text-[28px] md:text-[44px] font-extrabold text-white leading-[1.2] tracking-[-0.03em] line-clamp-2 break-keep">
             {slide.title}
           </h2>
+          {slide.tagline && (
+            <p className="mt-1.5 text-[14px] md:text-[16px] text-white/85 font-medium leading-snug line-clamp-1 break-keep">
+              {slide.tagline}
+            </p>
+          )}
           {slide.minPrice && slide.minPrice > 0 && (
-            <p className="mt-3 text-[15px] text-white/90 font-medium">
+            <p className="mt-3 text-[14px] text-white/90 font-medium">
               최저 <span className="text-white font-extrabold text-price tabular-nums">{slide.minPrice.toLocaleString()}</span>원~
             </p>
           )}

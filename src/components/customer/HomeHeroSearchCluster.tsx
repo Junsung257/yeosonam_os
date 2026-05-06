@@ -137,6 +137,7 @@ const slotTrigger =
 export default function HomeHeroSearchCluster({ children }: { children?: ReactNode }) {
   const openChat = useChatStore(s => s.openChat);
   const [step, setStep] = useState<PickerStep | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [showCustomCalendar, setShowCustomCalendar] = useState(false);
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
 
@@ -233,6 +234,38 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
       }
     }
     setShowCustomCalendar(v => !v);
+  }
+
+  // 콤팩트 검색바: expanded=false 이면 단순 검색 Bar 표시, 탭 시 풀 위자드로 전환
+  if (!expanded) {
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full flex items-center gap-3 bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3.5 shadow-[0_4px_16px_rgba(49,130,246,0.07)] hover:border-brand/40 hover:shadow-[0_4px_20px_rgba(49,130,246,0.13)] transition-all card-touch"
+          aria-label="여행 검색 열기"
+        >
+          <span className="text-xl flex-shrink-0">🔍</span>
+          <span className="flex-1 text-left">
+            <span className="block text-[15px] font-semibold text-text-primary">어디로 떠날까요?</span>
+            <span className="block text-[12px] text-text-secondary mt-0.5">출발지 · 시기 · 예산 설정</span>
+          </span>
+          <span className="text-[13px] font-bold text-brand bg-brand-light px-3 py-1.5 rounded-full flex-shrink-0">검색</span>
+        </button>
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
+          <Link href="/packages?urgency=1" className={`${pillBase} bg-gradient-to-br from-brand to-[#2563EB] text-white shadow-md shadow-brand/20`}>
+            <span aria-hidden>🔥</span>마감·특가
+          </Link>
+          <Link href="/group-inquiry" className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}>
+            단체·맞춤 견적
+          </Link>
+          <button type="button" onClick={() => openChat()} className={`${pillBase} bg-bg-section text-text-body hover:bg-[#E8ECF0]`}>
+            채팅 상담
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
