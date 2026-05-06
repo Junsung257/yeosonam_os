@@ -104,20 +104,20 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
 
   return (
     <section className="px-4 mt-4">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[15px] font-extrabold text-gray-900">⏰ 시차 안내</h3>
-          <span className="text-[11px] text-gray-500 font-semibold">{offsetText}</span>
+          <h3 className="text-[15px] font-extrabold text-slate-900">⏰ 시차 안내</h3>
+          <span className="text-[11px] text-slate-500 font-semibold">{offsetText}</span>
         </div>
 
         {/* 라이브 시각 비교 */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-gray-50 rounded-xl p-3">
+          <div className="bg-slate-50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-base">🇰🇷</span>
-              <span className="text-xs text-gray-500 font-medium">서울 (KST)</span>
+              <span className="text-xs text-slate-500 font-medium">서울 (KST)</span>
             </div>
-            <div className="text-lg font-extrabold text-gray-900 tabular-nums">{seoulTime}</div>
+            <div className="text-lg font-extrabold text-slate-900 tabular-nums">{seoulTime}</div>
           </div>
           <div className="bg-violet-50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
@@ -130,11 +130,11 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
         </div>
 
         {/* 실용 팁 */}
-        <div className="bg-gradient-to-br from-[#F5F0FF]/60 to-[#EBF3FE]/40 border border-[#E9D5FF]/60 rounded-xl p-3.5">
-          <p className="text-[12px] font-bold text-violet-700 mb-2">💡 여행 팁</p>
+        <div className="bg-gradient-to-br from-[#F5F0FF]/60 to-brand-light/40 border border-[#E9D5FF]/60 rounded-xl p-3.5">
+          <p className="text-micro font-bold text-violet-700 mb-2">💡 여행 팁</p>
           <ul className="space-y-1.5">
             {tips.map((t, i) => (
-              <li key={i} className="text-[13px] text-gray-700 leading-snug flex gap-1.5 break-keep">
+              <li key={i} className="text-[13px] text-slate-700 leading-snug flex gap-1.5 break-keep">
                 <span className="text-violet-400 flex-shrink-0">•</span>
                 <span>{t}</span>
               </li>

@@ -45,7 +45,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           <input
             value={cardNewsTitle}
             onChange={e => setCardNewsTitle(e.target.value)}
-            className="text-[16px] font-semibold text-slate-800 border-none focus:ring-0 bg-transparent w-64 placeholder:text-slate-400"
+            className="text-admin-lg font-semibold text-slate-800 border-none focus:ring-0 bg-transparent w-64 placeholder:text-slate-400"
             placeholder="카드뉴스 제목"
           />
           <span className="text-[11px] text-slate-400">{slides.length}장</span>
@@ -58,7 +58,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 key={r}
                 onClick={() => setAspectRatio(r)}
                 className={`px-3 py-1 text-[11px] transition ${
-                  aspectRatio === r ? 'bg-[#001f3f] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  aspectRatio === r ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {r}
@@ -68,14 +68,14 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
+            className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
           >
             {saving ? '저장 중...' : '저장'}
           </button>
           <button
             onClick={exportAll}
             disabled={exporting}
-            className="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 text-[13px] rounded hover:bg-slate-50 disabled:bg-slate-100 transition"
+            className="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 disabled:bg-slate-100 transition"
           >
             {exporting ? '생성 중...' : 'JPG 내보내기'}
           </button>
@@ -110,7 +110,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           ))}
           <button
             onClick={addSlide}
-            className="w-full border-2 border-dashed border-slate-300 rounded py-4 text-slate-400 text-[12px] hover:border-slate-400 hover:text-slate-500 transition"
+            className="w-full border-2 border-dashed border-slate-300 rounded py-4 text-slate-400 text-admin-xs hover:border-slate-400 hover:text-slate-500 transition"
           >
             + 추가
           </button>
@@ -126,7 +126,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
               onUpdateBody={text => updateSlide(activeSlideIndex, { body: text })}
             />
           ) : (
-            <p className="text-slate-400 text-[14px]">슬라이드를 선택하세요</p>
+            <p className="text-slate-400 text-admin-base">슬라이드를 선택하세요</p>
           )}
         </div>
 
@@ -144,7 +144,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                       onClick={() => updateSlide(activeSlideIndex, { overlay_style: style })}
                       className={`flex-1 py-1.5 text-[11px] rounded border transition ${
                         activeSlide.overlay_style === style
-                          ? 'bg-[#001f3f] text-white border-[#001f3f]'
+                          ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
@@ -175,7 +175,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 )}
                 <button
                   onClick={() => setShowPexels(!showPexels)}
-                  className="w-full py-1.5 text-[12px] bg-white border border-slate-200 rounded text-slate-600 hover:bg-slate-50 transition"
+                  className="w-full py-1.5 text-admin-xs bg-white border border-slate-200 rounded text-slate-600 hover:bg-slate-50 transition"
                 >
                   {showPexels ? '닫기' : 'Pexels에서 검색'}
                 </button>
@@ -188,12 +188,12 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                         onChange={e => setPexelsQuery(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handlePexelsSearch()}
                         placeholder="검색어 (영문)"
-                        className="flex-1 px-2 py-1 border border-slate-200 rounded text-[12px] focus:ring-1 focus:ring-[#005d90]"
+                        className="flex-1 px-2 py-1 border border-slate-200 rounded text-admin-xs focus:ring-1 focus:ring-[#005d90]"
                       />
                       <button
                         onClick={handlePexelsSearch}
                         disabled={pexelsLoading}
-                        className="px-2 py-1 bg-[#001f3f] text-white text-[11px] rounded hover:bg-blue-900 disabled:bg-slate-300"
+                        className="px-2 py-1 bg-blue-600 text-white text-[11px] rounded hover:bg-blue-900 disabled:bg-slate-300"
                       >
                         {pexelsLoading ? '...' : '검색'}
                       </button>
@@ -224,7 +224,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                   value={activeSlide.headline}
                   onChange={e => updateSlide(activeSlideIndex, { headline: e.target.value })}
                   rows={2}
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-[13px] focus:ring-1 focus:ring-[#005d90] resize-none"
+                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-admin-sm focus:ring-1 focus:ring-[#005d90] resize-none"
                 />
               </div>
               <div>
@@ -233,7 +233,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                   value={activeSlide.body}
                   onChange={e => updateSlide(activeSlideIndex, { body: e.target.value })}
                   rows={4}
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-[13px] focus:ring-1 focus:ring-[#005d90] resize-none"
+                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-admin-sm focus:ring-1 focus:ring-[#005d90] resize-none"
                 />
               </div>
 
@@ -243,20 +243,20 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 <input
                   value={activeSlide.pexels_keyword}
                   onChange={e => updateSlide(activeSlideIndex, { pexels_keyword: e.target.value })}
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-[13px] focus:ring-1 focus:ring-[#005d90]"
+                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                   placeholder="e.g. danang beach"
                 />
               </div>
             </>
           ) : (
-            <p className="text-slate-400 text-[13px] text-center py-8">슬라이드를 선택하세요</p>
+            <p className="text-slate-400 text-admin-sm text-center py-8">슬라이드를 선택하세요</p>
           )}
         </div>
       </div>
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#001f3f] text-white px-5 py-3 rounded-lg text-[13px] shadow-lg">
+        <div className="fixed bottom-6 right-6 z-50 bg-blue-600 text-white px-5 py-3 rounded-lg text-admin-sm shadow-lg">
           {toast}
         </div>
       )}

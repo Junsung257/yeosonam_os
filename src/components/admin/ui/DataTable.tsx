@@ -1,20 +1,5 @@
 'use client';
 
-/**
- * DataTable — 어드민 ERP 데이터 테이블 단일 진입점
- *
- * 핵심 기능:
- *   - 행 높이 통일: comfortable=56px / compact=48px (admin-scope CSS 변수)
- *   - 컬럼 우선순위: priority 1=항상, 2=태블릿+, 3=데스크톱만 (반응형 자동)
- *   - sticky header
- *   - 좌측 alert 슬롯 (40px) 자동 분리
- *   - 행 hover, 클릭, zebra (옵션)
- *   - empty state, loading state
- *
- * 가상화는 5,000행 이상 케이스에서만 별도로(react-window 등) 도입.
- * 이 컴포넌트는 native <table> 기반.
- */
-
 import type { ReactNode } from 'react';
 import AlertIndicator, { type AlertLevel } from './AlertIndicator';
 
@@ -41,13 +26,13 @@ interface DataTableProps<T> {
   rows: T[];
   getRowKey: (row: T, index: number) => string | number;
   onRowClick?: (row: T) => void;
-  /** 좌측 알림 슬롯 — null 반환 시 빈 셀 */
   alertCell?: (row: T) => AlertSlot | null;
   emptyState?: ReactNode;
+  emptyLabel?: string;
   loading?: boolean;
+  skeletonRows?: number;
   zebra?: boolean;
   className?: string;
-  /** 헤더가 sticky일 때 top offset (예: 어드민 상단바 높이) */
   stickyTop?: number;
 }
 
@@ -63,6 +48,20 @@ function priorityCls(priority?: 1 | 2 | 3) {
   return '';
 }
 
+function SkeletonRow({ colCount, hasAlert }: { colCount: number; hasAlert: boolean }) {
+  const widths = ['w-24', 'w-32', 'w-20', 'w-28', 'w-16', 'w-24', 'w-20', 'w-28'];
+  return (
+    <tr className="border-b border-slate-100">
+      {hasAlert && <td className="w-10 px-2"><div className="h-3 w-3 bg-slate-100 rounded-full mx-auto animate-pulse" /></td>}
+      {Array.from({ length: colCount }).map((_, i) => (
+        <td key={i} className="px-3 py-3.5">
+          <div className={`h-3.5 bg-slate-100 rounded animate-pulse ${widths[i % widths.length]}`} />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -70,19 +69,23 @@ export function DataTable<T>({
   onRowClick,
   alertCell,
   emptyState,
+  emptyLabel,
   loading = false,
+  skeletonRows = 8,
   zebra = false,
   className = '',
   stickyTop = 0,
 }: DataTableProps<T>) {
+  const colSpan = columns.length + (alertCell ? 1 : 0);
+
   return (
-    <div className={`relative overflow-x-auto rounded-lg border border-admin-border bg-admin-surface ${className}`}>
+    <div className={`relative overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)] ${className}`}>
       <table className="admin-data-table w-full border-collapse">
         <thead>
-          <tr className="bg-slate-50 border-b border-admin-border">
+          <tr className="border-b-2 border-slate-100">
             {alertCell && (
               <th
-                className="sticky z-10 bg-slate-50 w-10 px-2 py-3"
+                className="sticky z-10 bg-slate-50/80 backdrop-blur-sm w-10 px-2 py-3"
                 style={{ top: stickyTop }}
                 aria-label="알림"
               />
@@ -90,7 +93,7 @@ export function DataTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`sticky z-10 bg-slate-50 px-3 py-3 text-admin-xs font-semibold text-admin-textMuted uppercase tracking-wider ${ALIGN_CLS[col.align ?? 'left']} ${priorityCls(col.priority)} ${col.thClassName ?? ''}`}
+                className={`sticky z-10 bg-slate-50/80 backdrop-blur-sm px-3 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider ${ALIGN_CLS[col.align ?? 'left']} ${priorityCls(col.priority)} ${col.thClassName ?? ''}`}
                 style={{ top: stickyTop, width: col.width }}
               >
                 {col.header}
@@ -100,59 +103,53 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {loading && (
-            <tr>
-              <td
-                colSpan={columns.length + (alertCell ? 1 : 0)}
-                className="px-3 py-12 text-center text-admin-sm text-admin-textMuted"
-              >
-                불러오는 중...
-              </td>
-            </tr>
+            Array.from({ length: skeletonRows }).map((_, i) => (
+              <SkeletonRow key={i} colCount={columns.length} hasAlert={!!alertCell} />
+            ))
           )}
+
           {!loading && rows.length === 0 && (
             <tr>
-              <td
-                colSpan={columns.length + (alertCell ? 1 : 0)}
-                className="px-3 py-12 text-center text-admin-sm text-admin-textMuted"
-              >
-                {emptyState ?? '표시할 데이터가 없습니다'}
+              <td colSpan={colSpan} className="px-4 py-14 text-center">
+                {emptyState ?? (
+                  <div className="flex flex-col items-center gap-3">
+                    <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                    </svg>
+                    <p className="text-admin-sm font-medium text-slate-500">{emptyLabel ?? '표시할 데이터가 없습니다'}</p>
+                  </div>
+                )}
               </td>
             </tr>
           )}
-          {!loading &&
-            rows.map((row, index) => {
-              const alert = alertCell?.(row) ?? null;
-              const baseRowCls =
-                'border-b border-slate-100 transition-colors';
-              const zebraCls = zebra && index % 2 === 1 ? 'bg-slate-50/40' : 'bg-admin-surface';
-              const hoverCls = onRowClick
-                ? 'hover:bg-blue-50/40 cursor-pointer'
-                : 'hover:bg-slate-50/60';
-              return (
-                <tr
-                  key={getRowKey(row, index)}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`${baseRowCls} ${zebraCls} ${hoverCls}`}
-                >
-                  {alertCell && (
-                    <td className="w-10 px-2 text-center align-middle">
-                      {alert ? (
-                        <AlertIndicator level={alert.level} tooltip={alert.tooltip} />
-                      ) : null}
-                    </td>
-                  )}
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className={`px-3 align-middle text-admin-sm text-admin-text ${ALIGN_CLS[col.align ?? 'left']} ${priorityCls(col.priority)} ${col.tdClassName ?? ''}`}
-                      style={col.width ? { width: col.width } : undefined}
-                    >
-                      {col.cell(row, index)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
+
+          {!loading && rows.map((row, index) => {
+            const alert = alertCell?.(row) ?? null;
+            const zebraCls = zebra && index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white';
+            const hoverCls = onRowClick ? 'hover:bg-blue-50/40 cursor-pointer active:bg-blue-50' : 'hover:bg-slate-50/60';
+            return (
+              <tr
+                key={getRowKey(row, index)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={`border-b border-slate-100 last:border-0 transition-colors ${zebraCls} ${hoverCls}`}
+              >
+                {alertCell && (
+                  <td className="w-10 px-2 text-center align-middle py-3">
+                    {alert ? <AlertIndicator level={alert.level} tooltip={alert.tooltip} /> : null}
+                  </td>
+                )}
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={`px-3 py-3 align-middle text-admin-sm text-slate-700 ${ALIGN_CLS[col.align ?? 'left']} ${priorityCls(col.priority)} ${col.tdClassName ?? ''}`}
+                    style={col.width ? { width: col.width } : undefined}
+                  >
+                    {col.cell(row, index)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

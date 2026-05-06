@@ -174,10 +174,10 @@ export default function TravelFitnessCard({
 
   return (
     <section className="px-4 mt-4">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {/* 헤더 — 한 줄 컴팩트 */}
         <div className="flex items-center justify-between px-5 pt-4 pb-2 gap-2">
-          <h3 className="text-base font-extrabold text-gray-900 truncate">
+          <h3 className="text-base font-extrabold text-slate-900 truncate">
             🌤️ {MONTHS[selectedMonth - 1]} 여행 적합도 — {displayCity}
           </h3>
           {!isRepMonth && (
@@ -195,15 +195,15 @@ export default function TravelFitnessCard({
           {/* ① 날씨 적합도 */}
           <div className="flex items-end gap-3">
             <div className="flex items-baseline gap-1 w-24 flex-shrink-0">
-              <span className="text-xs text-gray-400 mr-1">⛅</span>
+              <span className="text-xs text-slate-400 mr-1">⛅</span>
               <span className={`text-[28px] font-black leading-none ${scoreTextColor(sel.score)}`}>{sel.score}</span>
             </div>
             <div className="flex-1 pb-0.5 min-w-0">
-              <p className="text-[11px] text-gray-500 font-medium">날씨 적합도</p>
+              <p className="text-[11px] text-slate-500 font-medium">날씨 적합도</p>
               <p className={`text-sm font-bold ${scoreTextColor(sel.score)} leading-snug`}>
                 {sel.label}
               </p>
-              <p className="text-[12px] text-gray-500 leading-snug mt-0.5 break-keep">
+              <p className="text-micro text-slate-500 leading-snug mt-0.5 break-keep">
                 {climateCaption(sel.score, sel.key_concern)}
               </p>
             </div>
@@ -211,17 +211,17 @@ export default function TravelFitnessCard({
 
           {/* ② 한국인 인기도 */}
           {sig && (
-            <div className="flex items-end gap-3 pt-2.5 border-t border-gray-50">
+            <div className="flex items-end gap-3 pt-2.5 border-t border-slate-50">
               <div className="flex items-baseline gap-1 w-24 flex-shrink-0">
-                <span className="text-xs text-gray-400 mr-1">🇰🇷</span>
+                <span className="text-xs text-slate-400 mr-1">🇰🇷</span>
                 <span className={`text-[28px] font-black leading-none ${scoreTextColor(sig.popularity_score)}`}>{sig.popularity_score}</span>
               </div>
               <div className="flex-1 pb-0.5 min-w-0">
-                <p className="text-[11px] text-gray-500 font-medium">한국인 인기도</p>
+                <p className="text-[11px] text-slate-500 font-medium">한국인 인기도</p>
                 <p className={`text-sm font-bold ${scoreTextColor(sig.popularity_score)} leading-snug`}>
                   {sig.label}
                 </p>
-                <p className="text-[12px] text-gray-500 leading-snug mt-0.5 break-keep">
+                <p className="text-micro text-slate-500 leading-snug mt-0.5 break-keep">
                   {popularityCaption(sig.popularity_score)}
                 </p>
               </div>
@@ -231,7 +231,7 @@ export default function TravelFitnessCard({
           {/* 충돌 멘트 — climate 낮은데 인기 있음 */}
           {sig && sel.score < 45 && sig.popularity_score >= 60 && (
             <div className="bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 mt-1">
-              <p className="text-[12px] text-violet-700 font-medium">
+              <p className="text-micro text-violet-700 font-medium">
                 💬 날씨는 험해도 한국인이 많이 찾는 시즌이에요{sig.badge ? ` · ${sig.badge}` : ''}
               </p>
             </div>
@@ -241,7 +241,7 @@ export default function TravelFitnessCard({
         </div>
 
         {/* 핵심 메트릭 4개 — 여행자 체감 언어 */}
-        <div className="px-5 py-3 border-t border-gray-50 space-y-2">
+        <div className="px-5 py-3 border-t border-slate-50 space-y-2">
           <MetricLine icon="🌡️" label="기온" value={`${Math.round(norm.temp_mean)}° (${Math.round(norm.temp_min)}~${Math.round(norm.temp_max)}°)`} copy={tempCopy(norm.temp_mean)} />
           <MetricLine icon="☔" label="강우" value={`${Math.round(norm.rain_days)}일 / 월`} copy={rainCopy(norm.rain_days)} />
           <MetricLine icon="💧" label="습도" value={`${Math.round(norm.humidity)}%`} copy={humidityCopy(norm.humidity)} />
@@ -249,11 +249,11 @@ export default function TravelFitnessCard({
         </div>
 
         {/* 12개월 mini bar */}
-        <div className="px-5 pt-3 pb-4 border-t border-gray-50">
-          <p className="text-[11px] text-gray-500 mb-2 font-medium">
+        <div className="px-5 pt-3 pb-4 border-t border-slate-50">
+          <p className="text-[11px] text-slate-500 mb-2 font-medium">
             연중 추이 (탭하여 월 변경)
             {seasonalSignals && (
-              <span className="text-gray-400 font-normal"> · ⛅날씨 / 한국인 인기</span>
+              <span className="text-slate-400 font-normal"> · ⛅날씨 / 한국인 인기</span>
             )}
           </p>
           <div className="flex items-end gap-1 h-16">
@@ -288,7 +288,7 @@ export default function TravelFitnessCard({
                     )}
                   </div>
                   <span className={`text-[10px] font-medium ${
-                    isSel ? 'text-violet-600' : isRep ? 'text-gray-700' : 'text-gray-400'
+                    isSel ? 'text-violet-600' : isRep ? 'text-slate-700' : 'text-slate-400'
                   }`}>
                     {f.month}월
                   </span>
@@ -300,8 +300,8 @@ export default function TravelFitnessCard({
 
           {/* 한 줄 자동 요약 */}
           {summary && (
-            <div className="mt-3 bg-[#EBF3FE] rounded-lg px-3 py-2.5">
-              <p className="text-[12px] text-[#1B64DA] font-semibold leading-snug">
+            <div className="mt-3 bg-brand-light rounded-lg px-3 py-2.5">
+              <p className="text-micro text-[#1B64DA] font-semibold leading-snug">
                 💡 {summary}
               </p>
             </div>
@@ -314,7 +314,7 @@ export default function TravelFitnessCard({
             {seasonalSignals && <Legend color="bg-violet-500" label="한국인 인기" />}
           </div>
 
-          <p className="text-[10px] text-gray-400 mt-2">
+          <p className="text-[10px] text-slate-400 mt-2">
             ※ 날씨: Open-Meteo 10년 평균 / 한국인 인기도: Naver DataLab + Wikipedia 트래픽 (자동·매월 갱신)
           </p>
         </div>
@@ -328,11 +328,11 @@ function MetricLine({ icon, label, value, copy }: { icon: string; label: string;
     <div className="flex items-start gap-3">
       <div className="flex items-center gap-1.5 w-20 flex-shrink-0 pt-0.5">
         <span className="text-base">{icon}</span>
-        <span className="text-[11px] text-gray-400 font-medium">{label}</span>
+        <span className="text-[11px] text-slate-400 font-medium">{label}</span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-gray-900 tabular-nums leading-snug">{value}</p>
-        {copy && <p className="text-[12px] text-gray-500 leading-snug break-keep">{copy}</p>}
+        <p className="text-sm font-bold text-slate-900 tabular-nums leading-snug">{value}</p>
+        {copy && <p className="text-micro text-slate-500 leading-snug break-keep">{copy}</p>}
       </div>
     </div>
   );
@@ -340,7 +340,7 @@ function MetricLine({ icon, label, value, copy }: { icon: string; label: string;
 
 function Legend({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+    <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
       <span className={`w-2 h-2 rounded-sm ${color}`} />{label}
     </span>
   );

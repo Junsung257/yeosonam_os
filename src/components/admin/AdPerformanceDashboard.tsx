@@ -122,12 +122,12 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
         {/* 헤더 */}
         <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-[16px] font-semibold text-slate-800">Ad-Brain 성과 대시보드</h2>
+            <h2 className="text-admin-lg font-semibold text-slate-800">Ad-Brain 성과 대시보드</h2>
             <p className="text-[11px] text-slate-500 mt-0.5">Meta CSV 드롭 → 자동 분석 → 다음 기획안에 RAG 반영</p>
           </div>
           <div className="flex items-center gap-2">
             {rows.length > 0 && (
-              <button onClick={handleClear} className="px-3 py-1.5 text-[12px] text-red-500 border border-red-200 rounded hover:bg-red-50 transition">
+              <button onClick={handleClear} className="px-3 py-1.5 text-admin-xs text-red-500 border border-red-200 rounded hover:bg-red-50 transition">
                 초기화
               </button>
             )}
@@ -158,14 +158,14 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
               dragActive ? 'border-[#005d90] bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-slate-400'
             }`}
           >
-            <p className="text-[14px] font-medium text-slate-700 mb-1">
+            <p className="text-admin-base font-medium text-slate-700 mb-1">
               {importing ? '파싱 중...' : 'Meta Ads CSV 파일을 드래그하거나 클릭'}
             </p>
             <p className="text-[11px] text-slate-400">캠페인 이름에 YSN-XXX-XXXX 형식의 Tracking ID가 포함되어야 합니다</p>
           </div>
 
           {importResult && (
-            <div className={`px-3 py-2 rounded text-[12px] ${
+            <div className={`px-3 py-2 rounded text-admin-xs ${
               importResult.includes('완료') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
               'bg-amber-50 text-amber-700 border border-amber-200'
             }`}>
@@ -198,7 +198,7 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
               {/* Winner 요약 */}
               {winners.length > 0 && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                  <p className="text-[12px] font-semibold text-emerald-700 mb-1">Winner 소재 {winners.length}개</p>
+                  <p className="text-admin-xs font-semibold text-emerald-700 mb-1">Winner 소재 {winners.length}개</p>
                   <div className="flex flex-wrap gap-1.5">
                     {winners.slice(0, 5).map(w => (
                       <span key={w.creative_id} className="px-2 py-0.5 bg-white border border-emerald-300 rounded text-[11px] text-emerald-700">
@@ -211,7 +211,7 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
 
               {/* ── 차트 ──────────────────────────────── */}
               <div className="bg-white border border-slate-200 rounded-lg p-4">
-                <h3 className="text-[13px] font-semibold text-slate-800 mb-3">CTR 비교 (상위 10개)</h3>
+                <h3 className="text-admin-sm font-semibold text-slate-800 mb-3">CTR 비교 (상위 10개)</h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
@@ -229,11 +229,11 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
               {/* ── 테이블 ────────────────────────────── */}
               <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
                 <div className="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
-                  <h3 className="text-[13px] font-semibold text-slate-800">소재별 성과</h3>
+                  <h3 className="text-admin-sm font-semibold text-slate-800">소재별 성과</h3>
                   <div className="flex gap-1">
                     {(['ctr', 'conversions', 'spend'] as const).map(s => (
                       <button key={s} onClick={() => setSortBy(s)}
-                        className={`px-2 py-0.5 text-[10px] rounded transition ${sortBy === s ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                        className={`px-2 py-0.5 text-[10px] rounded transition ${sortBy === s ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                         {s === 'ctr' ? 'CTR순' : s === 'conversions' ? '전환순' : '지출순'}
                       </button>
                     ))}
@@ -255,13 +255,13 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
                     <tbody>
                       {sorted.map(row => (
                         <tr key={row.creative_id} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="text-[12px] text-slate-800 py-1.5 px-3 font-mono">{row.creative_id}</td>
-                          <td className="text-[12px] text-slate-600 py-1.5 px-3">{row.destination}</td>
-                          <td className="text-[12px] text-slate-600 py-1.5 px-3">{row.concept}</td>
-                          <td className={`text-[12px] py-1.5 px-3 text-center font-medium ${row.ctr >= 3 ? 'text-emerald-600' : 'text-slate-700'}`}>{row.ctr}%</td>
-                          <td className="text-[12px] text-slate-700 py-1.5 px-3 text-center">{row.conversions}</td>
-                          <td className="text-[12px] text-slate-700 py-1.5 px-3 text-right">₩{row.spend.toLocaleString()}</td>
-                          <td className="text-[12px] py-1.5 px-3 text-center">
+                          <td className="text-admin-xs text-slate-800 py-1.5 px-3 font-mono">{row.creative_id}</td>
+                          <td className="text-admin-xs text-slate-600 py-1.5 px-3">{row.destination}</td>
+                          <td className="text-admin-xs text-slate-600 py-1.5 px-3">{row.concept}</td>
+                          <td className={`text-admin-xs py-1.5 px-3 text-center font-medium ${row.ctr >= 3 ? 'text-emerald-600' : 'text-slate-700'}`}>{row.ctr}%</td>
+                          <td className="text-admin-xs text-slate-700 py-1.5 px-3 text-center">{row.conversions}</td>
+                          <td className="text-admin-xs text-slate-700 py-1.5 px-3 text-right">₩{row.spend.toLocaleString()}</td>
+                          <td className="text-admin-xs py-1.5 px-3 text-center">
                             {row.isWinner ? (
                               <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] rounded font-medium">Winner</span>
                             ) : (
@@ -279,7 +279,7 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
 
           {rows.length === 0 && !importResult && (
             <div className="text-center py-12 text-slate-400">
-              <p className="text-[14px] mb-1">성과 데이터가 없습니다</p>
+              <p className="text-admin-base mb-1">성과 데이터가 없습니다</p>
               <p className="text-[11px]">Meta Ads Manager에서 CSV를 다운로드하여 위에 드롭하세요</p>
             </div>
           )}

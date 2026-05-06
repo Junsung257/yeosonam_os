@@ -61,7 +61,7 @@ export default function ConsentBanner() {
       <button
         onClick={() => setOpen(true)}
         aria-label="쿠키 동의 설정"
-        className="fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-gray-200 shadow-md text-gray-500 hover:text-gray-900 hover:border-gray-300 transition-colors flex items-center justify-center text-sm"
+        className="fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-slate-200 shadow-md text-slate-500 hover:text-slate-900 hover:border-slate-300 transition-colors flex items-center justify-center text-sm"
       >
         🍪
       </button>
@@ -81,22 +81,22 @@ export default function ConsentBanner() {
       {/* 배너 */}
       <div className="fixed bottom-0 inset-x-0 z-[70] flex justify-center px-3 pb-3 sm:pb-4">
         <div
-          className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
+          className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
           <div className="px-5 py-4">
             <div className="flex items-start gap-3">
               <span className="text-2xl">🍪</span>
               <div className="flex-1 min-w-0">
-                <h2 className="font-bold text-gray-900 text-sm">쿠키 사용 동의 (PIPA)</h2>
-                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                <h2 className="font-bold text-slate-900 text-sm">쿠키 사용 동의 (PIPA)</h2>
+                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                   더 나은 서비스를 위해 쿠키를 사용합니다. 마케팅 쿠키 동의 시 추천 링크를 30일간 추적하여 정상적인 어필리에이트 정산이 가능합니다. 미동의 시에도 핵심 기능은 정상 작동합니다.
                 </p>
               </div>
             </div>
 
             {open && (
-              <div className="mt-4 space-y-2.5 border-t border-gray-100 pt-4">
+              <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-4">
                 {/* 필수 */}
                 <ConsentRow
                   title="필수"
@@ -126,13 +126,13 @@ export default function ConsentBanner() {
                 <>
                   <button
                     onClick={() => setOpen(true)}
-                    className="px-3 py-2 text-xs text-gray-600 hover:text-gray-900 font-medium"
+                    className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
                   >
                     상세 설정
                   </button>
                   <button
                     onClick={rejectAll}
-                    className="px-3 py-2 text-xs text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium"
+                    className="px-3 py-2 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium"
                   >
                     필수만 허용
                   </button>
@@ -147,7 +147,7 @@ export default function ConsentBanner() {
                 <>
                   <button
                     onClick={() => setOpen(false)}
-                    className="px-3 py-2 text-xs text-gray-600 hover:text-gray-900 font-medium"
+                    className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
                   >
                     취소
                   </button>
@@ -188,7 +188,7 @@ function ConsentRow({
         disabled={disabled}
         aria-pressed={checked}
         className={`mt-0.5 shrink-0 w-9 h-5 rounded-full transition-colors relative ${
-          disabled ? 'bg-gray-300' : checked ? 'bg-blue-600' : 'bg-gray-200'
+          disabled ? 'bg-slate-300' : checked ? 'bg-blue-600' : 'bg-slate-200'
         }`}
       >
         <span
@@ -198,11 +198,11 @@ function ConsentRow({
         />
       </button>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-gray-800">
+        <p className="text-xs font-bold text-slate-800">
           {title}
-          {disabled && <span className="ml-1.5 text-[10px] text-gray-400 font-normal">필수</span>}
+          {disabled && <span className="ml-1.5 text-[10px] text-slate-400 font-normal">필수</span>}
         </p>
-        <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{desc}</p>
+        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
       </div>
     </div>
   );

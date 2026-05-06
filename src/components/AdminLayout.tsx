@@ -127,6 +127,10 @@ const navGroups: NavGroup[] = [
       { href: '/admin/marketing/card-news',    label: '카드뉴스',     icon: Newspaper },
       { href: '/admin/marketing/auto-publish', label: '자동 발행',    icon: Zap },
       { href: '/admin/marketing/published',    label: '발행 완료',    icon: Send },
+      { divider: true as const, label: 'TMP 파이프라인' },
+      { href: '/admin/tmp-pipeline',           label: 'TMP 파이프라인', icon: GitBranch },
+      { href: '/admin/band-import',            label: '밴드 임포트',  icon: FilePlus2 },
+      { href: '/admin/tenant-tokens',          label: 'API 토큰 관리', icon: SlidersHorizontal },
       { divider: true as const, label: '콘텐츠' },
       { href: '/admin/content-hub',            label: '콘텐츠 허브',  icon: FolderKanban },
       { href: '/admin/content-queue',          label: '콘텐츠 검수',  icon: ListChecks },
@@ -167,9 +171,10 @@ const navGroups: NavGroup[] = [
       { href: '/admin/scoring',        label: '점수 정책',     icon: Star },
       { href: '/admin/scoring/funnel', label: '추천 깔때기',   icon: TrendingUp },
       { href: '/admin/scoring/trends', label: '순위 변동',     icon: Activity },
-      { href: '/admin/alerts',         label: '운영 알림',     icon: AlertTriangle },
-      { href: '/admin/gdpr',           label: '개인정보 삭제', icon: AlertTriangle },
-      { href: '/admin/blog/system',    label: '블로그 시스템', icon: Settings },
+      { href: '/admin/alerts',                     label: '운영 알림',     icon: AlertTriangle },
+      { href: '/admin/gdpr',                       label: '개인정보 삭제', icon: AlertTriangle },
+      { href: '/admin/blog/system',                label: '블로그 시스템', icon: Settings },
+      { href: '/admin/settings/integrations',      label: '외부 플랫폼 연동', icon: Settings },
     ],
   },
 ];
@@ -242,12 +247,12 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge, slim }: Sid
         href={item.href}
         title={item.label}
         className={`relative flex items-center justify-center h-9 w-9 mx-auto rounded-[10px] transition-colors ${
-          active ? 'bg-[#EBF3FE] text-[#3182F6]' : 'text-[#8B95A1] hover:bg-[#F9FAFB] hover:text-[#191F28]'
+          active ? 'bg-brand-light text-brand' : 'text-text-secondary hover:bg-admin-bg hover:text-text-primary'
         }`}
       >
         <Icon size={16} strokeWidth={2.1} />
         {badge != null && badge > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-[#F04452] text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
+          <span className="absolute -top-0.5 -right-0.5 bg-danger text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
             {badge > 9 ? '9+' : badge}
           </span>
         )}
@@ -262,14 +267,14 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge, slim }: Sid
         title={item.label}
         className={`flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-admin-sm transition-colors relative ${
           active
-            ? 'bg-[#EBF3FE] text-[#3182F6] font-semibold'
-            : 'text-[#8B95A1] hover:bg-[#F9FAFB] hover:text-[#191F28]'
+            ? 'bg-brand-light text-brand font-semibold'
+            : 'text-text-secondary hover:bg-admin-bg hover:text-text-primary'
         }`}
       >
         <Icon size={15} strokeWidth={2.1} className="shrink-0" />
         <span className="truncate">{item.label}</span>
         {badge != null && badge > 0 && (
-          <span className="ml-auto bg-[#F04452] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+          <span className="ml-auto bg-danger text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
             {badge}
           </span>
         )}
@@ -284,8 +289,8 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge, slim }: Sid
         title={isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
         className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded transition ${
           isFavorite
-            ? 'text-[#F59E0B] opacity-90'
-            : 'text-[#8B95A1]/30 opacity-0 group-hover:opacity-100 hover:text-[#F59E0B]'
+            ? 'text-warning opacity-90'
+            : 'text-text-secondary/30 opacity-0 group-hover:opacity-100 hover:text-warning'
         }`}
       >
         {isFavorite ? <Star size={12} fill="currentColor" /> : <StarOff size={12} />}
@@ -437,18 +442,18 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-admin-bg flex" style={{ backgroundColor: '#F9FAFB' }}>
       {/* ── 사이드바 ─────────────────────────────────── */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-white border-r border-[#F2F4F6] z-40 transition-all duration-200 flex flex-col overflow-hidden ${
+        className={`fixed top-0 left-0 h-full bg-white border-r border-admin-border z-40 transition-all duration-200 flex flex-col overflow-hidden ${
           sidebarMode === 'slim' ? 'w-14' : 'w-52'
         }`}
       >
         {/* 로고 */}
-        <div className={`py-4 flex items-center border-b border-[#F2F4F6] ${sidebarMode === 'slim' ? 'justify-center px-2' : 'px-4 gap-2'}`}>
+        <div className={`py-4 flex items-center border-b border-admin-border ${sidebarMode === 'slim' ? 'justify-center px-2' : 'px-4 gap-2'}`}>
           {sidebarMode === 'slim' ? (
-            <span className="text-[#3182F6] font-bold text-sm leading-none">OS</span>
+            <span className="text-brand font-bold text-sm leading-none">OS</span>
           ) : (
             <>
-              <span className="text-admin-md font-bold tracking-tight text-[#3182F6]">여소남 OS</span>
-              <span className="text-admin-xs text-[#8B95A1] font-medium">ERP</span>
+              <span className="text-admin-md font-bold tracking-tight text-brand">여소남 OS</span>
+              <span className="text-admin-xs text-text-secondary font-medium">ERP</span>
             </>
           )}
         </div>
@@ -457,8 +462,8 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         <nav className={`flex-1 overflow-y-auto py-3 space-y-1 ${sidebarMode === 'slim' ? 'px-1' : 'px-2'}`}>
           {/* 즐겨찾기 — slim 모드에서 숨김 */}
           {sidebarMode === 'full' && favoriteItems.length > 0 && (
-            <div className="pb-2 mb-2 border-b border-[#F2F4F6]">
-              <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-[#F59E0B] uppercase tracking-[0.08em]">
+            <div className="pb-2 mb-2 border-b border-admin-border">
+              <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-warning uppercase tracking-[0.08em]">
                 <Star size={11} fill="currentColor" />
                 즐겨찾기
               </div>
@@ -484,10 +489,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             return (
               <div
                 key={group.title}
-                className={gi > 0 ? 'pt-1 mt-1 border-t border-[#F2F4F6]' : ''}
+                className={gi > 0 ? 'pt-1 mt-1 border-t border-admin-border' : ''}
               >
                 {!slim && (
-                  <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-[#8B95A1] uppercase tracking-[0.08em]">
+                  <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-text-secondary uppercase tracking-[0.08em]">
                     <GroupIcon size={11} />
                     {group.title}
                   </div>
@@ -496,7 +501,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                   {group.items.map((item, idx) =>
                     'divider' in item ? (
                       slim ? null : (
-                        <div key={`div-${idx}`} className="px-2 pt-2.5 pb-0.5 text-[10px] font-semibold text-[#C5CDD6] uppercase tracking-[0.06em]">
+                        <div key={`div-${idx}`} className="px-2 pt-2.5 pb-0.5 text-[10px] font-semibold text-slate-300 uppercase tracking-[0.06em]">
                           {item.label}
                         </div>
                       )
@@ -520,23 +525,23 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* 하단 — Density Toggle + 로그아웃 */}
         {sidebarMode === 'slim' ? (
-          <div className="border-t border-[#F2F4F6] px-1 py-3 flex flex-col items-center gap-1">
+          <div className="border-t border-admin-border px-1 py-3 flex flex-col items-center gap-1">
             <button
               onClick={handleLogout}
               title="로그아웃"
-              className="p-2 rounded-[8px] text-[#8B95A1] hover:text-[#191F28] hover:bg-[#F9FAFB] transition-colors"
+              className="p-2 rounded-[8px] text-text-secondary hover:text-text-primary hover:bg-admin-bg transition-colors"
             >
               <LogOut size={16} />
             </button>
           </div>
         ) : (
-          <div className="px-3 py-3 border-t border-[#F2F4F6] space-y-1.5">
+          <div className="px-3 py-3 border-t border-admin-border space-y-1.5">
             <div className="px-1">
-              <DensityToggle className="!text-[#8B95A1] hover:!text-[#191F28] hover:!bg-[#F9FAFB] w-full justify-center" />
+              <DensityToggle className="!text-text-secondary hover:!text-text-primary hover:!bg-admin-bg w-full justify-center" />
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-admin-sm text-[#8B95A1] hover:text-[#191F28] hover:bg-[#F9FAFB] transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-admin-sm text-text-secondary hover:text-text-primary hover:bg-admin-bg transition-colors"
             >
               <LogOut size={14} />
               로그아웃
@@ -552,16 +557,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         }`}
       >
         {/* 상단바 */}
-        <header className="sticky top-0 z-30 bg-white border-b border-[#F2F4F6] px-4 py-2.5 flex items-center justify-between">
+        <header className="sticky top-0 z-30 bg-white border-b border-admin-border px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarMode(m => m === 'full' ? 'slim' : 'full')}
-              className="p-1.5 rounded-[8px] hover:bg-[#F2F4F6] text-[#8B95A1] hover:text-[#191F28] transition-colors"
+              className="p-1.5 rounded-[8px] hover:bg-bg-section text-text-secondary hover:text-text-primary transition-colors"
               aria-label="사이드바 토글"
             >
               <MenuIcon size={18} />
             </button>
-            <h1 className="text-admin-lg font-bold tracking-tight text-[#191F28]">
+            <h1 className="text-admin-lg font-bold tracking-tight text-text-primary">
               {currentPage}
             </h1>
           </div>

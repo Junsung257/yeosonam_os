@@ -27,9 +27,9 @@ interface Props {
 export function CoBrandFooter({ affiliate, variant = 'full', className = '' }: Props) {
   if (variant === 'compact') {
     return (
-      <div className={`text-[11px] text-gray-500 flex items-center gap-2 ${className}`}>
+      <div className={`text-[11px] text-slate-500 flex items-center gap-2 ${className}`}>
         <span className="font-medium">{affiliate.affiliate_name}</span>
-        <span className="text-gray-300">×</span>
+        <span className="text-slate-300">×</span>
         <span className="font-bold text-blue-600">{affiliate.brand_name}</span>
         <span className="ml-auto text-amber-600 font-medium">{affiliate.ad_disclosure}</span>
       </div>
@@ -37,7 +37,7 @@ export function CoBrandFooter({ affiliate, variant = 'full', className = '' }: P
   }
 
   return (
-    <div className={`border-t border-gray-200 mt-6 pt-4 space-y-3 ${className}`}>
+    <div className={`border-t border-slate-200 mt-6 pt-4 space-y-3 ${className}`}>
       {/* 광고 표시 (공정위 의무) */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[11px] text-amber-800 font-medium">
         ⓘ {affiliate.ad_disclosure}
@@ -49,7 +49,7 @@ export function CoBrandFooter({ affiliate, variant = 'full', className = '' }: P
           <img
             src={affiliate.affiliate_logo_url}
             alt={affiliate.affiliate_name}
-            className="w-10 h-10 rounded-full object-cover bg-gray-100"
+            className="w-10 h-10 rounded-full object-cover bg-slate-100"
           />
         ) : (
           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
@@ -57,10 +57,10 @@ export function CoBrandFooter({ affiliate, variant = 'full', className = '' }: P
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-500">발행</p>
-          <p className="text-sm font-bold text-gray-900 truncate">
+          <p className="text-xs text-slate-500">발행</p>
+          <p className="text-sm font-bold text-slate-900 truncate">
             {affiliate.affiliate_name}
-            <span className="text-gray-300 mx-2">×</span>
+            <span className="text-slate-300 mx-2">×</span>
             <span className="text-blue-600">{affiliate.brand_name}</span>
           </p>
           {affiliate.affiliate_channel_url && (
@@ -68,7 +68,7 @@ export function CoBrandFooter({ affiliate, variant = 'full', className = '' }: P
               href={affiliate.affiliate_channel_url}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="text-[11px] text-gray-400 hover:text-blue-600 truncate block"
+              className="text-[11px] text-slate-400 hover:text-blue-600 truncate block"
             >
               {affiliate.affiliate_channel_url}
             </a>

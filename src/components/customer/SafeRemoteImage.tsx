@@ -50,7 +50,7 @@ export function SafeMagazineThumb({ url, title, placeholderClassName }: Magazine
       <div
         className={
           placeholderClassName ||
-          'aspect-[16/9] bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-3xl'
+          'aspect-[16/9] bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center text-3xl'
         }
       >
         📖

@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 // html-to-image, jszip: 내보내기 시점에만 동적 로드
 import MetaAutoPublisher from './MetaAutoPublisher';
+import { useToast } from '@/components/ui/Toast';
 
 // ── 타입 ─────────────────────────────────────────────────
 interface SlideData {
@@ -53,10 +54,9 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
   const [parseError, setParseError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
-  const [toast, setToast] = useState('');
   const captureRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
+  const { toast: _t } = useToast();
+  const showToast = (msg: string) => _t(msg, /실패/.test(msg) ? 'error' : 'success');
 
   // ── JSON 파싱 + Pexels 자동 매핑 ──────────────────────
   const handleParse = useCallback(async () => {
@@ -187,7 +187,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition p-1">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <h2 className="text-[15px] font-semibold text-slate-800">카드뉴스 스튜디오</h2>
+          <h2 className="text-admin-md font-semibold text-slate-800">카드뉴스 스튜디오</h2>
           {slides.length > 0 && (
             <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{slides.length}장</span>
           )}
@@ -198,19 +198,19 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
               <button
                 onClick={handleExportZip}
                 disabled={exporting}
-                className="px-4 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
+                className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
               >
                 {exporting ? '생성 중...' : `ZIP 다운로드`}
               </button>
               <button
                 onClick={() => setMetaOpen(true)}
-                className="px-4 py-1.5 bg-emerald-600 text-white text-[13px] rounded hover:bg-emerald-700 transition font-medium"
+                className="px-4 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 transition font-medium"
               >
                 Meta 라이브
               </button>
             </>
           )}
-          <button onClick={onClose} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[13px] rounded hover:bg-slate-50 transition">
+          <button onClick={onClose} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 transition">
             닫기
           </button>
         </div>
@@ -238,7 +238,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
             <button
               onClick={handleParse}
               disabled={parsing || !jsonInput.trim()}
-              className="w-full py-2 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
+              className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
             >
               {parsing ? 'Pexels 이미지 매핑 중...' : '렌더링 시작'}
             </button>
@@ -284,7 +284,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
             </div>
           ) : (
             <div className="text-center text-slate-400">
-              <p className="text-[14px] mb-1">JSON을 입력하고 렌더링을 시작하세요</p>
+              <p className="text-admin-base mb-1">JSON을 입력하고 렌더링을 시작하세요</p>
               <p className="text-[11px]">Phase 1에서 복사한 AI 출력을 좌측에 붙여넣으세요</p>
             </div>
           )}
@@ -308,7 +308,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
                 <div
                   className="w-full aspect-square rounded overflow-hidden mb-1"
                   style={{
-                    background: slide.bgUrl ? `url(${slide.bgUrl}) center/cover` : 'linear-gradient(135deg, #001f3f, #005d90)',
+                    background: slide.bgUrl ? `url(${slide.bgUrl}) center/cover` : 'linear-gradient(135deg, #1e3a8a, #2563eb)',
                   }}
                 >
                   <div className="w-full h-full bg-gradient-to-t from-black/70 to-transparent flex items-end p-1">
@@ -346,12 +346,6 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
         />
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-[100] bg-[#001f3f] text-white px-5 py-3 rounded-lg text-[13px] shadow-lg">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }
@@ -376,7 +370,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
       style={{
         width: '1080px',
         height: '1080px',
-        background: slide.bgUrl ? undefined : 'linear-gradient(135deg, #001f3f, #005d90)',
+        background: slide.bgUrl ? undefined : 'linear-gradient(135deg, #1e3a8a, #2563eb)',
         fontFamily: 'Pretendard, sans-serif',
       }}
     >

@@ -30,29 +30,29 @@ export default function CategoryIcons({ className = '' }: Props) {
   const pathname = usePathname();
 
   return (
-    <div className={`px-4 py-4 md:py-5 ${className}`}>
+    <div className={`py-3 md:py-4 ${className}`}>
       <div className="max-w-[1024px] mx-auto">
-        <div className="grid grid-cols-4 md:grid-cols-8 gap-x-1 gap-y-4">
+        <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory scrollbar-hide px-4 md:px-0 md:justify-center">
           {CATEGORIES.map(cat => {
             const active = isLinkActive(cat.href, pathname);
             return (
               <Link
                 key={cat.label}
                 href={cat.href}
-                className="flex flex-col items-center gap-2 group"
+                className="flex flex-col items-center gap-1.5 group shrink-0 snap-start w-[72px] card-touch"
               >
                 <div
-                  className={`w-[60px] h-[60px] rounded-[16px] flex items-center justify-center text-[28px] transition-all
+                  className={`w-[56px] h-[56px] rounded-[16px] flex items-center justify-center text-[26px] transition-all
                     ${active
-                      ? 'bg-[#EBF3FE] shadow-[0_0_0_2px_#3182F6]'
-                      : 'bg-[#F2F4F6] group-hover:bg-[#EBF3FE]'
+                      ? 'bg-brand-light shadow-[0_0_0_2px_#3182F6]'
+                      : 'bg-bg-section group-hover:bg-brand-light'
                     }`}
                 >
                   {cat.icon}
                 </div>
                 <span
-                  className={`text-[13px] md:text-[14px] font-medium tracking-[-0.01em] text-center leading-tight
-                    ${active ? 'text-[#3182F6]' : 'text-[#191F28] group-hover:text-[#3182F6]'}`}
+                  className={`text-[12px] font-medium tracking-[-0.01em] text-center leading-tight whitespace-nowrap
+                    ${active ? 'text-brand' : 'text-text-primary group-hover:text-brand'}`}
                 >
                   {cat.label}
                 </span>

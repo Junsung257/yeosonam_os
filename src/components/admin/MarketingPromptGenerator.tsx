@@ -221,7 +221,7 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
         {/* 헤더 */}
         <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-[16px] font-semibold text-slate-800">마케팅 프롬프트 생성기</h2>
+            <h2 className="text-admin-lg font-semibold text-slate-800">마케팅 프롬프트 생성기</h2>
             <p className="text-[11px] text-slate-500 mt-0.5">상품 데이터 → AI 지시서 자동 조립</p>
           </div>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 transition">
@@ -232,11 +232,11 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
         {/* 상품 요약 카드 */}
         <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#001f3f] rounded-lg flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shrink-0">
               AD
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-semibold text-slate-800 truncate">{title}</p>
+              <p className="text-admin-base font-semibold text-slate-800 truncate">{title}</p>
               <div className="flex gap-2 mt-0.5">
                 <span className="text-[11px] text-slate-500">{dest}</span>
                 <span className="text-[11px] text-slate-400">|</span>
@@ -271,7 +271,7 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
           <textarea
             readOnly
             value={prompt}
-            className="w-full h-[calc(100%-2rem)] bg-slate-50 border border-slate-200 rounded-lg p-4 text-[12px] text-slate-700 font-mono leading-relaxed resize-none focus:ring-1 focus:ring-[#005d90] focus:border-[#005d90]"
+            className="w-full h-[calc(100%-2rem)] bg-slate-50 border border-slate-200 rounded-lg p-4 text-admin-xs text-slate-700 font-mono leading-relaxed resize-none focus:ring-1 focus:ring-[#005d90] focus:border-[#005d90]"
           />
         </div>
 
@@ -283,16 +283,16 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] rounded hover:bg-slate-50 transition"
+              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 transition"
             >
               닫기
             </button>
             <button
               onClick={handleCopy}
-              className={`px-5 py-2 text-[13px] rounded font-medium transition ${
+              className={`px-5 py-2 text-admin-sm rounded font-medium transition ${
                 copied
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-[#001f3f] text-white hover:bg-blue-900'
+                  : 'bg-blue-600 text-white hover:bg-blue-900'
               }`}
             >
               {copied ? '복사 완료' : '클립보드 복사'}

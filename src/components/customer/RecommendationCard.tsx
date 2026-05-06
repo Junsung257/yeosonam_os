@@ -184,24 +184,24 @@ export default function RecommendationCard({
       <div className={`rounded-2xl overflow-hidden border ${
         isWinner
           ? 'bg-gradient-to-br from-emerald-50 to-lime-50/40 border-emerald-200 shadow-sm'
-          : 'bg-white border-gray-100 shadow-sm'
+          : 'bg-white border-slate-100 shadow-sm'
       }`}>
         {/* ① Authority — 여소남 픽 인장 + 순위 컨텍스트 */}
         <div className="px-5 pt-4 pb-1 flex items-center gap-2 flex-wrap">
           {isWinner && (
-            <span className="inline-flex items-center gap-1 text-[12px] font-extrabold text-emerald-700 bg-white border border-emerald-300 px-2.5 py-1 rounded-full">
+            <span className="inline-flex items-center gap-1 text-micro font-extrabold text-emerald-700 bg-white border border-emerald-300 px-2.5 py-1 rounded-full">
               <span className="text-emerald-600">✓</span>
               <span>여소남 픽</span>
             </span>
           )}
-          <span className="text-[11px] font-semibold text-gray-500">
+          <span className="text-[11px] font-semibold text-slate-500">
             {dateLabel} · {groupSize}개 비교 {rankInGroup}위
           </span>
         </div>
 
         {/* 강력 헤드라인 */}
         <div className="px-5 pt-1 pb-2">
-          <h3 className="text-[19px] font-extrabold text-gray-900 leading-snug break-keep">
+          <h3 className="text-[19px] font-extrabold text-slate-900 leading-snug break-keep">
             {headline}
           </h3>
         </div>
@@ -210,16 +210,16 @@ export default function RecommendationCard({
         {isWinner && savingsManwon >= 5 && (
           <div className="px-5 pb-3">
             <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-[12px] text-gray-400 line-through tabular-nums">
+              <span className="text-micro text-slate-400 line-through tabular-nums">
                 ₩{listPrice.toLocaleString()}
               </span>
               <span className="text-[24px] font-black text-emerald-700 tabular-nums leading-none">
                 ₩{effectivePrice.toLocaleString()}
               </span>
-              <span className="text-[11px] font-bold text-gray-500">상당</span>
+              <span className="text-[11px] font-bold text-slate-500">상당</span>
             </div>
             <p className="text-[13px] text-rose-600 font-semibold mt-1 break-keep">
-              💸 이 구성 따로 사면 <span className="text-[14px] font-extrabold">+{savingsManwon}만원</span> 더 들어요
+              💸 이 구성 따로 사면 <span className="text-body font-extrabold">+{savingsManwon}만원</span> 더 들어요
             </p>
           </div>
         )}
@@ -228,8 +228,8 @@ export default function RecommendationCard({
         {chips.length > 0 && (
           <div className="px-5 pb-3 flex flex-wrap gap-1.5">
             {chips.map((c, i) => (
-              <span key={i} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-full ${
-                isWinner ? 'bg-white text-gray-800 border border-emerald-200' : 'bg-gray-50 text-gray-700'
+              <span key={i} className={`inline-flex items-center gap-1 text-micro font-semibold px-2.5 py-1 rounded-full ${
+                isWinner ? 'bg-white text-slate-800 border border-emerald-200' : 'bg-slate-50 text-slate-700'
               }`}>
                 <span>{c.icon}</span>
                 <span>{c.label}</span>
@@ -241,7 +241,7 @@ export default function RecommendationCard({
         {/* ③ Social Proof — 임계값 충족 시만 */}
         {proof && (
           <div className="px-5 pb-3">
-            <p className="text-[12px] text-gray-600 flex items-center gap-1.5">
+            <p className="text-micro text-slate-600 flex items-center gap-1.5">
               <span className="w-1 h-1 rounded-full bg-emerald-500 flex-shrink-0" />
               <span>{proof}</span>
             </p>
@@ -255,13 +255,13 @@ export default function RecommendationCard({
               <button
                 type="button"
                 onClick={() => setCompareOpen(!compareOpen)}
-                className="flex-1 px-5 py-3 text-left flex items-center justify-between text-[12px] text-gray-700 hover:bg-white/40 transition"
+                className="flex-1 px-5 py-3 text-left flex items-center justify-between text-micro text-slate-700 hover:bg-white/40 transition"
                 aria-expanded={compareOpen}
               >
                 <span className="font-semibold">
-                  같은 날 다른 옵션과 비교 <span className="text-gray-400 font-normal">({rivals.length}개)</span>
+                  같은 날 다른 옵션과 비교 <span className="text-slate-400 font-normal">({rivals.length}개)</span>
                 </span>
-                <span className={`transition-transform text-gray-400 ${compareOpen ? 'rotate-180' : ''}`}>▾</span>
+                <span className={`transition-transform text-slate-400 ${compareOpen ? 'rotate-180' : ''}`}>▾</span>
               </button>
               <button
                 type="button"
@@ -277,19 +277,19 @@ export default function RecommendationCard({
                 {rivals.map(r => {
                   const line = diffLine({ listPrice, features, productHighlights }, r);
                   return (
-                    <div key={r.package_id} className="rounded-lg bg-gray-50 px-3 py-2.5">
+                    <div key={r.package_id} className="rounded-lg bg-slate-50 px-3 py-2.5">
                       <div className="flex items-baseline justify-between gap-2 mb-1">
-                        <span className="text-[11px] font-bold text-gray-500">
+                        <span className="text-[11px] font-bold text-slate-500">
                           {r.rank_in_group}위 옵션
                         </span>
-                        <span className="text-[12px] font-extrabold text-gray-800 tabular-nums">
+                        <span className="text-micro font-extrabold text-slate-800 tabular-nums">
                           ₩{r.list_price.toLocaleString()}
                         </span>
                       </div>
-                      <p className="text-[12px] text-gray-700 leading-snug break-keep mb-1.5 line-clamp-2">
+                      <p className="text-micro text-slate-700 leading-snug break-keep mb-1.5 line-clamp-2">
                         {r.title}
                       </p>
-                      <p className="text-[12px] text-emerald-700 font-semibold leading-snug break-keep">
+                      <p className="text-micro text-emerald-700 font-semibold leading-snug break-keep">
                         💡 이 1위 패키지가 {line}
                       </p>
                     </div>
@@ -304,14 +304,14 @@ export default function RecommendationCard({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="w-full px-5 py-3 text-left flex items-center justify-between border-t border-emerald-100/60 text-[12px] text-gray-600 hover:bg-white/40 transition"
+          className="w-full px-5 py-3 text-left flex items-center justify-between border-t border-emerald-100/60 text-micro text-slate-600 hover:bg-white/40 transition"
           aria-expanded={open}
         >
           <span className="font-medium">어떻게 골랐나요?</span>
-          <span className={`transition-transform text-gray-400 ${open ? 'rotate-180' : ''}`}>▾</span>
+          <span className={`transition-transform text-slate-400 ${open ? 'rotate-180' : ''}`}>▾</span>
         </button>
         {open && (
-          <div className="px-5 pb-4 border-t border-emerald-100/40 bg-white/60 text-[12px] text-gray-600 leading-relaxed space-y-2 pt-3">
+          <div className="px-5 pb-4 border-t border-emerald-100/40 bg-white/60 text-micro text-slate-600 leading-relaxed space-y-2 pt-3">
             <p>
               여소남이 같은 목적지·같은 출발일 패키지를 모아 <strong>호텔 등급·직항·옵션 포함·쇼핑 횟수·랜드사 신뢰도</strong>를 종합적으로 비교해요.
             </p>
@@ -321,7 +321,7 @@ export default function RecommendationCard({
                 셀링포인트 (호텔·직항·옵션 등)가 포함된 셈이에요. 따로 구성하면 더 비싸집니다.
               </p>
             )}
-            <p className="text-[10px] text-gray-400 mt-2">
+            <p className="text-[10px] text-slate-400 mt-2">
               ※ 매일 새벽 자동 재계산 · 정책 v1 (학술적으로 검증된 헤도닉 + TOPSIS 결합)
             </p>
           </div>

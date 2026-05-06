@@ -39,12 +39,12 @@ export default function ShareButtons({ url, title, compact = false, utmCampaign 
   const twitter = `https://twitter.com/intent/tweet?url=${encodeURIComponent(tracked('twitter'))}&text=${encodeURIComponent(title)}`;
 
   const btnBase =
-    'inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-[#DBEAFE] hover:bg-[#EBF3FE] hover:text-[#3182F6]';
+    'inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-blue-200 hover:bg-brand-light hover:text-brand';
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${compact ? '' : 'my-6'}`}>
       {!compact && (
-        <span className="mr-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
           공유하기
         </span>
       )}

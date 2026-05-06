@@ -21,7 +21,7 @@ export default function KPIBasisToggle({
   onChange: (next: KPIBasis) => void;
   size?: 'sm' | 'md';
 }) {
-  const padding = size === 'sm' ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-[12px]';
+  const padding = size === 'sm' ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-admin-xs';
   return (
     <div className="inline-flex bg-slate-100 rounded-md p-0.5" role="tablist" aria-label="KPI 산식 기준">
       {KPI_BASIS_OPTIONS.map(opt => {

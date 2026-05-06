@@ -132,28 +132,28 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h3 className="text-[15px] font-extrabold text-gray-900">📊 같은 일정 비교</h3>
+            <h3 className="text-[15px] font-extrabold text-slate-900">📊 같은 일정 비교</h3>
             {departureDate && (
-              <p className="text-[11px] text-gray-500 mt-0.5">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 {departureDate.slice(5).replace('-', '/')} 출발 · {all.length}개 옵션
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl px-2" aria-label="닫기">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl px-2" aria-label="닫기">✕</button>
         </div>
 
         {/* 비교 표 */}
         <div className="flex-1 overflow-auto">
           <table className="w-full text-xs">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-3 py-2.5 text-[10px] font-medium text-gray-500 w-20">항목</th>
+            <thead className="bg-slate-50 sticky top-0">
+              <tr className="border-b border-slate-100">
+                <th className="text-left px-3 py-2.5 text-[10px] font-medium text-slate-500 w-20">항목</th>
                 {all.map((a, i) => (
-                  <th key={i} className={`text-left px-3 py-2.5 text-[11px] font-bold leading-snug ${a.isSelf ? 'bg-emerald-50 text-emerald-800' : 'text-gray-700'}`}>
+                  <th key={i} className={`text-left px-3 py-2.5 text-[11px] font-bold leading-snug ${a.isSelf ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700'}`}>
                     {a.label}
-                    <p className="font-normal text-[10px] text-gray-500 mt-0.5 line-clamp-2 break-keep">
+                    <p className="font-normal text-[10px] text-slate-500 mt-0.5 line-clamp-2 break-keep">
                       {a.data.title}
                     </p>
                   </th>
@@ -164,11 +164,11 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
               {rows.map((row, ri) => {
                 const bestIdx = bestIdxFor(ri);
                 return (
-                  <tr key={ri} className="border-b border-gray-50">
-                    <td className="px-3 py-2.5 text-gray-500 font-medium">{row.label}</td>
+                  <tr key={ri} className="border-b border-slate-50">
+                    <td className="px-3 py-2.5 text-slate-500 font-medium">{row.label}</td>
                     {all.map((a, ai) => (
                       <td key={ai} className={`px-3 py-2.5 tabular-nums ${
-                        bestIdx === ai ? 'text-emerald-700 font-bold' : 'text-gray-700'
+                        bestIdx === ai ? 'text-emerald-700 font-bold' : 'text-slate-700'
                       }`}>
                         {row.render(a.data)}
                         {bestIdx === ai && <span className="ml-1 text-[9px] text-emerald-500">★</span>}
@@ -182,7 +182,7 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
         </div>
 
         {/* 푸터 */}
-        <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-500 leading-relaxed">
+        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
           ★ 표시 = 해당 항목 베스트 · 모든 차이는 같은 출발일 비교 결과
         </div>
       </div>

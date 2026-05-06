@@ -17,7 +17,7 @@ interface Props {
   autoPlayMs?: number;
 }
 
-export default function HeroBanner({ slides, autoPlayMs = 3000 }: Props) {
+export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
   const [current, setCurrent] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -37,7 +37,7 @@ export default function HeroBanner({ slides, autoPlayMs = 3000 }: Props) {
 
   return (
     <div
-      className="relative w-full aspect-[4/3] md:aspect-[16/7] overflow-hidden bg-[#F2F4F6]"
+      className="relative w-full aspect-[3/2] md:aspect-[16/7] overflow-hidden bg-bg-section"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -54,7 +54,7 @@ export default function HeroBanner({ slides, autoPlayMs = 3000 }: Props) {
             className="absolute inset-0 h-full w-full object-cover"
             loading={i === 0 ? 'eager' : 'lazy'}
             fetchPriority={i === 0 ? 'high' : undefined}
-            fallback={<div className="absolute inset-0 bg-gradient-to-br from-[#1B64DA] to-[#3182F6]" aria-hidden />}
+            fallback={<div className="absolute inset-0 bg-gradient-to-br from-brand-dark to-brand" aria-hidden />}
           />
         </div>
       ))}
@@ -70,13 +70,13 @@ export default function HeroBanner({ slides, autoPlayMs = 3000 }: Props) {
       {/* 텍스트 + CTA */}
       <Link href={slide.href} className="absolute inset-0 flex flex-col justify-end p-6 md:p-12 pb-10 md:pb-14">
         <div>
-          <p className="text-[12px] md:text-[14px] font-semibold text-white/80 uppercase tracking-widest mb-2">{slide.destination}</p>
+          <p className="text-micro md:text-body font-semibold text-white/80 uppercase tracking-widest mb-2">{slide.destination}</p>
           <h2 className="text-[32px] md:text-[48px] font-extrabold text-white leading-[1.15] tracking-[-0.03em] line-clamp-2">
             {slide.title}
           </h2>
           {slide.minPrice && slide.minPrice > 0 && (
             <p className="mt-3 text-[15px] text-white/90 font-medium">
-              최저 <span className="text-white font-extrabold text-[20px] tabular-nums">{slide.minPrice.toLocaleString()}</span>원~
+              최저 <span className="text-white font-extrabold text-price tabular-nums">{slide.minPrice.toLocaleString()}</span>원~
             </p>
           )}
         </div>

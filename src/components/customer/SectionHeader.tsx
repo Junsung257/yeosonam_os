@@ -22,7 +22,7 @@ export default function SectionHeader({ title, subtitle, action, actionHref, act
     (actionHref && actionLabel ? (
       <Link
         href={actionHref}
-        className="text-[14px] font-medium text-[#3182F6] hover:opacity-80 whitespace-nowrap transition-opacity"
+        className="text-body font-medium text-brand hover:opacity-80 whitespace-nowrap transition-opacity"
       >
         {actionLabel}
       </Link>
@@ -32,11 +32,11 @@ export default function SectionHeader({ title, subtitle, action, actionHref, act
     <header className={`mb-4 md:mb-5 ${className}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[22px] font-bold tracking-[-0.02em] text-[#191F28] leading-[1.4]">
+          <h2 className="text-h1 font-bold tracking-[-0.02em] text-text-primary leading-[1.4]">
             {title}
           </h2>
           {subtitle && (
-            <p className="mt-1 text-[12px] text-[#8B95A1] tracking-[-0.01em]">{subtitle}</p>
+            <p className="mt-1 text-micro text-text-secondary tracking-[-0.01em]">{subtitle}</p>
           )}
         </div>
         {rightSlot && <div className="flex-shrink-0">{rightSlot}</div>}

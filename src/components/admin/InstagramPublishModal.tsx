@@ -185,7 +185,7 @@ export default function InstagramPublishModal({
             <button
               onClick={handleSubmit}
               disabled={submitting || !imageCountValid || !caption.trim() || captionCount > captionLimit}
-              className="flex-1 bg-[#001f3f] text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50"
+              className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50"
             >
               {submitting
                 ? (tab === 'now' ? '발행 중... (60초 소요)' : '저장 중...')

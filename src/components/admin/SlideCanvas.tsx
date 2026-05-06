@@ -95,7 +95,7 @@ export default function SlideCanvas({
                 suppressContentEditableWarning
                 onBlur={e => onUpdateHeadline?.(e.currentTarget.innerText || '')}
                 className={`font-bold leading-tight outline-none focus:bg-yellow-50/20 rounded ${
-                  slide.overlay_style === 'light' ? 'text-[#001f3f]' : 'text-white'
+                  slide.overlay_style === 'light' ? 'text-slate-900' : 'text-white'
                 } text-2xl mb-3`}
               >
                 {slide.headline}
@@ -106,7 +106,7 @@ export default function SlideCanvas({
                 onBlur={e => onUpdateBody?.(e.currentTarget.innerText || '')}
                 className={`leading-relaxed outline-none focus:bg-yellow-50/20 rounded ${
                   slide.overlay_style === 'light' ? 'text-slate-700' : 'text-white/90'
-                } text-[14px]`}
+                } text-admin-base`}
               >
                 {slide.body}
               </p>
@@ -114,7 +114,7 @@ export default function SlideCanvas({
           ) : (
             <>
               <p className={`font-bold leading-tight ${
-                slide.overlay_style === 'light' ? 'text-[#001f3f]' : 'text-white'
+                slide.overlay_style === 'light' ? 'text-slate-900' : 'text-white'
               } text-[7px] mb-0.5 line-clamp-2`}>
                 {slide.headline}
               </p>

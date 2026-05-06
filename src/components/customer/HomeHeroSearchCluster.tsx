@@ -132,7 +132,7 @@ function hubSlotLabel(h: DepartureHubId): string {
 const chevron = '▾';
 
 const slotTrigger =
-  'inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-[15px] font-bold text-[#1d4ed8] bg-[#EFF6FF] border border-[#BFDBFE] hover:bg-[#DBEAFE] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3182F6]/40 transition-colors';
+  'inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-[15px] font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 transition-colors';
 
 export default function HomeHeroSearchCluster({ children }: { children?: ReactNode }) {
   const openChat = useChatStore(s => s.openChat);
@@ -204,9 +204,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
   const closeSheet = () => { setStep(null); setShowCustomCalendar(false); };
 
-  const chipLinkCls = `${chipBase} bg-[#F8FAFC] text-[#191F28] border-[#E8ECF2] hover:border-[#3182F6]/45 hover:bg-[#F0F6FF] hover:text-[#3182F6]`;
-  const chipMutedCls = `${chipBase} bg-white text-[#8B95A1] border-dashed border-[#D1D6DB] hover:border-[#3182F6]/40 hover:text-[#3182F6]`;
-  const chipHeroCls = `${chipBase} w-full justify-start min-h-[48px] px-4 text-left text-[14px] font-semibold`;
+  const chipLinkCls = `${chipBase} bg-[#F8FAFC] text-text-primary border-[#E8ECF2] hover:border-brand/45 hover:bg-[#F0F6FF] hover:text-brand`;
+  const chipMutedCls = `${chipBase} bg-white text-text-secondary border-dashed border-[#D1D6DB] hover:border-brand/40 hover:text-brand`;
+  const chipHeroCls = `${chipBase} w-full justify-start min-h-[48px] px-4 text-left text-body font-semibold`;
 
   const stepTitle: Record<PickerStep, string> = {
     hub: '어디서 출발할까요?',
@@ -238,7 +238,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4 shadow-[0_12px_40px_rgba(49,130,246,0.08)]">
-        <p className="text-[16px] md:text-[17px] leading-[1.75] text-[#191F28] tracking-[-0.03em]">
+        <p className="text-[16px] md:text-[17px] leading-[1.75] text-text-primary tracking-[-0.03em]">
           나는{' '}
           <button type="button" className={slotTrigger} onClick={() => setStep('hub')}>
             {hubSlotLabel(hub)} {chevron}
@@ -274,7 +274,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
         <Link
           href={resultsHref}
-          className="mt-4 flex w-full items-center justify-center rounded-xl bg-[#3182F6] text-white text-[15px] font-bold py-3.5 shadow-md shadow-[#3182F6]/25 hover:bg-[#1b6cf2] transition-colors card-touch"
+          className="mt-4 flex w-full items-center justify-center rounded-xl bg-brand text-white text-[15px] font-bold py-3.5 shadow-md shadow-brand/25 hover:bg-brand-dark transition-colors card-touch"
         >
           이 조건으로 패키지 보기
         </Link>
@@ -285,21 +285,21 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
       <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
         <Link
           href="/packages?urgency=1"
-          className={`${pillBase} bg-gradient-to-br from-[#3182F6] to-[#2563EB] text-white shadow-md shadow-[#3182F6]/20 hover:shadow-lg hover:shadow-[#3182F6]/25`}
+          className={`${pillBase} bg-gradient-to-br from-brand to-[#2563EB] text-white shadow-md shadow-brand/20 hover:shadow-lg hover:shadow-brand/25`}
         >
           <span aria-hidden>🔥</span>
           마감·특가
         </Link>
         <Link
           href="/group-inquiry"
-          className={`${pillBase} bg-white text-[#191F28] border border-[#E5E7EB] hover:border-[#3182F6]/40 hover:bg-[#F8FAFF]`}
+          className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40 hover:bg-[#F8FAFF]`}
         >
           단체·맞춤 견적
         </Link>
         <button
           type="button"
           onClick={() => openChat()}
-          className={`${pillBase} bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E8ECF0]`}
+          className={`${pillBase} bg-bg-section text-text-body hover:bg-[#E8ECF0]`}
         >
           채팅 상담
         </button>
@@ -320,18 +320,18 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             onClick={closeSheet}
           />
           <div className="relative flex w-full max-h-[88vh] md:max-h-[85vh] md:max-w-lg flex-col rounded-t-[24px] md:rounded-2xl bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center gap-2 border-b border-[#F2F4F6] px-2 py-2 md:rounded-t-2xl">
+            <div className="flex shrink-0 items-center gap-2 border-b border-admin-border px-2 py-2 md:rounded-t-2xl">
               <button
                 type="button"
                 onClick={closeSheet}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#4E5968] hover:bg-[#F2F4F6]"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-body hover:bg-bg-section"
                 aria-label="닫기"
               >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
-              <h2 id="home-search-sheet-title" className="text-[16px] font-bold text-[#191F28] tracking-[-0.02em] pr-10 flex-1">
+              <h2 id="home-search-sheet-title" className="text-[16px] font-bold text-text-primary tracking-[-0.02em] pr-10 flex-1">
                 {stepTitle[step]}
               </h2>
             </div>
@@ -349,8 +349,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                       }}
                       className={`w-full min-h-[48px] rounded-xl border px-4 text-left text-[15px] font-semibold transition card-touch ${
                         hub === opt.id
-                          ? 'border-[#3182F6] bg-[#EBF3FE] text-[#1d4ed8]'
-                          : 'border-[#E8ECF2] bg-white text-[#191F28] hover:border-[#3182F6]/35'
+                          ? 'border-brand bg-brand-light text-blue-700'
+                          : 'border-[#E8ECF2] bg-white text-text-primary hover:border-brand/35'
                       }`}
                     >
                       {opt.id === 'busan'
@@ -372,7 +372,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                       setWhenDisplayLabel('');
                       setStep(null);
                     }}
-                    className={`${chipHeroCls} border-[#3182F6]/30 bg-[#F0F9FF] text-[#1d4ed8]`}
+                    className={`${chipHeroCls} border-brand/30 bg-[#F0F9FF] text-blue-700`}
                   >
                     <span className="mr-2" aria-hidden>
                       ✅
@@ -381,7 +381,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                   </button>
 
                   <div>
-                    <p className="text-[12px] font-semibold text-[#4E5968] mb-2.5">어떤 연휴에 가세요?</p>
+                    <p className="text-micro font-semibold text-text-body mb-2.5">어떤 연휴에 가세요?</p>
                     <div className="flex flex-col gap-2">
                       {contextualWhen.map(c => (
                         <button
@@ -395,8 +395,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                           }}
                           className={
                             monthParam === c.monthParam
-                              ? `${chipHeroCls} border-[#3182F6] bg-[#EBF3FE] text-[#1d4ed8]`
-                              : `${chipHeroCls} border-[#E8ECF2] bg-white text-[#191F28] hover:border-[#3182F6]/35`
+                              ? `${chipHeroCls} border-brand bg-brand-light text-blue-700`
+                              : `${chipHeroCls} border-[#E8ECF2] bg-white text-text-primary hover:border-brand/35`
                           }
                         >
                           {c.label}
@@ -409,7 +409,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                     <button
                       type="button"
                       onClick={toggleCustomCalendar}
-                      className={`text-[13px] font-medium flex items-center gap-1.5 mx-auto transition-colors ${showCustomCalendar ? 'text-[#3182F6] font-semibold' : 'text-[#6B7280] hover:text-[#3182F6]'}`}
+                      className={`text-[13px] font-medium flex items-center gap-1.5 mx-auto transition-colors ${showCustomCalendar ? 'text-brand font-semibold' : 'text-[#6B7280] hover:text-brand'}`}
                     >
                       <span aria-hidden>📅</span>
                       달력에서 직접 선택
@@ -425,11 +425,11 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                             onClick={() => setCalendarYear(y => y - 1)}
                             disabled={calendarYear <= new Date().getFullYear()}
                             aria-label="이전 해"
-                            className="w-9 h-9 flex items-center justify-center rounded-full text-[18px] text-[#4E5968] hover:bg-[#F2F4F6] disabled:opacity-25 disabled:cursor-not-allowed transition"
+                            className="w-9 h-9 flex items-center justify-center rounded-full text-h2 text-text-body hover:bg-bg-section disabled:opacity-25 disabled:cursor-not-allowed transition"
                           >
                             ‹
                           </button>
-                          <span className="text-[15px] font-bold text-[#191F28] tracking-tight">
+                          <span className="text-[15px] font-bold text-text-primary tracking-tight">
                             {calendarYear}년
                           </span>
                           <button
@@ -437,7 +437,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                             onClick={() => setCalendarYear(y => y + 1)}
                             disabled={calendarYear >= new Date().getFullYear() + 2}
                             aria-label="다음 해"
-                            className="w-9 h-9 flex items-center justify-center rounded-full text-[18px] text-[#4E5968] hover:bg-[#F2F4F6] disabled:opacity-25 disabled:cursor-not-allowed transition"
+                            className="w-9 h-9 flex items-center justify-center rounded-full text-h2 text-text-body hover:bg-bg-section disabled:opacity-25 disabled:cursor-not-allowed transition"
                           >
                             ›
                           </button>
@@ -466,14 +466,14 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                                   setStep(null);
                                 }}
                                 className={[
-                                  'h-12 rounded-xl text-[14px] font-semibold transition-all duration-150 relative',
+                                  'h-12 rounded-xl text-body font-semibold transition-all duration-150 relative',
                                   isPast
                                     ? 'text-[#C8CDD4] cursor-not-allowed'
                                     : isSelected
-                                      ? 'bg-[#3182F6] text-white shadow-sm shadow-[#3182F6]/30'
-                                      : 'text-[#191F28] hover:bg-[#EBF3FE] hover:text-[#3182F6] active:scale-95',
+                                      ? 'bg-brand text-white shadow-sm shadow-brand/30'
+                                      : 'text-text-primary hover:bg-brand-light hover:text-brand active:scale-95',
                                   isCurrent && !isSelected && !isPast
-                                    ? 'ring-1 ring-[#3182F6]/40'
+                                    ? 'ring-1 ring-brand/40'
                                     : '',
                                 ].filter(Boolean).join(' ')}
                               >
@@ -505,7 +505,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                     </button>
                   </div>
                   <div>
-                    <p className="text-[12px] font-semibold text-[#4E5968] mb-2.5">인기 도시</p>
+                    <p className="text-micro font-semibold text-text-body mb-2.5">인기 도시</p>
                     <div className="flex flex-wrap gap-2">
                       {POPULAR_DESTINATIONS.map(name => (
                         <button
@@ -519,7 +519,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                           }}
                           className={
                             whereMode === 'city' && whereCity === name
-                              ? `${chipBase} bg-[#EBF3FE] text-[#3182F6] border-[#3182F6]`
+                              ? `${chipBase} bg-brand-light text-brand border-brand`
                               : chipLinkCls
                           }
                         >
@@ -529,7 +529,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                     </div>
                   </div>
                   <div>
-                    <p className="text-[12px] font-semibold text-[#4E5968] mb-2.5">권역</p>
+                    <p className="text-micro font-semibold text-text-body mb-2.5">권역</p>
                     <div className="flex flex-wrap gap-2">
                       {regionFilters.map(({ label, emoji }) => (
                         <button
@@ -543,8 +543,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                           }}
                           className={
                             whereMode === 'region' && whereRegion === label
-                              ? `${chipBase} bg-[#EBF3FE] text-[#3182F6] border-[#3182F6]`
-                              : `${chipBase} bg-white text-[#191F28] border-[#E8ECF2] hover:border-[#3182F6]/45 hover:bg-[#F0F6FF]`
+                              ? `${chipBase} bg-brand-light text-brand border-brand`
+                              : `${chipBase} bg-white text-text-primary border-[#E8ECF2] hover:border-brand/45 hover:bg-[#F0F6FF]`
                           }
                         >
                           <span className="mr-1" aria-hidden>
@@ -563,7 +563,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                   <button
                     type="button"
                     onClick={() => pickBudget('value')}
-                    className={`${chipHeroCls} ${budgetPreset === 'value' ? 'border-[#3182F6] bg-[#EBF3FE] text-[#1d4ed8]' : 'border-[#E8ECF2] bg-white'}`}
+                    className={`${chipHeroCls} ${budgetPreset === 'value' ? 'border-brand bg-brand-light text-blue-700' : 'border-[#E8ECF2] bg-white'}`}
                   >
                     <span className="mr-2" aria-hidden>
                       🪙
@@ -573,7 +573,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                   <button
                     type="button"
                     onClick={() => pickBudget('standard')}
-                    className={`${chipHeroCls} ${budgetPreset === 'standard' ? 'border-[#3182F6] bg-[#EBF3FE] text-[#1d4ed8]' : 'border-[#E8ECF2] bg-white'}`}
+                    className={`${chipHeroCls} ${budgetPreset === 'standard' ? 'border-brand bg-brand-light text-blue-700' : 'border-[#E8ECF2] bg-white'}`}
                   >
                     <span className="mr-2" aria-hidden>
                       ✨
@@ -583,7 +583,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                   <button
                     type="button"
                     onClick={() => pickBudget('premium')}
-                    className={`${chipHeroCls} ${budgetPreset === 'premium' ? 'border-[#3182F6] bg-[#EBF3FE] text-[#1d4ed8]' : 'border-[#E8ECF2] bg-white'}`}
+                    className={`${chipHeroCls} ${budgetPreset === 'premium' ? 'border-brand bg-brand-light text-blue-700' : 'border-[#E8ECF2] bg-white'}`}
                   >
                     <span className="mr-2" aria-hidden>
                       💎
@@ -593,7 +593,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
                   <button
                     type="button"
                     onClick={() => pickBudget('any')}
-                    className={`${chipHeroCls} mt-1 border-dashed ${budgetPreset === 'any' ? 'border-[#3182F6] bg-[#F0F9FF] text-[#1d4ed8]' : chipMutedCls}`}
+                    className={`${chipHeroCls} mt-1 border-dashed ${budgetPreset === 'any' ? 'border-brand bg-[#F0F9FF] text-blue-700' : chipMutedCls}`}
                   >
                     <span className="mr-2" aria-hidden>
                       ✅

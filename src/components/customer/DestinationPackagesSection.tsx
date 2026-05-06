@@ -72,8 +72,8 @@ export default function DestinationPackagesSection({ destination, packages, depa
                 onClick={() => setSelectedCity(c)}
                 className={`flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-full transition-all whitespace-nowrap ${
                   selectedCity === c
-                    ? 'bg-[#3182F6] text-white shadow-sm'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:border-[#3182F6] hover:text-[#3182F6]'
+                    ? 'bg-brand text-white shadow-sm'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-brand hover:text-brand'
                 }`}
               >
                 {c} 출발
@@ -103,7 +103,7 @@ export default function DestinationPackagesSection({ destination, packages, depa
           {selectedCity && (
             <button
               onClick={() => setSelectedCity(null)}
-              className="mt-3 text-sm text-[#3182F6] font-semibold hover:underline"
+              className="mt-3 text-sm text-brand font-semibold hover:underline"
             >
               전체 상품 보기
             </button>

@@ -111,9 +111,9 @@ function findNextDeparture(pkg: PackageCardData): string | null {
 function ProductTypeBadge({ type }: { type: string }) {
   const cls =
     type.includes('실속') ? 'bg-orange-50 text-orange-700' :
-    type.includes('프리미엄') || type.includes('고품격') ? 'bg-[#EBF3FE] text-[#3182F6]' :
-    type.includes('노팁') ? 'bg-[#E9FAF4] text-[#04C584]' :
-    'bg-[#EBF3FE] text-[#3182F6]';
+    type.includes('프리미엄') || type.includes('고품격') ? 'bg-brand-light text-brand' :
+    type.includes('노팁') ? 'bg-success-light text-success' :
+    'bg-brand-light text-brand';
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cls}`}>
       {type.split('|')[0]}
@@ -126,8 +126,8 @@ function SeatBadge({ pkg }: { pkg: PackageCardData }) {
   const confirmed = pkg.seats_confirmed ?? 0;
   if (held === 0) return null;
   const remaining = held - confirmed;
-  if (remaining <= 0) return <span className="text-xs font-semibold text-[#8B95A1] line-through">예약 마감</span>;
-  if (remaining <= 5) return <span className="text-xs font-bold text-[#F04452] animate-pulse">잔여 {remaining}석</span>;
+  if (remaining <= 0) return <span className="text-xs font-semibold text-text-secondary line-through">예약 마감</span>;
+  if (remaining <= 5) return <span className="text-xs font-bold text-danger animate-pulse">잔여 {remaining}석</span>;
   return null;
 }
 
@@ -172,7 +172,7 @@ export default function PackageCard({
         onClick={handleClick}
         className="block card-touch w-full min-w-0 max-w-full"
       >
-        <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-[#F2F4F6] last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow w-full min-w-0 max-w-full">
+        <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-admin-border last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow w-full min-w-0 max-w-full">
           <CardImage
             img={img}
             title={title}
@@ -243,7 +243,7 @@ function CardImage({
   const showImage = Boolean(safeSrc && !imgBroken);
 
   return (
-    <div className={`relative flex-shrink-0 overflow-hidden bg-[#F2F4F6] ${sizeClass}`}>
+    <div className={`relative flex-shrink-0 overflow-hidden bg-bg-section ${sizeClass}`}>
       {showImage && safeSrc ? (
         <Image
           src={safeSrc}
@@ -254,7 +254,7 @@ function CardImage({
           onError={() => setImgBroken(true)}
         />
       ) : (
-        <div className="w-full h-full bg-gradient-to-br from-[#EBF3FE] to-[#F2F4F6] flex items-center justify-center text-2xl md:text-5xl">🌍</div>
+        <div className="w-full h-full bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center text-2xl md:text-5xl">🌍</div>
       )}
 
       {/* 랭킹 번호 오버레이 */}
@@ -275,7 +275,7 @@ function CardImage({
 
       {/* 항공사 배지 */}
       {airlineName && (
-        <div className="absolute bottom-1.5 left-1.5 md:bottom-2.5 md:left-2.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-white/90 text-[#3182F6]">
+        <div className="absolute bottom-1.5 left-1.5 md:bottom-2.5 md:left-2.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-white/90 text-brand">
           {airlineName}
         </div>
       )}
@@ -289,7 +289,7 @@ function CardImage({
               e.stopPropagation();
               onToggleReason?.();
             }}
-            className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md hover:scale-105 transition-transform cursor-pointer"
+            className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md hover:scale-105 transition-transform cursor-pointer"
             aria-label="추천 사유 보기"
           >
             추천 ⓘ
@@ -297,7 +297,7 @@ function CardImage({
           {isReasonOpen && recommendedReasons.length > 0 && (
             <div
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              className="absolute top-9 right-1.5 md:top-10 md:right-2.5 z-20 bg-white shadow-modal rounded-[12px] p-2.5 text-[11px] text-[#4E5968] max-w-[220px] border border-[#F2F4F6]"
+              className="absolute top-9 right-1.5 md:top-10 md:right-2.5 z-20 bg-white shadow-modal rounded-[12px] p-2.5 text-[11px] text-text-body max-w-[220px] border border-admin-border"
             >
               <div className="font-semibold text-amber-700 mb-1.5">왜 추천?</div>
               <ul className="space-y-1">
@@ -325,8 +325,8 @@ function CardBody({
   return (
     <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
       {/* 목적지 + 일정 메타 */}
-      <div className="flex items-center gap-1.5 text-[12px] text-[#8B95A1] font-medium min-w-0 truncate">
-        {pkg.destination && <span className="text-[#3182F6] font-bold truncate max-w-[140px]">{pkg.destination}</span>}
+      <div className="flex items-center gap-1.5 text-micro text-text-secondary font-medium min-w-0 truncate">
+        {pkg.destination && <span className="text-brand font-bold truncate max-w-[140px]">{pkg.destination}</span>}
         {duration && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{duration}</span></>}
         {nextDate && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{nextDate} 출발</span></>}
       </div>
@@ -335,32 +335,32 @@ function CardBody({
       {(pkg.product_type || pkg.is_airtel) && (
         <div className="flex gap-1.5 mt-2 flex-wrap">
           {pkg.product_type && <ProductTypeBadge type={pkg.product_type} />}
-          {pkg.is_airtel && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#EBF3FE] text-[#3182F6]">에어텔</span>}
+          {pkg.is_airtel && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-light text-brand">에어텔</span>}
         </div>
       )}
 
       {/* 핵심 추천 사유 */}
       {primaryReason && (
-        <div className="mt-2 text-[13px] font-bold text-[#3182F6] leading-snug flex items-start gap-1">
+        <div className="mt-2 text-[13px] font-bold text-brand leading-snug flex items-start gap-1">
           <span className="text-amber-500">🥇</span> <span>{primaryReason}</span>
         </div>
       )}
 
       {/* 상품명 */}
-      <h2 className="mt-1.5 text-[15px] md:text-[17px] font-bold text-[#191F28] leading-snug line-clamp-2 tracking-[-0.02em]">
+      <h2 className="mt-1.5 text-[15px] md:text-[17px] font-bold text-text-primary leading-snug line-clamp-2 tracking-[-0.02em]">
         {title}
       </h2>
 
       {/* 손실 회피 문구 */}
       {lossAversionText && (
-        <p className="mt-1.5 text-[12px] font-bold text-[#F04452] bg-[#FFF1F2] inline-block px-2 py-0.5 rounded-full">
+        <p className="mt-1.5 text-micro font-bold text-danger bg-danger-light inline-block px-2 py-0.5 rounded-full">
           🚨 {lossAversionText}
         </p>
       )}
 
       {/* 한 줄 후킹 */}
       {!lossAversionText && pkg.hero_tagline && (
-        <p className="mt-1 text-[13px] text-[#4E5968] leading-snug line-clamp-1 break-keep">
+        <p className="mt-1 text-[13px] text-text-body leading-snug line-clamp-1 break-keep">
           {pkg.hero_tagline}
         </p>
       )}
@@ -369,38 +369,42 @@ function CardBody({
       {pkg.product_highlights && pkg.product_highlights.length > 0 && (
         <div className="flex gap-1.5 mt-2.5 flex-wrap">
           {pkg.product_highlights.slice(0, 3).map((tag, i) => (
-            <span key={i} className="text-[12px] text-[#3182F6] bg-[#EBF3FE] px-2 py-0.5 rounded-full font-medium">{tag}</span>
+            <span key={i} className="text-micro text-brand bg-brand-light px-2 py-0.5 rounded-full font-medium">{tag}</span>
           ))}
         </div>
       )}
 
-      {/* 가격 + 평점 + 잔여석 */}
+      {/* 가격 + 평점 + 잔여석 + CTA */}
       <div className="mt-3 md:mt-4 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-baseline gap-0.5">
           {minPrice > 0 ? (
             <>
-              <span className="text-[20px] md:text-[22px] font-extrabold text-[#3182F6] tracking-[-0.02em] tabular-nums">
+              <span className="text-price md:text-h1 text-brand tabular-nums">
                 {minPrice.toLocaleString()}
               </span>
-              <span className="text-[12px] font-medium text-[#8B95A1] ml-0.5">원~</span>
+              <span className="text-micro font-medium text-text-secondary ml-0.5">원~</span>
+              <span className="ml-1.5 text-[10px] font-medium text-text-secondary bg-slate-100 px-1.5 py-0.5 rounded-md">최저가</span>
             </>
           ) : (
-            <span className="text-[14px] text-[#8B95A1]">가격 문의</span>
+            <span className="text-body text-text-secondary">가격 문의</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0 && (
-            <span className="text-[12px] text-amber-500 font-semibold tabular-nums">
+            <span className="text-micro text-amber-500 font-semibold tabular-nums">
               ★ {Number(pkg.avg_rating).toFixed(1)}
-              <span className="text-[#8B95A1] font-normal ml-0.5">({pkg.review_count})</span>
+              <span className="text-text-secondary font-normal ml-0.5">({pkg.review_count})</span>
             </span>
           )}
           {rankBadge && (
-            <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-[#E9FAF4] text-[#04C584]">
+            <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-success-light text-success">
               {rankBadge}
             </span>
           )}
           <SeatBadge pkg={pkg} />
+          {!rankBadge && (
+            <span className="text-[11px] text-text-secondary/70 font-medium">일정 보기 →</span>
+          )}
         </div>
       </div>
     </div>

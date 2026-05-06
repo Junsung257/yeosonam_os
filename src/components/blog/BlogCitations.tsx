@@ -62,10 +62,10 @@ export default function BlogCitations({ destination, airline }: Props) {
 
   return (
     <section
-      className="not-prose my-10 rounded-2xl border border-gray-100 bg-white p-5 md:p-6"
+      className="not-prose my-10 rounded-2xl border border-slate-100 bg-white p-5 md:p-6"
       aria-label="참고 자료"
     >
-      <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-gray-500">
+      <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-500">
         참고 · 출처
       </h2>
       <ul className="space-y-2 text-sm">
@@ -75,7 +75,7 @@ export default function BlogCitations({ destination, airline }: Props) {
               href={c.url}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="group inline-flex items-center gap-1.5 text-gray-600 hover:text-[#3182F6]"
+              className="group inline-flex items-center gap-1.5 text-slate-600 hover:text-brand"
             >
               <ExternalLink
                 size={13}
@@ -83,7 +83,7 @@ export default function BlogCitations({ destination, airline }: Props) {
                 aria-hidden="true"
               />
               <span className="font-medium">{c.label}</span>
-              <span className="text-xs text-gray-400">— {c.source}</span>
+              <span className="text-xs text-slate-400">— {c.source}</span>
             </a>
           </li>
         ))}

@@ -179,35 +179,35 @@ export default function PackingTipsCard({ monthlyNormal, country, lat, durationD
 
   return (
     <section className="px-4 mt-4">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {/* 토글 헤더 — 닫혔을 때는 한 줄 요약만 보이고 클릭 시 펼침 */}
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="w-full px-5 py-3.5 flex items-center gap-3 text-left hover:bg-gray-50/50 transition"
+          className="w-full px-5 py-3.5 flex items-center gap-3 text-left hover:bg-slate-50/50 transition"
           aria-expanded={open}
         >
           <span className="text-xl flex-shrink-0">🎒</span>
           <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-extrabold text-gray-900 truncate">
+            <p className="text-body font-extrabold text-slate-900 truncate">
               짐 꾸리기 팁 ({monthLabel} 출발 · {durationDays}일)
             </p>
             {oneLineSummary && (
-              <p className="text-[11.5px] text-gray-500 mt-0.5 truncate break-keep">
+              <p className="text-[11.5px] text-slate-500 mt-0.5 truncate break-keep">
                 💡 {oneLineSummary} — 꼭 챙기세요
               </p>
             )}
           </div>
-          <span className={`text-gray-400 text-sm flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>▼</span>
+          <span className={`text-slate-400 text-sm flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>▼</span>
         </button>
 
         {/* 펼친 상태 */}
         {open && (
           <>
-            <div className="px-5 pb-4 space-y-3 border-t border-gray-100">
+            <div className="px-5 pb-4 space-y-3 border-t border-slate-100">
               {categories.map((cat, i) => (
-                <div key={i} className="pt-3 border-t border-gray-50 first:border-t-0">
-                  <p className="text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-1.5">
+                <div key={i} className="pt-3 border-t border-slate-50 first:border-t-0">
+                  <p className="text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1.5">
                     <span className="text-base">{cat.icon}</span>
                     <span>{cat.title}</span>
                   </p>
@@ -216,9 +216,9 @@ export default function PackingTipsCard({ monthlyNormal, country, lat, durationD
                       <li key={j} className="flex items-start gap-2 break-keep">
                         <span className="text-base flex-shrink-0 leading-tight">{item.emoji}</span>
                         <span className={`text-[12.5px] leading-snug flex-1 ${
-                          item.level === 'must' ? 'text-gray-900 font-semibold' :
-                          item.level === 'recommend' ? 'text-gray-700' :
-                          'text-gray-500'
+                          item.level === 'must' ? 'text-slate-900 font-semibold' :
+                          item.level === 'recommend' ? 'text-slate-700' :
+                          'text-slate-500'
                         }`}>
                           {item.text}
                           {item.level === 'must' && (
@@ -231,7 +231,7 @@ export default function PackingTipsCard({ monthlyNormal, country, lat, durationD
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-gray-400 px-5 pb-3 border-t border-gray-50 pt-2">
+            <p className="text-[10px] text-slate-400 px-5 pb-3 border-t border-slate-50 pt-2">
               ※ {cityLabel} {monthLabel} 평균 기후·위도·여행 일수 기반 자동 생성. 개인 차이가 있을 수 있어요.
             </p>
           </>

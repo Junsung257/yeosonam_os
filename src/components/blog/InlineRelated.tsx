@@ -50,24 +50,24 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
 
   return (
     <aside
-      className="not-prose my-12 rounded-2xl border border-[#DBEAFE] bg-gradient-to-br from-[#EBF3FE]/50 to-[#F0F7FF]/30 p-5 md:p-6"
+      className="not-prose my-12 rounded-2xl border border-blue-200 bg-gradient-to-br from-brand-light/50 to-blue-50/30 p-5 md:p-6"
       aria-label="함께 보면 좋은 여행"
     >
       <div className="mb-4 flex items-center gap-2">
         <span
           aria-hidden="true"
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#3182F6] text-xs font-bold text-white"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-bold text-white"
         >
           +
         </span>
-        <h2 className="text-sm font-bold text-[#191F28]">
+        <h2 className="text-sm font-bold text-text-primary">
           {destination ? `${destination} 더 살펴보기` : '함께 보면 좋아요'}
         </h2>
       </div>
 
       {products.length > 0 && (
         <div className={posts.length > 0 ? 'mb-5' : ''}>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             같은 목적지 다른 패키지
           </p>
           <ul className="grid gap-2">
@@ -79,20 +79,20 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
                 <li key={p.id}>
                   <Link
                     href={`/packages/${p.id}`}
-                    className="group flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 p-3 backdrop-blur transition hover:border-[#DBEAFE] hover:shadow-sm"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 p-3 backdrop-blur transition hover:border-blue-200 hover:shadow-sm"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="line-clamp-1 text-sm font-semibold text-gray-900 group-hover:text-[#3182F6]">
+                      <p className="line-clamp-1 text-sm font-semibold text-slate-900 group-hover:text-brand">
                         {p.title}
                       </p>
-                      {meta && <p className="mt-1 line-clamp-1 text-xs text-gray-500">{meta}</p>}
+                      {meta && <p className="mt-1 line-clamp-1 text-xs text-slate-500">{meta}</p>}
                     </div>
                     {p.price ? (
-                      <span className="shrink-0 text-sm font-bold text-[#3182F6]">
+                      <span className="shrink-0 text-sm font-bold text-brand">
                         {(p.price / 10000).toFixed(0)}만원~
                       </span>
                     ) : (
-                      <span className="shrink-0 text-xs text-gray-400" aria-hidden="true">
+                      <span className="shrink-0 text-xs text-slate-400" aria-hidden="true">
                         →
                       </span>
                     )}
@@ -106,7 +106,7 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
 
       {posts.length > 0 && (
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             함께 읽으면 좋은 글
           </p>
           <ul className="space-y-1.5">
@@ -117,9 +117,9 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
                 <li key={p.slug}>
                   <Link
                     href={`/blog/${p.slug}`}
-                    className="group inline-flex items-start gap-1.5 text-[13.5px] text-gray-700 hover:text-[#3182F6]"
+                    className="group inline-flex items-start gap-1.5 text-[13.5px] text-slate-700 hover:text-brand"
                   >
-                    <span aria-hidden="true" className="mt-0.5 text-[#3182F6]/60 group-hover:text-[#3182F6]">
+                    <span aria-hidden="true" className="mt-0.5 text-brand/60 group-hover:text-brand">
                       →
                     </span>
                     <span className="line-clamp-1 group-hover:underline">{t}</span>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, ChevronLeft, Users, Calendar, Check } from 'lucide-react';
+import { X, ChevronLeft, Users, Calendar, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import type { LeadFormData } from '@/lib/submitPipeline';
 import type { PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
@@ -12,6 +12,8 @@ interface Props {
   onSubmit: (form: LeadFormData) => Promise<void>;
   defaultDate?: string;
   priceDates?: PriceDate[];
+  hasSpecialTerms?: boolean;
+  termsSummary?: string;
 }
 
 const TOTAL_STEPS = 3;
@@ -23,7 +25,7 @@ function formatPhone(raw: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
-export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate = '', priceDates }: Props) {
+export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate = '', priceDates, hasSpecialTerms = false, termsSummary }: Props) {
   const [step, setStep] = useState(0);          // 0-indexed
   const [desiredDate, setDesiredDate] = useState(defaultDate);
   const [adults, setAdults] = useState(2);
@@ -31,6 +33,8 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [privacy, setPrivacy] = useState(false);
+  const [terms, setTerms] = useState(false);
+  const [termsExpanded, setTermsExpanded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -44,6 +48,8 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
       setName('');
       setPhone('');
       setPrivacy(false);
+      setTerms(false);
+      setTermsExpanded(false);
       setSubmitting(false);
       setSuccess(false);
     }
@@ -66,9 +72,9 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
   const canNext = useCallback(() => {
     if (step === 0) return !!desiredDate;
     if (step === 1) return adults >= 1;
-    if (step === 2) return name.trim().length >= 2 && phone.replace(/\D/g, '').length === 11 && privacy;
+    if (step === 2) return name.trim().length >= 2 && phone.replace(/\D/g, '').length === 11 && privacy && terms;
     return false;
-  }, [step, desiredDate, adults, phone, name, privacy]);
+  }, [step, desiredDate, adults, phone, name, privacy, terms]);
 
   const handleNext = async () => {
     if (!canNext()) return;
@@ -84,6 +90,7 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
           name: name.trim(),
           phone,
           privacyConsent: privacy,
+          termsConsent: terms,
         });
         setSuccess(true);
       } catch {
@@ -233,6 +240,47 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                       수집된 정보는 여행 상담 목적으로만 사용되며, 상담 완료 후 즉시 파기됩니다.
                     </span>
                   </label>
+                  {/* 취소·약관 동의 */}
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      onClick={() => setTerms(v => !v)}
+                      className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition cursor-pointer ${
+                        terms ? 'bg-yellow-400 border-yellow-400' : 'border-gray-300'
+                      }`}
+                    >
+                      {terms && <Check size={12} className="text-white" strokeWidth={3} />}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600 leading-snug">
+                        {hasSpecialTerms ? (
+                          <>
+                            <span className="font-medium text-red-700">[필수]</span>{' '}
+                            본 상품은 특별약관 적용 상품으로, 예약 즉시 항공/호텔이 자동 확정되며 취소 시 실비 위약금이 청구됨에 동의합니다.
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium text-gray-800">[필수]</span>{' '}
+                            취소 수수료 및 자동 발권 규정에 동의합니다.
+                          </>
+                        )}
+                      </p>
+                      {termsSummary && (
+                        <button
+                          type="button"
+                          onClick={() => setTermsExpanded(v => !v)}
+                          className="mt-1 text-xs text-yellow-600 font-medium flex items-center gap-0.5"
+                        >
+                          약관 보기
+                          {termsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                      )}
+                      {termsExpanded && termsSummary && (
+                        <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto border border-gray-200">
+                          {termsSummary}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </StepWrapper>
             </div>

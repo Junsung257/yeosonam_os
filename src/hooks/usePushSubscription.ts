@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { getSecret } from '@/lib/secret-registry';
 
 export type PushStatus =
   | 'unsupported'
@@ -52,7 +53,7 @@ export function usePushSubscription() {
 
   const subscribe = useCallback(async () => {
     setError(null);
-    const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const vapid = getSecret('NEXT_PUBLIC_VAPID_PUBLIC_KEY');
     if (!vapid) {
       setError('VAPID 공개키가 설정되지 않았습니다.');
       setStatus('error');

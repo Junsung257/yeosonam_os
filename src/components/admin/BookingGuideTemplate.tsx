@@ -45,7 +45,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
         <main className="flex-1 px-10 py-6 text-[#0b1c30]">
           {/* 상단 안내 */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
-            <p className="text-[13px] font-bold text-blue-900 mb-1">📋 본 안내문은 모든 여소남 여행상품에 공통 적용됩니다.</p>
+            <p className="text-admin-sm font-bold text-blue-900 mb-1">📋 본 안내문은 모든 여소남 여행상품에 공통 적용됩니다.</p>
             <p className="text-[11px] text-blue-700">상품별 세부 규정(취소수수료율, 써차지, 싱글차지 금액 등)은 상품 일정표를 참고하시기 바랍니다.</p>
           </div>
 
@@ -53,7 +53,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
           <div className="grid grid-cols-2 gap-4">
             {/* 좌측: 예약/결제 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">💳 예약 및 결제 규정</h2>
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">💳 예약 및 결제 규정</h2>
               <div className="space-y-2 text-[11px] text-slate-700 leading-relaxed">
                 <div className="flex gap-2 items-start">
                   <span className="shrink-0 text-red-500 font-bold">①</span>
@@ -80,7 +80,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
 
             {/* 우측: 취소/환불 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">🚫 취소 및 환불 규정</h2>
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">🚫 취소 및 환불 규정</h2>
               <div className="space-y-2 text-[11px] text-slate-700 leading-relaxed">
                 <div className="bg-red-50 border border-red-200 rounded p-3">
                   <p className="font-bold text-red-800 mb-1">⚠️ 특별약관 적용 상품</p>
@@ -102,7 +102,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
           <div className="grid grid-cols-2 gap-4 mt-4">
             {/* 좌측: 여행 필수 안내 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">🛂 여행 필수 안내</h2>
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">🛂 여행 필수 안내</h2>
               <div className="space-y-1.5 text-[11px] text-slate-700 leading-relaxed">
                 <div className="flex gap-2 items-start">
                   <span className="shrink-0">🛂</span>
@@ -125,7 +125,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
 
             {/* 우측: 일반 안내 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">ℹ️ 일반 안내사항</h2>
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">ℹ️ 일반 안내사항</h2>
               <div className="space-y-1.5 text-[11px] text-slate-700 leading-relaxed">
                 <div className="flex gap-2 items-start">
                   <span className="shrink-0">🚫</span>
@@ -156,7 +156,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
         <footer className="w-full bg-[#001f3f] py-4 px-10 mt-auto">
           <div className="flex justify-between items-center">
             <div>
-              <p className="text-white font-bold text-[12px]">여소남 여행사 (YEOSONAM TRAVEL)</p>
+              <p className="text-white font-bold text-admin-xs">여소남 여행사 (YEOSONAM TRAVEL)</p>
               <p className="text-blue-200 text-[10px] mt-0.5">본 안내문을 확인하시고 동의하신 후 예약을 진행해 주시기 바랍니다.</p>
             </div>
             <p className="text-blue-300 text-[9px]">© 2024 YEOSONAM. ALL RIGHTS RESERVED.</p>
@@ -189,7 +189,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
               return (
                 <section key={idx} className="break-inside-avoid">
                   <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-[12px] font-extrabold text-[#001f3f]">{notice.title}</h2>
+                    <h2 className="text-admin-xs font-extrabold text-[#001f3f]">{notice.title}</h2>
                     {isOverride && notice._source && (
                       <span className={`text-[9px] font-bold ${tierColor[notice._tier ?? 1]} bg-slate-50 px-1.5 py-0.5 rounded`}>
                         [{notice._source}]

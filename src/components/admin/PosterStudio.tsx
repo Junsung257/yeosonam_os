@@ -60,7 +60,7 @@ export default function PosterStudio({
         {/* 헤더 */}
         <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-[16px] font-semibold text-slate-800">
+            <h2 className="text-admin-lg font-semibold text-slate-800">
               {isA4 ? '포스터 스튜디오' : '모바일 프리뷰'}
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
@@ -74,7 +74,7 @@ export default function PosterStudio({
               <button
                 onClick={onDownload}
                 disabled={downloading}
-                className="px-4 py-1.5 bg-[#001f3f] text-white text-[13px] rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
+                className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
               >
                 {downloading ? '생성 중...' : '다운로드 (JPG/ZIP)'}
               </button>
