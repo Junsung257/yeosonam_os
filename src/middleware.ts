@@ -392,6 +392,6 @@ export const config = {
   matcher: [
     // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 + Next.js 데이터 fetch 제외)
     // _next/data: 클라이언트 사이드 페이지 이동 시 Next.js가 자동 fetch — 미들웨어 통과 시 Edge Request 2배
-    '/((?!_next/static|_next/data|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
+    '/((?!_next/static|_next/data|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map|txt)).*)',
   ],
 };

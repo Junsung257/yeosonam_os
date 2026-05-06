@@ -57,13 +57,13 @@ export async function POST(request: NextRequest) {
     }
 
     // ISR 캐시 무효화 + Indexing API 알림 (순차 처리, 500ms 간격 — rate limit 방어)
-    const results: Array<{ slug: string; google: string; indexnow: string }> = [];
+    const results: Array<{ slug: string; google: string; indexnow: string; google_error?: string; indexnow_error?: string }> = [];
     for (const post of posts) {
       revalidatePath(`/blog/${post.slug}`);
       const url = `${baseUrl}/blog/${post.slug}`;
       try {
         const report = await notifyIndexing(url, baseUrl);
-        results.push({ slug: post.slug, google: report.google, indexnow: report.indexnow });
+        results.push({ slug: post.slug, google: report.google, indexnow: report.indexnow, google_error: report.google_error, indexnow_error: report.indexnow_error });
       } catch {
         results.push({ slug: post.slug, google: 'error', indexnow: 'error' });
       }
