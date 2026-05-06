@@ -100,6 +100,11 @@ const nextConfig = {
         destination: 'https://www.yeosonam.com/:path*',
         permanent: true,
       },
+      // 깨진 슬러그(destination 누락) → 수정된 슬러그로 301 (Google 링크 신호 보존)
+      { source: '/blog/-currency', destination: '/blog/나트랑-달랏-화폐-환전-팁-문화-총정리', permanent: true },
+      { source: '/blog/-preparation', destination: '/blog/나가사키-여행-준비물-완벽-체크리스트', permanent: true },
+      { source: '/blog/-weather', destination: '/blog/보홀-월별-날씨와-옷차림-가이드', permanent: true },
+      { source: '/blog/-complete-guide', destination: '/blog/석가장-여행-완벽-가이드-관광지-일정-비용', permanent: true },
     ];
   },
 };
