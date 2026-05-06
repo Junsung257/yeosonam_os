@@ -71,3 +71,19 @@ test-results/
 
 # 외부 사이트 클립 / 임시 텍스트
 여행약관.txt
+
+# Local logs/reports generated during audits/dev
+.ai_rewrite.log
+.next-dev.log
+.pipeline.log
+.pipeline2.log
+.sync_all.log
+.sync_expand.log
+.tsc.log
+lint_output.txt
+.cursor-home-fetch.html
+
+# Local temporary audit/export artifacts
+tmp-*.json
+tmp-*.txt
+tmp-*.html

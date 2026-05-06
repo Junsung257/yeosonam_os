@@ -34,6 +34,8 @@
 | 블로그 운영 런북 | `docs/blog-system-runbook.md` |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
+| AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
+| Git 커밋 핸드오프 | `docs/git-commit-handoff.md` |
 | 자유여행 100 시나리오 스펙 | `docs/free-travel-100-scenarios-spec.md` |
 | 자유여행 AI 플래너 운영 | `docs/free-travel-planner-runbook.md` |
 | 자비스 오케스트레이션 | `docs/jarvis-orchestration.md` |
