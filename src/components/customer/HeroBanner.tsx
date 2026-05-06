@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
 
 export interface HeroSlide {
   image: string;
@@ -49,12 +49,11 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
           className={`absolute inset-0 transition-opacity duration-700 ${i === current ? 'opacity-100' : 'opacity-0'}`}
           aria-hidden={i !== current}
         >
-          <SafeCoverImg
+          <SafeCoverNextImg
             src={s.image}
             alt={s.destination}
-            className="absolute inset-0 h-full w-full object-cover"
-            loading={i === 0 ? 'eager' : 'lazy'}
-            fetchPriority={i === 0 ? 'high' : undefined}
+            sizes="(max-width: 768px) 100vw, 100vw"
+            priority={i === 0}
             fallback={<div className="absolute inset-0 bg-gradient-to-br from-brand-dark to-brand" aria-hidden />}
           />
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
+import Image from 'next/image';
 import { isSafeImageSrc } from '@/lib/image-url';
 
 type CoverProps = {
@@ -27,6 +28,38 @@ export function SafeCoverImg({ src, alt, className, loading = 'lazy', fetchPrior
       className={className}
       loading={loading}
       fetchPriority={fetchPriority}
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
+type CoverNextProps = {
+  src: string | null | undefined;
+  alt: string;
+  sizes?: string;
+  priority?: boolean;
+  className?: string;
+  fallback: ReactNode;
+};
+
+/**
+ * 풀블리드 배경용 — Next.js Image 최적화 버전.
+ * Pexels / Supabase 등 next.config remotePatterns에 등록된 도메인 전용.
+ * 부모 요소에 position: relative/absolute/fixed 가 있어야 함.
+ */
+export function SafeCoverNextImg({ src, alt, sizes, priority = false, className, fallback }: CoverNextProps) {
+  const ok = typeof src === 'string' && isSafeImageSrc(src);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => { setBroken(false); }, [src]);
+  if (!ok || broken) return <>{fallback}</>;
+  return (
+    <Image
+      src={src.trim()}
+      alt={alt}
+      fill
+      className={`object-cover${className ? ` ${className}` : ''}`}
+      sizes={sizes ?? '100vw'}
+      priority={priority}
       onError={() => setBroken(true)}
     />
   );

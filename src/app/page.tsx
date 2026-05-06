@@ -5,7 +5,7 @@ import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
 import { getSecret } from '@/lib/secret-registry';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
-import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import CategoryIcons from '@/components/customer/CategoryIcons';
 import HeroBanner from '@/components/customer/HeroBanner';
@@ -581,12 +581,11 @@ export default async function HomePage() {
                     className="group rounded-[16px] overflow-hidden shadow-card hover:shadow-card-hover transition-shadow card-touch bg-white"
                   >
                     <div className="relative h-36 md:h-52 lg:h-56 bg-bg-section">
-                      <SafeCoverImg
+                      <SafeCoverNextImg
                         src={dest.image}
                         alt={dest.destination}
-                        className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        loading={index < 4 ? 'eager' : 'lazy'}
-                        fetchPriority={index < 4 ? 'high' : undefined}
+                        className="group-hover:scale-105 transition-transform duration-300"
+                        sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
                         fallback={
                           <div className="absolute inset-0 bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center">
                             <span className="text-[22px] md:text-[28px] font-extrabold text-brand/35 tracking-tight">
