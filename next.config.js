@@ -5,6 +5,8 @@ const withSerwist = require('@serwist/next').default({
   disable: process.env.NODE_ENV !== 'production',
 });
 
+const { withSentryConfig } = require('@sentry/nextjs');
+
 const isProd = process.env.NODE_ENV === 'production';
 
 /** @type {import('next').NextConfig} */
@@ -16,6 +18,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
+    instrumentationHook: true,
     // @resvg/resvg-js 는 .node native binding 포함 → webpack 이 처리 불가.
     //   external 로 빼서 런타임에 require() 처리 (webpack 이 아예 터치 안 함).
     // satori 도 yoga-wasm 번들 포함이라 external 권장.
@@ -89,6 +92,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/tour/:id', destination: '/packages/:id', permanent: true },
+      { source: '/products', destination: '/packages', permanent: true },
       { source: '/products/:id', destination: '/packages/:id', permanent: true },
       {
         source: '/:path*',
@@ -100,4 +104,18 @@ const nextConfig = {
   },
 };
 
-module.exports = withSerwist(nextConfig);
+const sentryConfig = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+};
+
+const hasSentry = !!(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
+
+module.exports = hasSentry
+  ? withSentryConfig(withSerwist(nextConfig), sentryConfig)
+  : withSerwist(nextConfig);

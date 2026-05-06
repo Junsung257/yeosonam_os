@@ -267,6 +267,14 @@
     {
       "path": "/api/cron/fraud-detect",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-marketing",
+      "schedule": "20 0 * * *"
+    },
+    {
+      "path": "/api/cron/band-rss",
+      "schedule": "0 * * * *"
     }
   ]
 }
