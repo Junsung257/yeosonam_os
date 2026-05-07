@@ -19,6 +19,8 @@ export function updateFactoryJobStep(
   step: StepKey,
   status: StepStatus,
   error: string | null = null,
+  /** 스텝별 추가 메타데이터 (e.g. cover_critic → { score, verdict, attempts }) */
+  meta?: Record<string, unknown>,
 ): void {
   if (!isSupabaseConfigured || !cardNewsId) return;
 
@@ -32,7 +34,7 @@ export function updateFactoryJobStep(
       const now = new Date().toISOString();
       const steps = { ...(jobRow.steps as Record<string, unknown>) };
       const prev = (steps[step] as Record<string, unknown> | undefined)?.status;
-      steps[step] = { status, updated_at: now, error };
+      steps[step] = { status, updated_at: now, error, ...meta };
       const updates: Record<string, unknown> = { steps };
       if (status === 'done' && prev !== 'done') {
         updates.completed_steps = (jobRow.completed_steps ?? 0) + 1;

@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
       // ── 자동 Cover Critic + Apply (환경변수로 끄기 가능) ──
       //    DISABLE_COVER_CRITIC=1 면 스킵. 기본 활성.
       //    80점 이상이면 적용 스킵, 60~79 는 minor_polish 로 rewritten_cover 있으면 적용, 59 이하면 regenerate.
+      //    재시도는 최대 2회(초기 1회 + regenerate 1회)로 제한 — 무한 루프 방지.
       let coverCritique: unknown = null;
       let coverApply: unknown = null;
       if (cardNews?.id && process.env.DISABLE_COVER_CRITIC !== '1') {
@@ -161,6 +162,8 @@ export async function POST(request: NextRequest) {
             },
           });
           coverCritique = critique;
+          const critiqueScore = (critique as { score?: number }).score ?? null;
+          const critiqueVerdict = (critique as { verdict?: string }).verdict ?? null;
           const appUrlForCritic = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
           const kickRenderAfterCritic = () => {
             fetch(`${appUrlForCritic}/api/card-news/render-v2`, {
@@ -170,14 +173,19 @@ export async function POST(request: NextRequest) {
             }).catch(() => {});
           };
 
+          let critiqueAttempts = 1;
+          let rewritten = false;
+
           if (critique.verdict !== 'ship_as_is' && critique.rewritten_cover) {
             // minor_polish 또는 regenerate: rewritten_cover 적용 후 재렌더
             coverApply = await applyCritiqueToCover(cardNews.id, critique);
             if ((coverApply as { applied?: boolean })?.applied) {
+              rewritten = true;
               kickRenderAfterCritic();
             }
           } else if (critique.verdict === 'regenerate' && !critique.rewritten_cover) {
-            // score<60 + rewritten_cover 없음: 카피 전체 재생성 후 재렌더
+            // score<60 + rewritten_cover 없음: 카피 전체 재생성 후 재렌더 (최대 1회 — 총 2회 제한)
+            critiqueAttempts = 2;
             try {
               const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
               const newCopySlides = await generateCardCopy(briefAny as never);
@@ -193,13 +201,19 @@ export async function POST(request: NextRequest) {
               }));
               const { supabaseAdmin: supa } = await import('@/lib/supabase');
               await supa.from('card_news').update({ slides: mergedSlides }).eq('id', cardNews.id);
+              rewritten = true;
               kickRenderAfterCritic();
             } catch (regenErr) {
               console.warn('[card-news POST] regenerate 재생성 실패(무시):', regenErr instanceof Error ? regenErr.message : regenErr);
             }
           }
-          // cover_critic 스텝 완료 마킹
-          updateFactoryJobStep(cardNews.id, 'cover_critic', 'done');
+          // cover_critic 스텝 완료 마킹 + critique 결과 기록
+          updateFactoryJobStep(cardNews.id, 'cover_critic', 'done', null, {
+            score: critiqueScore,
+            verdict: critiqueVerdict,
+            attempts: critiqueAttempts,
+            rewritten,
+          });
         } catch (err) {
           console.warn('[card-news POST] 자동 cover critic 실패(무시):', err instanceof Error ? err.message : err);
           updateFactoryJobStep(cardNews.id, 'cover_critic', 'failed', err instanceof Error ? err.message : '알 수 없는 오류');
