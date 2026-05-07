@@ -7,6 +7,7 @@ import {
   hubMatchesDepartureAirport,
   type DepartureHubId,
 } from '@/lib/departure-hub';
+import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300; // 5분 ISR
 
@@ -186,6 +187,29 @@ export default async function PackagesPage({
 
   const { data: attractions } = await attractionQuery;
 
+  // 서버에서 상품별 대표 이미지를 미리 계산 — 클라이언트에 240개 attractions JSON 전체를 보내는 대신
+  // Record<id, url> 맵만 전달해 hydration 비용(TBT)과 초기 JS 페이로드를 절감한다.
+  const _usedPhotoUrls = new Set<string>();
+  const imageByPkgId: Record<string, string | null> = {};
+  for (const pkg of packages) {
+    let chosen: string | null = null;
+    const destParts = (pkg.destination || '').split(/[\/,\s]/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    const destAttrs = (attractions ?? [])
+      .filter((a: any) => a.photos?.length > 0 && destParts.some((p: string) =>
+        (a.region || '').includes(p) || (a.country || '').includes(p)
+      ))
+      .sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
+    for (const attr of destAttrs) {
+      const url = pickUnusedAttractionPhotoUrl(attr.photos, _usedPhotoUrls);
+      if (url) { chosen = url; break; }
+    }
+    if (!chosen) {
+      const thumb = (pkg as any).thumbnail_urls?.find((u: string) => u?.startsWith('http'));
+      if (thumb) chosen = thumb;
+    }
+    imageByPkgId[pkg.id] = chosen ?? null;
+  }
+
   // 그룹 1위 패키지 ID + 추천 사유 (추천 뱃지 + 툴팁용)
   const pkgIds = (packages ?? []).map((p: { id?: string }) => p.id).filter(Boolean) as string[];
   let recommendedIds: string[] = [];
@@ -208,7 +232,7 @@ export default async function PackagesPage({
   return (
     <PackagesClient
       initialPackages={packages ?? []}
-      initialAttractions={attractions ?? []}
+      imageByPkgId={imageByPkgId}
       destination={destination}
       filter={filterForClient}
       hub={hub}

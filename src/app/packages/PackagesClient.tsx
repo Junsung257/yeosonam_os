@@ -8,7 +8,6 @@ import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard from '@/components/customer/PackageCard';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
-import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import {
   type DepartureHubId,
@@ -47,11 +46,6 @@ interface Package {
   seats_confirmed?: number;
 }
 
-interface AttractionInfo {
-  name: string; photos?: { src_medium: string; src_large: string }[];
-  country?: string; region?: string; mention_count?: number;
-}
-
 // 항공사 매핑 SSOT: getAirlineName() in @/lib/render-contract (CRC). 인라인 dict 제거.
 // 지역 매칭 SSOT: REGIONS in @/lib/regions. 인라인 정규식 제거.
 
@@ -82,7 +76,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 interface ClientProps {
   initialPackages: Package[];
-  initialAttractions: AttractionInfo[];
+  /** 서버에서 attractions 기반으로 미리 계산한 카드 이미지 (클라이언트에 attractions 배열 불필요) */
+  imageByPkgId: Record<string, string | null>;
   destination: string;
   filter: string;
   hub: DepartureHubId;
@@ -96,7 +91,7 @@ interface ClientProps {
   recommendedReasonMap?: Record<string, string[]>;
 }
 
-export default function PackagesClient({ initialPackages, initialAttractions, destination, filter, hub, q = '', month = '', priceMin = '', priceMax = '', urgency = '', category = '', recommendedIds = [], recommendedReasonMap = {} }: ClientProps) {
+export default function PackagesClient({ initialPackages, imageByPkgId: imageByPkgIdProp, destination, filter, hub, q = '', month = '', priceMin = '', priceMax = '', urgency = '', category = '', recommendedIds = [], recommendedReasonMap = {} }: ClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
@@ -138,7 +133,6 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
   };
   const destParam = destination || q;
   const packages = initialPackages;
-  const attractions = initialAttractions;
   const [activeFilter, setActiveFilter] = useState(resolveLegacyFilterLabel(filter || '전체'));
   const [sortBy, setSortBy] = useState('recommended');
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
@@ -161,39 +155,6 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     const all = [pkg.price, ...tierPrices].filter(Boolean) as number[];
     return all.length > 0 ? Math.min(...all) : 0;
   }
-
-  // 상품별 대표 이미지 + 최저가를 packages/attractions 변경 시 1회만 계산.
-  // 이전 구현은 렌더 중 Set 변이 + 매 렌더마다 matchAttractions() 호출 → 순서 의존 + 비용 N배.
-  const imageByPkgId = useMemo(() => {
-    const used = new Set<string>();
-    const map = new Map<string, string | null>();
-    for (const pkg of packages) {
-      let chosen: string | null = null;
-      // 목적지 기반 대표 사진만 사용해 목록 렌더 비용을 낮춘다.
-      if (!chosen) {
-        const destParts = (pkg.destination || '').split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
-        const destAttractions = attractions
-          .filter(a => a.photos && a.photos.length > 0 && destParts.some(part =>
-            (a.region || '').includes(part) || (a.country || '').includes(part)
-          ))
-          .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
-        outer2: for (const attr of destAttractions) {
-          const fromDest = pickUnusedAttractionPhotoUrl(attr.photos, used);
-          if (fromDest) {
-            chosen = fromDest;
-            break outer2;
-          }
-        }
-      }
-      // 2차: 상품 자체 thumbnail_urls (attraction 사진 전혀 없을 때)
-      if (!chosen) {
-        const thumb = pkg.thumbnail_urls?.find(u => u && u.startsWith('http'));
-        if (thumb) chosen = thumb;
-      }
-      map.set(pkg.id, chosen);
-    }
-    return map;
-  }, [packages, attractions]);
 
   const minPriceByPkgId = useMemo(() => {
     const map = new Map<string, number>();
@@ -417,7 +378,7 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
               key={pkg.id}
               pkg={pkg as any}
               variant="horizontal"
-              image={imageByPkgId.get(pkg.id) ?? null}
+              image={imageByPkgIdProp[pkg.id] ?? null}
               precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
               isRecommended={recommendedSet.has(pkg.id)}
               recommendedReasons={recommendedReasonMap[pkg.id] ?? []}
