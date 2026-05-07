@@ -32,12 +32,12 @@ import { MARKETING_TOOLS, executeMarketingTool } from './agents/marketing'
 import { SALES_TOOLS, executeSalesTool } from './agents/sales'
 import { SYSTEM_TOOLS, executeSystemTool } from './agents/system'
 import {
-  OPERATIONS_PROMPT,
-  PRODUCTS_PROMPT,
-  FINANCE_PROMPT,
-  MARKETING_PROMPT,
-  SALES_PROMPT,
-  SYSTEM_PROMPT_AGENT,
+  getOperationsPrompt,
+  getProductsPrompt,
+  getFinancePrompt,
+  getMarketingPrompt,
+  getSalesPrompt,
+  getSystemPrompt,
 } from './prompts'
 
 // concierge agent (Phase 4 — RAG 기반 고객 상담)
@@ -56,12 +56,12 @@ import {
  *       · surface='customer' → concierge (RAG 상품 검색 + 고객 톤)
  *       · surface='admin'    → products agent (관리자용 상품 CRUD)
  */
-function buildConfig(agentType: AgentType, ctx: JarvisContext): DeepSeekAgentV2Config | null {
+async function buildConfig(agentType: AgentType, ctx: JarvisContext): Promise<DeepSeekAgentV2Config | null> {
   switch (agentType) {
     case 'operations':
       return {
         agentType: 'operations',
-        systemPrompt: OPERATIONS_PROMPT,
+        systemPrompt: await getOperationsPrompt(),
         tools: OPERATIONS_TOOLS,
         executeTool: (name, args) => executeOperationsTool(name, args),
         contextExtractor: OPERATIONS_CONTEXT_EXTRACTOR,
@@ -77,35 +77,35 @@ function buildConfig(agentType: AgentType, ctx: JarvisContext): DeepSeekAgentV2C
       }
       return {
         agentType: 'products',
-        systemPrompt: PRODUCTS_PROMPT,
+        systemPrompt: await getProductsPrompt(),
         tools: PRODUCTS_TOOLS,
         executeTool: (name, args) => executeProductsTool(name, args),
       }
     case 'finance':
       return {
         agentType: 'finance',
-        systemPrompt: FINANCE_PROMPT,
+        systemPrompt: await getFinancePrompt(),
         tools: FINANCE_TOOLS,
         executeTool: (name, args) => executeFinanceTool(name, args),
       }
     case 'marketing':
       return {
         agentType: 'marketing',
-        systemPrompt: MARKETING_PROMPT,
+        systemPrompt: await getMarketingPrompt(),
         tools: MARKETING_TOOLS,
         executeTool: (name, args) => executeMarketingTool(name, args),
       }
     case 'sales':
       return {
         agentType: 'sales',
-        systemPrompt: SALES_PROMPT,
+        systemPrompt: await getSalesPrompt(),
         tools: SALES_TOOLS,
         executeTool: (name, args) => executeSalesTool(name, args),
       }
     case 'system':
       return {
         agentType: 'system',
-        systemPrompt: SYSTEM_PROMPT_AGENT,
+        systemPrompt: await getSystemPrompt(),
         tools: SYSTEM_TOOLS,
         executeTool: (name, args) => executeSystemTool(name, args),
       }
@@ -131,7 +131,7 @@ export interface DispatchResult {
 export async function prepareDispatch(input: DispatchInput): Promise<DispatchResult> {
   const routerResult = await routeMessage(input.message, input.session?.context ?? {})
   const agentType = routerResult.agent
-  const config = buildConfig(agentType, input.ctx)
+  const config = await buildConfig(agentType, input.ctx)
   const specialistPick = resolveSpecialist(agentType, input.message, input.ctx)
   return {
     agentType,

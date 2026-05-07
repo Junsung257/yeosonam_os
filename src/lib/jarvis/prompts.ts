@@ -4,6 +4,30 @@ export async function getRouterPrompt(): Promise<string> {
   return getPrompt('jarvis-router', ROUTER_PROMPT_FALLBACK);
 }
 
+export async function getOperationsPrompt(): Promise<string> {
+  return getPrompt('jarvis-operations', OPERATIONS_PROMPT);
+}
+
+export async function getProductsPrompt(): Promise<string> {
+  return getPrompt('jarvis-products', PRODUCTS_PROMPT);
+}
+
+export async function getFinancePrompt(): Promise<string> {
+  return getPrompt('jarvis-finance', FINANCE_PROMPT);
+}
+
+export async function getMarketingPrompt(): Promise<string> {
+  return getPrompt('jarvis-marketing', MARKETING_PROMPT);
+}
+
+export async function getSalesPrompt(): Promise<string> {
+  return getPrompt('jarvis-sales', SALES_PROMPT);
+}
+
+export async function getSystemPrompt(): Promise<string> {
+  return getPrompt('jarvis-system', SYSTEM_PROMPT_AGENT);
+}
+
 const ROUTER_PROMPT_FALLBACK = `
 당신은 여소남 여행사 OS 라우터입니다. 사용자 메시지를 한 개 에이전트로 라우팅해 JSON만 응답하세요.
 
