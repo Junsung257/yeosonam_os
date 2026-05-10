@@ -12,8 +12,14 @@
  */
 
 import OpenAI from 'openai';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, type ResponseSchema } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
+
+// DeepSeek 의 OpenAI 호환 응답에 추가된 비표준 필드 (prompt cache hit 토큰).
+// OpenAI 표준 usage 타입엔 없으므로 별도 격리 — SDK 업데이트 시 회귀 발견 용이.
+interface DeepSeekUsageExtension {
+  prompt_cache_hit_tokens?: number;
+}
 import { trackDeepSeekCost, trackCost } from '@/lib/jarvis/cost-tracker';
 import { getProviderApiKey, resolveAiPolicy, resolveAiPolicyRuntime } from '@/lib/ai-provider-policy';
 import { getSecret } from '@/lib/secret-registry';
@@ -296,6 +302,7 @@ async function callDeepSeek(
   client: OpenAI,
   model: string,
   params: GatewayCallParams,
+  signal?: AbortSignal,
 ): Promise<GatewayResult> {
   const start = Date.now();
   try {
@@ -312,12 +319,13 @@ async function callDeepSeek(
       ...(params.jsonSchema ? { response_format: { type: 'json_object' as const } } : {}),
     };
 
-    const response = await client.chat.completions.create(requestParams);
+    // signal 전달 — timeout 시 SDK 가 AbortError throw → 비용/span leak 방지
+    const response = await client.chat.completions.create(requestParams, signal ? { signal } : undefined);
     const content = response.choices?.[0]?.message?.content || '';
     const usage = response.usage;
 
-    // 캐시 히트 감지 (DeepSeek 프롬프트 캐싱)
-    const cacheHitTokens = (usage as any)?.prompt_cache_hit_tokens ?? 0;
+    // 캐시 히트 감지 (DeepSeek 프롬프트 캐싱 — OpenAI 표준 외 비표준 필드)
+    const cacheHitTokens = (usage as DeepSeekUsageExtension | undefined)?.prompt_cache_hit_tokens ?? 0;
     const cacheHit = cacheHitTokens > 0;
     const _usage = {
       input: usage?.prompt_tokens ?? 0,
@@ -385,7 +393,8 @@ async function callGemini(
         responseMimeType: params.jsonSchema ? 'application/json' : 'text/plain',
         temperature: params.temperature ?? 0.3,
         maxOutputTokens: params.maxTokens ? Math.max(params.maxTokens, 16384) : 4096,
-        ...(params.jsonSchema ? { responseSchema: params.jsonSchema as any } : {}),
+        // jsonSchema 가 GoogleGenerativeAI ResponseSchema 와 구조 호환 (zod-to-gemini-schema 변환됨)
+        ...(params.jsonSchema ? { responseSchema: params.jsonSchema as ResponseSchema } : {}),
       },
     });
     const res = await model.generateContent(params.userPrompt);
@@ -414,6 +423,7 @@ async function callClaude(
   client: Anthropic,
   model: string,
   params: GatewayCallParams,
+  signal?: AbortSignal,
 ): Promise<GatewayResult> {
   const start = Date.now();
   try {
@@ -422,15 +432,19 @@ async function callClaude(
     const cacheControl = params.longCache
       ? ({ type: 'ephemeral', ttl: '1h' } as unknown as { type: 'ephemeral' })
       : ({ type: 'ephemeral' } as const);
-    const response = await client.messages.create({
-      model,
-      system: params.systemPrompt
-        ? [{ type: 'text' as const, text: params.systemPrompt, cache_control: cacheControl }]
-        : undefined,
-      max_tokens: params.maxTokens || 2000,
-      temperature: params.temperature ?? 0.3,
-      messages: [{ role: 'user', content: params.userPrompt }],
-    });
+    // signal 전달 — timeout 시 Anthropic SDK 가 AbortError throw
+    const response = await client.messages.create(
+      {
+        model,
+        system: params.systemPrompt
+          ? [{ type: 'text' as const, text: params.systemPrompt, cache_control: cacheControl }]
+          : undefined,
+        max_tokens: params.maxTokens || 2000,
+        temperature: params.temperature ?? 0.3,
+        messages: [{ role: 'user', content: params.userPrompt }],
+      },
+      signal ? { signal } : undefined,
+    );
 
     const text = response.content
       .filter((block) => block.type === 'text')
@@ -487,7 +501,11 @@ async function callClaude(
 
 // ─── 단건 호출 헬퍼 ──────────────────────────────────────────────────────────
 
-async function callModel(ref: ModelRef, params: GatewayCallParams): Promise<GatewayResult> {
+async function callModel(
+  ref: ModelRef,
+  params: GatewayCallParams,
+  signal?: AbortSignal,
+): Promise<GatewayResult> {
   // OTel span — Vercel OTel collector 또는 OTLP endpoint 로 전송 (미설정 시 no-op)
   return traceLlmCall(
     { task: params.task, provider: ref.provider, model: ref.model },
@@ -496,15 +514,16 @@ async function callModel(ref: ModelRef, params: GatewayCallParams): Promise<Gate
       if (ref.provider === 'deepseek') {
         const client = getDeepSeek();
         if (!client) return { success: false, errors: ['DEEPSEEK_API_KEY 없음'] };
-        result = await callDeepSeek(client, ref.model, params);
+        result = await callDeepSeek(client, ref.model, params, signal);
       } else if (ref.provider === 'gemini') {
         const client = getGemini();
         if (!client) return { success: false, errors: ['Gemini API 키 없음'] };
+        // Gemini SDK 는 signal 직접 지원 X — 타임아웃 시 race 만으로 처리
         result = await callGemini(client, ref.model, params);
       } else {
         const client = getClaude();
         if (!client) return { success: false, errors: ['ANTHROPIC_API_KEY 없음'] };
-        result = await callClaude(client, ref.model, params);
+        result = await callClaude(client, ref.model, params, signal);
       }
       // span 에 usage 기록 (성공·실패 모두)
       if (result._usage) {
@@ -527,19 +546,35 @@ async function callModelWithTimeout(
   timeoutMs?: number | null,
 ): Promise<GatewayResult> {
   if (!timeoutMs || timeoutMs <= 0) return callModel(ref, params);
-  return Promise.race([
-    callModel(ref, params),
-    new Promise<GatewayResult>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: false,
-          provider: ref.provider,
-          model: ref.model,
-          errors: [`timeout(${timeoutMs}ms)`],
-        });
-      }, timeoutMs);
-    }),
-  ]);
+
+  // C-2 코드리뷰 fix: AbortController 로 race 후 inflight SDK 호출 cancel.
+  //   기존 Promise.race 만 사용하던 방식은 timeout 분기가 결정되어도 callModel 내부의
+  //   SDK 호출이 계속 실행 → span/cost/network 누수.
+  //   race 승자 결정 후 finally 에서 abort → 성공 시 no-op, timeout 시 inflight cancel.
+  //
+  //   Gemini SDK 는 v0.24 시점 signal 직접 지원 X — fetch 레벨 race 한정.
+  const ac = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      callModel(ref, params, ac.signal),
+      new Promise<GatewayResult>((resolve) => {
+        timeoutId = setTimeout(() => {
+          resolve({
+            success: false,
+            provider: ref.provider,
+            model: ref.model,
+            errors: [`timeout(${timeoutMs}ms)`],
+          });
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    // race 승자 무관: timeout 이면 inflight SDK cancel, 성공이면 no-op
+    if (!ac.signal.aborted) ac.abort();
+  }
 }
 
 // ─── Advisor 단일 호출 ────────────────────────────────────────────────────────
@@ -722,7 +757,7 @@ export function getAllRoutes(): Record<LlmTask, { executor: string; advisor?: st
         ...(r.fallback ? { fallback: `${r.fallback.provider}/${r.fallback.model}` } : {}),
       },
     ]),
-  ) as any;
+  ) as Record<LlmTask, { executor: string; advisor?: string; fallback?: string }>;
 }
 
 // ─── 스트리밍 (DeepSeek 전용) — QA TTFT 개선 ─────────────────────────────────
