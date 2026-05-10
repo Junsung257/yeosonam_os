@@ -8,6 +8,9 @@
     "clean:next": "node -e \"require('child_process').execSync('powershell -c Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue', {stdio:'inherit'})\"",
     "prebuild": "node scripts/copy-partytown-lib.cjs",
     "build": "next build",
+    "analyze": "cross-env ANALYZE=true next build",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "check:bundle:ci": "node scripts/check-bundle-budget.mjs --fail",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
@@ -114,6 +117,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.2.6",
     "@playwright/test": "^1.59.1",
     "@types/web-push": "^3.6.4",
     "@typescript-eslint/eslint-plugin": "^7.18.0",

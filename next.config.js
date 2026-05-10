@@ -7,6 +7,13 @@ const withSerwist = require('@serwist/next').default({
 
 const { withSentryConfig } = require('@sentry/nextjs');
 
+// 번들 분석: ANALYZE=true 환경변수 설정 시 .next/analyze/ 에 트리맵 HTML 생성
+// 사용: ANALYZE=true npm run build  (Windows: $env:ANALYZE='true'; npm run build)
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+  openAnalyzer: false,
+});
+
 const isProd = process.env.NODE_ENV === 'production';
 
 /** @type {import('next').NextConfig} */
@@ -121,6 +128,8 @@ const sentryConfig = {
 
 const hasSentry = !!(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
 
-module.exports = hasSentry
+const composedConfig = hasSentry
   ? withSentryConfig(withSerwist(nextConfig), sentryConfig)
   : withSerwist(nextConfig);
+
+module.exports = withBundleAnalyzer(composedConfig);
