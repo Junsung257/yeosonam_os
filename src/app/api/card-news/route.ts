@@ -116,6 +116,11 @@ export async function POST(request: NextRequest) {
 
       const title = customTitle ?? briefAny.h1 ?? (briefAny.mode === 'info' ? `${briefAny.h1} — 카드뉴스` : `카드뉴스`);
 
+      // PR-7: ContentBrief → card_news 영구 메타 추출 (critic gate / bandit 연결)
+      // brief 자체의 sections h2 + key_selling_points + h1 만으로 추론 (별도 product 조회 불필요)
+      const { extractCardNewsMetadata } = await import('@/lib/content-pipeline/content-brief');
+      const meta = extractCardNewsMetadata(brief as any);
+
       const insertData: Record<string, unknown> = {
         title,
         status: 'DRAFT',
@@ -124,6 +129,9 @@ export async function POST(request: NextRequest) {
         template_family: templateFamily,
         template_version: 'v2',
         generation_config: { brief },
+        // PR-7: critic / bandit 학습 신호
+        hook_type: meta.hook_type,
+        palette_category: meta.palette_category,
       };
       if (resolvedMode === 'product' && package_id) insertData.package_id = package_id;
       if (resolvedMode === 'info' && topic) insertData.topic = topic;

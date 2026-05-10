@@ -141,13 +141,17 @@ export async function POST(
       );
     }
 
+    // PR-7: posting_hour_kst 채우기
+    const threadsPublishedAt = new Date();
+    const threadsPostingHourKst = (threadsPublishedAt.getUTCHours() + 9) % 24;
     await supabaseAdmin
       .from('card_news')
       .update({
         threads_publish_status: 'published',
         threads_post_id: result.postId,
-        threads_published_at: new Date().toISOString(),
+        threads_published_at: threadsPublishedAt.toISOString(),
         threads_error: null,
+        posting_hour_kst: threadsPostingHourKst,
       })
       .eq('id', id);
 

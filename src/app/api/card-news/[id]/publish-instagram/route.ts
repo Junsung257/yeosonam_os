@@ -204,14 +204,17 @@ export async function POST(
       );
     }
 
-    // 성공
+    // 성공 — PR-7: posting_hour_kst 채우기 (critic 발행시간 신호용)
+    const publishedAt = new Date();
+    const postingHourKst = (publishedAt.getUTCHours() + 9) % 24;
     await supabaseAdmin
       .from('card_news')
       .update({
         ig_publish_status: 'published',
         ig_post_id: result.postId,
-        ig_published_at: new Date().toISOString(),
+        ig_published_at: publishedAt.toISOString(),
         ig_error: null,
+        posting_hour_kst: postingHourKst,
       })
       .eq('id', id);
     updateFactoryJobStep(id, 'ig_publish', 'done');

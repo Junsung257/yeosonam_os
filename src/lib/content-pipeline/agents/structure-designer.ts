@@ -238,12 +238,14 @@ ${contextBlock}
 
 ## 출력 스펙
 - 슬라이드 ${slideCount}장 = ${contentCount}개 섹션 + 1 CTA
-- AIDA + PAS 혼합 배치 권장:
-  · 1: hook (주목)
+- **carousel sweet spot 7~10장 (Hootsuite/postnitro 2026)** — 알고리즘 1순위 신호는 swipe-through ≥65%, completion ≥55%
+- AIDA + PAS 혼합 배치 권장 (10-slide 표준 구조):
+  · 1: hook (주목, headline ≤ 6 단어)
   · 2: objection (반론 예측+해소) — 상품 모드일 때 "비싼 거 아냐?" "노옵션 진짜?" 같은 의심 해소
   · 3~4: benefit·tourist_spot·inclusion (혜택·구체 근거)
-  · 중간: tip / warning / detail (심화 정보)
-  · 마지막 전: save_hook (체크리스트 형식) — IG 알고리즘이 '저장(Save)' 에 최고 가중치 부여
+  · 중간 (5~7): tip / warning / detail (심화 정보)
+  · **8: save_hook** (체크리스트 형식) — IG 알고리즘 '저장(Save)' 최고 가중치
+  · **9: contrarian/반전** (저장률 1순위 신호) — "현지인이 진짜 많이 가는 곳", "패키지 ☓ 자유여행이 더 비싼 이유"
   · 마지막: cta (DM 유도)
 - hook 섹션의 hook_type 6종:
   · 특가·마감 → urgency
@@ -255,6 +257,14 @@ ${contextBlock}
 - template_family_suggestion: editorial|cinematic|premium|bold 중 상품 성격 1개
 - h2 는 블로그 목차 — 간결/명확
 - pexels_keyword 는 영문 명사 1~2개
+
+## 🎨 Palette 카테고리 (Annals of Tourism Research 2021)
+blog_paragraph_seed 또는 h2 에 다음 카테고리 시그널 1개를 자연스럽게 포함:
+- 자연·풍경·해변·건축 → blue 우세 → pexels_keyword 에 "scenic", "ocean", "architecture" 같은 자연 톤
+- 음식·거리·야시장·분위기 → warm 톤 → pexels_keyword 에 "street food", "market", "night"
+- 가격 비교·통계·D-N → navy 강한 contrast → pexels_keyword 에 "graph", "calendar"
+- 허니문·5성급·럭셔리 → gold + black → pexels_keyword 에 "luxury suite", "gold sunset"
+- 특가·마감·선착순 → red dominant → pexels_keyword 에 "hourglass", "deal"
 
 ## JSON 스키마 (반드시 이 형식)
 {

@@ -95,6 +95,50 @@
 
 ---
 
+## 🧠 외부 트렌드 학습 시스템 (PR-1 ~ PR-6, 2026-05-10 박제)
+
+> **상태**: 코드 + 마이그레이션 모두 출고 완료. 자동 발행은 **OFF** 디폴트로 안전 출고.
+> **비용**: ~$50/월 (Threads API 무료 + IG Graph 무료 + Gemini Vision ~$10).
+
+### 🔑 Meta 권한 추가 (사장님 직접)
+- 🔑 Meta for Developers → 우리 앱 → **Threads API** → `threads_keyword_search` 스코프 활성화
+- 🔑 Meta for Developers → 우리 앱 → **Instagram Graph API** → `ig_hashtag_search` + `pages_read_engagement` 스코프 활성화 (Business Discovery용)
+- 🔑 (확인) `META_IG_USER_ID` Vercel 환경변수에 IG 비즈니스 계정 ID 들어있는지 — `/api/cron/ig-trend-miner` 동작에 필요
+- 🔑 (확인) `THREADS_ACCESS_TOKEN` 또는 `META_ACCESS_TOKEN` 둘 중 하나는 keyword_search 스코프 포함 토큰이어야 함
+
+### 👤 자동 발행 활성화 (PR-5/6 검증 후 — 1주 dry-run 추천)
+1주일간 dry-run으로 critic 결정 로그 모니터링 → 거부율 5~15% 정상 범위 확인 후:
+- 👤 Supabase SQL Editor에서 한 번에 토글:
+  ```sql
+  UPDATE card_news_publish_guards
+  SET auto_publish_dry_run = false,
+      auto_publish_enabled  = true,
+      min_predicted_er      = 0.0150
+  WHERE scope_label = 'global';
+  ```
+- 👤 첫 24시간 발행률·취소율 직접 모니터링 (어드민 → 카드뉴스 → 발행 결정 로그)
+- 👤 이상치 자동 정지 작동 확인 (post_engagement_snapshots 24h avg < baseline 30%)
+
+### 👤 어드민 노출 (시간 나면)
+- 👤 `/admin/marketing/content-hub` 페이지에 두 view 차트 추가:
+  - `engagement_by_archetype_hook` — hook_type × palette_category × layout 30일 평균 ER
+  - `trending_hooks_7d` — 키워드별 7일 top hook 패턴 + sample first lines
+- 👤 `card_news_publish_decisions` 일일 리포트 페이지 (거부율·예측 ER 분포)
+- 👤 `bandit_arms` 어드민 페이지 (arm별 alpha/beta/total_pulls 시각화)
+
+### 🤖 자동 처리 항목 (이미 출고됨)
+- ✅ vercel.json에 4개 cron 등록 (threads-trend-miner, ig-trend-miner, design-archetype-update, auto-publish-loop)
+- ✅ 마이그레이션 5개 적용 완료 (Supabase MCP 직접): `card_news_publish_guards`, `external_trend_posts`, `design_archetypes_and_hashtag_pool`, `engagement_trend_score`, `bandit_arms`
+- ✅ 룰 박제: 7-10 슬라이드 sweet spot, hook 6단어/Threads 10-20단어, blue/warm palette 카테고리 분기, engagement-bait 블랙리스트, slide당 단일 감정, 9번째 contrarian 슬라이드 권장
+- ✅ 안전 가드 4중: bait blacklist + 일일 한도 + critic gate + anomaly auto-pause
+
+### 👤 (선택) 추가 통합
+- 👤 Slack `SLACK_ALERTS_WEBHOOK` — anomaly_paused / 거부율 급증 시 자동 통지 연결
+- 👤 카드뉴스 generation 단계에 bandit arm 적용 (지금은 critic + auto-publish만 적용 — 다음 PR 후보)
+- 👤 IG `META_IG_USER_ID` 별도 검증 IG 계정 분리 (현재 운영 계정으로 IG Hashtag Search 호출 시 quota 공유)
+
+---
+
 ## 💡 사용법
 
 대표님이 이 파일 내용을 Claude에 붙여넣고 **"설정해줘"** 하면:

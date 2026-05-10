@@ -69,6 +69,58 @@ interface CardNewsPublishedRow {
   ig_post_id: string;
   ig_published_at: string;
   ig_caption: string | null;
+  hook_type?: string | null;
+  design_archetype_id?: string | null;
+  palette_category?: string | null;
+  posting_hour_kst?: number | null;
+}
+
+/**
+ * PR-4: 같은 external_id 의 최근 3일 평균 score − 이전 3일 평균 score = trend_velocity.
+ * sync-engagement 직전 상태와 비교하므로 새 snapshot insert 시 직전 N일 평균 조회.
+ */
+async function computeTrendScoreForCard(
+  cardNewsId: string | null,
+  externalId: string | null,
+  newScore: number,
+): Promise<number | null> {
+  if (!cardNewsId && !externalId) return null;
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+    const filter = cardNewsId ? { col: 'card_news_id', val: cardNewsId } : { col: 'external_id', val: externalId! };
+    const { data: prior } = await supabaseAdmin
+      .from('post_engagement_snapshots')
+      .select('performance_score, captured_at')
+      .eq(filter.col, filter.val)
+      .gte('captured_at', sevenDaysAgo)
+      .lt('captured_at', threeDaysAgo)
+      .order('captured_at', { ascending: false })
+      .limit(20);
+
+    const priorScores = ((prior ?? []) as Array<{ performance_score: number | null }>)
+      .map((r) => Number(r.performance_score) || 0)
+      .filter((n) => n > 0);
+    if (priorScores.length === 0) return null;
+    const priorAvg = priorScores.reduce((a, b) => a + b, 0) / priorScores.length;
+    return Math.round((newScore - priorAvg) * 10000) / 10000;
+  } catch {
+    return null;
+  }
+}
+
+function postingHourKstFromIso(iso?: string | null): number | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    // KST = UTC + 9
+    const kstHour = (d.getUTCHours() + 9) % 24;
+    return kstHour;
+  } catch {
+    return null;
+  }
 }
 
 async function runSyncEngagement(request: NextRequest) {
@@ -188,11 +240,29 @@ async function runSyncEngagement(request: NextRequest) {
         try {
           const content = extractContentFromPayload(row);
           if (!content) continue;
+          // PR-4: card_news 연결돼 있으면 hook_type/palette_category 정보 같이 첨부
+          let hookTypeForSample: string | undefined;
+          let paletteForSample: string | undefined;
+          let archetypeForSample: string | undefined;
+          if (row.card_news_id) {
+            const { data: cnMeta } = await supabaseAdmin
+              .from('card_news')
+              .select('hook_type, palette_category, design_archetype_id')
+              .eq('id', row.card_news_id)
+              .maybeSingle();
+            const meta = cnMeta as { hook_type?: string | null; palette_category?: string | null; design_archetype_id?: string | null } | null;
+            hookTypeForSample = meta?.hook_type ?? undefined;
+            paletteForSample = meta?.palette_category ?? undefined;
+            archetypeForSample = meta?.design_archetype_id ?? undefined;
+          }
           const added = await appendVoiceSample('yeosonam', {
             platform: row.platform,
             content,
             performance_score: Math.round(score * 100) / 100,
             captured_at: new Date().toISOString().slice(0, 10),
+            hook_type: hookTypeForSample,
+            palette_category: paletteForSample,
+            design_archetype_id: archetypeForSample,
           });
           if (added) summary.top_performers_added += 1;
         } catch (err) {
@@ -209,7 +279,7 @@ async function runSyncEngagement(request: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin
       .from('card_news')
-      .select('id, title, ig_post_id, ig_published_at, ig_caption')
+      .select('id, title, ig_post_id, ig_published_at, ig_caption, hook_type, design_archetype_id, palette_category, posting_hour_kst')
       .eq('ig_publish_status', 'published')
       .not('ig_post_id', 'is', null)
       .gte('ig_published_at', thirtyDaysAgo)
@@ -235,6 +305,9 @@ async function runSyncEngagement(request: NextRequest) {
         const { row, metrics, score } = res.value;
         if (!metrics) continue;
         try {
+          const trendScore = await computeTrendScoreForCard(row.id, row.ig_post_id, score);
+          const postingHour = row.posting_hour_kst ?? postingHourKstFromIso(row.ig_published_at);
+
           const { error: snapErr } = await supabaseAdmin
             .from('post_engagement_snapshots')
             .insert({
@@ -249,6 +322,10 @@ async function runSyncEngagement(request: NextRequest) {
               saves: metrics.saves ?? null,
               impressions_legacy: metrics.impressions_legacy ?? null,
               performance_score: score,
+              hook_type: row.hook_type ?? null,
+              design_archetype_id: row.design_archetype_id ?? null,
+              trend_score: trendScore,
+              posting_hour: postingHour,
               raw_response: metrics.raw ?? null,
             });
           if (!snapErr) summary.card_news_ig.snapshots += 1;

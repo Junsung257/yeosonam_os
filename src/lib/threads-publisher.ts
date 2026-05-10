@@ -27,8 +27,41 @@
 
 import { resolveMetaToken } from './meta-token-resolver';
 import { getSecret } from './secret-registry';
+import {
+  detectEngagementBait,
+  countWordsForThreadsHook,
+  THREADS_HOOK_MIN_WORDS,
+  THREADS_HOOK_MAX_WORDS,
+  THREADS_HOOK_SWEET_SPOT_MAX,
+} from './card-news/tokens';
 
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
+
+/**
+ * Threads 본문 사전 검증 (PR-1 가드).
+ *   - engagement-bait 패턴 거부 (Meta 2024-10 페널티)
+ *   - hook 단어 수 6~20 권장 sweet spot (Berman 10K hook analysis)
+ *
+ * @returns null = 통과, string = 거부 사유
+ */
+export function validateThreadsBody(text: string): string | null {
+  if (!text || text.trim().length === 0) return '본문 비어있음';
+  if (text.length > 500) return `본문 500자 초과 (${text.length}자)`;
+
+  const bait = detectEngagementBait(text);
+  if (bait) return `engagement-bait 패턴 (Meta 페널티 대상): /${bait}/`;
+
+  // hook = 첫 문장 (마침표/줄바꿈/느낌표/물음표 기준)
+  const firstLine = text.split(/[.!?\n]/)[0] ?? text;
+  const words = countWordsForThreadsHook(firstLine);
+  if (words < THREADS_HOOK_MIN_WORDS) {
+    return `hook 너무 짧음 (${words} 단어, 최소 ${THREADS_HOOK_MIN_WORDS})`;
+  }
+  if (words > THREADS_HOOK_MAX_WORDS) {
+    return `hook 너무 김 (${words} 단어, 최대 ${THREADS_HOOK_MAX_WORDS}, sweet spot ≤${THREADS_HOOK_SWEET_SPOT_MAX})`;
+  }
+  return null;
+}
 
 export interface PublishThreadsInput {
   threadsUserId: string;
@@ -69,11 +102,9 @@ export async function getThreadsConfig(): Promise<{ threadsUserId: string; acces
 export async function publishToThreads(input: PublishThreadsInput): Promise<ThreadsPublishResult> {
   const { threadsUserId, accessToken, text, imageUrls } = input;
 
-  if (!text || text.trim().length === 0) {
-    return { ok: false, step: 'validate', error: '본문 비어있음' };
-  }
-  if (text.length > 500) {
-    return { ok: false, step: 'validate', error: `본문 500자 초과 (${text.length}자)` };
+  const bodyError = validateThreadsBody(text);
+  if (bodyError) {
+    return { ok: false, step: 'validate', error: bodyError };
   }
   if (imageUrls && imageUrls.length > 20) {
     return { ok: false, step: 'validate', error: `이미지 20장 초과 (${imageUrls.length}장)` };

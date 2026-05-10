@@ -136,6 +136,65 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
   return enrichBriefWithV2Slots(merged, input);
 }
 
+/**
+ * PR-7: ContentBrief 에서 card_news 영구 컬럼용 메타 추출.
+ *   - hook_type: 첫 번째 hook 섹션의 hook_type (없으면 첫 섹션의 hook_type)
+ *   - palette_category: template_family + 상품 시그널 → 카테고리 매핑
+ *   - design_archetype_id: null (발행 시점 매칭은 별도 후속 PR)
+ *
+ * 카드뉴스 INSERT/UPDATE 시 호출. critic gate가 이 값들을 사용.
+ */
+export function extractCardNewsMetadata(brief: ContentBrief, productSignals?: {
+  destination?: string;
+  product_summary?: string;
+  product_highlights?: string[];
+}): {
+  hook_type: string | null;
+  palette_category: string | null;
+} {
+  // hook_type
+  const hookSection = brief.sections.find((s) => s.role === 'hook');
+  const hook_type =
+    hookSection?.card_slide?.hook_type ??
+    brief.sections[0]?.card_slide?.hook_type ??
+    null;
+
+  // palette_category — 1차: photo_hint "PALETTE:xxx" 마커 검색
+  let palette_category: string | null = null;
+  for (const s of brief.sections) {
+    const hint = s.card_slide?.photo_hint ?? '';
+    const m = /PALETTE:(\w+)/.exec(hint);
+    if (m) {
+      palette_category = m[1];
+      break;
+    }
+  }
+
+  // 2차: template_family + 상품 키워드 휴리스틱
+  if (!palette_category) {
+    const family = brief.template_family_suggestion;
+    const text = [
+      productSignals?.destination,
+      productSignals?.product_summary,
+      ...(productSignals?.product_highlights ?? []),
+      ...brief.sections.map((s) => s.h2),
+      ...brief.key_selling_points,
+      brief.h1,
+    ].filter(Boolean).join(' ');
+
+    if (family === 'premium') palette_category = 'premium';
+    else if (family === 'bold') palette_category = 'urgency';
+    else if (/해변|풍경|자연|섬|산/.test(text)) palette_category = 'nature';
+    else if (/건축|성당|궁전|사원|타워/.test(text)) palette_category = 'architecture';
+    else if (/음식|맛집|야시장|쌀국수|요리|로컬푸드/.test(text)) palette_category = 'food';
+    else if (/시내|거리|골목|시장|투어/.test(text)) palette_category = 'street';
+    else if (/할인|특가|선착순|마감/.test(text)) palette_category = 'urgency';
+    else palette_category = 'default';
+  }
+
+  return { hook_type, palette_category };
+}
+
 // ──────────────────────────────────────────────────────
 // V2 슬롯 보강 — LLM 출력이 모호해도 3 레이어 공식 사후 보정
 // (토스 CTR + PostNitro AIDA + 국내외 여행사 베스트 패턴)
