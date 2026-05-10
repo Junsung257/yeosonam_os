@@ -167,13 +167,17 @@ export async function GET(request: NextRequest) {
     // 목적지별 집계 — 홈페이지용
     const aggregate = searchParams.get('aggregate');
     if (aggregate === 'destination') {
-      // 1. DB 레벨 GROUP BY 연산 우선 시도 (성능 최적화: N+1 및 메모리 풀스캔 방지)
+      // 1. mv_destination_aggregates → RPC 우선 (사전 집계, O(distinct destinations))
+      //    마이그레이션: supabase/migrations/20260513000000_destination_aggregate_mv.sql
+      //    nightly cron (KST 09:10) 으로 갱신. 즉시성 필요 시 SELECT public.refresh_mv_destination_aggregates();
       const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('get_destinations_aggregate');
-      if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+      if (!rpcErr && Array.isArray(rpcData)) {
         return NextResponse.json({ destinations: rpcData });
       }
 
-      // 2. RPC가 없거나 실패 시 Fallback (기존 인메모리 집계)
+      // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
+      //    travel_packages 가 수만 건으로 늘어나면 메모리 위험. RPC 정상화 우선.
+      console.warn('[GET /api/packages?aggregate=destination] RPC failed, using in-memory fallback', rpcErr);
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
         .select('destination, price, price_tiers, price_dates, country')
