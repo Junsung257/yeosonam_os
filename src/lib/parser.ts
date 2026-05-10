@@ -13,6 +13,7 @@ import {
 } from './parser/catalog-pre-split';
 import { judgeCatalogProductCountConsistency } from './parser/upload-consistency-judge';
 import { getSecret } from '@/lib/secret-registry';
+import { lookupSemanticCache, storeSemanticCache } from '@/lib/semantic-cache';
 
 export interface ParseOptions {
   reflections?: CorrectionRecord[];
@@ -695,9 +696,22 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
   const regionBlock = options?.regionContext ?? '';
 
   try {
+    const systemPrompt = EXTRACT_PROMPT + regionBlock + reflectionBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.';
+    const cacheKey = `${systemPrompt}\n---USER---\n${text}`;
+
+    // 의미 캐시 우선 시도 (parse_travel_doc 는 SAFE_CACHE_TASKS 화이트리스트)
+    // 동일 원문 + 동일 region/reflection → 동일 결과 결정론적이므로 캐시 hit 시 토큰 비용 0
+    const cached = await lookupSemanticCache('parse_travel_doc', cacheKey);
+    if (cached.hit && cached.response) {
+      console.log(`[Parser] 의미 캐시 hit (${cached.hitType}, sim=${cached.similarity?.toFixed(3) ?? 'n/a'})`);
+      const extractedData = parseGeminiResponse(cached.response, text);
+      extractedData.rawText = text;
+      return extractedData;
+    }
+
     const result = await llmCall({
       task: 'parse_travel_doc',
-      systemPrompt: EXTRACT_PROMPT + regionBlock + reflectionBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.',
+      systemPrompt,
       userPrompt: text,
       maxTokens: 4000,
       temperature: 0.1,
@@ -707,6 +721,8 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
     if (result.success && result.rawText) {
       const provider = result.fallbackUsed ? 'Gemini(fallback)' : `DeepSeek${result.cacheHit ? '(캐시)' : ''}`;
       console.log(`[Parser] ${provider} 응답:`, result.rawText.length, '글자');
+      // 캐시 저장 (fail-open) — 다음 동일 요청은 LLM 호출 0회
+      void storeSemanticCache('parse_travel_doc', cacheKey, result.rawText);
       const extractedData = parseGeminiResponse(result.rawText, text);
       extractedData.rawText = text;
       console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
