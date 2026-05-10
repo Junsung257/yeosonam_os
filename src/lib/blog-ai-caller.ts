@@ -1,10 +1,16 @@
 /**
- * Blog AI Caller — Gemini / DeepSeek 통합 라우터
+ * Blog AI Caller — Gemini / DeepSeek / Claude 통합 라우터
  *
  * BLOG_AI_MODEL 환경변수(또는 prompt-version.ts 기본값)에 따라
- * 적절한 LLM SDK로 라우팅한다. JSON 모드 전용.
+ * 적절한 LLM SDK로 라우팅한다. JSON 모드 + 자유 텍스트 모드.
  *
  * 사용처: content-pipeline 에이전트들 (instagram-caption, kakao-channel, meta-ads, ...)
+ *
+ * ⚡ 클라이언트 인스턴스 캐싱:
+ *   매 호출마다 new OpenAI/Anthropic/GoogleGenerativeAI 생성하면
+ *   - HTTP keep-alive 풀 미공유 → cold connect overhead 200~500ms
+ *   - 시간당 publisher처럼 반복 호출 시 누적 비용
+ *   → API 키별로 한 번만 생성해 모듈 톱-레벨에서 캐시.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -26,9 +32,49 @@ function isClaudeModel(model: string): boolean {
   return model.startsWith('claude');
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// 싱글톤 클라이언트 캐시 — API 키별로 1회만 생성
+// ────────────────────────────────────────────────────────────────────────────
+
+let cachedDeepseekKey: string | null = null;
+let cachedDeepseek: OpenAI | null = null;
+function getDeepseekClient(): OpenAI {
+  const apiKey = getProviderApiKey('deepseek');
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
+  if (cachedDeepseek && cachedDeepseekKey === apiKey) return cachedDeepseek;
+  cachedDeepseek = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
+  cachedDeepseekKey = apiKey;
+  return cachedDeepseek;
+}
+
+let cachedAnthropicKey: string | null = null;
+let cachedAnthropic: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  const apiKey = getProviderApiKey('claude');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY 미설정');
+  if (cachedAnthropic && cachedAnthropicKey === apiKey) return cachedAnthropic;
+  cachedAnthropic = new Anthropic({ apiKey });
+  cachedAnthropicKey = apiKey;
+  return cachedAnthropic;
+}
+
+let cachedGeminiKey: string | null = null;
+let cachedGemini: GoogleGenerativeAI | null = null;
+function getGeminiClient(): GoogleGenerativeAI {
+  const apiKey = getProviderApiKey('gemini');
+  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY 미설정');
+  if (cachedGemini && cachedGeminiKey === apiKey) return cachedGemini;
+  cachedGemini = new GoogleGenerativeAI(apiKey);
+  cachedGeminiKey = apiKey;
+  return cachedGemini;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 /**
  * JSON 문자열을 반환하는 단일 LLM 호출.
  * - deepseek-v4-* → api.deepseek.com (OpenAI 호환)
+ * - claude-* → api.anthropic.com
  * - gemini-* → googleapis.com (Google Generative AI)
  *
  * 키 미설정 시 에러를 throw → 호출 측 callWithZodValidation 이 catch → fallback.
@@ -42,10 +88,7 @@ export async function generateBlogJSON(
   const temperature = opts.temperature ?? 0.85;
 
   if (isDeepSeekModel(model)) {
-    const apiKey = getProviderApiKey('deepseek');
-    if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
-
-    const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
+    const client = getDeepseekClient();
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
     if (opts.systemPrompt) messages.push({ role: 'system', content: opts.systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -61,9 +104,7 @@ export async function generateBlogJSON(
   }
 
   if (isClaudeModel(model)) {
-    const apiKey = getProviderApiKey('claude');
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY 미설정');
-    const client = new Anthropic({ apiKey });
+    const client = getAnthropicClient();
     const r = await client.messages.create({
       model,
       max_tokens: opts.maxTokens || 2000,
@@ -78,10 +119,7 @@ export async function generateBlogJSON(
   }
 
   // Gemini
-  const apiKey = getProviderApiKey('gemini');
-  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY 미설정');
-
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const genAI = getGeminiClient();
   const gmodel = genAI.getGenerativeModel({
     model,
     generationConfig: {
@@ -108,10 +146,7 @@ export async function generateBlogText(
   const temperature = opts.temperature ?? 0.85;
 
   if (isDeepSeekModel(model)) {
-    const apiKey = getProviderApiKey('deepseek');
-    if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
-
-    const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
+    const client = getDeepseekClient();
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
     if (opts.systemPrompt) messages.push({ role: 'system', content: opts.systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -126,9 +161,7 @@ export async function generateBlogText(
   }
 
   if (isClaudeModel(model)) {
-    const apiKey = getProviderApiKey('claude');
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY 미설정');
-    const client = new Anthropic({ apiKey });
+    const client = getAnthropicClient();
     const r = await client.messages.create({
       model,
       max_tokens: opts.maxTokens || 2000,
@@ -142,10 +175,7 @@ export async function generateBlogText(
   }
 
   // Gemini
-  const apiKey = getProviderApiKey('gemini');
-  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY 미설정');
-
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const genAI = getGeminiClient();
   const gmodel = genAI.getGenerativeModel({
     model,
     generationConfig: {
@@ -162,4 +192,11 @@ export async function generateBlogText(
 export function hasBlogApiKey(): boolean {
   const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
   return !!getProviderApiKey(policy.provider);
+}
+
+/** 테스트/디버깅용 — 캐시된 클라이언트 리셋 (API 키 교체 후 호출) */
+export function _resetBlogAiClientCacheForTest(): void {
+  cachedDeepseek = null; cachedDeepseekKey = null;
+  cachedAnthropic = null; cachedAnthropicKey = null;
+  cachedGemini = null; cachedGeminiKey = null;
 }
