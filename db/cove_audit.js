@@ -102,9 +102,116 @@ function extractClaims(pkg) {
   return claims;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  RARR (Researching and Revising) 패턴 헬퍼 (2026-05-10 추가)
+//
+//  기존 CoVe: raw_text 전체(~10K자) + 모든 claim 을 한 번에 던짐 → LLM 이 스캔.
+//  RARR  : claim 마다 ① 검증 질문 생성 ② 키워드 점수로 가장 관련 깊은 단락 retrieve
+//          ③ (claim, question, focused_chunk) 묶음으로 전달 → LLM 이 좁은 범위만 비교.
+//
+//  근거 논문/실증:
+//    - RARR (Chen et al., arxiv 2210.08726)
+//    - SIGIR 2025 (10.1145/3726302.3730337) "Component-Level Insights" — verification
+//      question 형태로 던질 때 hallucination 감지율 +20%p
+//
+//  타협:
+//    - 호출 횟수는 그대로 (단일 Gemini batch). 토큰량은 비슷하거나 약간 감소.
+//    - 정확도는 명백히 ↑ (long-context 스캔 부담 제거).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * raw_text 를 chunk 로 분할. 빈 줄 기준 paragraph 분리 후, 너무 길면 추가 분할.
+ * Korean 친화적 — "니다.", "다.", "요." 문장 종료 패턴도 보조 분할 기준.
+ */
+function chunkRawText(rawText, maxChars = 1200) {
+  if (!rawText) return [];
+  const paragraphs = rawText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const chunks = [];
+  for (const p of paragraphs) {
+    if (p.length <= maxChars) { chunks.push(p); continue; }
+    // 큰 단락은 문장 단위 분할
+    const sentences = p.split(/(?<=[.!?。]|니다\.|다\.|요\.)\s+/);
+    let buf = '';
+    for (const s of sentences) {
+      if ((buf + s).length > maxChars && buf) { chunks.push(buf.trim()); buf = ''; }
+      buf += (buf ? ' ' : '') + s;
+    }
+    if (buf.trim()) chunks.push(buf.trim());
+  }
+  return chunks.map((text, idx) => ({ idx, text }));
+}
+
+/**
+ * claim 에서 검색용 키워드 추출 — 한국어 2자+ 토큰 + 숫자 + 영문.
+ * 조사·접미어("은","는","이","가","의") 제거.
+ */
+const STOP_TOKENS = new Set(['있다', '없다', '이다', '한다', '되다', '하다', '있음', '없음']);
+function extractKeywords(text) {
+  if (!text) return [];
+  // 한국어 토큰 (2~10자), 숫자(쉼표 포함), 영문 (2자+)
+  const tokens = (text.match(/[가-힣]{2,10}|[\d,]+|[A-Za-z]{2,}/g) || []);
+  return tokens
+    .map(t => t.replace(/[은는이가의을를에서로으로]+$/, ''))
+    .filter(t => t.length >= 2 && !STOP_TOKENS.has(t));
+}
+
+/**
+ * field 별 보조 키워드 — claim text 에 안 나와도 매칭에 도움.
+ * 예: min_participants 검증할 때 "인원·명·출발" 등을 포함한 단락이 정답일 가능성.
+ */
+const FIELD_HINT_KEYWORDS = {
+  min_participants: ['인원', '명', '최소', '출발'],
+  ticketing_deadline: ['발권', '예약', '마감', '티켓팅', '기한'],
+  inclusions: ['포함', '제공'],
+  surcharges: ['추가요금', '추가', '성수기', '할증'],
+  notices_parsed: ['취소', '환불', '계약금', '특약', '결제'],
+};
+
+function scoreChunkRelevance(chunk, claim) {
+  const claimTokens = new Set(extractKeywords(claim.text));
+  const fieldHints = FIELD_HINT_KEYWORDS[claim.field] || [];
+  let score = 0;
+  for (const tok of claimTokens) if (chunk.text.includes(tok)) score += 2;
+  for (const hint of fieldHints) if (chunk.text.includes(hint)) score += 1;
+  return score;
+}
+
+function findBestChunks(chunks, claim, k = 2) {
+  if (chunks.length === 0) return [];
+  const scored = chunks.map(c => ({ ...c, score: scoreChunkRelevance(c, claim) }));
+  scored.sort((a, b) => b.score - a.score);
+  // 최소 1개는 반환 (점수 0이라도 첫 chunk)
+  const top = scored.slice(0, k).filter((c, i) => i === 0 || c.score > 0);
+  return top;
+}
+
+/**
+ * claim 을 자연어 검증 질문으로 변환.
+ * 일반 진술문보다 질문 형태가 LLM 이 답을 원문에서 찾도록 유도하는 데 효과적
+ * (RARR 핵심 아이디어).
+ */
+function generateVerificationQuestion(claim) {
+  switch (claim.field) {
+    case 'min_participants':
+      return '이 상품의 최소 출발 인원은 원문에 몇 명으로 명시되어 있는가? (없으면 "명시 없음")';
+    case 'ticketing_deadline':
+      return '발권/예약/티켓팅 마감일이 원문에 명시되어 있는가? 있다면 어떤 날짜인가?';
+    case 'inclusions':
+      return `포함사항에 "${(claim.text.match(/"([^"]+)"/) || [, ''])[1]}" 라는 구체적 문구가 원문에 있는가?`;
+    case 'surcharges':
+      return `다음 추가요금이 원문에 기간·금액과 함께 명시되어 있는가? — "${(claim.text.match(/"([^"]+)"/) || [, ''])[1]}"`;
+    case 'notices_parsed':
+      return `다음 결제/취소 특약 문구가 원문에 명시되어 있는가? — "${(claim.text.match(/"([^"]+)"/) || [, ''])[1]}"`;
+    default:
+      return `다음 주장이 원문에 명시되어 있는가? — ${claim.text}`;
+  }
+}
+
 /**
  * Gemini 한 번에 여러 claim 을 검증 (배치).
  * 토큰 절감 + 일관성 향상.
+ *
+ * 2026-05-10 RARR 패턴: claim 별로 검증 질문 + 가장 관련 깊은 단락 짝지어 전달.
  */
 async function verifyClaimsWithGemini(rawText, claims, title) {
   const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
@@ -124,28 +231,47 @@ async function verifyClaimsWithGemini(rawText, claims, title) {
     generationConfig: { responseMimeType: 'application/json', temperature: 0.0 },
   });
 
-  const claimsList = claims.map((c, i) => `${i + 1}. ${c.text}`).join('\n');
+  // RARR — claim 별로 검증 질문 생성 + 가장 관련 깊은 단락 retrieve
+  const chunks = chunkRawText(rawText, 1200);
+  const claimContexts = claims.map(c => ({
+    claim: c,
+    question: generateVerificationQuestion(c),
+    bestChunks: findBestChunks(chunks, c, 2),
+  }));
 
-  const prompt = `너는 여행 상품 등록 감사관이다. DB에 저장된 **주장(claim) 목록**이 **원문(raw_text)** 에 실제로 근거를 두고 있는지 **한 건씩** 검증하라.
+  // 점수 0인 모든 chunks → 원문이 너무 짧거나 키워드가 일반적. 짧은 raw_text 는 통째로 한 번 더 첨부 (안전장치)
+  const allWeakRetrieval = claimContexts.every(cc => cc.bestChunks.length === 0 || cc.bestChunks[0].score === 0);
+  const fallbackFullText = allWeakRetrieval && rawText.length < 4000 ? rawText : null;
+
+  const claimSections = claimContexts.map((cc, i) => {
+    const evidence = cc.bestChunks.length
+      ? cc.bestChunks.map(b => `[원문 단락 #${b.idx + 1}, score=${b.score}]\n${b.text}`).join('\n\n')
+      : '(관련 단락 retrieve 실패 — 전체 원문 참조)';
+    return `[claim ${i + 1}] ${cc.claim.text}
+[검증 질문] ${cc.question}
+[근거 후보 단락]
+${evidence}`;
+  }).join('\n\n---\n\n');
+
+  const prompt = `너는 여행 상품 등록 감사관이다. DB에 저장된 **주장(claim)** 들이 **원문(raw_text)** 의 어느 부분에 근거를 두고 있는지 **검증 질문 형태로** 확인하라.
 
 상품명: ${title}
+${fallbackFullText ? `\n===== 원문 전체 (짧음) =====\n${fallbackFullText}\n` : ''}
+===== claim별 focused 컨텍스트 =====
 
-===== 원문 (Source of Truth) =====
-${rawText.slice(0, 10000)}
-
-===== 검증할 주장 목록 =====
-${claimsList}
+${claimSections}
 
 규칙:
-- 각 주장이 원문에 **구체적 문구로 직접 근거가 있으면** supported=true
-- **비슷한 일반 상식이나 업계 관례**로만 추론될 수 있고 원문 명시는 없으면 supported=false (= 환각 의심)
-- 괄호/조사/천단위 콤마 같은 사소한 표기 차이는 supported=true 로 판정
-- 원문 길이가 짧아 확정 불가면 supported=null
+- 검증 질문에 답하기 위해 **근거 후보 단락만 우선** 본다. 단락에서 답이 명확히 발견되면 supported=true, evidence 에 정확한 인용 문구 (40자 이내) 넣기.
+- 단락에 없거나 일반 상식·업계 관례로만 추론 가능하면 supported=false (환각 의심).
+- 괄호·조사·천단위 콤마 같은 사소한 표기 차이는 supported=true 로 판정.
+- 단락 정보가 모자라 확정 불가면 supported=null.
+- evidence 는 raw_text 에서 그대로 따온 문구만 (창작 금지).
 
-다음 JSON으로만 답변 (claim 번호 순서대로):
+JSON 만 출력 (claim 순서대로):
 {
   "results": [
-    { "n": 1, "supported": true|false|null, "evidence": "원문에서 발견된 문구 또는 null", "note": "불일치 시 설명 (한 줄)" }
+    { "n": 1, "supported": true|false|null, "evidence": "원문 인용 또는 null", "note": "불일치 시 한 줄 설명" }
   ]
 }`;
 
@@ -210,4 +336,13 @@ async function runCoVeAudit(pkg) {
   };
 }
 
-module.exports = { runCoVeAudit, extractClaims };
+module.exports = {
+  runCoVeAudit,
+  extractClaims,
+  // RARR helpers — 디버그·후속 튜닝·테스트용
+  chunkRawText,
+  extractKeywords,
+  scoreChunkRelevance,
+  findBestChunks,
+  generateVerificationQuestion,
+};

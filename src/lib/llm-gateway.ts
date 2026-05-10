@@ -221,6 +221,31 @@ export interface GatewayCallParams {
   jsonSchema?: object;
   enableCaching?: boolean;
   autoEscalate?: boolean;  // true면 복잡도 감지 후 자동 task 업그레이드 (기본 true)
+  /**
+   * Claude/Anthropic 호출에 한해 prompt cache TTL 을 1h 로 끌어올린다.
+   * 기본 ephemeral 은 5분 — register Step 0~7 처럼 한 번의 등록이 5분 넘게 끌리거나
+   * 동일 system prompt 로 batch 호출(여러 상품 연속 등록)할 때 cache miss 비용을 줄인다.
+   * 1h cache write 는 2× 비용이지만 read 는 0.1× — 2회 이상 read 시 net 절감.
+   * Anthropic 1h TTL 은 beta 기능: SDK 가 자동으로 anthropic-beta 헤더를 처리.
+   */
+  longCache?: boolean;
+  /**
+   * Confidence-gated escalation (Trust-or-Escalate, ICLR 2025).
+   * 호출자가 executor 응답 데이터를 보고 "confidence 낮음" 이라 판단하면
+   * advisor 모델(보통 더 강한 모델)로 재실행한다. 예시:
+   *   escalateIfLowConfidence: (data) => (data?.confidence ?? 1) < 0.7
+   *
+   * 발동 조건:
+   *   1) executor 가 success 를 반환했고
+   *   2) route.advisor 가 정의된 task 이며
+   *   3) 이 함수가 true 를 반환할 때
+   *
+   * advisor 실행이 실패하면 원래 primary 응답을 그대로 사용 (fail-soft).
+   * 기존 "executor 실패 시 advisor 가 전략을 알려줌" 패턴과 별개로 동작:
+   *   - 기존 advisor: 실패 → 전략 문자열 → executor 재실행
+   *   - 신규 escalation: 성공+불확실 → advisor 가 직접 최종 응답 생성
+   */
+  escalateIfLowConfidence?: (data: unknown, rawText?: string) => boolean;
 }
 
 export interface GatewayResult<T = unknown> {
@@ -391,9 +416,16 @@ async function callClaude(
 ): Promise<GatewayResult> {
   const start = Date.now();
   try {
+    // 1h TTL opt-in (params.longCache=true). 기본은 5min ephemeral.
+    // SDK 타입이 ttl 을 직접 지원하지 않을 수 있어 as 캐스팅 — 런타임은 그대로 통과.
+    const cacheControl = params.longCache
+      ? ({ type: 'ephemeral', ttl: '1h' } as unknown as { type: 'ephemeral' })
+      : ({ type: 'ephemeral' } as const);
     const response = await client.messages.create({
       model,
-      system: params.systemPrompt,
+      system: params.systemPrompt
+        ? [{ type: 'text' as const, text: params.systemPrompt, cache_control: cacheControl }]
+        : undefined,
       max_tokens: params.maxTokens || 2000,
       temperature: params.temperature ?? 0.3,
       messages: [{ role: 'user', content: params.userPrompt }],
@@ -401,7 +433,7 @@ async function callClaude(
 
     const text = response.content
       .filter((block) => block.type === 'text')
-      .map((block) => block.text)
+      .map((block) => (block as Anthropic.TextBlock).text)
       .join('\n');
 
     const usage = response.usage;
@@ -585,6 +617,32 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
       const primary = await callModelWithTimeout(executor, params, timeoutMs);
       if (primary.success) {
         recordCost(primary, executor.model, executor.provider);
+
+        // Confidence-gated escalation (Trust-or-Escalate, ICLR 2025).
+        // 호출자가 응답 데이터를 보고 "확신 부족" 으로 판단하면 advisor 모델로 재실행.
+        if (route.advisor && params.escalateIfLowConfidence) {
+          let lowConf = false;
+          try {
+            lowConf = !!params.escalateIfLowConfidence(primary.data, primary.rawText);
+          } catch (e) {
+            console.warn(`[llm-gateway] confidence predicate threw: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          if (lowConf) {
+            console.log(`[llm-gateway] confidence-gated escalation: ${executor.provider}/${executor.model} → ${route.advisor.provider}/${route.advisor.model} (task=${effectiveTask})`);
+            const escalated = await callModelWithTimeout(route.advisor, params, timeoutMs);
+            if (escalated.success) {
+              recordCost(escalated, route.advisor.model, route.advisor.provider);
+              return {
+                ...escalated,
+                advisorUsed: true,
+                complexityScore,
+                retryCount: attempt,
+              } as GatewayResult<T>;
+            }
+            console.warn(`[llm-gateway] confidence escalation 실패 → primary 응답 유지 (${escalated.errors?.join(',') ?? 'unknown'})`);
+          }
+        }
+
         return { ...primary, complexityScore, retryCount: attempt } as GatewayResult<T>;
       }
       errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${executor.provider}/${executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);

@@ -299,10 +299,27 @@ async function auditOne(pkg, baseUrl) {
   result.warnings.push(...checkRegionsVsRawText(pkg));
   result.warnings.push(...checkDateOverlap(pkg));
 
-  // 1-c. RAG — 과거 유사 에러 패턴 조회 (복리 학습: 등록할수록 RAG 풍부해짐)
-  result.rag_hits = await queryRelevantPatterns(pkg);
+  // ─── Parallel async wave ─────────────────────────────────────────────
+  // 독립적인 비동기 작업 3종을 동시에 발사: RAG 임베딩 조회, CoVe 감사(opt-in),
+  // 렌더 HTML fetch. 각각 평균 200~3000ms 라 순차 실행 시 누적 5초+ → 병렬 시 가장
+  // 느린 한 건(보통 렌더 fetch)으로 단축. 실패는 각 promise 안에서 swallow.
+  const aiDecision = shouldCallGemini();
+  result.ai_decision = aiDecision;
+  const renderUrl = baseUrl ? `${baseUrl}/packages/${pkg.id}` : null;
+
+  const [ragHits, coveResult, renderRaw] = await Promise.all([
+    queryRelevantPatterns(pkg).catch(e => { console.warn(`   [RAG] ${e.message}`); return []; }),
+    (aiDecision.enable && !COVE_DISABLED && pkg.raw_text)
+      ? runCoVeAudit(pkg).catch(e => ({ available: false, __error: e.message }))
+      : Promise.resolve(null),
+    renderUrl
+      ? fetch(renderUrl, { signal: AbortSignal.timeout(15000) }).catch(e => ({ __error: e.message }))
+      : Promise.resolve(null),
+  ]);
+
+  // 1-c. RAG — 과거 유사 에러 패턴 조회 결과 처리
+  result.rag_hits = ragHits;
   for (const hit of result.rag_hits) {
-    // similarity가 매우 높은 것만(>0.80) "주의" 수준 경고로 승격
     if (hit.similarity >= 0.80) {
       result.warnings.push(
         `RAG[${(hit.similarity * 100).toFixed(0)}%]: ${hit.error_code} "${hit.title}" — 과거 유사 패턴, 재발 주의`
@@ -310,10 +327,7 @@ async function auditOne(pkg, baseUrl) {
     }
   }
 
-  // 1-d. W-final F1 — Gemini 호출 여부 (opt-in 전용). 기본 OFF, --ai 시만 호출.
-  //      Agent self-audit 결과는 pkg.agent_audit_report 에 이미 기록되어 있음 → 그대로 result 에 복사.
-  const aiDecision = shouldCallGemini();
-  result.ai_decision = aiDecision;
+  // 1-d. Agent self-audit 결과 결합 (제로-코스트, /register Step 6.5)
   if (pkg.agent_audit_report) {
     result.agent_audit = pkg.agent_audit_report;
     const unsupported = (pkg.agent_audit_report.claims || []).filter(c => c.supported === false);
@@ -327,31 +341,30 @@ async function auditOne(pkg, baseUrl) {
       console.log(`   🧠 Agent self-audit 통과 (${(pkg.agent_audit_report.claims || []).length}개 claim)`);
     }
   } else {
-    // Mandatory per /register Step 6.5 — silent skip 금지 (Split 6 § 2.3 권고).
     console.log('   ⚠️  agent_audit_report 미기재 — Step 6.5 (Agent self-audit) 미실행 의심');
     result.errors.push('agent_audit_report 미기재 — /register Step 6.5 (Agent self-audit) 재실행 필요');
   }
   if (aiDecision.enable) console.log(`   🤖 Gemini 감사 ON: ${aiDecision.reason}`);
   else console.log(`   ⏭️  Gemini 감사 OFF: ${aiDecision.reason}`);
 
-  // 1-e. E6 (Gemini CoVe) — opt-in 전용. Agent self-audit 와 독립적으로 두 번째 의견용.
-  if (aiDecision.enable && !COVE_DISABLED && pkg.raw_text) {
-    const cove = await runCoVeAudit(pkg);
-    result.cove = cove;
-    if (cove.available) {
+  // 1-e. E6 (Gemini CoVe) 병렬 결과 처리
+  if (coveResult) {
+    result.cove = coveResult;
+    if (coveResult.available) {
       recordCost('e6');
-      console.log(`      CoVe: ${cove.total_claims || 0}개 claim 검증, ${cove.unsupported_count || 0}건 불일치 (${cove.elapsed_ms}ms)`);
-      result.warnings.push(...(cove.warnings || []));
-    } else if (cove.reason && !/GOOGLE_AI_API_KEY/.test(cove.reason)) {
-      console.log(`      CoVe 스킵: ${cove.reason}`);
+      console.log(`      CoVe: ${coveResult.total_claims || 0}개 claim 검증, ${coveResult.unsupported_count || 0}건 불일치 (${coveResult.elapsed_ms}ms)`);
+      result.warnings.push(...(coveResult.warnings || []));
+    } else if (coveResult.__error) {
+      console.log(`      CoVe 실패: ${coveResult.__error}`);
+    } else if (coveResult.reason && !/GOOGLE_AI_API_KEY/.test(coveResult.reason)) {
+      console.log(`      CoVe 스킵: ${coveResult.reason}`);
     }
   }
 
-  // 3. 렌더 페이지 audit (서버 있으면)
-  if (baseUrl) {
-    const renderUrl = `${baseUrl}/packages/${pkg.id}`;
+  // 3. 렌더 페이지 audit (병렬 fetch 결과 처리)
+  if (renderUrl && renderRaw && !renderRaw.__error) {
+    const r = renderRaw;
     try {
-      const r = await fetch(renderUrl, { signal: AbortSignal.timeout(15000) });
       if (r.ok) {
         const html = await r.text();
         // HTML → text
@@ -406,6 +419,8 @@ async function auditOne(pkg, baseUrl) {
     } catch (e) {
       result.render = { url: renderUrl, error: e.message };
     }
+  } else if (renderRaw && renderRaw.__error) {
+    result.render = { url: renderUrl, error: renderRaw.__error };
   } else {
     result.render = { skipped: 'dev server not reachable, production may not have ISR yet' };
   }
