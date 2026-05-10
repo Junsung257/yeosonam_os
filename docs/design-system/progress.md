@@ -8,6 +8,34 @@
 
 ---
 
+## 🔄 현재 안정 상태 (2026-05-11 갱신)
+
+**커밋·푸시 완료** (`0deef8e` feat(design-system) + 후속 14개 commit 동기화):
+- `feature/card-news-v2` 브랜치 원격 잠금 완료, Vercel 프리뷰 빌드 트리거됨
+- **151개 파일**이 admin v2 토큰 (`text-admin-text-2`, `bg-admin-surface-2`, `rounded-admin-md`, `shadow-admin-xs`, `admin-num`, `admin-data-table` 등) 활성 사용
+- `npm run verify:design-system` 통과 (admin 토큰 23 + CSS 변수 12 + admin-scope 클래스 4 무결성 정상)
+
+**다른 세션이 추가한 인프라** (디자인 시스템과 무관 — 안전):
+- `t3-env` 도입 (@t3-oss/env-nextjs) — 빌드 시 env 게이트
+- `OpenTelemetry` (@vercel/otel) — LLM trace 옵저버빌리티
+- `semantic cache` (GPTCache 패턴) — pgvector 기반 LLM 캐시
+- `pg_jsonschema CHECK` — itinerary_data 구조 게이트
+- `PR Quality Gate` (knip, dependency-cruiser, bundle budget) — CI 보강
+- `content-trend` 인프라 (PR-1~7) — 외부 IG/Threads 트렌드 학습
+- `commands → skills` 마이그레이션 (`.claude/skills/register/`)
+- `CLAUDE.md 다이어트` — path-scoped rules 8개로 분리
+- 페이지 감사 (`docs/audits/page-audit-2026-05-10.md`) — Playwright 168페이지 P0 15건 해결
+
+**세션 충돌 방지선 작동 중** — `MULTI-SESSION.md` 룰대로 다른 세션이 admin 인프라 파일은 건드리지 않음.
+
+**다음 세션 시작 시 필수 실행:**
+```bash
+npm run verify:design-system    # 토큰 무결성 + type-check
+```
+회귀 발견 시 즉시 보고 + `docs/design-system/MULTI-SESSION.md` 복구 절차 따름.
+
+---
+
 ## ✅ Phase 0 — 어드민 전수 감사 (완료)
 
 - 데스크톱 어드민 페이지 **106개**
