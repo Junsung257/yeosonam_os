@@ -1,3 +1,11 @@
+---
+name: assemble-product
+description: 어셈블러 상품 등록 — 서안·장가계·나트랑 등 블록 정의 지역에서 dry-run으로 조립 → 검증 → INSERT. 부수효과 큼, 사용자 명시 호출만.
+argument-hint: [원문 텍스트]
+model: claude-sonnet-4-6
+disable-model-invocation: true
+---
+
 # 서안 어셈블러 상품 등록 프로세스
 
 사용자가 원문 텍스트를 제공하면 어셈블러로 상품을 등록합니다.

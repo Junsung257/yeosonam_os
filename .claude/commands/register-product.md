@@ -1,3 +1,11 @@
+---
+name: register-product
+description: 단순 상품 등록 — 코드베이스 탐색 없이 즉시 db/insert_XXX_packages.js 스크립트 생성. 어셈블러 미지원 지역 / 단순 INSERT 용. 부수효과 큼 — 사용자 명시 호출만.
+argument-hint: [원문 텍스트] [랜드사코드 마진율%]
+model: claude-sonnet-4-6
+disable-model-invocation: true
+---
+
 # 상품 등록 커맨드
 
 아래는 사용자가 입력한 상품 원문과 랜드사/마진 정보입니다:

@@ -41,8 +41,12 @@
 | 자비스 오케스트레이션 | `docs/jarvis-orchestration.md` |
 | 플랫폼 AI·학습 로드맵 | `docs/platform-ai-roadmap.md` |
 | Solapi 리뷰 요청 템플릿 | `docs/solapi-review-template-guide.md` |
+| **/register 변경 이력 (P0~P1·결정)** | **`docs/register-changelog.md`** |
+| 미설정 트래커 | `docs/pending-settings-tracker.md` |
+| 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
+| 일회성 페이지 감사 로그 | `docs/audits/` |
 
-*새 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것.*
+*새 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로.*
 
 ---
 
