@@ -20,7 +20,7 @@
 모든 작업 시작 전 **아래를 수행했는지 self-check**하십시오. 하나라도 생략되면 ERR-20260418-33 급 참사가 발생합니다.
 
 - [ ] **기존 기능 탐색했는가?** — `Glob`, `Grep`으로 `src/app/admin/`, `src/app/api/`, `src/lib/`에서 관련 구현 확인
-- [ ] **기존 커맨드 MD 파일 읽었는가?** — `.claude/commands/` 내 관련 파일(`register.md`, `manage-attractions.md`, `register-product.md`, `assemble-product.md`)
+- [ ] **기존 커맨드/스킬 MD 파일 읽었는가?** — `.claude/skills/register/SKILL.md` (통합 등록), `.claude/commands/` 내 `manage-attractions.md`·`register-product.md`·`assemble-product.md`·`validate-product.md`
 - [ ] **Error Registry 최근 10건 체크리스트 확인했는가?** — `db/error-registry.md` 하단
 - [ ] **"이 기능 제가 구현해드릴게요"라고 말하기 전** 진짜 그 기능이 없는지 확인했는가?
 - [ ] **임시 스크립트(`db/seed_XXX.js`, `db/temp_XXX.js`) 만들려 하는가?** → 중단하고 기존 API/UI 사용
@@ -31,7 +31,7 @@
 
 | 도메인 | 필수 Read 파일 |
 |-------|--------------|
-| 상품 등록 | `.claude/commands/register.md` |
+| 상품 등록 | `.claude/skills/register/SKILL.md` (+ references/) |
 | 서안 등 어셈블러 지역 | `.claude/commands/assemble-product.md` |
 | **관광지(attractions) 관리** | **`.claude/commands/manage-attractions.md`** |
 | **등록 후 상품 검증** | **`.claude/commands/validate-product.md`** (원문 ↔ A4 ↔ 모바일 3자 대조) |

@@ -1,6 +1,6 @@
 # /register 변경 이력 (P0~P1 정책 + 결정 이력)
 
-> **목적**: `/register` 슬래시 커맨드의 누적된 정책 변경·결정 사항을 본문에서 분리. 본문(.claude/commands/register.md)은 절차 위주로 가볍게 유지하고, 시간 의존적인 변경 로그는 여기에 누적.
+> **목적**: `/register` 슬래시 스킬의 누적된 정책 변경·결정 사항을 본문에서 분리. 본문(`.claude/skills/register/SKILL.md`)은 orchestration 위주로 가볍게 유지하고, 시간 의존적인 변경 로그는 여기에 누적.
 >
 > **읽는 시점**: `/register` 실행 중 본문에서 "최근 정책 → docs/register-changelog.md" 라고 가리킨 항목을 확인할 때, 또는 사장님이 새 정책 결정 시 append.
 
