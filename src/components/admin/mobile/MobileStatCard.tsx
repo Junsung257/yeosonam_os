@@ -32,7 +32,7 @@ export function MobileStatCard({
 
   const body = (
     <div
-      className={`rounded-2xl px-4 py-4 ${toneCls} ${
+      className={`rounded-admin-lg px-4 py-4 ${toneCls} ${
         borderedTone ? 'border' : ''
       } active:scale-[0.98] transition`}
     >

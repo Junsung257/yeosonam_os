@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { ArrowLeft, Settings, Plus, Calendar, Flame, PenLine, Archive } from 'lucide-react';
 
 interface QueueItem {
   id: string;
@@ -26,7 +29,7 @@ interface QueueItem {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  queued: 'bg-slate-100 text-slate-600',
+  queued: 'bg-admin-surface-2 text-admin-muted',
   generating: 'bg-blue-100 text-blue-700',
   published: 'bg-emerald-100 text-emerald-700',
   failed: 'bg-rose-100 text-rose-700',
@@ -136,108 +139,97 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[18px] font-bold text-slate-800">자동 발행 큐</h1>
-          <p className="text-admin-xs text-slate-400 mt-0.5">
-            시즌 · 커버리지 갭 · 상품 기반 자동 토픽 생성 및 예약 발행
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link href="/admin/blog/system" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
-            시스템·크론
-          </Link>
-          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
-            ← 블로그 목록
-          </Link>
-          <button
-            onClick={() => setSeedOpen(!seedOpen)}
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50"
-          >
-            + 토픽 수동 추가
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="자동 발행 큐"
+        subtitle="시즌 · 커버리지 갭 · 상품 기반 자동 토픽 생성 및 예약 발행"
+        actions={
+          <>
+            <Link href="/admin/blog/system">
+              <Button variant="secondary" size="sm">
+                <Settings size={14} />
+                시스템·크론
+              </Button>
+            </Link>
+            <Link href="/admin/blog">
+              <Button variant="secondary" size="sm">
+                <ArrowLeft size={14} />
+                블로그 목록
+              </Button>
+            </Link>
+            <Button variant="primary" size="sm" onClick={() => setSeedOpen(!seedOpen)}>
+              <Plus size={14} />
+              토픽 수동 추가
+            </Button>
+          </>
+        }
+      />
 
       {/* 수동 시드 */}
       {seedOpen && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-2">
+        <div className="admin-card border-brand/20 p-3 space-y-2">
           <input
             value={seedTopic}
             onChange={e => setSeedTopic(e.target.value)}
             placeholder="토픽 (예: 6월 다낭 비 오는 날 실내 코스)"
-            className="w-full px-3 py-2 text-admin-sm border border-slate-300 rounded bg-white"
+            className="w-full h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           />
           <div className="flex gap-2">
             <input
               value={seedDest}
               onChange={e => setSeedDest(e.target.value)}
               placeholder="목적지 (선택)"
-              className="flex-1 px-3 py-2 text-admin-sm border border-slate-300 rounded bg-white"
+              className="flex-1 h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
             />
-            <button onClick={addSeed} className="px-4 py-2 bg-blue-600 text-white text-admin-sm rounded font-semibold">
+            <Button variant="primary" onClick={addSeed}>
               추가 (priority 95)
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {/* 컨트롤 패널 */}
       <div className="grid grid-cols-4 gap-2">
-        <button
-          onClick={() => trigger('run_scheduler')}
-          disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
-        >
-          {running === 'run_scheduler' ? '실행중...' : '🗓️ 스케줄러'}
-          <p className="text-[10px] text-slate-400 mt-0.5">큐 충전 + 슬롯</p>
-        </button>
-        <button
-          onClick={() => trigger('run_trend_miner')}
-          disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
-        >
-          {running === 'run_trend_miner' ? '실행중...' : '🔥 트렌드 마이너'}
-          <p className="text-[10px] text-slate-400 mt-0.5">최신 검색 트렌드</p>
-        </button>
-        <button
-          onClick={() => trigger('run_publisher')}
-          disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
-        >
-          {running === 'run_publisher' ? '실행중...' : '✍️ 발행자'}
-          <p className="text-[10px] text-slate-400 mt-0.5">지금 발행 처리</p>
-        </button>
-        <button
-          onClick={() => trigger('run_lifecycle')}
-          disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
-        >
-          {running === 'run_lifecycle' ? '실행중...' : '🗄️ 라이프사이클'}
-          <p className="text-[10px] text-slate-400 mt-0.5">만료 글 아카이브</p>
-        </button>
+        {([
+          ['run_scheduler', '스케줄러', '큐 충전 + 슬롯', Calendar],
+          ['run_trend_miner', '트렌드 마이너', '최신 검색 트렌드', Flame],
+          ['run_publisher', '발행자', '지금 발행 처리', PenLine],
+          ['run_lifecycle', '라이프사이클', '만료 글 아카이브', Archive],
+        ] as const).map(([action, label, desc, Icon]) => (
+          <button
+            key={action}
+            onClick={() => trigger(action)}
+            disabled={running !== null}
+            className="px-3 py-3 admin-card text-left text-admin-xs hover:border-admin-border-strong disabled:opacity-50 transition-colors"
+          >
+            <span className="inline-flex items-center gap-1.5 font-semibold text-admin-text">
+              <Icon size={14} className="text-brand" />
+              {running === action ? '실행중…' : label}
+            </span>
+            <p className="text-admin-2xs text-admin-muted mt-1">{desc}</p>
+          </button>
+        ))}
       </div>
 
       {/* 카운트 요약 */}
-      <div className="flex gap-2 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-admin-xs">
-        <span><span className="text-slate-400">대기</span> <b>{counts.queued ?? 0}</b></span>
-        <span className="text-slate-200">·</span>
-        <span><span className="text-slate-400">생성중</span> <b className="text-blue-600">{counts.generating ?? 0}</b></span>
-        <span className="text-slate-200">·</span>
-        <span><span className="text-slate-400">발행</span> <b className="text-emerald-600">{counts.published ?? 0}</b></span>
-        <span className="text-slate-200">·</span>
-        <span><span className="text-slate-400">실패</span> <b className="text-rose-600">{counts.failed ?? 0}</b></span>
+      <div className="flex items-center gap-3 admin-card p-3 text-admin-sm">
+        <span><span className="text-admin-muted">대기</span> <b className="admin-num text-admin-text">{counts.queued ?? 0}</b></span>
+        <span className="text-admin-border-mid">·</span>
+        <span><span className="text-admin-muted">생성중</span> <b className="text-brand admin-num">{counts.generating ?? 0}</b></span>
+        <span className="text-admin-border-mid">·</span>
+        <span><span className="text-admin-muted">발행</span> <b className="text-success admin-num">{counts.published ?? 0}</b></span>
+        <span className="text-admin-border-mid">·</span>
+        <span><span className="text-admin-muted">실패</span> <b className="text-danger admin-num">{counts.failed ?? 0}</b></span>
       </div>
 
       {/* 탭 */}
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
         {STATUS_TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${
-              tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+            className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors ${
+              tab === t.key ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'
             }`}
           >
             {t.label}
@@ -247,83 +239,83 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
 
       {/* 목록 */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-admin-sm">로딩...</div>
+        <div className="text-center py-12 text-admin-muted text-admin-sm">로딩…</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12 text-slate-400 text-admin-sm">
+        <div className="text-center py-12 text-admin-muted text-admin-sm admin-card">
           큐에 항목이 없습니다. 스케줄러를 실행해서 토픽을 채워보세요.
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <table className="w-full">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+          <table className="admin-data-table">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium w-24">소스</th>
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium">토픽</th>
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium w-20">목적지</th>
-                <th className="text-center px-2 py-2 text-[11px] text-slate-500 font-medium w-12">우선</th>
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium w-32">발행 예정</th>
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium w-20">상태</th>
-                <th className="w-16"></th>
+              <tr>
+                <th style={{ width: 96 }}>소스</th>
+                <th>토픽</th>
+                <th style={{ width: 80 }}>목적지</th>
+                <th className="text-center" style={{ width: 48 }}>우선</th>
+                <th style={{ width: 128 }}>발행 예정</th>
+                <th style={{ width: 80 }}>상태</th>
+                <th style={{ width: 64 }}></th>
               </tr>
             </thead>
             <tbody>
               {items.map(it => (
-                <tr key={it.id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-3 py-2.5 text-[11px] text-slate-600">
+                <tr key={it.id}>
+                  <td className="text-admin-xs text-admin-muted">
                     {SOURCE_LABELS[it.source] || it.source}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <p className="text-admin-xs text-slate-800 truncate max-w-md">{it.topic}</p>
+                  <td>
+                    <p className="text-admin-sm text-admin-text truncate max-w-md">{it.topic}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {it.keyword_tier && TIER_BADGES[it.keyword_tier] && (
-                        <span className={`px-1.5 py-0.5 text-[9px] rounded border font-mono ${TIER_BADGES[it.keyword_tier].cls}`}>
+                        <span className={`px-1.5 py-0.5 text-[9px] rounded-admin-xs border font-mono font-bold ${TIER_BADGES[it.keyword_tier].cls}`}>
                           {TIER_BADGES[it.keyword_tier].label}
                         </span>
                       )}
                       {it.primary_keyword && (
-                        <span className="text-[10px] text-slate-500">🔑 {it.primary_keyword}</span>
+                        <span className="text-admin-2xs text-admin-muted">🔑 {it.primary_keyword}</span>
                       )}
                       {it.monthly_search_volume != null && it.monthly_search_volume > 0 && (
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-admin-2xs text-admin-muted-2 admin-num">
                           {it.monthly_search_volume.toLocaleString()}/mo
                         </span>
                       )}
                       {it.trend_score != null && it.trend_score > 0 && (
-                        <span className="text-[10px] text-orange-600 font-mono">
+                        <span className="text-admin-2xs text-warning font-mono admin-num">
                           🔥 {it.trend_score}
                         </span>
                       )}
                       {it.meta?.search_intent && (
-                        <span className="text-[10px] text-violet-600">
+                        <span className="text-admin-2xs text-brand">
                           의도 {it.meta.search_intent}
                         </span>
                       )}
                     </div>
                     {it.last_error && (
-                      <p className="text-[10px] text-rose-600 truncate mt-0.5">⚠ {it.last_error}</p>
+                      <p className="text-admin-2xs text-danger truncate mt-0.5">⚠ {it.last_error}</p>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[11px] text-slate-500">{it.destination || '-'}</td>
-                  <td className="px-2 py-2.5 text-center text-[11px] font-mono text-slate-600">{it.priority}</td>
-                  <td className="px-3 py-2.5 text-[11px] text-slate-500 font-mono">
+                  <td className="text-admin-xs text-admin-muted">{it.destination || '—'}</td>
+                  <td className="text-center text-admin-xs font-mono text-admin-muted admin-num">{it.priority}</td>
+                  <td className="text-admin-xs text-admin-muted font-mono admin-num">
                     {it.target_publish_at
-                      ? new Date(it.target_publish_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : '-'}
+                      ? it.target_publish_at.slice(5, 16).replace('T', ' ')
+                      : '—'}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${STATUS_COLORS[it.status] || 'bg-slate-100 text-slate-500'}`}>
+                  <td>
+                    <span className={`px-2 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${STATUS_COLORS[it.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
                       {it.status}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="text-right">
                     {it.content_creative_id ? (
-                      <Link href={`/admin/blog/${it.content_creative_id}`} className="text-[11px] text-blue-600 hover:underline">
+                      <Link href={`/admin/blog/${it.content_creative_id}`} className="text-admin-xs text-brand hover:text-brand-dark hover:underline font-medium">
                         보기
                       </Link>
                     ) : (
                       <button
                         onClick={() => removeItem(it.id)}
-                        className="text-[11px] text-rose-500 hover:underline"
+                        className="text-admin-xs text-danger hover:underline font-medium"
                       >
                         제거
                       </button>

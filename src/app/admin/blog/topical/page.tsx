@@ -5,6 +5,9 @@
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { ArrowLeft, Sprout, ArrowUpCircle, GitBranch, Layers, Network, Clock, Send } from 'lucide-react';
 
 interface State {
   pillars: Array<{ slug: string; pillar_for: string }>;
@@ -46,42 +49,31 @@ export default function TopicalPage() {
     }
   };
 
-  if (!state) return <div className="text-slate-400 text-admin-sm">로딩...</div>;
+  if (!state) return <div className="text-admin-muted-2 text-admin-sm">로딩...</div>;
 
   const matrixTotal = (state.matrix.pending || 0) + (state.matrix.queued || 0) + (state.matrix.skipped || 0) + (state.matrix.failed || 0);
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[18px] font-bold text-slate-800">토픽 권위 + Programmatic SEO</h1>
-          <p className="text-admin-xs text-slate-400 mt-0.5">
-            Pillar↔Cluster 인터링크 자동화 + destination×angle×month 매트릭스
-          </p>
-        </div>
-        <Link href="/admin/blog/queue" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50">
-          ← 큐
-        </Link>
-      </div>
+      <PageHeader
+        title="토픽 권위 + Programmatic SEO"
+        subtitle="Pillar ↔ Cluster 인터링크 자동화 + destination × angle × month 매트릭스"
+        actions={
+          <Link href="/admin/blog/queue">
+            <Button variant="secondary" size="sm">
+              <ArrowLeft size={14} />
+              발행 큐
+            </Button>
+          </Link>
+        }
+      />
 
       {/* 통계 */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-          <p className="text-[11px] text-slate-400">Pillar 페이지</p>
-          <p className="text-[22px] font-bold text-slate-800">{state.pillar_count}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-          <p className="text-[11px] text-slate-400">Cluster 매핑</p>
-          <p className="text-[22px] font-bold text-slate-800">{state.cluster_total}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-          <p className="text-[11px] text-slate-400">매트릭스 대기</p>
-          <p className="text-[22px] font-bold text-amber-600">{state.matrix.pending || 0}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-          <p className="text-[11px] text-slate-400">매트릭스 큐잉됨</p>
-          <p className="text-[22px] font-bold text-emerald-600">{state.matrix.queued || 0}</p>
-        </div>
+      <div className="grid grid-cols-4 gap-3">
+        <KpiCard label="Pillar 페이지" value={state.pillar_count.toLocaleString()} icon={Layers} />
+        <KpiCard label="Cluster 매핑" value={state.cluster_total.toLocaleString()} icon={Network} />
+        <KpiCard label="매트릭스 대기" value={(state.matrix.pending || 0).toLocaleString()} icon={Clock} tone={state.matrix.pending > 0 ? 'negative' : 'neutral'} />
+        <KpiCard label="매트릭스 큐잉됨" value={(state.matrix.queued || 0).toLocaleString()} icon={Send} tone="positive" />
       </div>
 
       {/* 컨트롤 */}
@@ -89,45 +81,54 @@ export default function TopicalPage() {
         <button
           onClick={() => trigger('seed', '매트릭스 시드')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-3 admin-card text-left text-admin-xs hover:border-admin-border-strong disabled:opacity-50 transition-colors"
         >
-          {running === 'seed' ? '시딩...' : '🌱 매트릭스 시드'}
-          <p className="text-[10px] text-slate-400 mt-0.5">활성 destination × 12 angle</p>
+          <span className="inline-flex items-center gap-1.5 font-semibold text-admin-text">
+            <Sprout size={14} className="text-success" />
+            {running === 'seed' ? '시딩…' : '매트릭스 시드'}
+          </span>
+          <p className="text-admin-2xs text-admin-muted mt-1">활성 destination × 12 angle</p>
         </button>
         <button
           onClick={() => trigger('promote', 'Pending → Queue')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-3 admin-card text-left text-admin-xs hover:border-admin-border-strong disabled:opacity-50 transition-colors"
         >
-          {running === 'promote' ? '승격중...' : '⬆️ 7개 큐로 promote'}
-          <p className="text-[10px] text-slate-400 mt-0.5">시즌 우선</p>
+          <span className="inline-flex items-center gap-1.5 font-semibold text-admin-text">
+            <ArrowUpCircle size={14} className="text-brand" />
+            {running === 'promote' ? '승격중…' : '7개 큐로 promote'}
+          </span>
+          <p className="text-admin-2xs text-admin-muted mt-1">시즌 우선</p>
         </button>
         <button
           onClick={() => trigger('rebuild_clusters', 'Cluster 재구성')}
           disabled={running !== null}
-          className="px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-admin-xs hover:bg-slate-50 disabled:opacity-50"
+          className="px-3 py-3 admin-card text-left text-admin-xs hover:border-admin-border-strong disabled:opacity-50 transition-colors"
         >
-          {running === 'rebuild_clusters' ? '재구성...' : '🔗 Cluster 재구성'}
-          <p className="text-[10px] text-slate-400 mt-0.5">Pillar↔Cluster 매핑</p>
+          <span className="inline-flex items-center gap-1.5 font-semibold text-admin-text">
+            <GitBranch size={14} className="text-brand" />
+            {running === 'rebuild_clusters' ? '재구성…' : 'Cluster 재구성'}
+          </span>
+          <p className="text-admin-2xs text-admin-muted mt-1">Pillar ↔ Cluster 매핑</p>
         </button>
       </div>
 
-      {msg && <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded">{msg}</div>}
+      {msg && <div className="text-admin-xs text-admin-muted bg-admin-surface-2 p-2.5 rounded-admin-sm">{msg}</div>}
 
       {/* 매트릭스 진행률 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-        <p className="text-admin-xs font-semibold text-slate-700 mb-2">매트릭스 진행률 ({matrixTotal}건)</p>
+      <div className="admin-card p-3">
+        <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">매트릭스 진행률 (<span className="admin-num">{matrixTotal}</span>건)</p>
         {matrixTotal === 0 ? (
-          <p className="text-[11px] text-slate-400">아직 시드되지 않음. "🌱 매트릭스 시드" 버튼을 누르세요.</p>
+          <p className="text-admin-xs text-admin-muted-2">아직 시드되지 않음. "매트릭스 시드" 버튼을 누르세요.</p>
         ) : (
-          <div className="flex h-6 rounded overflow-hidden text-[10px] text-white font-semibold">
-            <div className="bg-amber-500 flex items-center justify-center" style={{ width: `${((state.matrix.pending || 0) / matrixTotal) * 100}%` }}>
+          <div className="flex h-6 rounded-admin-sm overflow-hidden text-admin-2xs text-white font-semibold admin-num">
+            <div className="bg-warning flex items-center justify-center" style={{ width: `${((state.matrix.pending || 0) / matrixTotal) * 100}%` }}>
               {state.matrix.pending || 0}
             </div>
-            <div className="bg-emerald-500 flex items-center justify-center" style={{ width: `${((state.matrix.queued || 0) / matrixTotal) * 100}%` }}>
+            <div className="bg-success flex items-center justify-center" style={{ width: `${((state.matrix.queued || 0) / matrixTotal) * 100}%` }}>
               {state.matrix.queued || 0}
             </div>
-            <div className="bg-slate-400 flex items-center justify-center" style={{ width: `${(((state.matrix.skipped || 0) + (state.matrix.failed || 0)) / matrixTotal) * 100}%` }}>
+            <div className="bg-admin-muted-2 flex items-center justify-center" style={{ width: `${(((state.matrix.skipped || 0) + (state.matrix.failed || 0)) / matrixTotal) * 100}%` }}>
               {(state.matrix.skipped || 0) + (state.matrix.failed || 0)}
             </div>
           </div>
@@ -136,17 +137,17 @@ export default function TopicalPage() {
 
       {/* Pillar 목록 */}
       {state.pillars.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
-            <p className="text-admin-xs font-semibold text-slate-700">Pillar 페이지 (destination 허브)</p>
+        <div className="admin-card overflow-hidden">
+          <div className="px-3 py-2.5 bg-admin-surface-2 border-b border-admin-border">
+            <p className="text-admin-xs font-semibold text-admin-text-2">Pillar 페이지 (destination 허브)</p>
           </div>
-          <div className="grid grid-cols-3 gap-1 p-2">
+          <div className="grid grid-cols-3 gap-1.5 p-2">
             {state.pillars.map(p => {
               const clusters = state.cluster_by_destination.find(c => c.destination === p.pillar_for)?.count || 0;
               return (
-                <Link key={p.slug} href={`/blog/${p.slug}`} className="px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded text-[11px]">
-                  <p className="font-semibold text-slate-700">🏛️ {p.pillar_for}</p>
-                  <p className="text-slate-500">cluster {clusters}개 연결</p>
+                <Link key={p.slug} href={`/blog/${p.slug}`} className="px-3 py-2 bg-admin-surface-2 hover:bg-brand-light rounded-admin-sm text-admin-xs transition-colors">
+                  <p className="font-semibold text-admin-text">🏛️ {p.pillar_for}</p>
+                  <p className="text-admin-muted admin-num">cluster {clusters}개 연결</p>
                 </Link>
               );
             })}
@@ -156,28 +157,28 @@ export default function TopicalPage() {
 
       {/* 매트릭스 pending 샘플 */}
       {state.matrix_pending_sample.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
-            <p className="text-admin-xs font-semibold text-slate-700">대기 중 매트릭스 토픽 (priority 순)</p>
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+          <div className="px-3 py-2.5 border-b border-admin-border">
+            <p className="text-admin-xs font-semibold text-admin-text-2">대기 중 매트릭스 토픽 (priority 순)</p>
           </div>
-          <table className="w-full text-[11px]">
+          <table className="admin-data-table">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-3 py-2 text-slate-500">Destination</th>
-                <th className="text-left px-3 py-2 text-slate-500">Angle</th>
-                <th className="text-center px-2 py-2 text-slate-500">월</th>
-                <th className="text-left px-3 py-2 text-slate-500">토픽</th>
-                <th className="text-center px-2 py-2 text-slate-500">Priority</th>
+              <tr>
+                <th>Destination</th>
+                <th>Angle</th>
+                <th className="text-center">월</th>
+                <th>토픽</th>
+                <th className="text-center">Priority</th>
               </tr>
             </thead>
             <tbody>
               {state.matrix_pending_sample.map((t: any) => (
-                <tr key={t.id} className="border-b border-slate-100">
-                  <td className="px-3 py-1.5 text-slate-700">{t.destination}</td>
-                  <td className="px-3 py-1.5 text-slate-600 font-mono text-[10px]">{t.angle}</td>
-                  <td className="px-2 py-1.5 text-center text-slate-500">{t.month || '-'}</td>
-                  <td className="px-3 py-1.5 text-slate-700 truncate max-w-md">{t.topic_template}</td>
-                  <td className="px-2 py-1.5 text-center text-slate-500 font-mono">{t.priority}</td>
+                <tr key={t.id}>
+                  <td className="text-admin-text">{t.destination}</td>
+                  <td className="text-admin-muted font-mono text-admin-2xs">{t.angle}</td>
+                  <td className="text-center text-admin-muted admin-num">{t.month || '—'}</td>
+                  <td className="text-admin-text truncate max-w-md">{t.topic_template}</td>
+                  <td className="text-center text-admin-muted font-mono admin-num">{t.priority}</td>
                 </tr>
               ))}
             </tbody>

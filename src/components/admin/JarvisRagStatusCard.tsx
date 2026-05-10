@@ -4,6 +4,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 interface Status {
   total_chunks: number;
@@ -37,11 +38,11 @@ export default function JarvisRagStatusCard() {
   const ready = status.rag_ready;
 
   return (
-    <section className={`rounded-xl border p-4 ${
+    <section className={`rounded-admin-md border p-4 ${
       ready ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
     }`}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+        <h3 className="text-sm font-bold text-admin-text-2 flex items-center gap-1.5">
           <span>🧠</span>
           <span>자비스 RAG 색인 상태</span>
         </h3>
@@ -56,16 +57,14 @@ export default function JarvisRagStatusCard() {
         <Kpi label="총 chunks" value={total.toLocaleString()} highlight={ready} />
         <Kpi label="봇 페르소나" value={`${status.bot_profiles}건`} />
         <Kpi label="마지막 인덱싱"
-          value={status.last_indexed_at
-            ? new Date(status.last_indexed_at).toLocaleDateString('ko-KR')
-            : '없음'} />
+          value={status.last_indexed_at ? fmtDateISO(status.last_indexed_at) : '없음'} />
         <Kpi label="RAG 검색" value={ready ? '활성' : '비활성'} />
       </div>
 
       {Object.keys(status.by_source).length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(status.by_source).map(([k, v]) => (
-            <span key={k} className="inline-flex items-center gap-1 text-[11px] bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+            <span key={k} className="inline-flex items-center gap-1 text-[11px] bg-white border border-admin-border-mid px-2 py-0.5 rounded-full">
               <span>{SOURCE_LABELS[k] ?? k}</span>
               <span className="font-bold tabular-nums">{v}</span>
             </span>
@@ -85,9 +84,9 @@ export default function JarvisRagStatusCard() {
 
 function Kpi({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className={`rounded-lg p-2.5 border ${highlight ? 'bg-white border-emerald-300' : 'bg-white border-slate-200'}`}>
-      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={`text-base font-extrabold mt-0.5 tabular-nums ${highlight ? 'text-emerald-700' : 'text-slate-700'}`}>
+    <div className={`rounded-lg p-2.5 border ${highlight ? 'bg-white border-emerald-300' : 'bg-white border-admin-border-mid'}`}>
+      <div className="text-[10px] uppercase tracking-wide text-admin-muted-2">{label}</div>
+      <div className={`text-base font-extrabold mt-0.5 tabular-nums ${highlight ? 'text-emerald-700' : 'text-admin-text-2'}`}>
         {value}
       </div>
     </div>

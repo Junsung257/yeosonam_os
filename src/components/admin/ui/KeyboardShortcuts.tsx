@@ -219,18 +219,18 @@ export function KeyboardShortcutsHelp() {
       onClick={() => setHelpOpen(false)}
     >
       <div
-        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-admin-border overflow-hidden"
+        className="w-full max-w-2xl bg-white rounded-admin-md shadow-2xl border border-admin-border overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-3.5 border-b border-admin-border flex items-center gap-2">
           <Keyboard size={16} className="text-admin-textMuted" />
           <h2 className="text-admin-md font-bold text-admin-text">키보드 단축키</h2>
           <span className="ml-auto text-admin-xs text-admin-textSubtle">
-            <kbd className="bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">
+            <kbd className="bg-admin-surface-2 px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">
               ?
             </kbd>{' '}
             또는{' '}
-            <kbd className="bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">
+            <kbd className="bg-admin-surface-2 px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">
               ESC
             </kbd>{' '}
             로 닫기
@@ -253,7 +253,7 @@ export function KeyboardShortcutsHelp() {
                       {s.keys.split(' ').map((k, i) => (
                         <kbd
                           key={i}
-                          className="bg-slate-100 text-admin-text px-1.5 py-0.5 rounded font-mono border border-slate-200 text-admin-xs"
+                          className="bg-admin-surface-2 text-admin-text px-1.5 py-0.5 rounded font-mono border border-admin-border-mid text-admin-xs"
                         >
                           {k}
                         </kbd>
@@ -267,7 +267,7 @@ export function KeyboardShortcutsHelp() {
           ))}
         </div>
 
-        <div className="px-5 py-2.5 border-t border-admin-border text-admin-xs text-admin-textSubtle bg-slate-50">
+        <div className="px-5 py-2.5 border-t border-admin-border text-admin-xs text-admin-textSubtle bg-admin-bg">
           💡 단축키는 입력창에 포커스가 없을 때만 작동합니다. 시퀀스 단축키(예: G B)는 G를 누른 뒤 0.8초 안에 다음 키를 눌러야 합니다.
         </div>
       </div>

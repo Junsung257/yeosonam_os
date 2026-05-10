@@ -36,7 +36,7 @@ export default function AlertsBadge() {
   if (count === null || count === 0) {
     return (
       <Link href="/admin/alerts"
-        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 px-2 py-1 rounded transition"
+        className="inline-flex items-center gap-1 text-xs text-admin-muted hover:text-admin-text-2 px-2 py-1 rounded transition"
         title="운영 알림">
         <span>🔔</span>
       </Link>

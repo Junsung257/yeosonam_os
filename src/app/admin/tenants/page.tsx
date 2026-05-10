@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fmtNum as fmt } from '@/lib/admin-utils';
+import { PageHeader, FormRow } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Plus, X } from 'lucide-react';
 
 interface Tenant {
   id:               string;
@@ -35,7 +38,7 @@ const EMPTY_FORM = {
 
 const STATUS_BADGE: Record<string, string> = {
   active:    'bg-green-50 text-green-700',
-  inactive:  'bg-slate-100 text-slate-500',
+  inactive:  'bg-admin-surface-2 text-admin-muted',
   suspended: 'bg-red-50 text-red-600',
 };
 
@@ -129,89 +132,85 @@ export default function TenantsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-admin-lg font-bold text-slate-800">테넌트 관리</h1>
-          <p className="text-admin-sm text-slate-500 mt-0.5">입점 랜드사(테넌트) 목록 및 현황을 관리합니다.</p>
-        </div>
-        <button
-          onClick={openCreate}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 transition"
-        >
-          + 테넌트 등록
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="테넌트 관리"
+        subtitle="입점 랜드사(테넌트) 목록 및 현황을 관리합니다"
+        actions={
+          <Button variant="primary" size="sm" onClick={openCreate}>
+            <Plus size={14} />
+            테넌트 등록
+          </Button>
+        }
+      />
 
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-4">
-              <div className="h-4 bg-slate-100 rounded animate-pulse flex-1" />
-              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-20" />
-              <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-4">
+              <div className="h-4 bg-admin-surface-2 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-20" />
+              <div className="h-4 bg-admin-surface-2 rounded animate-pulse w-24" />
             </div>
           ))}
         </div>
       ) : tenants.length === 0 ? (
-        <div className="text-center py-16 text-slate-500 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-          <p className="text-admin-base font-medium">등록된 테넌트가 없습니다.</p>
-          <p className="text-admin-sm mt-1">+ 테넌트 등록 버튼으로 랜드사를 추가하세요.</p>
+        <div className="text-center py-16 text-admin-muted admin-card">
+          <p className="text-admin-base font-medium text-admin-text">등록된 테넌트가 없습니다.</p>
+          <p className="text-admin-sm mt-1 text-admin-muted">상단 "테넌트 등록" 버튼으로 랜드사를 추가하세요.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {tenants.map(t => {
             const s = stats[t.id] ?? { product_count: 0, sale_count: 0, settlement_cost: 0 };
             return (
-              <div key={t.id} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex flex-col gap-4 hover:border-slate-300 transition">
+              <div key={t.id} className="admin-card p-5 flex flex-col gap-4 hover:border-admin-border-strong transition-colors duration-160">
                 {/* 헤더 */}
                 <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-admin-lg font-bold text-slate-800">{t.name}</span>
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[t.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-admin-lg font-bold text-admin-text">{t.name}</span>
+                      <span className={`text-admin-2xs px-2 py-0.5 rounded-admin-xs font-semibold uppercase ${STATUS_BADGE[t.status] ?? 'bg-admin-surface-2 text-admin-muted'}`}>
                         {t.status}
                       </span>
                     </div>
                     {t.contact_name && (
-                      <p className="text-[11px] text-slate-500 mt-0.5">담당: {t.contact_name} {t.contact_phone && `/ ${t.contact_phone}`}</p>
+                      <p className="text-admin-xs text-admin-muted mt-1">담당: {t.contact_name} {t.contact_phone && `/ ${t.contact_phone}`}</p>
                     )}
                   </div>
-                  <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                  <span className="text-admin-xs bg-brand-light text-brand px-2 py-0.5 rounded-admin-xs font-semibold admin-num">
                     수수료 {t.commission_rate}%
                   </span>
                 </div>
 
                 {/* 통계 */}
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
-                    <p className="text-[11px] text-slate-500">등록 상품</p>
-                    <p className="text-lg font-bold text-slate-800">{s.product_count}</p>
+                  <div className="bg-admin-surface-2 rounded-admin-sm p-2">
+                    <p className="text-admin-2xs text-admin-muted uppercase tracking-wider">등록 상품</p>
+                    <p className="text-admin-h3 font-bold text-admin-text admin-num mt-0.5">{s.product_count}</p>
                   </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
-                    <p className="text-[11px] text-slate-500">이번 달 판매</p>
-                    <p className="text-lg font-bold text-slate-800">{s.sale_count}건</p>
+                  <div className="bg-admin-surface-2 rounded-admin-sm p-2">
+                    <p className="text-admin-2xs text-admin-muted uppercase tracking-wider">이번달 판매</p>
+                    <p className="text-admin-h3 font-bold text-admin-text admin-num mt-0.5">{s.sale_count}<span className="text-admin-xs text-admin-muted ml-0.5">건</span></p>
                   </div>
-                  <div className="bg-blue-50 border border-slate-200 rounded-lg p-2">
-                    <p className="text-[11px] text-slate-500">정산 예정</p>
-                    <p className="text-admin-sm font-bold text-slate-800">{fmt(s.settlement_cost)}원</p>
+                  <div className="bg-brand-light rounded-admin-sm p-2">
+                    <p className="text-admin-2xs text-brand uppercase tracking-wider">정산 예정</p>
+                    <p className="text-admin-sm font-bold text-brand admin-num mt-0.5">{fmt(s.settlement_cost)}원</p>
                   </div>
                 </div>
 
                 {/* 액션 버튼 */}
                 <div className="flex gap-2">
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={() => router.push(`/tenant/${t.id}/products`)}
-                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-admin-sm font-medium hover:bg-blue-700 transition"
+                    className="flex-1"
                   >
                     테넌트 뷰 열기
-                  </button>
-                  <button
-                    onClick={() => openEdit(t)}
-                    className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50 transition"
-                  >
+                  </Button>
+                  <Button variant="secondary" onClick={() => openEdit(t)}>
                     수정
-                  </button>
+                  </Button>
                 </div>
               </div>
             );
@@ -222,100 +221,91 @@ export default function TenantsPage() {
       {/* 등록/수정 슬라이드 패널 */}
       {panel && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setPanel(false)} />
-          <div className="relative w-full max-w-md bg-white h-full overflow-y-auto border-l border-slate-200">
+          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setPanel(false)} />
+          <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
             <div className="p-6">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-admin-lg font-bold text-slate-800">
+                <h3 className="text-admin-h2 text-admin-text">
                   {form.id ? '테넌트 수정' : '새 테넌트 등록'}
                 </h3>
-                <button onClick={() => setPanel(false)} className="text-slate-500 hover:text-slate-700 text-lg">&times;</button>
+                <button
+                  onClick={() => setPanel(false)}
+                  className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
+                  aria-label="닫기"
+                >
+                  <X size={18} />
+                </button>
               </div>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-500 mb-1">업체명 *</label>
+                <FormRow label="업체명" required>
                   <input
                     type="text" required value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     placeholder="예: 가나다 투어"
                   />
-                </div>
+                </FormRow>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">담당자명</label>
+                  <FormRow label="담당자명">
                     <input
                       type="text" value={form.contact_name}
                       onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">연락처</label>
+                  </FormRow>
+                  <FormRow label="연락처">
                     <input
                       type="text" value={form.contact_phone}
                       onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                       placeholder="예: 051-000-0000"
                     />
-                  </div>
+                  </FormRow>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-500 mb-1">이메일</label>
+                <FormRow label="이메일">
                   <input
                     type="email" value={form.contact_email}
                     onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                   />
-                </div>
+                </FormRow>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">수수료율 (%)</label>
+                  <FormRow label="수수료율 (%)">
                     <input
                       type="number" min="0" max="100" step="0.01" value={form.commission_rate}
                       onChange={e => setForm(f => ({ ...f, commission_rate: Number(e.target.value) }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">상태</label>
+                  </FormRow>
+                  <FormRow label="상태">
                     <select
                       value={form.status}
                       onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     >
-                      <option value="active">active -- 운영 중</option>
-                      <option value="inactive">inactive -- 비활성</option>
-                      <option value="suspended">suspended -- 정지</option>
+                      <option value="active">active — 운영 중</option>
+                      <option value="inactive">inactive — 비활성</option>
+                      <option value="suspended">suspended — 정지</option>
                     </select>
-                  </div>
+                  </FormRow>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-500 mb-1">메모</label>
+                <FormRow label="메모">
                   <textarea
                     value={form.description} rows={2}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-admin-border-mid rounded-admin-sm px-3 py-2 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors resize-none"
                   />
-                </div>
+                </FormRow>
 
-                {error && <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-admin-sm text-red-700">{error}</div>}
+                {error && <div className="p-2 bg-danger-light border border-danger/20 rounded-admin-sm text-admin-sm text-danger">{error}</div>}
 
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPanel(false)}
-                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-lg text-admin-base hover:bg-slate-50"
-                  >
+                <div className="flex gap-2 pt-2">
+                  <Button type="button" variant="secondary" onClick={() => setPanel(false)} className="flex-1">
                     취소
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-admin-base font-medium hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {saving ? '저장 중...' : (form.id ? '수정 저장' : '등록')}
-                  </button>
+                  </Button>
+                  <Button type="submit" variant="primary" disabled={saving} className="flex-1">
+                    {saving ? '저장 중…' : (form.id ? '수정 저장' : '등록')}
+                  </Button>
                 </div>
               </form>
             </div>

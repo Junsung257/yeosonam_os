@@ -102,8 +102,8 @@ export default function ScoringFunnelPage() {
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900">추천 깔때기 (LTR)</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-xl font-extrabold text-admin-text">추천 깔때기 (LTR)</h1>
+          <p className="text-xs text-admin-muted mt-0.5">
             모바일 카드 / 자비스 / 리스트 뱃지 → 클릭 → 예약 funnel · 정책 A/B 효과 검증
           </p>
         </div>
@@ -112,7 +112,7 @@ export default function ScoringFunnelPage() {
 
       {/* Admin Alerts (미해결 알림 박스) */}
       {alerts.length > 0 && (
-        <section className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <section className="bg-amber-50 border border-amber-300 rounded-admin-md p-4">
           <h2 className="text-sm font-bold text-amber-900 mb-2">🔔 미해결 알림 ({alerts.length})</h2>
           <ul className="space-y-2">
             {alerts.slice(0, 5).map(a => (
@@ -120,25 +120,25 @@ export default function ScoringFunnelPage() {
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0 ${
                   a.severity === 'critical' ? 'bg-rose-100 text-rose-700'
                   : a.severity === 'warning' ? 'bg-amber-100 text-amber-700'
-                  : 'bg-slate-100 text-slate-700'
+                  : 'bg-admin-surface-2 text-admin-text-2'
                 }`}>{a.category}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-900 leading-snug">{a.title}</p>
-                  {a.message && <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{a.message}</p>}
-                  <p className="text-[10px] text-slate-400 mt-0.5">{new Date(a.created_at).toLocaleString('ko-KR')}</p>
+                  <p className="text-xs font-bold text-admin-text leading-snug">{a.title}</p>
+                  {a.message && <p className="text-[11px] text-admin-muted mt-0.5 leading-snug">{a.message}</p>}
+                  <p className="text-[10px] text-admin-muted-2 mt-0.5">{new Date(a.created_at).toLocaleString('ko-KR')}</p>
                 </div>
                 <button onClick={() => ackAlert(a.id)} className="text-[11px] text-violet-600 hover:underline flex-shrink-0">✓ 확인</button>
               </li>
             ))}
-            {alerts.length > 5 && <li className="text-[11px] text-slate-500 text-center">+{alerts.length - 5}개 더</li>}
+            {alerts.length > 5 && <li className="text-[11px] text-admin-muted text-center">+{alerts.length - 5}개 더</li>}
           </ul>
         </section>
       )}
 
       {/* 학습 샘플 진행도 */}
       {summary && (
-        <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
-          <h2 className="text-sm font-semibold text-slate-800 mb-3">LTR 학습 샘플 진행</h2>
+        <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <h2 className="text-sm font-semibold text-admin-text-2 mb-3">LTR 학습 샘플 진행</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
             <KpiCard label="총 노출" value={summary.total_exposures.toLocaleString()} />
             <KpiCard label="총 예약" value={summary.total_bookings.toLocaleString()} />
@@ -149,13 +149,13 @@ export default function ScoringFunnelPage() {
               tone={summary.ltr_ready ? 'good' : 'pending'}
             />
           </div>
-          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-admin-surface-2 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-violet-400 to-emerald-500 transition-all"
               style={{ width: `${Math.min(100, (summary.ltr_training_samples / 1000) * 100)}%` }}
             />
           </div>
-          <p className="text-[11px] text-slate-500 mt-2">
+          <p className="text-[11px] text-admin-muted mt-2">
             {summary.ltr_ready
               ? '1000건 누적 — LightFM/listwise rerank 학습 권장'
               : `${1000 - summary.ltr_training_samples}건 더 필요 (자비스·카드·뱃지 노출 자동 누적)`}
@@ -164,12 +164,12 @@ export default function ScoringFunnelPage() {
       )}
 
       {/* 필터 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-wrap items-center gap-3">
-        <span className="text-xs font-semibold text-slate-700">필터:</span>
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-wrap items-center gap-3">
+        <span className="text-xs font-semibold text-admin-text-2">필터:</span>
         <select
           value={filterSource}
           onChange={e => setFilterSource(e.target.value)}
-          className="text-xs border border-slate-300 rounded px-2 py-1"
+          className="text-xs border border-admin-border-strong rounded px-2 py-1"
         >
           <option value="">모든 source</option>
           {sources.map(s => <option key={s} value={s}>{s}</option>)}
@@ -177,21 +177,21 @@ export default function ScoringFunnelPage() {
         <select
           value={filterIntent}
           onChange={e => setFilterIntent(e.target.value)}
-          className="text-xs border border-slate-300 rounded px-2 py-1"
+          className="text-xs border border-admin-border-strong rounded px-2 py-1"
         >
           <option value="">모든 intent</option>
           {intents.map(i => <option key={i} value={i}>{i}</option>)}
         </select>
-        <span className="text-xs text-slate-400 ml-auto">
+        <span className="text-xs text-admin-muted-2 ml-auto">
           필터링: {filtered.length}행 · 노출 {totalExposures} · 클릭 {totalClicks} · 예약 {totalBookings}
         </span>
       </section>
 
       {/* funnel 테이블 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full text-xs">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr className="text-slate-600">
+          <thead className="bg-admin-bg border-b border-admin-border-mid">
+            <tr className="text-admin-muted">
               <th className="text-left px-3 py-2">source</th>
               <th className="text-left px-3 py-2">intent</th>
               <th className="text-center px-3 py-2">rank</th>
@@ -205,15 +205,15 @@ export default function ScoringFunnelPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="text-center py-8 text-slate-400">로딩중...</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-admin-muted-2">로딩중...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-slate-400">
+              <tr><td colSpan={9} className="text-center py-8 text-admin-muted-2">
                 아직 데이터 없음. 자비스/모바일 카드/리스트 뱃지가 추천 노출하면 자동 누적됩니다.
               </td></tr>
             ) : filtered.map((r, i) => (
-              <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50">
+              <tr key={i} className="border-b border-admin-border hover:bg-admin-bg/50">
                 <td className="px-3 py-2 font-medium">{r.source}</td>
-                <td className="px-3 py-2 text-slate-600">{r.intent}</td>
+                <td className="px-3 py-2 text-admin-muted">{r.intent}</td>
                 <td className="px-3 py-2 text-center">{r.recommended_rank || '—'}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{r.exposures.toLocaleString()}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{r.clicks.toLocaleString()}</td>
@@ -222,11 +222,11 @@ export default function ScoringFunnelPage() {
                 <td className={`px-3 py-2 text-right font-semibold ${
                   (r.booking_rate_pct ?? 0) >= 5 ? 'text-emerald-700'
                     : (r.booking_rate_pct ?? 0) >= 1 ? 'text-amber-700'
-                    : 'text-slate-400'
+                    : 'text-admin-muted-2'
                 }`}>
                   {r.booking_rate_pct != null ? `${r.booking_rate_pct.toFixed(2)}%` : '—'}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                <td className="px-3 py-2 text-right tabular-nums text-admin-text-2">
                   {r.booking_value_sum ? `₩${(r.booking_value_sum / 10000).toFixed(0)}만` : '—'}
                 </td>
               </tr>
@@ -237,14 +237,14 @@ export default function ScoringFunnelPage() {
 
       {/* 정책 A/B 비교 결과 (최근 10건) */}
       {abResults.length > 0 && (
-        <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100">
-            <h2 className="text-sm font-semibold text-slate-800">정책 A/B 비교 결과</h2>
-            <p className="text-xs text-slate-500 mt-0.5">매주 토요일 자동 측정 · 통계적 winner 판정 시 ✓ 표시</p>
+        <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="px-5 py-3 border-b border-admin-border">
+            <h2 className="text-sm font-semibold text-admin-text-2">정책 A/B 비교 결과</h2>
+            <p className="text-xs text-admin-muted mt-0.5">매주 토요일 자동 측정 · 통계적 winner 판정 시 ✓ 표시</p>
           </div>
           <table className="w-full text-xs">
-            <thead className="bg-slate-50">
-              <tr className="text-slate-600">
+            <thead className="bg-admin-bg">
+              <tr className="text-admin-muted">
                 <th className="text-left px-3 py-2">측정일</th>
                 <th className="text-left px-3 py-2">A (active)</th>
                 <th className="text-left px-3 py-2">B (challenger)</th>
@@ -257,10 +257,10 @@ export default function ScoringFunnelPage() {
               {abResults.map(ab => {
                 const winA = ab.winner && ab.policy_a_version && ab.winner === ab.policy_a_version;
                 return (
-                  <tr key={ab.id} className="border-b border-slate-100">
-                    <td className="px-3 py-2 text-slate-500">{new Date(ab.measured_at).toLocaleDateString('ko-KR')}</td>
+                  <tr key={ab.id} className="border-b border-admin-border">
+                    <td className="px-3 py-2 text-admin-muted">{new Date(ab.measured_at).toLocaleDateString('ko-KR')}</td>
                     <td className="px-3 py-2 font-medium">{ab.policy_a_version}</td>
-                    <td className="px-3 py-2 text-slate-600">{ab.policy_b_version}</td>
+                    <td className="px-3 py-2 text-admin-muted">{ab.policy_b_version}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {(Number(ab.booking_rate_a) * 100).toFixed(2)}% / {(Number(ab.booking_rate_b) * 100).toFixed(2)}%
                     </td>
@@ -269,9 +269,9 @@ export default function ScoringFunnelPage() {
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${winA ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
                           ✓ {winA ? 'A' : 'B'}
                         </span>
-                      ) : <span className="text-slate-400">—</span>}
+                      ) : <span className="text-admin-muted-2">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">
+                    <td className="px-3 py-2 text-right tabular-nums text-admin-muted">
                       {ab.confidence ? `${(Number(ab.confidence) * 100).toFixed(1)}%` : '—'}
                     </td>
                   </tr>
@@ -282,11 +282,11 @@ export default function ScoringFunnelPage() {
         </section>
       )}
 
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[10px] text-admin-muted-2">
         ※ v_recommendation_funnel + v_ltr_signals 기반 · 매주 월요일 09:00 UTC 자동 리포트 (
-        <code className="bg-slate-100 px-1 rounded">/api/cron/ltr-funnel-report</code>
+        <code className="bg-admin-surface-2 px-1 rounded">/api/cron/ltr-funnel-report</code>
         ) · 매주 토요일 10:00 UTC 정책 A/B 비교 (
-        <code className="bg-slate-100 px-1 rounded">/api/cron/policy-ab-compare</code>
+        <code className="bg-admin-surface-2 px-1 rounded">/api/cron/policy-ab-compare</code>
         )
       </p>
     </div>
@@ -296,7 +296,7 @@ export default function ScoringFunnelPage() {
 function KpiCard({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'pending' }) {
   const cls = tone === 'good' ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
     : tone === 'pending' ? 'bg-amber-50 text-amber-800 border-amber-200'
-    : 'bg-slate-50 text-slate-800 border-slate-200';
+    : 'bg-admin-bg text-admin-text-2 border-admin-border-mid';
   return (
     <div className={`rounded-lg border p-3 ${cls}`}>
       <div className="text-[10px] uppercase tracking-wide opacity-70">{label}</div>

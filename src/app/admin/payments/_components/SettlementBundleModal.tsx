@@ -204,13 +204,13 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
       aria-label="출금 정산 묶기"
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        className="bg-white rounded-admin-md shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-admin-border-mid flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">출금 정산 묶기</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h2 className="text-base font-semibold text-admin-text-2">출금 정산 묶기</h2>
+            <p className="text-xs text-admin-muted mt-0.5">
               {transaction.is_refund ? '환불' : '출금'} {fmtKRW(txAmountAbs)} ·{' '}
               {transaction.counterparty_name ?? '거래처 미상'} ·{' '}
               {new Date(transaction.received_at).toLocaleDateString('ko-KR')}
@@ -218,18 +218,18 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+            className="text-admin-muted-2 hover:text-admin-muted text-2xl leading-none"
           >
             ×
           </button>
         </div>
 
-        <div className="px-5 py-3 border-b border-slate-100">
-          <label className="block text-xs font-medium text-slate-600 mb-1">랜드사</label>
+        <div className="px-5 py-3 border-b border-admin-border">
+          <label className="block text-xs font-medium text-admin-muted mb-1">랜드사</label>
           <select
             value={selectedOpId ?? ''}
             onChange={e => setSelectedOpId(e.target.value || null)}
-            className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"
+            className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"
           >
             <option value="">랜드사 선택…</option>
             {operators.map(o => (
@@ -246,16 +246,16 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
-          {loading && <div className="text-sm text-slate-500 py-4">조회 중…</div>}
+          {loading && <div className="text-sm text-admin-muted py-4">조회 중…</div>}
           {!loading && selectedOpId && bookings.length === 0 && (
-            <div className="text-sm text-slate-500 text-center py-8">
+            <div className="text-sm text-admin-muted text-center py-8">
               이 랜드사의 미정산 booking 이 없습니다
             </div>
           )}
           {!loading && bookings.length > 0 && (
             <table className="w-full text-sm">
-              <thead className="text-[11px] text-slate-500 uppercase">
-                <tr className="border-b border-slate-200">
+              <thead className="text-[11px] text-admin-muted uppercase">
+                <tr className="border-b border-admin-border-mid">
                   <th className="w-10 text-left py-2"></th>
                   <th className="text-left py-2">고객/번호</th>
                   <th className="text-left py-2">출발</th>
@@ -267,7 +267,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
                 {bookings.map(b => {
                   const isChecked = checked.has(b.id);
                   return (
-                    <tr key={b.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <tr key={b.id} className="border-b border-admin-border hover:bg-admin-bg">
                       <td className="py-2">
                         <input
                           type="checkbox"
@@ -276,15 +276,15 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
                         />
                       </td>
                       <td className="py-2">
-                        <div className="font-medium text-slate-800">
+                        <div className="font-medium text-admin-text-2">
                           {b.customer_name ?? '이름 없음'}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono">{b.booking_no}</div>
+                        <div className="text-[11px] text-admin-muted font-mono">{b.booking_no}</div>
                       </td>
-                      <td className="py-2 text-xs text-slate-600">
+                      <td className="py-2 text-xs text-admin-muted">
                         {b.departure_date?.slice(2, 10).replace(/-/g, '') ?? '—'}
                       </td>
-                      <td className="py-2 text-right tabular-nums text-slate-700">
+                      <td className="py-2 text-right tabular-nums text-admin-text-2">
                         {fmtKRW(b.unsettled_amount)}
                       </td>
                       <td className="py-2 text-right">
@@ -293,7 +293,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
                             type="number"
                             value={checked.get(b.id) ?? 0}
                             onChange={e => updateAmount(b.id, Number(e.target.value))}
-                            className="w-28 text-right text-sm border border-slate-300 rounded px-2 py-1 tabular-nums"
+                            className="w-28 text-right text-sm border border-admin-border-strong rounded px-2 py-1 tabular-nums"
                             min={0}
                             max={b.unsettled_amount * 2}
                           />
@@ -307,18 +307,18 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50">
+        <div className="px-5 py-3 border-t border-admin-border-mid bg-admin-bg">
           <div className="grid grid-cols-3 gap-3 mb-2 text-sm tabular-nums">
             <div>
-              <div className="text-[11px] text-slate-500">출금 금액</div>
-              <div className="font-semibold text-slate-800">{fmtKRW(txAmountAbs)}</div>
+              <div className="text-[11px] text-admin-muted">출금 금액</div>
+              <div className="font-semibold text-admin-text-2">{fmtKRW(txAmountAbs)}</div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500">묶음 합계</div>
-              <div className="font-semibold text-slate-800">{fmtKRW(bundledTotal)}</div>
+              <div className="text-[11px] text-admin-muted">묶음 합계</div>
+              <div className="font-semibold text-admin-text-2">{fmtKRW(bundledTotal)}</div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500">차액 (수수료)</div>
+              <div className="text-[11px] text-admin-muted">차액 (수수료)</div>
               <div className={`font-semibold ${diffColor}`}>
                 {diff >= 0 ? '+' : ''}
                 {fmtKRW(diff)}
@@ -330,11 +330,11 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="메모 (선택)"
-            className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 mb-2"
+            className="w-full text-xs border border-admin-border-strong rounded px-2 py-1.5 mb-2"
           />
           {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
           <div className="flex justify-between items-center">
-            <div className="text-[11px] text-slate-500">
+            <div className="text-[11px] text-admin-muted">
               {Math.abs(diff) <= FEE_TOLERANCE
                 ? '✅ 합계 일치 — 묶기 가능'
                 : `허용 오차 ±${fmtKRW(FEE_TOLERANCE)} 초과`}
@@ -342,7 +342,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             <div className="flex gap-2">
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded"
+                className="px-3 py-1.5 text-sm text-admin-muted hover:bg-admin-surface-2 rounded"
               >
                 취소
               </button>

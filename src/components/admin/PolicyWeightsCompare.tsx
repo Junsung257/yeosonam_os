@@ -30,7 +30,7 @@ const AXIS_LABELS: Record<string, { ko: string; emoji: string }> = {
 };
 
 const POLICY_THEME: Record<string, { bg: string; border: string }> = {
-  'v1.0-bootstrap': { bg: 'bg-slate-100', border: 'border-slate-400' },
+  'v1.0-bootstrap': { bg: 'bg-admin-surface-2', border: 'border-slate-400' },
   'intent-family': { bg: 'bg-emerald-100', border: 'border-emerald-400' },
   'intent-couple': { bg: 'bg-pink-100', border: 'border-pink-400' },
   'intent-filial': { bg: 'bg-amber-100', border: 'border-amber-400' },
@@ -65,10 +65,10 @@ export default function PolicyWeightsCompare() {
   const axes = Object.keys(AXIS_LABELS);
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-5">
+    <section className="bg-white border border-admin-border-mid rounded-admin-md p-5">
       <div className="mb-3">
-        <h2 className="text-sm font-semibold text-slate-800">정책 가중치 비교 (10 axis)</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
+        <h2 className="text-sm font-semibold text-admin-text-2">정책 가중치 비교 (10 axis)</h2>
+        <p className="text-xs text-admin-muted mt-0.5">
           각 정책의 가중치를 막대로 비교 — Intent별 어떤 axis를 강조하는지 한눈에. 활성 정책은 ⭐
         </p>
       </div>
@@ -94,7 +94,7 @@ export default function PolicyWeightsCompare() {
           if (maxVal === 0) return null;
           return (
             <div key={axis} className="flex items-center gap-3">
-              <div className="w-20 flex-shrink-0 text-xs text-slate-700 flex items-center gap-1">
+              <div className="w-20 flex-shrink-0 text-xs text-admin-text-2 flex items-center gap-1">
                 <span>{lbl.emoji}</span>
                 <span className="font-medium">{lbl.ko}</span>
               </div>
@@ -105,12 +105,12 @@ export default function PolicyWeightsCompare() {
                   const theme = POLICY_THEME[p.version] ?? POLICY_THEME['v1.0-bootstrap'];
                   return (
                     <div key={p.id} className="flex items-center gap-1" title={`${p.version}: ${(v * 100).toFixed(1)}%`}>
-                      <div className="flex-1 h-5 rounded bg-slate-50 overflow-hidden border border-slate-100 relative">
+                      <div className="flex-1 h-5 rounded bg-admin-bg overflow-hidden border border-admin-border relative">
                         <div
                           className={`h-full ${theme.bg} ${theme.border} border-r transition-all`}
                           style={{ width: `${widthPct}%` }}
                         />
-                        <span className="absolute inset-0 flex items-center justify-end pr-1 text-[10px] tabular-nums font-semibold text-slate-700">
+                        <span className="absolute inset-0 flex items-center justify-end pr-1 text-[10px] tabular-nums font-semibold text-admin-text-2">
                           {(v * 100).toFixed(0)}%
                         </span>
                       </div>
@@ -123,7 +123,7 @@ export default function PolicyWeightsCompare() {
         })}
       </div>
 
-      <p className="text-[10px] text-slate-400 mt-4 leading-relaxed">
+      <p className="text-[10px] text-admin-muted-2 mt-4 leading-relaxed">
         ※ 막대 길이 = axis별 최대 정책 대비 비율. 숫자 = 정책 내 정규화 % · 정책 weights 편집은 위 "기준 가중치" 섹션
       </p>
     </section>

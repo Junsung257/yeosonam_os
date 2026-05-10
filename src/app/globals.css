@@ -6,11 +6,16 @@
 
 /* ──────────────────────────────────────────────────────────
  * 디자인 토큰 (Toss Blue 기반 통합 팔레트)
+ * 공개사이트: Toss 톤 (rounded 16/12, soft shadow)
+ * 어드민:     Linear/Stripe 톤 (rounded 6/8, crisp hairline)
  * ────────────────────────────────────────────────────────── */
 :root {
+  /* ── 브랜드 (공통) ── */
   --brand:        #3182F6;
   --brand-light:  #EBF3FE;
   --brand-dark:   #1B64DA;
+
+  /* ── 공개사이트 토큰 (유지) ── */
   --bg-page:      #FFFFFF;
   --bg-section:   #F2F4F6;
   --text-primary: #191F28;
@@ -23,10 +28,48 @@
   --success:      #04C584;
   --success-light:#E9FAF4;
   --warning:      #F59E0B;
+
+  /* ── 어드민 토큰 (Linear/Stripe 톤) ── */
+  /* 표면 */
+  --admin-bg:           #F8FAFC;
+  --admin-surface:      #FFFFFF;
+  --admin-surface-2:    #F1F5F9;
+  /* 경계선 (3단계) */
+  --admin-border:       #EEF2F6;
+  --admin-border-mid:   #E5E7EB;
+  --admin-border-strong:#CBD5E1;
+  /* 텍스트 (5단계) */
+  --admin-text:         #0F172A;
+  --admin-text-2:       #334155;
+  --admin-muted:        #64748B;
+  --admin-muted-2:      #94A3B8;
+  /* 회계 (한국 주식 관행) */
+  --admin-profit:       #F04452;
+  --admin-loss:         #3182F6;
+  /* 상태 */
+  --admin-success:      #04C584;
+  --admin-warning:      #F59E0B;
+  --admin-danger:       #F04452;
+  --admin-info:         #3182F6;
+
   /* Alias for component usage */
   --color-primary:    var(--brand);
   --color-primary-bg: var(--brand-light);
   --color-dark:       var(--text-primary);
+}
+
+/* 다크모드 — 어드민 토큰만 (공개사이트는 라이트 온리 유지) */
+[data-theme="dark"] .admin-scope {
+  --admin-bg:           #0B1220;
+  --admin-surface:      #111827;
+  --admin-surface-2:    #1F2937;
+  --admin-border:       #1F2937;
+  --admin-border-mid:   #334155;
+  --admin-border-strong:#475569;
+  --admin-text:         #F1F5F9;
+  --admin-text-2:       #CBD5E1;
+  --admin-muted:        #94A3B8;
+  --admin-muted-2:      #64748B;
 }
 
 * {
@@ -124,26 +167,78 @@ td, th {
 }
 
 /* ──────────────────────────────────────────────────────────
- * Admin scope — 어드민 ERP 가독성 토큰
- *   기본: comfortable(14px, 행 56px)
- *   data-density="compact": 13px, 행 48px
+ * Admin scope — Linear/Stripe 톤 ERP 가독성 토큰
+ *   기본:        comfortable (14px / 행 48px)
+ *   compact:     13px / 행 40px (데이터 밀도 ↑)
+ *   roomy:       15px / 행 56px (모바일·터치)
  * ────────────────────────────────────────────────────────── */
 .admin-scope {
   font-size: 14px;
-  line-height: 1.55;
-  letter-spacing: -0.02em;
-  color: #191F28;
-  background-color: #F9FAFB;
-  --admin-row-h: 56px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--admin-text);
+  background-color: var(--admin-bg);
+  --admin-row-h: 48px;
+  --admin-cell-px: 14px;
+  font-feature-settings: 'cv11', 'ss01';
 }
 .admin-scope[data-density="compact"] {
   font-size: 13px;
-  line-height: 1.45;
-  --admin-row-h: 48px;
+  line-height: 1.4;
+  --admin-row-h: 40px;
+  --admin-cell-px: 12px;
+}
+.admin-scope[data-density="roomy"] {
+  font-size: 15px;
+  line-height: 1.5;
+  --admin-row-h: 56px;
+  --admin-cell-px: 16px;
+}
+
+/* ── 표 — Linear/Stripe 정석 (hairline + tabular nums) ── */
+.admin-scope table.admin-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.admin-scope table.admin-data-table thead th {
+  height: 36px;
+  padding: 0 var(--admin-cell-px);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--admin-muted);
+  background-color: var(--admin-surface);
+  border-bottom: 1px solid var(--admin-border-mid);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 .admin-scope table.admin-data-table tbody tr {
   height: var(--admin-row-h);
 }
+.admin-scope table.admin-data-table tbody td {
+  padding: 0 var(--admin-cell-px);
+  border-bottom: 1px solid var(--admin-border);
+  background-color: var(--admin-surface);
+  vertical-align: middle;
+}
+.admin-scope table.admin-data-table tbody tr:hover td {
+  background-color: var(--admin-surface-2);
+}
+.admin-scope table.admin-data-table tbody tr.admin-zebra td {
+  background-color: rgba(241, 245, 249, 0.4);
+}
+.admin-scope table.admin-data-table tbody tr.admin-zebra:hover td {
+  background-color: var(--admin-surface-2);
+}
+.admin-scope table.admin-data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── 우선순위 컬럼 (반응형 노출) ── */
 .admin-scope .admin-col-priority-2 { display: table-cell; }
 .admin-scope .admin-col-priority-3 { display: table-cell; }
 @media (max-width: 1024px) {
@@ -152,6 +247,63 @@ td, th {
 @media (max-width: 768px) {
   .admin-scope .admin-col-priority-2 { display: none; }
 }
+
+/* ── 카드/패널 — crisp hairline ── */
+.admin-scope .admin-card {
+  background-color: var(--admin-surface);
+  border: 1px solid var(--admin-border-mid);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* ── 본문 영역 헤더 ── */
+.admin-scope .admin-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--admin-muted);
+}
+
+/* ── 키보드 단축키 표시 (kbd 스타일) ── */
+.admin-scope kbd,
+.admin-scope .admin-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--admin-text-2);
+  background-color: var(--admin-surface);
+  border: 1px solid var(--admin-border-mid);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+/* ── 포커스 링 (어드민 전용 — 더 부드러운 ring) ── */
+.admin-scope *:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
+  border-radius: 6px;
+}
+
+/* ── tabular nums — 어드민 안의 숫자/금액은 모두 격자 정렬 ── */
+.admin-scope .admin-num,
+.admin-scope td.admin-num,
+.admin-scope .admin-amount {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ── 회계 색상 유틸 ── */
+.admin-scope .admin-profit { color: var(--admin-profit); }
+.admin-scope .admin-loss   { color: var(--admin-loss); }
+.admin-scope .admin-muted-text { color: var(--admin-muted); }
+.admin-scope .admin-muted-text-2 { color: var(--admin-muted-2); }
 
 /* ──────────────────────────────────────────────────────────
  * Blog body typography (prose-blog)

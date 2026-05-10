@@ -1,6 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtDateTime } from '@/lib/admin-utils';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { RefreshCw } from 'lucide-react';
 
 type Tab = 'tasks' | 'approvals' | 'incidents';
 
@@ -141,39 +145,36 @@ export default function AgentMasPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">MAS 관제 (Concierge PoC)</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          고객 QA·자비스에서 생성된 <strong>작업(agent_tasks)</strong>, <strong>승인(agent_approvals)</strong>,{' '}
-          <strong>사고(agent_incidents)</strong>를 한 화면에서 확인합니다. 승인은 고위험 요청이 freeze 된 뒤에만
-          쌓입니다.
-        </p>
-        {error && (
-          <p className="text-red-700 text-sm mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-        )}
-      </div>
+    <div className="max-w-6xl mx-auto">
+      <PageHeader
+        title="MAS 관제"
+        subtitle={
+          <>고객 QA·자비스에서 생성된 <strong className="text-admin-text">작업(agent_tasks)</strong>, <strong className="text-admin-text">승인(agent_approvals)</strong>, <strong className="text-admin-text">사고(agent_incidents)</strong>를 한 화면에서 확인합니다. 승인은 고위험 요청이 freeze 된 뒤에만 쌓입니다.</>
+        }
+      />
+      {error && (
+        <p className="text-danger text-admin-sm mb-4 bg-danger-light border border-danger/20 rounded-admin-sm px-3 py-2">{error}</p>
+      )}
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {(['approvals', 'tasks', 'incidents'] as const).map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`text-sm rounded-lg px-3 py-2 border ${
-              tab === t ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-slate-200 hover:bg-slate-50'
+            className={`h-9 px-3.5 text-admin-sm rounded-admin-sm font-medium transition-colors ${
+              tab === t
+                ? 'bg-brand text-white'
+                : 'bg-admin-surface border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong'
             }`}
           >
             {t === 'approvals' ? '승인 큐' : t === 'tasks' ? '작업' : '사고'}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => refresh()}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 ml-auto"
-        >
+        <Button variant="secondary" size="sm" onClick={() => refresh()} className="ml-auto">
+          <RefreshCw size={14} />
           새로고침
-        </button>
+        </Button>
       </div>
 
       {tab === 'approvals' && (
@@ -182,7 +183,7 @@ export default function AgentMasPage() {
             <select
               value={approvalStatus}
               onChange={(e) => setApprovalStatus(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="border border-admin-border-mid rounded-lg px-3 py-2 text-sm"
             >
               <option value="">전체 상태</option>
               <option value="pending">pending</option>
@@ -190,22 +191,22 @@ export default function AgentMasPage() {
               <option value="rejected">rejected</option>
               <option value="expired">expired</option>
             </select>
-            <span className="text-sm text-slate-500">총 {approvalsTotal}건</span>
+            <span className="text-sm text-admin-muted">총 {approvalsTotal}건</span>
           </div>
           {loading ? (
-            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/2" /><div className="h-3 bg-slate-100 rounded animate-pulse w-full" /></div>))}</div>
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-1/2" /><div className="h-3 bg-admin-surface-2 rounded animate-pulse w-full" /></div>))}</div>
           ) : approvals.length === 0 ? (
-            <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
+            <p className="text-admin-muted text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
           ) : (
             approvals.map((a) => (
-              <div key={a.id} className="border border-slate-200 rounded-xl p-4 bg-white text-sm shadow-sm">
-                <div className="flex flex-wrap gap-2 text-xs text-slate-500 mb-2">
-                  <span className="font-mono text-slate-800">{a.status}</span>
-                  <span>{new Date(a.requested_at).toLocaleString('ko-KR')}</span>
+              <div key={a.id} className="border border-admin-border-mid rounded-admin-md p-4 bg-white text-sm shadow-admin-xs">
+                <div className="flex flex-wrap gap-2 text-xs text-admin-muted mb-2">
+                  <span className="font-mono text-admin-text-2">{a.status}</span>
+                  <span>{fmtDateTime(a.requested_at)}</span>
                   <span>task: {a.task_id.slice(0, 8)}…</span>
                 </div>
-                {a.reason && <p className="text-slate-700 mb-2">{a.reason}</p>}
-                <pre className="text-[11px] bg-slate-50 rounded-lg p-2 overflow-x-auto text-slate-700 mb-3">
+                {a.reason && <p className="text-admin-text-2 mb-2">{a.reason}</p>}
+                <pre className="text-[11px] bg-admin-bg rounded-lg p-2 overflow-x-auto text-admin-text-2 mb-3">
                   {JSON.stringify(a.metadata, null, 2)}
                 </pre>
                 {a.status === 'pending' && (
@@ -238,7 +239,7 @@ export default function AgentMasPage() {
             <select
               value={taskStatus}
               onChange={(e) => setTaskStatus(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="border border-admin-border-mid rounded-lg px-3 py-2 text-sm"
             >
               <option value="">전체 상태</option>
               <option value="queued">queued</option>
@@ -249,28 +250,28 @@ export default function AgentMasPage() {
               <option value="failed">failed</option>
               <option value="expired">expired</option>
             </select>
-            <span className="text-sm text-slate-500">총 {tasksTotal}건</span>
+            <span className="text-sm text-admin-muted">총 {tasksTotal}건</span>
           </div>
           {loading ? (
-            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/2" /><div className="h-3 bg-slate-100 rounded animate-pulse w-full" /></div>))}</div>
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-1/2" /><div className="h-3 bg-admin-surface-2 rounded animate-pulse w-full" /></div>))}</div>
           ) : tasks.length === 0 ? (
-            <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
+            <p className="text-admin-muted text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
           ) : (
             tasks.map((t) => (
-              <div key={t.id} className="border border-slate-200 rounded-xl p-4 bg-white text-sm shadow-sm">
-                <div className="flex flex-wrap gap-2 text-xs text-slate-500 mb-2">
-                  <span className="font-mono text-slate-800">{t.status}</span>
+              <div key={t.id} className="border border-admin-border-mid rounded-admin-md p-4 bg-white text-sm shadow-admin-xs">
+                <div className="flex flex-wrap gap-2 text-xs text-admin-muted mb-2">
+                  <span className="font-mono text-admin-text-2">{t.status}</span>
                   <span className="font-mono text-violet-700">{t.risk_level}</span>
                   <span>{t.agent_type}</span>
                   {t.specialist_id && <span className="truncate max-w-[240px]">spec: {t.specialist_id}</span>}
-                  <span>{new Date(t.created_at).toLocaleString('ko-KR')}</span>
+                  <span>{fmtDateTime(t.created_at)}</span>
                 </div>
                 {t.last_error && (
                   <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1 mb-2">
                     {t.last_error}
                   </p>
                 )}
-                <pre className="text-[11px] bg-slate-50 rounded-lg p-2 overflow-x-auto text-slate-700">
+                <pre className="text-[11px] bg-admin-bg rounded-lg p-2 overflow-x-auto text-admin-text-2">
                   {JSON.stringify(t.task_context, null, 2)}
                 </pre>
               </div>
@@ -285,7 +286,7 @@ export default function AgentMasPage() {
             <select
               value={incidentSeverity}
               onChange={(e) => setIncidentSeverity(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="border border-admin-border-mid rounded-lg px-3 py-2 text-sm"
             >
               <option value="">전체 심각도</option>
               <option value="info">info</option>
@@ -293,22 +294,22 @@ export default function AgentMasPage() {
               <option value="error">error</option>
               <option value="critical">critical</option>
             </select>
-            <span className="text-sm text-slate-500">총 {incidentsTotal}건</span>
+            <span className="text-sm text-admin-muted">총 {incidentsTotal}건</span>
           </div>
           {loading ? (
-            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/2" /><div className="h-3 bg-slate-100 rounded animate-pulse w-full" /></div>))}</div>
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2"><div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-1/2" /><div className="h-3 bg-admin-surface-2 rounded animate-pulse w-full" /></div>))}</div>
           ) : incidents.length === 0 ? (
-            <p className="text-slate-500 text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
+            <p className="text-admin-muted text-sm">데이터가 없거나 테이블이 아직 없습니다.</p>
           ) : (
             incidents.map((i) => (
-              <div key={i.id} className="border border-slate-200 rounded-xl p-4 bg-white text-sm shadow-sm">
-                <div className="flex flex-wrap gap-2 text-xs text-slate-500 mb-2">
-                  <span className="font-mono text-slate-800">{i.severity}</span>
+              <div key={i.id} className="border border-admin-border-mid rounded-admin-md p-4 bg-white text-sm shadow-admin-xs">
+                <div className="flex flex-wrap gap-2 text-xs text-admin-muted mb-2">
+                  <span className="font-mono text-admin-text-2">{i.severity}</span>
                   <span className="font-mono">{i.category}</span>
-                  <span>{new Date(i.created_at).toLocaleString('ko-KR')}</span>
+                  <span>{fmtDateTime(i.created_at)}</span>
                 </div>
-                <p className="text-slate-800 mb-2">{i.message}</p>
-                <pre className="text-[11px] bg-slate-50 rounded-lg p-2 overflow-x-auto text-slate-700">
+                <p className="text-admin-text-2 mb-2">{i.message}</p>
+                <pre className="text-[11px] bg-admin-bg rounded-lg p-2 overflow-x-auto text-admin-text-2">
                   {JSON.stringify(i.details, null, 2)}
                 </pre>
               </div>

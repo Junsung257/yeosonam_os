@@ -132,8 +132,8 @@ function CapitalRing({ current, goal }: { current: number; goal: number }) {
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 text-xs space-y-1">
-      <p className="font-semibold text-slate-700 mb-1">{fmtMonth(label)}</p>
+    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 text-xs space-y-1">
+      <p className="font-semibold text-admin-text-2 mb-1">{fmtMonth(label)}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color }}>
           {p.name}: ₩{fmt(p.value)}
@@ -339,9 +339,8 @@ export default function LedgerPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── 날짜 포맷 ──────────────────────────────────────────────────────────
-  const fmtDate = (s: string) =>
-    new Date(s).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  // ── 날짜 포맷 (locale-stable: MM-DD HH:mm) ─────────────────────────────
+  const fmtDate = (s: string) => (s ? s.slice(5, 16).replace('T', ' ') : '');
 
   const CAPITAL_GOAL = 30_000_000;
   const isAssetWarning = availableAssets < 0;
@@ -365,20 +364,20 @@ export default function LedgerPage() {
       {/* ── 헤더 ──────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">AI 재무 대시보드</h1>
-          <p className="text-admin-base text-slate-500 mt-0.5">실계좌 현금흐름 / 자본금 / 가용자산 분석</p>
+          <h1 className="text-xl font-bold text-admin-text-2">AI 재무 대시보드</h1>
+          <p className="text-admin-base text-admin-muted mt-0.5">실계좌 현금흐름 / 자본금 / 가용자산 분석</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={runAIScan}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-white border border-admin-border-strong text-admin-text-2 hover:bg-admin-bg transition"
           >
             <Sparkles className="w-3.5 h-3.5" /> AI 클리닝
           </button>
           <button
             onClick={loadAll}
             disabled={loading}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-white border border-admin-border-strong text-admin-text-2 hover:bg-admin-bg transition"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> 새로고침
           </button>
@@ -389,7 +388,7 @@ export default function LedgerPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
         {/* 가용 자산 */}
-        <div className={`rounded-xl p-5 ${
+        <div className={`rounded-admin-md p-5 ${
           isAssetWarning ? 'bg-red-600' : 'bg-slate-900'
         } text-white`}>
           <div className="flex items-center gap-2 mb-1">
@@ -401,34 +400,34 @@ export default function LedgerPage() {
         </div>
 
         {/* 총 입금 */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
           <div className="flex items-center gap-2 mb-1">
             <ArrowDownCircle className="w-4 h-4 text-emerald-500" />
-            <p className="text-xs text-slate-500 font-medium">총 입금액</p>
+            <p className="text-xs text-admin-muted font-medium">총 입금액</p>
           </div>
-          <p className="text-2xl font-bold text-slate-800 mt-1">{fmtW(totalIncome)}</p>
+          <p className="text-2xl font-bold text-admin-text-2 mt-1">{fmtW(totalIncome)}</p>
           {totalRefund > 0 && (
             <p className="text-xs text-red-500 mt-1">환불 {fmtW(totalRefund)} 포함</p>
           )}
-          <p className="text-xs text-slate-500 mt-0.5">{txs.filter(t => t.transaction_type === '입금').length}건</p>
+          <p className="text-xs text-admin-muted mt-0.5">{txs.filter(t => t.transaction_type === '입금').length}건</p>
         </div>
 
         {/* MoM 성장 */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
           <div className="flex items-center gap-2 mb-1">
             {momPct > 0
               ? <TrendingUp className="w-4 h-4 text-emerald-500" />
               : momPct < 0
               ? <TrendingDown className="w-4 h-4 text-red-400" />
-              : <Minus className="w-4 h-4 text-slate-400" />}
-            <p className="text-xs text-slate-500 font-medium">전월 대비 순 현금흐름</p>
+              : <Minus className="w-4 h-4 text-admin-muted-2" />}
+            <p className="text-xs text-admin-muted font-medium">전월 대비 순 현금흐름</p>
           </div>
           <p className={`text-2xl font-bold mt-1 ${
-            momPct > 0 ? 'text-emerald-600' : momPct < 0 ? 'text-red-500' : 'text-slate-600'
+            momPct > 0 ? 'text-emerald-600' : momPct < 0 ? 'text-red-500' : 'text-admin-muted'
           }`}>
             {momPct > 0 ? '+' : ''}{momPct.toFixed(1)}%
           </p>
-          <p className="text-xs text-slate-500 mt-0.5">총 출금 {fmtW(totalExpense)}</p>
+          <p className="text-xs text-admin-muted mt-0.5">총 출금 {fmtW(totalExpense)}</p>
         </div>
       </div>
 
@@ -436,10 +435,10 @@ export default function LedgerPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Recharts AreaChart */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
-          <h2 className="text-admin-lg font-semibold text-slate-800 mb-4">12개월 현금흐름 추이</h2>
+        <div className="lg:col-span-2 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <h2 className="text-admin-lg font-semibold text-admin-text-2 mb-4">12개월 현금흐름 추이</h2>
           {chartData.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-slate-500 text-admin-base">
+            <div className="flex items-center justify-center h-40 text-admin-muted text-admin-base">
               {loading ? '로딩 중...' : '데이터 없음'}
             </div>
           ) : (
@@ -469,9 +468,9 @@ export default function LedgerPage() {
         </div>
 
         {/* 자본금 카드 */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex flex-col">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-admin-lg font-semibold text-slate-800">자본금 관리</h2>
+            <h2 className="text-admin-lg font-semibold text-admin-text-2">자본금 관리</h2>
             <button
               onClick={() => setShowCapForm(v => !v)}
               className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
@@ -483,8 +482,8 @@ export default function LedgerPage() {
           <div className="flex items-center gap-4 mb-3">
             <CapitalRing current={capital.total} goal={CAPITAL_GOAL} />
             <div>
-              <p className="text-xl font-bold text-slate-800">{fmtW(capital.total)}</p>
-              <p className="text-xs text-slate-500">목표 {fmtW(CAPITAL_GOAL)}</p>
+              <p className="text-xl font-bold text-admin-text-2">{fmtW(capital.total)}</p>
+              <p className="text-xs text-admin-muted">목표 {fmtW(CAPITAL_GOAL)}</p>
               <p className="text-xs text-blue-600 mt-0.5 font-medium">
                 {Math.round(Math.min(100, (capital.total / CAPITAL_GOAL) * 100))}% 달성
               </p>
@@ -493,26 +492,26 @@ export default function LedgerPage() {
 
           {/* 자본금 추가 폼 */}
           {showCapForm && (
-            <div className="bg-slate-50 rounded-lg p-3 mb-3 space-y-2">
+            <div className="bg-admin-bg rounded-lg p-3 mb-3 space-y-2">
               <input
                 type="text"
                 placeholder="금액 (예: 5,000,000)"
                 value={capitalForm.amount}
                 onChange={e => setCapitalForm(p => ({ ...p, amount: e.target.value }))}
-                className="w-full text-admin-base border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full text-admin-base border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <input
                 type="text"
                 placeholder="메모 (예: 대표이사 초기 투자)"
                 value={capitalForm.note}
                 onChange={e => setCapitalForm(p => ({ ...p, note: e.target.value }))}
-                className="w-full text-admin-base border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full text-admin-base border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <input
                 type="date"
                 value={capitalForm.date}
                 onChange={e => setCapitalForm(p => ({ ...p, date: e.target.value }))}
-                className="w-full text-admin-base border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full text-admin-base border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <button
                 onClick={handleAddCapital}
@@ -526,14 +525,14 @@ export default function LedgerPage() {
           {/* 자본금 이력 */}
           <div className="flex-1 overflow-y-auto space-y-1.5 max-h-48">
             {capital.entries.length === 0
-              ? <p className="text-xs text-slate-500 text-center py-4">자본금 항목이 없습니다.</p>
+              ? <p className="text-xs text-admin-muted text-center py-4">자본금 항목이 없습니다.</p>
               : capital.entries.map(e => (
-                <div key={e.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-200 last:border-b-0">
+                <div key={e.id} className="flex items-center justify-between text-xs py-1.5 border-b border-admin-border-mid last:border-b-0">
                   <div>
-                    <p className="font-medium text-slate-800">{fmtW(e.amount)}</p>
-                    <p className="text-slate-500">{e.entry_date} {e.note && `/ ${e.note}`}</p>
+                    <p className="font-medium text-admin-text-2">{fmtW(e.amount)}</p>
+                    <p className="text-admin-muted">{e.entry_date} {e.note && `/ ${e.note}`}</p>
                   </div>
-                  <button onClick={() => handleRemoveCapital(e.id, e.amount)} className="text-slate-300 hover:text-red-400">
+                  <button onClick={() => handleRemoveCapital(e.id, e.amount)} className="text-admin-muted-2 hover:text-red-400">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -544,10 +543,10 @@ export default function LedgerPage() {
       </div>
 
       {/* ── 거래 내역 탭 ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
 
         {/* 탭 헤더 */}
-        <div className="flex items-center border-b border-slate-200 px-4 pt-3 gap-1">
+        <div className="flex items-center border-b border-admin-border-mid px-4 pt-3 gap-1">
           {[
             { id: 'overview', label: '전체', icon: <Banknote className="w-3.5 h-3.5" /> },
             { id: 'income',   label: '입금', icon: <ArrowDownCircle className="w-3.5 h-3.5" /> },
@@ -561,8 +560,8 @@ export default function LedgerPage() {
                 tab === t.id
                   ? t.id === 'trash'
                     ? 'border-red-500 text-red-600'
-                    : 'border-blue-600 text-slate-800'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
+                    : 'border-blue-600 text-admin-text-2'
+                  : 'border-transparent text-admin-muted hover:text-admin-text-2'
               }`}
             >
               {t.icon} {t.label}
@@ -584,7 +583,7 @@ export default function LedgerPage() {
             <div className="flex gap-1.5 mr-1">
               <button
                 onClick={() => handleRestore([...selected])}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 transition"
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-white text-admin-text-2 border border-admin-border-strong hover:bg-admin-bg transition"
               >
                 <RotateCcw className="w-3.5 h-3.5" /> 복원
               </button>
@@ -603,21 +602,21 @@ export default function LedgerPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-admin-sm">
               <thead>
-                <tr className="border-b-2 border-slate-100">
-                  <th className="px-3 py-3 w-8 bg-slate-50/80" />
+                <tr className="border-b-2 border-admin-border">
+                  <th className="px-3 py-3 w-8 bg-admin-bg/80" />
                   {['일시', '구분', '거래처', '금액', '상태', '예약'].map(h => (
-                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap bg-slate-50/80">{h}</th>
+                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-admin-muted uppercase tracking-wider whitespace-nowrap bg-admin-bg/80">{h}</th>
                   ))}
-                  <th className="px-3 py-3 w-16 bg-slate-50/80" />
+                  <th className="px-3 py-3 w-16 bg-admin-bg/80" />
                 </tr>
               </thead>
               <tbody>
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="border-b border-slate-100">
+                  <tr key={i} className="border-b border-admin-border">
                     <td className="px-3 py-3" />
                     {[80, 40, 120, 70, 56, 60].map((w, j) => (
                       <td key={j} className="px-3 py-3">
-                        <div className={`h-3 bg-slate-100 rounded animate-pulse`} style={{ width: w }} />
+                        <div className={`h-3 bg-admin-surface-2 rounded animate-pulse`} style={{ width: w }} />
                       </td>
                     ))}
                     <td className="px-3 py-3" />
@@ -630,9 +629,9 @@ export default function LedgerPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-admin-sm">
               <thead>
-                <tr className="border-b-2 border-slate-100">
-                  <th className="px-3 py-3 w-8 bg-slate-50/80 backdrop-blur-sm">
-                    <button onClick={toggleAll} className="text-slate-400 hover:text-slate-700">
+                <tr className="border-b-2 border-admin-border">
+                  <th className="px-3 py-3 w-8 bg-admin-bg/80 backdrop-blur-sm">
+                    <button onClick={toggleAll} className="text-admin-muted-2 hover:text-admin-text-2">
                       {selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length
                         ? <CheckSquare className="w-4 h-4 text-blue-600" />
                         : <Square className="w-4 h-4" />
@@ -640,23 +639,23 @@ export default function LedgerPage() {
                     </button>
                   </th>
                   {['일시', '구분', '거래처', '금액', '상태', '예약'].map(h => (
-                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap bg-slate-50/80 backdrop-blur-sm">{h}</th>
+                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-admin-muted uppercase tracking-wider whitespace-nowrap bg-admin-bg/80 backdrop-blur-sm">{h}</th>
                   ))}
-                  <th className="px-3 py-3 w-16 bg-slate-50/80 backdrop-blur-sm" />
+                  <th className="px-3 py-3 w-16 bg-admin-bg/80 backdrop-blur-sm" />
                 </tr>
               </thead>
               <tbody>
                 {(tab === 'trash' ? trashTxs : displayTxs).map(tx => (
-                  <tr key={tx.id} className={`border-b border-slate-200 hover:bg-slate-50 ${selected.has(tx.id) ? 'bg-blue-50' : ''}`}>
+                  <tr key={tx.id} className={`border-b border-admin-border-mid hover:bg-admin-bg ${selected.has(tx.id) ? 'bg-blue-50' : ''}`}>
                     <td className="px-3 py-2">
-                      <button onClick={() => toggleSelect(tx.id)} className="text-slate-400 hover:text-blue-600">
+                      <button onClick={() => toggleSelect(tx.id)} className="text-admin-muted-2 hover:text-blue-600">
                         {selected.has(tx.id)
                           ? <CheckSquare className="w-4 h-4 text-blue-600" />
                           : <Square className="w-4 h-4" />
                         }
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-admin-sm text-slate-500 whitespace-nowrap">{fmtDate(tx.received_at)}</td>
+                    <td className="px-3 py-2 text-admin-sm text-admin-muted whitespace-nowrap">{fmtDate(tx.received_at)}</td>
                     <td className="px-3 py-2">
                       <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                         tx.transaction_type === '입금'
@@ -666,7 +665,7 @@ export default function LedgerPage() {
                         {tx.is_refund ? '환불' : tx.transaction_type}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-medium text-slate-800 max-w-[140px] truncate">{tx.counterparty_name || '—'}</td>
+                    <td className="px-3 py-2 font-medium text-admin-text-2 max-w-[140px] truncate">{tx.counterparty_name || '—'}</td>
                     <td className={`px-3 py-2 font-bold tabular-nums ${
                       tx.transaction_type === '입금' ? 'text-blue-700' : 'text-orange-600'
                     }`}>
@@ -677,7 +676,7 @@ export default function LedgerPage() {
                         tx.match_status === 'auto'      ? 'bg-emerald-50 text-emerald-700'  :
                         tx.match_status === 'manual'    ? 'bg-blue-50 text-blue-700'    :
                         tx.match_status === 'review'    ? 'bg-amber-50 text-amber-700'  :
-                        tx.is_fee                       ? 'bg-slate-100 text-slate-600'    :
+                        tx.is_fee                       ? 'bg-admin-surface-2 text-admin-muted'    :
                                                           'bg-red-50 text-red-600'
                       }`}>
                         {tx.is_fee ? '수수료' :
@@ -686,7 +685,7 @@ export default function LedgerPage() {
                          tx.match_status === 'review' ? '검토' : '미매칭'}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-admin-sm text-slate-500 max-w-[100px] truncate">
+                    <td className="px-3 py-2 text-admin-sm text-admin-muted max-w-[100px] truncate">
                       {(tx.bookings as any)?.booking_no ?? '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -695,14 +694,14 @@ export default function LedgerPage() {
                           <button
                             onClick={() => handleRestore([tx.id])}
                             title="복원"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
+                            className="p-1.5 rounded-lg text-admin-muted-2 hover:text-blue-600 hover:bg-blue-50 transition"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleHardDelete([tx.id])}
                             title="영구 삭제"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                            className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-600 hover:bg-red-50 transition"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -711,7 +710,7 @@ export default function LedgerPage() {
                         <button
                           onClick={() => handleTrash([tx.id])}
                           title="휴지통으로 이동"
-                          className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
+                          className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-500 hover:bg-red-50 transition"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -724,10 +723,10 @@ export default function LedgerPage() {
                     <td colSpan={8} className="py-14 text-center">
                       <div className="flex flex-col items-center gap-3">
                         {tab === 'trash'
-                          ? <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                          : <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>
+                          ? <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                          : <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>
                         }
-                        <p className="text-admin-sm font-medium text-slate-500">
+                        <p className="text-admin-sm font-medium text-admin-muted">
                           {tab === 'trash' ? '휴지통이 비어 있습니다.' : '거래 내역이 없습니다.'}
                         </p>
                       </div>
@@ -744,14 +743,14 @@ export default function LedgerPage() {
       {showAI && (
         <>
           <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setShowAI(false)} />
-          <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white border-l border-slate-200 z-50 overflow-y-auto">
+          <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white border-l border-admin-border-mid z-50 overflow-y-auto">
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-purple-600" />
-                  <h2 className="text-admin-lg font-semibold text-slate-800">AI 스마트 클리닝 결과</h2>
+                  <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 스마트 클리닝 결과</h2>
                 </div>
-                <button onClick={() => setShowAI(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setShowAI(false)} className="text-admin-muted-2 hover:text-admin-muted">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -781,10 +780,10 @@ export default function LedgerPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4
                         bg-slate-900 text-white px-5 py-3.5 rounded-lg
                         animate-in slide-in-from-bottom-4 duration-300">
-          <Trash2 className="w-4 h-4 text-slate-400 shrink-0" />
+          <Trash2 className="w-4 h-4 text-admin-muted-2 shrink-0" />
           <span className="text-admin-base">
             {undoInfo.ids.length}건 이동 중
-            <span className="text-slate-400 ml-1">({undoInfo.countdown}초 후 확정)</span>
+            <span className="text-admin-muted-2 ml-1">({undoInfo.countdown}초 후 확정)</span>
           </span>
           <button
             onClick={handleUndo}

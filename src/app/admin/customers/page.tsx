@@ -80,7 +80,7 @@ function avatarBg(grade?: string): string {
   switch (grade) {
     case 'VVIP': return 'bg-purple-50 text-purple-700';
     case '우수':  return 'bg-blue-50 text-blue-700';
-    case '일반':  return 'bg-slate-100 text-slate-600';
+    case '일반':  return 'bg-admin-surface-2 text-admin-muted';
     default:     return 'bg-green-50 text-green-700';
   }
 }
@@ -398,7 +398,7 @@ export default function CustomersPage() {
     load({ sb: field, sd: newDir, p: 1 });
   }
   const sortIcon = (field: string) =>
-    sortBy !== field ? <span className="text-slate-300 ml-1">↕</span>
+    sortBy !== field ? <span className="text-admin-muted-2 ml-1">↕</span>
     : <span className="text-blue-600 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
 
   // ─── 신규 고객 등록: 전화번호 중복 체크 ──────────────────────────────────
@@ -453,10 +453,10 @@ export default function CustomersPage() {
     const action = getNextAction(customer.status ?? '잠재고객', daysSince);
     if (!action) return null;
     return (
-      <div className="border-t border-slate-200 p-4 bg-amber-50 flex-shrink-0">
+      <div className="border-t border-admin-border-mid p-4 bg-amber-50 flex-shrink-0">
         <p className="text-[11px] font-semibold text-amber-700 mb-2">다음 추천 액션</p>
         <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-200">
-          <span className="text-admin-sm text-slate-700">{action.label}</span>
+          <span className="text-admin-sm text-admin-text-2">{action.label}</span>
           <button onClick={() => showToast(`${action.label} 실행됨`)}
             className="text-[11px] bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 font-medium">
             실행
@@ -477,8 +477,8 @@ export default function CustomersPage() {
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-admin-lg font-bold text-slate-800">고객 관리</h1>
-            <p className="text-admin-sm text-slate-500 mt-0.5">전체 {totalCount.toLocaleString()}명</p>
+            <h1 className="text-admin-lg font-bold text-admin-text-2">고객 관리</h1>
+            <p className="text-admin-sm text-admin-muted mt-0.5">전체 {totalCount.toLocaleString()}명</p>
           </div>
           <button onClick={() => { setShowForm(true); setPhoneDupe(null); }}
             className="bg-blue-600 text-white px-4 py-2 rounded text-admin-sm font-medium hover:bg-blue-700">
@@ -488,10 +488,10 @@ export default function CustomersPage() {
 
         {/* 탭 + 필터 */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <div className="flex border border-slate-200 rounded overflow-hidden bg-white">
+          <div className="flex border border-admin-border-mid rounded overflow-hidden bg-white">
             {(['active', 'trash'] as const).map(t => (
               <button key={t} onClick={() => { setTab(t); load({ t, p: 1 }); }}
-                className={`px-4 py-2 text-admin-sm font-medium ${tab === t ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                className={`px-4 py-2 text-admin-sm font-medium ${tab === t ? 'bg-blue-600 text-white' : 'text-admin-muted hover:bg-admin-bg'}`}>
                 {t === 'active' ? '활성' : '휴지통'}
               </button>
             ))}
@@ -500,28 +500,28 @@ export default function CustomersPage() {
           <input value={search}
             onChange={e => { setSearch(e.target.value); load({ q: e.target.value, p: 1 }); }}
             placeholder="이름 / 전화번호 / 이메일"
-            className="border border-slate-200 bg-white rounded px-3 py-2 text-admin-sm w-52 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm w-52 focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
 
           <select value={gradeFilter}
             onChange={e => { setGradeFilter(e.target.value); load({ g: e.target.value, p: 1 }); }}
-            className="border border-slate-200 bg-white rounded px-3 py-2 text-admin-sm">
+            className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm">
             <option value="">전체 등급</option>
             {['VVIP', '우수', '일반', '신규'].map(g => <option key={g} value={g}>{g}</option>)}
           </select>
 
           <select value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); load({ st: e.target.value, p: 1 }); }}
-            className="border border-slate-200 bg-white rounded px-3 py-2 text-admin-sm">
+            className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm">
             <option value="">전체 상태</option>
             {LIFECYCLE_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
 
         {/* 테이블 */}
-        <div className="bg-white rounded border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded border border-admin-border-mid overflow-hidden">
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-admin-bg border-b border-admin-border-mid">
               <tr>
                 <th className="pl-3 pr-2 py-2 w-10">
                   <input
@@ -531,28 +531,28 @@ export default function CustomersPage() {
                       if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < customers.length;
                     }}
                     onChange={toggleAll}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer"
+                    className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer"
                   />
                 </th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer"
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-admin-muted uppercase tracking-wide cursor-pointer"
                   onClick={() => handleSort('name')}>
                   고객 {sortIcon('name')}
                 </th>
-                <th className="px-3 py-2 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                <th className="px-3 py-2 text-center text-[11px] font-semibold text-admin-muted uppercase tracking-wide">
                   등급
                 </th>
-                <th className="px-3 py-2 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                <th className="px-3 py-2 text-center text-[11px] font-semibold text-admin-muted uppercase tracking-wide">
                   상태
                 </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer"
+                <th className="px-3 py-2 text-right text-[11px] font-semibold text-admin-muted uppercase tracking-wide cursor-pointer"
                   onClick={() => handleSort('mileage')}>
                   마일리지 {sortIcon('mileage')}
                 </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer"
+                <th className="px-3 py-2 text-right text-[11px] font-semibold text-admin-muted uppercase tracking-wide cursor-pointer"
                   onClick={() => handleSort('bookingCount')}>
                   예약 {sortIcon('bookingCount')}
                 </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer"
+                <th className="px-3 py-2 text-right text-[11px] font-semibold text-admin-muted uppercase tracking-wide cursor-pointer"
                   onClick={() => handleSort('totalSales')}>
                   총매출 {sortIcon('totalSales')}
                 </th>
@@ -563,20 +563,20 @@ export default function CustomersPage() {
             <tbody>
               {isLoading ? (
                 [...Array(6)].map((_, i) => (
-                  <tr key={i} className="border-b border-slate-200">
+                  <tr key={i} className="border-b border-admin-border-mid">
                     <td className="pl-3 pr-2 py-2" />
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse" />
+                        <div className="w-8 h-8 rounded-full bg-admin-surface-2 animate-pulse" />
                         <div className="space-y-1.5">
-                          <div className="h-3.5 w-20 bg-slate-100 rounded animate-pulse" />
-                          <div className="h-3 w-16 bg-slate-100 rounded animate-pulse" />
+                          <div className="h-3.5 w-20 bg-admin-surface-2 rounded animate-pulse" />
+                          <div className="h-3 w-16 bg-admin-surface-2 rounded animate-pulse" />
                         </div>
                       </div>
                     </td>
                     {[...Array(5)].map((_, j) => (
                       <td key={j} className="px-3 py-2">
-                        <div className="h-3.5 bg-slate-100 rounded animate-pulse" />
+                        <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse" />
                       </td>
                     ))}
                     <td className="pr-3 pl-2 py-2" />
@@ -584,7 +584,7 @@ export default function CustomersPage() {
                 ))
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-20 text-center text-slate-400">
+                  <td colSpan={8} className="px-3 py-20 text-center text-admin-muted-2">
                     <p className="text-admin-base">고객이 없습니다.</p>
                   </td>
                 </tr>
@@ -597,10 +597,10 @@ export default function CustomersPage() {
                 return (
                   <tr key={c.id}
                     onClick={() => { openDrawer(c); setOpenMenuId(null); }}
-                    className={`group cursor-pointer transition-colors border-b border-slate-200
+                    className={`group cursor-pointer transition-colors border-b border-admin-border-mid
                       ${isDrawerOn  ? 'bg-blue-50 ring-inset ring-2 ring-blue-300' : ''}
                       ${isChecked && !isDrawerOn ? 'bg-blue-50/40' : ''}
-                      ${!isDrawerOn && !isChecked ? 'hover:bg-slate-50' : ''}
+                      ${!isDrawerOn && !isChecked ? 'hover:bg-admin-bg' : ''}
                       ${gs.border}
                     `}
                   >
@@ -610,7 +610,7 @@ export default function CustomersPage() {
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => {}}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer"
+                        className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer"
                       />
                     </td>
 
@@ -622,9 +622,9 @@ export default function CustomersPage() {
                           {c.name[0]}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-admin-sm font-semibold text-slate-800 truncate">{c.name}</p>
+                          <p className="text-admin-sm font-semibold text-admin-text-2 truncate">{c.name}</p>
                           {c.phone ? (
-                            <p className="text-[11px] text-slate-400 truncate">···{c.phone.slice(-4)}</p>
+                            <p className="text-[11px] text-admin-muted-2 truncate">···{c.phone.slice(-4)}</p>
                           ) : (
                             <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
                               연락처 미상
@@ -644,18 +644,18 @@ export default function CustomersPage() {
                     {/* 상태 */}
                     <td className="px-3 py-2 text-center">
                       {c.status ? (
-                        <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                        <span className="text-[11px] bg-admin-surface-2 text-admin-muted px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
                           {c.status}
                         </span>
                       ) : (
-                        <span className="text-slate-300 text-[11px]">-</span>
+                        <span className="text-admin-muted-2 text-[11px]">-</span>
                       )}
                     </td>
 
                     {/* 마일리지 */}
                     <td className="px-3 py-2 text-right tabular-nums">
                       {!c.mileage ? (
-                        <span className="text-[11px] text-slate-300">0P</span>
+                        <span className="text-[11px] text-admin-muted-2">0P</span>
                       ) : (
                         <span className={`text-admin-sm font-semibold ${gs.text || 'text-blue-600'}`}>
                           {fmtNum(c.mileage)}P
@@ -666,19 +666,19 @@ export default function CustomersPage() {
                     {/* 예약 건수 */}
                     <td className="px-3 py-2 text-right tabular-nums">
                       {!c.bookingCount ? (
-                        <span className="text-[11px] text-slate-300">0</span>
+                        <span className="text-[11px] text-admin-muted-2">0</span>
                       ) : (
-                        <span className="text-admin-sm font-semibold text-slate-700">{c.bookingCount}건</span>
+                        <span className="text-admin-sm font-semibold text-admin-text-2">{c.bookingCount}건</span>
                       )}
                     </td>
 
                     {/* 총매출 */}
                     <td className="px-3 py-2 text-right tabular-nums">
                       {!salesStr ? (
-                        <span className="text-[11px] text-slate-300">0</span>
+                        <span className="text-[11px] text-admin-muted-2">0</span>
                       ) : (
                         <span className={`text-admin-sm font-semibold ${
-                          (c.totalSales ?? 0) >= 5_000_000 ? 'text-slate-800' : 'text-slate-600'
+                          (c.totalSales ?? 0) >= 5_000_000 ? 'text-admin-text-2' : 'text-admin-muted'
                         }`}>
                           {salesStr}
                         </span>
@@ -691,18 +691,18 @@ export default function CustomersPage() {
                         <button
                           onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === c.id ? null : c.id); }}
                           className="w-7 h-7 rounded flex items-center justify-center text-lg leading-none
-                            text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition
+                            text-admin-muted-2 hover:text-admin-muted hover:bg-admin-surface-2 transition
                             opacity-0 group-hover:opacity-100 focus:opacity-100"
                         >
                           ⋮
                         </button>
 
                         {openMenuId === c.id && (
-                          <div className="absolute right-0 top-8 bg-white border border-slate-200
+                          <div className="absolute right-0 top-8 bg-white border border-admin-border-mid
                             rounded z-20 min-w-[120px] overflow-hidden">
                             <button
                               onClick={e => { e.stopPropagation(); openDrawer(c); }}
-                              className="w-full px-3 py-2 text-left text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                              className="w-full px-3 py-2 text-left text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2">
                               수정
                             </button>
                             <button
@@ -725,10 +725,10 @@ export default function CustomersPage() {
         {totalPages > 1 && (
           <div className="flex justify-center gap-2 mt-4">
             <button disabled={page <= 1} onClick={() => { setPage(page - 1); load({ p: page - 1 }); }}
-              className="px-4 py-1.5 rounded border border-slate-300 text-admin-sm text-slate-700 disabled:opacity-40 hover:bg-slate-50 bg-white">이전</button>
-            <span className="px-3 py-1.5 text-admin-sm text-slate-500">{page} / {totalPages}</span>
+              className="px-4 py-1.5 rounded border border-admin-border-strong text-admin-sm text-admin-text-2 disabled:opacity-40 hover:bg-admin-bg bg-white">이전</button>
+            <span className="px-3 py-1.5 text-admin-sm text-admin-muted">{page} / {totalPages}</span>
             <button disabled={page >= totalPages} onClick={() => { setPage(page + 1); load({ p: page + 1 }); }}
-              className="px-4 py-1.5 rounded border border-slate-300 text-admin-sm text-slate-700 disabled:opacity-40 hover:bg-slate-50 bg-white">다음</button>
+              className="px-4 py-1.5 rounded border border-admin-border-strong text-admin-sm text-admin-text-2 disabled:opacity-40 hover:bg-admin-bg bg-white">다음</button>
           </div>
         )}
       </div>
@@ -761,7 +761,7 @@ export default function CustomersPage() {
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="text-slate-400 hover:text-white ml-1 text-lg leading-none transition">
+            className="text-admin-muted-2 hover:text-white ml-1 text-lg leading-none transition">
             ✕
           </button>
         </div>
@@ -773,13 +773,13 @@ export default function CustomersPage() {
           onClick={() => setConfirmModal(null)}>
           <div className="bg-white rounded w-full max-w-sm p-6"
             onClick={e => e.stopPropagation()}>
-            <h3 className="text-admin-lg font-bold text-slate-800 mb-2">
+            <h3 className="text-admin-lg font-bold text-admin-text-2 mb-2">
               {confirmModal.type === 'mileage-reset' ? '마일리지 일괄 초기화' : '일괄 삭제'}
             </h3>
-            <p className="text-admin-base text-slate-500 mb-1">
-              선택된 <span className="font-bold text-slate-800">{confirmModal.count}명</span>의 고객을
+            <p className="text-admin-base text-admin-muted mb-1">
+              선택된 <span className="font-bold text-admin-text-2">{confirmModal.count}명</span>의 고객을
             </p>
-            <p className="text-admin-base text-slate-500 mb-6">
+            <p className="text-admin-base text-admin-muted mb-6">
               {confirmModal.type === 'mileage-reset'
                 ? '마일리지를 모두 0P로 초기화합니다.'
                 : '삭제합니다. 이 작업은 되돌릴 수 없습니다.'
@@ -787,7 +787,7 @@ export default function CustomersPage() {
             </p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmModal(null)}
-                className="flex-1 border border-slate-300 text-slate-700 py-2.5 rounded text-admin-sm font-medium hover:bg-slate-50 transition bg-white">
+                className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded text-admin-sm font-medium hover:bg-admin-bg transition bg-white">
                 취소
               </button>
               <button
@@ -805,17 +805,17 @@ export default function CustomersPage() {
         <>
           <div className="fixed inset-0 bg-black/20 z-30 lg:hidden" onClick={() => setDrawer(null)} />
 
-          <div className="fixed right-0 top-0 h-full w-[520px] bg-white z-40 flex flex-col border-l border-slate-200">
+          <div className="fixed right-0 top-0 h-full w-[520px] bg-white z-40 flex flex-col border-l border-admin-border-mid">
 
             {/* 드로어 헤더 */}
-            <div className="px-5 py-4 border-b border-slate-200 bg-white flex items-center justify-between flex-shrink-0">
+            <div className="px-5 py-4 border-b border-admin-border-mid bg-white flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-admin-lg ${avatarBg(drawer.grade)}`}>
                   {drawer.name[0]}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800 text-admin-lg">{drawer.name}</span>
+                    <span className="font-bold text-admin-text-2 text-admin-lg">{drawer.name}</span>
                     {(() => {
                       const gs = GRADE_STYLE[drawer.grade ?? '신규'] ?? GRADE_STYLE['신규'];
                       return (
@@ -825,18 +825,18 @@ export default function CustomersPage() {
                       );
                     })()}
                   </div>
-                  <p className="text-admin-sm text-slate-500">
+                  <p className="text-admin-sm text-admin-muted">
                     {drawer.phone ?? <span className="text-red-500">연락처 미상</span>}
                     {' · '}{fmtNum(drawer.mileage)}P
                   </p>
                 </div>
               </div>
-              <button onClick={() => setDrawer(null)} className="text-slate-400 hover:text-slate-600 text-lg p-1">✕</button>
+              <button onClick={() => setDrawer(null)} className="text-admin-muted-2 hover:text-admin-muted text-lg p-1">✕</button>
             </div>
 
             {/* 생애주기 프로세스 바 */}
-            <div className="px-5 py-3 bg-white border-b border-slate-200 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">생애주기 - 클릭 시 즉시 변경</p>
+            <div className="px-5 py-3 bg-white border-b border-admin-border-mid flex-shrink-0">
+              <p className="text-[10px] font-semibold text-admin-muted-2 uppercase tracking-wide mb-2">생애주기 - 클릭 시 즉시 변경</p>
               <div className="flex items-center gap-1">
                 {LIFECYCLE_STAGES.map((stage, i) => {
                   const current    = drawer.status ?? '잠재고객';
@@ -849,7 +849,7 @@ export default function CustomersPage() {
                       className={`flex-1 py-1.5 text-[11px] rounded font-semibold transition-all border ${
                         isActive ? 'bg-blue-600 text-white border-blue-600'
                         : isDone ? 'bg-blue-50 text-blue-600 border-blue-200'
-                        :          'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                        :          'bg-admin-bg text-admin-muted border-admin-border-mid hover:bg-admin-surface-2'
                       }`}>
                       {stage}
                     </button>
@@ -859,7 +859,7 @@ export default function CustomersPage() {
             </div>
 
             {/* 탭 네비게이션 */}
-            <div className="flex border-b border-slate-200 bg-white flex-shrink-0">
+            <div className="flex border-b border-admin-border-mid bg-white flex-shrink-0">
               {([
                 ['info',          '상세정보'],
                 ['bookings',      '예약내역'],
@@ -867,7 +867,7 @@ export default function CustomersPage() {
                 ['mileage',       '마일리지'],
               ] as const).map(([key, label]) => (
                 <button key={key} onClick={() => handleDrawerTabChange(key)}
-                  className={`flex-1 py-2.5 text-admin-sm font-semibold transition-colors ${drawerTab === key ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                  className={`flex-1 py-2.5 text-admin-sm font-semibold transition-colors ${drawerTab === key ? 'text-blue-600 border-b-2 border-blue-600' : 'text-admin-muted hover:text-admin-text-2'}`}>
                   {label}
                   {key === 'bookings' && drawerBookings.length > 0 && (
                     <span className="ml-1 text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">
@@ -884,8 +884,8 @@ export default function CustomersPage() {
                 <div className="p-5 space-y-4">
                   {Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="space-y-1.5">
-                      <div className="h-2.5 bg-slate-100 rounded animate-pulse w-20" />
-                      <div className="h-9 bg-slate-100 rounded-lg animate-pulse w-full" />
+                      <div className="h-2.5 bg-admin-surface-2 rounded animate-pulse w-20" />
+                      <div className="h-9 bg-admin-surface-2 rounded-lg animate-pulse w-full" />
                     </div>
                   ))}
                 </div>
@@ -903,17 +903,17 @@ export default function CustomersPage() {
                         ['생년월일',   'birth_date',       'date'],
                       ] as const).map(([label, field, type]) => (
                         <div key={field}>
-                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</label>
+                          <label className="block text-[11px] font-semibold text-admin-muted mb-1">{label}</label>
                           <input type={type}
                             value={(editInfo[field as keyof typeof editInfo] as string) ?? ''}
                             onChange={e => setEditInfo(prev => ({ ...prev, [field]: e.target.value }))}
-                            className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                            className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                           />
                         </div>
                       ))}
                       {/* 주민번호 7자리 → 생년월일 자동입력 */}
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">주민번호 (앞6+뒤1)</label>
+                        <label className="block text-[11px] font-semibold text-admin-muted mb-1">주민번호 (앞6+뒤1)</label>
                         <input maxLength={7} placeholder="6203152"
                           onChange={e => {
                             const v = e.target.value.replace(/[^0-9]/g, '');
@@ -927,22 +927,22 @@ export default function CustomersPage() {
                               setEditInfo(prev => ({ ...prev, birth_date: (century + yy) + '-' + mm + '-' + dd }));
                             }
                           }}
-                          className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                          className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-300" />
                         {editInfo.birth_date && (() => {
                           const bd = new Date(editInfo.birth_date as string);
                           if (isNaN(bd.getTime())) return null;
                           const now = new Date();
                           let age = now.getFullYear() - bd.getFullYear();
                           if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
-                          return <p className="text-admin-xs text-slate-500 mt-1">{editInfo.birth_date} · 만 {age}세</p>;
+                          return <p className="text-admin-xs text-admin-muted mt-1">{editInfo.birth_date} · 만 {age}세</p>;
                         })()}
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">메모</label>
+                        <label className="block text-[11px] font-semibold text-admin-muted mb-1">메모</label>
                         <textarea value={editInfo.memo ?? ''}
                           onChange={e => setEditInfo(prev => ({ ...prev, memo: e.target.value }))}
                           rows={3}
-                          className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                          className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
                         />
                       </div>
                       <button onClick={handleSaveInfo} disabled={savingInfo}
@@ -956,17 +956,17 @@ export default function CustomersPage() {
                   {drawerTab === 'bookings' && (
                     <div className="p-4 space-y-3">
                       {drawerBookings.length === 0 ? (
-                        <p className="text-center text-slate-400 text-admin-base py-16">예약 내역 없음</p>
+                        <p className="text-center text-admin-muted-2 text-admin-base py-16">예약 내역 없음</p>
                       ) : drawerBookings.map(b => (
                         <Link key={b.id} href={`/admin/bookings/${b.id}`}
-                          className="block bg-white rounded border border-slate-200 p-4 hover:bg-blue-50 hover:border-blue-300 transition-colors group">
+                          className="block bg-white rounded border border-admin-border-mid p-4 hover:bg-blue-50 hover:border-blue-300 transition-colors group">
                           <div className="flex items-start justify-between mb-1.5">
-                            <span className="font-semibold text-slate-800 text-admin-sm">{b.package_title ?? '상품 미지정'}</span>
-                            <span className={`text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 ${BOOKING_STATUS_COLOR[b.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                            <span className="font-semibold text-admin-text-2 text-admin-sm">{b.package_title ?? '상품 미지정'}</span>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 ${BOOKING_STATUS_COLOR[b.status] ?? 'bg-admin-surface-2 text-admin-muted'}`}>
                               {BOOKING_STATUS[b.status] ?? b.status}
                             </span>
                           </div>
-                          <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                          <div className="flex items-center gap-3 text-[11px] text-admin-muted">
                             <span>{fmtDate(b.departure_date)}</span>
                             <span>판매가 {b.total_price ? `${Math.round(b.total_price / 10000)}만` : '0'}</span>
                             <span>납입 {b.paid_amount ? `${Math.round(b.paid_amount / 10000)}만` : '0'}</span>
@@ -982,22 +982,22 @@ export default function CustomersPage() {
                     <div className="flex flex-col" style={{ minHeight: 0 }}>
                       <div className="p-4 space-y-3">
                         {drawerNotes.length === 0 ? (
-                          <p className="text-center text-slate-400 text-admin-base py-16">상담 기록 없음</p>
+                          <p className="text-center text-admin-muted-2 text-admin-base py-16">상담 기록 없음</p>
                         ) : drawerNotes.map(n => (
-                          <div key={n.id} className="bg-white rounded border border-slate-200 p-3">
+                          <div key={n.id} className="bg-white rounded border border-admin-border-mid p-3">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-[11px] font-medium text-slate-600">{CHANNEL_LABEL[n.channel ?? 'phone'] ?? n.channel}</span>
-                              <span className="text-[11px] text-slate-400 ml-auto">{fmtDate(n.created_at)}</span>
+                              <span className="text-[11px] font-medium text-admin-muted">{CHANNEL_LABEL[n.channel ?? 'phone'] ?? n.channel}</span>
+                              <span className="text-[11px] text-admin-muted-2 ml-auto">{fmtDate(n.created_at)}</span>
                             </div>
-                            <p className="text-admin-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{n.content}</p>
+                            <p className="text-admin-sm text-admin-text-2 whitespace-pre-wrap leading-relaxed">{n.content}</p>
                           </div>
                         ))}
                       </div>
-                      <div className="border-t border-slate-200 p-4 space-y-2 bg-white">
+                      <div className="border-t border-admin-border-mid p-4 space-y-2 bg-white">
                         <div className="flex gap-1 flex-wrap">
                           {Object.entries(CHANNEL_LABEL).map(([ch, label]) => (
                             <button key={ch} onClick={() => setNoteChannel(ch)}
-                              className={`px-2 py-1 rounded text-[11px] font-medium ${noteChannel === ch ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
+                              className={`px-2 py-1 rounded text-[11px] font-medium ${noteChannel === ch ? 'bg-blue-50 text-blue-700' : 'bg-admin-bg text-admin-muted hover:bg-admin-surface-2'}`}>
                               {label}
                             </button>
                           ))}
@@ -1008,7 +1008,7 @@ export default function CustomersPage() {
                             placeholder="상담 내용을 입력하세요..."
                             rows={2}
                             onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleAddNote(); }}
-                            className="flex-1 border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                            className="flex-1 border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
                           />
                           <button onClick={handleAddNote} disabled={addingNote || !noteInput.trim()}
                             className="bg-blue-600 text-white px-4 rounded text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50">
@@ -1036,16 +1036,16 @@ export default function CustomersPage() {
                       </div>
 
                       {/* 수동 조정 */}
-                      <div className="bg-white rounded p-4 border border-slate-200">
-                        <p className="text-[11px] font-semibold text-slate-600 mb-3">수동 조정 (CS)</p>
+                      <div className="bg-white rounded p-4 border border-admin-border-mid">
+                        <p className="text-[11px] font-semibold text-admin-muted mb-3">수동 조정 (CS)</p>
                         <div className="flex gap-2 mb-2">
                           <input type="number" value={mileageInput}
                             onChange={e => setMileageInput(e.target.value)}
                             placeholder="+500 또는 -200"
-                            className="flex-1 border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                            className="flex-1 border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                           />
                           <select value={mileageReason} onChange={e => setMileageReason(e.target.value)}
-                            className="border border-slate-200 rounded px-2 text-admin-sm bg-white">
+                            className="border border-admin-border-mid rounded px-2 text-admin-sm bg-white">
                             {['수동 조정', 'CS 보상', '오류 수정', '사용', '만료'].map(r => (
                               <option key={r} value={r}>{r}</option>
                             ))}
@@ -1059,22 +1059,22 @@ export default function CustomersPage() {
 
                       {/* 이력 */}
                       <div>
-                        <p className="text-[11px] font-semibold text-slate-500 mb-2">적립 / 사용 이력</p>
+                        <p className="text-[11px] font-semibold text-admin-muted mb-2">적립 / 사용 이력</p>
                         {drawerMileage.length === 0 ? (
-                          <p className="text-center text-slate-400 text-admin-base py-10">이력 없음</p>
+                          <p className="text-center text-admin-muted-2 text-admin-base py-10">이력 없음</p>
                         ) : (
                           <div className="space-y-2">
                             {drawerMileage.map(h => (
-                              <div key={h.id} className="flex items-center justify-between bg-white rounded px-4 py-3 border border-slate-200">
+                              <div key={h.id} className="flex items-center justify-between bg-white rounded px-4 py-3 border border-admin-border-mid">
                                 <div>
-                                  <p className="text-admin-sm font-medium text-slate-800">{h.reason}</p>
-                                  <p className="text-[11px] text-slate-400">{fmtDate(h.created_at)}</p>
+                                  <p className="text-admin-sm font-medium text-admin-text-2">{h.reason}</p>
+                                  <p className="text-[11px] text-admin-muted-2">{fmtDate(h.created_at)}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className={`font-bold text-admin-sm ${h.delta >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
                                     {h.delta >= 0 ? '+' : ''}{h.delta.toLocaleString()}P
                                   </p>
-                                  <p className="text-[11px] text-slate-400">잔액 {h.balance_after.toLocaleString()}P</p>
+                                  <p className="text-[11px] text-admin-muted-2">잔액 {h.balance_after.toLocaleString()}P</p>
                                 </div>
                               </div>
                             ))}
@@ -1097,33 +1097,33 @@ export default function CustomersPage() {
       {showForm && (
         <>
           <div className="fixed inset-0 bg-black/40 z-50" onClick={() => { setShowForm(false); setPhoneDupe(null); }} />
-          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-slate-200">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-admin-lg font-bold text-slate-800">신규 고객 등록</h2>
-              <button onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-admin-border-mid">
+            <div className="px-6 py-4 border-b border-admin-border-mid flex items-center justify-between">
+              <h2 className="text-admin-lg font-bold text-admin-text-2">신규 고객 등록</h2>
+              <button onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">✕</button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">이름 *</label>
+                <label className="block text-[11px] font-semibold text-admin-muted mb-1">이름 *</label>
                 <input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                   placeholder="홍길동" />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">전화번호</label>
+                <label className="block text-[11px] font-semibold text-admin-muted mb-1">전화번호</label>
                 <div className="relative">
                   <input value={form.phone}
                     onChange={e => { setForm(p => ({ ...p, phone: e.target.value })); checkPhone(e.target.value); }}
-                    className={`w-full border rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 ${phoneDupe ? 'border-orange-400 bg-orange-50' : 'border-slate-200'}`}
+                    className={`w-full border rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 ${phoneDupe ? 'border-orange-400 bg-orange-50' : 'border-admin-border-mid'}`}
                     placeholder="010-0000-0000" />
-                  {checkingPhone && <span className="absolute right-3 top-2.5 text-[11px] text-slate-400">확인 중...</span>}
+                  {checkingPhone && <span className="absolute right-3 top-2.5 text-[11px] text-admin-muted-2">확인 중...</span>}
                 </div>
                 {phoneDupe && (
                   <div className="mt-2 bg-orange-50 border border-orange-300 rounded p-3">
                     <p className="text-[11px] font-semibold text-orange-700 mb-1.5">이미 등록된 번호입니다</p>
-                    <p className="text-admin-sm text-slate-800 font-medium">{phoneDupe.name}</p>
-                    <p className="text-[11px] text-slate-500 mb-2">{phoneDupe.phone} · {phoneDupe.grade} · {fmtNum(phoneDupe.mileage)}P</p>
+                    <p className="text-admin-sm text-admin-text-2 font-medium">{phoneDupe.name}</p>
+                    <p className="text-[11px] text-admin-muted mb-2">{phoneDupe.phone} · {phoneDupe.grade} · {fmtNum(phoneDupe.mileage)}P</p>
                     <button type="button" onClick={loadDupeCustomer}
                       className="w-full bg-orange-500 text-white py-2 rounded text-[11px] font-semibold hover:bg-orange-600">
                       기존 고객 정보 불러오기
@@ -1133,27 +1133,27 @@ export default function CustomersPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">이메일</label>
+                <label className="block text-[11px] font-semibold text-admin-muted mb-1">이메일</label>
                 <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                  className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">여권번호</label>
+                  <label className="block text-[11px] font-semibold text-admin-muted mb-1">여권번호</label>
                   <input value={form.passport_no} onChange={e => setForm(p => ({ ...p, passport_no: e.target.value }))}
-                    className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">여권만료일</label>
+                  <label className="block text-[11px] font-semibold text-admin-muted mb-1">여권만료일</label>
                   <input type="date" value={form.passport_expiry} onChange={e => setForm(p => ({ ...p, passport_expiry: e.target.value }))}
-                    className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
               </div>
 
               {/* 주민번호 7자리 → 성별/나이 자동 파싱 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">주민등록번호 (앞6 + 뒤1)</label>
+                <label className="block text-[11px] font-semibold text-admin-muted mb-1">주민등록번호 (앞6 + 뒤1)</label>
                 <input
                   maxLength={7}
                   placeholder="6203152"
@@ -1173,7 +1173,7 @@ export default function CustomersPage() {
                       setForm(p => ({ ...p, birth_date: birthDate, gender }));
                     }
                   }}
-                  className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono tracking-wider"
+                  className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono tracking-wider"
                 />
                 {form.birth_date && (() => {
                   const bd = new Date(form.birth_date);
@@ -1183,11 +1183,11 @@ export default function CustomersPage() {
                   if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
                   return (
                     <div className="mt-2 flex gap-3 text-admin-sm">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">{form.birth_date}</span>
-                      <span className={`px-2 py-0.5 rounded font-medium ${form.gender === 'M' ? 'bg-blue-50 text-blue-700' : form.gender === 'F' ? 'bg-pink-50 text-pink-700' : 'bg-slate-100 text-slate-700'}`}>
+                      <span className="px-2 py-0.5 rounded bg-admin-surface-2 text-admin-text-2">{form.birth_date}</span>
+                      <span className={`px-2 py-0.5 rounded font-medium ${form.gender === 'M' ? 'bg-blue-50 text-blue-700' : form.gender === 'F' ? 'bg-pink-50 text-pink-700' : 'bg-admin-surface-2 text-admin-text-2'}`}>
                         {form.gender === 'M' ? '남성' : form.gender === 'F' ? '여성' : ''}
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">만 {age}세</span>
+                      <span className="px-2 py-0.5 rounded bg-admin-surface-2 text-admin-text-2">만 {age}세</span>
                     </div>
                   );
                 })()}
@@ -1195,7 +1195,7 @@ export default function CustomersPage() {
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowForm(false); setPhoneDupe(null); }}
-                  className="flex-1 border border-slate-300 text-slate-700 py-2.5 rounded text-admin-sm font-medium hover:bg-slate-50 bg-white">
+                  className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded text-admin-sm font-medium hover:bg-admin-bg bg-white">
                   취소
                 </button>
                 <button type="submit" disabled={saving || !!phoneDupe}

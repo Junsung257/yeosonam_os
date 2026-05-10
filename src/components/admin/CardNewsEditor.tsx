@@ -40,25 +40,25 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col">
       {/* ── 상단 툴바 ──────────────────────────────── */}
-      <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
+      <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <input
             value={cardNewsTitle}
             onChange={e => setCardNewsTitle(e.target.value)}
-            className="text-admin-lg font-semibold text-slate-800 border-none focus:ring-0 bg-transparent w-64 placeholder:text-slate-400"
+            className="text-admin-lg font-semibold text-admin-text-2 border-none focus:ring-0 bg-transparent w-64 placeholder:text-admin-muted-2"
             placeholder="카드뉴스 제목"
           />
-          <span className="text-[11px] text-slate-400">{slides.length}장</span>
+          <span className="text-[11px] text-admin-muted-2">{slides.length}장</span>
         </div>
         <div className="flex items-center gap-2">
           {/* 비율 선택 */}
-          <div className="flex border border-slate-200 rounded overflow-hidden">
+          <div className="flex border border-admin-border-mid rounded overflow-hidden">
             {(Object.keys(ASPECT_RATIOS) as AspectRatio[]).map(r => (
               <button
                 key={r}
                 onClick={() => setAspectRatio(r)}
                 className={`px-3 py-1 text-[11px] transition ${
-                  aspectRatio === r ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  aspectRatio === r ? 'bg-blue-600 text-white' : 'bg-white text-admin-muted hover:bg-admin-bg'
                 }`}
               >
                 {r}
@@ -75,7 +75,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           <button
             onClick={exportAll}
             disabled={exporting}
-            className="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 disabled:bg-slate-100 transition"
+            className="px-4 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg disabled:bg-admin-surface-2 transition"
           >
             {exporting ? '생성 중...' : 'JPG 내보내기'}
           </button>
@@ -85,7 +85,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
       {/* ── 메인 영역 ──────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
         {/* 좌측: 슬라이드 목록 */}
-        <div className="w-40 bg-slate-50 border-r border-slate-200 overflow-y-auto p-2 space-y-2 flex-shrink-0">
+        <div className="w-40 bg-admin-bg border-r border-admin-border-mid overflow-y-auto p-2 space-y-2 flex-shrink-0">
           {slides.map((slide, idx) => (
             <button
               key={slide.id}
@@ -110,14 +110,14 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           ))}
           <button
             onClick={addSlide}
-            className="w-full border-2 border-dashed border-slate-300 rounded py-4 text-slate-400 text-admin-xs hover:border-slate-400 hover:text-slate-500 transition"
+            className="w-full border-2 border-dashed border-admin-border-strong rounded py-4 text-admin-muted-2 text-admin-xs hover:border-slate-400 hover:text-admin-muted transition"
           >
             + 추가
           </button>
         </div>
 
         {/* 중앙: 메인 캔버스 */}
-        <div className="flex-1 bg-slate-100 overflow-auto flex items-center justify-center p-8">
+        <div className="flex-1 bg-admin-surface-2 overflow-auto flex items-center justify-center p-8">
           {activeSlide ? (
             <SlideCanvas
               slide={activeSlide}
@@ -126,17 +126,17 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
               onUpdateBody={text => updateSlide(activeSlideIndex, { body: text })}
             />
           ) : (
-            <p className="text-slate-400 text-admin-base">슬라이드를 선택하세요</p>
+            <p className="text-admin-muted-2 text-admin-base">슬라이드를 선택하세요</p>
           )}
         </div>
 
         {/* 우측: 속성 패널 */}
-        <div className="w-64 bg-white border-l border-slate-200 overflow-y-auto p-4 space-y-5 flex-shrink-0">
+        <div className="w-64 bg-white border-l border-admin-border-mid overflow-y-auto p-4 space-y-5 flex-shrink-0">
           {activeSlide ? (
             <>
               {/* 오버레이 */}
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-2">오버레이</label>
+                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">오버레이</label>
                 <div className="flex gap-1">
                   {(['dark', 'light', 'none'] as const).map(style => (
                     <button
@@ -145,7 +145,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                       className={`flex-1 py-1.5 text-[11px] rounded border transition ${
                         activeSlide.overlay_style === style
                           ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                          : 'bg-white text-admin-muted border-admin-border-mid hover:bg-admin-bg'
                       }`}
                     >
                       {style === 'dark' ? '어둡게' : style === 'light' ? '밝게' : '없음'}
@@ -156,7 +156,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* 배경 이미지 */}
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-2">배경 이미지</label>
+                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">배경 이미지</label>
                 {activeSlide.bg_image_url ? (
                   <div className="relative mb-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -169,13 +169,13 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                     </button>
                   </div>
                 ) : (
-                  <div className="w-full h-16 bg-slate-100 rounded border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-[11px] mb-2">
+                  <div className="w-full h-16 bg-admin-surface-2 rounded border-2 border-dashed border-admin-border-strong flex items-center justify-center text-admin-muted-2 text-[11px] mb-2">
                     이미지 없음
                   </div>
                 )}
                 <button
                   onClick={() => setShowPexels(!showPexels)}
-                  className="w-full py-1.5 text-admin-xs bg-white border border-slate-200 rounded text-slate-600 hover:bg-slate-50 transition"
+                  className="w-full py-1.5 text-admin-xs bg-white border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg transition"
                 >
                   {showPexels ? '닫기' : 'Pexels에서 검색'}
                 </button>
@@ -188,7 +188,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                         onChange={e => setPexelsQuery(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handlePexelsSearch()}
                         placeholder="검색어 (영문)"
-                        className="flex-1 px-2 py-1 border border-slate-200 rounded text-admin-xs focus:ring-1 focus:ring-[#005d90]"
+                        className="flex-1 px-2 py-1 border border-admin-border-mid rounded text-admin-xs focus:ring-1 focus:ring-[#005d90]"
                       />
                       <button
                         onClick={handlePexelsSearch}
@@ -219,44 +219,44 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* 텍스트 편집 */}
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-2">제목</label>
+                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">제목</label>
                 <textarea
                   value={activeSlide.headline}
                   onChange={e => updateSlide(activeSlideIndex, { headline: e.target.value })}
                   rows={2}
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-admin-sm focus:ring-1 focus:ring-[#005d90] resize-none"
+                  className="w-full px-2 py-1.5 border border-admin-border-mid rounded text-admin-sm focus:ring-1 focus:ring-[#005d90] resize-none"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-2">본문</label>
+                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">본문</label>
                 <textarea
                   value={activeSlide.body}
                   onChange={e => updateSlide(activeSlideIndex, { body: e.target.value })}
                   rows={4}
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-admin-sm focus:ring-1 focus:ring-[#005d90] resize-none"
+                  className="w-full px-2 py-1.5 border border-admin-border-mid rounded text-admin-sm focus:ring-1 focus:ring-[#005d90] resize-none"
                 />
               </div>
 
               {/* Pexels 키워드 */}
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-2">이미지 키워드</label>
+                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">이미지 키워드</label>
                 <input
                   value={activeSlide.pexels_keyword}
                   onChange={e => updateSlide(activeSlideIndex, { pexels_keyword: e.target.value })}
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-admin-sm focus:ring-1 focus:ring-[#005d90]"
+                  className="w-full px-2 py-1.5 border border-admin-border-mid rounded text-admin-sm focus:ring-1 focus:ring-[#005d90]"
                   placeholder="e.g. danang beach"
                 />
               </div>
             </>
           ) : (
-            <p className="text-slate-400 text-admin-sm text-center py-8">슬라이드를 선택하세요</p>
+            <p className="text-admin-muted-2 text-admin-sm text-center py-8">슬라이드를 선택하세요</p>
           )}
         </div>
       </div>
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-blue-600 text-white px-5 py-3 rounded-lg text-admin-sm shadow-lg">
+        <div className="fixed bottom-6 right-6 z-50 bg-blue-600 text-white px-5 py-3 rounded-lg text-admin-sm shadow-admin-md">
           {toast}
         </div>
       )}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import type { PipelineRow } from '@/app/api/admin/tmp-pipeline/route';
+import { fmtDateISO, fmtMonthDayTime } from '@/lib/admin-utils';
 
 const SOURCE_LABELS: Record<string, string> = {
   band_rss:        '밴드RSS',
@@ -15,7 +16,7 @@ const FILTER_OPTIONS = { all: '전체', ...SOURCE_LABELS };
 
 const CN_STATUS_MAP: Record<string, { label: string; cls: string }> = {
   PENDING:   { label: '대기', cls: 'bg-yellow-50 text-yellow-700' },
-  DRAFT:     { label: '초안', cls: 'bg-slate-100 text-slate-600' },
+  DRAFT:     { label: '초안', cls: 'bg-admin-surface-2 text-admin-muted' },
   PUBLISHED: { label: '발행완료', cls: 'bg-green-50 text-green-700' },
   FAILED:    { label: '실패', cls: 'bg-red-50 text-red-600' },
 };
@@ -28,14 +29,14 @@ const BLOG_STATUS_MAP: Record<string, { label: string; cls: string }> = {
 };
 
 function Badge({ status, map }: { status: string | null; map: Record<string, { label: string; cls: string }> }) {
-  if (!status) return <span className="text-slate-300 text-xs">—</span>;
-  const s = map[status] ?? { label: status, cls: 'bg-slate-100 text-slate-500' };
+  if (!status) return <span className="text-admin-muted-2 text-xs">—</span>;
+  const s = map[status] ?? { label: status, cls: 'bg-admin-surface-2 text-admin-muted' };
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.cls}`}>{s.label}</span>;
 }
 
 function IG({ at }: { at: string | null }) {
-  if (!at) return <span className="text-slate-300 text-xs">—</span>;
-  return <span className="text-green-600 text-xs">✅ {new Date(at).toLocaleDateString('ko-KR')}</span>;
+  if (!at) return <span className="text-admin-muted-2 text-xs">—</span>;
+  return <span className="text-green-600 text-xs">✅ {fmtDateISO(at)}</span>;
 }
 
 export default function TmpPipelinePage() {
@@ -71,8 +72,8 @@ export default function TmpPipelinePage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">TMP 파이프라인 현황</h1>
-          <p className="text-sm text-slate-500 mt-0.5">임포트 → 카드뉴스 → 블로그 → IG 전체 흐름</p>
+          <h1 className="text-2xl font-bold text-admin-text">TMP 파이프라인 현황</h1>
+          <p className="text-sm text-admin-muted mt-0.5">임포트 → 카드뉴스 → 블로그 → IG 전체 흐름</p>
         </div>
         <div className="flex gap-2">
           <Link
@@ -83,7 +84,7 @@ export default function TmpPipelinePage() {
           </Link>
           <button
             onClick={() => void load()}
-            className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition"
+            className="px-4 py-2 border border-admin-border-strong text-admin-muted rounded-lg text-sm hover:bg-admin-bg transition"
           >
             새로고침
           </button>
@@ -93,15 +94,15 @@ export default function TmpPipelinePage() {
       {/* KPI 카드 */}
       <div className="grid grid-cols-5 gap-3">
         {[
-          { label: '전체 임포트', value: counts.imported, color: 'text-slate-900' },
+          { label: '전체 임포트', value: counts.imported, color: 'text-admin-text' },
           { label: '카드뉴스 대기', value: counts.cnPending, color: 'text-yellow-600' },
           { label: '카드뉴스 완료', value: counts.cnDone, color: 'text-green-600' },
           { label: 'IG 발행완료', value: counts.igDone, color: 'text-pink-600' },
           { label: '블로그 발행', value: counts.blogDone, color: 'text-blue-600' },
         ].map(kpi => (
-          <div key={kpi.label} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 text-center">
+          <div key={kpi.label} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 text-center">
             <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{kpi.label}</p>
+            <p className="text-xs text-admin-muted mt-0.5">{kpi.label}</p>
           </div>
         ))}
       </div>
@@ -115,7 +116,7 @@ export default function TmpPipelinePage() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
               source === key
                 ? 'bg-blue-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                : 'bg-white border border-admin-border-mid text-admin-muted hover:bg-admin-bg'
             }`}
           >
             {label}
@@ -124,42 +125,42 @@ export default function TmpPipelinePage() {
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         {loading ? (
           <div className="divide-y divide-slate-50">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3">
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
-                <div className="h-7 bg-slate-100 rounded-lg animate-pulse w-20" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+                <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
+                <div className="h-7 bg-admin-surface-2 rounded-lg animate-pulse w-20" />
               </div>
             ))}
           </div>
         ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">
+          <div className="p-8 text-center text-admin-muted-2 text-sm">
             임포트된 상품이 없습니다.{' '}
             <Link href="/admin/band-import" className="text-blue-600 hover:underline">밴드 임포트 시작하기 →</Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100">
+              <thead className="bg-admin-bg border-b border-admin-border">
                 <tr>
                   {['상품명', '여행지', '소스', '임포트일', '카드뉴스', '블로그', 'IG 발행'].map(h => (
-                    <th key={h} className="text-left py-3 px-4 font-medium text-slate-500 text-xs">{h}</th>
+                    <th key={h} className="text-left py-3 px-4 font-medium text-admin-muted text-xs">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(row => (
-                  <tr key={row.productId} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                  <tr key={row.productId} className="border-b border-admin-border hover:bg-admin-bg transition">
                     <td className="py-3 px-4">
-                      <div className="font-medium text-slate-900 truncate max-w-[200px]" title={row.displayName}>
+                      <div className="font-medium text-admin-text truncate max-w-[200px]" title={row.displayName}>
                         {row.displayName}
                       </div>
-                      <div className="text-xs text-slate-400">{row.internalCode}</div>
+                      <div className="text-xs text-admin-muted-2">{row.internalCode}</div>
                     </td>
-                    <td className="py-3 px-4 text-slate-600">{row.destination}</td>
+                    <td className="py-3 px-4 text-admin-muted">{row.destination}</td>
                     <td className="py-3 px-4">
                       {row.bandPostUrl ? (
                         <a href={row.bandPostUrl} target="_blank" rel="noopener noreferrer"
@@ -167,11 +168,11 @@ export default function TmpPipelinePage() {
                           {SOURCE_LABELS[row.source] ?? row.source}
                         </a>
                       ) : (
-                        <span className="text-xs text-slate-500">{SOURCE_LABELS[row.source] ?? row.source}</span>
+                        <span className="text-xs text-admin-muted">{SOURCE_LABELS[row.source] ?? row.source}</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-500 text-xs">
-                      {new Date(row.importedAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    <td className="py-3 px-4 text-admin-muted text-xs">
+                      {fmtMonthDayTime(row.importedAt)}
                     </td>
                     <td className="py-3 px-4">
                       <Badge status={row.cardNewsStatus} map={CN_STATUS_MAP} />

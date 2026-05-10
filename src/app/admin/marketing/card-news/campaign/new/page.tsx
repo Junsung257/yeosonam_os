@@ -161,7 +161,7 @@ export default function CampaignNewPage() {
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const stepColor = (s: StepState['status']) => ({
-    pending: 'text-gray-400',
+    pending: 'text-admin-muted-2',
     running: 'text-blue-600 font-semibold',
     done: 'text-green-600',
     failed: 'text-red-500',
@@ -175,29 +175,29 @@ export default function CampaignNewPage() {
   }[s]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div className="min-h-screen bg-admin-bg p-4 md:p-8">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Link href="/admin/marketing/card-news" className="text-gray-500 hover:text-gray-800 text-sm">
+          <Link href="/admin/marketing/card-news" className="text-admin-muted hover:text-admin-text-2 text-sm">
             ← 카드뉴스 목록
           </Link>
-          <span className="text-gray-300">/</span>
-          <h1 className="text-xl font-bold text-gray-900">원클릭 캠페인 생성</h1>
+          <span className="text-admin-muted-2">/</span>
+          <h1 className="text-xl font-bold text-admin-text">원클릭 캠페인 생성</h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 왼쪽: 옵션 패널 */}
           <div className="space-y-5">
             {/* 상품 선택 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">대상 상품</h2>
+            <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+              <h2 className="text-sm font-semibold text-admin-text-2 mb-3">대상 상품</h2>
               {pkgLoading ? (
-                <div className="text-sm text-gray-400">상품 목록 로딩 중...</div>
+                <div className="text-sm text-admin-muted-2">상품 목록 로딩 중...</div>
               ) : (
                 <select
                   value={selectedPkg}
                   onChange={(e) => setSelectedPkg(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={running}
                 >
                   <option value="">상품을 선택해주세요</option>
@@ -211,8 +211,8 @@ export default function CampaignNewPage() {
             </div>
 
             {/* 각도 선택 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">카피 각도</h2>
+            <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+              <h2 className="text-sm font-semibold text-admin-text-2 mb-3">카피 각도</h2>
               <div className="flex flex-wrap gap-2">
                 {ANGLES.map((a) => (
                   <button
@@ -222,7 +222,7 @@ export default function CampaignNewPage() {
                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                       angle === a.key
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-admin-surface-2 text-admin-text-2 hover:bg-gray-200'
                     }`}
                   >
                     {a.emoji} {a.label}
@@ -232,8 +232,8 @@ export default function CampaignNewPage() {
             </div>
 
             {/* 템플릿 선택 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">템플릿 스타일</h2>
+            <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+              <h2 className="text-sm font-semibold text-admin-text-2 mb-3">템플릿 스타일</h2>
               <div className="grid grid-cols-2 gap-2">
                 {FAMILIES.map((f) => (
                   <button
@@ -243,18 +243,18 @@ export default function CampaignNewPage() {
                     className={`p-3 rounded-lg border text-left transition-colors ${
                       family === f.key
                         ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-400'
+                        : 'border-admin-border-mid hover:border-gray-400'
                     }`}
                   >
-                    <div className="text-sm font-medium text-gray-900">{f.label}</div>
-                    <div className="text-xs text-gray-500">{f.desc}</div>
+                    <div className="text-sm font-medium text-admin-text">{f.label}</div>
+                    <div className="text-xs text-admin-muted">{f.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* 자동 컨펌 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -264,8 +264,8 @@ export default function CampaignNewPage() {
                   className="w-4 h-4 rounded"
                 />
                 <div>
-                  <div className="text-sm font-medium text-gray-800">렌더 완료 후 자동 CONFIRMED</div>
-                  <div className="text-xs text-gray-500">블로그 큐 자동 등록 포함</div>
+                  <div className="text-sm font-medium text-admin-text-2">렌더 완료 후 자동 CONFIRMED</div>
+                  <div className="text-xs text-admin-muted">블로그 큐 자동 등록 포함</div>
                 </div>
               </label>
             </div>
@@ -274,7 +274,7 @@ export default function CampaignNewPage() {
             <button
               onClick={startCampaign}
               disabled={running || !selectedPkg}
-              className="w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-base hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full py-3 rounded-admin-md bg-blue-600 text-white font-bold text-base hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {running ? '캠페인 생성 중...' : '🚀 캠페인 시작'}
             </button>
@@ -289,8 +289,8 @@ export default function CampaignNewPage() {
           {/* 오른쪽: 진행 패널 */}
           <div className="space-y-5">
             {/* 단계 진행 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">실시간 진행 상황</h2>
+            <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+              <h2 className="text-sm font-semibold text-admin-text-2 mb-4">실시간 진행 상황</h2>
               <div className="space-y-3">
                 {(Object.entries(steps) as [StepKey, StepState][]).map(([key, s]) => (
                   <div key={key} className="flex items-start gap-3">
@@ -298,7 +298,7 @@ export default function CampaignNewPage() {
                     <div>
                       <div className={`text-sm ${stepColor(s.status)}`}>{s.label}</div>
                       {s.detail && (
-                        <div className="text-xs text-gray-400 mt-0.5">{s.detail}</div>
+                        <div className="text-xs text-admin-muted-2 mt-0.5">{s.detail}</div>
                       )}
                     </div>
                   </div>
@@ -306,13 +306,13 @@ export default function CampaignNewPage() {
               </div>
 
               {finalStatus && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="mt-4 pt-4 border-t border-admin-border">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">카드뉴스 상태:</span>
+                    <span className="text-xs text-admin-muted">카드뉴스 상태:</span>
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                       finalStatus === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
                       finalStatus === 'RENDERING' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-gray-100 text-gray-600'
+                      'bg-admin-surface-2 text-admin-muted'
                     }`}>
                       {finalStatus}
                     </span>
@@ -323,8 +323,8 @@ export default function CampaignNewPage() {
 
             {/* 슬라이드 미리보기 */}
             {slideUrls.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="text-sm font-semibold text-gray-700 mb-3">
+              <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+                <h2 className="text-sm font-semibold text-admin-text-2 mb-3">
                   생성된 슬라이드 ({slideUrls.length}장)
                 </h2>
                 <div className="grid grid-cols-3 gap-2">
@@ -333,7 +333,7 @@ export default function CampaignNewPage() {
                       key={i}
                       src={url}
                       alt={`슬라이드 ${i + 1}`}
-                      className="w-full aspect-square object-cover rounded-lg border border-gray-200"
+                      className="w-full aspect-square object-cover rounded-lg border border-admin-border-mid"
                     />
                   ))}
                 </div>
@@ -347,7 +347,7 @@ export default function CampaignNewPage() {
                     </a>
                     <a
                       href={`/admin/marketing/content-hub/${cardNewsId}`}
-                      className="flex-1 text-center py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+                      className="flex-1 text-center py-2 rounded-lg border border-admin-border-strong text-admin-text-2 text-sm font-medium hover:bg-admin-bg"
                     >
                       콘텐츠 허브
                     </a>
@@ -358,9 +358,9 @@ export default function CampaignNewPage() {
 
             {/* 빈 상태 안내 */}
             {!running && slideUrls.length === 0 && !error && (
-              <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center">
+              <div className="bg-white rounded-admin-md border border-dashed border-admin-border-strong p-8 text-center">
                 <div className="text-3xl mb-2">🎨</div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-admin-muted">
                   상품과 각도를 선택 후<br />캠페인 시작 버튼을 클릭하세요
                 </div>
               </div>

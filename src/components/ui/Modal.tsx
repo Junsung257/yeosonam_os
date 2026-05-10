@@ -31,9 +31,9 @@ export default function Modal({ open, onClose, children, sheet = false, maxWidth
 
   return createPortal(
     <>
-      {/* backdrop */}
+      {/* backdrop — 어드민에선 약간 더 어둡게 (Linear/Stripe 톤) */}
       <div
-        className="fixed inset-0 bg-black/40 z-40 animate-in fade-in duration-150"
+        className="fixed inset-0 bg-slate-900/40 z-40 animate-in fade-in duration-150"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -43,17 +43,17 @@ export default function Modal({ open, onClose, children, sheet = false, maxWidth
         aria-modal="true"
         className={
           sheet
-            ? 'fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-modal max-h-[90dvh] overflow-y-auto animate-in slide-in-from-bottom duration-200'
+            ? 'fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-modal max-h-[90dvh] overflow-y-auto animate-in slide-in-from-bottom duration-200 [.admin-scope_&]:bg-admin-surface [.admin-scope_&]:rounded-t-admin-lg [.admin-scope_&]:shadow-admin-xl'
             : `fixed inset-0 z-50 flex items-center justify-center p-4`
         }
       >
         {sheet ? (
           <div className="w-full">
-            <div className="mx-auto mt-3 mb-4 h-1 w-10 rounded-full bg-slate-200" />
+            <div className="mx-auto mt-3 mb-4 h-1 w-10 rounded-full bg-slate-200 [.admin-scope_&]:bg-admin-border-mid" />
             {children}
           </div>
         ) : (
-          <div className={`relative bg-white rounded-2xl shadow-modal w-full ${maxWidth} animate-in zoom-in-95 duration-150`}>
+          <div className={`relative bg-white rounded-2xl shadow-modal w-full ${maxWidth} animate-in zoom-in-95 duration-150 [.admin-scope_&]:bg-admin-surface [.admin-scope_&]:rounded-admin-md [.admin-scope_&]:shadow-admin-xl [.admin-scope_&]:border [.admin-scope_&]:border-admin-border-mid`}>
             {children}
           </div>
         )}

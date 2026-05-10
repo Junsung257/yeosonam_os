@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fmtNum as fmt } from '@/lib/admin-utils';
+import { PageHeader, KpiCard as PatternKpiCard } from '@/components/admin/patterns';
+import { FileQuestion, Gavel, Sparkles, CheckCircle2 } from 'lucide-react';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -31,7 +33,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-600',
+  draft: 'bg-admin-surface-2 text-admin-muted',
   published: 'bg-blue-50 text-blue-700',
   bidding: 'bg-amber-50 text-amber-700',
   analyzing: 'bg-purple-50 text-purple-700',
@@ -47,24 +49,6 @@ const STATUS_TABS = [
   { value: 'awaiting_selection', label: '선택대기' },
   { value: 'contracted', label: '계약완료' },
 ];
-
-// ── KPI 카드 ──────────────────────────────────────────────────────────────────
-function KpiCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-      <div className={`text-xl font-bold ${color}`}>{value}</div>
-      <div className="text-admin-sm mt-0.5 text-slate-500">{label}</div>
-    </div>
-  );
-}
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function AdminRfqsPage() {
@@ -103,31 +87,30 @@ export default function AdminRfqsPage() {
   const contractedCount = rfqs.filter((r) => r.status === 'contracted').length;
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 */}
-      <div>
-        <h1 className="text-admin-lg font-bold text-slate-800">단체 RFQ 관리</h1>
-        <p className="text-admin-sm text-slate-500 mt-1">단체여행 견적 요청 및 입찰 현황을 관리합니다</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="단체 RFQ 관리"
+        subtitle="단체여행 견적 요청 및 입찰 현황을 관리합니다"
+      />
 
       {/* KPI 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="전체 RFQ" value={total} color="text-slate-800" />
-        <KpiCard label="입찰중" value={biddingCount} color="text-amber-700" />
-        <KpiCard label="AI분석중" value={analyzingCount} color="text-purple-700" />
-        <KpiCard label="계약완료" value={contractedCount} color="text-green-700" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <PatternKpiCard label="전체 RFQ" value={total.toLocaleString()} icon={FileQuestion} />
+        <PatternKpiCard label="입찰중" value={biddingCount.toLocaleString()} icon={Gavel} tone={biddingCount > 0 ? 'positive' : 'neutral'} />
+        <PatternKpiCard label="AI 분석중" value={analyzingCount.toLocaleString()} icon={Sparkles} />
+        <PatternKpiCard label="계약 완료" value={contractedCount.toLocaleString()} icon={CheckCircle2} tone="positive" />
       </div>
 
       {/* 탭 필터 */}
-      <div className="flex gap-1 border border-slate-200 bg-slate-50 rounded-lg p-1 w-fit flex-wrap">
+      <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit flex-wrap">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}
             onClick={() => setStatusFilter(tab.value)}
-            className={`px-4 py-1.5 rounded-md text-admin-sm font-medium transition-colors ${
+            className={`px-3 h-8 rounded-admin-xs text-admin-sm font-medium transition-colors ${
               statusFilter === tab.value
-                ? 'bg-white border border-slate-200 text-slate-800 font-semibold'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-admin-surface text-admin-text font-semibold shadow-admin-xs'
+                : 'text-admin-muted hover:text-admin-text-2'
             }`}
           >
             {tab.label}
@@ -136,36 +119,31 @@ export default function AdminRfqsPage() {
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         {loading ? (
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-admin-border">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3">
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-28" />
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-28" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+                <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-20" />
               </div>
             ))}
           </div>
         ) : error ? (
-          <div className="text-center text-red-600 py-12 text-admin-base">{error}</div>
+          <div className="text-center text-danger py-12 text-admin-base">{error}</div>
         ) : rfqs.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-slate-500 text-admin-base">해당하는 RFQ가 없습니다.</p>
+            <p className="text-admin-muted text-admin-base">해당하는 RFQ가 없습니다.</p>
           </div>
         ) : (
-          <table className="w-full text-admin-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+          <table className="admin-data-table">
+            <thead>
               <tr>
                 {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '등록일'].map(
                   (h) => (
-                    <th
-                      key={h}
-                      className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide"
-                    >
-                      {h}
-                    </th>
+                    <th key={h}>{h}</th>
                   )
                 )}
               </tr>
@@ -175,36 +153,36 @@ export default function AdminRfqsPage() {
                 <tr
                   key={rfq.id}
                   onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}
-                  className="border-b border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors"
+                  className="cursor-pointer"
                 >
-                  <td className="px-3 py-2 font-mono text-[11px] text-slate-500">
+                  <td className="font-mono text-admin-xs text-admin-muted">
                     {rfq.rfq_code}
                   </td>
-                  <td className="px-3 py-2 text-slate-800">
+                  <td className="text-admin-text">
                     {rfq.customer_name || '—'}
                   </td>
-                  <td className="px-3 py-2 font-medium text-slate-800">
+                  <td className="font-medium text-admin-text">
                     {rfq.destination}
                   </td>
-                  <td className="px-3 py-2 text-slate-500">
+                  <td className="text-admin-muted admin-num">
                     {rfq.adult_count + rfq.child_count}명
                   </td>
-                  <td className="px-3 py-2 text-slate-800">
+                  <td className="text-admin-text admin-num">
                     {fmt(rfq.budget_per_person)}원
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                        STATUS_COLORS[rfq.status] || 'bg-slate-100 text-slate-600'
+                      className={`inline-flex px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
+                        STATUS_COLORS[rfq.status] || 'bg-admin-surface-2 text-admin-muted'
                       }`}
                     >
                       {STATUS_LABELS[rfq.status] || rfq.status}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-slate-500">
+                  <td className="text-admin-muted admin-num">
                     {rfq.bid_count ?? 0}
                   </td>
-                  <td className="px-3 py-2 text-slate-500 text-[11px]">
+                  <td className="text-admin-muted text-admin-xs admin-num">
                     {rfq.created_at.slice(0, 10)}
                   </td>
                 </tr>

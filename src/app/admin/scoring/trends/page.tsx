@@ -81,8 +81,8 @@ export default function ScoringTrendsPage() {
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900">📈 순위 변동 추적</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-xl font-extrabold text-admin-text">📈 순위 변동 추적</h1>
+          <p className="text-xs text-admin-muted mt-0.5">
             package_score_history 시계열 — 신상품 효과·정책 변경 효과·랜드사 변경 영향 즉시 검출
           </p>
         </div>
@@ -102,7 +102,7 @@ export default function ScoringTrendsPage() {
         {(['all', 'climbed', 'fell', 'stable'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`text-xs px-3 py-1.5 rounded-full font-semibold transition ${
-              filter === f ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              filter === f ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
             }`}>
             {f === 'all' ? '전체' : f === 'climbed' ? '↑ 상승' : f === 'fell' ? '↓ 하락' : '안정'}
           </button>
@@ -110,10 +110,10 @@ export default function ScoringTrendsPage() {
       </section>
 
       {/* 트렌드 테이블 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full text-xs">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr className="text-slate-600">
+          <thead className="bg-admin-bg border-b border-admin-border-mid">
+            <tr className="text-admin-muted">
               <th className="text-left px-3 py-2">패키지 ID</th>
               <th className="text-left px-3 py-2">출발일</th>
               <th className="text-center px-3 py-2">스냅샷</th>
@@ -124,9 +124,9 @@ export default function ScoringTrendsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="text-center py-8 text-slate-400">로딩중...</td></tr>
+              <tr><td colSpan={6} className="text-center py-8 text-admin-muted-2">로딩중...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-8 text-slate-400">
+              <tr><td colSpan={6} className="text-center py-8 text-admin-muted-2">
                 추적 데이터 없음. 매일 04:30 UTC 재계산이 한 번 이상 돌아야 변동 검출 가능.
               </td></tr>
             ) : filtered.slice(0, 50).map((t, i) => {
@@ -137,24 +137,24 @@ export default function ScoringTrendsPage() {
                 <tr
                   key={i}
                   onClick={() => setSelectedPkg(isSelected ? null : t)}
-                  className={`border-b border-slate-100 cursor-pointer transition ${isSelected ? 'bg-violet-50' : 'hover:bg-slate-50/50'}`}
+                  className={`border-b border-admin-border cursor-pointer transition ${isSelected ? 'bg-violet-50' : 'hover:bg-admin-bg/50'}`}
                 >
-                  <td className="px-3 py-2 font-mono text-[10px] text-slate-500 truncate max-w-[120px]" title={t.package_id}>
+                  <td className="px-3 py-2 font-mono text-[10px] text-admin-muted truncate max-w-[120px]" title={t.package_id}>
                     {isSelected && '▸ '}{t.package_id.slice(0, 8)}
                   </td>
-                  <td className="px-3 py-2 text-slate-700">{t.departure_date}</td>
-                  <td className="px-3 py-2 text-center text-slate-600">{t.snapshots}회</td>
+                  <td className="px-3 py-2 text-admin-text-2">{t.departure_date}</td>
+                  <td className="px-3 py-2 text-center text-admin-muted">{t.snapshots}회</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-                      climbed ? 'text-emerald-700' : fell ? 'text-rose-700' : 'text-slate-500'
+                      climbed ? 'text-emerald-700' : fell ? 'text-rose-700' : 'text-admin-muted'
                     }`}>
                       {t.oldest_rank} → {t.latest_rank}
                       {climbed && '↑'}
                       {fell && '↓'}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{Number(t.avg_rank).toFixed(1)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                  <td className="px-3 py-2 text-right tabular-nums text-admin-muted">{Number(t.avg_rank).toFixed(1)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-admin-muted">
                     ₩{Math.round(Number(t.avg_effective_price) / 10000)}만
                   </td>
                 </tr>
@@ -166,23 +166,23 @@ export default function ScoringTrendsPage() {
 
       {/* 선택된 패키지 시계열 차트 */}
       {selectedPkg && (
-        <section className="bg-white border border-violet-200 rounded-xl p-5">
+        <section className="bg-white border border-violet-200 rounded-admin-md p-5">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-slate-800">
+              <h2 className="text-sm font-semibold text-admin-text-2">
                 📊 시계열 차트 — {selectedPkg.title || selectedPkg.package_id.slice(0, 8)}
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-admin-muted mt-0.5">
                 {selectedPkg.departure_date} 출발 · 그룹 사이즈 {Number(selectedPkg.avg_group_size).toFixed(0)}
               </p>
             </div>
-            <button onClick={() => setSelectedPkg(null)} className="text-xs text-slate-400 hover:text-slate-700">✕ 닫기</button>
+            <button onClick={() => setSelectedPkg(null)} className="text-xs text-admin-muted-2 hover:text-admin-text-2">✕ 닫기</button>
           </div>
 
           {chartLoading ? (
-            <p className="text-center py-8 text-slate-400">로딩중...</p>
+            <p className="text-center py-8 text-admin-muted-2">로딩중...</p>
           ) : chart.length < 2 ? (
-            <p className="text-center py-8 text-slate-400 text-sm">스냅샷 2개 이상 필요</p>
+            <p className="text-center py-8 text-admin-muted-2 text-sm">스냅샷 2개 이상 필요</p>
           ) : (
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -216,13 +216,13 @@ export default function ScoringTrendsPage() {
             </div>
           )}
 
-          <p className="text-[10px] text-slate-400 mt-3">
+          <p className="text-[10px] text-admin-muted-2 mt-3">
             ※ 보라 = 순위 (낮을수록 좋음, Y축 반전) · 초록 점선 = 실효가
           </p>
         </section>
       )}
 
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[10px] text-admin-muted-2">
         ※ v_package_rank_trends 기반 · 매일 04:30 UTC 자동 갱신 · 최대 50행 · 행 클릭 시 시계열 차트
       </p>
     </div>
@@ -232,7 +232,7 @@ export default function ScoringTrendsPage() {
 function Kpi({ label, value, tone }: { label: string; value: number; tone?: 'good' | 'warning' }) {
   const cls = tone === 'good' ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
     : tone === 'warning' ? 'bg-amber-50 text-amber-800 border-amber-200'
-    : 'bg-slate-50 text-slate-800 border-slate-200';
+    : 'bg-admin-bg text-admin-text-2 border-admin-border-mid';
   return (
     <div className={`rounded-lg border p-3 ${cls}`}>
       <div className="text-[10px] uppercase tracking-wide opacity-70">{label}</div>

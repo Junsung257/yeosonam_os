@@ -42,7 +42,10 @@ export default function SearchAdsPage() {
   const [extractedPreview, setExtractedPreview] = useState<ReturnType<typeof extractKeywords>>([]);
   const [recommendations, setRecommendations] = useState<BidRecommendation[]>([]);
   const { toast: _t } = useToast();
-  const showToast = (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info');
+  const showToast = useCallback(
+    (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info'),
+    [_t],
+  );
 
   // 로드
   useEffect(() => {
@@ -91,11 +94,11 @@ export default function SearchAdsPage() {
       });
       setKeywords(updated);
       saveKeywords(updated);
-      setLastSync(new Date().toLocaleTimeString('ko-KR'));
+      setLastSync(new Date().toISOString().slice(11, 16)); // HH:mm (locale-stable)
       showToast('성과 동기화 완료');
     } catch { showToast('동기화 실패'); }
     finally { setSyncing(false); }
-  }, [keywords, packages]);
+  }, [keywords, packages, showToast]);
 
   // ── 키워드 추출 ────────────────────────────────────────
   const handleExtract = useCallback((pkg: Package) => {
@@ -111,7 +114,7 @@ export default function SearchAdsPage() {
     saveKeywords(updated);
     setExtractorOpen(false);
     showToast(`${newKws.length}개 키워드 등록`);
-  }, [keywords, platform, selectedPkg]);
+  }, [keywords, platform, selectedPkg, showToast]);
 
   // ── 입찰가 수정 ────────────────────────────────────────
   const handleBidSave = useCallback((kwId: string) => {
@@ -140,7 +143,7 @@ export default function SearchAdsPage() {
     saveKeywords(updated);
     setSelectedIds(new Set());
     showToast(`${selectedIds.size}개 키워드 입찰가 ${pct > 0 ? '+' : ''}${pct}% 조정`);
-  }, [keywords, selectedIds]);
+  }, [keywords, selectedIds, showToast]);
 
   const bulkDelete = useCallback(() => {
     if (!confirm(`${selectedIds.size}개 키워드를 삭제하시겠습니까?`)) return;
@@ -149,7 +152,7 @@ export default function SearchAdsPage() {
     saveKeywords(updated);
     setSelectedIds(new Set());
     showToast('삭제 완료');
-  }, [keywords, selectedIds]);
+  }, [keywords, selectedIds, showToast]);
 
   // ── 최적화 ─────────────────────────────────────────────
   const handleOptimize = useCallback(() => {
@@ -169,15 +172,15 @@ export default function SearchAdsPage() {
     saveKeywords(updated);
     setOptimizerOpen(false);
     showToast('최적화 적용 완료');
-  }, [keywords, recommendations]);
+  }, [keywords, recommendations, showToast]);
 
   return (
     <div className="space-y-4">
       {/* ── 헤더 ──────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-admin-lg font-semibold text-slate-800">검색광고 최적화</h1>
-          <p className="text-[11px] text-slate-500 mt-0.5">키워드 자동 추출 · 입찰가 최적화 · 여행 빅데이터 학습</p>
+          <h1 className="text-admin-lg font-semibold text-admin-text-2">검색광고 최적화</h1>
+          <p className="text-[11px] text-admin-muted mt-0.5">키워드 자동 추출 · 입찰가 최적화 · 여행 빅데이터 학습</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setExtractorOpen(true)} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
@@ -186,7 +189,7 @@ export default function SearchAdsPage() {
           <button onClick={handleOptimize} disabled={filtered.length === 0} className="px-3 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition font-medium">
             AI 최적화
           </button>
-          <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 disabled:opacity-50 transition">
+          <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {syncing ? '동기화 중...' : '성과 동기화'}
           </button>
         </div>
@@ -194,10 +197,10 @@ export default function SearchAdsPage() {
 
       {/* ── 플랫폼 탭 + KPI ───────────────────────────── */}
       <div className="flex gap-3 items-start">
-        <div className="flex border border-slate-200 rounded overflow-hidden">
+        <div className="flex border border-admin-border-mid rounded overflow-hidden">
           {(['naver', 'google'] as Platform[]).map(p => (
             <button key={p} onClick={() => setPlatform(p)}
-              className={`px-4 py-1.5 text-admin-sm font-medium transition ${platform === p ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+              className={`px-4 py-1.5 text-admin-sm font-medium transition ${platform === p ? 'bg-blue-600 text-white' : 'bg-white text-admin-muted hover:bg-admin-bg'}`}>
               {p === 'naver' ? '네이버' : '구글'}
             </button>
           ))}
@@ -209,10 +212,10 @@ export default function SearchAdsPage() {
             { label: '총 지출', value: `₩${(totalSpend / 10000).toFixed(0)}만`, sub: '' },
             { label: '동기화', value: lastSync || '-', sub: '' },
           ].map((kpi, i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
-              <p className="text-[10px] text-slate-400">{kpi.label}</p>
-              <p className="text-admin-lg font-bold text-slate-800">{kpi.value}</p>
-              {kpi.sub && <p className="text-[10px] text-slate-400">{kpi.sub}</p>}
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
+              <p className="text-[10px] text-admin-muted-2">{kpi.label}</p>
+              <p className="text-admin-lg font-bold text-admin-text-2">{kpi.value}</p>
+              {kpi.sub && <p className="text-[10px] text-admin-muted-2">{kpi.sub}</p>}
             </div>
           ))}
         </div>
@@ -221,16 +224,16 @@ export default function SearchAdsPage() {
       {/* ── Tier 필터 + 일괄 조작 ─────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
-          <button onClick={() => setTierFilter('all')} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>전체</button>
+          <button onClick={() => setTierFilter('all')} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>전체</button>
           {(Object.keys(TIER_LABELS) as KeywordTier[]).map(t => (
-            <button key={t} onClick={() => setTierFilter(t)} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === t ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+            <button key={t} onClick={() => setTierFilter(t)} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === t ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
               {TIER_LABELS[t]}
             </button>
           ))}
         </div>
         {selectedIds.size > 0 && (
           <div className="flex gap-1">
-            <span className="text-[11px] text-slate-500 mr-1">{selectedIds.size}개 선택</span>
+            <span className="text-[11px] text-admin-muted mr-1">{selectedIds.size}개 선택</span>
             <button onClick={() => bulkAdjust(10)} className="px-2 py-1 text-[10px] bg-emerald-50 text-emerald-700 rounded border border-emerald-200 hover:bg-emerald-100">+10%</button>
             <button onClick={() => bulkAdjust(-10)} className="px-2 py-1 text-[10px] bg-amber-50 text-amber-700 rounded border border-amber-200 hover:bg-amber-100">-10%</button>
             <button onClick={() => bulkAdjust(20)} className="px-2 py-1 text-[10px] bg-blue-50 text-blue-700 rounded border border-blue-200 hover:bg-blue-100">+20%</button>
@@ -241,8 +244,8 @@ export default function SearchAdsPage() {
 
       {/* ── 차트 ──────────────────────────────────────── */}
       {chartData.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-          <p className="text-admin-xs font-semibold text-slate-700 mb-2">CTR 상위 키워드</p>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+          <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">CTR 상위 키워드</p>
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <XAxis dataKey="name" tick={{ fontSize: 9 }} />
@@ -257,41 +260,41 @@ export default function SearchAdsPage() {
       )}
 
       {/* ── 키워드 테이블 ─────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
+            <tr className="bg-admin-bg border-b border-admin-border-mid">
               <th className="w-8 py-2 px-2"><input type="checkbox" onChange={e => {
                 if (e.target.checked) setSelectedIds(new Set(filtered.map(k => k.id)));
                 else setSelectedIds(new Set());
-              }} className="rounded border-slate-300" /></th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-left">키워드</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-center">매칭</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-center">등급</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-right">입찰가</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-right">노출</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-right">클릭</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-center">CTR</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-right">CPC</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-right">지출</th>
-              <th className="text-[11px] font-semibold text-slate-500 py-2 px-2 text-center">상태</th>
+              }} className="rounded border-admin-border-strong" /></th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-left">키워드</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-center">매칭</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-center">등급</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-right">입찰가</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-right">노출</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-right">클릭</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-center">CTR</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-right">CPC</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-right">지출</th>
+              <th className="text-[11px] font-semibold text-admin-muted py-2 px-2 text-center">상태</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={11} className="py-12 text-center text-slate-400 text-admin-sm">키워드가 없습니다. 상품에서 키워드를 추출하세요.</td></tr>
+              <tr><td colSpan={11} className="py-12 text-center text-admin-muted-2 text-admin-sm">키워드가 없습니다. 상품에서 키워드를 추출하세요.</td></tr>
             ) : (
               filtered.map(k => (
-                <tr key={k.id} className="border-b border-slate-100 hover:bg-slate-50 group">
+                <tr key={k.id} className="border-b border-admin-border hover:bg-admin-bg group">
                   <td className="py-1.5 px-2"><input type="checkbox" checked={selectedIds.has(k.id)} onChange={e => {
                     const next = new Set(selectedIds);
                     e.target.checked ? next.add(k.id) : next.delete(k.id);
                     setSelectedIds(next);
-                  }} className="rounded border-slate-300" /></td>
-                  <td className="text-admin-xs text-slate-800 py-1.5 px-2 font-medium">{k.keyword}</td>
-                  <td className="text-[10px] text-slate-500 py-1.5 px-2 text-center">{k.matchType === 'broad' ? '확장' : k.matchType === 'phrase' ? '구문' : '정확'}</td>
+                  }} className="rounded border-admin-border-strong" /></td>
+                  <td className="text-admin-xs text-admin-text-2 py-1.5 px-2 font-medium">{k.keyword}</td>
+                  <td className="text-[10px] text-admin-muted py-1.5 px-2 text-center">{k.matchType === 'broad' ? '확장' : k.matchType === 'phrase' ? '구문' : '정확'}</td>
                   <td className="py-1.5 px-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${TIER_COLORS[k.tier]}`}>{TIER_LABELS[k.tier]}</span></td>
-                  <td className="text-admin-xs text-slate-700 py-1.5 px-2 text-right">
+                  <td className="text-admin-xs text-admin-text-2 py-1.5 px-2 text-right">
                     {editingBid === k.id ? (
                       <input type="number" value={editBidValue} onChange={e => setEditBidValue(e.target.value)}
                         onBlur={() => handleBidSave(k.id)} onKeyDown={e => e.key === 'Enter' && handleBidSave(k.id)}
@@ -301,14 +304,14 @@ export default function SearchAdsPage() {
                         className="hover:bg-blue-50 px-1 rounded transition">₩{k.bid.toLocaleString()}</button>
                     )}
                   </td>
-                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.impressions.toLocaleString()}</td>
-                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.clicks.toLocaleString()}</td>
-                  <td className={`text-admin-xs py-1.5 px-2 text-center font-medium ${k.ctr >= 5 ? 'text-emerald-600' : k.ctr >= 3 ? 'text-blue-600' : k.ctr > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{k.ctr > 0 ? `${k.ctr}%` : '-'}</td>
-                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.cpc > 0 ? `₩${k.cpc.toLocaleString()}` : '-'}</td>
-                  <td className="text-admin-xs text-slate-600 py-1.5 px-2 text-right tabular-nums">{k.spend > 0 ? `₩${k.spend.toLocaleString()}` : '-'}</td>
+                  <td className="text-admin-xs text-admin-muted py-1.5 px-2 text-right tabular-nums">{k.impressions.toLocaleString()}</td>
+                  <td className="text-admin-xs text-admin-muted py-1.5 px-2 text-right tabular-nums">{k.clicks.toLocaleString()}</td>
+                  <td className={`text-admin-xs py-1.5 px-2 text-center font-medium ${k.ctr >= 5 ? 'text-emerald-600' : k.ctr >= 3 ? 'text-blue-600' : k.ctr > 0 ? 'text-admin-text-2' : 'text-admin-muted-2'}`}>{k.ctr > 0 ? `${k.ctr}%` : '-'}</td>
+                  <td className="text-admin-xs text-admin-muted py-1.5 px-2 text-right tabular-nums">{k.cpc > 0 ? `₩${k.cpc.toLocaleString()}` : '-'}</td>
+                  <td className="text-admin-xs text-admin-muted py-1.5 px-2 text-right tabular-nums">{k.spend > 0 ? `₩${k.spend.toLocaleString()}` : '-'}</td>
                   <td className="py-1.5 px-2 text-center">
                     <button onClick={() => toggleStatus(k.id)}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition ${k.status === 'active' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition ${k.status === 'active' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-admin-surface-2 text-admin-muted-2 hover:bg-slate-200'}`}>
                       {k.status === 'active' ? 'ON' : 'OFF'}
                     </button>
                   </td>
@@ -323,19 +326,19 @@ export default function SearchAdsPage() {
       {extractorOpen && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setExtractorOpen(false)}>
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-xl border-l border-slate-200 h-full flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-admin-lg font-semibold text-slate-800">키워드 추출기</h2>
-              <button onClick={() => setExtractorOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
+              <h2 className="text-admin-lg font-semibold text-admin-text-2">키워드 추출기</h2>
+              <button onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* 상품 선택 */}
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 uppercase block mb-1">상품 선택</label>
+                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">상품 선택</label>
                 <select value={selectedPkg?.id || ''} onChange={e => {
                   const pkg = packages.find(p => p.id === e.target.value);
                   if (pkg) handleExtract(pkg);
-                }} className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
+                }} className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
                   <option value="">상품 선택...</option>
                   {packages.map(p => <option key={p.id} value={p.id}>{p.title || p.display_name} ({p.destination})</option>)}
                 </select>
@@ -344,18 +347,18 @@ export default function SearchAdsPage() {
               {/* 추출 결과 */}
               {extractedPreview.length > 0 && (
                 <>
-                  <p className="text-admin-xs text-slate-600">{extractedPreview.length}개 키워드 추출됨</p>
+                  <p className="text-admin-xs text-admin-muted">{extractedPreview.length}개 키워드 추출됨</p>
                   {(Object.keys(TIER_LABELS) as KeywordTier[]).map(tier => {
                     const tierKws = extractedPreview.filter(k => k.tier === tier);
                     if (tierKws.length === 0) return null;
                     return (
                       <div key={tier}>
-                        <p className="text-[11px] font-semibold text-slate-500 mb-1">{TIER_LABELS[tier]} ({tierKws.length})</p>
+                        <p className="text-[11px] font-semibold text-admin-muted mb-1">{TIER_LABELS[tier]} ({tierKws.length})</p>
                         <div className="space-y-1">
                           {tierKws.map((k, i) => (
-                            <div key={i} className="flex items-center gap-2 bg-slate-50 rounded px-2 py-1.5">
-                              <span className="flex-1 text-admin-xs text-slate-800">{k.keyword}</span>
-                              <span className="text-[10px] text-slate-400">{k.matchType === 'broad' ? '확장' : k.matchType === 'phrase' ? '구문' : '정확'}</span>
+                            <div key={i} className="flex items-center gap-2 bg-admin-bg rounded px-2 py-1.5">
+                              <span className="flex-1 text-admin-xs text-admin-text-2">{k.keyword}</span>
+                              <span className="text-[10px] text-admin-muted-2">{k.matchType === 'broad' ? '확장' : k.matchType === 'phrase' ? '구문' : '정확'}</span>
                               {k.suggestedBid > 0 && <span className="text-[10px] text-blue-600">₩{k.suggestedBid}</span>}
                             </div>
                           ))}
@@ -384,7 +387,7 @@ export default function SearchAdsPage() {
                       키워드 등록 ({extractedPreview.filter(k => k.tier !== 'negative').length}개)
                     </button>
                     <button onClick={() => handleAddExtracted(extractedPreview)}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 transition">
+                      className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
                       제외 키워드 포함
                     </button>
                   </div>
@@ -399,16 +402,16 @@ export default function SearchAdsPage() {
       {optimizerOpen && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setOptimizerOpen(false)}>
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-xl border-l border-slate-200 h-full flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-admin-lg font-semibold text-slate-800">AI 입찰 최적화</h2>
-              <button onClick={() => setOptimizerOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
+              <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 입찰 최적화</h2>
+              <button onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {recommendations.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-10">
-                  <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
-                  <p className="text-admin-sm font-medium text-slate-500">최적화할 키워드가 없습니다</p>
+                  <svg className="w-8 h-8 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+                  <p className="text-admin-sm font-medium text-admin-muted">최적화할 키워드가 없습니다</p>
                 </div>
               ) : (
                 recommendations.map(rec => (
@@ -416,29 +419,29 @@ export default function SearchAdsPage() {
                     rec.action === 'increase' ? 'border-emerald-200 bg-emerald-50' :
                     rec.action === 'decrease' ? 'border-red-200 bg-red-50' :
                     rec.action === 'boost' ? 'border-blue-200 bg-blue-50' :
-                    'border-slate-200 bg-slate-50'
+                    'border-admin-border-mid bg-admin-bg'
                   }`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-admin-sm font-medium text-slate-800">{rec.keyword}</span>
+                      <span className="text-admin-sm font-medium text-admin-text-2">{rec.keyword}</span>
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                         rec.action === 'increase' ? 'bg-emerald-100 text-emerald-700' :
                         rec.action === 'decrease' ? 'bg-red-100 text-red-600' :
                         rec.action === 'boost' ? 'bg-blue-100 text-blue-700' :
-                        'bg-slate-100 text-slate-500'
+                        'bg-admin-surface-2 text-admin-muted'
                       }`}>
                         {rec.action === 'increase' ? '인상' : rec.action === 'decrease' ? '하향' : rec.action === 'boost' ? '부스트' : '유지'}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-600">{rec.reason}</p>
+                    <p className="text-[11px] text-admin-muted">{rec.reason}</p>
                     {rec.currentBid !== rec.recommendedBid && (
-                      <p className="text-[11px] mt-1 text-slate-500">₩{rec.currentBid.toLocaleString()} → ₩{rec.recommendedBid.toLocaleString()}</p>
+                      <p className="text-[11px] mt-1 text-admin-muted">₩{rec.currentBid.toLocaleString()} → ₩{rec.recommendedBid.toLocaleString()}</p>
                     )}
                   </div>
                 ))
               )}
             </div>
             {recommendations.length > 0 && (
-              <div className="bg-white border-t border-slate-200 px-5 py-3 flex-shrink-0">
+              <div className="bg-white border-t border-admin-border-mid px-5 py-3 flex-shrink-0">
                 <button onClick={applyRecommendations} className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                   {recommendations.filter(r => r.action !== 'maintain').length}개 추천 일괄 적용
                 </button>

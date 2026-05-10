@@ -14,7 +14,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { LAND_SETTLEMENT_STATUS_COLOR } from '@/lib/status-colors';
-import { fmtNum as fmtKRW } from '@/lib/admin-utils';
+import { fmtNum as fmtKRW, fmtDateISO, fmtDateTime, fmtMonthDay } from '@/lib/admin-utils';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Download } from 'lucide-react';
 
 interface SettlementBookingRef {
   id: string | null;
@@ -137,80 +140,77 @@ export default function LandSettlementsPage() {
   );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       {toast && (
         <div
-          className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white ${
-            toast.kind === 'err' ? 'bg-red-500' : 'bg-emerald-600'
+          className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-admin-sm text-admin-sm font-medium text-white shadow-admin-md ${
+            toast.kind === 'err' ? 'bg-danger' : 'bg-success'
           }`}
         >
           {toast.msg}
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-admin-lg font-semibold text-slate-800">랜드사 송금 정산 묶음</h1>
-          <p className="text-admin-sm text-slate-500 mt-0.5">
-            은행 송금 1건 = 묶인 예약들의 합산 정산. 메인 대시보드의 "랜드사 미지급(payable)"과는 다른 배치 단위 뷰.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            {(['all', 'pending', 'confirmed', 'reversed'] as StatusFilter[]).map(s => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 text-admin-sm rounded transition ${
-                  statusFilter === s
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {STATUS_LABELS[s]}
-              </button>
-            ))}
+      <PageHeader
+        title="랜드사 송금 정산 묶음"
+        subtitle='은행 송금 1건 = 묶인 예약들의 합산 정산. 메인 대시보드의 "랜드사 미지급(payable)"과는 다른 배치 단위 뷰.'
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              {(['all', 'pending', 'confirmed', 'reversed'] as StatusFilter[]).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`h-8 px-3 text-admin-sm rounded-admin-sm font-medium transition-colors ${
+                    statusFilter === s
+                      ? 'bg-brand text-white'
+                      : 'bg-admin-surface border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong'
+                  }`}
+                >
+                  {STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            <a href={buildExportUrl(statusFilter)} title="이번 달 settlement CSV 다운로드 (UTF-8 BOM, Excel 호환)">
+              <Button variant="secondary" size="sm">
+                <Download size={14} />
+                CSV
+              </Button>
+            </a>
           </div>
-          <a
-            href={buildExportUrl(statusFilter)}
-            className="px-3 py-1 text-admin-sm bg-emerald-50 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 transition whitespace-nowrap"
-            title="이번 달 settlement CSV 다운로드 (UTF-8 BOM, Excel 호환)"
-          >
-            📥 CSV 다운로드
-          </a>
-        </div>
-      </div>
+        }
+      />
 
       {loading ? (
-        <div className="text-sm text-slate-500 py-12 text-center">로드 중…</div>
+        <div className="text-admin-sm text-admin-muted py-12 text-center">로드 중…</div>
       ) : settlements.length === 0 ? (
-        <div className="text-sm text-slate-500 py-12 text-center bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+        <div className="text-admin-sm text-admin-muted py-12 text-center admin-card">
           {STATUS_LABELS[statusFilter]} settlement 이 없습니다
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-4 pt-3 pb-2 text-[11px] text-slate-500 border-b border-slate-100 bg-slate-50/60">
-            <span className="font-medium text-slate-600">용어 정의:</span>
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+          <div className="px-4 pt-3 pb-2 text-admin-xs text-admin-muted border-b border-admin-border bg-admin-surface-2">
+            <span className="font-medium text-admin-muted">용어 정의:</span>
             {' '}
             <span title="실제 은행 거래에서 출금된 총액. 이체 수수료 포함.">실 출금액</span>
             {' = '}
             <span title="이 묶음에 들어간 예약들의 정산 합계. 수수료 차감 전.">묶음 합계</span>
             {' + '}
             <span title="이체 수수료. 정산 합계와 실 출금액의 차이.">수수료</span>
-            <span className="text-slate-400">. 펼치면 묶인 개별 예약별 배분액 확인 가능.</span>
+            <span className="text-admin-muted-2">. 펼치면 묶인 개별 예약별 배분액 확인 가능.</span>
           </div>
-          <table className="w-full text-sm">
-            <thead className="text-[11px] text-slate-500 uppercase bg-slate-50">
+          <table className="admin-data-table">
+            <thead>
               <tr>
-                <th className="text-left px-4 py-2.5">생성</th>
-                <th className="text-left py-2.5">랜드사</th>
-                <th className="text-left py-2.5">거래처/날짜</th>
-                <th className="text-right py-2.5" title="실제 은행 거래에서 출금된 총액 (이체 수수료 포함)">실 출금액</th>
-                <th className="text-right py-2.5" title="이 묶음에 들어간 예약들의 정산 합계 (수수료 차감 전)">묶음 합계</th>
-                <th className="text-right py-2.5" title="이체 수수료 (실 출금액 − 묶음 합계)">수수료</th>
-                <th className="text-center py-2.5">예약 수</th>
-                <th className="text-center py-2.5">상태</th>
-                <th className="text-right px-4 py-2.5">액션</th>
+                <th>생성</th>
+                <th>랜드사</th>
+                <th>거래처/날짜</th>
+                <th className="text-right" title="실제 은행 거래에서 출금된 총액 (이체 수수료 포함)">실 출금액</th>
+                <th className="text-right" title="이 묶음에 들어간 예약들의 정산 합계 (수수료 차감 전)">묶음 합계</th>
+                <th className="text-right" title="이체 수수료 (실 출금액 − 묶음 합계)">수수료</th>
+                <th className="text-center">예약 수</th>
+                <th className="text-center">상태</th>
+                <th className="text-right">액션</th>
               </tr>
             </thead>
             <tbody>
@@ -253,83 +253,66 @@ function SettlementRow({
 
   return (
     <>
-      <tr className="border-t border-slate-100 hover:bg-slate-50">
-        <td className="px-4 py-2.5 text-xs text-slate-600 tabular-nums">
-          {new Date(s.created_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}
+      <tr>
+        <td className="text-admin-xs text-admin-muted admin-num">
+          {fmtMonthDay(s.created_at)}
         </td>
-        <td className="py-2.5 font-medium text-slate-800">{s.land_operator_name ?? '—'}</td>
-        <td className="py-2.5 text-xs text-slate-600">
+        <td className="font-medium text-admin-text">{s.land_operator_name ?? '—'}</td>
+        <td className="text-admin-xs text-admin-muted">
           <div>{s.transaction_counterparty ?? '—'}</div>
           {s.transaction_received_at && (
-            <div className="text-[11px] text-slate-400">
-              {new Date(s.transaction_received_at).toLocaleDateString('ko-KR')}
+            <div className="text-admin-2xs text-admin-muted-2 admin-num">
+              {fmtDateISO(s.transaction_received_at)}
             </div>
           )}
         </td>
-        <td className="py-2.5 text-right tabular-nums text-slate-800">{fmtKRW(s.total_amount)}</td>
-        <td className="py-2.5 text-right tabular-nums text-slate-600">{fmtKRW(s.bundled_total)}</td>
-        <td
-          className={`py-2.5 text-right tabular-nums ${
-            s.fee_amount === 0 ? 'text-slate-400' : 'text-amber-600'
-          }`}
-        >
+        <td className="text-right admin-num text-admin-text">{fmtKRW(s.total_amount)}</td>
+        <td className="text-right admin-num text-admin-muted">{fmtKRW(s.bundled_total)}</td>
+        <td className={`text-right admin-num ${s.fee_amount === 0 ? 'text-admin-muted-2' : 'text-warning'}`}>
           {s.fee_amount > 0 ? '+' : ''}
           {fmtKRW(s.fee_amount)}
         </td>
-        <td className="py-2.5 text-center">
-          <button
-            onClick={onToggle}
-            className="text-blue-600 hover:underline text-xs"
-          >
-            {s.bookings.length}건 {expanded ? '▴' : '▾'}
+        <td className="text-center">
+          <button onClick={onToggle} className="text-brand hover:text-brand-dark text-admin-xs font-medium">
+            <span className="admin-num">{s.bookings.length}</span>건 {expanded ? '▴' : '▾'}
           </button>
         </td>
-        <td className="py-2.5 text-center">
-          <span
-            className={`px-2 py-0.5 text-[11px] rounded border ${STATUS_BADGE[s.status]}`}
-          >
+        <td className="text-center">
+          <span className={`px-2 py-0.5 text-admin-xs rounded-admin-xs border font-semibold ${STATUS_BADGE[s.status]}`}>
             {s.status === 'pending' ? '대기' : s.status === 'confirmed' ? '확정' : '되돌림'}
           </span>
         </td>
-        <td className="px-4 py-2.5 text-right">
-          <div className="flex justify-end gap-1">
+        <td className="text-right">
+          <div className="flex justify-end gap-1.5">
             {canConfirm && (
-              <button
-                onClick={onConfirm}
-                disabled={busy}
-                className="px-2 py-1 text-[11px] bg-emerald-50 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 disabled:opacity-40"
-              >
+              <Button variant="secondary" size="sm" onClick={onConfirm} disabled={busy}>
                 확정
-              </button>
+              </Button>
             )}
             {canReverse && (
-              <button
-                onClick={onReverse}
-                disabled={busy}
-                className="px-2 py-1 text-[11px] bg-white border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
-              >
+              <Button variant="secondary" size="sm" onClick={onReverse} disabled={busy}>
                 되돌림
-              </button>
+              </Button>
             )}
           </div>
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-slate-50">
-          <td colSpan={9} className="px-4 py-3">
-            <div className="text-[11px] text-slate-500 uppercase mb-1.5">묶인 booking</div>
-            <table className="w-full text-xs">
+        <tr className="bg-admin-surface-2">
+          <td colSpan={9} className="px-4 py-3" style={{ height: 'auto' }}>
+            <div className="text-admin-2xs text-admin-muted uppercase tracking-wider mb-2 font-semibold">묶인 booking</div>
+            <table className="w-full text-admin-xs">
               <tbody>
                 {s.bookings.map((b, i) => (
-                  <tr key={i} className="border-b border-slate-200 last:border-0">
-                    <td className="py-1.5 text-slate-700 font-medium">
+                  <tr key={i} className="border-b border-admin-border last:border-0">
+                    <td className="py-1.5 text-admin-text font-medium">
                       {b.customer_name ?? '이름 없음'}
                     </td>
-                    <td className="py-1.5 font-mono text-slate-500">{b.booking_no ?? '—'}</td>
-                    <td className="py-1.5 text-slate-500">
+                    <td className="py-1.5 font-mono text-admin-muted">{b.booking_no ?? '—'}</td>
+                    <td className="py-1.5 text-admin-muted admin-num">
                       {b.departure_date?.slice(2, 10).replace(/-/g, '') ?? '—'}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums text-slate-800">
+                    <td className="py-1.5 text-right admin-num text-admin-text">
                       {fmtKRW(b.amount)}
                     </td>
                   </tr>
@@ -337,12 +320,12 @@ function SettlementRow({
               </tbody>
             </table>
             {s.notes && (
-              <div className="mt-2 text-[11px] text-slate-500">메모: {s.notes}</div>
+              <div className="mt-2 text-admin-xs text-admin-muted">메모: {s.notes}</div>
             )}
             {s.reversal_reason && (
-              <div className="mt-2 text-[11px] text-red-600">
+              <div className="mt-2 text-admin-xs text-danger">
                 Reverse 사유: {s.reversal_reason} ({s.reversed_by ?? '?'},{' '}
-                {s.reversed_at && new Date(s.reversed_at).toLocaleString('ko-KR')})
+                {s.reversed_at && fmtDateTime(s.reversed_at)})
               </div>
             )}
           </td>

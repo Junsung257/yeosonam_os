@@ -10,25 +10,25 @@ function AffiliatesSkeleton() {
     <div className="space-y-6 animate-pulse">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
-          <div className="h-5 bg-slate-100 rounded w-40" />
-          <div className="h-3 bg-slate-100 rounded w-56" />
+          <div className="h-5 bg-admin-surface-2 rounded w-40" />
+          <div className="h-3 bg-admin-surface-2 rounded w-56" />
         </div>
-        <div className="h-9 bg-slate-100 rounded w-28" />
+        <div className="h-9 bg-admin-surface-2 rounded w-28" />
       </div>
       <div className="grid grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
-            <div className="h-3 bg-slate-100 rounded w-24" />
-            <div className="h-6 bg-slate-100 rounded w-20" />
+          <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
+            <div className="h-3 bg-admin-surface-2 rounded w-24" />
+            <div className="h-6 bg-admin-surface-2 rounded w-20" />
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="border-b border-slate-100 px-3 py-3 flex gap-4">
-            <div className="h-4 bg-slate-100 rounded w-24" />
-            <div className="h-4 bg-slate-100 rounded w-20" />
-            <div className="h-4 bg-slate-100 rounded flex-1" />
+          <div key={i} className="border-b border-admin-border px-3 py-3 flex gap-4">
+            <div className="h-4 bg-admin-surface-2 rounded w-24" />
+            <div className="h-4 bg-admin-surface-2 rounded w-20" />
+            <div className="h-4 bg-admin-surface-2 rounded flex-1" />
           </div>
         ))}
       </div>

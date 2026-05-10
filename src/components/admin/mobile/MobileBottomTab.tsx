@@ -23,7 +23,7 @@ export function MobileBottomTab() {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200"
+      className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-admin-border-mid"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="grid grid-cols-4">
@@ -38,8 +38,8 @@ export function MobileBottomTab() {
                 href={tab.href}
                 className={`flex flex-col items-center justify-center h-14 text-[11px] gap-0.5 transition ${
                   active
-                    ? 'text-slate-900'
-                    : 'text-slate-400 hover:text-slate-600'
+                    ? 'text-admin-text'
+                    : 'text-admin-muted-2 hover:text-admin-muted'
                 }`}
               >
                 <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />

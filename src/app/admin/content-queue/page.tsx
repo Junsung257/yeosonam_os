@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import { useToast } from '@/components/ui/Toast';
 import { marked } from 'marked';
 import Link from 'next/link';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',
@@ -181,23 +182,23 @@ export default function ContentQueuePage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-admin-lg font-semibold text-slate-800">콘텐츠 검수</h1>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <h1 className="text-admin-lg font-semibold text-admin-text-2">콘텐츠 검수</h1>
+          <p className="text-[11px] text-admin-muted mt-0.5">
             AI 생성 블로그 콘텐츠 품질 검수 · 대기 <span className="font-bold text-indigo-600">{pendingCount}건</span>
           </p>
         </div>
       </div>
 
       {/* 탭 */}
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-admin-border-mid">
         {([
           { key: 'draft' as const, label: '검수 대기', color: 'text-orange-600' },
           { key: 'published' as const, label: '발행됨', color: 'text-green-600' },
-          { key: 'archived' as const, label: '반려/보관', color: 'text-slate-400' },
+          { key: 'archived' as const, label: '반려/보관', color: 'text-admin-muted-2' },
         ]).map(t => (
           <button key={t.key} onClick={() => { setTab(t.key); setSelectedId(null); }}
             className={`px-4 py-2 text-admin-sm font-medium border-b-2 transition ${
-              tab === t.key ? `${t.color} border-current` : 'text-slate-400 border-transparent hover:text-slate-600'
+              tab === t.key ? `${t.color} border-current` : 'text-admin-muted-2 border-transparent hover:text-admin-muted'
             }`}>
             {t.label}
             {t.key === 'draft' && pendingCount > 0 && (
@@ -216,7 +217,7 @@ export default function ContentQueuePage() {
             {processing ? '처리 중...' : '선택 일괄 승인'}
           </button>
           <button onClick={() => setCheckedIds(new Set())}
-            className="text-[11px] text-slate-400 hover:text-slate-600">선택 해제</button>
+            className="text-[11px] text-admin-muted-2 hover:text-admin-muted">선택 해제</button>
         </div>
       )}
 
@@ -227,14 +228,14 @@ export default function ContentQueuePage() {
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 space-y-2">
-                  <div className="h-3.5 bg-slate-100 rounded animate-pulse w-3/4" />
-                  <div className="h-3 bg-slate-100 rounded animate-pulse w-1/2" />
+                <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 space-y-2">
+                  <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-3/4" />
+                  <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-1/2" />
                 </div>
               ))}
             </div>
           ) : items.length === 0 ? (
-            <p className="py-10 text-center text-admin-sm text-slate-400">
+            <p className="py-10 text-center text-admin-sm text-admin-muted-2">
               {tab === 'draft' ? '검수 대기 중인 글이 없습니다' : '해당 상태의 글이 없습니다'}
             </p>
           ) : (
@@ -251,13 +252,13 @@ export default function ContentQueuePage() {
                       e.target.checked ? next.add(item.id) : next.delete(item.id);
                       setCheckedIds(next);
                     }}
-                    className="mt-3.5 w-4 h-4 rounded border-slate-300 text-indigo-600 flex-shrink-0" />
+                    className="mt-3.5 w-4 h-4 rounded border-admin-border-strong text-indigo-600 flex-shrink-0" />
                 )}
                 <button onClick={() => selectItem(item)}
                   className={`flex-1 text-left p-3 rounded-lg border transition ${
                     selectedId === item.id
-                      ? 'border-indigo-300 bg-indigo-50 shadow-sm'
-                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                      ? 'border-indigo-300 bg-indigo-50 shadow-admin-xs'
+                      : 'border-admin-border-mid bg-white hover:bg-admin-bg'
                   }`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -267,7 +268,7 @@ export default function ContentQueuePage() {
                             {item.travel_packages.destination}
                           </span>
                         )}
-                        <span className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400">
+                        <span className="rounded bg-admin-bg px-1.5 py-0.5 text-[10px] text-admin-muted-2">
                           {ANGLE_LABELS[item.angle_type] || item.angle_type}
                         </span>
                         {item.status === 'published' && (
@@ -280,11 +281,11 @@ export default function ContentQueuePage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-admin-sm font-medium text-slate-800 truncate">
+                      <p className="text-admin-sm font-medium text-admin-text-2 truncate">
                         {item.seo_title || item.travel_packages?.title || '제목 없음'}
                       </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {new Date(item.created_at).toLocaleDateString('ko-KR')} · {plainLen.toLocaleString()}자 · {item.tracking_id || '-'}
+                      <p className="text-[11px] text-admin-muted-2 mt-0.5">
+                        {fmtDateISO(item.created_at)} · {plainLen.toLocaleString()}자 · {item.tracking_id || '-'}
                       </p>
                     </div>
                   {item.slug && item.status === 'published' && (
@@ -303,11 +304,11 @@ export default function ContentQueuePage() {
 
         {/* 우측: 상세 패널 */}
         {selectedItem && (
-          <div className="w-96 flex-shrink-0 border border-slate-200 rounded-lg bg-white p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
-            <p className="text-admin-xs font-semibold text-slate-700 uppercase">콘텐츠 상세</p>
+          <div className="w-96 flex-shrink-0 border border-admin-border-mid rounded-lg bg-white p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+            <p className="text-admin-xs font-semibold text-admin-text-2 uppercase">콘텐츠 상세</p>
 
             {/* 본문 미리보기 */}
-            <div className="border border-slate-100 rounded-lg p-3 max-h-64 overflow-y-auto">
+            <div className="border border-admin-border rounded-lg p-3 max-h-64 overflow-y-auto">
               {selectedItem.blog_html ? (
                 <div className="prose prose-sm max-w-none text-admin-xs"
                   dangerouslySetInnerHTML={{
@@ -318,7 +319,7 @@ export default function ContentQueuePage() {
                     ),
                   }} />
               ) : (
-                <p className="text-admin-xs text-slate-400">본문 없음</p>
+                <p className="text-admin-xs text-admin-muted-2">본문 없음</p>
               )}
             </div>
 
@@ -326,34 +327,34 @@ export default function ContentQueuePage() {
             {tab === 'draft' && (
               <>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">URL 슬러그</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
                   <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-slate-400">/blog/</span>
+                    <span className="text-[11px] text-admin-muted-2">/blog/</span>
                     <input value={editSlug}
                       onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
                       placeholder="bangkok-5days-trip"
-                      className="flex-1 border border-slate-200 rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
+                      className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">SEO 제목</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목</label>
                   <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
                     maxLength={60}
-                    className="w-full border border-slate-200 rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
-                  <p className="text-[9px] text-slate-400 mt-0.5">{editTitle.length}/60</p>
+                    className="w-full border border-admin-border-mid rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
+                  <p className="text-[9px] text-admin-muted-2 mt-0.5">{editTitle.length}/60</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">SEO 설명</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명</label>
                   <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
                     maxLength={160}
-                    className="w-full border border-slate-200 rounded px-2 py-1 text-admin-xs h-14 resize-none focus:ring-1 focus:ring-indigo-400" />
-                  <p className="text-[9px] text-slate-400 mt-0.5">{editDesc.length}/160</p>
+                    className="w-full border border-admin-border-mid rounded px-2 py-1 text-admin-xs h-14 resize-none focus:ring-1 focus:ring-indigo-400" />
+                  <p className="text-[9px] text-admin-muted-2 mt-0.5">{editDesc.length}/160</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">OG 이미지</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
                   <input value={editOgImage} onChange={e => setEditOgImage(e.target.value)}
                     placeholder="https://..."
-                    className="w-full border border-slate-200 rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
+                    className="w-full border border-admin-border-mid rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
                 </div>
 
                 {/* 액션 버튼 */}
@@ -365,9 +366,9 @@ export default function ContentQueuePage() {
                   <div>
                     <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
                       placeholder="반려 사유 (선택)"
-                      className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] mb-1" />
+                      className="w-full border border-admin-border-mid rounded px-2 py-1 text-[11px] mb-1" />
                     <button onClick={handleReject} disabled={processing}
-                      className="w-full py-1.5 border border-red-200 text-red-500 text-admin-xs rounded hover:bg-red-50 disabled:text-slate-300 transition">
+                      className="w-full py-1.5 border border-red-200 text-red-500 text-admin-xs rounded hover:bg-red-50 disabled:text-admin-muted-2 transition">
                       {processing ? '처리 중...' : '반려'}
                     </button>
                   </div>

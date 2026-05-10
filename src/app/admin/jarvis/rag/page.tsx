@@ -8,6 +8,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { ArrowLeft, Search } from 'lucide-react';
 
 interface Hit {
   source_type: string;
@@ -50,53 +53,53 @@ export default function JarvisRagSearchPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900">🧠 RAG 지식 검색</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            자비스 컨시어지가 검색하는 jarvis_hybrid_search RPC 직접 호출 — 사장님이 자비스가 뭘 알고 있는지 검증
-          </p>
-        </div>
-        <Link href="/admin/jarvis" className="text-xs text-violet-600 hover:underline">← 자비스</Link>
-      </div>
+    <div className="max-w-5xl mx-auto space-y-5">
+      <PageHeader
+        title="RAG 지식 검색"
+        subtitle="자비스 컨시어지가 검색하는 jarvis_hybrid_search RPC 직접 호출 — 사장님이 자비스가 뭘 알고 있는지 검증"
+        actions={
+          <Link href="/admin/jarvis">
+            <Button variant="secondary" size="sm">
+              <ArrowLeft size={14} />
+              자비스
+            </Button>
+          </Link>
+        }
+      />
 
-      <form onSubmit={search} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-col md:flex-row gap-2">
+      <form onSubmit={search} className="admin-card p-4 flex flex-col md:flex-row gap-2">
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="고객 질문 그대로 입력 (예: 다낭 5월 가족여행 노쇼핑)"
-          className="flex-1 text-sm border border-slate-300 rounded px-3 py-2"
+          className="flex-1 h-9 text-admin-base border border-admin-border-mid rounded-admin-sm px-3 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           autoFocus
         />
         <select
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="text-sm border border-slate-300 rounded px-2 py-2"
+          className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
         >
           <option value="">전체</option>
           <option value="package">📦 상품</option>
           <option value="blog">📝 블로그</option>
           <option value="attraction">🗺️ 관광지</option>
         </select>
-        <button
-          type="submit"
-          disabled={loading || !query.trim()}
-          className="bg-violet-600 hover:bg-violet-700 disabled:bg-slate-300 text-white text-sm font-semibold px-4 py-2 rounded transition"
-        >
-          {loading ? '검색중...' : '검색'}
-        </button>
+        <Button type="submit" variant="primary" disabled={loading || !query.trim()}>
+          <Search size={14} />
+          {loading ? '검색 중…' : '검색'}
+        </Button>
       </form>
 
       {/* 빠른 테스트 쿼리 */}
-      <div className="flex flex-wrap gap-2">
-        <span className="text-[11px] text-slate-500 self-center">빠른 테스트:</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-admin-xs text-admin-muted self-center">빠른 테스트:</span>
         {['다낭 5월 가족여행', '호화호특 5성호텔 직항', '몽골 게르 휴양', '노옵션 가성비 패키지', '발리 풀빌라'].map(q => (
           <button
             key={q}
             onClick={() => { setQuery(q); setTimeout(search, 50); }}
-            className="text-[11px] bg-slate-100 hover:bg-violet-100 text-slate-700 px-2.5 py-1 rounded-full transition"
+            className="text-admin-xs bg-admin-surface border border-admin-border-mid hover:bg-brand-light hover:border-brand text-admin-text-2 px-2.5 py-1 rounded-full transition-colors"
           >
             {q}
           </button>
@@ -106,26 +109,26 @@ export default function JarvisRagSearchPage() {
       {/* 결과 */}
       {hits.length > 0 ? (
         <section className="space-y-2">
-          <p className="text-xs text-slate-500">{hits.length}건 hit · RRF 점수 순</p>
+          <p className="text-admin-xs text-admin-muted"><span className="admin-num">{hits.length}</span>건 hit · RRF 점수 순</p>
           {hits.map((h, i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div key={i} className="admin-card p-4">
               <div className="flex items-baseline gap-2 mb-2 flex-wrap">
-                <span className="text-[11px] font-bold bg-slate-100 px-2 py-0.5 rounded">{i + 1}</span>
-                <span className="text-[11px] font-semibold text-slate-600">
+                <span className="text-admin-xs font-semibold bg-admin-surface-2 text-admin-text-2 px-2 py-0.5 rounded-admin-xs admin-num">{i + 1}</span>
+                <span className="text-admin-xs font-semibold text-admin-muted">
                   {SOURCE_LABELS[h.source_type] ?? h.source_type}
                 </span>
-                <h3 className="text-sm font-bold text-slate-900 flex-1 min-w-0 truncate">
+                <h3 className="text-admin-sm font-semibold text-admin-text flex-1 min-w-0 truncate">
                   {h.source_title}
                 </h3>
-                <span className="text-[10px] text-slate-400 tabular-nums">
+                <span className="text-admin-2xs text-admin-muted-2 admin-num font-mono">
                   RRF {h.rrf_score?.toFixed(3)} · vec {h.vector_score?.toFixed(2)} · bm25 {h.bm25_score?.toFixed(2)}
                 </span>
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed line-clamp-3 break-keep">
+              <p className="text-admin-xs text-admin-text-2 leading-relaxed line-clamp-3 break-keep">
                 {h.chunk_text}
               </p>
               {h.source_url && (
-                <Link href={h.source_url} className="inline-block mt-2 text-[11px] text-violet-600 hover:underline">
+                <Link href={h.source_url} className="inline-block mt-2 text-admin-xs text-brand hover:text-brand-dark hover:underline font-medium">
                   → 원본 보기
                 </Link>
               )}
@@ -133,9 +136,9 @@ export default function JarvisRagSearchPage() {
           ))}
         </section>
       ) : query && !loading && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
-          <p className="text-sm font-semibold text-amber-800">검색 결과 없음</p>
-          <p className="text-xs text-amber-700 mt-1">
+        <div className="bg-status-warningBg border border-warning/20 rounded-admin-md p-6 text-center">
+          <p className="text-admin-base font-semibold text-status-warningFg">검색 결과 없음</p>
+          <p className="text-admin-xs text-status-warningFg mt-1 opacity-80">
             자비스가 이 키워드를 학습하지 않았어요. 관련 상품/블로그 등록 또는 인덱싱 필요.
           </p>
         </div>

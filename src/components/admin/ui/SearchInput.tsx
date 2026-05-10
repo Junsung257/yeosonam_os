@@ -47,7 +47,7 @@ export function SearchInput({
         <Search size={15} strokeWidth={2.2} className="text-admin-textSubtle" />
         <span className="flex-1 text-left">{placeholder}</span>
         {kbd && (
-          <kbd className="text-admin-xs bg-slate-100 text-admin-textMuted px-1.5 py-0.5 rounded font-mono border border-slate-200">
+          <kbd className="text-admin-xs bg-admin-surface-2 text-admin-textMuted px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">
             {kbd}
           </kbd>
         )}

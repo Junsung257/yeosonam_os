@@ -44,7 +44,7 @@ export default function TimelineClient({
 
   if (rows.length === 0) {
     return (
-      <div className="px-4 py-20 text-center text-sm text-slate-400">
+      <div className="px-4 py-20 text-center text-sm text-admin-muted-2">
         기록된 이벤트가 없습니다.
       </div>
     );
@@ -52,15 +52,15 @@ export default function TimelineClient({
 
   return (
     <main className="px-4 py-4">
-      <ol className="relative border-l border-slate-200 pl-5 space-y-4">
+      <ol className="relative border-l border-admin-border-mid pl-5 space-y-4">
         {rows.map(r => (
           <li key={r.id} className="relative">
-            <span className="absolute -left-[29px] top-0 w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center text-sm">
+            <span className="absolute -left-[29px] top-0 w-6 h-6 rounded-full bg-white border border-admin-border-mid flex items-center justify-center text-sm">
               {(r.event_type && EVENT_ICON[r.event_type]) || '•'}
             </span>
-            <div className="bg-white border border-slate-200 rounded-xl px-3 py-2">
+            <div className="bg-white border border-admin-border-mid rounded-admin-md px-3 py-2">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm font-semibold text-slate-900">
+                <span className="text-sm font-semibold text-admin-text">
                   {r.title ?? r.event_type ?? '이벤트'}
                 </span>
                 {r.is_mock && (
@@ -70,11 +70,11 @@ export default function TimelineClient({
                 )}
               </div>
               {r.content && (
-                <p className="text-xs text-slate-600 whitespace-pre-wrap">
+                <p className="text-xs text-admin-muted whitespace-pre-wrap">
                   {r.content}
                 </p>
               )}
-              <div className="text-[10px] text-slate-400 mt-1">
+              <div className="text-[10px] text-admin-muted-2 mt-1">
                 {formatTs(r.created_at)}
                 {r.created_by ? ` · ${r.created_by}` : ''}
               </div>

@@ -215,36 +215,36 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl bg-white shadow-xl border-l border-slate-200 h-full flex flex-col"
+        className="relative w-full max-w-2xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-admin-lg font-semibold text-slate-800">마케팅 프롬프트 생성기</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">상품 데이터 → AI 지시서 자동 조립</p>
+            <h2 className="text-admin-lg font-semibold text-admin-text-2">마케팅 프롬프트 생성기</h2>
+            <p className="text-[11px] text-admin-muted mt-0.5">상품 데이터 → AI 지시서 자동 조립</p>
           </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 transition">
+          <button onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         {/* 상품 요약 카드 */}
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
+        <div className="px-5 py-3 border-b border-admin-border-mid bg-admin-bg">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shrink-0">
               AD
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-admin-base font-semibold text-slate-800 truncate">{title}</p>
+              <p className="text-admin-base font-semibold text-admin-text-2 truncate">{title}</p>
               <div className="flex gap-2 mt-0.5">
-                <span className="text-[11px] text-slate-500">{dest}</span>
-                <span className="text-[11px] text-slate-400">|</span>
-                <span className="text-[11px] text-slate-500">{duration}</span>
-                <span className="text-[11px] text-slate-400">|</span>
+                <span className="text-[11px] text-admin-muted">{dest}</span>
+                <span className="text-[11px] text-admin-muted-2">|</span>
+                <span className="text-[11px] text-admin-muted">{duration}</span>
+                <span className="text-[11px] text-admin-muted-2">|</span>
                 <span className="text-[11px] font-medium text-[#005d90]">{lowestPrice}~</span>
-                <span className="text-[11px] text-slate-400">|</span>
-                <span className="text-[11px] font-mono text-slate-500">{creativeId}</span>
+                <span className="text-[11px] text-admin-muted-2">|</span>
+                <span className="text-[11px] font-mono text-admin-muted">{creativeId}</span>
               </div>
             </div>
           </div>
@@ -252,7 +252,7 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
           {/* 소구점 미리보기 */}
           <div className="flex gap-1.5 mt-2">
             {['가성비', '효도여행', '럭셔리'].map(tag => (
-              <span key={tag} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600">
+              <span key={tag} className="px-2 py-0.5 bg-white border border-admin-border-mid rounded text-[10px] text-admin-muted">
                 {tag}
               </span>
             ))}
@@ -265,25 +265,25 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
         {/* 프롬프트 출력 */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase">생성된 프롬프트</span>
-            <span className="text-[10px] text-slate-400">{prompt.length.toLocaleString()}자</span>
+            <span className="text-[11px] font-semibold text-admin-muted-2 uppercase">생성된 프롬프트</span>
+            <span className="text-[10px] text-admin-muted-2">{prompt.length.toLocaleString()}자</span>
           </div>
           <textarea
             readOnly
             value={prompt}
-            className="w-full h-[calc(100%-2rem)] bg-slate-50 border border-slate-200 rounded-lg p-4 text-admin-xs text-slate-700 font-mono leading-relaxed resize-none focus:ring-1 focus:ring-[#005d90] focus:border-[#005d90]"
+            className="w-full h-[calc(100%-2rem)] bg-admin-bg border border-admin-border-mid rounded-lg p-4 text-admin-xs text-admin-text-2 font-mono leading-relaxed resize-none focus:ring-1 focus:ring-[#005d90] focus:border-[#005d90]"
           />
         </div>
 
         {/* 하단 액션 */}
-        <div className="bg-white border-t border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-          <p className="text-[11px] text-slate-400">
+        <div className="bg-white border-t border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
+          <p className="text-[11px] text-admin-muted-2">
             {copied ? '클립보드에 복사되었습니다' : 'AI 채팅에 붙여넣기 하세요'}
           </p>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50 transition"
+              className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition"
             >
               닫기
             </button>

@@ -48,16 +48,16 @@ export default function ContentGapsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-admin-lg font-semibold text-slate-800">콘텐츠 갭 분석</h1>
-        <p className="text-[11px] text-slate-500 mt-0.5">블로그/카드뉴스/광고카피가 없는 상품을 찾아 우선 생성</p>
+        <h1 className="text-admin-lg font-semibold text-admin-text-2">콘텐츠 갭 분석</h1>
+        <p className="text-[11px] text-admin-muted mt-0.5">블로그/카드뉴스/광고카피가 없는 상품을 찾아 우선 생성</p>
       </div>
 
       {/* KPI */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
-            <p className="text-[10px] text-slate-400">전체 상품</p>
-            <p className="text-[20px] font-bold text-slate-800">{stats.total}</p>
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+            <p className="text-[10px] text-admin-muted-2">전체 상품</p>
+            <p className="text-[20px] font-bold text-admin-text-2">{stats.total}</p>
           </div>
           <div className="bg-white border border-red-200 rounded-lg p-3">
             <p className="text-[10px] text-red-400">콘텐츠 0개</p>
@@ -80,11 +80,11 @@ export default function ContentGapsPage() {
           { key: 'no-content' as const, label: '콘텐츠 없음', color: 'text-red-600' },
           { key: 'partial' as const, label: '부분 생성', color: 'text-orange-600' },
           { key: 'complete' as const, label: '완전 보유', color: 'text-green-600' },
-          { key: 'all' as const, label: '전체', color: 'text-slate-600' },
+          { key: 'all' as const, label: '전체', color: 'text-admin-muted' },
         ]).map(f => (
           <button key={f.key} onClick={() => setFilter(f.key)}
             className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
-              filter === f.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              filter === f.key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
             }`}>
             {f.label}
           </button>
@@ -93,20 +93,20 @@ export default function ContentGapsPage() {
 
       {/* 테이블 */}
       {loading ? (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-3">
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-24" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-20" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-24" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
           <table className="w-full text-admin-xs">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-left">
+              <tr className="bg-admin-bg text-admin-muted text-left">
                 <th className="px-3 py-2.5 font-medium">상품</th>
                 <th className="px-3 py-2.5 font-medium">목적지</th>
                 <th className="px-3 py-2.5 font-medium text-center">예약</th>
@@ -118,17 +118,17 @@ export default function ContentGapsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map(g => (
-                <tr key={g.id} className={`hover:bg-slate-50 transition ${g.bookings > 0 && g.content_count === 0 ? 'bg-red-50/30' : ''}`}>
+                <tr key={g.id} className={`hover:bg-admin-bg transition ${g.bookings > 0 && g.content_count === 0 ? 'bg-red-50/30' : ''}`}>
                   <td className="px-3 py-2.5">
-                    <p className="text-admin-xs font-medium text-slate-800 truncate max-w-xs">{g.title}</p>
-                    {g.price && <p className="text-[10px] text-slate-400">{g.price.toLocaleString()}원~</p>}
+                    <p className="text-admin-xs font-medium text-admin-text-2 truncate max-w-xs">{g.title}</p>
+                    {g.price && <p className="text-[10px] text-admin-muted-2">{g.price.toLocaleString()}원~</p>}
                   </td>
-                  <td className="px-3 py-2.5 text-slate-500">{g.destination || '-'}</td>
+                  <td className="px-3 py-2.5 text-admin-muted">{g.destination || '-'}</td>
                   <td className="px-3 py-2.5 text-center">
                     {g.bookings > 0 ? (
                       <span className="font-bold text-indigo-600">{g.bookings}건</span>
                     ) : (
-                      <span className="text-slate-300">-</span>
+                      <span className="text-admin-muted-2">-</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-center">{g.has_blog ? '✅' : '❌'}</td>
@@ -146,8 +146,8 @@ export default function ContentGapsPage() {
           </table>
           {filtered.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-10">
-              <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
-              <p className="text-admin-sm font-medium text-slate-500">해당 조건의 상품이 없습니다</p>
+              <svg className="w-8 h-8 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+              <p className="text-admin-sm font-medium text-admin-muted">해당 조건의 상품이 없습니다</p>
             </div>
           )}
         </div>

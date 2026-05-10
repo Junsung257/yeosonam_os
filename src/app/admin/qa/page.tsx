@@ -235,29 +235,29 @@ export default function QAPage() {
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)]">
-      <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-slate-200">
-        <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
+      <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-admin-border-mid">
+        <div className="bg-admin-surface border-b border-admin-border-mid px-5 h-14 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-admin-sm font-bold">
+            <div className="w-8 h-8 bg-brand rounded-full flex items-center justify-center text-white text-admin-sm font-bold">
               AI
             </div>
             <div>
-              <p className="font-semibold text-slate-800 text-admin-base">AI 여행 상담원 (실서버 스트림)</p>
-              <p className="text-[11px] text-green-600">세션 {sessionId ? `${sessionId.slice(0, 8)}…` : '로딩…'}</p>
+              <p className="font-semibold text-admin-text text-admin-base leading-tight">AI 여행 상담원 (실서버 스트림)</p>
+              <p className="text-admin-2xs text-success leading-tight font-mono">세션 {sessionId ? `${sessionId.slice(0, 8)}…` : '로딩…'}</p>
             </div>
           </div>
-          <div className="flex gap-3 items-center">
+          <div className="flex gap-2 items-center">
             <button
               type="button"
               onClick={resetSession}
-              className="text-admin-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded-full px-3 py-1"
+              className="h-8 px-3 text-admin-xs text-admin-text-2 hover:text-admin-text border border-admin-border-mid rounded-admin-sm hover:bg-admin-surface-2 transition-colors font-medium"
             >
               새 세션
             </button>
-            <Link href="/packages" className="text-admin-sm text-slate-700 hover:text-slate-900">
+            <Link href="/packages" className="text-admin-sm text-admin-text-2 hover:text-admin-text transition-colors">
               상품 목록
             </Link>
-            <Link href="/admin/escalations" className="text-admin-sm text-slate-500 hover:text-slate-700">
+            <Link href="/admin/escalations" className="text-admin-sm text-admin-muted hover:text-admin-text transition-colors">
               에스컬레이션
             </Link>
           </div>
@@ -268,15 +268,15 @@ export default function QAPage() {
             <div key={i} className={`flex ${mmsg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] ${mmsg.role === 'user' ? 'order-1' : ''}`}>
                 {mmsg.role === 'assistant' && (
-                  <div className="w-6 h-6 bg-slate-100 border border-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600 mb-1">
+                  <div className="w-6 h-6 bg-admin-surface-2 border border-admin-border-mid rounded-full flex items-center justify-center text-[10px] font-bold text-admin-muted mb-1">
                     AI
                   </div>
                 )}
                 <div
-                  className={`rounded-2xl px-4 py-3 text-admin-base leading-relaxed whitespace-pre-wrap ${
+                  className={`rounded-admin-lg px-4 py-3 text-admin-base leading-relaxed whitespace-pre-wrap ${
                     mmsg.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-tr-sm'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm'
+                      ? 'bg-brand text-white rounded-tr-sm'
+                      : 'bg-admin-surface border border-admin-border-mid text-admin-text rounded-tl-sm shadow-admin-xs'
                   }`}
                 >
                   {mmsg.content}
@@ -286,16 +286,16 @@ export default function QAPage() {
                   <div className="mt-3 space-y-2">
                     {mmsg.packages.map((pkg) => (
                       <Link key={pkg.id} href={`/packages/${pkg.id}`}>
-                        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 hover:border-slate-300 transition cursor-pointer">
-                          <p className="font-medium text-slate-800 text-admin-sm">{pkg.title}</p>
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
+                        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 hover:border-admin-border-strong transition cursor-pointer">
+                          <p className="font-medium text-admin-text-2 text-admin-sm">{pkg.title}</p>
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-admin-muted">
                             {pkg.destination && <span>{pkg.destination}</span>}
                             {pkg.duration && <span>{pkg.duration}일</span>}
                           </div>
                           {pkg.sellingPrice && (
-                            <p className="text-slate-800 font-bold text-admin-base mt-1.5">
+                            <p className="text-admin-text-2 font-bold text-admin-base mt-1.5">
                               {pkg.sellingPrice.toLocaleString()}원
-                              <span className="text-slate-500 font-normal ml-1 text-[11px]">
+                              <span className="text-admin-muted font-normal ml-1 text-[11px]">
                                 커미션 {pkg.commissionRate}% 포함
                               </span>
                             </p>
@@ -310,7 +310,7 @@ export default function QAPage() {
                   <div className="mt-3">
                     <Link
                       href={mmsg.freeTravelHref}
-                      className="block w-full text-center bg-violet-600 text-white px-3 py-2.5 rounded-xl text-admin-sm font-bold hover:bg-violet-700 transition"
+                      className="block w-full text-center bg-violet-600 text-white px-3 py-2.5 rounded-admin-md text-admin-sm font-bold hover:bg-violet-700 transition"
                     >
                       🚀 내 맞춤 자유여행 일정표 짜러가기
                     </Link>
@@ -328,7 +328,7 @@ export default function QAPage() {
 
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-tl-sm px-4 py-3">
+              <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-tl-sm px-4 py-3">
                 <div className="flex gap-1">
                   <div
                     className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
@@ -349,48 +349,48 @@ export default function QAPage() {
           <div ref={bottomRef} />
         </div>
 
-        <div className="bg-white border-t border-slate-200 px-4 py-4 shrink-0">
-          <form onSubmit={sendMessage} className="max-w-3xl mx-auto flex gap-3">
+        <div className="bg-admin-surface border-t border-admin-border-mid px-4 py-4 shrink-0">
+          <form onSubmit={sendMessage} className="max-w-3xl mx-auto flex gap-2">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="예: 5월 오사카 3박4일 예약하고 싶어요 / 준비물 알려줘 / 환불 규정"
-              className="flex-1 border border-slate-200 rounded-full px-5 py-2.5 text-admin-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 h-10 border border-admin-border-mid rounded-full px-5 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
               disabled={isLoading || !sessionId}
             />
             <button
               type="submit"
               disabled={isLoading || !input.trim() || !sessionId}
-              className="bg-blue-600 text-white px-5 py-2.5 rounded-full text-admin-base font-medium hover:bg-blue-700 disabled:bg-slate-300 transition"
+              className="bg-brand text-white px-5 h-10 rounded-full text-admin-base font-medium hover:bg-brand-dark disabled:bg-admin-border-mid disabled:text-admin-muted-2 transition-colors"
             >
               전송
             </button>
           </form>
-          <p className="text-center text-[11px] text-slate-500 mt-2">
-            예약·준비물·정산 키워드로 단계가 바뀌며, DB `conversations.journey`에 저장됩니다 (마이그레이션 적용 후).
+          <p className="text-center text-admin-2xs text-admin-muted mt-2">
+            예약·준비물·정산 키워드로 단계가 바뀌며, DB <code className="font-mono">conversations.journey</code>에 저장됩니다 (마이그레이션 적용 후).
           </p>
         </div>
       </div>
 
-      <aside className="w-full lg:w-80 shrink-0 bg-slate-50 overflow-y-auto p-4 text-admin-sm">
-        <h2 className="font-semibold text-slate-800 mb-2">고객 여정 (테스트)</h2>
+      <aside className="w-full lg:w-80 shrink-0 bg-admin-bg overflow-y-auto p-4 text-admin-sm">
+        <h2 className="text-admin-h3 text-admin-text mb-3">고객 여정 (테스트)</h2>
         {!journey && (
-          <p className="text-slate-500 text-admin-xs leading-relaxed">
+          <p className="text-admin-muted text-admin-xs leading-relaxed">
             메시지를 보내면 휴리스틱으로 단계가 갱신됩니다. 최종 자동화 파이프는 이 스냅샷을 구독하면 됩니다.
           </p>
         )}
         {journey && (
           <div className="space-y-4">
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">현재 단계</p>
-              <p className="font-mono text-admin-xs bg-white border border-slate-200 rounded px-2 py-1.5">{journey.stage}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{journey.updated_at}</p>
+              <p className="text-admin-2xs uppercase tracking-wider text-admin-muted mb-1.5 font-semibold">현재 단계</p>
+              <p className="font-mono text-admin-xs bg-admin-surface border border-admin-border-mid rounded-admin-sm px-2 py-1.5 text-admin-text">{journey.stage}</p>
+              <p className="text-admin-2xs text-admin-muted-2 mt-1 admin-num">{journey.updated_at}</p>
             </div>
             {journey.checklist_preview.length > 0 && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">준비물 미리보기</p>
-                <ul className="list-disc pl-4 space-y-1 text-admin-xs text-slate-700">
+                <p className="text-admin-2xs uppercase tracking-wider text-admin-muted mb-1.5 font-semibold">준비물 미리보기</p>
+                <ul className="list-disc pl-4 space-y-1 text-admin-xs text-admin-text-2">
                   {journey.checklist_preview.map((c, i) => (
                     <li key={i}>{c}</li>
                   ))}
@@ -399,8 +399,8 @@ export default function QAPage() {
             )}
             {journey.automation_hints.length > 0 && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">자동화 힌트 (로드맵)</p>
-                <ul className="list-disc pl-4 space-y-1 text-admin-xs text-slate-700">
+                <p className="text-admin-2xs uppercase tracking-wider text-admin-muted mb-1.5 font-semibold">자동화 힌트 (로드맵)</p>
+                <ul className="list-disc pl-4 space-y-1 text-admin-xs text-admin-text-2">
                   {journey.automation_hints.map((h, i) => (
                     <li key={i}>{h}</li>
                   ))}

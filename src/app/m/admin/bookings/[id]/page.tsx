@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Phone } from 'lucide-react';
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
 import { MobileStatusBadge } from '@/components/admin/mobile/MobileStatusBadge';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
 import {
   JOURNEY_STEPS,
   getStepIndex,
@@ -60,7 +61,7 @@ function ProgressBar({ status }: { status: string }) {
             />
             <div
               className={`text-[10px] mt-1.5 text-center ${
-                done ? 'text-slate-700 font-medium' : 'text-slate-400'
+                done ? 'text-admin-text-2 font-medium' : 'text-admin-muted-2'
               }`}
             >
               {step.label}
@@ -107,18 +108,18 @@ export default async function MobileBookingDetail({
         rightSlot={<MobileStatusBadge status={(booking as any).status} size="md" />}
       />
       <main className="px-4 py-4 space-y-4 pb-24">
-        <section className="bg-white border border-slate-200 rounded-2xl px-4 py-4">
+        <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-4">
           <ProgressBar status={(booking as any).status} />
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
-          <h3 className="text-xs font-semibold text-slate-500">고객</h3>
+        <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
+          <h3 className="text-xs font-semibold text-admin-muted">고객</h3>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-slate-900">
+              <div className="text-sm font-semibold text-admin-text">
                 {customer?.name ?? '예약자 미지정'}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
+              <div className="text-xs text-admin-muted mt-0.5">
                 성인 {(booking as any).adult_count ?? 0}명 · 아동{' '}
                 {(booking as any).child_count ?? 0}명
               </div>
@@ -126,7 +127,7 @@ export default async function MobileBookingDetail({
             {customer?.phone && (
               <a
                 href={`tel:${customer.phone.replace(/-/g, '')}`}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-admin-md bg-slate-900 text-white text-xs font-medium active:scale-95"
               >
                 <Phone size={14} />
                 전화
@@ -135,52 +136,52 @@ export default async function MobileBookingDetail({
           </div>
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
-          <h3 className="text-xs font-semibold text-slate-500">일정</h3>
+        <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
+          <h3 className="text-xs font-semibold text-admin-muted">일정</h3>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">출발일</span>
-            <span className="font-semibold text-slate-900">
+            <span className="text-admin-muted">출발일</span>
+            <span className="font-semibold text-admin-text">
               {fmtDate((booking as any).departure_date ?? undefined) || '미정'}
             </span>
           </div>
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
-          <h3 className="text-xs font-semibold text-slate-500">금액</h3>
+        <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
+          <h3 className="text-xs font-semibold text-admin-muted">금액</h3>
           <dl className="text-sm divide-y divide-slate-100">
             <div className="flex justify-between py-1.5">
-              <dt className="text-slate-600">판매가</dt>
+              <dt className="text-admin-muted">판매가</dt>
               <dd className="font-semibold tabular-nums">
                 {fmtK((booking as any).total_price ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-slate-600">원가</dt>
-              <dd className="tabular-nums text-slate-500">
+              <dt className="text-admin-muted">원가</dt>
+              <dd className="tabular-nums text-admin-muted">
                 {fmtK((booking as any).total_cost ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-slate-600">입금액</dt>
+              <dt className="text-admin-muted">입금액</dt>
               <dd className="tabular-nums text-emerald-600 font-medium">
                 {fmtK((booking as any).paid_amount ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-slate-600">미수금</dt>
+              <dt className="text-admin-muted">미수금</dt>
               <dd
                 className={`tabular-nums font-semibold ${
-                  balance > 0 ? 'text-rose-600' : 'text-slate-500'
+                  balance > 0 ? 'text-rose-600' : 'text-admin-muted'
                 }`}
               >
                 {fmtK(balance)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-slate-600">마진</dt>
+              <dt className="text-admin-muted">마진</dt>
               <dd
                 className={`tabular-nums font-semibold ${
-                  margin >= 0 ? 'text-slate-900' : 'text-rose-600'
+                  margin >= 0 ? 'text-admin-text' : 'text-rose-600'
                 }`}
               >
                 {fmtK(margin)}
@@ -191,35 +192,28 @@ export default async function MobileBookingDetail({
 
         <BookingConciergeAdminPanel bookingId={params.id} />
 
-        <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
+        <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-slate-500">최근 이벤트</h3>
+            <h3 className="text-xs font-semibold text-admin-muted">최근 이벤트</h3>
             <Link
               href={`/m/admin/timeline/${params.id}`}
-              className="text-[11px] text-slate-500 underline underline-offset-2"
+              className="text-[11px] text-admin-muted underline underline-offset-2"
             >
               전체 보기
             </Link>
           </div>
           {logs.length === 0 ? (
-            <div className="text-xs text-slate-400 py-2">기록 없음</div>
+            <div className="text-xs text-admin-muted-2 py-2">기록 없음</div>
           ) : (
             <ul className="space-y-2">
               {logs.map((log: any) => (
                 <li
                   key={log.id as string}
-                  className="text-xs border-l-2 border-slate-200 pl-3 py-0.5"
+                  className="text-xs border-l-2 border-admin-border-mid pl-3 py-0.5"
                 >
-                  <div className="font-medium text-slate-700">{log.title as string}</div>
-                  <div className="text-slate-400 mt-0.5">
-                    {log.created_at
-                      ? new Date(log.created_at as string).toLocaleString('ko-KR', {
-                          month: 'numeric',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : ''}
+                  <div className="font-medium text-admin-text-2">{log.title as string}</div>
+                  <div className="text-admin-muted-2 mt-0.5">
+                    {log.created_at ? fmtMonthDayTime(log.created_at as string) : ''}
                   </div>
                 </li>
               ))}
@@ -228,15 +222,15 @@ export default async function MobileBookingDetail({
         </section>
 
         {((booking as any).memo || (booking as any).special_requests) && (
-          <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-2">
-            <h3 className="text-xs font-semibold text-slate-500">메모</h3>
+          <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
+            <h3 className="text-xs font-semibold text-admin-muted">메모</h3>
             {(booking as any).memo && (
-              <p className="text-xs text-slate-700 whitespace-pre-wrap">
+              <p className="text-xs text-admin-text-2 whitespace-pre-wrap">
                 {(booking as any).memo}
               </p>
             )}
             {(booking as any).special_requests && (
-              <p className="text-xs text-slate-500 whitespace-pre-wrap">
+              <p className="text-xs text-admin-muted whitespace-pre-wrap">
                 요청: {(booking as any).special_requests}
               </p>
             )}

@@ -29,28 +29,28 @@ export function MobileCard({
 }: MobileCardProps) {
   const body = (
     <div
-      className={`bg-white border border-slate-200 rounded-2xl px-4 py-3 active:bg-slate-50 transition-colors ${className}`}
+      className={`bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 active:bg-admin-bg transition-colors ${className}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-0.5">
             {badge}
-            <div className="text-sm font-semibold text-slate-900 truncate">
+            <div className="text-sm font-semibold text-admin-text truncate">
               {title}
             </div>
           </div>
           {subtitle && (
-            <div className="text-xs text-slate-500 truncate">{subtitle}</div>
+            <div className="text-xs text-admin-muted truncate">{subtitle}</div>
           )}
         </div>
         {rightValue != null && (
-          <div className="shrink-0 text-right text-sm font-semibold text-slate-900 tabular-nums">
+          <div className="shrink-0 text-right text-sm font-semibold text-admin-text tabular-nums">
             {rightValue}
           </div>
         )}
       </div>
       {meta && (
-        <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
+        <div className="mt-2 pt-2 border-t border-admin-border flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-admin-muted">
           {meta}
         </div>
       )}

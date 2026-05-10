@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map(t => (
           <div
             key={t.id}
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-body font-medium shadow-modal max-w-xs animate-in slide-in-from-bottom-2 fade-in duration-200 pointer-events-auto ${STYLES[t.type]}`}
+            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-body font-medium shadow-modal max-w-xs animate-in slide-in-from-bottom-2 fade-in duration-200 pointer-events-auto [.admin-scope_&]:rounded-admin-md [.admin-scope_&]:text-admin-base [.admin-scope_&]:shadow-admin-lg ${STYLES[t.type]}`}
           >
             <span className="text-sm font-bold w-4 text-center shrink-0">{ICONS[t.type]}</span>
             <span>{t.message}</span>

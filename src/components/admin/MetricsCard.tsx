@@ -21,7 +21,7 @@ function trendColor(trend?: Trend, delta?: number): string {
   const dir = getTrendDir(trend, delta);
   if (dir === 'up') return 'text-emerald-600';
   if (dir === 'down') return 'text-red-500';
-  return 'text-slate-400';
+  return 'text-admin-muted-2';
 }
 
 function trendArrow(trend?: Trend, delta?: number): string {
@@ -43,10 +43,10 @@ export default function MetricsCard({
 }: MetricsCardProps) {
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-4 animate-pulse">
+      <div className="bg-white rounded-admin-md border border-admin-border-mid p-4 animate-pulse">
         <div className="h-3 w-24 bg-slate-200 rounded mb-3" />
         <div className="h-7 w-20 bg-slate-200 rounded mb-2" />
-        <div className="h-3 w-16 bg-slate-100 rounded" />
+        <div className="h-3 w-16 bg-admin-surface-2 rounded" />
       </div>
     );
   }
@@ -55,13 +55,13 @@ export default function MetricsCard({
   const arrow = trendArrow(trend, delta);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-1">
-      <span className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</span>
+    <div className="bg-white rounded-admin-md border border-admin-border-mid p-4 flex flex-col gap-1">
+      <span className="text-xs text-admin-muted font-medium uppercase tracking-wide">{label}</span>
       <div className="flex items-baseline gap-1">
-        <span className="text-2xl font-bold text-slate-800">
+        <span className="text-2xl font-bold text-admin-text-2">
           {typeof value === 'number' ? value.toLocaleString('ko-KR') : value}
         </span>
-        {unit && <span className="text-sm text-slate-500">{unit}</span>}
+        {unit && <span className="text-sm text-admin-muted">{unit}</span>}
       </div>
       {(delta !== undefined || sublabel) && (
         <div className="flex items-center gap-1.5 text-xs">
@@ -70,8 +70,8 @@ export default function MetricsCard({
               {arrow} {Math.abs(delta)}%
             </span>
           )}
-          {deltaLabel && <span className="text-slate-400">{deltaLabel}</span>}
-          {sublabel && !deltaLabel && <span className="text-slate-400">{sublabel}</span>}
+          {deltaLabel && <span className="text-admin-muted-2">{deltaLabel}</span>}
+          {sublabel && !deltaLabel && <span className="text-admin-muted-2">{sublabel}</span>}
         </div>
       )}
     </div>

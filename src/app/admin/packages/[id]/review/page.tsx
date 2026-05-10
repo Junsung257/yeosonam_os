@@ -46,13 +46,13 @@ const SEVERITY_BG: Record<string, string> = {
   critical: 'bg-red-50 border-red-300',
   high: 'bg-amber-50 border-amber-300',
   medium: 'bg-blue-50 border-blue-300',
-  low: 'bg-slate-50 border-slate-200',
+  low: 'bg-admin-bg border-admin-border-mid',
 };
 const SEVERITY_BADGE: Record<string, string> = {
   critical: 'bg-red-100 text-red-700 border-red-200',
   high: 'bg-amber-100 text-amber-700 border-amber-200',
   medium: 'bg-blue-100 text-blue-700 border-blue-200',
-  low: 'bg-slate-100 text-slate-600 border-slate-200',
+  low: 'bg-admin-surface-2 text-admin-muted border-admin-border-mid',
 };
 
 function getNestedValue(obj: unknown, path: string): unknown {
@@ -171,20 +171,20 @@ export default function PackageReviewPage() {
 
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
-      <div className="h-6 bg-slate-100 rounded animate-pulse w-48" />
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+      <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${90 - i * 5}%` }} />
+          <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse" style={{ width: `${90 - i * 5}%` }} />
         ))}
       </div>
     </div>
   );
-  if (!pkg) return <div className="p-6 text-slate-400">패키지를 찾을 수 없습니다.</div>;
+  if (!pkg) return <div className="p-6 text-admin-muted-2">패키지를 찾을 수 없습니다.</div>;
 
   const fc = pkg.field_confidences;
   const suspiciousEntries = fc?.fields ? Object.entries(fc.fields).sort(([, a], [, b]) => a.score - b.score) : [];
   const overallConf = fc?.overall_confidence ?? null;
-  const overallColor = overallConf == null ? 'text-slate-500'
+  const overallColor = overallConf == null ? 'text-admin-muted'
     : overallConf >= 0.85 ? 'text-emerald-600'
     : overallConf >= 0.7 ? 'text-amber-600'
     : 'text-red-600';
@@ -193,21 +193,21 @@ export default function PackageReviewPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">🔍 Per-field 검토</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-admin-text-2">🔍 Per-field 검토</h1>
+          <p className="text-sm text-admin-muted mt-1">
             {pkg.short_code} · {pkg.title}
           </p>
         </div>
         <div className="flex gap-2">
           <a href={`/admin/packages?id=${pkg.id}`}
-            className="px-3 py-1.5 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">← 어드민</a>
+            className="px-3 py-1.5 bg-admin-surface-2 text-admin-text-2 text-sm rounded-lg hover:bg-slate-200">← 어드민</a>
           <a href={`/packages/${pkg.id}`} target="_blank" rel="noopener"
             className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">고객 페이지 ↗</a>
         </div>
       </div>
 
       {/* 종합 정보 */}
-      <div className={`rounded-xl border p-4 mb-4 ${overallConf == null ? 'bg-slate-50 border-slate-200' : overallConf < 0.7 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+      <div className={`rounded-admin-md border p-4 mb-4 ${overallConf == null ? 'bg-admin-bg border-admin-border-mid' : overallConf < 0.7 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
         {fc ? (
           <>
             <div className="flex items-center gap-3">
@@ -215,50 +215,50 @@ export default function PackageReviewPage() {
                 {(overallConf! * 100).toFixed(0)}%
               </span>
               <div className="flex-1">
-                <div className="text-sm font-bold text-slate-700">
+                <div className="text-sm font-bold text-admin-text-2">
                   종합 신뢰도 — {fc.recommendation === 'pass' ? '✅ 양호' : fc.recommendation === 'review' ? '⚠️ 검토 필요' : '🚨 차단 권장'}
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-xs text-admin-muted mt-0.5">
                   {fc.validator} · {new Date(fc.validated_at).toLocaleString('ko-KR')}
                 </div>
               </div>
             </div>
-            {fc.reasoning && <p className="text-sm text-slate-600 mt-2 italic">"{fc.reasoning}"</p>}
+            {fc.reasoning && <p className="text-sm text-admin-muted mt-2 italic">"{fc.reasoning}"</p>}
           </>
         ) : (
-          <p className="text-sm text-slate-500">field_confidences 미저장 — Pre-INSERT gate 가 호출되지 않은 패키지 (구버전 등록 또는 SKIP_PRE_INSERT_GATE=1)</p>
+          <p className="text-sm text-admin-muted">field_confidences 미저장 — Pre-INSERT gate 가 호출되지 않은 패키지 (구버전 등록 또는 SKIP_PRE_INSERT_GATE=1)</p>
         )}
       </div>
 
       {/* 의심 필드 목록 */}
       {suspiciousEntries.length === 0 ? (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-admin-md p-6 text-center">
           <p className="text-emerald-700 font-bold">🎉 의심 필드 없음</p>
           <p className="text-xs text-emerald-600 mt-1">모든 필드가 cross-validator 통과. 추가 검토 불필요.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          <h2 className="text-sm font-bold text-slate-700">⚠️ 의심 필드 ({suspiciousEntries.length}건) — 점수 낮은 순</h2>
+          <h2 className="text-sm font-bold text-admin-text-2">⚠️ 의심 필드 ({suspiciousEntries.length}건) — 점수 낮은 순</h2>
           {suspiciousEntries.map(([fieldPath, info]) => {
             const currentValue = getNestedValue(pkg, fieldPath);
             const isEditing = editingField === fieldPath;
             return (
-              <div key={fieldPath} className={`rounded-xl border-2 p-4 ${SEVERITY_BG[info.severity]}`}>
+              <div key={fieldPath} className={`rounded-admin-md border-2 p-4 ${SEVERITY_BG[info.severity]}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`px-2 py-0.5 text-[10px] font-mono rounded border ${SEVERITY_BADGE[info.severity]}`}>
                         {info.severity.toUpperCase()}
                       </span>
-                      <span className="text-xs font-mono font-bold text-slate-700">{fieldPath}</span>
-                      <span className="text-xs text-slate-500">신뢰도 <span className="font-bold text-red-600">{(info.score * 100).toFixed(0)}%</span></span>
+                      <span className="text-xs font-mono font-bold text-admin-text-2">{fieldPath}</span>
+                      <span className="text-xs text-admin-muted">신뢰도 <span className="font-bold text-red-600">{(info.score * 100).toFixed(0)}%</span></span>
                     </div>
-                    <p className="text-xs text-slate-700 mt-1.5">💡 <span className="italic">{info.reason}</span></p>
+                    <p className="text-xs text-admin-text-2 mt-1.5">💡 <span className="italic">{info.reason}</span></p>
 
                     <div className="mt-3 grid gap-2">
-                      <div className="bg-white rounded border border-slate-200 p-2.5">
-                        <div className="text-[10px] text-slate-500 font-bold mb-1">현재 값 (AI 추출)</div>
-                        <pre className="text-xs text-slate-700 whitespace-pre-wrap break-words font-mono">
+                      <div className="bg-white rounded border border-admin-border-mid p-2.5">
+                        <div className="text-[10px] text-admin-muted font-bold mb-1">현재 값 (AI 추출)</div>
+                        <pre className="text-xs text-admin-text-2 whitespace-pre-wrap break-words font-mono">
                           {typeof currentValue === 'string' ? currentValue : JSON.stringify(currentValue, null, 2)}
                         </pre>
                       </div>
@@ -273,7 +273,7 @@ export default function PackageReviewPage() {
                 </div>
 
                 {isEditing && (
-                  <div className="mt-3 pt-3 border-t border-slate-200">
+                  <div className="mt-3 pt-3 border-t border-admin-border-mid">
                     <div className="text-[10px] text-emerald-600 font-bold mb-1.5">✅ 정답 값 (사장님 정정)</div>
                     <textarea
                       value={editValue}
@@ -288,8 +288,8 @@ export default function PackageReviewPage() {
                         {saving ? '저장 중...' : '저장 + Reflexion 적립'}
                       </button>
                       <button onClick={() => setEditingField(null)}
-                        className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200">취소</button>
-                      <span className="text-[10px] text-slate-500 ml-auto">
+                        className="px-3 py-1.5 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">취소</button>
+                      <span className="text-[10px] text-admin-muted ml-auto">
                         저장 시 PATCH /api/packages → extractions_corrections 자동 적립 → 다음 등록부터 자동 회피
                       </span>
                     </div>
@@ -302,9 +302,9 @@ export default function PackageReviewPage() {
       )}
 
       {/* 원문 발췌 (참고용) */}
-      <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
-        <h3 className="text-sm font-bold text-slate-700 mb-2">📄 원문 (raw_text) — 참고용</h3>
-        <pre className="text-[11px] text-slate-600 whitespace-pre-wrap font-mono max-h-96 overflow-auto">
+      <div className="mt-6 bg-admin-bg border border-admin-border-mid rounded-admin-md p-4">
+        <h3 className="text-sm font-bold text-admin-text-2 mb-2">📄 원문 (raw_text) — 참고용</h3>
+        <pre className="text-[11px] text-admin-muted whitespace-pre-wrap font-mono max-h-96 overflow-auto">
           {pkg.raw_text}
         </pre>
       </div>

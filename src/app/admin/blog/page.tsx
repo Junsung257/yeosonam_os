@@ -2,6 +2,9 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import BlogFilterTabs from './BlogFilterTabs';
 import BlogDataFetcher from './BlogDataFetcher';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Plus, Settings, Calendar, Tags } from 'lucide-react';
 
 // Windows dev: chunk race 방지 / Vercel(Linux): 60초 캐시
 export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
@@ -9,15 +12,15 @@ export const revalidate = 60;
 
 function BlogTableSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden animate-pulse">
+    <div className="admin-card overflow-hidden animate-pulse">
       {[...Array(8)].map((_, i) => (
-        <div key={i} className="border-b border-slate-100 px-4 py-3 flex gap-4 items-center">
-          <div className="h-4 bg-slate-100 rounded flex-1" />
-          <div className="h-4 bg-slate-100 rounded w-20" />
-          <div className="h-4 bg-slate-100 rounded w-10" />
-          <div className="h-4 bg-slate-100 rounded w-12" />
-          <div className="h-4 bg-slate-100 rounded w-20" />
-          <div className="h-4 bg-slate-100 rounded w-8" />
+        <div key={i} className="border-b border-admin-border px-4 py-3 flex gap-4 items-center last:border-0">
+          <div className="h-4 bg-admin-surface-2 rounded flex-1" />
+          <div className="h-4 bg-admin-surface-2 rounded w-20" />
+          <div className="h-4 bg-admin-surface-2 rounded w-10" />
+          <div className="h-4 bg-admin-surface-2 rounded w-12" />
+          <div className="h-4 bg-admin-surface-2 rounded w-20" />
+          <div className="h-4 bg-admin-surface-2 rounded w-8" />
         </div>
       ))}
     </div>
@@ -34,39 +37,38 @@ export default function BlogAdminPage({
 
   return (
     <div className="space-y-4">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[18px] font-bold text-slate-800">블로그 관리</h1>
-          <p className="text-admin-xs text-slate-400 mt-0.5">SEO 최적화 블로그 글 작성 · 편집 · 발행</p>
-        </div>
-        <div className="flex gap-2">
-          <Link
-            href="/admin/blog/system"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition"
-          >
-            시스템·크론
-          </Link>
-          <Link
-            href="/admin/blog/queue"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition"
-          >
-            자동 발행 큐
-          </Link>
-          <Link
-            href="/admin/blog/categories"
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition"
-          >
-            카테고리 관리
-          </Link>
-          <Link
-            href="/admin/blog/write"
-            className="px-4 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded-lg hover:bg-blue-700 transition"
-          >
-            + 새 글 쓰기
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="블로그 관리"
+        subtitle="SEO 최적화 블로그 글 작성 · 편집 · 발행"
+        actions={
+          <>
+            <Link href="/admin/blog/system">
+              <Button variant="secondary" size="sm">
+                <Settings size={14} />
+                시스템·크론
+              </Button>
+            </Link>
+            <Link href="/admin/blog/queue">
+              <Button variant="secondary" size="sm">
+                <Calendar size={14} />
+                자동 발행 큐
+              </Button>
+            </Link>
+            <Link href="/admin/blog/categories">
+              <Button variant="secondary" size="sm">
+                <Tags size={14} />
+                카테고리 관리
+              </Button>
+            </Link>
+            <Link href="/admin/blog/write">
+              <Button variant="primary" size="sm">
+                <Plus size={14} />
+                새 글 쓰기
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* 필터 탭 — 클라이언트 (URL 변경만 담당) */}
       <BlogFilterTabs currentStatus={status} />

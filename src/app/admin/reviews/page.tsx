@@ -6,7 +6,10 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { getSecret } from '@/lib/secret-registry';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Star, CheckCircle2, TrendingUp, RefreshCw, Sparkles } from 'lucide-react';
+import { fmtMonthDay } from '@/lib/admin-utils';
 
 interface ReviewRow {
   id: string;
@@ -32,7 +35,7 @@ function StarRating({ rating }: { rating: number }) {
 function SentimentBadge({ score }: { score: number | null }) {
   if (score === null) {
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-400">
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-admin-surface-2 text-admin-muted-2">
         분석 대기
       </span>
     );
@@ -49,7 +52,7 @@ function SentimentBadge({ score }: { score: number | null }) {
 }
 
 function TagChips({ tags }: { tags: Record<string, number> | null }) {
-  if (!tags) return <span className="text-slate-300 text-[11px]">—</span>;
+  if (!tags) return <span className="text-admin-muted-2 text-[11px]">—</span>;
   return (
     <div className="flex flex-wrap gap-1">
       {Object.entries(tags).map(([key, val]) => (
@@ -92,7 +95,8 @@ export default function ReviewsAdminPage() {
   const triggerSentimentCron = async () => {
     setTriggering(true);
     try {
-      const secret = getSecret('NEXT_PUBLIC_CRON_SECRET') ?? '';
+      // client bundle 에서 정적 참조여야 inline 됨 (getSecret 동적 인덱싱은 client에서 null)
+      const secret = process.env.NEXT_PUBLIC_CRON_SECRET ?? '';
       const res = await fetch(`/api/cron/review-sentiment?secret=${secret}`);
       const json = await res.json() as { ok?: boolean; analyzed?: number; failed?: number; error?: string };
       if (!json.ok) {
@@ -119,75 +123,70 @@ export default function ReviewsAdminPage() {
       : null;
 
   return (
-    <div className="space-y-4">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[18px] font-bold text-slate-800">리뷰 감정 분석</h1>
-          <p className="text-admin-xs text-slate-400 mt-0.5">
-            고객 리뷰 목록 · AI 감정 점수 분석
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => void fetchReviews()}
-            disabled={loading}
-            className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-admin-xs rounded-lg hover:bg-slate-50 transition disabled:opacity-50"
-          >
-            새로고침
-          </button>
-          <button
-            onClick={() => void triggerSentimentCron()}
-            disabled={triggering || pendingCount === 0}
-            className="px-3 py-2 bg-blue-600 text-white text-admin-xs rounded-lg hover:bg-blue-700 transition disabled:opacity-40"
-          >
-            {triggering ? '분석 중…' : `감정 분석 실행 (${pendingCount}건 대기)`}
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="리뷰 감정 분석"
+        subtitle="고객 리뷰 목록 · AI 감정 점수 분석"
+        actions={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => void fetchReviews()} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              새로고침
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void triggerSentimentCron()}
+              disabled={triggering || pendingCount === 0}
+            >
+              <Sparkles size={14} />
+              {triggering ? '분석 중…' : `감정 분석 실행 (${pendingCount}건 대기)`}
+            </Button>
+          </>
+        }
+      />
 
       {/* KPI 카드 */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-          <p className="text-[11px] text-slate-400 uppercase tracking-wide">전체 리뷰</p>
-          <p className="text-[24px] font-bold text-slate-800 mt-1">{reviews.length}</p>
-        </div>
-        <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-          <p className="text-[11px] text-slate-400 uppercase tracking-wide">분석 완료</p>
-          <p className="text-[24px] font-bold text-emerald-600 mt-1">{analyzedCount}</p>
-        </div>
-        <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-          <p className="text-[11px] text-slate-400 uppercase tracking-wide">평균 감정 점수</p>
-          <p className="text-[24px] font-bold text-blue-600 mt-1">
-            {avgScore !== null ? `${avgScore}점` : '—'}
-          </p>
-        </div>
+        <KpiCard label="전체 리뷰" value={reviews.length.toLocaleString()} icon={Star} />
+        <KpiCard
+          label="분석 완료"
+          value={analyzedCount.toLocaleString()}
+          icon={CheckCircle2}
+          tone="positive"
+        />
+        <KpiCard
+          label="평균 감정 점수"
+          value={avgScore !== null ? `${avgScore}` : '—'}
+          unit="점"
+          icon={TrendingUp}
+        />
       </div>
 
       {/* 오류 */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-admin-xs text-red-600">
+        <div className="bg-danger-light border border-danger/20 rounded-admin-sm p-3 text-admin-sm text-danger">
           {error}
         </div>
       )}
 
       {/* 테이블 */}
-      <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-white border border-admin-border rounded-admin-md shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         {loading ? (
           <table className="w-full text-admin-xs">
             <thead>
-              <tr className="border-b-2 border-slate-100">
+              <tr className="border-b-2 border-admin-border">
                 {['작성일', '별점', '내용 (일부)', '감정 점수', '카테고리 점수'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">{h}</th>
+                  <th key={h} className="text-left px-4 py-3 text-[11px] font-semibold text-admin-muted uppercase tracking-wider bg-admin-bg/80">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i} className="border-b border-slate-100">
+                <tr key={i} className="border-b border-admin-border">
                   {[70, 80, 200, 50, 130].map((w, j) => (
                     <td key={j} className="px-4 py-3">
-                      <div className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
+                      <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
                     </td>
                   ))}
                 </tr>
@@ -196,31 +195,31 @@ export default function ReviewsAdminPage() {
           </table>
         ) : reviews.length === 0 ? (
           <div className="py-14 flex flex-col items-center gap-3">
-            <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
-            <p className="text-admin-sm font-medium text-slate-500">리뷰가 없습니다.</p>
+            <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
+            <p className="text-admin-sm font-medium text-admin-muted">리뷰가 없습니다.</p>
           </div>
         ) : (
           <table className="w-full text-admin-xs">
             <thead>
-              <tr className="border-b-2 border-slate-100">
-                <th className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80 w-[90px]">작성일</th>
-                <th className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80 w-[90px]">별점</th>
-                <th className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">내용 (일부)</th>
-                <th className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80 w-[80px]">감정 점수</th>
-                <th className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80 w-[220px]">카테고리 점수</th>
+              <tr className="border-b-2 border-admin-border">
+                <th className="text-left px-4 py-3 text-[11px] font-semibold text-admin-muted uppercase tracking-wider bg-admin-bg/80 w-[90px]">작성일</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold text-admin-muted uppercase tracking-wider bg-admin-bg/80 w-[90px]">별점</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold text-admin-muted uppercase tracking-wider bg-admin-bg/80">내용 (일부)</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold text-admin-muted uppercase tracking-wider bg-admin-bg/80 w-[80px]">감정 점수</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold text-admin-muted uppercase tracking-wider bg-admin-bg/80 w-[220px]">카테고리 점수</th>
               </tr>
             </thead>
             <tbody>
               {reviews.map(r => (
-                <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                  <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}
+                <tr key={r.id} className="border-b border-slate-50 hover:bg-admin-bg transition">
+                  <td className="px-4 py-3 text-admin-muted-2 whitespace-nowrap">
+                    {fmtMonthDay(r.created_at)}
                   </td>
                   <td className="px-4 py-3">
                     <StarRating rating={r.rating} />
                   </td>
-                  <td className="px-4 py-3 text-slate-600 max-w-[300px] truncate">
-                    {r.content ?? <span className="text-slate-300 italic">내용 없음</span>}
+                  <td className="px-4 py-3 text-admin-muted max-w-[300px] truncate">
+                    {r.content ?? <span className="text-admin-muted-2 italic">내용 없음</span>}
                   </td>
                   <td className="px-4 py-3">
                     <SentimentBadge score={r.sentiment_score} />

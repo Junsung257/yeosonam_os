@@ -169,7 +169,7 @@ function TwoTrackKPI({
         <p className="text-[28px] font-bold text-success tabular-nums leading-none">
           {thisRecognized ? `₩${fmt만(thisRecognized.gmv)}` : '—'}
         </p>
-        <p className="text-[11px] text-slate-500 mt-1">
+        <p className="text-[11px] text-admin-muted mt-1">
           {thisRecognized?.recognized_bookings ?? 0}건 출발 완료 · 마진 ₩{thisRecognized ? fmt만(thisRecognized.margin) : 0}
         </p>
         <MiniSpark data={recognizedSpark} color="#059669" />
@@ -186,15 +186,15 @@ function TwoTrackKPI({
           )}
         </div>
         <p className="text-[28px] font-bold text-text-primary tabular-nums leading-none">
-          {thisBookings?.live_bookings ?? 0}<span className="text-[18px] text-slate-400 ml-1">건</span>
+          {thisBookings?.live_bookings ?? 0}<span className="text-[18px] text-admin-muted-2 ml-1">건</span>
         </p>
-        <p className="text-[11px] text-slate-500 mt-1">
+        <p className="text-[11px] text-admin-muted mt-1">
           ₩{thisBookings ? fmt만(thisBookings.gmv_live) : 0}
           {thisBookings && thisBookings.cancellation_rate > 0 && (
             <span className="text-red-500 ml-2">취소율 {Math.round(thisBookings.cancellation_rate * 100)}%</span>
           )}
           {thisBookings?.avg_lead_time != null && (
-            <span className="text-slate-400 ml-2">리드 D-{thisBookings.avg_lead_time}</span>
+            <span className="text-admin-muted-2 ml-2">리드 D-{thisBookings.avg_lead_time}</span>
           )}
         </p>
         <MiniSpark data={bookingsSpark} color="#3b82f6" />
@@ -211,7 +211,7 @@ function CashflowChart({ chartData, periodLabel }: { chartData: MonthlyChartData
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">캐시플로우 ({periodLabel})</h2>
-        <span className="text-[10px] text-slate-400">출발일 기준 / 직접·제휴 합산</span>
+        <span className="text-[10px] text-admin-muted-2">출발일 기준 / 직접·제휴 합산</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -262,7 +262,7 @@ function BookingPaceWidget({
       <Link href="/admin/bookings?mode=upcoming" className="md:col-span-2 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-admin-base font-semibold text-text-primary">Booking Pace · 향후 출발</h2>
-          <span className="text-[11px] text-slate-500 tabular-nums">
+          <span className="text-[11px] text-admin-muted tabular-nums">
             {totalBookings}건 · ₩{(totalGmv / 10000).toFixed(0)}만
           </span>
         </div>
@@ -280,8 +280,8 @@ function BookingPaceWidget({
                     style={{ height: `${heightPct}%` }}
                   />
                 </div>
-                <p className="text-[11px] font-bold text-slate-700 tabular-nums">{p.bookings}</p>
-                <p className="text-[10px] text-slate-400">{bucketLabels[p.bucket]}</p>
+                <p className="text-[11px] font-bold text-admin-text-2 tabular-nums">{p.bookings}</p>
+                <p className="text-[10px] text-admin-muted-2">{bucketLabels[p.bucket]}</p>
               </div>
             );
           })}
@@ -292,17 +292,17 @@ function BookingPaceWidget({
       <Link href="/admin/bookings?lifecycle=cancelled" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">취소율 (최근 90일)</h2>
-          <span className="text-[10px] text-slate-400">Booking.com 표준</span>
+          <span className="text-[10px] text-admin-muted-2">Booking.com 표준</span>
         </div>
         <p className={`text-[28px] font-bold tabular-nums leading-none ${cancelColor}`}>
           {cancelPct}<span className="text-admin-lg ml-0.5">%</span>
         </p>
-        <p className="text-[11px] text-slate-500 mt-1">
+        <p className="text-[11px] text-admin-muted mt-1">
           {cancellation90d
             ? `${cancellation90d.cancelled_in_window} / ${cancellation90d.total_in_window}건`
             : '데이터 없음'}
         </p>
-        <p className="text-[10px] text-slate-400 mt-1">
+        <p className="text-[10px] text-admin-muted-2 mt-1">
           ≥10% 위험 · 5~10% 주의 · &lt;5% 양호
         </p>
       </Link>
@@ -358,7 +358,7 @@ function OperationsKPI({
       <Link href="/admin/land-settlements" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">랜드사 미지급</span>
-          <span className="text-[10px] text-slate-400">payable</span>
+          <span className="text-[10px] text-admin-muted-2">payable</span>
         </div>
         <p className="text-[24px] font-bold text-amber-700 tabular-nums leading-none">
           {settlement ? fmt만KRW(payable) : '—'}
@@ -368,7 +368,7 @@ function OperationsKPI({
             <div key={a.bucket} className={`flex-1 px-1.5 py-1 rounded text-center ${
               a.bucket === '90d+' && a.amount > 0 ? 'bg-red-50 text-red-700' :
               a.bucket === '60-90d' && a.amount > 0 ? 'bg-amber-50 text-amber-700' :
-              'bg-slate-50 text-slate-500'
+              'bg-admin-bg text-admin-muted'
             }`}>
               <p className="font-medium">{a.bucket}</p>
               <p className="tabular-nums">{a.amount > 0 ? fmt만KRW(a.amount).replace('₩', '') : '—'}</p>
@@ -384,7 +384,7 @@ function OperationsKPI({
       <Link href="/admin/payments?filter=outstanding" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">고객 미입금</span>
-          <span className="text-[10px] text-slate-400">receivable</span>
+          <span className="text-[10px] text-admin-muted-2">receivable</span>
         </div>
         <p className="text-[24px] font-bold text-red-600 tabular-nums leading-none">
           {settlement ? fmt만KRW(receivable) : '—'}
@@ -394,7 +394,7 @@ function OperationsKPI({
             <div key={a.bucket} className={`flex-1 px-1.5 py-1 rounded text-center ${
               a.bucket === '90d+' && a.amount > 0 ? 'bg-red-50 text-red-700' :
               a.bucket === '60-90d' && a.amount > 0 ? 'bg-amber-50 text-amber-700' :
-              'bg-slate-50 text-slate-500'
+              'bg-admin-bg text-admin-muted'
             }`}>
               <p className="font-medium">{a.bucket}</p>
               <p className="tabular-nums">{a.amount > 0 ? fmt만KRW(a.amount).replace('₩', '') : '—'}</p>
@@ -410,15 +410,15 @@ function OperationsKPI({
       <Link href="/admin/jarvis" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">AI 비용 (30일)</span>
-          <span className="text-[10px] text-slate-400">자비스 V2 ledger</span>
+          <span className="text-[10px] text-admin-muted-2">자비스 V2 ledger</span>
         </div>
         <p className="text-[24px] font-bold text-purple-700 tabular-nums leading-none">
           {aiUsage ? fmt천원(aiKrw30d) : '—'}
         </p>
-        <p className="text-[11px] text-slate-500 mt-1">
+        <p className="text-[11px] text-admin-muted mt-1">
           7일 {fmt천원(aiKrw7d)} · {aiUsage?.total_calls_30d ?? 0}회
           {aiUsage && (aiUsage.by_model?.length ?? 0) > 0 && (
-            <span className="text-slate-400 ml-2">top: {aiUsage.by_model[0].model.replace(/^claude-/, '').replace(/^gpt-/, '').slice(0, 18)}</span>
+            <span className="text-admin-muted-2 ml-2">top: {aiUsage.by_model[0].model.replace(/^claude-/, '').replace(/^gpt-/, '').slice(0, 18)}</span>
           )}
           {dsHitRate !== null && dsHitRate > 0 && (
             <span className="text-blue-400 ml-2">캐시 {dsHitRate}%</span>
@@ -440,7 +440,7 @@ function OperationsKPI({
             </div>
             <div className="flex gap-2 mt-1">
               {aiUsage.by_provider.map(p => (
-                <span key={p.provider} className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                <span key={p.provider} className="text-[10px] text-admin-muted-2 flex items-center gap-0.5">
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: PROVIDER_LABEL[p.provider]?.color ?? '#94a3b8' }} />
                   {PROVIDER_LABEL[p.provider]?.name ?? p.provider} {Math.round((p.cost_usd / totalCost) * 100)}%
                 </span>
@@ -451,41 +451,41 @@ function OperationsKPI({
 
         {/* 잔여 크레딧 */}
         {aiCredits && (
-          <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+          <div className="mt-2 pt-2 border-t border-admin-border space-y-1">
             {/* DeepSeek */}
             <div className="flex items-center justify-between text-[10px]">
-              <span className="flex items-center gap-1 text-slate-500">
+              <span className="flex items-center gap-1 text-admin-muted">
                 <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#3b82f6' }} />
                 DeepSeek 잔액
               </span>
               {aiCredits.credits.deepseek.balance_available
-                ? <span className="font-medium text-blue-700 tabular-nums">¥{aiCredits.credits.deepseek.balance_raw?.toFixed(2)} <span className="text-slate-400">(≈${aiCredits.credits.deepseek.balance_usd?.toFixed(2)})</span></span>
-                : <span className="text-slate-400">{aiCredits.credits.deepseek.key_configured ? '조회 실패' : '키 미설정'}</span>
+                ? <span className="font-medium text-blue-700 tabular-nums">¥{aiCredits.credits.deepseek.balance_raw?.toFixed(2)} <span className="text-admin-muted-2">(≈${aiCredits.credits.deepseek.balance_usd?.toFixed(2)})</span></span>
+                : <span className="text-admin-muted-2">{aiCredits.credits.deepseek.key_configured ? '조회 실패' : '키 미설정'}</span>
               }
             </div>
             {/* Gemini */}
             <div className="flex items-center justify-between text-[10px]">
-              <span className="flex items-center gap-1 text-slate-500">
+              <span className="flex items-center gap-1 text-admin-muted">
                 <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#10b981' }} />
                 Gemini 이번달
               </span>
               <span className="font-medium text-emerald-700 tabular-nums">
                 {aiCredits.credits.gemini.month_calls > 0
                   ? `$${aiCredits.credits.gemini.month_cost_usd.toFixed(4)} · ${aiCredits.credits.gemini.month_calls}회`
-                  : <span className="text-slate-400">사용 없음</span>
+                  : <span className="text-admin-muted-2">사용 없음</span>
                 }
               </span>
             </div>
             {/* Claude */}
             <div className="flex items-center justify-between text-[10px]">
-              <span className="flex items-center gap-1 text-slate-500">
+              <span className="flex items-center gap-1 text-admin-muted">
                 <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#f59e0b' }} />
                 Claude 이번달
               </span>
               <span className="font-medium text-amber-700 tabular-nums">
                 {aiCredits.credits.anthropic.month_calls > 0
                   ? `$${aiCredits.credits.anthropic.month_cost_usd.toFixed(4)} · ${aiCredits.credits.anthropic.month_calls}회`
-                  : <span className="text-slate-400">직접 호출 없음</span>
+                  : <span className="text-admin-muted-2">직접 호출 없음</span>
                 }
               </span>
             </div>
@@ -508,27 +508,27 @@ function OperatorTakeRatesWidget({ rows }: { rows: OperatorTakeRate[] }) {
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">랜드사별 GMV · Take Rate</h2>
-        <span className="text-[10px] text-slate-400">최근 6개월 출발 완료 기준</span>
+        <span className="text-[10px] text-admin-muted-2">최근 6개월 출발 완료 기준</span>
       </div>
       <div className="space-y-1.5">
         {rows.map(r => {
           const widthPct = Math.max(2, (r.gmv / maxGmv) * 100);
           const takePct = r.take_rate != null ? Math.round(r.take_rate * 1000) / 10 : null;
-          const takeColor = takePct == null ? 'text-slate-300' : takePct >= 30 ? 'text-emerald-700' : takePct >= 15 ? 'text-blue-700' : 'text-amber-700';
+          const takeColor = takePct == null ? 'text-admin-muted-2' : takePct >= 30 ? 'text-emerald-700' : takePct >= 15 ? 'text-blue-700' : 'text-amber-700';
           return (
             <Link
               key={r.operator_id ?? 'unknown'}
               href={r.operator_id ? `/admin/land-operators?id=${r.operator_id}` : '/admin/land-operators'}
-              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 group hover:bg-slate-50 px-1.5 py-1 rounded transition"
+              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 group hover:bg-admin-bg px-1.5 py-1 rounded transition"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-admin-xs text-slate-700 font-medium truncate w-20 shrink-0">{r.operator_name}</span>
-                <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                <span className="text-admin-xs text-admin-text-2 font-medium truncate w-20 shrink-0">{r.operator_name}</span>
+                <div className="flex-1 h-2.5 bg-admin-surface-2 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-400 group-hover:bg-blue-500 transition-colors" style={{ width: `${widthPct}%` }} />
                 </div>
               </div>
-              <span className="text-[11px] text-slate-500 tabular-nums w-12 text-right">{r.bookings}건</span>
-              <span className="text-[11px] text-slate-700 tabular-nums w-16 text-right">{fmt만KRW(r.gmv)}</span>
+              <span className="text-[11px] text-admin-muted tabular-nums w-12 text-right">{r.bookings}건</span>
+              <span className="text-[11px] text-admin-text-2 tabular-nums w-16 text-right">{fmt만KRW(r.gmv)}</span>
               <span className={`text-[11px] tabular-nums font-semibold w-14 text-right ${takeColor}`}>
                 {takePct != null ? `${takePct}%` : '—'}
               </span>
@@ -536,7 +536,7 @@ function OperatorTakeRatesWidget({ rows }: { rows: OperatorTakeRate[] }) {
           );
         })}
       </div>
-      <p className="text-[9px] text-slate-400 mt-2">Take Rate ≥30% 우수 · 15~30% 표준 · &lt;15% 마진 점검 · — 데이터 결측</p>
+      <p className="text-[9px] text-admin-muted-2 mt-2">Take Rate ≥30% 우수 · 15~30% 표준 · &lt;15% 마진 점검 · — 데이터 결측</p>
     </div>
   );
 }
@@ -547,24 +547,24 @@ function RepeatBookingCard({ stats }: { stats: RepeatBookingStats | null }) {
   if (!stats) return null;
   const repeatPct = Math.round(stats.repeat_rate * 1000) / 10;
   const repeatRevPct = Math.round(stats.repeat_revenue_share * 1000) / 10;
-  const repeatColor = repeatPct >= 20 ? 'text-emerald-700' : repeatPct >= 10 ? 'text-blue-700' : 'text-slate-700';
+  const repeatColor = repeatPct >= 20 ? 'text-emerald-700' : repeatPct >= 10 ? 'text-blue-700' : 'text-admin-text-2';
 
   return (
     <Link href="/admin/customers?sort=mileage" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">재방문 고객</span>
-        <span className="text-[10px] text-slate-400">retention</span>
+        <span className="text-[10px] text-admin-muted-2">retention</span>
       </div>
       <p className={`text-[24px] font-bold tabular-nums leading-none ${repeatColor}`}>
         {repeatPct}<span className="text-admin-lg ml-0.5">%</span>
       </p>
-      <p className="text-[11px] text-slate-500 mt-1">
+      <p className="text-[11px] text-admin-muted mt-1">
         {stats.repeat_customers} / {stats.total_customers}명 · 매출비중 {repeatRevPct}%
       </p>
       <div className="mt-2 grid grid-cols-3 gap-1 text-[10px]">
-        <div className="bg-slate-50 px-1.5 py-1 rounded text-center">
-          <p className="text-slate-400">1회</p>
-          <p className="text-slate-700 font-medium tabular-nums">{stats.one_time}</p>
+        <div className="bg-admin-bg px-1.5 py-1 rounded text-center">
+          <p className="text-admin-muted-2">1회</p>
+          <p className="text-admin-text-2 font-medium tabular-nums">{stats.one_time}</p>
         </div>
         <div className="bg-blue-50 px-1.5 py-1 rounded text-center">
           <p className="text-blue-500">2회</p>
@@ -576,7 +576,7 @@ function RepeatBookingCard({ stats }: { stats: RepeatBookingStats | null }) {
         </div>
       </div>
       {stats.top_customer_ltv > 0 && (
-        <p className="text-[10px] text-slate-400 mt-1.5">Top LTV {fmt만KRW(stats.top_customer_ltv)}</p>
+        <p className="text-[10px] text-admin-muted-2 mt-1.5">Top LTV {fmt만KRW(stats.top_customer_ltv)}</p>
       )}
     </Link>
   );
@@ -608,7 +608,7 @@ function DataQualityMonitor({ report }: { report: DataQualityReport | null }) {
   const sevColor: Record<DataQualityIssue['severity'], string> = {
     critical: 'text-red-600 bg-red-50 border-red-200',
     warning: 'text-amber-700 bg-amber-50 border-amber-200',
-    info: 'text-slate-600 bg-slate-50 border-slate-200',
+    info: 'text-admin-muted bg-admin-bg border-admin-border-mid',
   };
   const sevLabel: Record<DataQualityIssue['severity'], string> = {
     critical: '심각', warning: '주의', info: '참고',
@@ -619,15 +619,15 @@ function DataQualityMonitor({ report }: { report: DataQualityReport | null }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h2 className="text-admin-base font-semibold text-text-primary">데이터 품질 모니터</h2>
-          <span className="text-[10px] text-slate-500">live 예약 {report.total_live}건 기준</span>
+          <span className="text-[10px] text-admin-muted">live 예약 {report.total_live}건 기준</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-500">건강도</span>
+          <span className="text-[11px] text-admin-muted">건강도</span>
           <span className={`text-[20px] font-bold tabular-nums ${scoreColor}`}>{score}</span>
-          <span className="text-[11px] text-slate-400">/ 100</span>
+          <span className="text-[11px] text-admin-muted-2">/ 100</span>
         </div>
       </div>
-      <p className="text-[11px] text-slate-500 mb-2">
+      <p className="text-[11px] text-admin-muted mb-2">
         모든 KPI 신뢰성의 전제. 클릭하면 해당 결측 예약만 필터링.
       </p>
       <div className="space-y-1.5">
@@ -727,7 +727,7 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">실무자 경고판</h2>
         {cards.some(c => c.count > 0) && (
-          <span className="text-[11px] text-slate-400">{cards.filter(c => c.count > 0).length}개 항목 처리 필요</span>
+          <span className="text-[11px] text-admin-muted-2">{cards.filter(c => c.count > 0).length}개 항목 처리 필요</span>
         )}
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
@@ -735,25 +735,25 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
           const s = severityStyles[c.severity];
           const isEmpty = c.count === 0;
           return (
-            <div key={i} className={`rounded-xl border p-3.5 flex flex-col gap-2 transition-opacity ${isEmpty ? 'opacity-40 border-slate-100 bg-slate-50' : s.card}`}>
+            <div key={i} className={`rounded-admin-md border p-3.5 flex flex-col gap-2 transition-opacity ${isEmpty ? 'opacity-40 border-admin-border bg-admin-bg' : s.card}`}>
               <div className="flex items-start justify-between">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center relative ${isEmpty ? 'text-slate-400 bg-slate-100' : s.icon}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center relative ${isEmpty ? 'text-admin-muted-2 bg-admin-surface-2' : s.icon}`}>
                   {c.icon}
                   {!isEmpty && c.severity === 'red' && (
                     <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${s.pulse} animate-ping opacity-75`} />
                   )}
                 </div>
-                <span className={`text-[26px] font-black tabular-nums leading-none ${isEmpty ? 'text-slate-300' : s.count}`}>
+                <span className={`text-[26px] font-black tabular-nums leading-none ${isEmpty ? 'text-admin-muted-2' : s.count}`}>
                   {c.count.toLocaleString()}
                   <span className="text-admin-xs font-medium ml-0.5">{c.unit}</span>
                 </span>
               </div>
               <div>
-                <p className={`text-admin-xs font-semibold ${isEmpty ? 'text-slate-400' : 'text-slate-700'}`}>{c.label}</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">{c.desc}</p>
+                <p className={`text-admin-xs font-semibold ${isEmpty ? 'text-admin-muted-2' : 'text-admin-text-2'}`}>{c.label}</p>
+                <p className="text-[10px] text-admin-muted-2 mt-0.5">{c.desc}</p>
               </div>
               <Link href={c.href}
-                className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${isEmpty ? 'bg-slate-100 text-slate-400 pointer-events-none' : s.btn}`}>
+                className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${isEmpty ? 'bg-admin-surface-2 text-admin-muted-2 pointer-events-none' : s.btn}`}>
                 {isEmpty ? '이상 없음' : c.btnLabel}
               </Link>
             </div>
@@ -834,10 +834,10 @@ function SocialMetricsWidget() {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary flex items-center gap-1.5">
           SNS 채널 현황
-          <span className="text-[10px] text-slate-300 font-normal" title="이 데이터는 이 브라우저에만 저장됩니다. 기기가 바뀌면 초기화됩니다.">⚠ 로컬</span>
+          <span className="text-[10px] text-admin-muted-2 font-normal" title="이 데이터는 이 브라우저에만 저장됩니다. 기기가 바뀌면 초기화됩니다.">⚠ 로컬</span>
         </h2>
         <button onClick={() => { setShowForm(!showForm); setFormValues(channels.map(c => String(c.current))); }}
-          className="px-2 py-1 bg-white border border-slate-300 rounded text-[11px] text-slate-600 hover:bg-slate-50 transition">
+          className="px-2 py-1 bg-white border border-admin-border-strong rounded text-[11px] text-admin-muted hover:bg-admin-bg transition">
           지표 업데이트
         </button>
       </div>
@@ -848,8 +848,8 @@ function SocialMetricsWidget() {
           const growth = ch.prev > 0 ? Math.round((diff / ch.prev) * 100) : 0;
           return (
             <div key={i} className="text-center">
-              <p className="text-[10px] text-slate-400">{ch.name}</p>
-              <p className="text-admin-lg font-bold text-slate-800 tabular-nums">{ch.current.toLocaleString()}</p>
+              <p className="text-[10px] text-admin-muted-2">{ch.name}</p>
+              <p className="text-admin-lg font-bold text-admin-text-2 tabular-nums">{ch.current.toLocaleString()}</p>
               {ch.prev > 0 && (
                 <div className="mt-0.5">
                   <span className={`text-[11px] font-medium ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -877,7 +877,7 @@ function SocialMetricsWidget() {
       )}
 
       {showForm && (
-        <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+        <div className="mt-3 pt-3 border-t border-admin-border space-y-2">
           {channels.map((ch, i) => (
             <div key={i} className="flex items-center gap-2">
               <input type="text" value={ch.name}
@@ -886,22 +886,22 @@ function SocialMetricsWidget() {
                   next[i] = { ...next[i], name: e.target.value };
                   setChannels(next);
                 }}
-                className="w-20 border border-slate-200 rounded px-2 py-1 text-admin-xs text-slate-600 focus:ring-1 focus:ring-[#005d90]" />
+                className="w-20 border border-admin-border-mid rounded px-2 py-1 text-admin-xs text-admin-muted focus:ring-1 focus:ring-[#005d90]" />
               <input type="number" value={formValues[i]}
                 onChange={e => { const next = [...formValues]; next[i] = e.target.value; setFormValues(next); }}
-                className="flex-1 border border-slate-200 rounded px-2 py-1 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
+                className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
               {channels.length > 1 && (
                 <button onClick={() => {
                   setChannels(channels.filter((_, idx) => idx !== i));
                   setFormValues(formValues.filter((_, idx) => idx !== i));
-                }} className="text-slate-300 hover:text-red-500 text-admin-sm">x</button>
+                }} className="text-admin-muted-2 hover:text-red-500 text-admin-sm">x</button>
               )}
             </div>
           ))}
           <button onClick={() => {
             setChannels([...channels, { name: `채널${channels.length + 1}`, current: 0, prev: 0 }]);
             setFormValues([...formValues, '0']);
-          }} className="w-full py-1 border border-dashed border-slate-300 rounded text-[11px] text-slate-400 hover:text-slate-600 hover:border-slate-400 transition">
+          }} className="w-full py-1 border border-dashed border-admin-border-strong rounded text-[11px] text-admin-muted-2 hover:text-admin-muted hover:border-slate-400 transition">
             + 채널 추가
           </button>
           <button onClick={handleSave} className="w-full py-1.5 bg-brand text-white rounded text-admin-xs hover:bg-blue-700 transition">저장</button>
@@ -937,9 +937,9 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
       <h2 className="text-admin-base font-semibold text-text-primary mb-3">AI 인사이트</h2>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">판매중 상품 Top 3</p>
+          <p className="text-[11px] text-admin-muted-2 uppercase font-semibold mb-2">판매중 상품 Top 3</p>
           {top3.length === 0 ? (
-            <p className="text-admin-xs text-slate-400">데이터 없음</p>
+            <p className="text-admin-xs text-admin-muted-2">데이터 없음</p>
           ) : (
             <div className="space-y-1.5">
               {top3.map((p, i) => (
@@ -948,8 +948,8 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
                     i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-slate-400' : 'bg-amber-700'
                   }`}>{i + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-admin-xs text-slate-700 truncate">{p.title}</p>
-                    <p className="text-[10px] text-slate-400">₩{(p.price ?? 0).toLocaleString()}</p>
+                    <p className="text-admin-xs text-admin-text-2 truncate">{p.title}</p>
+                    <p className="text-[10px] text-admin-muted-2">₩{(p.price ?? 0).toLocaleString()}</p>
                   </div>
                 </div>
               ))}
@@ -957,7 +957,7 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
           )}
         </div>
         <div>
-          <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">승인 현황</p>
+          <p className="text-[11px] text-admin-muted-2 uppercase font-semibold mb-2">승인 현황</p>
           <div className="space-y-1.5">
             {['approved', 'pending', 'active'].map(status => {
               const count = packages.filter(p => p.status === status).length;
@@ -966,27 +966,27 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
               return (
                 <div key={status} className="flex items-center justify-between">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>{label}</span>
-                  <span className="text-admin-sm font-bold text-slate-700 tabular-nums">{count}</span>
+                  <span className="text-admin-sm font-bold text-admin-text-2 tabular-nums">{count}</span>
                 </div>
               );
             })}
           </div>
         </div>
         <div>
-          <p className="text-[11px] text-slate-400 uppercase font-semibold mb-2">마케팅 ROAS</p>
+          <p className="text-[11px] text-admin-muted-2 uppercase font-semibold mb-2">마케팅 ROAS</p>
           {roasData ? (
             <div className="text-center py-3">
               <p className={`text-[24px] font-bold tabular-nums ${roasData.roas >= 2 ? 'text-emerald-700' : roasData.roas >= 1 ? 'text-amber-700' : 'text-red-600'}`}>
                 {roasData.roas.toFixed(1)}x
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">
+              <p className="text-[10px] text-admin-muted-2 mt-1">
                 광고비 {fmt만KRW(roasData.spend)} · {roasData.month.slice(5)}월
               </p>
             </div>
           ) : (
             <div className="text-center py-3">
-              <p className="text-[24px] font-bold text-slate-300">—</p>
-              <p className="text-[10px] text-slate-400 mt-1">광고 스냅샷 없음</p>
+              <p className="text-[24px] font-bold text-admin-muted-2">—</p>
+              <p className="text-[10px] text-admin-muted-2 mt-1">광고 스냅샷 없음</p>
             </div>
           )}
         </div>
@@ -1051,11 +1051,11 @@ function RecentFailuresWidget() {
               <li key={item.id} className="bg-white border border-red-100 rounded p-2 text-admin-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[10px] text-red-500">{item.action_type}</span>
-                  <span className="text-[10px] text-slate-400">
-                    {new Date(item.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  <span className="text-[10px] text-admin-muted-2">
+                    {item.created_at ? String(item.created_at).slice(5, 16).replace('T', ' ') : ''}
                   </span>
                 </div>
-                <div className="mt-1 text-slate-700">{item.summary}</div>
+                <div className="mt-1 text-admin-text-2">{item.summary}</div>
                 <div className="mt-1 text-[11px] text-red-700 break-all">
                   {errMsg.length > 200 ? errMsg.slice(0, 200) + '…' : errMsg}
                 </div>
@@ -1063,7 +1063,7 @@ function RecentFailuresWidget() {
             );
           })}
           {items.length > 5 && (
-            <li className="text-center text-[11px] text-slate-500">
+            <li className="text-center text-[11px] text-admin-muted">
               +{items.length - 5}건 더 — <a href="/admin/jarvis" className="text-red-600 hover:underline">전체 보기</a>
             </li>
           )}
@@ -1226,25 +1226,25 @@ export default function AdminPage({
         {/* 헤더 스켈레톤 */}
         <div className="flex items-center justify-between animate-pulse">
           <div className="space-y-1.5">
-            <div className="h-5 bg-slate-100 rounded w-36" />
-            <div className="h-3 bg-slate-100 rounded w-48" />
+            <div className="h-5 bg-admin-surface-2 rounded w-36" />
+            <div className="h-3 bg-admin-surface-2 rounded w-48" />
           </div>
-          <div className="h-8 bg-slate-100 rounded w-24" />
+          <div className="h-8 bg-admin-surface-2 rounded w-24" />
         </div>
         {/* ActionBoard 스켈레톤 */}
         <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 animate-pulse">
-          <div className="h-4 bg-slate-100 rounded w-24 mb-3" />
+          <div className="h-4 bg-admin-surface-2 rounded w-24 mb-3" />
           <div className="space-y-2">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-slate-100 rounded" />)}
+            {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-admin-surface-2 rounded" />)}
           </div>
         </div>
         {/* TwoTrackKPI 스켈레톤 — 2열 */}
         <div className="grid grid-cols-2 gap-3 animate-pulse">
           {[...Array(2)].map((_, i) => (
             <div key={i} className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
-              <div className="h-3 bg-slate-100 rounded w-32 mb-2" />
-              <div className="h-8 bg-slate-100 rounded w-24 mb-1" />
-              <div className="h-3 bg-slate-100 rounded w-40" />
+              <div className="h-3 bg-admin-surface-2 rounded w-32 mb-2" />
+              <div className="h-8 bg-admin-surface-2 rounded w-24 mb-1" />
+              <div className="h-3 bg-admin-surface-2 rounded w-40" />
             </div>
           ))}
         </div>
@@ -1252,15 +1252,15 @@ export default function AdminPage({
         <div className="grid grid-cols-4 gap-2 animate-pulse">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="bg-white rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3">
-              <div className="h-3 bg-slate-100 rounded w-16 mb-2" />
-              <div className="h-5 bg-slate-100 rounded w-20" />
+              <div className="h-3 bg-admin-surface-2 rounded w-16 mb-2" />
+              <div className="h-5 bg-admin-surface-2 rounded w-20" />
             </div>
           ))}
         </div>
         {/* 차트 스켈레톤 */}
         <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 animate-pulse">
-          <div className="h-4 bg-slate-100 rounded w-32 mb-3" />
-          <div className="h-[200px] bg-slate-100 rounded" />
+          <div className="h-4 bg-admin-surface-2 rounded w-32 mb-3" />
+          <div className="h-[200px] bg-admin-surface-2 rounded" />
         </div>
       </div>
     );
@@ -1279,11 +1279,11 @@ export default function AdminPage({
       )}
 
       {/* UX-2 + E: sticky frosted-glass 헤더 + 기간 필터 + 새로고침 버튼 */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-admin-border-mid/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div>
           <h1 className="text-admin-lg font-bold text-text-primary">어드민 대시보드</h1>
           {lastRefreshed && (
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-admin-muted-2 mt-0.5">
               마지막 새로고침: {lastRefreshed.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </p>
           )}
@@ -1333,8 +1333,8 @@ export default function AdminPage({
 
       {/* ── Zone 1: 긴급 액션 ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-1">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">긴급 처리</span>
-        <div className="flex-1 h-px bg-slate-100" />
+        <span className="text-[11px] font-semibold text-admin-muted-2 uppercase tracking-wider whitespace-nowrap">긴급 처리</span>
+        <div className="flex-1 h-px bg-admin-surface-2" />
       </div>
 
       {/* 자비스 실패 위젯 (실패 0건이면 자동 숨김) */}
@@ -1360,22 +1360,22 @@ export default function AdminPage({
                   <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
                     { operations: 'bg-blue-50 text-blue-600', sales: 'bg-purple-50 text-purple-600',
                       marketing: 'bg-pink-50 text-pink-600', finance: 'bg-emerald-50 text-emerald-600',
-                      products: 'bg-cyan-50 text-cyan-600', system: 'bg-slate-100 text-slate-600',
-                    }[act.agent_type as string] || 'bg-slate-100 text-slate-600'
+                      products: 'bg-cyan-50 text-cyan-600', system: 'bg-admin-surface-2 text-admin-muted',
+                    }[act.agent_type as string] || 'bg-admin-surface-2 text-admin-muted'
                   }`}>
                     {{ operations: '운영', sales: '영업', marketing: '마케팅', finance: '재무', products: '상품', system: '시스템' }[act.agent_type as string] || act.agent_type}
                   </span>
                   {act.priority !== 'normal' && (
                     <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
                       act.priority === 'critical' ? 'bg-red-50 text-red-600' :
-                      act.priority === 'high' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-500'
+                      act.priority === 'high' ? 'bg-orange-50 text-orange-600' : 'bg-admin-bg text-admin-muted'
                     }`}>
                       {{ low: '낮음', high: '높음', critical: '긴급' }[act.priority as string] || act.priority}
                     </span>
                   )}
                 </div>
-                <p className="text-admin-sm font-medium text-slate-800 truncate">{act.summary}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">{act.action_type}</p>
+                <p className="text-admin-sm font-medium text-admin-text-2 truncate">{act.summary}</p>
+                <p className="text-[11px] text-admin-muted-2 mt-0.5">{act.action_type}</p>
                 <div className="mt-2 flex gap-1">
                   <button
                     onClick={async () => {
@@ -1399,7 +1399,7 @@ export default function AdminPage({
                       } catch {} finally { setActionProcessingId(null); }
                     }}
                     disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-white border border-slate-300 text-slate-600 py-1 rounded text-[11px] hover:bg-slate-50 transition"
+                    className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition"
                   >
                     반려
                   </button>
@@ -1421,10 +1421,10 @@ export default function AdminPage({
             {pendingPackages.slice(0, 6).map(pkg => (
               <div key={pkg.id} className="rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] cursor-pointer transition-shadow"
                 onClick={() => setSelectedPackage(pkg)}>
-                <p className="text-admin-sm font-medium text-slate-800 truncate">{pkg.title}</p>
+                <p className="text-admin-sm font-medium text-admin-text-2 truncate">{pkg.title}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  {pkg.destination && <span className="text-[11px] text-slate-500">{pkg.destination}</span>}
-                  {pkg.price && <span className="text-[11px] text-slate-500">₩{pkg.price.toLocaleString()}</span>}
+                  {pkg.destination && <span className="text-[11px] text-admin-muted">{pkg.destination}</span>}
+                  {pkg.price && <span className="text-[11px] text-admin-muted">₩{pkg.price.toLocaleString()}</span>}
                   <span className={`ml-auto px-1.5 py-0.5 text-[10px] rounded font-medium ${
                     pkg.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
                     pkg.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
@@ -1436,7 +1436,7 @@ export default function AdminPage({
                     승인
                   </button>
                   <button onClick={() => handleAction(pkg.id, 'reject')} disabled={processingId === pkg.id}
-                    className="flex-1 bg-white border border-slate-300 text-slate-600 py-1 rounded text-[11px] hover:bg-slate-50 transition">
+                    className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
                     반려
                   </button>
                 </div>
@@ -1448,8 +1448,8 @@ export default function AdminPage({
 
       {/* ── Zone 2: 현황 KPI ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-1 mt-2">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">현황 KPI</span>
-        <div className="flex-1 h-px bg-slate-100" />
+        <span className="text-[11px] font-semibold text-admin-muted-2 uppercase tracking-wider whitespace-nowrap">현황 KPI</span>
+        <div className="flex-1 h-px bg-admin-surface-2" />
       </div>
 
       {/* 매출 인식 분리 KPI (IFRS 15 / ASC 606) */}
@@ -1476,7 +1476,7 @@ export default function AdminPage({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             {/* 이번달 마진 — featured card */}
             <Link href="/admin/ledger"
-              className="bg-brand rounded-xl p-4 shadow-[0_8px_24px_rgba(0,31,63,0.25)] hover:bg-[#1B64DA] transition block">
+              className="bg-brand rounded-admin-md p-4 shadow-[0_8px_24px_rgba(0,31,63,0.25)] hover:bg-[#1B64DA] transition block">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[11px] text-blue-200 font-medium">이번달 마진</p>
                 <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1493,9 +1493,9 @@ export default function AdminPage({
             </Link>
             {/* 자본 잔액 */}
             <Link href="/admin/ledger"
-              className="bg-white border border-slate-100 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              className="bg-white border border-admin-border rounded-admin-md p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-admin-border-mid hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-slate-400 font-medium">자본 잔액</p>
+                <p className="text-[11px] text-admin-muted-2 font-medium">자본 잔액</p>
                 <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -1503,27 +1503,27 @@ export default function AdminPage({
               <p className="text-[22px] font-black tabular-nums leading-tight text-emerald-700">
                 {capitalTotal !== null ? `₩${fmt만(capitalTotal)}` : '—'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1.5">자본 관리 → 장부</p>
+              <p className="text-[10px] text-admin-muted-2 mt-1.5">자본 관리 → 장부</p>
             </Link>
             {/* 미수금 */}
             <Link href="/admin/payments?filter=outstanding"
-              className="bg-white border border-slate-100 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              className="bg-white border border-admin-border rounded-admin-md p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-admin-border-mid hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-slate-400 font-medium">미수금</p>
-                <svg className={`w-4 h-4 ${stats && stats.totalOutstanding > 0 ? 'text-red-400' : 'text-slate-300'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <p className="text-[11px] text-admin-muted-2 font-medium">미수금</p>
+                <svg className={`w-4 h-4 ${stats && stats.totalOutstanding > 0 ? 'text-red-400' : 'text-admin-muted-2'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                 </svg>
               </div>
               <p className={`text-[22px] font-black tabular-nums leading-tight ${stats && stats.totalOutstanding > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                 {stats ? `₩${fmt만(stats.totalOutstanding)}` : '—'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1.5">이번달 잔금 미납</p>
+              <p className="text-[10px] text-admin-muted-2 mt-1.5">이번달 잔금 미납</p>
             </Link>
             {/* 진행 예약 */}
             <Link href="/admin/bookings?status=pending,confirmed"
-              className="bg-white border border-slate-100 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-slate-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              className="bg-white border border-admin-border rounded-admin-md p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-admin-border-mid hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-slate-400 font-medium">진행 예약</p>
+                <p className="text-[11px] text-admin-muted-2 font-medium">진행 예약</p>
                 <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
                 </svg>
@@ -1532,7 +1532,7 @@ export default function AdminPage({
                 {stats?.activeBookings ?? 0}<span className="text-admin-base font-semibold ml-0.5">건</span>
               </p>
               <div className="flex items-center justify-between mt-1.5">
-                <p className="text-[10px] text-slate-400">이번달 총 {stats?.totalMonthBookings ?? 0}건 중</p>
+                <p className="text-[10px] text-admin-muted-2">이번달 총 {stats?.totalMonthBookings ?? 0}건 중</p>
                 <Badge pct={bkMoM} />
               </div>
             </Link>
@@ -1553,8 +1553,8 @@ export default function AdminPage({
 
       {/* ── Zone 3: 분석 ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-1 mt-2">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">분석</span>
-        <div className="flex-1 h-px bg-slate-100" />
+        <span className="text-[11px] font-semibold text-admin-muted-2 uppercase tracking-wider whitespace-nowrap">분석</span>
+        <div className="flex-1 h-px bg-admin-surface-2" />
       </div>
 
       {/* Retention + Take Rate (Tufte Small Multiples) */}
@@ -1578,7 +1578,7 @@ export default function AdminPage({
       <DataQualityMonitor report={dataQuality} />
 
       {/* 바로가기 */}
-      <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4">
+      <div className="bg-white border border-dashed border-admin-border-strong rounded-lg p-4">
         <h2 className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide tracking-wide mb-3">바로가기</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
@@ -1611,7 +1611,7 @@ export default function AdminPage({
               <p className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">{group.title}</p>
               {group.links.map(l => (
                 <Link key={l.href} href={l.href}
-                  className="block text-admin-xs px-2 py-1 text-slate-500 rounded hover:bg-slate-50 hover:text-slate-700 truncate">
+                  className="block text-admin-xs px-2 py-1 text-admin-muted rounded hover:bg-admin-bg hover:text-admin-text-2 truncate">
                   {l.label}
                 </Link>
               ))}
@@ -1662,63 +1662,63 @@ export default function AdminPage({
       {selectedPackage && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedPackage(null)}>
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-xl border-l border-slate-200 h-full overflow-y-auto"
+          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full overflow-y-auto"
             onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-start justify-between">
+            <div className="sticky top-0 bg-white border-b border-admin-border-mid px-5 py-4 flex items-start justify-between">
               <div className="flex-1 pr-4">
-                <h2 className="text-admin-lg font-semibold text-slate-800 leading-snug">{selectedPackage.title}</h2>
+                <h2 className="text-admin-lg font-semibold text-admin-text-2 leading-snug">{selectedPackage.title}</h2>
                 <span className={`px-2 py-0.5 text-[11px] rounded font-medium ${
                   selectedPackage.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
                   selectedPackage.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
                 }`}>{Math.round(selectedPackage.confidence * 100)}%</span>
               </div>
-              <button onClick={() => setSelectedPackage(null)} className="text-slate-400 hover:text-slate-600 p-1">
+              <button onClick={() => setSelectedPackage(null)} className="text-admin-muted-2 hover:text-admin-muted p-1">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             </div>
 
             <div className="px-5 py-4 space-y-4 text-admin-sm">
               <div className="grid grid-cols-2 gap-2">
-                {selectedPackage.destination && <div><span className="text-slate-500">목적지</span><p className="text-slate-800 font-medium">{selectedPackage.destination}</p></div>}
-                {selectedPackage.duration && <div><span className="text-slate-500">기간</span><p className="text-slate-800 font-medium">{selectedPackage.duration}일</p></div>}
-                {selectedPackage.price && <div><span className="text-slate-500">가격</span><p className="text-slate-800 font-medium">₩{selectedPackage.price.toLocaleString()}</p></div>}
-                <div><span className="text-slate-500">파일</span><p className="text-slate-800">{selectedPackage.filename}</p></div>
+                {selectedPackage.destination && <div><span className="text-admin-muted">목적지</span><p className="text-admin-text-2 font-medium">{selectedPackage.destination}</p></div>}
+                {selectedPackage.duration && <div><span className="text-admin-muted">기간</span><p className="text-admin-text-2 font-medium">{selectedPackage.duration}일</p></div>}
+                {selectedPackage.price && <div><span className="text-admin-muted">가격</span><p className="text-admin-text-2 font-medium">₩{selectedPackage.price.toLocaleString()}</p></div>}
+                <div><span className="text-admin-muted">파일</span><p className="text-admin-text-2">{selectedPackage.filename}</p></div>
               </div>
               {selectedPackage.itinerary && selectedPackage.itinerary.length > 0 && (
                 <div>
-                  <p className="text-slate-500 mb-1">일정</p>
-                  <ul className="space-y-0.5 text-slate-700">
-                    {selectedPackage.itinerary.map((item, i) => <li key={i} className="pl-2 border-l-2 border-slate-200">{item}</li>)}
+                  <p className="text-admin-muted mb-1">일정</p>
+                  <ul className="space-y-0.5 text-admin-text-2">
+                    {selectedPackage.itinerary.map((item, i) => <li key={i} className="pl-2 border-l-2 border-admin-border-mid">{item}</li>)}
                   </ul>
                 </div>
               )}
               {selectedPackage.inclusions && selectedPackage.inclusions.length > 0 && (
                 <div>
-                  <p className="text-slate-500 mb-1">포함 사항</p>
-                  <ul className="space-y-0.5 text-slate-700">
+                  <p className="text-admin-muted mb-1">포함 사항</p>
+                  <ul className="space-y-0.5 text-admin-text-2">
                     {selectedPackage.inclusions.map((item, i) => <li key={i}>- {item}</li>)}
                   </ul>
                 </div>
               )}
               {selectedPackage.special_notes && (
                 <div>
-                  <p className="text-slate-500 mb-1">특별 안내</p>
-                  <p className="text-slate-700">{selectedPackage.special_notes}</p>
+                  <p className="text-admin-muted mb-1">특별 안내</p>
+                  <p className="text-admin-text-2">{selectedPackage.special_notes}</p>
                 </div>
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-5 py-3 flex gap-2">
+            <div className="sticky bottom-0 bg-white border-t border-admin-border-mid px-5 py-3 flex gap-2">
               {selectedPackage.status === 'pending' && (
                 <>
                   <button onClick={() => handleAction(selectedPackage.id, 'approve')} disabled={processingId === selectedPackage.id}
                     className="flex-1 bg-brand text-white py-2 rounded text-admin-sm hover:bg-blue-700 disabled:bg-slate-300 transition">승인</button>
                   <button onClick={() => handleAction(selectedPackage.id, 'reject')} disabled={processingId === selectedPackage.id}
-                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition">반려</button>
+                    className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">반려</button>
                 </>
               )}
               <button onClick={() => setSelectedPackage(null)}
-                className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition">닫기</button>
+                className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">닫기</button>
             </div>
           </div>
         </div>

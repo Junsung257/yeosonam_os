@@ -1,6 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { PageHeader, FormRow } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import { AlertTriangle } from 'lucide-react';
 
 interface StepResult {
   step: string;
@@ -70,90 +74,74 @@ export default function GdprPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">GDPR — 잊힐 권리 삭제</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          고객 데이터를 DB 전체에서 익명화·삭제합니다. 이 작업은 되돌릴 수 없습니다.
-        </p>
-      </div>
+    <div className="max-w-2xl mx-auto space-y-5">
+      <PageHeader
+        title="GDPR — 잊힐 권리 삭제"
+        subtitle="고객 데이터를 DB 전체에서 익명화·삭제합니다. 이 작업은 되돌릴 수 없습니다."
+      />
 
       {/* 입력 폼 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            고객 ID (UUID)
-          </label>
-          <input
+      <div className="admin-card p-5 space-y-4">
+        <FormRow label="고객 ID (UUID)" required>
+          <Input
             type="text"
             value={customerId}
             onChange={(e) => setCustomerId(e.target.value)}
             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="font-mono"
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            삭제 사유 (선택)
-          </label>
-          <input
+        </FormRow>
+        <FormRow label="삭제 사유" hint="선택. 감사 로그에 기록됩니다.">
+          <Input
             type="text"
             value={adminNote}
             onChange={(e) => setAdminNote(e.target.value)}
             placeholder="고객 요청, 탈퇴 처리 등"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
           />
-        </div>
+        </FormRow>
         {errorMsg && (
-          <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <p className="text-danger text-admin-sm bg-danger-light border border-danger/20 rounded-admin-sm px-3 py-2">
             {errorMsg}
           </p>
         )}
-        <button
+        <Button
+          variant="danger"
+          size="lg"
           onClick={handleDeleteRequest}
           disabled={loading}
-          className="w-full bg-red-600 text-white font-semibold py-2.5 rounded-lg hover:bg-red-700 active:scale-95 transition disabled:opacity-50"
+          className="w-full"
         >
-          {loading ? '삭제 처리 중...' : '데이터 삭제 실행'}
-        </button>
+          {loading ? '삭제 처리 중…' : '데이터 삭제 실행'}
+        </Button>
       </div>
 
       {/* 확인 다이얼로그 */}
       {showConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl space-y-4">
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
+          <div className="admin-scope bg-admin-surface rounded-admin-lg p-6 max-w-sm w-full shadow-admin-xl border border-admin-border-mid space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+              <div className="w-10 h-10 bg-danger-light rounded-full flex items-center justify-center flex-shrink-0 text-danger">
+                <AlertTriangle size={20} />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-900">정말로 삭제하시겠습니까?</h3>
-                <p className="text-xs text-slate-500 mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
+                <h3 className="font-semibold text-admin-text text-admin-base">정말로 삭제하시겠습니까?</h3>
+                <p className="text-admin-xs text-admin-muted mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
               </div>
             </div>
-            <div className="bg-slate-50 rounded-lg px-3 py-2">
-              <p className="text-xs text-slate-500">삭제 대상</p>
-              <p className="text-sm font-mono text-slate-800 break-all mt-0.5">{customerId}</p>
+            <div className="bg-admin-surface-2 rounded-admin-sm px-3 py-2">
+              <p className="text-admin-xs text-admin-muted">삭제 대상</p>
+              <p className="text-admin-sm font-mono text-admin-text-2 break-all mt-0.5">{customerId}</p>
             </div>
-            <p className="text-sm text-slate-600">
-              conversations, customers, bookings, booking_companions, agent_tasks의 개인정보가 모두 익명화됩니다.
+            <p className="text-admin-sm text-admin-muted">
+              conversations, customers, bookings, booking_companions, agent_tasks 의 개인정보가 모두 익명화됩니다.
             </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="flex-1 border border-slate-300 text-slate-700 font-medium py-2 rounded-lg hover:bg-slate-50 transition"
-              >
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setShowConfirm(false)} className="flex-1">
                 취소
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="flex-1 bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition"
-              >
+              </Button>
+              <Button variant="danger" onClick={handleConfirmDelete} className="flex-1">
                 삭제 확인
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -161,53 +149,53 @@ export default function GdprPage() {
 
       {/* 삭제 결과 로그 */}
       {result && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+        <div className="admin-card p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-slate-900">삭제 결과</h2>
+            <h2 className="text-admin-h3 text-admin-text">삭제 결과</h2>
             <span
-              className={`text-xs font-medium px-2 py-1 rounded-full ${
+              className={`text-admin-xs font-semibold px-2 py-1 rounded-full ${
                 result.ok
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-yellow-100 text-yellow-700'
+                  ? 'bg-status-successBg text-status-successFg'
+                  : 'bg-status-warningBg text-status-warningFg'
               }`}
             >
               {result.ok ? '완료' : '부분 완료'}
             </span>
           </div>
 
-          <div className="flex gap-4 text-sm">
+          <div className="flex gap-6">
             <div className="text-center">
-              <p className="text-2xl font-bold text-slate-900">{result.summary.total}</p>
-              <p className="text-slate-500 text-xs">전체 단계</p>
+              <p className="text-admin-display font-bold text-admin-text admin-num">{result.summary.total}</p>
+              <p className="text-admin-muted text-admin-xs">전체 단계</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">{result.summary.succeeded}</p>
-              <p className="text-slate-500 text-xs">성공</p>
+              <p className="text-admin-display font-bold text-success admin-num">{result.summary.succeeded}</p>
+              <p className="text-admin-muted text-admin-xs">성공</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-red-500">{result.summary.failed}</p>
-              <p className="text-slate-500 text-xs">실패</p>
+              <p className="text-admin-display font-bold text-danger admin-num">{result.summary.failed}</p>
+              <p className="text-admin-muted text-admin-xs">실패</p>
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {result.steps.map((step, i) => (
               <div
                 key={i}
-                className={`flex items-start gap-3 px-3 py-2 rounded-lg text-sm ${
-                  step.ok ? 'bg-green-50' : 'bg-red-50'
+                className={`flex items-start gap-3 px-3 py-2 rounded-admin-sm text-admin-sm ${
+                  step.ok ? 'bg-status-successBg' : 'bg-status-dangerBg'
                 }`}
               >
-                <span className={`mt-0.5 flex-shrink-0 ${step.ok ? 'text-green-500' : 'text-red-500'}`}>
+                <span className={`mt-0.5 flex-shrink-0 font-bold ${step.ok ? 'text-success' : 'text-danger'}`}>
                   {step.ok ? '✓' : '✗'}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-xs text-slate-700">{step.step}</p>
+                  <p className="font-mono text-admin-xs text-admin-text-2">{step.step}</p>
                   {step.affected !== undefined && (
-                    <p className="text-xs text-slate-500">{step.affected}행 처리됨</p>
+                    <p className="text-admin-xs text-admin-muted admin-num">{step.affected}행 처리됨</p>
                   )}
                   {step.error && (
-                    <p className="text-xs text-red-600 mt-0.5 break-all">{step.error}</p>
+                    <p className="text-admin-xs text-danger mt-0.5 break-all">{step.error}</p>
                   )}
                 </div>
               </div>

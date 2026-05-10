@@ -83,7 +83,7 @@ export function DensityToggle({ className = '' }: DensityToggleProps) {
       type="button"
       onClick={toggle}
       title={`행 밀도: ${label} (클릭하여 ${isCompact ? '편안함' : '컴팩트'}로 전환)`}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-admin-xs text-admin-textMuted hover:text-admin-text hover:bg-slate-100 transition-colors ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-admin-xs text-admin-textMuted hover:text-admin-text hover:bg-admin-surface-2 transition-colors ${className}`}
     >
       <Icon size={14} strokeWidth={2.2} />
       <span>{label}</span>

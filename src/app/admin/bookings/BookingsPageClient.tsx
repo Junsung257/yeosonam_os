@@ -9,7 +9,7 @@ class BookingRowBoundary extends Component<{ children: ReactNode; bookingNo?: st
   render() {
     if (this.state.hasError) {
       return (
-        <tr style={{ height: 88 }} className="border-b border-slate-200 bg-red-50/40">
+        <tr style={{ height: 88 }} className="border-b border-admin-border-mid bg-red-50/40">
           <td colSpan={this.props.colSpan ?? 19} className="px-4 text-admin-xs text-red-400 italic">
             ⚠️ 데이터 오류 — 이 행을 표시할 수 없습니다{this.props.bookingNo ? ` (${this.props.bookingNo})` : ''}
           </td>
@@ -330,7 +330,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
 
   return (
     <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-      <span className="text-[11px] text-slate-500 font-medium shrink-0">성인</span>
+      <span className="text-[11px] text-admin-muted font-medium shrink-0">성인</span>
       <input
         ref={adultRef}
         autoFocus
@@ -348,7 +348,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
           if (document.activeElement !== childRef.current) doCommit();
         }, 80)}
       />
-      <span className="text-[11px] text-slate-500 font-medium shrink-0">아동</span>
+      <span className="text-[11px] text-admin-muted font-medium shrink-0">아동</span>
       <input
         ref={childRef}
         type="number"
@@ -538,10 +538,10 @@ function SmartProductSelect({
           onMouseDown={e => e.stopPropagation()}
         >
           {loading && (
-            <p className="px-4 py-3 text-admin-sm text-slate-500 text-center">상품 불러오는 중...</p>
+            <p className="px-4 py-3 text-admin-sm text-admin-muted text-center">상품 불러오는 중...</p>
           )}
           {!loading && hits.length === 0 && (
-            <p className="px-4 py-3 text-admin-sm text-slate-500 text-center">
+            <p className="px-4 py-3 text-admin-sm text-admin-muted text-center">
               {departureDate ? `출발일 ±60일 내 활성 상품 없음` : '활성 상품 없음'}
             </p>
           )}
@@ -550,22 +550,22 @@ function SmartProductSelect({
               key={p.internal_code}
               type="button"
               onMouseDown={e => { e.preventDefault(); onCommit(p); }}
-              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0"
+              className="w-full text-left px-4 py-2 hover:bg-admin-bg transition-colors border-b border-admin-border last:border-0"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-mono text-slate-500">{p.internal_code}</span>
+                <span className="text-[11px] font-mono text-admin-muted">{p.internal_code}</span>
                 {p.departure_date && (
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-admin-muted">
                     출발 {p.departure_date.slice(0, 10)}
                   </span>
                 )}
               </div>
-              <p className="text-admin-sm font-semibold text-slate-800 mt-0.5 truncate">{p.display_name}</p>
+              <p className="text-admin-sm font-semibold text-admin-text-2 mt-0.5 truncate">{p.display_name}</p>
               <div className="flex items-center gap-3 mt-1">
                 {p.supplier_name && (
                   <span className="text-[11px] text-blue-600 font-medium">{p.supplier_name}</span>
                 )}
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-admin-muted">
                   원가 {p.net_price?.toLocaleString()}원 / 판가 {p.selling_price?.toLocaleString()}원
                 </span>
               </div>
@@ -650,13 +650,13 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
           <span className="text-[11px] font-mono text-blue-500 truncate">
             [{booking.product_id}]
           </span>
-          <span className="text-admin-sm text-slate-800 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
+          <span className="text-admin-sm text-admin-text-2 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
             {booking.package_title || '(미지정)'}
           </span>
         </>
       ) : (
-        <span className="text-admin-sm text-slate-800 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
-          {booking.package_title || <span className="text-slate-300">(미지정)</span>}
+        <span className="text-admin-sm text-admin-text-2 font-medium truncate group-hover:text-blue-600" title={booking.package_title || ''}>
+          {booking.package_title || <span className="text-admin-muted-2">(미지정)</span>}
         </span>
       )}
     </div>
@@ -684,7 +684,7 @@ function StatusBadge({ booking, onClick }: { booking: Booking; onClick: () => vo
     <div className="flex flex-col items-center gap-1.5">
       <div className="relative inline-flex">
         <span onClick={onClick}
-          className={`text-[11px] px-3 py-1 rounded-full cursor-pointer hover:opacity-80 font-semibold transition-opacity ${STATUS_COLORS[booking.status] || 'bg-slate-100 text-slate-600'}`}>
+          className={`text-[11px] px-3 py-1 rounded-full cursor-pointer hover:opacity-80 font-semibold transition-opacity ${STATUS_COLORS[booking.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
           {STATUS_LABELS[booking.status] || booking.status}
         </span>
         {isStale && (
@@ -725,10 +725,10 @@ function SortTh({ label, field, sortField, sortDir, onSort, className = '' }: {
   const active = sortField === field;
   return (
     <th onClick={() => onSort(field)}
-      className={`cursor-pointer select-none px-3 py-2 whitespace-nowrap hover:bg-slate-50 group text-left ${className}`}>
-      <span className="flex items-center gap-1 text-admin-sm text-slate-800 font-semibold">
+      className={`cursor-pointer select-none px-3 py-2 whitespace-nowrap hover:bg-admin-bg group text-left ${className}`}>
+      <span className="flex items-center gap-1 text-admin-sm text-admin-text-2 font-semibold">
         {label}
-        <span className={active ? 'text-blue-500' : 'text-slate-300 group-hover:text-slate-400'}>
+        <span className={active ? 'text-blue-500' : 'text-admin-muted-2 group-hover:text-admin-muted-2'}>
           {!active ? '↕' : sortDir === 'asc' ? '↑' : '↓'}
         </span>
       </span>
@@ -1561,7 +1561,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   }, [parsedDateRange, searchTarget]);
 
   // 공통 NumInput 스타일
-  const numInputCls = 'w-32 border border-blue-500 rounded px-2 py-1.5 text-admin-base font-bold text-slate-800 focus:outline-none bg-white tabular-nums text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+  const numInputCls = 'w-32 border border-blue-500 rounded px-2 py-1.5 text-admin-base font-bold text-admin-text-2 focus:outline-none bg-white tabular-nums text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   // ── JSX ─────────────────────────────────────────────────────────────────────
   return (
@@ -1570,11 +1570,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-3 flex-nowrap gap-4 shrink-0">
         <div className="shrink-0">
-          <h1 className="text-admin-lg font-bold text-slate-800 whitespace-nowrap">{isTrash ? '휴지통' : '예약 관리'}</h1>
-          <p className="text-admin-sm text-slate-500 mt-0.5 whitespace-nowrap">전체 {bookings.length}건 / 조회 {filtered.length}건</p>
+          <h1 className="text-admin-lg font-bold text-admin-text-2 whitespace-nowrap">{isTrash ? '휴지통' : '예약 관리'}</h1>
+          <p className="text-admin-sm text-admin-muted mt-0.5 whitespace-nowrap">전체 {bookings.length}건 / 조회 {filtered.length}건</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Link href="/admin/customers" className="text-admin-sm text-slate-700 border border-slate-300 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 whitespace-nowrap">고객 관리</Link>
+          <Link href="/admin/customers" className="text-admin-sm text-admin-text-2 border border-admin-border-strong px-3 py-2 rounded-lg bg-white hover:bg-admin-bg whitespace-nowrap">고객 관리</Link>
           <Link href="/admin/bookings/new" className="bg-brand text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-[#1B64DA] transition whitespace-nowrap font-semibold">+ 예약 등록</Link>
         </div>
       </div>
@@ -1588,7 +1588,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>,
             },
             {
-              label: '총 판매가', value: fmtK(cardStats.totalSales), color: 'text-slate-800', bg: 'bg-slate-50',
+              label: '총 판매가', value: fmtK(cardStats.totalSales), color: 'text-admin-text-2', bg: 'bg-admin-bg',
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>,
             },
             {
@@ -1596,17 +1596,17 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
             },
             {
-              label: '미수금 잔금', value: fmtK(cardStats.totalBalance), color: cardStats.totalBalance > 0 ? 'text-red-500' : 'text-slate-400', bg: cardStats.totalBalance > 0 ? 'bg-red-50' : 'bg-slate-50',
+              label: '미수금 잔금', value: fmtK(cardStats.totalBalance), color: cardStats.totalBalance > 0 ? 'text-red-500' : 'text-admin-muted-2', bg: cardStats.totalBalance > 0 ? 'bg-red-50' : 'bg-admin-bg',
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>,
             },
           ] as { label: string; value: string; color: string; bg: string; icon: React.ReactNode }[]).map(c => (
-            <div key={c.label} className="bg-white rounded-xl border border-slate-100 px-4 py-3 flex items-center gap-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <div key={c.label} className="bg-white rounded-admin-md border border-admin-border px-4 py-3 flex items-center gap-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <div className={`shrink-0 w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center ${c.color}`}>
                 {c.icon}
               </div>
               <div className="min-w-0">
                 <p className={`text-[18px] font-bold leading-tight tabular-nums ${c.color}`}>{c.value}</p>
-                <p className="text-admin-xs text-slate-400 mt-0.5 leading-none">{c.label}</p>
+                <p className="text-admin-xs text-admin-muted-2 mt-0.5 leading-none">{c.label}</p>
               </div>
             </div>
           ))}
@@ -1627,7 +1627,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             className="w-full pl-3 pr-8 py-2 border-2 border-admin-border rounded-lg text-admin-base focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface text-admin-text transition-colors" />
           {rawSearch && (
             <button onClick={() => setRawSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[18px] leading-none">×</button>
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-admin-muted-2 hover:text-admin-muted text-[18px] leading-none">×</button>
           )}
         </div>
         {dateRangeBadge && (
@@ -1638,7 +1638,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       </div>
 
       {/* 라이프사이클 파이프라인 탭 */}
-      <div className="flex items-center border-b border-slate-200 shrink-0">
+      <div className="flex items-center border-b border-admin-border-mid shrink-0">
         {/* DQ 진입 인디케이터 배너 */}
         {dqFilter && (
           <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-admin-xs text-amber-800 flex items-center justify-between gap-3 flex-wrap">
@@ -1736,9 +1736,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
           <table className="w-full"><tbody>
             {[...Array(10)].map((_, i) => (
-              <tr key={i} style={{ height: ROW_H }} className="border-b border-slate-200">
+              <tr key={i} style={{ height: ROW_H }} className="border-b border-admin-border-mid">
                 {[...Array(12)].map((__, j) => (
-                  <td key={j} className="px-3"><div className="h-4 w-full bg-slate-100 rounded animate-pulse" /></td>
+                  <td key={j} className="px-3"><div className="h-4 w-full bg-admin-surface-2 rounded animate-pulse" /></td>
                 ))}
               </tr>
             ))}
@@ -1748,27 +1748,27 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center justify-center">
           <div className="text-center px-8 py-12 max-w-sm">
             {isTrash ? (
-              <svg className="mx-auto mb-4 w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mx-auto mb-4 w-12 h-12 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
               </svg>
             ) : rawSearch || activeTab ? (
-              <svg className="mx-auto mb-4 w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mx-auto mb-4 w-12 h-12 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 15.803z" />
               </svg>
             ) : (
-              <svg className="mx-auto mb-4 w-12 h-12 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mx-auto mb-4 w-12 h-12 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
               </svg>
             )}
-            <p className="text-slate-700 font-semibold text-admin-md mb-1">
+            <p className="text-admin-text-2 font-semibold text-admin-md mb-1">
               {isTrash ? '삭제된 예약 없음' : rawSearch ? `"${rawSearch}" 검색 결과 없음` : activeTab ? '해당 조건의 예약 없음' : '예약 없음'}
             </p>
-            <p className="text-slate-400 text-admin-sm mb-5">
+            <p className="text-admin-muted-2 text-admin-sm mb-5">
               {isTrash ? '최근 삭제된 예약이 없습니다.' : rawSearch ? '다른 검색어로 시도하거나 필터를 초기화하세요.' : activeTab ? '현재 필터 조건에 해당하는 예약이 없습니다.' : '아직 등록된 예약이 없습니다.'}
             </p>
             {(rawSearch || activeTab) && (
               <button onClick={() => { setRawSearch(''); setActiveTab(''); setDoneSubTab(''); }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-admin-sm font-medium rounded-lg transition-colors">
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-admin-surface-2 hover:bg-slate-200 text-admin-text-2 text-admin-sm font-medium rounded-lg transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -1793,28 +1793,28 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           onScroll={e => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}>
 
           <table className="w-full min-w-[2700px]">
-            <thead className="sticky top-0 z-20 bg-white border-b border-slate-200">
+            <thead className="sticky top-0 z-20 bg-white border-b border-admin-border-mid">
               <tr>
                 <th className="sticky left-0 z-30 bg-white px-3 py-2 w-12 min-w-[52px]">
-                  <input type="checkbox" checked={allSel} onChange={toggleAll} className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer" />
+                  <input type="checkbox" checked={allSel} onChange={toggleAll} className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer" />
                 </th>
                 <SortTh label="예약일"     field="booking_date"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[52px] z-30 bg-white min-w-[130px]" />
                 <SortTh label="출발일"     field="departure_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[182px] z-30 bg-white min-w-[150px]" />
-                <th className="sticky left-[332px] z-30 bg-white text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">고객명</th>
-                <th className="sticky left-[492px] z-30 bg-white text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[180px]">랜드사</th>
-                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[200px]">상품명</th>
-                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">예약번호</th>
-                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">출발지역</th>
-                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">담당자</th>
-                <th className="text-left px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[160px]">인원</th>
+                <th className="sticky left-[332px] z-30 bg-white text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[160px]">고객명</th>
+                <th className="sticky left-[492px] z-30 bg-white text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[180px]">랜드사</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[200px]">상품명</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[160px]">예약번호</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">출발지역</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">담당자</th>
+                <th className="text-left px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[160px]">인원</th>
                 <SortTh label="1인 판매가" field="adult_price"    sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[170px]" />
                 <SortTh label="전체 판매가" field="total_price"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[170px]" />
-                <th className="text-right px-3 py-2 text-admin-sm font-semibold text-slate-800 whitespace-nowrap min-w-[140px]">예상 마진</th>
-                <th className="text-center px-3 py-2 text-admin-sm font-semibold text-slate-800 whitespace-nowrap min-w-[110px]">마진율</th>
+                <th className="text-right px-3 py-2 text-admin-sm font-semibold text-admin-text-2 whitespace-nowrap min-w-[140px]">예상 마진</th>
+                <th className="text-center px-3 py-2 text-admin-sm font-semibold text-admin-text-2 whitespace-nowrap min-w-[110px]">마진율</th>
                 <SortTh label="입금액"      field="paid_amount"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
-                <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-slate-800 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
+                <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
                 <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]" />
               </tr>
             </thead>
@@ -1852,7 +1852,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 const hasBusanRec     = busanRec.has(b.id);
                 const isEditing       = (field: string) => editingCell?.id === b.id && editingCell.field === field;
 
-                const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : isMissing ? 'bg-yellow-50/70 hover:bg-yellow-50' : isDepositUnpaid ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50';
+                const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : isMissing ? 'bg-yellow-50/70 hover:bg-yellow-50' : isDepositUnpaid ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-admin-bg';
                 const rowBorder  = isLandBomb ? 'outline outline-2 outline-red-400 outline-offset-[-1px]' : '';
                 const isFoc      = (col: number) => focusedCell?.row === ri && focusedCell.col === col;
                 const focusCls   = (col: number) => isFoc(col) ? 'ring-2 ring-inset ring-blue-400 rounded' : '';
@@ -1862,7 +1862,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   {/* [1] CSS style로 ROW_H 고정 — 편집 시 레이아웃 흔들림 방지 */}
                   <tr style={{ height: ROW_H }}
                     data-booking-id={b.id}
-                    className={`${rowBg} ${rowBorder} border-b border-slate-200 transition-colors group cursor-pointer`}
+                    className={`${rowBg} ${rowBorder} border-b border-admin-border-mid transition-colors group cursor-pointer`}
                     onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }}
                     onMouseEnter={() => { fetch(`/api/bookings/${b.id}`).catch(() => {}); }}
                     onContextMenu={e => {
@@ -1873,13 +1873,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     {/* 체크박스 */}
                     <td className="sticky left-0 z-10 bg-inherit px-3 min-w-[52px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={isSel} onChange={() => toggleOne(b.id)} onClick={e => e.stopPropagation()}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer" />
+                        className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer" />
                     </td>
 
                     {/* 예약일 (sticky) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 1)} onFocus={() => setFocusedCell({ row: ri, col: 1 })}
                       className={`sticky left-[52px] z-10 bg-inherit px-3 min-w-[130px] whitespace-nowrap outline-none ${focusCls(1)}`}>
-                      <span className="text-admin-sm font-medium text-slate-500">{fmtDate(b.booking_date || b.created_at)}</span>
+                      <span className="text-admin-sm font-medium text-admin-muted">{fmtDate(b.booking_date || b.created_at)}</span>
                     </td>
 
                     {/* 출발일 — Full-Cell Hitbox (sticky) */}
@@ -1897,7 +1897,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       ) : (
                         <div onClick={() => { setEditingCell({ id: b.id, field: 'departure_date' }); setCellValue(b.departure_date || ''); }}
                           className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-1.5">
-                          <span className={`font-mono tabular-nums ${isRisk ? 'text-admin-sm font-bold text-red-700' : 'text-admin-sm font-semibold text-slate-800'} ${!b.departure_date ? 'text-slate-300 font-normal' : ''}`}>
+                          <span className={`font-mono tabular-nums ${isRisk ? 'text-admin-sm font-bold text-red-700' : 'text-admin-sm font-semibold text-admin-text-2'} ${!b.departure_date ? 'text-admin-muted-2 font-normal' : ''}`}>
                             {fmtDateKo(b.departure_date)}
                           </span>
                           {dDiff !== null && dDiff >= 0 && dDiff <= 14 && (
@@ -1912,10 +1912,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       className={`sticky left-[332px] z-10 bg-inherit px-3 min-w-[160px] whitespace-nowrap outline-none ${focusCls(3)}`}
                       onClick={e => e.stopPropagation()}>
                       {b.customers?.id
-                        ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-admin-base text-slate-800 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
-                        : <span className="font-bold text-admin-base text-slate-800">{b.customers?.name || '-'}</span>}
+                        ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-admin-base text-admin-text-2 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
+                        : <span className="font-bold text-admin-base text-admin-text-2">{b.customers?.name || '-'}</span>}
                       {b.customers?.phone
-                        ? <p className="text-admin-sm text-slate-500 mt-0.5">{b.customers.phone}</p>
+                        ? <p className="text-admin-sm text-admin-muted mt-0.5">{b.customers.phone}</p>
                         : <p className="text-admin-sm text-amber-400 mt-0.5">번호 없음</p>}
                     </td>
 
@@ -1939,7 +1939,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         return (
                           <div onClick={() => setEditingCell({ id: b.id, field: 'land_operator_id' })}
                             className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-2">
-                            <span className={`text-admin-sm font-semibold ${displayName ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
+                            <span className={`text-admin-sm font-semibold ${displayName ? 'text-admin-text-2' : 'text-admin-muted-2 font-medium'}`}>
                               {displayName || '+ 선택'}
                             </span>
                             {op && !op.is_active && (
@@ -1971,7 +1971,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           {b.booking_no || b.id.slice(0, 8)}
                         </Link>
                         <button onClick={e => { e.stopPropagation(); copyText(b.booking_no || b.id.slice(0, 8)); }}
-                          className="text-slate-300 hover:text-slate-500 transition-colors p-0.5 rounded">
+                          className="text-admin-muted-2 hover:text-admin-muted transition-colors p-0.5 rounded">
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                           </svg>
@@ -1980,12 +1980,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         {isLandBomb    && <span className="text-[11px] text-red-600 font-bold animate-pulse" title="랜드사 미송금 위험">미송금</span>}
                         {isMissing     && <span className="text-[11px] text-amber-500 font-bold" title="정보 누락">누락</span>}
                         {isDepositUnpaid && !isCancelled && <span className="text-[11px] text-orange-500 font-bold" title="계약금 미결제">미납</span>}
-                        {isCancelled    && isRefundSettled && <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full" title={`환불완료 (순현금 ${netCashflow.toLocaleString()}원)`}>♻️ 환불완료</span>}
+                        {isCancelled    && isRefundSettled && <span className="text-[11px] px-1.5 py-0.5 bg-admin-surface-2 text-admin-muted rounded-full" title={`환불완료 (순현금 ${netCashflow.toLocaleString()}원)`}>♻️ 환불완료</span>}
                         {isCancelled    && isRefundPending && <span className="text-[11px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold" title={`환불대기 — ${netCashflow.toLocaleString()}원 남음`}>⚠️ 환불대기</span>}
                         {isOverCost     && <span className="text-[11px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold" title={`원가초과 ${Math.abs(netCashflow).toLocaleString()}원 — 출금이 입금보다 큼`}>🩸 원가초과</span>}
                         {isSettled      && (
                           <span
-                            className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full"
+                            className="text-[11px] px-1.5 py-0.5 bg-admin-surface-2 text-admin-muted rounded-full"
                             title={`정산 확정: ${b.settlement_confirmed_at?.slice(0,10)}${
                               b.settlement_mode === 'cash' ? ' · 현금 기준 (통장 대조만)' :
                               b.settlement_mode === 'accrual' ? ' · 장부 기준' : ''
@@ -2016,8 +2016,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           <div className="flex flex-col gap-0.5">
                             <div onClick={() => setEditingCell({ id: b.id, field: 'departing_location_id' })}
                               className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded flex items-center gap-1">
-                              <span className="text-admin-sm font-semibold text-slate-800">
-                                {displayName || <span className="text-slate-300 font-medium">+ 출발지</span>}
+                              <span className="text-admin-sm font-semibold text-admin-text-2">
+                                {displayName || <span className="text-admin-muted-2 font-medium">+ 출발지</span>}
                               </span>
                               {loc && !loc.is_active && (
                                 <span className="text-[11px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
@@ -2043,7 +2043,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       ) : (
                         <div onClick={() => { setEditingCell({ id: b.id, field: 'manager_name' }); setCellValue(b.manager_name || ''); }}
                           className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors">
-                          <span className={`text-admin-sm font-semibold ${b.manager_name ? 'text-slate-800' : 'text-slate-300 font-medium'}`}>
+                          <span className={`text-admin-sm font-semibold ${b.manager_name ? 'text-admin-text-2' : 'text-admin-muted-2 font-medium'}`}>
                             {b.manager_name || '+ 입력'}
                           </span>
                         </div>
@@ -2068,7 +2068,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       ) : (
                         <div onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_count' }); }}
                           className={`w-full h-[88px] flex items-center px-3 transition-colors ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''}`}>
-                          <span className="text-admin-sm font-bold text-slate-800">
+                          <span className="text-admin-sm font-bold text-admin-text-2">
                             성인 {b.adult_count ?? 0}{(b.child_count ?? 0) > 0 ? ` / 아동 ${b.child_count}` : ''}
                           </span>
                         </div>
@@ -2093,7 +2093,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         </div>
                       ) : (
                         <div onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_price' }); }}
-                          className={`w-full h-[88px] flex items-center justify-end px-3 transition-colors tabular-nums ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''} ${!b.adult_price ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-slate-800'}`}>
+                          className={`w-full h-[88px] flex items-center justify-end px-3 transition-colors tabular-nums ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''} ${!b.adult_price ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-admin-text-2'}`}>
                           {fmt(b.adult_price)}
                         </div>
                       )}
@@ -2101,7 +2101,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
                     {/* 전체 판매가 */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 11)} onFocus={() => setFocusedCell({ row: ri, col: 11 })}
-                      className={`px-3 min-w-[170px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(11)} ${!(b.total_price) ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-slate-800'}`}
+                      className={`px-3 min-w-[170px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(11)} ${!(b.total_price) ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-admin-text-2'}`}
                       style={getCellStyle(`${b.id}-total_price`)}>
                       {fmt(b.total_price)}
                     </td>
@@ -2113,25 +2113,25 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         <span className={`font-bold text-admin-sm tabular-nums ${margin >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                           {margin >= 0 ? '+' : ''}{Math.round(margin / 10000)}만원
                         </span>
-                      ) : <span className="text-slate-300 text-admin-sm">—</span>}
+                      ) : <span className="text-admin-muted-2 text-admin-sm">—</span>}
                     </td>
 
                     {/* 마진율 — 입금액 대비 */}
                     <td className="px-3 min-w-[110px] text-center whitespace-nowrap">
                       {mHasPaid ? (
                         <MarginBadge rate={parseFloat(mRate)} />
-                      ) : <span className="text-slate-300 text-admin-sm">—</span>}
+                      ) : <span className="text-admin-muted-2 text-admin-sm">—</span>}
                     </td>
 
                     {/* 입금액 */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 12)} onFocus={() => setFocusedCell({ row: ri, col: 12 })}
-                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(12)} ${!(b.paid_amount) ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-emerald-700'}`}>
+                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(12)} ${!(b.paid_amount) ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-emerald-700'}`}>
                       {fmt(b.paid_amount)}
                     </td>
 
                     {/* 출금액 — 랜드사 송금액 (total_paid_out) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 13)} onFocus={() => setFocusedCell({ row: ri, col: 13 })}
-                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(13)} ${!(b.total_paid_out) ? 'text-slate-300 font-normal text-admin-sm' : 'font-bold text-admin-base text-orange-700'}`}
+                      className={`px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(13)} ${!(b.total_paid_out) ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-orange-700'}`}
                       title={`랜드사 송금액 (원가 ${(b.total_cost||0).toLocaleString()}원 중)`}>
                       {fmt(b.total_paid_out)}
                     </td>
@@ -2144,11 +2144,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           <span className={`font-bold text-admin-sm ${
                             netCashflow < -5000 ? 'text-red-600' :
                             netCashflow > 5000  ? 'text-amber-600' :
-                            'text-slate-500'
+                            'text-admin-muted'
                           }`}>
                             순 {netCashflow.toLocaleString()}원
                           </span>
-                          <div className="text-[10px] text-slate-400 mt-0.5">
+                          <div className="text-[10px] text-admin-muted-2 mt-0.5">
                             입 {(b.paid_amount ?? 0).toLocaleString()} / 출 {(b.total_paid_out ?? 0).toLocaleString()}
                           </div>
                         </div>
@@ -2158,12 +2158,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         <div>
                           <span className={balance > 0 && (b.total_price ?? 0) > 0
                             ? `font-bold text-admin-base ${isDepositUnpaid ? 'text-red-600' : isRisk ? 'text-red-600' : 'text-red-500'}`
-                            : 'font-normal text-admin-sm text-slate-300'}>
+                            : 'font-normal text-admin-sm text-admin-muted-2'}>
                             {fmt(balance)}
                           </span>
                           {isDepositUnpaid && <span className="ml-1 text-[11px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-bold">계약금 미납</span>}
                           {(b.total_price ?? 0) > 0 && (
-                            <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden w-14 ml-auto">
+                            <div className="mt-1 h-1.5 bg-admin-surface-2 rounded-full overflow-hidden w-14 ml-auto">
                               <div className="h-full bg-blue-400 rounded-full"
                                 style={{ width: `${Math.min(100, Math.round(((b.paid_amount ?? 0) / (b.total_price ?? 1)) * 100))}%` }} />
                             </div>
@@ -2173,7 +2173,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       <div className="hidden group-hover/bal:block absolute bottom-full right-0 z-50 bg-slate-800 text-white text-admin-sm rounded-lg px-3.5 py-2.5 whitespace-nowrap mb-1.5 pointer-events-none min-w-[220px]">
                         {isCancelled ? (
                           <>
-                            <p className="text-slate-300 font-semibold mb-1">취소/환불 정산</p>
+                            <p className="text-admin-muted-2 font-semibold mb-1">취소/환불 정산</p>
                             <p>입금 {(b.paid_amount ?? 0).toLocaleString()}원</p>
                             <p>출금 {(b.total_paid_out ?? 0).toLocaleString()}원</p>
                             <p className={`font-bold mt-1 ${netCashflow < -5000 ? 'text-red-400' : netCashflow > 5000 ? 'text-amber-400' : 'text-emerald-400'}`}>
@@ -2227,7 +2227,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         {!isTrash ? (
                           <>
                             <button onClick={() => window.open(`/admin/bookings/${b.id}`, '_blank')}
-                              className="text-[11px] text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 whitespace-nowrap">수정</button>
+                              className="text-[11px] text-admin-text-2 border border-admin-border-strong px-2.5 py-1.5 rounded-lg hover:bg-admin-bg whitespace-nowrap">수정</button>
                             {!isCancelled && (
                               <button onClick={() => openCancelModal(b)} disabled={processing === b.id}
                                 title="예약 취소 — 환불/위약금/사유를 입력하고 정식 취소 처리"
@@ -2284,7 +2284,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           <div className="w-px h-4 bg-white/20 mx-1" />
           {bulkField === 'departing_location_id' ? (
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400 whitespace-nowrap">출발지역:</span>
+              <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">출발지역:</span>
               <select autoFocus defaultValue=""
                 onChange={e => { handleBulkCommit('departing_location_id', e.target.value); }}
                 onBlur={() => setBulkField(null)}
@@ -2296,7 +2296,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             </div>
           ) : bulkField === 'land_operator_id' ? (
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400 whitespace-nowrap">랜드사:</span>
+              <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">랜드사:</span>
               <select autoFocus defaultValue=""
                 onChange={e => { handleBulkCommit('land_operator_id', e.target.value); }}
                 onBlur={() => setBulkField(null)}
@@ -2346,12 +2346,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         <div className="fixed z-[100] bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-1 w-48"
           style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <button onClick={() => { copyText(ctxMenu.b.booking_no || ctxMenu.b.id.slice(0, 8)); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">예약번호 복사</button>
+            className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">예약번호 복사</button>
           <button onClick={() => { sendAlimtalk(ctxMenu.b); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">알림톡 발송</button>
+            className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">알림톡 발송</button>
           <button onClick={() => { window.open(`/admin/bookings/${ctxMenu.b.id}`, '_blank'); setCtxMenu(null); }}
-            className="w-full text-left px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5">새 탭에서 열기</button>
-          <div className="border-t border-slate-200 my-1" />
+            className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">새 탭에서 열기</button>
+          <div className="border-t border-admin-border-mid my-1" />
           {ctxMenu.b.status !== 'cancelled' ? (
             <button onClick={() => { openCancelModal(ctxMenu.b); setCtxMenu(null); }}
               className="w-full text-left px-4 py-2 text-admin-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5">예약 취소…</button>
@@ -2372,31 +2372,31 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         return (
           <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-4"
             onClick={() => !cancelling && setCancelTarget(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4"
+            <div className="bg-white rounded-admin-lg shadow-2xl w-full max-w-lg p-6 space-y-4"
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-admin-lg font-bold text-slate-900">예약 취소 처리</h2>
+                <h2 className="text-admin-lg font-bold text-admin-text">예약 취소 처리</h2>
                 <button onClick={() => !cancelling && setCancelTarget(null)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 text-admin-lg">✕</button>
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-admin-surface-2 text-admin-muted text-admin-lg">✕</button>
               </div>
 
               {/* 컨텍스트 — 누구의 어떤 예약인지 */}
-              <div className="bg-slate-50 rounded-lg p-3 text-admin-sm space-y-1">
+              <div className="bg-admin-bg rounded-lg p-3 text-admin-sm space-y-1">
                 <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">예약번호</span>
-                  <span className="font-mono font-semibold text-slate-800">{cancelTarget.booking_no || cancelTarget.id.slice(0, 8)}</span>
+                  <span className="text-admin-muted">예약번호</span>
+                  <span className="font-mono font-semibold text-admin-text-2">{cancelTarget.booking_no || cancelTarget.id.slice(0, 8)}</span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">고객</span>
-                  <span className="font-semibold text-slate-800">{cancelTarget.customers?.name || '-'}</span>
+                  <span className="text-admin-muted">고객</span>
+                  <span className="font-semibold text-admin-text-2">{cancelTarget.customers?.name || '-'}</span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">출발일</span>
-                  <span className="font-mono tabular-nums text-slate-800">{cancelTarget.departure_date?.slice(0, 10) || '-'}</span>
+                  <span className="text-admin-muted">출발일</span>
+                  <span className="font-mono tabular-nums text-admin-text-2">{cancelTarget.departure_date?.slice(0, 10) || '-'}</span>
                 </div>
-                <div className="flex justify-between gap-2 pt-1 border-t border-slate-200 mt-1">
-                  <span className="text-slate-500">입금 / 출금</span>
-                  <span className="font-mono tabular-nums text-slate-800">
+                <div className="flex justify-between gap-2 pt-1 border-t border-admin-border-mid mt-1">
+                  <span className="text-admin-muted">입금 / 출금</span>
+                  <span className="font-mono tabular-nums text-admin-text-2">
                     +{paid.toLocaleString()} / -{paidOut.toLocaleString()}
                   </span>
                 </div>
@@ -2405,18 +2405,18 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               {/* 환불 / 위약금 입력 */}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="text-admin-xs font-semibold text-slate-700 mb-1 block">환불액 (고객에게 돌려줄 금액)</span>
+                  <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">환불액 (고객에게 돌려줄 금액)</span>
                   <input type="number" min={0}
                     value={cancelForm.refund}
                     onChange={e => setCancelForm(f => ({ ...f, refund: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </label>
                 <label className="block">
-                  <span className="text-admin-xs font-semibold text-slate-700 mb-1 block">위약금 (랜드사 차감액)</span>
+                  <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">위약금 (랜드사 차감액)</span>
                   <input type="number" min={0}
                     value={cancelForm.penalty}
                     onChange={e => setCancelForm(f => ({ ...f, penalty: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </label>
               </div>
 
@@ -2426,23 +2426,23 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               }`}>
                 <span className="font-semibold">순현금 영향: </span>
                 <span className="font-mono tabular-nums font-bold">{netCash >= 0 ? '+' : ''}{netCash.toLocaleString()}원</span>
-                <span className="text-slate-500 ml-2">(입금 {paid.toLocaleString()} − 출금 {paidOut.toLocaleString()} − 환불 {refundN.toLocaleString()})</span>
+                <span className="text-admin-muted ml-2">(입금 {paid.toLocaleString()} − 출금 {paidOut.toLocaleString()} − 환불 {refundN.toLocaleString()})</span>
               </div>
 
               {/* 사유 */}
               <label className="block">
-                <span className="text-admin-xs font-semibold text-slate-700 mb-1 block">취소 사유</span>
+                <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">취소 사유</span>
                 <textarea rows={3}
                   value={cancelForm.reason}
                   onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="예: 고객 일정 변경 / 항공편 결항 / 단순 변심"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
               </label>
 
               {/* 액션 */}
-              <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
+              <div className="flex gap-2 justify-end pt-2 border-t border-admin-border">
                 <button onClick={() => !cancelling && setCancelTarget(null)}
-                  className="px-4 py-2 text-admin-sm text-slate-700 hover:bg-slate-100 rounded-lg">닫기</button>
+                  className="px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 rounded-lg">닫기</button>
                 <button onClick={handleCancelBooking} disabled={cancelling}
                   className="px-4 py-2 text-admin-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
                   {cancelling ? '처리 중...' : '취소 처리 확정'}
@@ -2463,7 +2463,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       {/* Undo Toast */}
       {undoToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm">
-          <span className="text-slate-300">{undoToast.count}건의 예약이 삭제되었습니다.</span>
+          <span className="text-admin-muted-2">{undoToast.count}건의 예약이 삭제되었습니다.</span>
           <button onClick={handleUndoDelete} className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition whitespace-nowrap">실행 취소</button>
         </div>
       )}

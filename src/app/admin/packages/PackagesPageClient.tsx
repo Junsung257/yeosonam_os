@@ -267,12 +267,12 @@ function regionBadgeClass(region?: string): string {
   for (const [key, cls] of Object.entries(REGION_BADGE)) {
     if (region.includes(key)) return cls;
   }
-  return 'bg-slate-50 text-slate-500 border-slate-100';
+  return 'bg-admin-bg text-admin-muted border-admin-border';
 }
 
 /** margin_rate(소수) 기준 동적 색상 */
 function marginColor(rate?: number): string {
-  if (rate == null) return 'text-slate-400';
+  if (rate == null) return 'text-admin-muted-2';
   if (rate >= 0.10) return 'text-emerald-600 font-bold';
   if (rate >= 0.05) return 'text-blue-600';
   return 'text-orange-500';
@@ -286,7 +286,7 @@ function getDDayInfo(pkg: Package): { label: string; className: string } | null 
     const deadline = new Date(pkg.ticketing_deadline);
     deadline.setHours(0, 0, 0, 0);
     const diff = Math.round((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diff < 0) return { label: '만료', className: 'bg-slate-100 text-slate-500' };
+    if (diff < 0) return { label: '만료', className: 'bg-admin-surface-2 text-admin-muted' };
     if (diff === 0) return { label: 'D-Day', className: 'bg-red-50 text-red-700 font-bold' };
     if (diff <= 3) return { label: `D-${diff}`, className: 'bg-red-50 text-red-700 font-bold' };
     if (diff <= 7) return { label: `D-${diff}`, className: 'bg-orange-50 text-orange-700' };
@@ -371,7 +371,7 @@ const MarketingToggle = React.memo(function MarketingToggle({
       className={`relative w-7 h-7 rounded text-[10px] font-bold flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 ${
         isActive
           ? 'bg-blue-600 text-white'
-          : 'bg-white border border-slate-200 text-slate-400 hover:border-slate-400'
+          : 'bg-white border border-admin-border-mid text-admin-muted-2 hover:border-slate-400'
       }`}
       title={auditInfo || `${platform.label} 토글`}
     >
@@ -463,7 +463,7 @@ const PackageRow = React.memo(function PackageRow({
 
   return (
     <tr
-      className={`group border-b border-slate-200 hover:bg-slate-50 ${expired ? 'opacity-60' : ''} ${isChecked ? 'bg-blue-50' : ''}`}
+      className={`group border-b border-admin-border-mid hover:bg-admin-bg ${expired ? 'opacity-60' : ''} ${isChecked ? 'bg-blue-50' : ''}`}
     >
       <td className="px-3 py-2 w-8" onClick={e => e.stopPropagation()}>
         <input
@@ -477,7 +477,7 @@ const PackageRow = React.memo(function PackageRow({
       <td className="px-3 py-2 cursor-pointer max-w-[280px]" onClick={handleRowClick}>
         {/* 상품명 + 출발지 배지 */}
         <div className="flex items-start gap-1.5 flex-wrap">
-          <span className="font-semibold text-slate-800 leading-snug">{pkg.title}</span>
+          <span className="font-semibold text-admin-text-2 leading-snug">{pkg.title}</span>
           {pkg.has_itinerary_data === false && (
             <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium border leading-tight bg-amber-50 text-amber-700 border-amber-100">
               일정표없음
@@ -495,7 +495,7 @@ const PackageRow = React.memo(function PackageRow({
         </div>
         {/* product_type · trip_style */}
         {pkg.product_type && (
-          <div className="text-[11px] text-slate-400 mt-0.5">{pkg.product_type} · {pkg.trip_style}</div>
+          <div className="text-[11px] text-admin-muted-2 mt-0.5">{pkg.product_type} · {pkg.trip_style}</div>
         )}
         {attractionPreview.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
@@ -510,7 +510,7 @@ const PackageRow = React.memo(function PackageRow({
         {(pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code) ? (
           <button
             type="button"
-            className="mt-0.5 text-[11px] text-slate-400 hover:text-blue-500 font-mono transition-colors group/code"
+            className="mt-0.5 text-[11px] text-admin-muted-2 hover:text-blue-500 font-mono transition-colors group/code"
             onClick={e => {
               e.stopPropagation();
               const code = pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code ?? '';
@@ -524,14 +524,14 @@ const PackageRow = React.memo(function PackageRow({
             <span className="opacity-0 group-hover/code:opacity-100 ml-0.5 transition-opacity">📋</span>
           </button>
         ) : (
-          <span className="text-[11px] text-slate-300 font-mono">코드 미발급</span>
+          <span className="text-[11px] text-admin-muted-2 font-mono">코드 미발급</span>
         )}
       </td>
       <td className="px-3 py-2 min-w-[130px]" onClick={e => e.stopPropagation()}>
         {inlineEditPkgId === pkg.id ? (
           <select
             autoFocus
-            className="w-full border border-blue-400 rounded px-2 py-1 text-admin-sm text-slate-800"
+            className="w-full border border-blue-400 rounded px-2 py-1 text-admin-sm text-admin-text-2"
             defaultValue={pkg.land_operator_id ?? ''}
             onChange={e => onHandleInlineLandOperator(pkg.id, e.target.value)}
             onBlur={() => onSetInlineEditPkgId(null)}
@@ -552,12 +552,12 @@ const PackageRow = React.memo(function PackageRow({
               {!op.is_active && (
                 <span className="text-[10px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
               )}
-              <span className="opacity-0 group-hover/vendor:opacity-100 text-[10px] text-slate-400 ml-auto">✎</span>
+              <span className="opacity-0 group-hover/vendor:opacity-100 text-[10px] text-admin-muted-2 ml-auto">✎</span>
             </button>
           );
           return (
             <button
-              className="text-[11px] text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded px-1 py-0.5"
+              className="text-[11px] text-admin-muted-2 hover:text-blue-500 hover:bg-blue-50 rounded px-1 py-0.5"
               onClick={() => onSetInlineEditPkgId(pkg.id)}
             >+ 랜드사 연결</button>
           );
@@ -573,7 +573,7 @@ const PackageRow = React.memo(function PackageRow({
               <div className={`text-admin-sm ${color}`}>
                 +{profit.toLocaleString()}원
               </div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-[11px] text-admin-muted-2">
                 ({Math.round((rate ?? 0) * 100)}%)
               </div>
             </div>
@@ -585,17 +585,17 @@ const PackageRow = React.memo(function PackageRow({
           return (
             <div className="text-right">
               <div className={`text-admin-sm ${color}`}>+{profit.toLocaleString()}원</div>
-              <div className="text-[11px] text-slate-400">({pkg.commission_rate}%)</div>
+              <div className="text-[11px] text-admin-muted-2">({pkg.commission_rate}%)</div>
             </div>
           );
         })() : pkg.commission_rate != null ? (
           <span className={`text-admin-sm ${marginColor(pkg.commission_rate / 100)}`}>{pkg.commission_rate}%</span>
         ) : (
-          <span className="text-[11px] text-slate-300">-</span>
+          <span className="text-[11px] text-admin-muted-2">-</span>
         )}
       </td>
-      <td className="px-3 py-2 text-slate-500 cursor-pointer" onClick={handleRowClick}>{pkg.destination || '-'}</td>
-      <td className="px-3 py-2 text-right text-slate-800 cursor-pointer" onClick={handleRowClick}>
+      <td className="px-3 py-2 text-admin-muted cursor-pointer" onClick={handleRowClick}>{pkg.destination || '-'}</td>
+      <td className="px-3 py-2 text-right text-admin-text-2 cursor-pointer" onClick={handleRowClick}>
         {minPrice ? (
           minPrice === maxPrice
             ? minPrice.toLocaleString() + '원'
@@ -607,12 +607,12 @@ const PackageRow = React.memo(function PackageRow({
           {dday ? (
             <span className={`px-2 py-0.5 rounded text-[11px] ${dday.className}`}>{dday.label}</span>
           ) : pkg.ticketing_deadline ? (
-            <span className="text-[11px] text-slate-400">{pkg.ticketing_deadline}</span>
+            <span className="text-[11px] text-admin-muted-2">{pkg.ticketing_deadline}</span>
           ) : (
-            <span className="text-[11px] text-slate-300">-</span>
+            <span className="text-[11px] text-admin-muted-2">-</span>
           )}
           {pkg.created_at && (
-            <span className="text-[10px] text-slate-400" title={`등록일: ${pkg.created_at.slice(0,10)}`}>
+            <span className="text-[10px] text-admin-muted-2" title={`등록일: ${pkg.created_at.slice(0,10)}`}>
               등록 {pkg.created_at.slice(5,10)}
             </span>
           )}
@@ -628,7 +628,7 @@ const PackageRow = React.memo(function PackageRow({
       </td>
       <td className="px-3 py-2 text-center cursor-pointer" onClick={handleRowClick}>
         <div className="flex flex-col items-center gap-1">
-          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[pkg.status] || 'bg-slate-100 text-slate-500'}`}>
+          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[pkg.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
             {STATUS_LABEL[pkg.status] ?? pkg.status}
           </span>
           {(pkg as { audit_status?: string }).audit_status && AUDIT_BADGE[(pkg as { audit_status: string }).audit_status] && (
@@ -659,11 +659,11 @@ const PackageRow = React.memo(function PackageRow({
             ))}
           </div>
           {/* 진행률 바 */}
-          <div className="w-full bg-slate-100 rounded-full h-1.5">
+          <div className="w-full bg-admin-surface-2 rounded-full h-1.5">
             <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${coverage}%` }} />
           </div>
-          <span className="text-[10px] text-slate-400">{PLATFORMS.filter(p => isPlatformActive(pkg.id, p.key)).length}/{PLATFORMS.length} ({coverage}%)</span>
+          <span className="text-[10px] text-admin-muted-2">{PLATFORMS.filter(p => isPlatformActive(pkg.id, p.key)).length}/{PLATFORMS.length} ({coverage}%)</span>
         </div>
       </td>
 
@@ -672,7 +672,7 @@ const PackageRow = React.memo(function PackageRow({
           {/* 포스터 버튼 */}
           <button
             onClick={() => onOpenPoster(pkg, 'A4')}
-            className="px-1.5 py-1 border border-slate-300 text-slate-500 rounded text-[10px] hover:bg-slate-50 whitespace-nowrap"
+            className="px-1.5 py-1 border border-admin-border-strong text-admin-muted rounded text-[10px] hover:bg-admin-bg whitespace-nowrap"
             title="A4 포스터"
           >A4</button>
           <button
@@ -710,7 +710,7 @@ const PackageRow = React.memo(function PackageRow({
             const ch = contentStatus.get(pkg.id);
             if (!ch || ch.size === 0) return <span className="text-[9px] text-red-400" title="콘텐츠 없음">0/3</span>;
             return (
-              <span className="text-[9px] text-slate-400" title={`${[...ch].join(', ')}`}>
+              <span className="text-[9px] text-admin-muted-2" title={`${[...ch].join(', ')}`}>
                 {ch.has('naver_blog') ? '📝' : '·'}{ch.has('instagram_card') ? '🖼' : '·'}{ch.has('google_search') ? '📢' : '·'}
               </span>
             );
@@ -719,14 +719,14 @@ const PackageRow = React.memo(function PackageRow({
           <div className="relative">
             <button
               onClick={e => { e.stopPropagation(); onSetCopyDropdownId(copyDropdownId === pkg.id ? null : pkg.id); }}
-              className="px-2 py-1 border border-slate-300 text-slate-700 rounded text-[11px] hover:bg-slate-50 whitespace-nowrap"
+              className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg whitespace-nowrap"
               title="플랫폼별 AI 프롬프트 복사"
             >복사</button>
             {copyDropdownId === pkg.id && (
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] z-50 py-1 min-w-[120px]">
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] z-50 py-1 min-w-[120px]">
                 {PLATFORMS.map(p => (
                   <button key={p.key} type="button"
-                    className="w-full text-left px-3 py-2 text-[11px] text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 text-[11px] text-admin-text-2 hover:bg-admin-bg flex items-center gap-2"
                     onClick={async e => {
                       e.stopPropagation();
                       onSetCopyDropdownId(null);
@@ -752,7 +752,7 @@ const PackageRow = React.memo(function PackageRow({
           {/* 기록 남기기 버튼 */}
           <button
             onClick={e => { e.stopPropagation(); onSetLogModalTarget({ packageId: pkg.id, productId: pkg.products?.internal_code ?? pkg.internal_code }); }}
-            className="px-2 py-1 border border-slate-300 text-slate-700 rounded text-[11px] hover:bg-slate-50 whitespace-nowrap"
+            className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg whitespace-nowrap"
             title="마케팅 발행 URL 기록"
           >기록</button>
           {/* 일정표 듀얼뷰 바로가기 */}
@@ -761,13 +761,13 @@ const PackageRow = React.memo(function PackageRow({
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="px-2 py-1 border border-slate-300 text-slate-700 rounded text-[11px] hover:bg-slate-50"
+            className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg"
             title="일정표 보기"
           >일정</a>
           {/* 수정 버튼 (항상 표시) */}
           <button
             onClick={e => onOpenSingleEdit(pkg, e)}
-            className="px-2 py-1 border border-slate-300 text-slate-700 rounded text-[11px] hover:bg-slate-50"
+            className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg"
           >수정</button>
           {expired && (
             <button
@@ -800,7 +800,7 @@ const PackageRow = React.memo(function PackageRow({
             <button
               onClick={() => onHandleAction(pkg.id, 'reject')}
               disabled={!!actionLoading}
-              className="px-2 py-1 border border-slate-300 text-slate-500 rounded text-[11px] hover:bg-slate-50 disabled:opacity-50"
+              className="px-2 py-1 border border-admin-border-strong text-admin-muted rounded text-[11px] hover:bg-admin-bg disabled:opacity-50"
             >비활성화</button>
           )}
         </div>
@@ -1317,8 +1317,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-admin-lg font-bold text-slate-800">상품 관리</h1>
-          <p className="text-admin-sm text-slate-500 mt-0.5">업로드된 여행 상품 검토 및 승인</p>
+          <h1 className="text-admin-lg font-bold text-admin-text-2">상품 관리</h1>
+          <p className="text-admin-sm text-admin-muted mt-0.5">업로드된 여행 상품 검토 및 승인</p>
         </div>
         <div className="flex items-center gap-2">
           {reviewCount > 0 && (
@@ -1357,7 +1357,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <select
           value={landOperatorFilter}
           onChange={e => setLandOperatorFilter(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-admin-sm focus:outline-none bg-white text-slate-500 min-w-[110px]"
+          className="px-3 py-2 border border-admin-border-mid rounded-lg text-admin-sm focus:outline-none bg-white text-admin-muted min-w-[110px]"
         >
           <option value="">전체 랜드사</option>
           {LAND_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
@@ -1365,7 +1365,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-admin-sm focus:outline-none bg-white text-slate-500"
+          className="px-3 py-2 border border-admin-border-mid rounded-lg text-admin-sm focus:outline-none bg-white text-admin-muted"
         >
           {SORT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -1376,7 +1376,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           className={`px-3 py-2 rounded-lg text-admin-sm font-medium border transition ${
             showExpired
               ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+              : 'bg-white text-admin-muted border-admin-border-mid hover:bg-admin-bg'
           }`}
         >
           {showExpired ? `만료 숨김` : `만료 포함 (${expiredCount})`}
@@ -1437,55 +1437,55 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             className={`px-3 py-1.5 rounded-lg text-admin-sm font-medium transition ${
               statusFilter === opt.value
                 ? 'bg-blue-600 text-white'
-                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                : 'bg-white border border-admin-border-strong text-admin-text-2 hover:bg-admin-bg'
             }`}
           >
             {opt.label}
           </button>
         ))}
       </div>
-      <div className="flex items-center justify-between mb-2 text-admin-xs text-slate-500">
+      <div className="flex items-center justify-between mb-2 text-admin-xs text-admin-muted">
         <span>총 {totalCount.toLocaleString()}건 · {currentPage}/{totalPages} 페이지</span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage <= 1 || loading}
-            className="px-2 py-1 rounded border border-slate-200 disabled:opacity-40"
+            className="px-2 py-1 rounded border border-admin-border-mid disabled:opacity-40"
           >이전</button>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage >= totalPages || loading}
-            className="px-2 py-1 rounded border border-slate-200 disabled:opacity-40"
+            className="px-2 py-1 rounded border border-admin-border-mid disabled:opacity-40"
           >다음</button>
         </div>
       </div>
 
       {/* 목록 */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-admin-md border border-admin-border-mid overflow-hidden">
         {loading ? (
           <div className="divide-y divide-slate-50">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-4 py-3">
-                <div className="w-4 h-4 bg-slate-100 rounded animate-pulse shrink-0" />
-                <div className="w-8 h-8 bg-slate-100 rounded-lg animate-pulse shrink-0" />
+                <div className="w-4 h-4 bg-admin-surface-2 rounded animate-pulse shrink-0" />
+                <div className="w-8 h-8 bg-admin-surface-2 rounded-lg animate-pulse shrink-0" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 bg-slate-100 rounded animate-pulse w-48" />
-                  <div className="h-2.5 bg-slate-100 rounded animate-pulse w-32" />
+                  <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-48" />
+                  <div className="h-2.5 bg-admin-surface-2 rounded animate-pulse w-32" />
                 </div>
-                <div className="h-3 bg-slate-100 rounded animate-pulse w-16" />
-                <div className="h-5 bg-slate-100 rounded-full animate-pulse w-14" />
+                <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-16" />
+                <div className="h-5 bg-admin-surface-2 rounded-full animate-pulse w-14" />
               </div>
             ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-14 flex flex-col items-center gap-3">
-            <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
-            <p className="text-admin-sm font-medium text-slate-500">상품이 없습니다.</p>
-            <p className="text-admin-xs text-slate-400">{searchQuery ? '검색 조건을 바꿔보세요.' : '문서 업로드 후 AI가 자동으로 등록합니다.'}</p>
+            <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+            <p className="text-admin-sm font-medium text-admin-muted">상품이 없습니다.</p>
+            <p className="text-admin-xs text-admin-muted-2">{searchQuery ? '검색 조건을 바꿔보세요.' : '문서 업로드 후 AI가 자동으로 등록합니다.'}</p>
           </div>
         ) : (
           <table className="w-full text-admin-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-admin-bg border-b border-admin-border-mid">
               <tr>
                 <th className="px-3 py-2 w-8">
                   <input
@@ -1495,14 +1495,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     className="rounded"
                   />
                 </th>
-                <th className="text-left px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('title')}>상품명<span className="text-slate-400 text-[11px]">{sortIcon('title')}</span></th>
-                <th className="text-left px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('land_operator')}>랜드사<span className="text-slate-400 text-[11px]">{sortIcon('land_operator')}</span></th>
-                <th className="text-right px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('commission_rate')}>커미션<span className="text-slate-400 text-[11px]">{sortIcon('commission_rate')}</span></th>
-                <th className="text-left px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('destination')}>목적지<span className="text-slate-400 text-[11px]">{sortIcon('destination')}</span></th>
-                <th className="text-right px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('price')}>가격범위<span className="text-slate-400 text-[11px]">{sortIcon('price')}</span></th>
-                <th className="text-center px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('deadline')}>발권기한<span className="text-slate-400 text-[11px]">{sortIcon('deadline')}</span></th>
-                <th className="text-center px-3 py-2 text-slate-500 font-medium cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleHeaderSort('status')}>상태<span className="text-slate-400 text-[11px]">{sortIcon('status')}</span></th>
-                <th className="px-3 py-2 text-slate-500 font-medium text-center">마케팅 커버리지</th>
+                <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('title')}>상품명<span className="text-admin-muted-2 text-[11px]">{sortIcon('title')}</span></th>
+                <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('land_operator')}>랜드사<span className="text-admin-muted-2 text-[11px]">{sortIcon('land_operator')}</span></th>
+                <th className="text-right px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('commission_rate')}>커미션<span className="text-admin-muted-2 text-[11px]">{sortIcon('commission_rate')}</span></th>
+                <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('destination')}>목적지<span className="text-admin-muted-2 text-[11px]">{sortIcon('destination')}</span></th>
+                <th className="text-right px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('price')}>가격범위<span className="text-admin-muted-2 text-[11px]">{sortIcon('price')}</span></th>
+                <th className="text-center px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('deadline')}>발권기한<span className="text-admin-muted-2 text-[11px]">{sortIcon('deadline')}</span></th>
+                <th className="text-center px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('status')}>상태<span className="text-admin-muted-2 text-[11px]">{sortIcon('status')}</span></th>
+                <th className="px-3 py-2 text-admin-muted font-medium text-center">마케팅 커버리지</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -1573,28 +1573,28 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {bulkEditOpen && (
         <>
           <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setBulkEditOpen(false)} />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-slate-200 flex flex-col">
-            <div className="p-6 border-b border-slate-200">
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col">
+            <div className="p-6 border-b border-admin-border-mid">
               <div className="flex items-center justify-between">
-                <h3 className="text-admin-lg font-bold text-slate-800">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
-                <button onClick={() => setBulkEditOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+                <h3 className="text-admin-lg font-bold text-admin-text-2">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
+                <button onClick={() => setBulkEditOpen(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none">×</button>
               </div>
-              <p className="text-admin-sm text-slate-500 mt-1">변경할 항목만 선택하세요. 비워두면 해당 필드는 유지됩니다.</p>
+              <p className="text-admin-sm text-admin-muted mt-1">변경할 항목만 선택하세요. 비워두면 해당 필드는 유지됩니다.</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">랜드사</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
                 <select
                   value={bulkLandOperator}
                   onChange={e => setBulkLandOperator(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- 변경 안 함 --</option>
                   {LAND_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">커미션 (%)</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">커미션 (%)</label>
                 <input
                   type="number"
                   min="0"
@@ -1603,14 +1603,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   value={bulkCommission}
                   onChange={e => setBulkCommission(e.target.value)}
                   placeholder="변경 안 함"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
-            <div className="p-6 border-t border-slate-200 flex gap-2 justify-end">
+            <div className="p-6 border-t border-admin-border-mid flex gap-2 justify-end">
               <button
                 onClick={() => setBulkEditOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-admin-sm text-slate-700 hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-admin-border-strong rounded-lg text-admin-sm text-admin-text-2 hover:bg-admin-bg"
               >취소</button>
               <button
                 onClick={handleBulkEdit}
@@ -1626,40 +1626,40 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {editPkg && (
         <>
           <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setEditPkg(null)} />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-slate-200 flex flex-col">
-            <div className="p-6 border-b border-slate-200">
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col">
+            <div className="p-6 border-b border-admin-border-mid">
               <div className="flex items-center justify-between">
-                <h3 className="text-admin-lg font-bold text-slate-800">상품 수정</h3>
-                <button onClick={() => setEditPkg(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+                <h3 className="text-admin-lg font-bold text-admin-text-2">상품 수정</h3>
+                <button onClick={() => setEditPkg(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none">×</button>
               </div>
-              <p className="text-admin-sm text-slate-500 truncate mt-0.5">{editPkg.title}</p>
+              <p className="text-admin-sm text-admin-muted truncate mt-0.5">{editPkg.title}</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">상품명</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">상품명</label>
                 <input
                   type="text"
                   value={editForm.title}
                   onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">목적지</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">목적지</label>
                 <input
                   type="text"
                   value={editForm.destination}
                   onChange={e => setEditForm(f => ({ ...f, destination: e.target.value }))}
                   placeholder="예: 베트남 다낭"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">랜드사</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
                 <select
                   value={editForm.land_operator_id}
                   onChange={e => setEditForm(f => ({ ...f, land_operator_id: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- 선택 안 함 --</option>
                   {activeVendors.map(op => (
@@ -1668,7 +1668,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 </select>
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">커미션 (%)</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">커미션 (%)</label>
                 <input
                   type="number"
                   min="0"
@@ -1677,23 +1677,23 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   value={editForm.commission_rate}
                   onChange={e => setEditForm(f => ({ ...f, commission_rate: e.target.value }))}
                   placeholder="예: 10"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-slate-800 mb-1">발권기한</label>
+                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">발권기한</label>
                 <input
                   type="date"
                   value={editForm.ticketing_deadline}
                   onChange={e => setEditForm(f => ({ ...f, ticketing_deadline: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
-            <div className="p-6 border-t border-slate-200 flex gap-2 justify-end">
+            <div className="p-6 border-t border-admin-border-mid flex gap-2 justify-end">
               <button
                 onClick={() => setEditPkg(null)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-admin-sm text-slate-700 hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-admin-border-strong rounded-lg text-admin-sm text-admin-text-2 hover:bg-admin-bg"
               >취소</button>
               <button
                 onClick={handleSingleEdit}
@@ -1709,12 +1709,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {selected && (
         <>
           <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setSelected(null)} />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-slate-200 flex flex-col">
-            <div className="p-6 border-b border-slate-200 flex items-start justify-between">
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-admin-border-mid flex flex-col">
+            <div className="p-6 border-b border-admin-border-mid flex items-start justify-between">
               <div>
-                <h2 className="text-admin-lg font-bold text-slate-800">{selected.title}</h2>
+                <h2 className="text-admin-lg font-bold text-admin-text-2">{selected.title}</h2>
                 <div className="flex gap-2 mt-1 flex-wrap">
-                  <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[selected.status] || 'bg-slate-100 text-slate-500'}`}>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[selected.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
                     {STATUS_LABEL[selected.status] ?? selected.status}
                   </span>
                   {(selected as { audit_status?: string }).audit_status && AUDIT_BADGE[(selected as { audit_status: string }).audit_status] && (
@@ -1733,7 +1733,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   })()}
                 </div>
               </div>
-              <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+              <button onClick={() => setSelected(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-admin-sm">
@@ -1757,57 +1757,57 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               <div className="grid grid-cols-2 gap-2 text-admin-sm">
                 {selected.land_operator && (
                   <div className="col-span-2 flex items-center gap-4">
-                    <div><span className="text-slate-500">랜드사:</span> <span className="font-medium text-blue-700">{selected.land_operator}</span></div>
+                    <div><span className="text-admin-muted">랜드사:</span> <span className="font-medium text-blue-700">{selected.land_operator}</span></div>
                     {selected.commission_rate != null && (
-                      <div><span className="text-slate-500">커미션:</span> <span className="font-medium text-green-600">{selected.commission_rate}%</span></div>
+                      <div><span className="text-admin-muted">커미션:</span> <span className="font-medium text-green-600">{selected.commission_rate}%</span></div>
                     )}
                   </div>
                 )}
-                {selected.destination && <div><span className="text-slate-500">목적지:</span> {selected.destination}</div>}
-                {selected.trip_style && <div><span className="text-slate-500">기간:</span> {selected.trip_style}</div>}
-                {selected.departure_days && <div><span className="text-slate-500">출발요일:</span> {selected.departure_days}</div>}
-                {selected.airline && <div><span className="text-slate-500">항공:</span> {selected.airline}</div>}
-                {selected.min_participants && <div><span className="text-slate-500">최소인원:</span> {selected.min_participants}명</div>}
+                {selected.destination && <div><span className="text-admin-muted">목적지:</span> {selected.destination}</div>}
+                {selected.trip_style && <div><span className="text-admin-muted">기간:</span> {selected.trip_style}</div>}
+                {selected.departure_days && <div><span className="text-admin-muted">출발요일:</span> {selected.departure_days}</div>}
+                {selected.airline && <div><span className="text-admin-muted">항공:</span> {selected.airline}</div>}
+                {selected.min_participants && <div><span className="text-admin-muted">최소인원:</span> {selected.min_participants}명</div>}
                 {selected.ticketing_deadline && (
                   <div>
-                    <span className="text-slate-500">발권마감:</span>{' '}
+                    <span className="text-admin-muted">발권마감:</span>{' '}
                     <span className={`font-medium ${isDeadlineSoon(selected) ? 'text-red-600' : ''}`}>
                       {selected.ticketing_deadline}
                     </span>
                     {(() => { const d = getDDayInfo(selected); return d ? <span className={`ml-1 px-1.5 py-0.5 rounded text-[11px] ${d.className}`}>{d.label}</span> : null; })()}
                   </div>
                 )}
-                {selected.guide_tip && <div className="col-span-2"><span className="text-slate-500">가이드팁:</span> {selected.guide_tip}</div>}
-                {selected.single_supplement && <div className="col-span-2"><span className="text-slate-500">싱글차지:</span> {selected.single_supplement}</div>}
-                {selected.small_group_surcharge && <div className="col-span-2"><span className="text-slate-500">소규모할증:</span> {selected.small_group_surcharge}</div>}
+                {selected.guide_tip && <div className="col-span-2"><span className="text-admin-muted">가이드팁:</span> {selected.guide_tip}</div>}
+                {selected.single_supplement && <div className="col-span-2"><span className="text-admin-muted">싱글차지:</span> {selected.single_supplement}</div>}
+                {selected.small_group_surcharge && <div className="col-span-2"><span className="text-admin-muted">소규모할증:</span> {selected.small_group_surcharge}</div>}
               </div>
 
               {selected.price_tiers && selected.price_tiers.length > 0 && (
                 <div>
-                  <p className="font-semibold text-slate-800 mb-2">날짜별 가격표</p>
+                  <p className="font-semibold text-admin-text-2 mb-2">날짜별 가격표</p>
                   <table className="w-full text-[11px] border-collapse">
                     <thead>
-                      <tr className="bg-slate-50">
-                        <th className="border border-slate-200 px-2 py-1.5 text-left text-slate-500">날짜/기간</th>
-                        <th className="border border-slate-200 px-2 py-1.5 text-right text-slate-500">성인</th>
-                        <th className="border border-slate-200 px-2 py-1.5 text-right text-slate-500">아동</th>
-                        <th className="border border-slate-200 px-2 py-1.5 text-center text-slate-500">상태/비고</th>
+                      <tr className="bg-admin-bg">
+                        <th className="border border-admin-border-mid px-2 py-1.5 text-left text-admin-muted">날짜/기간</th>
+                        <th className="border border-admin-border-mid px-2 py-1.5 text-right text-admin-muted">성인</th>
+                        <th className="border border-admin-border-mid px-2 py-1.5 text-right text-admin-muted">아동</th>
+                        <th className="border border-admin-border-mid px-2 py-1.5 text-center text-admin-muted">상태/비고</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selected.price_tiers.map((tier, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
-                          <td className="border border-slate-200 px-2 py-1.5 text-slate-800">
+                        <tr key={i} className="hover:bg-admin-bg">
+                          <td className="border border-admin-border-mid px-2 py-1.5 text-admin-text-2">
                             {tier.period_label}
-                            {tier.departure_day_of_week && <span className="ml-1 text-slate-400">({tier.departure_day_of_week})</span>}
+                            {tier.departure_day_of_week && <span className="ml-1 text-admin-muted-2">({tier.departure_day_of_week})</span>}
                           </td>
-                          <td className="border border-slate-200 px-2 py-1.5 text-right font-medium text-slate-800">{tier.adult_price ? tier.adult_price.toLocaleString() : '-'}</td>
-                          <td className="border border-slate-200 px-2 py-1.5 text-right text-slate-800">{tier.child_price ? tier.child_price.toLocaleString() : '-'}</td>
-                          <td className="border border-slate-200 px-2 py-1.5 text-center">
+                          <td className="border border-admin-border-mid px-2 py-1.5 text-right font-medium text-admin-text-2">{tier.adult_price ? tier.adult_price.toLocaleString() : '-'}</td>
+                          <td className="border border-admin-border-mid px-2 py-1.5 text-right text-admin-text-2">{tier.child_price ? tier.child_price.toLocaleString() : '-'}</td>
+                          <td className="border border-admin-border-mid px-2 py-1.5 text-center">
                             <span className={`px-1.5 py-0.5 rounded text-[11px] ${
                               tier.status === 'confirmed' ? 'bg-green-50 text-green-700' :
                               tier.status === 'soldout' ? 'bg-red-50 text-red-700' :
-                              'bg-slate-100 text-slate-500'
+                              'bg-admin-surface-2 text-admin-muted'
                             }`}>{tier.note || tier.status}</span>
                           </td>
                         </tr>
@@ -1819,20 +1819,20 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
               {selected.inclusions && selected.inclusions.length > 0 && (
                 <div>
-                  <p className="font-semibold text-slate-800 mb-1">포함사항</p>
-                  <p className="text-slate-500 text-admin-sm">{selected.inclusions.join(', ')}</p>
+                  <p className="font-semibold text-admin-text-2 mb-1">포함사항</p>
+                  <p className="text-admin-muted text-admin-sm">{selected.inclusions.join(', ')}</p>
                 </div>
               )}
               {selected.excludes && selected.excludes.length > 0 && (
                 <div>
-                  <p className="font-semibold text-slate-800 mb-1">불포함사항</p>
-                  <p className="text-slate-500 text-admin-sm">{selected.excludes.join(', ')}</p>
+                  <p className="font-semibold text-admin-text-2 mb-1">불포함사항</p>
+                  <p className="text-admin-muted text-admin-sm">{selected.excludes.join(', ')}</p>
                 </div>
               )}
 
               {selected.optional_tours && selected.optional_tours.length > 0 && (
                 <div>
-                  <p className="font-semibold text-slate-800 mb-1">선택관광</p>
+                  <p className="font-semibold text-admin-text-2 mb-1">선택관광</p>
                   <div className="flex flex-wrap gap-1.5">
                     {selected.optional_tours.map((t, i) => (
                       <span key={i} className="px-2 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 rounded text-[11px]">
@@ -1844,7 +1844,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-200 flex gap-2 justify-end flex-wrap">
+            <div className="p-4 border-t border-admin-border-mid flex gap-2 justify-end flex-wrap">
               {!!selected.itinerary_data ? (
                 <button
                   onClick={() => handleGenerateImage(selected, 'detail')}
@@ -1879,16 +1879,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               <a
                 href={`/itinerary/${selected.id}`}
                 target="_blank"
-                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50"
+                className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg"
               >듀얼뷰</a>
               <a
                 href={`/itinerary/${selected.id}/print?mode=detail`}
                 target="_blank"
-                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50"
+                className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg"
               >A4 인쇄</a>
               <button
                 onClick={e => { setSelected(null); openSingleEdit(selected, e); }}
-                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50"
+                className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg"
               >수정</button>
               <button
                 onClick={() => handleAction(selected.id, 'delete')}
@@ -1907,7 +1907,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   <button
                     onClick={() => handleAction(selected.id, 'reject')}
                     disabled={!!actionLoading}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg disabled:opacity-50"
                   >거부</button>
                   <button
                     onClick={() => handleAction(selected.id, 'approve')}
@@ -1920,7 +1920,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <button
                   onClick={() => handleAction(selected.id, 'reject')}
                   disabled={!!actionLoading}
-                  className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-admin-sm hover:bg-slate-50 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg disabled:opacity-50"
                 >비활성화</button>
               )}
               {selected.status === 'rejected' && (
@@ -1966,19 +1966,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* ── 카톡 마케팅 문구 모달 ───────────────────────────────────── */}
       {kakaoCopyTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }}>
-          <div className="bg-white rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-admin-lg w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b flex justify-between items-start">
               <div>
                 <h3 className="font-bold text-lg">📝 카톡 마케팅 문구</h3>
-                <p className="text-xs text-slate-400 mt-1">{kakaoCopyTarget.title}</p>
+                <p className="text-xs text-admin-muted-2 mt-1">{kakaoCopyTarget.title}</p>
               </div>
-              <button onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+              <button onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">×</button>
             </div>
 
             {/* 생성 버튼 */}
             {!kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-6 text-center">
-                <p className="text-sm text-slate-500 mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
+                <p className="text-sm text-admin-muted mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
                 <button onClick={async () => {
                   setKakaoCopyLoading(true);
                   try {
@@ -2005,7 +2005,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     setKakaoCopyText(data.copy || '문구 생성 실패');
                   } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                   finally { setKakaoCopyLoading(false); }
-                }} className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-xl hover:opacity-90 text-sm">
+                }} className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-admin-md hover:opacity-90 text-sm">
                   🔥 문구 생성하기
                 </button>
               </div>
@@ -2015,7 +2015,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             {kakaoCopyLoading && (
               <div className="p-10 text-center">
                 <div className="animate-spin w-8 h-8 border-4 border-pink-300 border-t-pink-600 rounded-full mx-auto mb-3" />
-                <p className="text-sm text-slate-500">AI가 문구를 생성하고 있습니다...</p>
+                <p className="text-sm text-admin-muted">AI가 문구를 생성하고 있습니다...</p>
               </div>
             )}
 
@@ -2023,10 +2023,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             {kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-4">
                 <textarea value={kakaoCopyText} onChange={e => setKakaoCopyText(e.target.value)}
-                  rows={18} className="w-full border rounded-xl px-4 py-3 text-sm leading-relaxed resize-none focus:ring-2 focus:ring-pink-300 focus:outline-none" />
+                  rows={18} className="w-full border rounded-admin-md px-4 py-3 text-sm leading-relaxed resize-none focus:ring-2 focus:ring-pink-300 focus:outline-none" />
                 <div className="flex gap-2 mt-3">
                   <button onClick={() => { navigator.clipboard.writeText(kakaoCopyText); }}
-                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700">
+                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-admin-md hover:bg-blue-700">
                     📋 문구 복사
                   </button>
                   <button onClick={async () => {
@@ -2048,7 +2048,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                       setKakaoCopyText(data.copy || '문구 생성 실패');
                     } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                     finally { setKakaoCopyLoading(false); }
-                  }} className="py-2.5 px-4 bg-slate-100 text-slate-700 text-sm rounded-xl hover:bg-slate-200">
+                  }} className="py-2.5 px-4 bg-admin-surface-2 text-admin-text-2 text-sm rounded-admin-md hover:bg-slate-200">
                     🔄 재생성
                   </button>
                 </div>

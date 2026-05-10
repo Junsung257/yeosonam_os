@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import Link from 'next/link';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 interface PromptVersion {
   id: string;
@@ -16,9 +17,12 @@ interface PromptVersion {
   change_note: string | null;
 }
 
-export default function PromptEditPage({ params }: { params: Promise<{ key: string }> }) {
-  const { key } = use(params);
-  const decodedKey = decodeURIComponent(key);
+export default function PromptEditPage({ params }: { params: Promise<{ key: string }> | { key: string } }) {
+  // Next.js: in 14 params is a plain object, in 15+ a Promise. Defensively support both.
+  const resolved = (params && typeof (params as { then?: unknown }).then === 'function')
+    ? use(params as Promise<{ key: string }>)
+    : (params as { key: string });
+  const decodedKey = decodeURIComponent(resolved.key);
 
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,13 +115,13 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-3xl">
-        <div className="h-6 bg-slate-100 rounded animate-pulse w-56" />
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-56" />
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${80 - i * 10}%` }} />
+            <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse" style={{ width: `${80 - i * 10}%` }} />
           ))}
         </div>
-        <div className="h-40 bg-slate-50 rounded-xl animate-pulse" />
+        <div className="h-40 bg-admin-bg rounded-admin-md animate-pulse" />
       </div>
     );
   }
@@ -126,20 +130,20 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
     <div className="p-6 max-w-5xl mx-auto">
       {/* 토스트 */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white transition-all ${toast.type === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-admin-md text-sm font-medium text-white transition-all ${toast.type === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.msg}
         </div>
       )}
 
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin/prompts" className="text-slate-400 hover:text-slate-700 text-sm">
+        <Link href="/admin/prompts" className="text-admin-muted-2 hover:text-admin-text-2 text-sm">
           ← 목록
         </Link>
-        <span className="text-slate-300">/</span>
-        <h1 className="text-xl font-extrabold text-slate-900 font-mono">{decodedKey}</h1>
+        <span className="text-admin-muted-2">/</span>
+        <h1 className="text-xl font-extrabold text-admin-text font-mono">{decodedKey}</h1>
         {active && (
-          <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded font-mono">
+          <span className="bg-admin-surface-2 text-admin-muted text-xs px-2 py-0.5 rounded font-mono">
             v{active.version} 활성
           </span>
         )}
@@ -147,7 +151,7 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
           <button
             onClick={handleInvalidate}
             disabled={invalidating}
-            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm border border-admin-border-strong rounded-lg hover:bg-admin-bg disabled:opacity-50"
           >
             {invalidating ? '처리 중...' : '즉시 적용'}
           </button>
@@ -163,9 +167,9 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
 
       {/* 메타 정보 */}
       {active && (
-        <div className="flex gap-4 text-xs text-slate-500 mb-4">
+        <div className="flex gap-4 text-xs text-admin-muted mb-4">
           {active.task_type && <span>task: <strong>{active.task_type}</strong></span>}
-          <span>마지막 수정: {new Date(active.created_at).toLocaleString('ko-KR')}</span>
+          <span>마지막 수정: {fmtDateTime(active.created_at)}</span>
           {active.created_by && <span>by {active.created_by}</span>}
         </div>
       )}
@@ -177,7 +181,7 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
           value={changeNote}
           onChange={e => setChangeNote(e.target.value)}
           placeholder="변경 메모 (예: R11 규칙 추가, 톤 조정)"
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+          className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
         />
       </div>
 
@@ -187,41 +191,41 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
           value={body}
           onChange={e => setBody(e.target.value)}
           rows={30}
-          className="w-full font-mono text-sm border border-slate-200 rounded-lg px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-slate-400 bg-slate-50 leading-relaxed"
+          className="w-full font-mono text-sm border border-admin-border-mid rounded-lg px-4 py-3 resize-y focus:outline-none focus:ring-2 focus:ring-slate-400 bg-admin-bg leading-relaxed"
           spellCheck={false}
         />
-        <div className="absolute bottom-3 right-3 text-xs text-slate-400">
+        <div className="absolute bottom-3 right-3 text-xs text-admin-muted-2">
           {body.length.toLocaleString()}자
         </div>
       </div>
 
       {/* 버전 히스토리 */}
       <div>
-        <h2 className="text-sm font-bold text-slate-700 mb-3">버전 히스토리</h2>
+        <h2 className="text-sm font-bold text-admin-text-2 mb-3">버전 히스토리</h2>
         {versions.length === 0 ? (
-          <p className="text-slate-400 text-sm">버전 없음</p>
+          <p className="text-admin-muted-2 text-sm">버전 없음</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-admin-md border border-admin-border-mid">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-admin-bg border-b border-admin-border-mid">
                 <tr>
-                  <th className="text-left px-4 py-2 font-semibold text-slate-700">버전</th>
-                  <th className="text-left px-4 py-2 font-semibold text-slate-700">수정일</th>
-                  <th className="text-left px-4 py-2 font-semibold text-slate-700">작성자</th>
-                  <th className="text-left px-4 py-2 font-semibold text-slate-700">메모</th>
-                  <th className="px-4 py-2 font-semibold text-slate-700">상태</th>
+                  <th className="text-left px-4 py-2 font-semibold text-admin-text-2">버전</th>
+                  <th className="text-left px-4 py-2 font-semibold text-admin-text-2">수정일</th>
+                  <th className="text-left px-4 py-2 font-semibold text-admin-text-2">작성자</th>
+                  <th className="text-left px-4 py-2 font-semibold text-admin-text-2">메모</th>
+                  <th className="px-4 py-2 font-semibold text-admin-text-2">상태</th>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {versions.map(v => (
-                  <tr key={v.id} className={v.is_active ? 'bg-green-50' : 'hover:bg-slate-50'}>
-                    <td className="px-4 py-2 font-mono text-slate-700 font-medium">v{v.version}</td>
-                    <td className="px-4 py-2 text-slate-500 text-xs whitespace-nowrap">
-                      {new Date(v.created_at).toLocaleString('ko-KR')}
+                  <tr key={v.id} className={v.is_active ? 'bg-green-50' : 'hover:bg-admin-bg'}>
+                    <td className="px-4 py-2 font-mono text-admin-text-2 font-medium">v{v.version}</td>
+                    <td className="px-4 py-2 text-admin-muted text-xs whitespace-nowrap">
+                      {fmtDateTime(v.created_at)}
                     </td>
-                    <td className="px-4 py-2 text-slate-500 text-xs">{v.created_by ?? '—'}</td>
-                    <td className="px-4 py-2 text-slate-500 max-w-xs truncate text-xs">
+                    <td className="px-4 py-2 text-admin-muted text-xs">{v.created_by ?? '—'}</td>
+                    <td className="px-4 py-2 text-admin-muted max-w-xs truncate text-xs">
                       {v.change_note ?? '—'}
                     </td>
                     <td className="px-4 py-2 text-center">
@@ -230,7 +234,7 @@ export default function PromptEditPage({ params }: { params: Promise<{ key: stri
                           현재
                         </span>
                       ) : (
-                        <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded">
+                        <span className="bg-admin-surface-2 text-admin-muted text-xs px-2 py-0.5 rounded">
                           비활성
                         </span>
                       )}

@@ -195,20 +195,20 @@ export default function CardNewsHtmlNewPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">카드뉴스 — HTML 모드</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-admin-muted">
             Claude Sonnet 4.6 으로 6장 carousel HTML 직접 생성. Puppeteer 로 1080×1080 PNG 렌더.
           </p>
         </div>
         <Link
           href="/admin/marketing/card-news"
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+          className="rounded-lg border px-4 py-2 text-sm hover:bg-admin-bg"
         >
           ← 목록으로
         </Link>
       </div>
 
       {/* 입력 폼 */}
-      <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-admin-md border bg-white p-6 shadow-admin-xs">
         <div>
           <label className="mb-1 block text-sm font-semibold">제목 (선택)</label>
           <input
@@ -237,7 +237,7 @@ export default function CardNewsHtmlNewPage() {
             ))}
           </select>
           {selectedPackage && !loadingRaw && (
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-admin-muted">
               자동 메타: {selectedPackage.destination} · {selectedPackage.duration}일 ·{' '}
               {selectedPackage.selling_price?.toLocaleString('ko-KR')}원
             </p>
@@ -271,7 +271,7 @@ export default function CardNewsHtmlNewPage() {
             className="w-full rounded-lg border px-3 py-2 font-mono text-sm focus:border-blue-500 focus:outline-none"
             disabled={generating || loadingRaw}
           />
-          <p className="mt-1 text-xs text-slate-500">{rawText.length} 자</p>
+          <p className="mt-1 text-xs text-admin-muted">{rawText.length} 자</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -320,7 +320,7 @@ export default function CardNewsHtmlNewPage() {
 
       {/* 결과 */}
       {result && (
-        <section className="mt-6 space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+        <section className="mt-6 space-y-4 rounded-admin-md border bg-white p-6 shadow-admin-xs">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">✅ HTML 생성 완료</h2>
             <Link
@@ -331,7 +331,7 @@ export default function CardNewsHtmlNewPage() {
             </Link>
           </div>
 
-          <div className="grid gap-2 text-xs text-slate-600 sm:grid-cols-4">
+          <div className="grid gap-2 text-xs text-admin-muted sm:grid-cols-4">
             <div>
               <span className="font-semibold">시간: </span>
               {(result.durationMs / 1000).toFixed(1)}s
@@ -408,7 +408,7 @@ export default function CardNewsHtmlNewPage() {
 
       {/* PNG 결과 */}
       {renderResult && (
-        <section className="mt-6 space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+        <section className="mt-6 space-y-4 rounded-admin-md border bg-white p-6 shadow-admin-xs">
           <h2 className="text-lg font-semibold">
             {allRendered ? '✅ PNG 6장 저장 완료' : '⚠️ PNG 일부 실패'}
           </h2>
@@ -432,7 +432,7 @@ export default function CardNewsHtmlNewPage() {
                       {r.error}
                     </div>
                   )}
-                  <div className="bg-slate-50 px-2 py-1 text-center text-xs text-slate-600">
+                  <div className="bg-admin-bg px-2 py-1 text-center text-xs text-admin-muted">
                     {String(r.slide_index + 1).padStart(2, '0')} / 06
                   </div>
                 </div>

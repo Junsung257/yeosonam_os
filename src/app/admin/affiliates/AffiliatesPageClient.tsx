@@ -4,6 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Leaderboard } from '@/components/affiliate/Leaderboard';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Plus, Users, Wallet, Gem, Award, X } from 'lucide-react';
 
 interface Affiliate {
   id: string;
@@ -22,7 +25,7 @@ interface Affiliate {
 
 const GRADE_COLORS: Record<number, string> = {
   1: 'bg-amber-50 text-amber-700',
-  2: 'bg-slate-100 text-slate-600',
+  2: 'bg-admin-surface-2 text-admin-muted',
   3: 'bg-yellow-50 text-yellow-700',
   4: 'bg-blue-50 text-blue-700',
   5: 'bg-purple-50 text-purple-700',
@@ -82,53 +85,43 @@ export default function AffiliatesPageClient({
   };
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-admin-lg font-bold text-slate-800">어필리에이트 관리</h1>
-          <p className="text-admin-sm text-slate-500 mt-1">인플루언서/파트너 등급 및 수수료 관리</p>
-        </div>
-        <button
-          onClick={() => setShowPanel(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-admin-sm font-medium"
-        >
-          + 파트너 등록
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="어필리에이트 관리"
+        subtitle="인플루언서/파트너 등급 및 수수료 관리"
+        actions={
+          <Button variant="primary" size="sm" onClick={() => setShowPanel(true)}>
+            <Plus size={14} />
+            파트너 등록
+          </Button>
+        }
+      />
 
       {/* 월간 리더보드 */}
       <Leaderboard />
 
       {/* KPI 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: '총 파트너 수', value: `${totalStats.total}명`, color: 'text-slate-800' },
-          { label: '누적 수수료 지급', value: `${totalStats.totalCommission.toLocaleString()}원`, color: 'text-purple-700' },
-          { label: '다이아 등급', value: `${totalStats.diamond}명`, color: 'text-purple-600' },
-          { label: '플래티넘 등급', value: `${totalStats.platinum}명`, color: 'text-blue-600' },
-        ].map(card => (
-          <div key={card.label} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-            <p className="text-[11px] text-slate-500">{card.label}</p>
-            <p className={`text-xl font-bold mt-1 ${card.color}`}>{card.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label="총 파트너 수" value={totalStats.total.toLocaleString()} unit="명" icon={Users} />
+        <KpiCard label="누적 수수료 지급" value={`${totalStats.totalCommission.toLocaleString()}원`} icon={Wallet} tone="positive" />
+        <KpiCard label="다이아 등급" value={totalStats.diamond.toLocaleString()} unit="명" icon={Gem} />
+        <KpiCard label="플래티넘 등급" value={totalStats.platinum.toLocaleString()} unit="명" icon={Award} />
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <table className="w-full text-admin-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+        <table className="admin-data-table">
+          <thead>
             <tr>
               {['이름', '추천코드', '프론트', '등급', '예약수', '보너스요율', '정산유형', '누적수수료', ''].map(h => (
-                <th key={h} className="text-left px-3 py-2 text-[11px] font-medium text-slate-500">{h}</th>
+                <th key={h}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {affiliates.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-8 text-slate-500 text-admin-base">
+                <td colSpan={9} className="text-center py-8 text-admin-muted text-admin-base" style={{ height: 'auto' }}>
                   등록된 파트너가 없습니다.
                 </td>
               </tr>
@@ -139,19 +132,19 @@ export default function AffiliatesPageClient({
                 : 100;
 
               return (
-                <tr key={a.id} className="border-b border-slate-200 hover:bg-slate-50">
-                  <td className="px-3 py-2 font-medium text-slate-800">
+                <tr key={a.id}>
+                  <td className="font-medium text-admin-text">
                     <div>{a.name}</div>
-                    {a.phone && <div className="text-[11px] text-slate-500">{a.phone}</div>}
+                    {a.phone && <div className="text-admin-xs text-admin-muted admin-num">{a.phone}</div>}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-purple-700">
+                  <td className="font-mono text-admin-xs text-brand">
                     {a.referral_code}
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <div className="flex flex-col gap-1">
                       <Link
                         href={`/admin/partner-preview?code=${encodeURIComponent(a.referral_code)}`}
-                        className="text-[11px] text-blue-700 hover:underline w-fit"
+                        className="text-admin-xs text-brand hover:text-brand-dark hover:underline w-fit"
                       >
                         미리보기 허브
                       </Link>
@@ -159,49 +152,49 @@ export default function AffiliatesPageClient({
                         href={`/with/${encodeURIComponent(a.referral_code)}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] text-emerald-700 hover:underline w-fit"
+                        className="text-admin-xs text-success hover:underline w-fit"
                       >
                         /with 새 탭
                       </a>
                     </div>
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${GRADE_COLORS[a.grade]}`}>
+                      <span className={`px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${GRADE_COLORS[a.grade]}`}>
                         {a.grade_label}
                       </span>
                     </div>
                     {a.grade < 5 && (
-                      <div className="mt-1">
-                        <div className="flex justify-between text-[11px] text-slate-500 mb-0.5">
+                      <div className="mt-1.5">
+                        <div className="flex justify-between text-admin-2xs text-admin-muted mb-1 admin-num">
                           <span>{a.booking_count}/{next.target}건</span>
                           <span>{next.label}까지 {next.target - a.booking_count}건</span>
                         </div>
-                        <div className="w-24 bg-slate-100 rounded-full h-1.5">
+                        <div className="w-24 bg-admin-surface-2 rounded-full h-1.5">
                           <div
-                            className="bg-purple-400 h-1.5 rounded-full transition-all"
+                            className="bg-brand h-1.5 rounded-full transition-all"
                             style={{ width: `${progress}%` }}
                           />
                         </div>
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-slate-500">{a.booking_count}건</td>
-                  <td className="px-3 py-2 text-blue-600 font-mono">+{(a.bonus_rate * 100).toFixed(1)}%</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded text-[11px] ${
-                      a.payout_type === 'PERSONAL' ? 'bg-orange-50 text-orange-700' : 'bg-green-50 text-green-700'
+                  <td className="text-admin-muted admin-num">{a.booking_count}건</td>
+                  <td className="text-brand font-mono admin-num">+{(a.bonus_rate * 100).toFixed(1)}%</td>
+                  <td>
+                    <span className={`px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
+                      a.payout_type === 'PERSONAL' ? 'bg-status-warningBg text-status-warningFg' : 'bg-status-successBg text-status-successFg'
                     }`}>
                       {a.payout_type === 'PERSONAL' ? '개인 (3.3%)' : '사업자'}
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-medium text-purple-700">
+                  <td className="font-medium text-brand admin-num">
                     {Number(a.total_commission).toLocaleString()}원
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <Link
                       href={`/admin/affiliates/${a.id}`}
-                      className="text-[11px] text-slate-500 hover:text-slate-800"
+                      className="text-admin-xs text-admin-muted hover:text-admin-text font-medium"
                     >
                       상세
                     </Link>
@@ -216,15 +209,21 @@ export default function AffiliatesPageClient({
       {/* 등록 슬라이드 패널 */}
       {showPanel && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/30" onClick={() => { setShowPanel(false); setError(''); }} />
-          <div className="relative w-full max-w-md bg-white h-full overflow-y-auto border-l border-slate-200">
+          <div className="absolute inset-0 bg-slate-900/30" onClick={() => { setShowPanel(false); setError(''); }} />
+          <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-admin-lg font-bold text-slate-800">파트너 신규 등록</h2>
-                <button onClick={() => { setShowPanel(false); setError(''); }} className="text-slate-500 hover:text-slate-700 text-lg">&times;</button>
+                <h2 className="text-admin-h2 text-admin-text">파트너 신규 등록</h2>
+                <button
+                  onClick={() => { setShowPanel(false); setError(''); }}
+                  className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
+                  aria-label="닫기"
+                >
+                  <X size={18} />
+                </button>
               </div>
               {error && (
-                <p className="text-admin-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">{error}</p>
+                <p className="text-admin-sm text-danger bg-danger-light px-3 py-2 rounded-admin-sm border border-danger/20">{error}</p>
               )}
               <form onSubmit={handleSubmit} className="space-y-3">
                 {[
@@ -235,53 +234,55 @@ export default function AffiliatesPageClient({
                   { label: '계좌번호 (암호화 저장)', key: 'bank_info', type: 'text', placeholder: '신한은행 110-123-456789' },
                 ].map(f => (
                   <div key={f.key}>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">{f.label}</label>
+                    <label className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">{f.label}</label>
                     <input
                       type={f.type}
                       placeholder={f.placeholder}
                       value={(form as Record<string, string>)[f.key]}
                       onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                       required={f.label.includes('*')}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     />
                   </div>
                 ))}
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-500 mb-1">정산 유형</label>
+                  <label className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">정산 유형</label>
                   <select
                     value={form.payout_type}
                     onChange={e => setForm(prev => ({ ...prev, payout_type: e.target.value as 'PERSONAL' | 'BUSINESS' }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base"
+                    className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                   >
                     <option value="PERSONAL">개인 (원천세 3.3% 공제)</option>
                     <option value="BUSINESS">사업자 (세금계산서 별도)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-500 mb-1">메모</label>
+                  <label className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">메모</label>
                   <textarea
                     value={form.memo}
                     onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
                     rows={2}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-admin-base"
-                    placeholder="특이사항..."
+                    className="w-full border border-admin-border-mid rounded-admin-sm px-3 py-2 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors resize-none"
+                    placeholder="특이사항…"
                   />
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => { setShowPanel(false); setError(''); }}
-                    className="flex-1 py-2 bg-white border border-slate-300 rounded-lg text-admin-base text-slate-700 hover:bg-slate-50"
+                    className="flex-1"
                   >
                     취소
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="submit"
+                    variant="primary"
                     disabled={saving}
-                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-admin-base font-medium hover:bg-blue-700 disabled:opacity-50"
+                    className="flex-1"
                   >
-                    {saving ? '등록 중...' : '등록하기'}
-                  </button>
+                    {saving ? '등록 중…' : '등록하기'}
+                  </Button>
                 </div>
               </form>
             </div>

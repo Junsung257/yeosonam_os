@@ -37,7 +37,7 @@ const ANGLE_LABELS: Record<string, string> = {
 };
 
 function ScoreBadge({ score }: { score: number | null }) {
-  if (score == null) return <span className="text-xs text-slate-400">평가 없음</span>;
+  if (score == null) return <span className="text-xs text-admin-muted-2">평가 없음</span>;
   let bg = 'bg-red-100 text-red-700';
   if (score >= 80) bg = 'bg-emerald-100 text-emerald-700';
   else if (score >= 65) bg = 'bg-amber-100 text-amber-700';
@@ -55,7 +55,7 @@ function VerdictPill({ verdict }: { verdict: string | undefined }) {
     minor_polish: { label: '미세 보정 권장', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
     regenerate: { label: '재생성 권장', cls: 'bg-red-50 text-red-700 border-red-200' },
   };
-  const v = map[verdict] ?? { label: verdict, cls: 'bg-slate-50 text-slate-700 border-slate-200' };
+  const v = map[verdict] ?? { label: verdict, cls: 'bg-admin-bg text-admin-text-2 border-admin-border-mid' };
   return (
     <span className={`inline-block rounded border px-2 py-0.5 text-[11px] font-medium ${v.cls}`}>
       {v.label}
@@ -176,13 +176,13 @@ export default function VariantGroupComparePage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4">
-        <div className="h-6 bg-slate-100 rounded animate-pulse w-48" />
+        <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-              <div className="aspect-[9/16] bg-slate-100 animate-pulse" />
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div className="aspect-[9/16] bg-admin-surface-2 animate-pulse" />
               <div className="p-2 space-y-1.5">
-                <div className="h-3 bg-slate-100 rounded animate-pulse w-2/3" />
+                <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-2/3" />
               </div>
             </div>
           ))}
@@ -214,23 +214,23 @@ export default function VariantGroupComparePage() {
           <div className="text-xs font-semibold uppercase tracking-wider text-purple-600">
             Variant Group · A/B Compare
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">
+          <h1 className="text-2xl font-bold text-admin-text">
             변형 비교 ({variants.length}개)
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-admin-muted">
             점수순 정렬 · 총 비용 ${totalCost.toFixed(4)} · group_id: <code className="font-mono text-xs">{groupId.slice(0, 8)}…</code>
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={fetchVariants}
-            className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-admin-bg"
           >
             🔄 새로고침
           </button>
           <Link
             href="/admin/marketing/card-news"
-            className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-admin-bg"
           >
             ← 목록
           </Link>
@@ -239,7 +239,7 @@ export default function VariantGroupComparePage() {
 
       {/* 추천 winner 배너 (사전 점수) */}
       {top && top.variant_score != null && top.variant_score >= 70 && (
-        <div className="mb-6 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
+        <div className="mb-6 rounded-admin-md border-2 border-emerald-300 bg-emerald-50 p-4">
           <div className="text-sm font-bold text-emerald-900">
             🏆 사전 점수 추천 — {ANGLE_LABELS[top.variant_angle ?? ''] ?? top.variant_angle} 각도
           </div>
@@ -251,7 +251,7 @@ export default function VariantGroupComparePage() {
       )}
 
       {/* Auto-winner 결정 패널 (engagement 기반) */}
-      <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4">
+      <div className="mb-6 rounded-admin-md border border-blue-200 bg-blue-50 p-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-bold text-blue-900">
@@ -294,9 +294,9 @@ export default function VariantGroupComparePage() {
                 ? `✅ Winner 결정: ${ANGLE_LABELS[winnerReport.winner?.variant_angle ?? ''] ?? winnerReport.winner?.variant_angle}`
                 : '⏸ 미결정'}
             </div>
-            <div className="mt-1 text-slate-600">{winnerReport.reason}</div>
+            <div className="mt-1 text-admin-muted">{winnerReport.reason}</div>
             {(winnerReport.archived_ids?.length ?? 0) > 0 && (
-              <div className="mt-1 text-slate-500">
+              <div className="mt-1 text-admin-muted">
                 Archived {winnerReport.archived_ids?.length}건
               </div>
             )}
@@ -313,14 +313,14 @@ export default function VariantGroupComparePage() {
           return (
             <div
               key={v.id}
-              className={`overflow-hidden rounded-xl border bg-white shadow-sm ${
-                isTop ? 'border-2 border-emerald-400 shadow-emerald-100' : 'border-slate-200'
+              className={`overflow-hidden rounded-admin-md border bg-white shadow-admin-xs ${
+                isTop ? 'border-2 border-emerald-400 shadow-emerald-100' : 'border-admin-border-mid'
               } ${archived ? 'opacity-50' : ''}`}
             >
               {/* 헤더 */}
-              <div className="flex items-center justify-between bg-slate-50 px-4 py-3">
+              <div className="flex items-center justify-between bg-admin-bg px-4 py-3">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-admin-muted">
                     {idx + 1}위 · {ANGLE_LABELS[v.variant_angle ?? ''] ?? v.variant_angle ?? 'auto'}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -348,7 +348,7 @@ export default function VariantGroupComparePage() {
                         ? 'bg-blue-100 text-blue-700'
                         : v.status === 'ARCHIVED'
                           ? 'bg-red-100 text-red-700'
-                          : 'bg-slate-200 text-slate-600'
+                          : 'bg-slate-200 text-admin-muted'
                   }`}
                 >
                   {v.status}
@@ -356,7 +356,7 @@ export default function VariantGroupComparePage() {
               </div>
 
               {/* 미리보기 — 렌더된 PNG 또는 HTML iframe */}
-              <div className="aspect-square w-full overflow-hidden bg-slate-100">
+              <div className="aspect-square w-full overflow-hidden bg-admin-surface-2">
                 {v.ig_slide_urls?.[0] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -374,7 +374,7 @@ export default function VariantGroupComparePage() {
                     scrolling="no"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-slate-400">
+                  <div className="flex h-full items-center justify-center text-xs text-admin-muted-2">
                     HTML 없음
                   </div>
                 )}
@@ -384,7 +384,7 @@ export default function VariantGroupComparePage() {
               <div className="space-y-2 px-4 py-3">
                 <VerdictPill verdict={detail?.verdict} />
                 {detail?.summary && (
-                  <p className="text-xs leading-relaxed text-slate-600">{detail.summary}</p>
+                  <p className="text-xs leading-relaxed text-admin-muted">{detail.summary}</p>
                 )}
 
                 {/* 차원별 점수 */}
@@ -392,17 +392,17 @@ export default function VariantGroupComparePage() {
                   <div className="grid grid-cols-5 gap-1 pt-1">
                     {Object.entries(detail.dimensions).map(([k, val]) => (
                       <div key={k} className="text-center" title={k}>
-                        <div className="text-[9px] uppercase text-slate-400">
+                        <div className="text-[9px] uppercase text-admin-muted-2">
                           {k.replace(/_/g, ' ').slice(0, 6)}
                         </div>
-                        <div className="text-xs font-bold text-slate-700">{val}</div>
+                        <div className="text-xs font-bold text-admin-text-2">{val}</div>
                       </div>
                     ))}
                   </div>
                 )}
 
                 {/* 비용 */}
-                <div className="border-t pt-2 text-[10px] text-slate-400">
+                <div className="border-t pt-2 text-[10px] text-admin-muted-2">
                   비용 ${((v.html_usage?.costUsd ?? 0) + (detail?.criticCostUsd ?? 0)).toFixed(4)}
                   {v.engagement_score != null && (
                     <span className="ml-2 font-semibold text-blue-600">
@@ -413,10 +413,10 @@ export default function VariantGroupComparePage() {
               </div>
 
               {/* 액션 */}
-              <div className="flex gap-1 border-t border-slate-100 bg-slate-50 px-3 py-2">
+              <div className="flex gap-1 border-t border-admin-border bg-admin-bg px-3 py-2">
                 <button
                   onClick={() => router.push(`/admin/marketing/card-news/${v.id}/v2`)}
-                  className="flex-1 rounded bg-white border border-slate-200 px-2 py-1.5 text-xs font-medium hover:bg-slate-100"
+                  className="flex-1 rounded bg-white border border-admin-border-mid px-2 py-1.5 text-xs font-medium hover:bg-admin-surface-2"
                 >
                   스튜디오
                 </button>
@@ -431,7 +431,7 @@ export default function VariantGroupComparePage() {
                 <button
                   onClick={() => handleArchive(v.id)}
                   disabled={archivingId === v.id || archived}
-                  className="rounded border border-slate-200 bg-white px-2 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-40"
+                  className="rounded border border-admin-border-mid bg-white px-2 py-1.5 text-xs hover:bg-admin-surface-2 disabled:opacity-40"
                   title="이 변형 ARCHIVED 처리"
                 >
                   {archivingId === v.id ? '…' : '🗑'}
@@ -443,7 +443,7 @@ export default function VariantGroupComparePage() {
       </div>
 
       {variants.length === 0 && (
-        <div className="py-20 text-center text-sm text-slate-400">
+        <div className="py-20 text-center text-sm text-admin-muted-2">
           변형이 없습니다.
         </div>
       )}

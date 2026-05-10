@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { PageHeader, FilterBar } from '@/components/admin/patterns';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
+import Button from '@/components/ui/Button';
+import { RefreshCw } from 'lucide-react';
 
 interface PromptRow {
   id: string;
@@ -49,92 +53,90 @@ export default function PromptsPage() {
   const taskTypes = Array.from(new Set(prompts.map(p => p.task_type).filter(Boolean))) as string[];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">프롬프트 레지스트리</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            AI 시스템 프롬프트를 코드 배포 없이 편집·버전 관리·즉시 롤백합니다.
-          </p>
-        </div>
-      </div>
+    <div className="max-w-7xl mx-auto">
+      <PageHeader
+        title="프롬프트 레지스트리"
+        subtitle="AI 시스템 프롬프트를 코드 배포 없이 편집·버전 관리·즉시 롤백합니다."
+      />
 
-      <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 rounded-lg">
+      <FilterBar
+        right={
+          <Button variant="ghost" size="sm" onClick={load}>
+            <RefreshCw size={14} />
+            새로고침
+          </Button>
+        }
+      >
         <select
           value={filterTask}
           onChange={e => setFilterTask(e.target.value)}
-          className="border border-slate-200 rounded px-2 py-1 text-sm"
+          className="h-8 border border-admin-border-mid rounded-admin-sm px-2.5 text-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
         >
           <option value="">전체 task_type</option>
           {taskTypes.map(t => (
             <option key={t} value={t}>{TASK_TYPE_LABELS[t] ?? t}</option>
           ))}
         </select>
-        <button
-          onClick={load}
-          className="ml-auto text-sm text-slate-500 hover:text-slate-800 underline"
-        >
-          새로고침
-        </button>
-      </div>
+        <span className="text-admin-sm text-admin-muted">
+          총 <b className="admin-num text-admin-text">{filtered.length}</b>건
+        </span>
+      </FilterBar>
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+        <div className="admin-card overflow-hidden divide-y divide-admin-border">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3">
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-40" />
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-              <div className="h-4 bg-slate-100 rounded-full animate-pulse w-14" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-40" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-14" />
             </div>
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-slate-400 text-sm py-10 text-center">
+        <div className="text-admin-muted text-admin-sm py-12 text-center bg-admin-surface rounded-admin-md border border-admin-border-mid">
           프롬프트 없음. Supabase migration 적용 후 시드 데이터를 확인하세요.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+        <div className="overflow-x-auto rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs">
+          <table className="admin-data-table">
+            <thead>
               <tr>
-                <th className="text-left px-4 py-3 font-semibold text-slate-700">KEY</th>
-                <th className="text-left px-4 py-3 font-semibold text-slate-700">TASK</th>
-                <th className="text-left px-4 py-3 font-semibold text-slate-700">VER</th>
-                <th className="text-left px-4 py-3 font-semibold text-slate-700">최종 메모</th>
-                <th className="text-left px-4 py-3 font-semibold text-slate-700">수정일</th>
-                <th className="px-4 py-3"></th>
+                <th>KEY</th>
+                <th>TASK</th>
+                <th>VER</th>
+                <th>최종 메모</th>
+                <th>수정일</th>
+                <th></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {filtered.map(p => (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-slate-900 font-medium">{p.key}</td>
-                  <td className="px-4 py-3">
+                <tr key={p.id}>
+                  <td className="font-mono text-admin-text font-medium">{p.key}</td>
+                  <td>
                     {p.task_type ? (
-                      <span className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded font-medium">
+                      <span className="bg-brand-light text-brand text-admin-2xs px-2 py-0.5 rounded-admin-xs font-semibold uppercase tracking-wider">
                         {TASK_TYPE_LABELS[p.task_type] ?? p.task_type}
                       </span>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-admin-muted-2">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <span className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded font-mono">
+                  <td>
+                    <span className="bg-admin-surface-2 text-admin-text-2 text-admin-xs px-2 py-0.5 rounded-admin-xs font-mono admin-num">
                       v{p.version}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500 max-w-xs truncate">
+                  <td className="text-admin-muted max-w-xs truncate">
                     {p.change_note ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
-                    {new Date(p.created_at).toLocaleDateString('ko-KR', {
-                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                    })}
+                  <td className="text-admin-muted-2 text-admin-xs whitespace-nowrap admin-num">
+                    {fmtMonthDayTime(p.created_at)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td>
                     <Link
                       href={`/admin/prompts/${encodeURIComponent(p.key)}`}
-                      className="text-blue-600 hover:text-blue-800 font-medium text-xs"
+                      className="text-brand hover:text-brand-dark font-medium text-admin-xs"
                     >
                       편집
                     </Link>

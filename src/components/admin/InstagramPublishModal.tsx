@@ -83,21 +83,21 @@ export default function InstagramPublishModal({
     <>
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" onClick={onClose} />
       <div className="fixed inset-0 z-[61] flex items-center justify-center p-4 pointer-events-none">
-        <div className="pointer-events-auto bg-white rounded-xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="pointer-events-auto bg-white rounded-admin-md w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
           {/* 헤더 */}
-          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900">인스타그램 발행</h3>
+          <div className="px-5 py-4 border-b border-admin-border-mid flex items-center justify-between">
+            <h3 className="text-base font-bold text-admin-text">인스타그램 발행</h3>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+              className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none"
             >×</button>
           </div>
 
           {/* 이미지 프리뷰 */}
           <div className="px-5 pt-4">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs font-semibold text-slate-500 uppercase">슬라이드</span>
-              <span className={`text-xs ${imageCountValid ? 'text-slate-600' : 'text-red-600 font-semibold'}`}>
+              <span className="text-xs font-semibold text-admin-muted uppercase">슬라이드</span>
+              <span className={`text-xs ${imageCountValid ? 'text-admin-muted' : 'text-red-600 font-semibold'}`}>
                 {imageCount}장
               </span>
               {!imageCountValid && (
@@ -112,7 +112,7 @@ export default function InstagramPublishModal({
                     key={i}
                     src={url}
                     alt={`슬라이드 ${i + 1}`}
-                    className="w-16 h-16 object-cover rounded border border-slate-200 flex-shrink-0"
+                    className="w-16 h-16 object-cover rounded border border-admin-border-mid flex-shrink-0"
                   />
                 ))}
               </div>
@@ -121,17 +121,17 @@ export default function InstagramPublishModal({
 
           {/* 탭 */}
           <div className="px-5 pt-4">
-            <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+            <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1">
               <button
                 onClick={() => setTab('now')}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
-                  tab === 'now' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                  tab === 'now' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'
                 }`}
               >즉시 발행</button>
               <button
                 onClick={() => setTab('scheduled')}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
-                  tab === 'scheduled' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                  tab === 'scheduled' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'
                 }`}
               >예약 발행</button>
             </div>
@@ -141,23 +141,23 @@ export default function InstagramPublishModal({
           <div className="px-5 py-4 overflow-y-auto flex-1 space-y-4">
             {tab === 'scheduled' && (
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">발행 일시 (KST)</label>
+                <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">발행 일시 (KST)</label>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
                   min={toLocalInput(new Date(Date.now() + 10 * 60 * 1000))}
-                  className="w-full border border-slate-200 rounded px-3 py-2 text-sm"
+                  className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
                 />
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-admin-muted-2 mt-1">
                   크론이 매시간 정각에 확인해 도래 후 최대 1시간 이내 발행됩니다. 실 발행 시각 오차 ±60분.
                 </p>
               </div>
             )}
 
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">
-                캡션 <span className={`ml-1 ${captionCount > captionLimit ? 'text-red-600' : 'text-slate-400'}`}>
+              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">
+                캡션 <span className={`ml-1 ${captionCount > captionLimit ? 'text-red-600' : 'text-admin-muted-2'}`}>
                   {captionCount}/{captionLimit}
                 </span>
               </label>
@@ -165,7 +165,7 @@ export default function InstagramPublishModal({
                 value={caption}
                 onChange={e => setCaption(e.target.value)}
                 placeholder="인스타 피드에 표시될 캡션 + 해시태그"
-                className="w-full border border-slate-200 rounded px-3 py-2 text-sm h-48 resize-none focus:ring-1 focus:ring-[#005d90]"
+                className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm h-48 resize-none focus:ring-1 focus:ring-[#005d90]"
               />
             </div>
 
@@ -177,10 +177,10 @@ export default function InstagramPublishModal({
           </div>
 
           {/* 하단 버튼 */}
-          <div className="px-5 py-4 border-t border-slate-200 flex gap-3">
+          <div className="px-5 py-4 border-t border-admin-border-mid flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 border border-slate-200 text-sm text-slate-600 py-2.5 rounded-lg hover:bg-slate-50"
+              className="flex-1 border border-admin-border-mid text-sm text-admin-muted py-2.5 rounded-lg hover:bg-admin-bg"
             >취소</button>
             <button
               onClick={handleSubmit}

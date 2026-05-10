@@ -10,19 +10,19 @@ function FreeTravelSkeleton() {
   return (
     <div className="p-6 max-w-7xl mx-auto animate-pulse">
       <div className="mb-6 space-y-2">
-        <div className="h-7 bg-slate-100 rounded w-52" />
-        <div className="h-4 bg-slate-100 rounded w-72" />
+        <div className="h-7 bg-admin-surface-2 rounded w-52" />
+        <div className="h-4 bg-admin-surface-2 rounded w-72" />
       </div>
-      <div className="flex border-b border-slate-200 mb-6 gap-1">
+      <div className="flex border-b border-admin-border-mid mb-6 gap-1">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-9 bg-slate-100 rounded-t w-28 mx-0.5" />
+          <div key={i} className="h-9 bg-admin-surface-2 rounded-t w-28 mx-0.5" />
         ))}
       </div>
       {[...Array(5)].map((_, i) => (
-        <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 mb-3 space-y-2">
-          <div className="h-4 bg-slate-100 rounded w-3/4" />
-          <div className="h-3 bg-slate-100 rounded w-1/2" />
-          <div className="h-3 bg-slate-100 rounded w-2/3" />
+        <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 mb-3 space-y-2">
+          <div className="h-4 bg-admin-surface-2 rounded w-3/4" />
+          <div className="h-3 bg-admin-surface-2 rounded w-1/2" />
+          <div className="h-3 bg-admin-surface-2 rounded w-2/3" />
         </div>
       ))}
     </div>

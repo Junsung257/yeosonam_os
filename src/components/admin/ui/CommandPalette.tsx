@@ -219,7 +219,7 @@ export function CommandPalette({
         onMouseEnter={() => setFocusIdx(idx)}
         onClick={() => runItem({ kind: 'static', cmd: s.cmd, score: s.score })}
         className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-admin-sm transition-colors ${
-          focused ? 'bg-blue-50 text-admin-text' : 'text-admin-text hover:bg-slate-50'
+          focused ? 'bg-blue-50 text-admin-text' : 'text-admin-text hover:bg-admin-bg'
         }`}
       >
         {Icon && <Icon size={15} className="text-admin-textMuted shrink-0" strokeWidth={2} />}
@@ -228,7 +228,7 @@ export function CommandPalette({
           <span className="text-admin-xs text-admin-textSubtle">{s.cmd.hint}</span>
         )}
         {s.cmd.shortcut && (
-          <kbd className="text-admin-xs bg-slate-100 text-admin-textMuted px-1.5 py-0.5 rounded font-mono border border-slate-200">
+          <kbd className="text-admin-xs bg-admin-surface-2 text-admin-textMuted px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">
             {s.cmd.shortcut}
           </kbd>
         )}
@@ -262,7 +262,7 @@ export function CommandPalette({
           onMouseEnter={() => setFocusIdx(idx)}
           onClick={() => runItem({ kind: 'dynamic', result: s.result, score: s.score })}
           className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-admin-sm transition-colors ${
-            focused ? 'bg-blue-50 text-admin-text' : 'text-admin-text hover:bg-slate-50'
+            focused ? 'bg-blue-50 text-admin-text' : 'text-admin-text hover:bg-admin-bg'
           }`}
         >
           <Icon size={15} className="text-admin-textMuted shrink-0" strokeWidth={2} />
@@ -285,7 +285,7 @@ export function CommandPalette({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-white rounded-xl shadow-2xl border border-admin-border overflow-hidden"
+        className="w-full max-w-xl bg-white rounded-admin-md shadow-2xl border border-admin-border overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 입력창 */}
@@ -306,7 +306,7 @@ export function CommandPalette({
           {searching && (
             <span className="text-admin-xs text-admin-textSubtle">검색중...</span>
           )}
-          <kbd className="text-admin-xs bg-slate-100 text-admin-textMuted px-1.5 py-0.5 rounded font-mono border border-slate-200">
+          <kbd className="text-admin-xs bg-admin-surface-2 text-admin-textMuted px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">
             ESC
           </kbd>
         </div>
@@ -329,15 +329,15 @@ export function CommandPalette({
         {/* 푸터 */}
         <div className="px-3 py-2 border-t border-admin-border flex items-center gap-3 text-admin-xs text-admin-textSubtle">
           <span className="flex items-center gap-1">
-            <kbd className="bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">↑↓</kbd>
+            <kbd className="bg-admin-surface-2 px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">↑↓</kbd>
             이동
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">↵</kbd>
+            <kbd className="bg-admin-surface-2 px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">↵</kbd>
             실행
           </span>
           <span className="ml-auto text-admin-textSubtle">
-            <kbd className="bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">?</kbd>
+            <kbd className="bg-admin-surface-2 px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">?</kbd>
             로 단축키 도움말
           </span>
         </div>

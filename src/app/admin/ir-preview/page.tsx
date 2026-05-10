@@ -11,6 +11,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import IrPreviewClient from './IrPreviewClient';
+import { PageHeader } from '@/components/admin/patterns';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,21 +31,22 @@ async function loadDrafts() {
 
 export default async function IrPreviewPage() {
   const drafts = await loadDrafts();
+  const draftCount = drafts.filter((d: any) => d.status === 'draft').length;
+  const convertedCount = drafts.filter((d: any) => d.status === 'converted').length;
+  const failedCount = drafts.filter((d: any) => d.status === 'failed').length;
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">IR 미리보기 (Phase 1.5-C HITL)</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          원문 → Normalizer 가 생성한 IR 을 승인/거절/재생성합니다. 승인 시 travel_packages 에 등록됩니다.
-        </p>
-        <div className="mt-2 text-xs text-slate-400">
-          총 {drafts.length}건 ·
-          draft {drafts.filter((d: any) => d.status === 'draft').length} /
-          converted {drafts.filter((d: any) => d.status === 'converted').length} /
-          failed {drafts.filter((d: any) => d.status === 'failed').length}
-        </div>
-      </div>
-
+    <div className="max-w-6xl mx-auto">
+      <PageHeader
+        title="IR 미리보기 (Phase 1.5-C HITL)"
+        subtitle="원문 → Normalizer 가 생성한 IR 을 승인/거절/재생성합니다. 승인 시 travel_packages 에 등록됩니다."
+        badge={
+          <span className="flex items-center gap-1.5">
+            <span className="px-2 py-0.5 bg-status-warningBg text-status-warningFg rounded-admin-xs text-admin-xs font-semibold admin-num">draft {draftCount}</span>
+            <span className="px-2 py-0.5 bg-status-successBg text-status-successFg rounded-admin-xs text-admin-xs font-semibold admin-num">converted {convertedCount}</span>
+            {failedCount > 0 && <span className="px-2 py-0.5 bg-status-dangerBg text-status-dangerFg rounded-admin-xs text-admin-xs font-semibold admin-num">failed {failedCount}</span>}
+          </span>
+        }
+      />
       <IrPreviewClient drafts={drafts} />
     </div>
   );

@@ -246,13 +246,13 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge, slim }: Sid
       <Link
         href={item.href}
         title={item.label}
-        className={`relative flex items-center justify-center h-9 w-9 mx-auto rounded-[10px] transition-colors ${
-          active ? 'bg-brand-light text-brand' : 'text-text-secondary hover:bg-admin-bg hover:text-text-primary'
+        className={`relative flex items-center justify-center h-9 w-9 mx-auto rounded-admin-md transition-colors duration-160 ${
+          active ? 'bg-brand-light text-brand' : 'text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text'
         }`}
       >
-        <Icon size={16} strokeWidth={2.1} />
+        <Icon size={16} strokeWidth={2} />
         {badge != null && badge > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-danger text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
+          <span className="absolute -top-0.5 -right-0.5 bg-danger text-white text-[8px] font-semibold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
             {badge > 9 ? '9+' : badge}
           </span>
         )}
@@ -265,16 +265,16 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge, slim }: Sid
       <Link
         href={item.href}
         title={item.label}
-        className={`flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-admin-sm transition-colors relative ${
+        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-admin-sm text-admin-sm transition-colors duration-160 relative ${
           active
             ? 'bg-brand-light text-brand font-semibold'
-            : 'text-text-secondary hover:bg-admin-bg hover:text-text-primary'
+            : 'text-admin-text-2 hover:bg-admin-surface-2 hover:text-admin-text'
         }`}
       >
-        <Icon size={15} strokeWidth={2.1} className="shrink-0" />
+        <Icon size={15} strokeWidth={2} className="shrink-0" />
         <span className="truncate">{item.label}</span>
         {badge != null && badge > 0 && (
-          <span className="ml-auto bg-danger text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+          <span className="ml-auto bg-danger text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
             {badge}
           </span>
         )}
@@ -290,7 +290,7 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, badge, slim }: Sid
         className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded transition ${
           isFavorite
             ? 'text-warning opacity-90'
-            : 'text-text-secondary/30 opacity-0 group-hover:opacity-100 hover:text-warning'
+            : 'text-admin-muted-2 opacity-0 group-hover:opacity-100 hover:text-warning'
         }`}
       >
         {isFavorite ? <Star size={12} fill="currentColor" /> : <StarOff size={12} />}
@@ -439,21 +439,21 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-admin-bg flex" style={{ backgroundColor: '#F9FAFB' }}>
+    <div className="admin-scope min-h-screen bg-admin-bg flex">
       {/* ── 사이드바 ─────────────────────────────────── */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-white border-r border-admin-border z-40 transition-all duration-200 flex flex-col overflow-hidden ${
+        className={`fixed top-0 left-0 h-full bg-admin-surface border-r border-admin-border z-40 transition-all duration-200 flex flex-col overflow-hidden ${
           sidebarMode === 'slim' ? 'w-14' : 'w-52'
         }`}
       >
         {/* 로고 */}
-        <div className={`py-4 flex items-center border-b border-admin-border ${sidebarMode === 'slim' ? 'justify-center px-2' : 'px-4 gap-2'}`}>
+        <div className={`h-14 flex items-center border-b border-admin-border ${sidebarMode === 'slim' ? 'justify-center px-2' : 'px-4 gap-2'}`}>
           {sidebarMode === 'slim' ? (
             <span className="text-brand font-bold text-sm leading-none">OS</span>
           ) : (
             <>
-              <span className="text-admin-md font-bold tracking-tight text-brand">여소남 OS</span>
-              <span className="text-admin-xs text-text-secondary font-medium">ERP</span>
+              <span className="text-admin-base font-bold tracking-tight text-brand">여소남 OS</span>
+              <span className="text-admin-2xs text-admin-muted font-medium uppercase tracking-wider">ERP</span>
             </>
           )}
         </div>
@@ -463,7 +463,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           {/* 즐겨찾기 — slim 모드에서 숨김 */}
           {sidebarMode === 'full' && favoriteItems.length > 0 && (
             <div className="pb-2 mb-2 border-b border-admin-border">
-              <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-warning uppercase tracking-[0.08em]">
+              <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-2xs font-semibold text-warning uppercase tracking-[0.08em]">
                 <Star size={11} fill="currentColor" />
                 즐겨찾기
               </div>
@@ -492,7 +492,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                 className={gi > 0 ? 'pt-1 mt-1 border-t border-admin-border' : ''}
               >
                 {!slim && (
-                  <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-xs font-semibold text-text-secondary uppercase tracking-[0.08em]">
+                  <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-2xs font-semibold text-admin-muted uppercase tracking-[0.08em]">
                     <GroupIcon size={11} />
                     {group.title}
                   </div>
@@ -501,7 +501,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                   {group.items.map((item, idx) =>
                     'divider' in item ? (
                       slim ? null : (
-                        <div key={`div-${idx}`} className="px-2 pt-2.5 pb-0.5 text-[10px] font-semibold text-slate-300 uppercase tracking-[0.06em]">
+                        <div key={`div-${idx}`} className="px-2 pt-2.5 pb-0.5 text-[10px] font-semibold text-admin-muted-2 uppercase tracking-[0.06em]">
                           {item.label}
                         </div>
                       )
@@ -529,7 +529,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             <button
               onClick={handleLogout}
               title="로그아웃"
-              className="p-2 rounded-[8px] text-text-secondary hover:text-text-primary hover:bg-admin-bg transition-colors"
+              className="p-2 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160"
             >
               <LogOut size={16} />
             </button>
@@ -537,11 +537,11 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         ) : (
           <div className="px-3 py-3 border-t border-admin-border space-y-1.5">
             <div className="px-1">
-              <DensityToggle className="!text-text-secondary hover:!text-text-primary hover:!bg-admin-bg w-full justify-center" />
+              <DensityToggle className="!text-admin-muted hover:!text-admin-text hover:!bg-admin-surface-2 w-full justify-center" />
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-admin-sm text-text-secondary hover:text-text-primary hover:bg-admin-bg transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-admin-sm text-admin-sm text-admin-text-2 hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160"
             >
               <LogOut size={14} />
               로그아웃
@@ -557,16 +557,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         }`}
       >
         {/* 상단바 */}
-        <header className="sticky top-0 z-30 bg-white border-b border-admin-border px-4 py-2.5 flex items-center justify-between">
+        <header className="sticky top-0 z-30 bg-admin-surface border-b border-admin-border h-14 px-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarMode(m => m === 'full' ? 'slim' : 'full')}
-              className="p-1.5 rounded-[8px] hover:bg-bg-section text-text-secondary hover:text-text-primary transition-colors"
+              className="p-1.5 rounded-admin-sm hover:bg-admin-surface-2 text-admin-muted hover:text-admin-text transition-colors duration-160"
               aria-label="사이드바 토글"
             >
               <MenuIcon size={18} />
             </button>
-            <h1 className="text-admin-lg font-bold tracking-tight text-text-primary">
+            <h1 className="text-admin-h3 tracking-tight text-admin-text">
               {currentPage}
             </h1>
           </div>
@@ -586,7 +586,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* 콘텐츠 */}
         <main
-          className="flex-1 px-4 lg:px-6 py-4 admin-scope"
+          className="flex-1 px-4 lg:px-6 py-5"
           data-density={density}
         >
           {children}

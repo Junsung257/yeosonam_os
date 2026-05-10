@@ -29,7 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
+  DRAFT: 'bg-admin-surface-2 text-admin-muted',
   ACTIVE: 'bg-emerald-50 text-emerald-700',
   PAUSED: 'bg-amber-50 text-amber-700',
   ARCHIVED: 'bg-red-50 text-red-600',
@@ -169,10 +169,10 @@ export default function MarketingDashboardPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-admin-lg font-bold text-slate-800">마케팅 센터</h1>
-          <p className="text-admin-sm text-slate-500 mt-1">
+          <h1 className="text-admin-lg font-bold text-admin-text-2">마케팅 센터</h1>
+          <p className="text-admin-sm text-admin-muted mt-1">
             Meta Ads 성과 분석 / 캠페인 링크 & QR 빌더
-            <span className="ml-2 text-[11px] text-slate-400">· {basisMeta.description}</span>
+            <span className="ml-2 text-[11px] text-admin-muted-2">· {basisMeta.description}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -197,25 +197,25 @@ export default function MarketingDashboardPage() {
               </button>
               <Link
                 href="/admin/marketing/campaigns"
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm font-medium rounded-lg hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg"
               >
                 + 캠페인 생성
               </Link>
               <Link
                 href="/admin/marketing/creatives"
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm font-medium rounded-lg hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg"
               >
                 AI 소재 생성
               </Link>
               <Link
                 href="/admin/marketing/card-news"
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm font-medium rounded-lg hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg"
               >
                 카드뉴스
               </Link>
               <Link
                 href="/admin/marketing/brand-kits"
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm font-medium rounded-lg hover:bg-slate-50"
+                className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg"
               >
                 브랜드킷
               </Link>
@@ -225,7 +225,7 @@ export default function MarketingDashboardPage() {
       </div>
 
       {/* 탭 스위처 */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit border border-slate-200">
+      <div className="flex gap-1 p-1 bg-admin-surface-2 rounded-lg w-fit border border-admin-border-mid">
         {([
           { key: 'meta',        label: 'Meta 광고' },
           { key: 'performance', label: '통합 퍼포먼스' },
@@ -236,8 +236,8 @@ export default function MarketingDashboardPage() {
             onClick={() => setMainTab(tab.key)}
             className={`px-5 py-2 rounded-md text-admin-sm font-semibold transition-all ${
               mainTab === tab.key
-                ? 'bg-white text-slate-800 border border-slate-200'
-                : 'text-slate-500 hover:text-slate-700 border border-transparent'
+                ? 'bg-white text-admin-text-2 border border-admin-border-mid'
+                : 'text-admin-muted hover:text-admin-text-2 border border-transparent'
             }`}
           >
             {tab.label}
@@ -277,45 +277,45 @@ export default function MarketingDashboardPage() {
           <PerformanceTrend data={perfData?.trend ?? []} loading={perfLoading} />
 
           {/* 최근 에이전트 실행 로그 */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-admin-base font-semibold text-slate-800">최근 에이전트 실행 로그</h2>
+          <div className="bg-white rounded-admin-md border border-admin-border-mid overflow-hidden">
+            <div className="px-4 py-3 border-b border-admin-border-mid flex items-center justify-between">
+              <h2 className="text-admin-base font-semibold text-admin-text-2">최근 에이전트 실행 로그</h2>
               <Link href="/admin/agent-mas" className="text-admin-xs text-blue-600 hover:underline">전체 보기 →</Link>
             </div>
             {perfLoading ? (
               <div className="divide-y divide-slate-100">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="px-4 py-3 flex items-center gap-4 animate-pulse">
-                    <div className="h-3 w-16 bg-slate-100 rounded" />
-                    <div className="h-3 w-24 bg-slate-100 rounded" />
-                    <div className="h-4 w-10 bg-slate-100 rounded-full" />
-                    <div className="h-3 w-12 bg-slate-100 rounded ml-auto" />
-                    <div className="h-3 w-8 bg-slate-100 rounded" />
+                    <div className="h-3 w-16 bg-admin-surface-2 rounded" />
+                    <div className="h-3 w-24 bg-admin-surface-2 rounded" />
+                    <div className="h-4 w-10 bg-admin-surface-2 rounded-full" />
+                    <div className="h-3 w-12 bg-admin-surface-2 rounded ml-auto" />
+                    <div className="h-3 w-8 bg-admin-surface-2 rounded" />
                   </div>
                 ))}
               </div>
             ) : !perfData?.recent_tasks.length ? (
               <div className="p-10 text-center">
-                <svg className="w-8 h-8 text-slate-200 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-8 h-8 text-admin-border-mid mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-admin-sm text-slate-400">최근 7일간 실행 기록이 없습니다.</p>
+                <p className="text-admin-sm text-admin-muted-2">최근 7일간 실행 기록이 없습니다.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-admin-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
+                    <tr className="border-b border-admin-border-mid bg-admin-bg">
                       {['에이전트', '작업', '상태', '시작', '소요', '오류'].map((h) => (
-                        <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">{h}</th>
+                        <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-admin-muted">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {perfData.recent_tasks.map((t, i) => (
-                      <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="px-3 py-2 font-medium text-slate-700">{t.agent_type}</td>
-                        <td className="px-3 py-2 text-slate-500">{t.performative}</td>
+                      <tr key={i} className="border-b border-admin-border hover:bg-admin-bg">
+                        <td className="px-3 py-2 font-medium text-admin-text-2">{t.agent_type}</td>
+                        <td className="px-3 py-2 text-admin-muted">{t.performative}</td>
                         <td className="px-3 py-2">
                           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                             t.status === 'done' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
@@ -323,10 +323,10 @@ export default function MarketingDashboardPage() {
                             {t.status === 'done' ? '완료' : '실패'}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-slate-400 text-[11px]">
-                          {t.started_at ? new Date(t.started_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '--'}
+                        <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
+                          {t.started_at ? t.started_at.slice(11, 16) : '--'}
                         </td>
-                        <td className="px-3 py-2 text-slate-400 text-[11px]">
+                        <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
                           {t.duration_ms != null ? `${(t.duration_ms / 1000).toFixed(1)}s` : '--'}
                         </td>
                         <td className="px-3 py-2 text-red-500 text-[11px] max-w-xs truncate">
@@ -379,27 +379,27 @@ export default function MarketingDashboardPage() {
             icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5l-3.9 19.5m-2.1-19.5l-3.9 19.5" /></svg>,
           },
         ] as { label: string; value: string; color: string; iconBg: string; sub: string; icon: React.ReactNode }[]).map(({ label, value, color, iconBg, sub, icon }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-100 p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex items-center gap-3">
+          <div key={label} className="bg-white rounded-admin-md border border-admin-border p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex items-center gap-3">
             <div className={`shrink-0 w-9 h-9 rounded-lg ${iconBg} ${color} flex items-center justify-center`}>
               {icon}
             </div>
             <div className="min-w-0">
               <p className={`text-[20px] font-black tabular-nums leading-tight ${color}`}>{value}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 leading-none truncate">{label}</p>
+              <p className="text-[11px] text-admin-muted-2 mt-0.5 leading-none truncate">{label}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* 월별 광고비 vs 마진 LineChart */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6">
-        <h2 className="text-admin-base font-semibold text-slate-800 mb-4">
-          월별 광고비 vs 귀속 마진 (6개월) <span className="text-[11px] text-slate-400">· {basisMeta.shortLabel} 기준</span>
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6">
+        <h2 className="text-admin-base font-semibold text-admin-text-2 mb-4">
+          월별 광고비 vs 귀속 마진 (6개월) <span className="text-[11px] text-admin-muted-2">· {basisMeta.shortLabel} 기준</span>
         </h2>
         {monthlyStats.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10">
-            <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
-            <p className="text-admin-sm font-medium text-slate-500">성과 데이터가 없습니다.</p>
+            <svg className="w-8 h-8 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+            <p className="text-admin-sm font-medium text-admin-muted">성과 데이터가 없습니다.</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
@@ -447,24 +447,24 @@ export default function MarketingDashboardPage() {
 
       {/* Top 3 캠페인 */}
       <div>
-        <h2 className="text-admin-base font-semibold text-slate-800 mb-3">Top 3 캠페인 (Net ROAS 기준)</h2>
+        <h2 className="text-admin-base font-semibold text-admin-text-2 mb-3">Top 3 캠페인 (Net ROAS 기준)</h2>
         {topCampaigns.length === 0 ? (
-          <p className="text-admin-sm text-slate-400">성과 데이터가 있는 캠페인이 없습니다.</p>
+          <p className="text-admin-sm text-admin-muted-2">성과 데이터가 있는 캠페인이 없습니다.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {topCampaigns.map((c, idx) => {
               const grade = getRoasGrade(c.latest_roas ?? 0);
               return (
-                <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                <div key={c.id} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
                   <div className="flex items-start justify-between">
-                    <span className="text-xl font-bold text-slate-300">#{idx + 1}</span>
+                    <span className="text-xl font-bold text-admin-muted-2">#{idx + 1}</span>
                     <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${grade.bgColor} ${grade.color}`}>
                       ROAS {(c.latest_roas ?? 0).toFixed(1)}%
                     </span>
                   </div>
-                  <p className="text-admin-base font-semibold text-slate-800 mt-2 line-clamp-2">{c.name}</p>
-                  <p className="text-admin-sm text-slate-500 mt-1">{c.package_destination ?? '--'}</p>
-                  <div className="mt-3 text-admin-sm text-slate-500 flex justify-between">
+                  <p className="text-admin-base font-semibold text-admin-text-2 mt-2 line-clamp-2">{c.name}</p>
+                  <p className="text-admin-sm text-admin-muted mt-1">{c.package_destination ?? '--'}</p>
+                  <div className="mt-3 text-admin-sm text-admin-muted flex justify-between">
                     <span>광고비 {((c.total_spend_krw ?? 0) / 10000).toFixed(0)}만원</span>
                     <span className={`font-medium ${STATUS_BADGE[c.status]?.includes('emerald') ? 'text-emerald-600' : ''}`}>
                       {STATUS_LABELS[c.status]}
@@ -478,21 +478,21 @@ export default function MarketingDashboardPage() {
       </div>
 
       {/* 캠페인 전체 테이블 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200">
-          <h2 className="text-admin-base font-semibold text-slate-800">전체 캠페인</h2>
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-4 py-3 border-b border-admin-border-mid">
+          <h2 className="text-admin-base font-semibold text-admin-text-2">전체 캠페인</h2>
         </div>
         {loading ? (
           <div className="divide-y divide-slate-50">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3">
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+                <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
               </div>
             ))}
           </div>
         ) : campaigns.length === 0 ? (
-          <div className="p-10 text-center text-admin-sm text-slate-400">
+          <div className="p-10 text-center text-admin-sm text-admin-muted-2">
             캠페인이 없습니다.{' '}
             <Link href="/admin/marketing/campaigns" className="text-blue-700 underline">
               첫 캠페인 만들기
@@ -502,14 +502,14 @@ export default function MarketingDashboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-admin-sm">
               <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">캠페인명</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">연결 상품</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">상태</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-slate-500">일예산</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-slate-500">총 지출</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-slate-500">Net ROAS</th>
-                  <th className="px-3 py-2 text-center text-[11px] font-medium text-slate-500">액션</th>
+                <tr className="border-b border-admin-border-mid">
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-admin-muted">캠페인명</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-admin-muted">연결 상품</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-admin-muted">상태</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-admin-muted">일예산</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-admin-muted">총 지출</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-admin-muted">Net ROAS</th>
+                  <th className="px-3 py-2 text-center text-[11px] font-medium text-admin-muted">액션</th>
                 </tr>
               </thead>
               <tbody>
@@ -517,14 +517,14 @@ export default function MarketingDashboardPage() {
                   const roas = c.latest_roas ?? 0;
                   const grade = getRoasGrade(roas);
                   return (
-                    <tr key={c.id} className="border-b border-slate-200 hover:bg-slate-50">
+                    <tr key={c.id} className="border-b border-admin-border-mid hover:bg-admin-bg">
                       <td className="px-3 py-2">
-                        <div className="font-medium text-slate-800 max-w-xs truncate">{c.name}</div>
+                        <div className="font-medium text-admin-text-2 max-w-xs truncate">{c.name}</div>
                         {c.auto_pause_reason && (
                           <div className="text-[11px] text-red-500 mt-0.5 truncate">{c.auto_pause_reason}</div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-slate-500 max-w-xs truncate">
+                      <td className="px-3 py-2 text-admin-muted max-w-xs truncate">
                         {c.package_title ?? '--'}
                       </td>
                       <td className="px-3 py-2">
@@ -532,10 +532,10 @@ export default function MarketingDashboardPage() {
                           {STATUS_LABELS[c.status]}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-600">
+                      <td className="px-3 py-2 text-right text-admin-muted">
                         {((c.daily_budget_krw ?? 0) / 10000).toFixed(0)}만
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-600">
+                      <td className="px-3 py-2 text-right text-admin-muted">
                         {((c.total_spend_krw ?? 0) / 10000).toFixed(0)}만
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -544,7 +544,7 @@ export default function MarketingDashboardPage() {
                             {roas.toFixed(1)}%
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-[11px]">--</span>
+                          <span className="text-admin-muted-2 text-[11px]">--</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -566,7 +566,7 @@ export default function MarketingDashboardPage() {
                           ) : null}
                           <button
                             onClick={() => handleCampaignStatus(c.id, 'ARCHIVED')}
-                            className="text-[11px] px-2 py-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200"
+                            className="text-[11px] px-2 py-1 bg-admin-surface-2 text-admin-muted rounded hover:bg-slate-200"
                           >
                             종료
                           </button>

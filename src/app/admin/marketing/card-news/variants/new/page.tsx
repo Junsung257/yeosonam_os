@@ -166,19 +166,19 @@ export default function CardNewsVariantsNewPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">변형 5장 생성 (A/B 테스트)</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-admin-muted">
             한 상품에 여러 각도 동시 생성 → 사전 점수 비교 → 좋은 것만 발행. AdCreative.ai 패턴.
           </p>
         </div>
         <Link
           href="/admin/marketing/card-news"
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+          className="rounded-lg border px-4 py-2 text-sm hover:bg-admin-bg"
         >
           ← 목록
         </Link>
       </div>
 
-      <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-admin-md border bg-white p-6 shadow-admin-xs">
         <div>
           <label className="mb-1 block text-sm font-semibold">제목</label>
           <input
@@ -235,7 +235,7 @@ export default function CardNewsVariantsNewPage() {
             className="w-full rounded-lg border px-3 py-2 font-mono text-sm"
             disabled={generating || loadingRaw}
           />
-          <p className="mt-1 text-xs text-slate-500">{rawText.length} 자</p>
+          <p className="mt-1 text-xs text-admin-muted">{rawText.length} 자</p>
         </div>
 
         <div>
@@ -249,7 +249,7 @@ export default function CardNewsVariantsNewPage() {
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer text-sm ${
                   selectedAngles.includes(a.value)
                     ? 'border-purple-500 bg-purple-50 text-purple-900'
-                    : 'border-slate-200 hover:border-slate-300'
+                    : 'border-admin-border-mid hover:border-admin-border-strong'
                 }`}
               >
                 <input
@@ -277,7 +277,7 @@ export default function CardNewsVariantsNewPage() {
           />
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-admin-text-2">
           <input
             type="checkbox"
             checked={skipCritic}
@@ -288,13 +288,13 @@ export default function CardNewsVariantsNewPage() {
           Cover Critic 점수 평가 건너뛰기 (변형당 ~$0.04 절감)
         </label>
 
-        <div className="rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-600">
+        <div className="rounded-lg bg-admin-bg px-4 py-3 text-xs text-admin-muted">
           <div>
             예상 비용: <strong>~${expectedCost}</strong> (≈ {Math.round(Number(expectedCost) * 1400)}원)
             {skipCritic && <span className="ml-1 text-amber-600">— critic 생략</span>}
           </div>
           <div>예상 시간: 3~5분 (3개씩 배치 생성, OTPM 보호)</div>
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-[11px] text-admin-muted">
             * 같은 시스템 프롬프트 + 같은 원문 → 캐시 적중으로 input 비용 90% 절감
           </div>
         </div>
@@ -328,7 +328,7 @@ export default function CardNewsVariantsNewPage() {
       </section>
 
       {result && (
-        <section className="mt-6 rounded-xl border bg-emerald-50 p-6">
+        <section className="mt-6 rounded-admin-md border bg-emerald-50 p-6">
           <h2 className="mb-2 text-lg font-bold text-emerald-900">
             ✅ 생성 완료 — {result.success_count}/{result.total_count} 성공
           </h2>

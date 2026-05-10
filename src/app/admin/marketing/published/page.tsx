@@ -12,6 +12,7 @@
  * 액션: 외부 URL 새 탭 열기, 카피 미리보기
  */
 import { useState, useEffect, useCallback } from 'react';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 interface FeedItem {
   source: 'distribution' | 'card_news' | 'blog';
@@ -193,7 +194,7 @@ export default function PublishedFeedPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-neutral-600">
-                    {when ? new Date(when).toLocaleString('ko-KR') : '—'}
+                    {when ? fmtDateTime(when) : '—'}
                   </td>
                   <td className="px-3 py-2">
                     {it.external_url ? (

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import { Wallet, CheckCircle2, Clock, AlertCircle, Upload as UploadIcon } from 'lucide-react';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -156,55 +158,72 @@ export default function FreeTravelSettlementsPage() {
   };
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-[22px] font-bold text-text-primary">자유여행 정산</h1>
-        <p className="text-admin-sm text-text-secondary mt-1">패키지 정산과 완전히 분리된 OTA 어필리에이트 커미션 추적</p>
-      </div>
+    <div className="max-w-[1200px] mx-auto space-y-5">
+      <PageHeader
+        title="자유여행 정산"
+        subtitle="패키지 정산과 완전히 분리된 OTA 어필리에이트 커미션 추적"
+      />
 
       {/* 로드 에러 */}
       {loadError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-admin-sm text-red-700 font-medium flex items-center gap-2">
+        <div className="bg-danger-light border border-danger/20 rounded-admin-sm px-4 py-3 text-admin-sm text-danger font-medium flex items-center gap-2">
           <span>⚠</span> {loadError}
-          <button onClick={loadData} className="ml-auto text-red-600 underline text-admin-xs">다시 시도</button>
+          <button onClick={loadData} className="ml-auto text-danger underline text-admin-xs">다시 시도</button>
         </div>
       )}
 
       {/* KPI 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: '이번달 예상 커미션', value: `${estimatedThisMonth.toLocaleString()}원`, sub: thisMonth },
-          { label: '전월 확정 커미션', value: prevReport ? `${prevReport.total_krw.toLocaleString()}원` : '−', sub: prevReport?.report_month ?? '' },
-          { label: '미매칭 세션', value: `${pendingCount}건`, sub: '매칭 대기' },
-          { label: '수동 확인 필요', value: `${unmatchedCount}건`, sub: 'OTA 리포트 불일치' },
-        ].map(({ label, value, sub }) => (
-          <div key={label} className="bg-white rounded-2xl border border-[#E5E7EB] p-4">
-            <p className="text-admin-xs text-text-secondary font-medium">{label}</p>
-            <p className="text-[22px] font-extrabold text-text-primary mt-1 tabular-nums">{value}</p>
-            <p className="text-[11px] text-[#C9D0D6] mt-0.5">{sub}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard
+          label="이번달 예상 커미션"
+          value={`${estimatedThisMonth.toLocaleString()}원`}
+          icon={Wallet}
+          tone="positive"
+          hint={thisMonth}
+        />
+        <KpiCard
+          label="전월 확정 커미션"
+          value={prevReport ? `${prevReport.total_krw.toLocaleString()}원` : '—'}
+          icon={CheckCircle2}
+          hint={prevReport?.report_month ?? ''}
+        />
+        <KpiCard
+          label="미매칭 세션"
+          value={pendingCount.toLocaleString()}
+          unit="건"
+          icon={Clock}
+          tone={pendingCount > 0 ? 'negative' : 'neutral'}
+          hint="매칭 대기"
+        />
+        <KpiCard
+          label="수동 확인 필요"
+          value={unmatchedCount.toLocaleString()}
+          unit="건"
+          icon={AlertCircle}
+          tone={unmatchedCount > 0 ? 'negative' : 'neutral'}
+          hint="OTA 리포트 불일치"
+        />
       </div>
 
       {/* OTA 리포트 업로드 */}
-      <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5">
-        <h2 className="text-admin-md font-bold text-text-primary mb-1">OTA 리포트 업로드</h2>
-        <p className="text-admin-xs text-text-secondary mb-4">
+      <div className="admin-card p-5">
+        <h2 className="text-admin-h3 text-admin-text mb-1">OTA 리포트 업로드</h2>
+        <p className="text-admin-xs text-admin-muted mb-4">
           MRT 파트너센터에서 다운로드한 JSON 리포트를 업로드하면 자동 매칭합니다.<br />
-          포맷: {"{ ota, reportMonth, items: [{ ref_id, sub_id?, amount_krw }] }"}
+          포맷: <code className="font-mono bg-admin-surface-2 px-1.5 py-0.5 rounded-admin-xs text-admin-text-2">{"{ ota, reportMonth, items: [{ ref_id, sub_id?, amount_krw }] }"}</code>
         </p>
 
-        <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#E5E7EB] rounded-xl py-8 cursor-pointer hover:border-brand transition-colors">
-          <span className="text-3xl mb-2">📁</span>
-          <span className="text-admin-base font-semibold text-text-body">
-            {uploading ? '업로드 중...' : 'JSON 파일 선택 또는 드래그'}
+        <label className="flex flex-col items-center justify-center border-2 border-dashed border-admin-border-mid rounded-admin-md py-8 cursor-pointer hover:border-brand transition-colors">
+          <UploadIcon size={28} className="mb-2 text-admin-muted" />
+          <span className="text-admin-base font-semibold text-admin-text-2">
+            {uploading ? '업로드 중…' : 'JSON 파일 선택 또는 드래그'}
           </span>
           <input type="file" accept=".json" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
 
         {reconcileResult && (
-          <div className={`mt-3 px-4 py-3 rounded-xl text-admin-sm font-medium ${
-            reconcileResult.startsWith('오류') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+          <div className={`mt-3 px-4 py-3 rounded-admin-sm text-admin-sm font-medium ${
+            reconcileResult.startsWith('오류') ? 'bg-danger-light text-danger' : 'bg-status-successBg text-status-successFg'
           }`}>
             {reconcileResult}
           </div>
@@ -213,36 +232,36 @@ export default function FreeTravelSettlementsPage() {
 
       {/* OTA 리포트 이력 */}
       {reports.length === 0 && !loading && !loadError && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] px-5 py-8 text-center text-admin-sm text-text-secondary">
+        <div className="admin-card px-5 py-8 text-center text-admin-sm text-admin-muted">
           아직 업로드된 OTA 리포트가 없습니다. 위에서 JSON 파일을 업로드하세요.
         </div>
       )}
       {reports.length > 0 && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           <div className="px-5 py-4 border-b border-admin-border">
-            <h2 className="text-admin-md font-bold text-text-primary">OTA 리포트 이력</h2>
+            <h2 className="text-admin-h3 text-admin-text">OTA 리포트 이력</h2>
           </div>
-          <table className="w-full text-admin-sm">
-            <thead className="bg-[#F7F8FA]">
+          <table className="admin-data-table">
+            <thead>
               <tr>
                 {['OTA', '기간', '총액', '건수', '상태', '처리일'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-text-secondary font-medium">{h}</th>
+                  <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F2F4F6]">
+            <tbody>
               {reports.map(r => (
                 <tr key={r.id}>
-                  <td className="px-4 py-3 font-semibold">{r.ota.toUpperCase()}</td>
-                  <td className="px-4 py-3 tabular-nums">{r.report_month}</td>
-                  <td className="px-4 py-3 tabular-nums font-bold">{r.total_krw.toLocaleString()}원</td>
-                  <td className="px-4 py-3 tabular-nums">{r.item_count}건</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${r.reconciled ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                  <td className="font-semibold text-admin-text font-mono">{r.ota.toUpperCase()}</td>
+                  <td className="admin-num">{r.report_month}</td>
+                  <td className="font-bold text-brand admin-num">{r.total_krw.toLocaleString()}원</td>
+                  <td className="admin-num">{r.item_count}건</td>
+                  <td>
+                    <span className={`px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${r.reconciled ? 'bg-status-successBg text-status-successFg' : 'bg-status-warningBg text-status-warningFg'}`}>
                       {r.reconciled ? '매칭 완료' : '처리 전'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-text-secondary">{r.reconciled_at?.slice(0, 10) ?? '−'}</td>
+                  <td className="text-admin-muted admin-num">{r.reconciled_at?.slice(0, 10) ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -251,7 +270,7 @@ export default function FreeTravelSettlementsPage() {
       )}
 
       {/* 커미션 현황 */}
-      <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
+      <div className="bg-white rounded-admin-lg border border-[#E5E7EB] overflow-hidden">
         <div className="px-5 py-4 border-b border-admin-border flex items-center justify-between">
           <h2 className="text-admin-md font-bold text-text-primary">커미션 현황</h2>
           <span className="text-admin-xs text-text-secondary">{commissions.length}건</span>
@@ -260,9 +279,9 @@ export default function FreeTravelSettlementsPage() {
           <div className="divide-y divide-slate-50">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-5 py-3">
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-20" />
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-20" />
+                <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
               </div>
             ))}
           </div>
@@ -287,7 +306,7 @@ export default function FreeTravelSettlementsPage() {
                     <td className="px-4 py-3 tabular-nums">{c.estimated_krw?.toLocaleString() ?? '−'}원</td>
                     <td className="px-4 py-3 tabular-nums font-semibold">{c.confirmed_krw?.toLocaleString() ?? '−'}원</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_COLOR[c.status] ?? 'bg-slate-50 text-slate-600'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_COLOR[c.status] ?? 'bg-admin-bg text-admin-muted'}`}>
                         {STATUS_LABEL[c.status] ?? c.status}
                       </span>
                     </td>
@@ -301,7 +320,7 @@ export default function FreeTravelSettlementsPage() {
       </div>
 
       {/* unmatched 복구 큐 */}
-      <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
+      <div className="bg-white rounded-admin-lg border border-[#E5E7EB] overflow-hidden">
         <div className="px-5 py-4 border-b border-admin-border flex items-center justify-between">
           <h2 className="text-admin-md font-bold text-text-primary">Unmatched 복구 큐</h2>
           <span className="text-admin-xs text-text-secondary">{unmatchedRows.length}건</span>

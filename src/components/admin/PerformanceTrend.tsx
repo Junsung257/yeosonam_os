@@ -59,11 +59,11 @@ export default function PerformanceTrend({
   }
 
   if (loading) {
-    return <div className="h-64 bg-slate-100 rounded-xl animate-pulse" />;
+    return <div className="h-64 bg-admin-surface-2 rounded-admin-md animate-pulse" />;
   }
   if (!data.length) {
     return (
-      <div className="h-64 flex items-center justify-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+      <div className="h-64 flex items-center justify-center text-sm text-admin-muted-2 bg-admin-bg rounded-admin-md border border-admin-border-mid">
         데이터 없음
       </div>
     );
@@ -72,9 +72,9 @@ export default function PerformanceTrend({
   const formatted = data.map((d) => ({ ...d, date: fmtDate(d.date, activeDays) }));
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="bg-white rounded-admin-md border border-admin-border-mid p-4">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+        <p className="text-xs font-medium text-admin-muted uppercase tracking-wide">
           채널별 추이
         </p>
         <div className="flex gap-1">
@@ -86,7 +86,7 @@ export default function PerformanceTrend({
                 'px-2 py-0.5 rounded text-xs font-medium transition-colors',
                 activeDays === opt.value
                   ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200',
+                  : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200',
               ].join(' ')}
             >
               {opt.label}

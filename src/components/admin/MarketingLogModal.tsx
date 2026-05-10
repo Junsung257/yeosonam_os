@@ -91,29 +91,29 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6"
+        className="bg-white rounded-admin-lg shadow-2xl w-full max-w-md mx-4 p-6"
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">발행 기록 남기기</h2>
-            <p className="text-xs text-gray-500 mt-0.5">마케팅 발행 URL을 저장합니다</p>
+            <h2 className="text-lg font-bold text-admin-text">발행 기록 남기기</h2>
+            <p className="text-xs text-admin-muted mt-0.5">마케팅 발행 URL을 저장합니다</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-admin-muted-2 hover:text-admin-text-2 text-xl leading-none">×</button>
         </div>
 
         {/* URL 입력 */}
         <div className="mb-4">
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">발행 URL</label>
+          <label className="block text-sm font-semibold text-admin-text-2 mb-1.5">발행 URL</label>
           <input
             type="url"
             value={url}
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
             placeholder="https://blog.naver.com/..."
-            className={`w-full border-2 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none transition-colors
-              ${urlError ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-blue-500'}`}
+            className={`w-full border-2 rounded-admin-md px-3.5 py-2.5 text-sm focus:outline-none transition-colors
+              ${urlError ? 'border-red-400 focus:border-red-400' : 'border-admin-border-mid focus:border-blue-500'}`}
           />
           {urlError && <p className="text-xs text-red-500 mt-1.5">{urlError}</p>}
           {!urlError && autoDetected && (
@@ -121,7 +121,7 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
               <span className={`w-4 h-4 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0 ${PLATFORM_META[autoDetected].color}`}>
                 {PLATFORM_META[autoDetected].icon}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-admin-muted">
                 자동 감지: <strong>{PLATFORM_META[autoDetected].label}</strong>
               </span>
             </div>
@@ -130,23 +130,23 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
 
         {/* 플랫폼 선택 */}
         <div className="mb-5">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">플랫폼 선택</label>
+          <label className="block text-sm font-semibold text-admin-text-2 mb-2">플랫폼 선택</label>
           <div className="grid grid-cols-5 gap-2">
             {(Object.entries(PLATFORM_META) as [Platform, typeof PLATFORM_META[Platform]][]).map(([key, m]) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setPlatform(key)}
-                className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 transition-all
+                className={`flex flex-col items-center gap-1 py-2.5 rounded-admin-md border-2 transition-all
                   ${platform === key
                     ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-100 hover:border-gray-300 bg-gray-50'
+                    : 'border-admin-border hover:border-admin-border-strong bg-admin-bg'
                   }`}
               >
                 <span className={`w-7 h-7 rounded-lg text-white text-sm font-bold flex items-center justify-center ${m.color}`}>
                   {m.icon}
                 </span>
-                <span className={`text-[11px] font-medium ${platform === key ? 'text-blue-700' : 'text-gray-600'}`}>
+                <span className={`text-[11px] font-medium ${platform === key ? 'text-blue-700' : 'text-admin-muted'}`}>
                   {m.label}
                 </span>
               </button>
@@ -158,14 +158,14 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            className="flex-1 py-2.5 rounded-admin-md border border-admin-border-mid text-sm font-medium text-admin-muted hover:bg-admin-bg transition-colors"
           >
             취소
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !!urlError || !url.trim()}
-            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-sm font-bold text-white transition-colors"
+            className="flex-1 py-2.5 rounded-admin-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-sm font-bold text-white transition-colors"
           >
             {saving ? '저장 중...' : `${meta.label} 기록 저장`}
           </button>

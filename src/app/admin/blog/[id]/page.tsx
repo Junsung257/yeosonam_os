@@ -195,10 +195,10 @@ export default function BlogEditPage() {
 
   if (loading) return (
     <div className="space-y-4">
-      <div className="h-8 bg-slate-100 rounded animate-pulse w-64" />
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
+      <div className="h-8 bg-admin-surface-2 rounded animate-pulse w-64" />
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse" style={{ width: `${85 - i * 8}%` }} />
+          <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse" style={{ width: `${85 - i * 8}%` }} />
         ))}
       </div>
     </div>
@@ -209,15 +209,15 @@ export default function BlogEditPage() {
       {/* 상단 바 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/blog')} className="text-admin-xs text-slate-500 hover:text-slate-700">← 목록</button>
-          <h1 className="text-admin-lg font-bold text-slate-800">블로그 편집</h1>
+          <button onClick={() => router.push('/admin/blog')} className="text-admin-xs text-admin-muted hover:text-admin-text-2">← 목록</button>
+          <h1 className="text-admin-lg font-bold text-admin-text-2">블로그 편집</h1>
           <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${status === 'published' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
             {status === 'published' ? '발행됨' : '초안'}
           </span>
         </div>
         <div className="flex gap-2">
           <button onClick={() => handleSave('draft')} disabled={saving}
-            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-xs rounded-lg hover:bg-slate-50 disabled:opacity-40 transition">
+            className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded-lg hover:bg-admin-bg disabled:opacity-40 transition">
             저장
           </button>
           <button onClick={() => handleSave('published')} disabled={saving || !slug}
@@ -243,39 +243,39 @@ export default function BlogEditPage() {
       {/* Split-pane 에디터 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3" style={{ minHeight: '500px' }}>
         <div className="flex flex-col">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-t-lg">
-            <span className="text-[11px] text-slate-500 font-medium">마크다운 편집</span>
-            <span className="text-[10px] text-slate-400">{blogHtml.length}자</span>
+          <div className="flex items-center justify-between px-3 py-1.5 bg-admin-bg border border-admin-border-mid rounded-t-lg">
+            <span className="text-[11px] text-admin-muted font-medium">마크다운 편집</span>
+            <span className="text-[10px] text-admin-muted-2">{blogHtml.length}자</span>
           </div>
           <textarea
             value={blogHtml}
             onChange={e => setBlogHtml(e.target.value)}
-            className="flex-1 border border-t-0 border-slate-200 rounded-b-lg p-4 text-admin-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
+            className="flex-1 border border-t-0 border-admin-border-mid rounded-b-lg p-4 text-admin-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
           />
         </div>
         <div className="flex flex-col">
-          <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-t-lg">
-            <span className="text-[11px] text-slate-500 font-medium">미리보기</span>
+          <div className="px-3 py-1.5 bg-admin-bg border border-admin-border-mid rounded-t-lg">
+            <span className="text-[11px] text-admin-muted font-medium">미리보기</span>
           </div>
-          <div className="flex-1 border border-t-0 border-slate-200 rounded-b-lg p-4 overflow-y-auto bg-white">
+          <div className="flex-1 border border-t-0 border-admin-border-mid rounded-b-lg p-4 overflow-y-auto bg-white">
             {previewHtml ? (
               <div className="prose prose-sm prose-indigo max-w-none"
                 dangerouslySetInnerHTML={{ __html: previewHtml }} />
             ) : (
-              <p className="text-admin-sm text-slate-300 italic">본문을 입력하면 미리보기가 표시됩니다</p>
+              <p className="text-admin-sm text-admin-muted-2 italic">본문을 입력하면 미리보기가 표시됩니다</p>
             )}
           </div>
         </div>
       </div>
 
       {/* SEO 설정 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-admin-xs font-semibold text-slate-700">SEO 설정</p>
+          <p className="text-admin-xs font-semibold text-admin-text-2">SEO 설정</p>
           {grade && seoScore && (
             <div className="flex items-center gap-2">
               <span className={`text-admin-xs font-bold ${grade.color}`}>{seoScore.overall}/100 {grade.label}</span>
-              <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="w-24 h-2 bg-admin-surface-2 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full ${seoScore.overall >= 80 ? 'bg-emerald-500' : seoScore.overall >= 60 ? 'bg-blue-500' : seoScore.overall >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
                   style={{ width: `${seoScore.overall}%` }} />
               </div>
@@ -284,28 +284,28 @@ export default function BlogEditPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-slate-400 mb-1">URL 슬러그</label>
+            <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-slate-400">/blog/</span>
+              <span className="text-[11px] text-admin-muted-2">/blog/</span>
               <input value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
-                className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
+                className="flex-1 border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-slate-400 mb-1">OG 이미지</label>
+            <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
             <input value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
-            <label className="block text-[10px] text-slate-400 mb-1">SEO 제목 <span className="text-slate-300">{seoTitle.length}/60</span></label>
+            <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 <span className="text-admin-muted-2">{seoTitle.length}/60</span></label>
             <input value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
-            <label className="block text-[10px] text-slate-400 mb-1">SEO 설명 <span className="text-slate-300">{seoDescription.length}/160</span></label>
+            <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명 <span className="text-admin-muted-2">{seoDescription.length}/160</span></label>
             <input value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
-              className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
+              className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
         </div>
         {seoScore && seoScore.recommendations.length > 0 && (
@@ -320,11 +320,11 @@ export default function BlogEditPage() {
 
       {/* 카드뉴스 연결 패널 — 상품 블로그일 때만 노출 */}
       {productId && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-admin-xs font-semibold text-slate-700">카드뉴스 연결</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+              <p className="text-admin-xs font-semibold text-admin-text-2">카드뉴스 연결</p>
+              <p className="text-[11px] text-admin-muted-2 mt-0.5">
                 같은 상품의 카드뉴스를 본문에 첨부하거나 새로 만들 수 있어요
               </p>
             </div>
@@ -337,11 +337,11 @@ export default function BlogEditPage() {
           </div>
 
           {cardNewsLoading ? (
-            <p className="text-admin-xs text-slate-400 py-4 text-center">카드뉴스 불러오는 중…</p>
+            <p className="text-admin-xs text-admin-muted-2 py-4 text-center">카드뉴스 불러오는 중…</p>
           ) : cardNewsList.length === 0 ? (
-            <div className="border border-dashed border-slate-200 rounded-lg p-4 text-center">
-              <p className="text-admin-xs text-slate-500">첨부 가능한 카드뉴스가 없습니다</p>
-              <p className="text-[11px] text-slate-400 mt-1">
+            <div className="border border-dashed border-admin-border-mid rounded-lg p-4 text-center">
+              <p className="text-admin-xs text-admin-muted">첨부 가능한 카드뉴스가 없습니다</p>
+              <p className="text-[11px] text-admin-muted-2 mt-1">
                 슬라이드 이미지가 렌더된 카드뉴스만 노출됩니다. 위 버튼으로 새로 만들거나, 기존 카드뉴스를 확정·렌더해 주세요.
               </p>
             </div>
@@ -354,20 +354,20 @@ export default function BlogEditPage() {
                 const firstThumb = thumbs[0];
                 const hasImages = thumbs.length > 0;
                 return (
-                  <div key={cn.id} className="flex items-center gap-3 border border-slate-200 rounded-lg p-2">
-                    <div className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  <div key={cn.id} className="flex items-center gap-3 border border-admin-border-mid rounded-lg p-2">
+                    <div className="w-12 h-12 bg-admin-surface-2 rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
                       {firstThumb ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={firstThumb} alt={cn.title || ''} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-slate-300 text-[10px]">no img</span>
+                        <span className="text-admin-muted-2 text-[10px]">no img</span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-admin-xs font-medium text-slate-700 truncate">{cn.title || '(제목없음)'}</p>
+                      <p className="text-admin-xs font-medium text-admin-text-2 truncate">{cn.title || '(제목없음)'}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {cn.variant_angle && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded">
+                          <span className="text-[10px] px-1.5 py-0.5 bg-admin-bg text-admin-muted rounded">
                             {cn.variant_angle}
                           </span>
                         )}
@@ -376,7 +376,7 @@ export default function BlogEditPage() {
                             {cn.variant_score}점
                           </span>
                         )}
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-admin-muted-2">
                           {hasImages ? `${thumbs.length}장` : '이미지 없음'}
                         </span>
                       </div>
@@ -384,7 +384,7 @@ export default function BlogEditPage() {
                     <button
                       onClick={() => attachCardNewsToBody(cn)}
                       disabled={!hasImages}
-                      className="px-2.5 py-1 text-[11px] font-medium bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition flex-shrink-0"
+                      className="px-2.5 py-1 text-[11px] font-medium bg-white border border-admin-border-strong text-admin-text-2 rounded hover:bg-admin-bg disabled:opacity-30 disabled:cursor-not-allowed transition flex-shrink-0"
                     >
                       본문 첨부
                     </button>
@@ -392,7 +392,7 @@ export default function BlogEditPage() {
                 );
               })}
               {cardNewsList.length > 6 && (
-                <p className="text-[11px] text-slate-400 col-span-full text-center pt-1">
+                <p className="text-[11px] text-admin-muted-2 col-span-full text-center pt-1">
                   외 {cardNewsList.length - 6}개 더 — 전체는 카드뉴스 페이지에서 확인
                 </p>
               )}
@@ -402,7 +402,7 @@ export default function BlogEditPage() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-lg bg-slate-800">
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-admin-md bg-slate-800">
           {toast}
         </div>
       )}

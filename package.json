@@ -11,6 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "verify:tokens": "node scripts/verify-admin-tokens.mjs",
+    "verify:design-system": "npm run verify:tokens && npm run type-check",
     "test": "vitest run",
     "test:e2e": "playwright test -c playwright.e2e.config.ts",
     "test:watch": "vitest",

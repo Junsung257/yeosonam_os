@@ -131,7 +131,7 @@ export default function AutoSuggestChip({ transactionId, onMatched }: Props) {
   };
 
   if (loading) {
-    return <span className="text-[11px] text-slate-400">분석…</span>;
+    return <span className="text-[11px] text-admin-muted-2">분석…</span>;
   }
   if (error) {
     return <span className="text-[11px] text-red-500" title={error}>제안 실패</span>;

@@ -189,49 +189,49 @@ export default function CustomerDetailPage() {
   };
 
   if (isLoading) return (
-    <div className="min-h-screen bg-slate-50 py-8">
+    <div className="min-h-screen bg-admin-bg py-8">
       <div className="max-w-3xl mx-auto px-4 space-y-4">
-        <div className="h-6 bg-slate-100 rounded animate-pulse w-48 mb-6" />
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+        <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48 mb-6" />
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4">
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse w-24 shrink-0" />
-              <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-24 shrink-0" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
             </div>
           ))}
         </div>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-3.5 bg-slate-100 rounded animate-pulse w-full" />
+            <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-full" />
           ))}
         </div>
       </div>
     </div>
   );
   if (!customer) return (
-    <div className="min-h-screen flex flex-col items-center justify-center text-slate-500">
+    <div className="min-h-screen flex flex-col items-center justify-center text-admin-muted">
       <p className="mb-4">고객을 찾을 수 없습니다.</p>
       <Link href="/admin/customers" className="text-blue-600 hover:underline">목록으로</Link>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8">
+    <div className="min-h-screen bg-admin-bg py-8">
       <div className="max-w-6xl mx-auto px-4">
         <div className="mb-4">
           <Link href="/admin/customers" className="text-sm text-blue-600 hover:underline">← 고객 목록</Link>
         </div>
 
         {/* 프로필 카드 */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="bg-white rounded-admin-md shadow-admin-xs p-6 mb-6">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center text-2xl font-bold text-blue-600">
                 {customer.name[0]}
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">{customer.name}</h1>
-                <p className="text-slate-500 text-sm">{customer.phone || '전화번호 없음'}</p>
+                <h1 className="text-xl font-bold text-admin-text">{customer.name}</h1>
+                <p className="text-admin-muted text-sm">{customer.phone || '전화번호 없음'}</p>
                 <div className="flex gap-1 mt-1 flex-wrap">
                   {(customer.tags || []).map(t => (
                     <span key={t} className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">{t}</span>
@@ -239,51 +239,51 @@ export default function CustomerDetailPage() {
                 </div>
               </div>
             </div>
-            <button onClick={startEdit} className="text-sm text-slate-500 hover:text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg">편집</button>
+            <button onClick={startEdit} className="text-sm text-admin-muted hover:text-admin-text-2 border border-admin-border-mid px-3 py-1.5 rounded-lg">편집</button>
           </div>
 
           {/* 통계 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-100">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-admin-border">
             <div className="text-center">
               <div className="flex items-center justify-center gap-1.5">
                 <p className="text-2xl font-bold text-blue-600">{(customer.mileage || 0).toLocaleString()}</p>
                 <button
                   onClick={() => setMileageModal(true)}
-                  className="text-slate-300 hover:text-blue-500 transition text-sm leading-none"
+                  className="text-admin-muted-2 hover:text-blue-500 transition text-sm leading-none"
                   title="마일리지 수동 조정"
                 >
                   ✏️
                 </button>
               </div>
-              <p className="text-xs text-slate-500 mt-1">마일리지 (P)</p>
+              <p className="text-xs text-admin-muted mt-1">마일리지 (P)</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-green-600">{totalSpent > 0 ? totalSpent.toLocaleString() + '원' : '0'}</p>
-              <p className="text-xs text-slate-500 mt-1">누적 결제액</p>
+              <p className="text-xs text-admin-muted mt-1">누적 결제액</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-slate-700">{bookings.length}</p>
-              <p className="text-xs text-slate-500 mt-1">총 예약</p>
+              <p className="text-2xl font-bold text-admin-text-2">{bookings.length}</p>
+              <p className="text-xs text-admin-muted mt-1">총 예약</p>
             </div>
             <div className="text-center">
               {customer.passport_expiry ? (
                 <>
-                  <p className={`text-sm font-bold ${isPassportExpiring(customer.passport_expiry) ? 'text-red-600' : 'text-slate-700'}`}>
+                  <p className={`text-sm font-bold ${isPassportExpiring(customer.passport_expiry) ? 'text-red-600' : 'text-admin-text-2'}`}>
                     {isPassportExpiring(customer.passport_expiry) ? '⚠️ ' : ''}{customer.passport_expiry}
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">여권 만료</p>
+                  <p className="text-xs text-admin-muted mt-1">여권 만료</p>
                 </>
               ) : (
                 <>
-                  <p className="text-sm text-slate-400">미등록</p>
-                  <p className="text-xs text-slate-500 mt-1">여권 만료</p>
+                  <p className="text-sm text-admin-muted-2">미등록</p>
+                  <p className="text-xs text-admin-muted mt-1">여권 만료</p>
                 </>
               )}
             </div>
           </div>
 
           {customer.memo && (
-            <div className="mt-4 p-3 bg-slate-50 rounded-lg text-sm text-slate-600 border border-slate-100">
+            <div className="mt-4 p-3 bg-admin-bg rounded-lg text-sm text-admin-muted border border-admin-border">
               {customer.memo}
             </div>
           )}
@@ -292,16 +292,16 @@ export default function CustomerDetailPage() {
         {/* 2-column: 예약 히스토리 | 타임라인 노트 */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* 좌: 예약 히스토리 (3/5) */}
-          <div className="lg:col-span-3 bg-white rounded-xl shadow-sm p-6">
+          <div className="lg:col-span-3 bg-white rounded-admin-md shadow-admin-xs p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-slate-900">예약 히스토리</h2>
+              <h2 className="font-semibold text-admin-text">예약 히스토리</h2>
               <Link href={`/admin/bookings/new?customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`}
                 className="text-sm text-blue-600 hover:underline">+ 예약 등록</Link>
             </div>
             {bookings.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-10">
-                <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
-                <p className="text-admin-sm font-medium text-slate-500">예약 내역이 없습니다.</p>
+                <svg className="w-8 h-8 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                <p className="text-admin-sm font-medium text-admin-muted">예약 내역이 없습니다.</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -309,23 +309,23 @@ export default function CustomerDetailPage() {
                   <Link
                     key={b.id}
                     href={`/admin/bookings/${b.id}`}
-                    className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-blue-50 hover:border-blue-200 transition group"
+                    className="flex items-center justify-between p-3 border border-admin-border rounded-lg hover:bg-blue-50 hover:border-blue-200 transition group"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 text-sm group-hover:text-blue-700 truncate">
+                      <p className="font-medium text-admin-text text-sm group-hover:text-blue-700 truncate">
                         {b.package_title || '(상품 미지정)'}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
+                      <p className="text-xs text-admin-muted mt-0.5">
                         {b.booking_no} · 성인 {b.adult_count}명{b.child_count > 0 && ` + 소아 ${b.child_count}명`}
                         {b.departure_date && ` · 출발 ${fmtDate(b.departure_date)}`}
                       </p>
                     </div>
                     <div className="text-right ml-3 shrink-0">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[b.status] || 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[b.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
                         {STATUS_LABEL[b.status] || b.status}
                       </span>
                       {b.total_price && (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{b.total_price.toLocaleString()}원</p>
+                        <p className="text-sm font-semibold text-admin-text mt-1">{b.total_price.toLocaleString()}원</p>
                       )}
                     </div>
                   </Link>
@@ -335,29 +335,29 @@ export default function CustomerDetailPage() {
           </div>
 
           {/* 우: 타임라인 노트 (2/5) */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6 flex flex-col">
-            <h2 className="font-semibold text-slate-900 mb-4">CS 타임라인</h2>
+          <div className="lg:col-span-2 bg-white rounded-admin-md shadow-admin-xs p-6 flex flex-col">
+            <h2 className="font-semibold text-admin-text mb-4">CS 타임라인</h2>
             <div className="flex-1 overflow-y-auto max-h-[420px] space-y-3 pr-1">
               {notes.length === 0 ? (
-                <p className="text-slate-400 text-xs text-center py-6">메모가 없습니다.<br />아래에서 첫 메모를 남겨보세요.</p>
+                <p className="text-admin-muted-2 text-xs text-center py-6">메모가 없습니다.<br />아래에서 첫 메모를 남겨보세요.</p>
               ) : (
                 notes.map((n, i) => (
                   <div key={n.id} className="relative group">
                     {/* 타임라인 선 */}
                     {i < notes.length - 1 && (
-                      <div className="absolute left-3 top-6 bottom-0 w-px bg-slate-100" />
+                      <div className="absolute left-3 top-6 bottom-0 w-px bg-admin-surface-2" />
                     )}
                     <div className="flex gap-2.5">
                       <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
                         <div className="w-2 h-2 rounded-full bg-blue-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-slate-500 mb-0.5">{fmtTime(n.created_at)}</p>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap break-words leading-relaxed">{n.content}</p>
+                        <p className="text-xs text-admin-muted mb-0.5">{fmtTime(n.created_at)}</p>
+                        <p className="text-sm text-admin-text-2 whitespace-pre-wrap break-words leading-relaxed">{n.content}</p>
                       </div>
                       <button
                         onClick={() => handleDeleteNote(n.id)}
-                        className="opacity-0 group-hover:opacity-100 transition text-slate-200 hover:text-red-400 text-xs shrink-0 mt-0.5"
+                        className="opacity-0 group-hover:opacity-100 transition text-admin-border-mid hover:text-red-400 text-xs shrink-0 mt-0.5"
                         title="삭제"
                       >✕</button>
                     </div>
@@ -367,7 +367,7 @@ export default function CustomerDetailPage() {
               <div ref={noteEndRef} />
             </div>
             {/* 노트 입력 */}
-            <form onSubmit={handleNoteSubmit} className="mt-4 pt-4 border-t border-slate-100">
+            <form onSubmit={handleNoteSubmit} className="mt-4 pt-4 border-t border-admin-border">
               <textarea
                 value={noteInput}
                 onChange={e => setNoteInput(e.target.value)}
@@ -379,12 +379,12 @@ export default function CustomerDetailPage() {
                 }}
                 rows={2}
                 placeholder="CS 메모, 통화 기록 등... (Enter로 저장)"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
               <button
                 type="submit"
                 disabled={noteSubmitting || !noteInput.trim()}
-                className="mt-2 w-full bg-blue-600 text-white py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 transition"
+                className="mt-2 w-full bg-blue-600 text-white py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-200 disabled:text-admin-muted-2 transition"
               >
                 {noteSubmitting ? '저장 중...' : '메모 추가'}
               </button>
@@ -396,53 +396,53 @@ export default function CustomerDetailPage() {
       {/* 편집 모달 */}
       {editing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-admin-md shadow-admin-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b">
-              <h2 className="text-lg font-bold text-slate-900">고객 정보 편집</h2>
+              <h2 className="text-lg font-bold text-admin-text">고객 정보 편집</h2>
             </div>
             <form onSubmit={handleSave} className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">이름 *</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">이름 *</label>
                 <input required value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">전화번호</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">전화번호</label>
                 <input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">이메일</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">이메일</label>
                 <input type="email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">여권번호</label>
+                  <label className="block text-xs font-medium text-admin-text-2 mb-1">여권번호</label>
                   <input value={form.passport_no || ''} onChange={e => setForm({...form, passport_no: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">여권 만료일</label>
+                  <label className="block text-xs font-medium text-admin-text-2 mb-1">여권 만료일</label>
                   <input type="date" value={form.passport_expiry || ''} onChange={e => setForm({...form, passport_expiry: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">생년월일</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">생년월일</label>
                 <input type="date" value={form.birth_date || ''} onChange={e => setForm({...form, birth_date: e.target.value})}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">태그 (쉼표 구분)</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">태그 (쉼표 구분)</label>
                 <input value={form.tags_str || ''} onChange={e => setForm({...form, tags_str: e.target.value})}
                   placeholder="VIP, 재방문, 골프"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">메모</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">메모</label>
                 <textarea value={form.memo || ''} onChange={e => setForm({...form, memo: e.target.value})} rows={2}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={saving}
@@ -450,7 +450,7 @@ export default function CustomerDetailPage() {
                   {saving ? '저장 중...' : '저장'}
                 </button>
                 <button type="button" onClick={() => setEditing(false)}
-                  className="flex-1 bg-slate-100 text-slate-700 py-2 rounded-lg text-sm hover:bg-slate-200 transition">취소</button>
+                  className="flex-1 bg-admin-surface-2 text-admin-text-2 py-2 rounded-lg text-sm hover:bg-slate-200 transition">취소</button>
               </div>
             </form>
           </div>
@@ -460,14 +460,14 @@ export default function CustomerDetailPage() {
       {/* 마일리지 모달 */}
       {mileageModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full">
+          <div className="bg-white rounded-admin-md shadow-admin-lg max-w-sm w-full">
             <div className="p-5 border-b">
-              <h2 className="text-lg font-bold text-slate-900">마일리지 수동 조정</h2>
-              <p className="text-sm text-slate-500 mt-1">현재 잔액: <span className="font-semibold text-blue-600">{(customer.mileage || 0).toLocaleString()}P</span></p>
+              <h2 className="text-lg font-bold text-admin-text">마일리지 수동 조정</h2>
+              <p className="text-sm text-admin-muted mt-1">현재 잔액: <span className="font-semibold text-blue-600">{(customer.mileage || 0).toLocaleString()}P</span></p>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">증감 포인트 (음수 입력 시 차감)</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">증감 포인트 (음수 입력 시 차감)</label>
                 <div className="flex gap-2 mb-2">
                   {[100, 500, 1000, -100, -500].map(v => (
                     <button key={v} onClick={() => setMileageDelta(String(v))}
@@ -481,30 +481,30 @@ export default function CustomerDetailPage() {
                   value={mileageDelta}
                   onChange={e => setMileageDelta(e.target.value)}
                   placeholder="직접 입력 (예: 300 또는 -200)"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {mileageDelta && !isNaN(parseInt(mileageDelta)) && (
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-admin-muted mt-1">
                     적용 후 잔액: <span className="font-semibold">{Math.max(0, (customer.mileage || 0) + parseInt(mileageDelta)).toLocaleString()}P</span>
                   </p>
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">사유 (선택)</label>
+                <label className="block text-xs font-medium text-admin-text-2 mb-1">사유 (선택)</label>
                 <input
                   value={mileageReason}
                   onChange={e => setMileageReason(e.target.value)}
                   placeholder="예: VIP 웰컴 포인트, 취소 위약금 차감..."
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={handleMileage} disabled={mileageSaving || !mileageDelta || isNaN(parseInt(mileageDelta))}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 transition">
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-200 disabled:text-admin-muted-2 transition">
                   {mileageSaving ? '처리 중...' : '적용'}
                 </button>
                 <button onClick={() => { setMileageModal(false); setMileageDelta(''); setMileageReason(''); }}
-                  className="flex-1 bg-slate-100 text-slate-700 py-2 rounded-lg text-sm hover:bg-slate-200 transition">취소</button>
+                  className="flex-1 bg-admin-surface-2 text-admin-text-2 py-2 rounded-lg text-sm hover:bg-slate-200 transition">취소</button>
               </div>
             </div>
           </div>
@@ -513,7 +513,7 @@ export default function CustomerDetailPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl shadow-lg text-white text-sm font-medium bg-slate-900">
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-admin-md shadow-admin-md text-white text-sm font-medium bg-slate-900">
           {toast}
         </div>
       )}

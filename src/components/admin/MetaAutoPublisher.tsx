@@ -191,7 +191,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl bg-white shadow-xl border-l border-slate-200 h-full flex flex-col"
+        className="relative w-full max-w-2xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
@@ -208,18 +208,18 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
           {/* ═══ 섹션 1: Auto-Publishing ═══ */}
-          <section className="bg-white border border-slate-200 rounded-lg p-4">
-            <h3 className="text-admin-base font-semibold text-slate-800 mb-3">광고 퍼블리싱</h3>
+          <section className="bg-white border border-admin-border-mid rounded-lg p-4">
+            <h3 className="text-admin-base font-semibold text-admin-text-2 mb-3">광고 퍼블리싱</h3>
 
             <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center gap-1 border border-slate-200 rounded px-2 py-1.5">
-                <span className="text-[10px] text-slate-400">일예산</span>
+              <div className="flex items-center gap-1 border border-admin-border-mid rounded px-2 py-1.5">
+                <span className="text-[10px] text-admin-muted-2">일예산</span>
                 <input type="number" value={budget} onChange={e => setBudget(parseInt(e.target.value) || 50000)}
                   step={10000} min={10000} className="w-20 border-none text-admin-sm text-right focus:ring-0 bg-transparent p-0" />
-                <span className="text-[10px] text-slate-400">원</span>
+                <span className="text-[10px] text-admin-muted-2">원</span>
               </div>
               {creativeId && (
-                <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded">{creativeId}</span>
+                <span className="text-[11px] font-mono text-admin-muted bg-admin-surface-2 px-2 py-1 rounded">{creativeId}</span>
               )}
             </div>
 
@@ -245,15 +245,15 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
           </section>
 
           {/* ═══ 섹션 2: Live Insights ═══ */}
-          <section className="bg-white border border-slate-200 rounded-lg p-4">
+          <section className="bg-white border border-admin-border-mid rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-admin-base font-semibold text-slate-800">실시간 성과</h3>
+              <h3 className="text-admin-base font-semibold text-admin-text-2">실시간 성과</h3>
               <div className="flex items-center gap-2">
-                {lastSync && <span className="text-[10px] text-slate-400">최근: {lastSync}</span>}
+                {lastSync && <span className="text-[10px] text-admin-muted-2">최근: {lastSync}</span>}
                 <button
                   onClick={fetchLiveInsights}
                   disabled={syncing}
-                  className="px-3 py-1 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50 disabled:opacity-50 transition"
+                  className="px-3 py-1 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg disabled:opacity-50 transition"
                 >
                   {syncing ? '동기화 중...' : '동기화'}
                 </button>
@@ -263,20 +263,20 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             {/* KPI */}
             {campaigns.length > 0 && (
               <div className="grid grid-cols-4 gap-2 mb-4">
-                <div className="bg-slate-50 rounded p-2">
-                  <p className="text-[10px] text-slate-400">캠페인</p>
-                  <p className="text-lg font-bold text-slate-800">{campaigns.length}</p>
+                <div className="bg-admin-bg rounded p-2">
+                  <p className="text-[10px] text-admin-muted-2">캠페인</p>
+                  <p className="text-lg font-bold text-admin-text-2">{campaigns.length}</p>
                 </div>
-                <div className="bg-slate-50 rounded p-2">
-                  <p className="text-[10px] text-slate-400">평균 CTR</p>
-                  <p className={`text-lg font-bold ${avgCtr >= 3 ? 'text-emerald-600' : avgCtr < 1 ? 'text-red-600' : 'text-slate-800'}`}>{avgCtr.toFixed(1)}%</p>
+                <div className="bg-admin-bg rounded p-2">
+                  <p className="text-[10px] text-admin-muted-2">평균 CTR</p>
+                  <p className={`text-lg font-bold ${avgCtr >= 3 ? 'text-emerald-600' : avgCtr < 1 ? 'text-red-600' : 'text-admin-text-2'}`}>{avgCtr.toFixed(1)}%</p>
                 </div>
-                <div className="bg-slate-50 rounded p-2">
-                  <p className="text-[10px] text-slate-400">총 지출</p>
-                  <p className="text-lg font-bold text-slate-800">₩{(totalSpend / 10000).toFixed(0)}만</p>
+                <div className="bg-admin-bg rounded p-2">
+                  <p className="text-[10px] text-admin-muted-2">총 지출</p>
+                  <p className="text-lg font-bold text-admin-text-2">₩{(totalSpend / 10000).toFixed(0)}만</p>
                 </div>
-                <div className="bg-slate-50 rounded p-2">
-                  <p className="text-[10px] text-slate-400">위험</p>
+                <div className="bg-admin-bg rounded p-2">
+                  <p className="text-[10px] text-admin-muted-2">위험</p>
                   <p className={`text-lg font-bold ${dangerCampaigns.length > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{dangerCampaigns.length}</p>
                 </div>
               </div>
@@ -299,16 +299,16 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             )}
 
             {campaigns.length === 0 && !syncing && (
-              <p className="text-center text-slate-400 text-admin-xs py-4">캠페인 데이터가 없습니다. 동기화를 실행하세요.</p>
+              <p className="text-center text-admin-muted-2 text-admin-xs py-4">캠페인 데이터가 없습니다. 동기화를 실행하세요.</p>
             )}
           </section>
 
           {/* ═══ 섹션 3: Kill Switch ═══ */}
-          <section className="bg-white border border-slate-200 rounded-lg p-4">
+          <section className="bg-white border border-admin-border-mid rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-admin-base font-semibold text-slate-800">Kill Switch</h3>
+              <h3 className="text-admin-base font-semibold text-admin-text-2">Kill Switch</h3>
               <label className="flex items-center gap-2 cursor-pointer">
-                <span className="text-[11px] text-slate-500">자동 Kill</span>
+                <span className="text-[11px] text-admin-muted">자동 Kill</span>
                 <button
                   onClick={() => setAutoKill(!autoKill)}
                   className={`w-9 h-5 rounded-full transition relative ${autoKill ? 'bg-red-500' : 'bg-slate-300'}`}
@@ -318,7 +318,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
               </label>
             </div>
 
-            <p className="text-[11px] text-slate-400 mb-3">CTR 1% 미만 + 지출 5만원 초과 캠페인 자동 감지</p>
+            <p className="text-[11px] text-admin-muted-2 mb-3">CTR 1% 미만 + 지출 5만원 초과 캠페인 자동 감지</p>
 
             {/* 위험 캠페인 경고 */}
             {dangerCampaigns.length > 0 ? (
@@ -354,25 +354,25 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
               <div className="mt-4 max-h-[200px] overflow-y-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-[10px] font-semibold text-slate-500 py-1 px-2 text-left">캠페인</th>
-                      <th className="text-[10px] font-semibold text-slate-500 py-1 px-2 text-center">상태</th>
-                      <th className="text-[10px] font-semibold text-slate-500 py-1 px-2 text-center">CTR</th>
-                      <th className="text-[10px] font-semibold text-slate-500 py-1 px-2 text-right">지출</th>
+                    <tr className="bg-admin-bg border-b border-admin-border-mid">
+                      <th className="text-[10px] font-semibold text-admin-muted py-1 px-2 text-left">캠페인</th>
+                      <th className="text-[10px] font-semibold text-admin-muted py-1 px-2 text-center">상태</th>
+                      <th className="text-[10px] font-semibold text-admin-muted py-1 px-2 text-center">CTR</th>
+                      <th className="text-[10px] font-semibold text-admin-muted py-1 px-2 text-right">지출</th>
                     </tr>
                   </thead>
                   <tbody>
                     {campaigns.map(c => (
-                      <tr key={c.id} className="border-b border-slate-100">
-                        <td className="text-[11px] text-slate-700 py-1 px-2 truncate max-w-[200px]">{c.creative_id || c.name}</td>
+                      <tr key={c.id} className="border-b border-admin-border">
+                        <td className="text-[11px] text-admin-text-2 py-1 px-2 truncate max-w-[200px]">{c.creative_id || c.name}</td>
                         <td className="text-[10px] py-1 px-2 text-center">
                           <span className={`px-1.5 py-0.5 rounded ${
                             c.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' :
-                            c.status === 'PAUSED' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+                            c.status === 'PAUSED' ? 'bg-amber-50 text-amber-700' : 'bg-admin-surface-2 text-admin-muted'
                           }`}>{c.status}</span>
                         </td>
-                        <td className={`text-[11px] py-1 px-2 text-center font-medium ${c.ctr >= 3 ? 'text-emerald-600' : c.ctr < 1 ? 'text-red-600' : 'text-slate-700'}`}>{c.ctr}%</td>
-                        <td className="text-[11px] text-slate-700 py-1 px-2 text-right">₩{c.spend.toLocaleString()}</td>
+                        <td className={`text-[11px] py-1 px-2 text-center font-medium ${c.ctr >= 3 ? 'text-emerald-600' : c.ctr < 1 ? 'text-red-600' : 'text-admin-text-2'}`}>{c.ctr}%</td>
+                        <td className="text-[11px] text-admin-text-2 py-1 px-2 text-right">₩{c.spend.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>

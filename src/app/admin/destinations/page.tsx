@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Sparkles, Search } from 'lucide-react';
 
 interface DestMeta {
   tagline: string | null;
@@ -216,74 +219,71 @@ export default function AdminDestinationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#faf9f7] p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900">여행지 관리</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              destination_metadata · 히어로 사진 · 어드민 승인 게이트
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {autoGenProgress ? (
-              <span className="text-sm text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-lg">
-                ⏳ 자동생성 {autoGenProgress.current}/{autoGenProgress.total}
-              </span>
-            ) : (
-              <button
-                onClick={bulkAutoGen}
-                className="text-sm font-semibold bg-brand text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition"
-              >
-                ✨ 미설정 전체 자동생성
-              </button>
-            )}
-          </div>
+    <div className="max-w-6xl mx-auto">
+      <PageHeader
+        title="여행지 관리"
+        subtitle="destination_metadata · 히어로 사진 · 어드민 승인 게이트"
+        actions={
+          autoGenProgress ? (
+            <span className="text-admin-sm text-admin-muted bg-admin-surface border border-admin-border-mid px-3 h-9 inline-flex items-center rounded-admin-sm admin-num">
+              ⏳ 자동생성 {autoGenProgress.current}/{autoGenProgress.total}
+            </span>
+          ) : (
+            <Button variant="primary" size="sm" onClick={bulkAutoGen}>
+              <Sparkles size={14} />
+              미설정 전체 자동생성
+            </Button>
+          )
+        }
+      />
+
+      {/* 알림 */}
+      {msg && (
+        <div className="mb-4 px-4 py-2.5 admin-card text-admin-sm text-admin-text-2">
+          {msg}
         </div>
+      )}
 
-        {/* 알림 */}
-        {msg && (
-          <div className="mb-4 px-4 py-2.5 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] text-sm text-slate-700">
-            {msg}
-          </div>
-        )}
-
-        {/* 필터 + 검색 */}
-        <div className="flex flex-wrap gap-2 mb-5">
-          {(['all', 'missing', 'pending', 'approved'] as StatusFilter[]).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`text-sm font-semibold px-3.5 py-1.5 rounded-full transition ${
-                filter === f
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-400'
-              }`}
-            >
-              {f === 'all' ? '전체' : f === 'missing' ? '🔴 미설정' : f === 'pending' ? '⚠️ 미승인' : '✅ 완료'}
-              {f === 'all' && ` (${rows.length})`}
-              {f === 'missing' && ` (${rows.filter(r => !r.metadata).length})`}
-              {f === 'pending' && ` (${rows.filter(r => r.metadata && !r.metadata.photo_approved).length})`}
-              {f === 'approved' && ` (${rows.filter(r => r.metadata?.photo_approved).length})`}
-            </button>
-          ))}
+      {/* 필터 + 검색 */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(['all', 'missing', 'pending', 'approved'] as StatusFilter[]).map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`h-8 px-3 rounded-admin-sm text-admin-sm font-medium transition-colors ${
+              filter === f
+                ? 'bg-admin-text text-white'
+                : 'bg-admin-surface border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong'
+            }`}
+          >
+            {f === 'all' ? '전체' : f === 'missing' ? '🔴 미설정' : f === 'pending' ? '⚠️ 미승인' : '✅ 완료'}
+            <span className="admin-num ml-1 opacity-80">
+              {f === 'all' && `(${rows.length})`}
+              {f === 'missing' && `(${rows.filter(r => !r.metadata).length})`}
+              {f === 'pending' && `(${rows.filter(r => r.metadata && !r.metadata.photo_approved).length})`}
+              {f === 'approved' && `(${rows.filter(r => r.metadata?.photo_approved).length})`}
+            </span>
+          </button>
+        ))}
+        <div className="relative ml-auto">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-admin-muted-2 pointer-events-none" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="여행지 검색..."
-            className="ml-auto text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand w-40"
+            placeholder="여행지 검색"
+            className="h-8 w-40 pl-7 pr-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           />
         </div>
+      </div>
 
         {/* 목록 */}
         {loading ? (
           <div className="space-y-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-white border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-xl px-5 py-4 flex items-center gap-4">
-                <div className="h-4 bg-slate-100 rounded animate-pulse w-40" />
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
-                <div className="ml-auto h-4 bg-slate-100 rounded animate-pulse w-24" />
+              <div key={i} className="bg-white border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-admin-md px-5 py-4 flex items-center gap-4">
+                <div className="h-4 bg-admin-surface-2 rounded animate-pulse w-40" />
+                <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
+                <div className="ml-auto h-4 bg-admin-surface-2 rounded animate-pulse w-24" />
               </div>
             ))}
           </div>
@@ -296,38 +296,38 @@ export default function AdminDestinationsPage() {
               const ps = photoSearch[row.destination];
 
               return (
-                <div key={row.destination} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+                <div key={row.destination} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
                   {/* 요약 행 */}
                   <div
-                    className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-slate-50 transition"
+                    className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-admin-bg transition"
                     onClick={() => setExpanded(isExpanded ? null : row.destination)}
                   >
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${status.color}`}>
                       {status.icon} {status.label}
                     </span>
-                    <span className="font-bold text-slate-900 flex-1">{row.destination}</span>
-                    <span className="text-sm text-slate-400">{row.package_count}개 상품</span>
+                    <span className="font-bold text-admin-text flex-1">{row.destination}</span>
+                    <span className="text-sm text-admin-muted-2">{row.package_count}개 상품</span>
                     {row.metadata?.tagline && (
-                      <span className="text-sm text-slate-500 hidden md:inline truncate max-w-[200px]">
+                      <span className="text-sm text-admin-muted hidden md:inline truncate max-w-[200px]">
                         {row.metadata.tagline}
                       </span>
                     )}
-                    <span className="text-slate-400 text-sm">{isExpanded ? '▲' : '▼'}</span>
+                    <span className="text-admin-muted-2 text-sm">{isExpanded ? '▲' : '▼'}</span>
                   </div>
 
                   {/* 확장 패널 */}
                   {isExpanded && (
-                    <div className="border-t border-slate-100 p-5 space-y-6">
+                    <div className="border-t border-admin-border p-5 space-y-6">
                       {/* 타이틀 편집 */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-bold text-slate-500 block mb-1.5">TAGLINE (H1)</label>
+                          <label className="text-xs font-bold text-admin-muted block mb-1.5">TAGLINE (H1)</label>
                           <div className="flex gap-2">
                             <input
                               value={edit.tagline ?? row.metadata?.tagline ?? ''}
                               onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], tagline: e.target.value } }))}
                               placeholder="감성 타이틀 입력..."
-                              className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
+                              className="flex-1 text-sm border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                             />
                             <button
                               onClick={() => autoGenTagline(row.destination)}
@@ -339,12 +339,12 @@ export default function AdminDestinationsPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-xs font-bold text-slate-500 block mb-1.5">HERO_TAGLINE (서브설명)</label>
+                          <label className="text-xs font-bold text-admin-muted block mb-1.5">HERO_TAGLINE (서브설명)</label>
                           <input
                             value={edit.hero_tagline ?? row.metadata?.hero_tagline ?? ''}
                             onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], hero_tagline: e.target.value } }))}
                             placeholder="1~2문장 서브 설명..."
-                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
+                            className="w-full text-sm border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                           />
                         </div>
                       </div>
@@ -361,7 +361,7 @@ export default function AdminDestinationsPage() {
 
                       {/* 히어로 사진 */}
                       <div>
-                        <label className="text-xs font-bold text-slate-500 block mb-3">히어로 사진</label>
+                        <label className="text-xs font-bold text-admin-muted block mb-3">히어로 사진</label>
 
                         {/* 현재 사진 */}
                         {row.metadata?.hero_image_url && (
@@ -369,7 +369,7 @@ export default function AdminDestinationsPage() {
                             <img
                               src={row.metadata.hero_image_url}
                               alt="현재 히어로"
-                              className="w-40 h-24 object-cover rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
+                              className="w-40 h-24 object-cover rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
                             />
                             <div className="flex flex-col gap-2">
                               <span className={`text-xs font-bold px-2.5 py-1 rounded-full w-fit ${
@@ -398,7 +398,7 @@ export default function AdminDestinationsPage() {
                             value={ps?.keyword ?? DEFAULT_KEYWORD(row.destination)}
                             onChange={e => setPhotoSearch(p => ({ ...p, [row.destination]: { ...p[row.destination], keyword: e.target.value, results: p[row.destination]?.results || [] } }))}
                             placeholder="Pexels 검색 키워드..."
-                            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
+                            className="flex-1 text-sm border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                             onKeyDown={e => e.key === 'Enter' && searchPexels(row.destination)}
                           />
                           <button
@@ -418,7 +418,7 @@ export default function AdminDestinationsPage() {
                                 <img
                                   src={photo.src_thumb}
                                   alt={photo.alt}
-                                  className="w-full aspect-video object-cover rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] cursor-pointer group-hover:border-brand transition"
+                                  className="w-full aspect-video object-cover rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] cursor-pointer group-hover:border-brand transition"
                                   title={`© ${photo.photographer}`}
                                 />
                                 <button
@@ -433,12 +433,12 @@ export default function AdminDestinationsPage() {
                           </div>
                         )}
                         {ps && !ps.loading && ps.results.length === 0 && (
-                          <p className="text-sm text-slate-400">검색 결과 없음. 키워드를 영어로 바꿔보세요.</p>
+                          <p className="text-sm text-admin-muted-2">검색 결과 없음. 키워드를 영어로 바꿔보세요.</p>
                         )}
                       </div>
 
                       {/* 고객 페이지 링크 */}
-                      <div className="flex gap-3 pt-2 border-t border-slate-100">
+                      <div className="flex gap-3 pt-2 border-t border-admin-border">
                         <a
                           href={`/destinations/${encodeURIComponent(row.destination)}`}
                           target="_blank"
@@ -455,13 +455,12 @@ export default function AdminDestinationsPage() {
             })}
 
             {filtered.length === 0 && !loading && (
-              <div className="text-center py-20 text-slate-400">
+              <div className="text-center py-20 text-admin-muted">
                 {search ? `"${search}" 검색 결과 없음` : '해당 조건의 여행지가 없습니다.'}
               </div>
             )}
           </div>
         )}
-      </div>
     </div>
   );
 }

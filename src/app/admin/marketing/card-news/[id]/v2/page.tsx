@@ -403,12 +403,12 @@ export default function CardNewsV2Studio() {
   if (loading) {
     return (
       <div className="p-6 space-y-4">
-        <div className="h-6 bg-slate-100 rounded animate-pulse w-48" />
+        <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
         <div className="flex gap-4">
-          <div className="flex-1 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] aspect-[9/16] animate-pulse" />
+          <div className="flex-1 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] aspect-[9/16] animate-pulse" />
           <div className="w-72 space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+              <div key={i} className="h-10 bg-admin-surface-2 rounded-lg animate-pulse" />
             ))}
           </div>
         </div>
@@ -426,14 +426,14 @@ export default function CardNewsV2Studio() {
     const allHtmlRendered =
       htmlRenderResults.length === 6 && htmlRenderResults.every((r) => r.url);
     return (
-      <div className="min-h-screen bg-slate-50 p-6 max-w-[1400px] mx-auto">
+      <div className="min-h-screen bg-admin-bg p-6 max-w-[1400px] mx-auto">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-1">
               HTML Studio · Claude Sonnet 4.6
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">{cardNews.title}</h1>
-            <div className="text-sm text-slate-500 mt-1">
+            <h1 className="text-2xl font-bold text-admin-text">{cardNews.title}</h1>
+            <div className="text-sm text-admin-muted mt-1">
               버전 {cardNews.template_version ?? 'html-v1'}
               {cardNews.html_usage?.costUsd != null && (
                 <> · 누적 비용 ${cardNews.html_usage.costUsd.toFixed(4)}</>
@@ -447,7 +447,7 @@ export default function CardNewsV2Studio() {
                   ? 'bg-emerald-100 text-emerald-800'
                   : cardNews.status === 'LAUNCHED'
                     ? 'bg-blue-100 text-blue-800'
-                    : 'bg-slate-100 text-slate-500'
+                    : 'bg-admin-surface-2 text-admin-muted'
               }`}
             >
               {cardNews.status ?? 'DRAFT'}
@@ -459,7 +459,7 @@ export default function CardNewsV2Studio() {
               className={`px-3 py-2 text-sm rounded font-semibold disabled:opacity-50 ${
                 (cardNews.status ?? 'DRAFT') === 'DRAFT'
                   ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                  : 'bg-slate-200 text-admin-text-2 hover:bg-slate-300'
               }`}
             >
               {confirming ? '저장 중…' : (cardNews.status ?? 'DRAFT') === 'DRAFT' ? '✓ 최종 저장' : '↶ DRAFT 로'}
@@ -476,7 +476,7 @@ export default function CardNewsV2Studio() {
             <button
               type="button"
               onClick={() => router.push('/admin/marketing/card-news')}
-              className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded"
+              className="px-3 py-2 text-sm text-admin-muted hover:bg-admin-surface-2 rounded"
             >
               ← 목록
             </button>
@@ -485,13 +485,13 @@ export default function CardNewsV2Studio() {
 
         {/* 편집 + 미리보기 좌우 분할 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
-            <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="text-sm font-bold text-slate-900">
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+            <div className="px-4 py-2 border-b border-admin-border-mid flex items-center justify-between bg-admin-bg">
+              <div className="text-sm font-bold text-admin-text">
                 HTML 코드 편집
                 {htmlDirty && <span className="ml-2 text-xs text-amber-600">● 미저장</span>}
               </div>
-              <div className="text-xs text-slate-500">{htmlContent.length.toLocaleString()} 자</div>
+              <div className="text-xs text-admin-muted">{htmlContent.length.toLocaleString()} 자</div>
             </div>
             <textarea
               value={htmlContent}
@@ -500,14 +500,14 @@ export default function CardNewsV2Studio() {
                 setHtmlDirty(true);
               }}
               spellCheck={false}
-              className="flex-1 w-full px-3 py-2 font-mono text-xs leading-relaxed bg-slate-900 text-slate-100 border-0 focus:outline-none resize-none"
+              className="flex-1 w-full px-3 py-2 font-mono text-xs leading-relaxed bg-slate-900 text-admin-surface-2 border-0 focus:outline-none resize-none"
               style={{ minHeight: '600px' }}
               placeholder="<!DOCTYPE html>..."
             />
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
-            <div className="px-4 py-2 border-b border-slate-200 bg-slate-50 text-sm font-bold text-slate-900">
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+            <div className="px-4 py-2 border-b border-admin-border-mid bg-admin-bg text-sm font-bold text-admin-text">
               실시간 미리보기 ({htmlDirty ? '편집 중' : '저장됨'})
             </div>
             <iframe
@@ -551,9 +551,9 @@ export default function CardNewsV2Studio() {
 
         {/* PNG 결과 그리드 */}
         {htmlRenderResults.length > 0 && (
-          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 mb-6">
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 mb-6">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900">
+              <h3 className="text-sm font-bold text-admin-text">
                 PNG 렌더 결과 (
                 {htmlRenderResults.filter((r) => r.url).length}/{htmlRenderResults.length})
               </h3>
@@ -567,7 +567,7 @@ export default function CardNewsV2Studio() {
               {htmlRenderResults
                 .sort((a, b) => a.slide_index - b.slide_index)
                 .map((r) => (
-                  <div key={r.slide_index} className="overflow-hidden rounded border border-slate-200">
+                  <div key={r.slide_index} className="overflow-hidden rounded border border-admin-border-mid">
                     {r.url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -580,7 +580,7 @@ export default function CardNewsV2Studio() {
                         {r.slide_index + 1}번 실패<br />{r.error}
                       </div>
                     )}
-                    <div className="px-2 py-1 text-xs text-slate-500 bg-slate-50 text-center">
+                    <div className="px-2 py-1 text-xs text-admin-muted bg-admin-bg text-center">
                       {String(r.slide_index + 1).padStart(2, '0')} / 06
                     </div>
                   </div>
@@ -591,18 +591,18 @@ export default function CardNewsV2Studio() {
 
         {/* 원문 텍스트 (참고용) */}
         {htmlRawText && (
-          <details className="mb-6 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-            <summary className="px-4 py-3 cursor-pointer text-sm font-bold text-slate-700">
+          <details className="mb-6 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <summary className="px-4 py-3 cursor-pointer text-sm font-bold text-admin-text-2">
               📄 생성에 사용된 원문 텍스트 (펼치기)
             </summary>
-            <pre className="px-4 pb-4 text-xs text-slate-600 whitespace-pre-wrap font-mono max-h-80 overflow-auto">
+            <pre className="px-4 pb-4 text-xs text-admin-muted whitespace-pre-wrap font-mono max-h-80 overflow-auto">
               {htmlRawText}
             </pre>
           </details>
         )}
 
         {toast && (
-          <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-2 rounded shadow-lg text-sm">
+          <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-2 rounded shadow-admin-md text-sm">
             {toast}
           </div>
         )}
@@ -631,12 +631,12 @@ export default function CardNewsV2Studio() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 max-w-[1400px] mx-auto">
+    <div className="min-h-screen bg-admin-bg p-6 max-w-[1400px] mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <div className="text-xs text-slate-400 mb-1">V2 Studio</div>
-          <h1 className="text-2xl font-bold text-slate-900">{cardNews.title}</h1>
-          <div className="text-sm text-slate-500 mt-1">
+          <div className="text-xs text-admin-muted-2 mb-1">V2 Studio</div>
+          <h1 className="text-2xl font-bold text-admin-text">{cardNews.title}</h1>
+          <div className="text-sm text-admin-muted mt-1">
             슬라이드 {slideCount}장 · 버전 {cardNews.template_version ?? 'v1'}
           </div>
         </div>
@@ -648,7 +648,7 @@ export default function CardNewsV2Studio() {
                 ? 'bg-emerald-100 text-emerald-800'
                 : cardNews.status === 'LAUNCHED'
                   ? 'bg-blue-100 text-blue-800'
-                  : 'bg-slate-100 text-slate-500'
+                  : 'bg-admin-surface-2 text-admin-muted'
             }`}
             title="DRAFT: 작업 중 / CONFIRMED: 최종 저장 (블로그·IG·Threads 호출 가능) / LAUNCHED: 광고까지 집행됨"
           >
@@ -661,7 +661,7 @@ export default function CardNewsV2Studio() {
             className={`px-3 py-2 text-sm rounded font-semibold disabled:opacity-50 ${
               (cardNews.status ?? 'DRAFT') === 'DRAFT'
                 ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                : 'bg-slate-200 text-admin-text-2 hover:bg-slate-300'
             }`}
             title="CONFIRMED 상태로 바꾸면 블로그·IG·스레드 생성 페이지에서 이 카드뉴스를 호출할 수 있습니다"
           >
@@ -695,7 +695,7 @@ export default function CardNewsV2Studio() {
           <button
             type="button"
             onClick={() => router.push(`/admin/marketing/card-news/${id}`)}
-            className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded"
+            className="px-3 py-2 text-sm text-admin-muted hover:bg-admin-surface-2 rounded"
           >
             ← V1 에디터로
           </button>
@@ -704,14 +704,14 @@ export default function CardNewsV2Studio() {
 
       {/* Family + Format */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-lg p-5 border border-slate-200">
-          <div className="text-sm font-bold text-slate-900 mb-3">1. 템플릿 family</div>
+        <div className="bg-white rounded-lg p-5 border border-admin-border-mid">
+          <div className="text-sm font-bold text-admin-text mb-3">1. 템플릿 family</div>
           <div className="space-y-2">
             {FAMILY_OPTIONS.map((f) => (
               <label
                 key={f.value}
                 className={`flex items-start gap-3 p-3 rounded border cursor-pointer ${
-                  family === f.value ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
+                  family === f.value ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid'
                 }`}
               >
                 <input
@@ -723,22 +723,22 @@ export default function CardNewsV2Studio() {
                   className="mt-1"
                 />
                 <div>
-                  <div className="font-semibold text-slate-900">{f.label}</div>
-                  <div className="text-xs text-slate-500">{f.desc}</div>
+                  <div className="font-semibold text-admin-text">{f.label}</div>
+                  <div className="text-xs text-admin-muted">{f.desc}</div>
                 </div>
               </label>
             ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-lg p-5 border border-slate-200">
-          <div className="text-sm font-bold text-slate-900 mb-3">2. 출력 포맷 (복수 선택)</div>
+        <div className="bg-white rounded-lg p-5 border border-admin-border-mid">
+          <div className="text-sm font-bold text-admin-text mb-3">2. 출력 포맷 (복수 선택)</div>
           <div className="space-y-2">
             {FORMAT_OPTIONS.map((f) => (
               <label
                 key={f.value}
                 className={`flex items-center gap-3 p-3 rounded border cursor-pointer ${
-                  formats.includes(f.value) ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
+                  formats.includes(f.value) ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid'
                 }`}
               >
                 <input
@@ -747,8 +747,8 @@ export default function CardNewsV2Studio() {
                   onChange={() => toggleFormat(f.value)}
                 />
                 <div className="flex-1">
-                  <div className="font-semibold text-slate-900">{f.label}</div>
-                  <div className="text-xs text-slate-500">{f.ratio}</div>
+                  <div className="font-semibold text-admin-text">{f.label}</div>
+                  <div className="text-xs text-admin-muted">{f.ratio}</div>
                 </div>
               </label>
             ))}
@@ -780,7 +780,7 @@ export default function CardNewsV2Studio() {
             type="button"
             onClick={() => handleCoverCritic({ apply: false })}
             disabled={critiquing}
-            className="px-3 py-2.5 bg-slate-100 text-slate-700 rounded text-sm font-semibold disabled:opacity-50 border border-slate-300"
+            className="px-3 py-2.5 bg-admin-surface-2 text-admin-text-2 rounded text-sm font-semibold disabled:opacity-50 border border-admin-border-strong"
             title="비평만 실행 — 결과 표시"
           >
             🎯 비평만
@@ -806,7 +806,7 @@ export default function CardNewsV2Studio() {
               <span className={`text-3xl font-black ${critique.overall_score >= 80 ? 'text-emerald-600' : critique.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
                 {critique.overall_score}
               </span>
-              <span className="text-xs text-slate-500">/ 100</span>
+              <span className="text-xs text-admin-muted">/ 100</span>
               <span className={`ml-2 px-2 py-0.5 text-xs rounded font-semibold ${
                 critique.verdict === 'ship_as_is' ? 'bg-emerald-100 text-emerald-800'
                 : critique.verdict === 'minor_polish' ? 'bg-amber-100 text-amber-800'
@@ -818,7 +818,7 @@ export default function CardNewsV2Studio() {
             <button
               type="button"
               onClick={() => setCritique(null)}
-              className="text-slate-400 hover:text-slate-600 text-sm"
+              className="text-admin-muted-2 hover:text-admin-muted text-sm"
             >
               닫기
             </button>
@@ -839,27 +839,27 @@ export default function CardNewsV2Studio() {
 
           <div className="grid grid-cols-5 gap-3 mb-4 text-xs">
             {Object.entries(critique.dimensions).map(([k, v]) => (
-              <div key={k} className="bg-slate-50 rounded p-2 text-center">
-                <div className="text-slate-500">{k}</div>
-                <div className="text-lg font-bold text-slate-900">{v}<span className="text-xs text-slate-400">/10</span></div>
+              <div key={k} className="bg-admin-bg rounded p-2 text-center">
+                <div className="text-admin-muted">{k}</div>
+                <div className="text-lg font-bold text-admin-text">{v}<span className="text-xs text-admin-muted-2">/10</span></div>
               </div>
             ))}
           </div>
 
           {critique.issues.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs font-bold text-slate-700 mb-2">지적사항</div>
+              <div className="text-xs font-bold text-admin-text-2 mb-2">지적사항</div>
               {critique.issues.map((issue, i) => (
-                <div key={i} className="text-xs bg-slate-50 rounded p-2 mb-1">
+                <div key={i} className="text-xs bg-admin-bg rounded p-2 mb-1">
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] mr-2 font-bold ${
                     issue.severity === 'critical' ? 'bg-red-100 text-red-700' :
                     issue.severity === 'major' ? 'bg-amber-100 text-amber-700' :
-                    'bg-slate-200 text-slate-600'
+                    'bg-slate-200 text-admin-muted'
                   }`}>
                     {issue.severity.toUpperCase()}
                   </span>
-                  <span className="font-mono text-[10px] text-slate-500">{issue.slot}</span>
-                  <div className="mt-1 text-slate-700">{issue.problem}</div>
+                  <span className="font-mono text-[10px] text-admin-muted">{issue.slot}</span>
+                  <div className="mt-1 text-admin-text-2">{issue.problem}</div>
                   <div className="mt-1 text-emerald-700">→ {issue.suggestion}</div>
                 </div>
               ))}
@@ -879,9 +879,9 @@ export default function CardNewsV2Studio() {
                   {critiquing ? '적용 중…' : '⚡ 바로 적용 + 재렌더'}
                 </button>
               </div>
-              {critique.rewritten_cover.eyebrow && <div><span className="text-slate-500">eyebrow:</span> {critique.rewritten_cover.eyebrow}</div>}
-              {critique.rewritten_cover.headline && <div><span className="text-slate-500">headline:</span> {critique.rewritten_cover.headline}</div>}
-              {critique.rewritten_cover.body && <div><span className="text-slate-500">body:</span> {critique.rewritten_cover.body}</div>}
+              {critique.rewritten_cover.eyebrow && <div><span className="text-admin-muted">eyebrow:</span> {critique.rewritten_cover.eyebrow}</div>}
+              {critique.rewritten_cover.headline && <div><span className="text-admin-muted">headline:</span> {critique.rewritten_cover.headline}</div>}
+              {critique.rewritten_cover.body && <div><span className="text-admin-muted">body:</span> {critique.rewritten_cover.body}</div>}
               <div className="mt-2 text-[10px] text-purple-700">
                 적용 시 slide[0] 의 헤드라인/본문/eyebrow 를 위 값으로 덮어쓰고 DB 저장. 이후 Satori 재렌더로 시각 반영.
               </div>
@@ -891,9 +891,9 @@ export default function CardNewsV2Studio() {
       )}
 
       {/* A/B variant 생성 */}
-      <div className="bg-white rounded-lg p-5 border border-slate-200 mb-6">
-        <div className="text-sm font-bold text-slate-900 mb-1">3. A/B variant 생성</div>
-        <div className="text-xs text-slate-500 mb-3">
+      <div className="bg-white rounded-lg p-5 border border-admin-border-mid mb-6">
+        <div className="text-sm font-bold text-admin-text mb-1">3. A/B variant 생성</div>
+        <div className="text-xs text-admin-muted mb-3">
           같은 텍스트로 다른 family 렌더를 만들어 클릭률 비교에 사용. variant가 이미 있으면 해당 페이지로 이동.
         </div>
         <div className="flex flex-wrap gap-2">
@@ -903,7 +903,7 @@ export default function CardNewsV2Studio() {
               type="button"
               onClick={() => handleCreateVariant(f.value)}
               disabled={variantBusy === f.value}
-              className="px-3 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50"
+              className="px-3 py-2 text-sm border border-admin-border-strong rounded hover:bg-admin-bg disabled:opacity-50"
             >
               {variantBusy === f.value ? '...' : `+ ${f.label} variant`}
             </button>
@@ -938,11 +938,11 @@ export default function CardNewsV2Studio() {
 
       {/* 렌더 결과 */}
       {renderResults.length > 0 && (
-        <div className="bg-white rounded-lg p-5 border border-slate-200">
-          <div className="text-sm font-bold text-slate-900 mb-3">렌더 결과</div>
+        <div className="bg-white rounded-lg p-5 border border-admin-border-mid">
+          <div className="text-sm font-bold text-admin-text mb-3">렌더 결과</div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {renderResults.map((r, i) => (
-              <div key={i} className="border border-slate-200 rounded overflow-hidden">
+              <div key={i} className="border border-admin-border-mid rounded overflow-hidden">
                 {r.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={r.url} alt={`${r.format} slide ${r.slide_index + 1}`} className="w-full" />
@@ -958,7 +958,7 @@ export default function CardNewsV2Studio() {
                     )}
                   </div>
                 )}
-                <div className="p-2 text-xs text-slate-500 bg-slate-50">
+                <div className="p-2 text-xs text-admin-muted bg-admin-bg">
                   {r.format} · 슬라이드 {r.slide_index + 1}
                 </div>
               </div>
@@ -968,7 +968,7 @@ export default function CardNewsV2Studio() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-2 rounded shadow-lg text-sm">
+        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-2 rounded shadow-admin-md text-sm">
           {toast}
         </div>
       )}

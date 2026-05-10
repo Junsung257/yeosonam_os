@@ -1,5 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Plus, Camera, Search as SearchIcon, Download, Upload as UploadIcon, AlertCircle } from 'lucide-react';
 
 interface PhotoItem { pexels_id: number; src_medium: string; src_large: string; photographer: string; alt?: string; }
 
@@ -246,70 +249,97 @@ export default function AttractionsPage() {
 
   const countries = [...new Set(attractions.map(a => a.country).filter(Boolean))] as string[];
   const regions = [...new Set(attractions.map(a => a.region).filter(Boolean))] as string[];
-  const badgeStyle = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.color || 'bg-slate-100 text-slate-800';
+  const badgeStyle = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.color || 'bg-admin-surface-2 text-admin-text-2';
   const badgeLabel = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.label || bt;
   const photoCount = attractions.filter(a => a.photos?.length > 0).length;
   const noPhotoCount = attractions.filter(a => !a.photos || a.photos.length === 0).length;
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
-      {/* 헤더 */}
-      <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">🌏 관광지 관리</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            총 {attractions.length}개 | 사진 {photoCount}개 완료 | 사진 미등록 {noPhotoCount}개
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={autoGeneratePhotos} disabled={!!autoPhotoProgress}
-            className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-50">
-            {autoPhotoProgress ? `📷 ${autoPhotoProgress.current}/${autoPhotoProgress.total}` : `📷 사진 일괄생성 (${noPhotoCount}개)`}
-          </button>
-          <a href="/admin/attractions/unmatched" className="px-3 py-1.5 bg-amber-100 text-amber-800 text-xs font-bold rounded-lg hover:bg-amber-200">🔍 미매칭</a>
-          <button onClick={() => setShowAdd(true)} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">+ 신규</button>
-          <button onClick={downloadCsv} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200">CSV↓</button>
-          <label className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer ${saving ? 'bg-amber-100 text-amber-700 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-            {saving ? '업로드 중...' : 'CSV↑'}<input type="file" accept=".csv" onChange={uploadCsv} className="hidden" disabled={saving} />
-          </label>
-        </div>
-      </div>
+    <div className="max-w-[1400px] mx-auto">
+      <PageHeader
+        title="관광지 관리"
+        subtitle={
+          <>총 <b className="text-admin-text admin-num">{attractions.length}</b>개 · 사진 <b className="text-success admin-num">{photoCount}</b>개 완료 · 사진 미등록 <b className="text-warning admin-num">{noPhotoCount}</b>개</>
+        }
+        actions={
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={autoGeneratePhotos}
+              disabled={!!autoPhotoProgress}
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              <Camera size={14} />
+              {autoPhotoProgress ? `${autoPhotoProgress.current}/${autoPhotoProgress.total}` : `사진 일괄생성 (${noPhotoCount})`}
+            </button>
+            <a href="/admin/attractions/unmatched">
+              <Button variant="secondary" size="sm">
+                <AlertCircle size={14} />
+                미매칭
+              </Button>
+            </a>
+            <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+              <Plus size={14} />
+              신규
+            </Button>
+            <Button variant="secondary" size="sm" onClick={downloadCsv}>
+              <Download size={14} />
+              CSV
+            </Button>
+            <label className={`h-8 px-3 inline-flex items-center gap-1.5 text-admin-sm rounded-admin-sm font-medium cursor-pointer transition-colors ${
+              saving
+                ? 'bg-status-warningBg text-status-warningFg animate-pulse'
+                : 'bg-admin-surface border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong'
+            }`}>
+              <UploadIcon size={14} />
+              {saving ? '업로드 중…' : 'CSV 업로드'}
+              <input type="file" accept=".csv" onChange={uploadCsv} className="hidden" disabled={saving} />
+            </label>
+          </div>
+        }
+      />
 
       {/* 자동생성 프로그레스 */}
       {autoPhotoProgress && (
-        <div className="mb-4 bg-purple-50 border border-purple-200 rounded-xl p-4">
+        <div className="mb-4 bg-brand-light border border-brand/20 rounded-admin-md p-4">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-bold text-purple-800">📷 Pexels 사진 자동 생성 중...</span>
-            <span className="text-xs text-purple-600">{autoPhotoProgress.current} / {autoPhotoProgress.total}</span>
+            <span className="text-admin-sm font-bold text-brand">📷 Pexels 사진 자동 생성 중…</span>
+            <span className="text-admin-xs text-brand admin-num">{autoPhotoProgress.current} / {autoPhotoProgress.total}</span>
           </div>
-          <div className="w-full bg-purple-200 rounded-full h-2">
-            <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${(autoPhotoProgress.current / autoPhotoProgress.total) * 100}%` }} />
+          <div className="w-full bg-brand/15 rounded-full h-2">
+            <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${(autoPhotoProgress.current / autoPhotoProgress.total) * 100}%` }} />
           </div>
         </div>
       )}
 
       {/* 필터 + 검색 */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <input value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
-          placeholder="🔍 관광지명, 국가, 지역 검색..." className="flex-1 min-w-[200px] text-sm border rounded-lg px-3 py-2" />
-        <select value={filter.country} onChange={e => setFilter(f => ({ ...f, country: e.target.value }))} className="text-sm border rounded-lg px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 mb-4 admin-card p-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <SearchIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-admin-muted-2 pointer-events-none" />
+          <input
+            value={filter.search}
+            onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
+            placeholder="관광지명, 국가, 지역 검색"
+            className="w-full h-9 pl-8 pr-3 text-admin-base border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+          />
+        </div>
+        <select value={filter.country} onChange={e => setFilter(f => ({ ...f, country: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
           <option value="">전체 국가</option>
           {countries.sort().map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={filter.region} onChange={e => setFilter(f => ({ ...f, region: e.target.value }))} className="text-sm border rounded-lg px-3 py-2">
+        <select value={filter.region} onChange={e => setFilter(f => ({ ...f, region: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
           <option value="">전체 지역</option>
           {regions.sort().map(r => <option key={r} value={r}>{r}</option>)}
         </select>
-        <select value={filter.badge} onChange={e => setFilter(f => ({ ...f, badge: e.target.value }))} className="text-sm border rounded-lg px-3 py-2">
+        <select value={filter.badge} onChange={e => setFilter(f => ({ ...f, badge: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
           <option value="">전체 배지</option>
           {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.icon} {b.label}</option>)}
         </select>
-        <span className="text-xs text-slate-400 self-center">{filtered.length}건</span>
+        <span className="text-admin-sm text-admin-muted self-center admin-num">{filtered.length}건</span>
       </div>
 
       {/* 신규 등록 폼 */}
       {showAdd && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-admin-md p-4 mb-4">
           <h3 className="font-bold text-blue-900 mb-3">신규 관광지 등록</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <input placeholder="관광지명 *" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} className="text-sm border rounded-lg px-3 py-2" />
@@ -338,14 +368,14 @@ export default function AttractionsPage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-white border border-slate-100 rounded-xl p-4 flex items-center gap-4">
-              <div className="w-10 h-10 bg-slate-100 rounded-xl animate-pulse shrink-0" />
+            <div key={i} className="bg-white border border-admin-border rounded-admin-md p-4 flex items-center gap-4">
+              <div className="w-10 h-10 bg-admin-surface-2 rounded-admin-md animate-pulse shrink-0" />
               <div className="flex-1 space-y-2">
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-40" />
-                <div className="h-2.5 bg-slate-100 rounded animate-pulse w-24" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-40" />
+                <div className="h-2.5 bg-admin-surface-2 rounded animate-pulse w-24" />
               </div>
-              <div className="h-5 bg-slate-100 rounded-full animate-pulse w-14" />
-              <div className="h-5 bg-slate-100 rounded-full animate-pulse w-10" />
+              <div className="h-5 bg-admin-surface-2 rounded-full animate-pulse w-14" />
+              <div className="h-5 bg-admin-surface-2 rounded-full animate-pulse w-10" />
             </div>
           ))}
         </div>
@@ -355,11 +385,11 @@ export default function AttractionsPage() {
             const isExpanded = expandedId === a.id;
             const isPhotoOpen = photoPanel?.id === a.id;
             return (
-              <div key={a.id} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-sm transition">
+              <div key={a.id} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-admin-xs transition">
                 {/* 메인 행 */}
                 <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : a.id)}>
                   {/* 사진 썸네일 */}
-                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-admin-surface-2 shrink-0 flex items-center justify-center">
                     {a.photos?.length > 0 ? (
                       <img src={a.photos[0].src_medium} alt={a.name} className="w-full h-full object-cover" />
                     ) : (
@@ -370,12 +400,12 @@ export default function AttractionsPage() {
                   {/* 정보 */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-slate-800 text-sm">{a.emoji} {a.name}</h3>
+                      <h3 className="font-bold text-admin-text-2 text-sm">{a.emoji} {a.name}</h3>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badgeStyle(a.badge_type)}`}>{badgeLabel(a.badge_type)}</span>
                       {a.photos?.length > 0 && <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">📷{a.photos.length}</span>}
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5 truncate">{a.short_desc || '설명 없음'}</p>
-                    <div className="flex gap-3 mt-1 text-[10px] text-slate-400">
+                    <p className="text-xs text-admin-muted mt-0.5 truncate">{a.short_desc || '설명 없음'}</p>
+                    <div className="flex gap-3 mt-1 text-[10px] text-admin-muted-2">
                       <span>🌍 {a.country || '-'}</span>
                       <span>📍 {a.region || '-'}</span>
                       <span>등장 {a.mention_count}회</span>
@@ -383,16 +413,16 @@ export default function AttractionsPage() {
                   </div>
 
                   {/* 확장 아이콘 */}
-                  <span className="text-slate-300 text-lg shrink-0">{isExpanded ? '▲' : '▼'}</span>
+                  <span className="text-admin-muted-2 text-lg shrink-0">{isExpanded ? '▲' : '▼'}</span>
                 </div>
 
                 {/* 확장 패널 */}
                 {isExpanded && (
-                  <div className="border-t border-slate-100 bg-slate-50 p-4 space-y-4">
+                  <div className="border-t border-admin-border bg-admin-bg p-4 space-y-4">
                     {/* 사진 관리 */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-bold text-slate-600">📷 사진 ({a.photos?.length || 0}/5)</h4>
+                        <h4 className="text-xs font-bold text-admin-muted">📷 사진 ({a.photos?.length || 0}/5)</h4>
                         <button onClick={(e) => {
                           e.stopPropagation();
                           // ERR-pexels-korean-search@2026-04-21: 영어 alias 있으면 Pexels 검색에 그걸 기본 키워드로
@@ -412,15 +442,15 @@ export default function AttractionsPage() {
                               <img src={p.src_medium} alt="" className="w-28 h-20 object-cover rounded-lg" />
                               <button onClick={(e) => { e.stopPropagation(); removePhoto(a.id, p.pexels_id); }}
                                 className="absolute top-1 right-1 w-5 h-5 bg-red-500/80 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition">×</button>
-                              <p className="text-[8px] text-slate-400 mt-0.5 truncate w-28">📸 {p.photographer}</p>
+                              <p className="text-[8px] text-admin-muted-2 mt-0.5 truncate w-28">📸 {p.photographer}</p>
                             </div>
                           ))}
                         </div>
-                      ) : <p className="text-xs text-slate-400">사진 없음 — 위 버튼으로 추가하세요</p>}
+                      ) : <p className="text-xs text-admin-muted-2">사진 없음 — 위 버튼으로 추가하세요</p>}
 
                       {/* Pexels 검색 패널 */}
                       {isPhotoOpen && photoPanel && (
-                        <div className="mt-3 bg-white border border-blue-200 rounded-xl p-3">
+                        <div className="mt-3 bg-white border border-blue-200 rounded-admin-md p-3">
                           <div className="flex gap-2 mb-3">
                             <input value={photoPanel.keyword} onChange={e => setPhotoPanel(p => p ? { ...p, keyword: e.target.value } : p)}
                               onKeyDown={e => { if (e.key === 'Enter') searchPhotos(a.id, photoPanel.keyword); }}
@@ -438,7 +468,7 @@ export default function AttractionsPage() {
                                   <div key={p.pexels_id} onClick={() => !already && addPhotoToAttraction(a.id, p)}
                                     className={`cursor-pointer rounded-lg overflow-hidden border-2 transition ${already ? 'border-green-400 opacity-60' : 'border-transparent hover:border-blue-400'}`}>
                                     <img src={p.src_medium} alt={p.alt || ''} className="w-full h-16 object-cover" />
-                                    <p className="text-[8px] text-slate-400 px-1 truncate">{already ? '✅ 추가됨' : `📸 ${p.photographer}`}</p>
+                                    <p className="text-[8px] text-admin-muted-2 px-1 truncate">{already ? '✅ 추가됨' : `📸 ${p.photographer}`}</p>
                                   </div>
                                 );
                               })}
@@ -451,40 +481,40 @@ export default function AttractionsPage() {
                     {/* 기본 정보 편집 */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">관광지명</label>
+                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">관광지명</label>
                         <input defaultValue={a.name} onBlur={e => { if (e.target.value !== a.name) inlineSave(a.id, 'name', e.target.value); }}
                           className="w-full text-sm border rounded-lg px-3 py-2" />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">한줄 설명</label>
+                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">한줄 설명</label>
                         <input defaultValue={a.short_desc || ''} onBlur={e => { if (e.target.value !== (a.short_desc || '')) inlineSave(a.id, 'short_desc', e.target.value); }}
                           className="w-full text-sm border rounded-lg px-3 py-2" />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">상세 설명 (long_desc)</label>
+                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">상세 설명 (long_desc)</label>
                         <textarea defaultValue={a.long_desc || ''} onBlur={e => { if (e.target.value !== (a.long_desc || '')) inlineSave(a.id, 'long_desc', e.target.value); }}
                           rows={3} className="w-full text-sm border rounded-lg px-3 py-2 resize-none" />
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">국가</label>
+                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">국가</label>
                           <input defaultValue={a.country || ''} onBlur={e => { if (e.target.value !== (a.country || '')) inlineSave(a.id, 'country', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2" />
                         </div>
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">지역</label>
+                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">지역</label>
                           <input defaultValue={a.region || ''} onBlur={e => { if (e.target.value !== (a.region || '')) inlineSave(a.id, 'region', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2" />
                         </div>
                         <div className="w-20">
-                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">이모지</label>
+                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">이모지</label>
                           <input defaultValue={a.emoji || ''} onBlur={e => { if (e.target.value !== (a.emoji || '')) inlineSave(a.id, 'emoji', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2 text-center" />
                         </div>
                       </div>
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">배지 타입</label>
+                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">배지 타입</label>
                           <select value={a.badge_type} onChange={e => inlineSave(a.id, 'badge_type', e.target.value)}
                             className="w-full text-sm border rounded-lg px-3 py-2">
                             {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.icon} {b.label}</option>)}
@@ -501,7 +531,7 @@ export default function AttractionsPage() {
           {/* 더보기 버튼 */}
           {filtered.length > displayCount && (
             <button onClick={() => setDisplayCount(c => c + 50)}
-              className="w-full py-3 bg-slate-100 text-slate-600 text-sm rounded-xl hover:bg-slate-200 font-medium">
+              className="w-full py-3 bg-admin-surface-2 text-admin-muted text-sm rounded-admin-md hover:bg-slate-200 font-medium">
               더보기 ({displayCount}/{filtered.length})
             </button>
           )}

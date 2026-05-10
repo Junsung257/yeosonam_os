@@ -20,15 +20,15 @@ export default function BlogFilterTabs({ currentStatus }: { currentStatus: strin
   };
 
   return (
-    <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+    <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
       {STATUS_TABS.map(tab => (
         <button
           key={tab.key}
           onClick={() => setStatus(tab.key)}
-          className={`px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${
+          className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors ${
             currentStatus === tab.key
-              ? 'bg-white text-slate-800 shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
+              ? 'bg-admin-surface text-admin-text shadow-admin-xs'
+              : 'text-admin-muted hover:text-admin-text-2'
           }`}
         >
           {tab.label}

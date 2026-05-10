@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import BookingGuideTemplate from '@/components/admin/BookingGuideTemplate';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Printer } from 'lucide-react';
 import type { NoticeBlock } from '@/lib/standard-terms';
 
 interface PackageOption {
@@ -44,34 +47,36 @@ export default function BookingGuidePage() {
   }, [selectedPkgId, packages]);
 
   return (
-    <div className="min-h-screen bg-slate-100 py-10">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center gap-4 mb-6 px-4">
-          <h1 className="text-xl font-bold text-slate-800 shrink-0">📋 예약 안내문</h1>
-          <select
-            value={selectedPkgId}
-            onChange={e => setSelectedPkgId(e.target.value)}
-            className="flex-1 max-w-md border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-          >
-            <option value="">공통 안내문만 (상품별 약관 미적용)</option>
-            {packages.map(p => (
-              <option key={p.id} value={p.id}>{p.title} {p.destination ? `(${p.destination})` : ''}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => window.print()}
-            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 shrink-0"
-          >
+    <div className="max-w-4xl mx-auto">
+      <PageHeader
+        title="예약 안내문"
+        subtitle="상품별 약관을 적용한 안내문을 미리보고 인쇄·PDF 저장합니다"
+        actions={
+          <Button variant="primary" size="sm" onClick={() => window.print()}>
+            <Printer size={14} />
             인쇄 / PDF 저장
-          </button>
-        </div>
-        {loading && <p className="text-center text-slate-400 text-sm mb-3">약관 해소 중...</p>}
-        <BookingGuideTemplate
-          resolvedNotices={selectedPkgId ? resolvedNotices : undefined}
-          packageTitle={selectedTitle}
-          packageId={selectedPkgId || undefined}
-        />
+          </Button>
+        }
+      />
+      <div className="admin-card p-4 mb-4">
+        <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">상품 선택</label>
+        <select
+          value={selectedPkgId}
+          onChange={e => setSelectedPkgId(e.target.value)}
+          className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+        >
+          <option value="">공통 안내문만 (상품별 약관 미적용)</option>
+          {packages.map(p => (
+            <option key={p.id} value={p.id}>{p.title} {p.destination ? `(${p.destination})` : ''}</option>
+          ))}
+        </select>
       </div>
+      {loading && <p className="text-center text-admin-muted text-admin-sm mb-3">약관 해소 중…</p>}
+      <BookingGuideTemplate
+        resolvedNotices={selectedPkgId ? resolvedNotices : undefined}
+        packageTitle={selectedTitle}
+        packageId={selectedPkgId || undefined}
+      />
     </div>
   );
 }

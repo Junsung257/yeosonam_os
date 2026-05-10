@@ -159,7 +159,7 @@ function matchAttraction(activity: string, attractions?: AttractionInfo[], desti
 }
 
 export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }: YeosonamA4Props) {
-  if (!pkg) return <div style={PAGE_STYLE} className="a4-export-page animate-pulse bg-gray-50" />;
+  if (!pkg) return <div style={PAGE_STYLE} className="a4-export-page animate-pulse bg-admin-bg" />;
 
   // 제목 클렌징: 랜드사명/항공사 코드/해시태그/특전나열 제거 (CLAUDE.md 8번 원칙)
   // display_title이 null인 구상품은 pkg.title 폴백 시 "[BX] ... (투어폰)" 형태 오염 발생.
@@ -255,12 +255,12 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
   const cleanAirline = view.airlineHeader.airlineLabel ?? undefined;
   const badgesContent = <>
     {departCity && <span className={`${TAG} bg-blue-800 text-white`}>{departCity}출발</span>}
-    {pkg.destination && <span className={`${TAG} bg-slate-100 text-slate-700`}>{pkg.destination}</span>}
-    {cleanAirline && <span className={`${TAG} bg-slate-100 text-slate-700`}>✈️ {cleanAirline}</span>}
-    {(pkg.min_participants || itinerary?.meta?.min_participants) && <span className={`${TAG} bg-slate-100 text-slate-700`}>최소 {pkg.min_participants || itinerary?.meta?.min_participants}명</span>}
+    {pkg.destination && <span className={`${TAG} bg-admin-surface-2 text-admin-text-2`}>{pkg.destination}</span>}
+    {cleanAirline && <span className={`${TAG} bg-admin-surface-2 text-admin-text-2`}>✈️ {cleanAirline}</span>}
+    {(pkg.min_participants || itinerary?.meta?.min_participants) && <span className={`${TAG} bg-admin-surface-2 text-admin-text-2`}>최소 {pkg.min_participants || itinerary?.meta?.min_participants}명</span>}
     {pkg.product_type && <span className={`${TAG} bg-amber-50 text-amber-700`}>{pkg.product_type}</span>}
     {pkg.ticketing_deadline && <span className={`${TAG} bg-red-50 text-red-600 font-bold border border-red-200`}>{pkg.ticketing_deadline}까지 발권</span>}
-    {formatDepartureDays(pkg.departure_days) && <span className="text-admin-sm text-slate-500">출발: {formatDepartureDays(pkg.departure_days)}</span>}
+    {formatDepartureDays(pkg.departure_days) && <span className="text-admin-sm text-admin-muted">출발: {formatDepartureDays(pkg.departure_days)}</span>}
   </>;
 
   // 마지막 페이지(포함/불포함/유의사항) 표시 여부 판단
@@ -454,7 +454,7 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
         <article className="a4-export-page" style={PAGE_STYLE}>
           <ItineraryPageHeader title={title} />
           <div className="flex-1 px-10 pb-8 flex items-center justify-center">
-            <p className="text-slate-400 text-admin-base">상세 일정 데이터가 아직 없습니다</p>
+            <p className="text-admin-muted-2 text-admin-base">상세 일정 데이터가 아직 없습니다</p>
           </div>
           {/* 푸터 삭제 — 40px 확보 */}
         </article>
@@ -469,7 +469,7 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
 
 function Page1Header({ title, badges }: { title: string; badges: React.ReactNode }) {
   return (
-    <header className="w-full pt-5 pb-3 px-10 bg-white border-b border-slate-200">
+    <header className="w-full pt-5 pb-3 px-10 bg-white border-b border-admin-border-mid">
       <div className="flex items-center gap-3 mb-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="여소남" className="h-8 object-contain shrink-0" />
@@ -531,28 +531,28 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                 const isMinPrice = minPrice !== null && rule.price === minPrice;
                 const isMin = isMinPrice && !minShown;
                 if (isMin) minShown = true;
-                const bgClass = gIdx % 2 === 1 ? 'bg-slate-50' : '';
+                const bgClass = gIdx % 2 === 1 ? 'bg-admin-bg' : '';
                 return (
                   <tr key={`${gIdx}-${rIdx}`} className={bgClass}>
                     {rIdx === 0 && (
                       <td
                         rowSpan={ruleCount}
-                        className="text-admin-base py-1.5 px-2 border-b border-slate-200 whitespace-nowrap font-semibold text-slate-800 align-middle"
+                        className="text-admin-base py-1.5 px-2 border-b border-admin-border-mid whitespace-nowrap font-semibold text-admin-text-2 align-middle"
                       >
                         {group.period}
                       </td>
                     )}
                     {multiCondition && (
-                      <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-600">
+                      <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-center whitespace-nowrap text-admin-muted">
                         {rule.condition}
                       </td>
                     )}
-                    <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                    <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-admin-border text-right whitespace-nowrap tabular-nums ${isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                       {rule.price ? `₩${rule.price.toLocaleString()}` : rule.price_text || '-'}
                     </td>
-                    <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                    <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-center whitespace-nowrap">
                       {isMin ? <span className="text-red-600 font-bold text-xs">🔥최저가</span>
-                        : rule.badge ? <span className="text-[10px] text-slate-500">{rule.badge}</span>
+                        : rule.badge ? <span className="text-[10px] text-admin-muted">{rule.badge}</span>
                         : null}
                     </td>
                   </tr>
@@ -565,7 +565,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
         {priceList.some(g => g.notes) && (
           <div className="mt-1 space-y-0.5">
             {[...new Set(priceList.filter(g => g.notes).map(g => g.notes!))].map((note, i) => (
-              <p key={i} className="text-[10px] text-slate-500 leading-snug">• {note}</p>
+              <p key={i} className="text-[10px] text-admin-muted leading-snug">• {note}</p>
             ))}
           </div>
         )}
@@ -627,7 +627,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
           </div>
         )}
         <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-admin-md ${EC}`}>출발일별 요금</h3>
-        {pdConfirmedDates.length > 0 && <p className="text-[9px] text-slate-400 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
+        {pdConfirmedDates.length > 0 && <p className="text-[9px] text-admin-muted-2 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
@@ -644,39 +644,39 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                 {/* 월 구분 헤더 — ERR-20260418-16: 단일 월 청크에서도 월 표기 */}
                 {(
                   <tr>
-                    <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-admin-sm font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
+                    <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-admin-sm font-bold text-[#001f3f] bg-admin-surface-2 px-2 py-1 border-b border-admin-border-strong">
                       {mg.month}
                     </td>
                   </tr>
                 )}
                 {mg.rows.map((row, rIdx) => {
-                  const bgClass = rIdx % 2 === 1 ? 'bg-slate-50' : '';
+                  const bgClass = rIdx % 2 === 1 ? 'bg-admin-bg' : '';
                   return (
                     <tr key={`${mg.month}-${rIdx}`} className={bgClass}>
-                      <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
+                      <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-center whitespace-nowrap text-admin-text-2 font-medium">
                         {row.dow || '-'}
                       </td>
-                      <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-left leading-snug">
+                      <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-left leading-snug">
                         <span className="inline">
                           {row.dates.map((dn, di) => (
                             <React.Fragment key={di}>
-                              <span className={dn.confirmed ? 'text-red-600 font-bold' : 'text-slate-700'}>{dn.day}</span>
-                              {di < row.dates.length - 1 && <span className="text-slate-300">, </span>}
+                              <span className={dn.confirmed ? 'text-red-600 font-bold' : 'text-admin-text-2'}>{dn.day}</span>
+                              {di < row.dates.length - 1 && <span className="text-admin-muted-2">, </span>}
                             </React.Fragment>
                           ))}
                         </span>
                       </td>
-                      <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${row.isLowest ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                      <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-admin-border text-right whitespace-nowrap tabular-nums ${row.isLowest ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                         {row.price ? `₩${row.price.toLocaleString()}` : '-'}
                       </td>
                       {hasChild && (
-                        <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${EC}`}>
+                        <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-admin-border text-right whitespace-nowrap tabular-nums ${EC}`}>
                           {row.childPrice ? `₩${row.childPrice.toLocaleString()}` : '-'}
                         </td>
                       )}
-                      <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                      <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-center whitespace-nowrap">
                         {row.isLowest && !pdMinShown && (() => { pdMinShown = true; return <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>; })()}
-                        {row.note && !(row.isLowest && pdMinShown) && <span className="text-[10px] text-slate-500">{row.note}</span>}
+                        {row.note && !(row.isLowest && pdMinShown) && <span className="text-[10px] text-admin-muted">{row.note}</span>}
                       </td>
                     </tr>
                   );
@@ -794,7 +794,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
         </div>
       )}
       <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-admin-md ${EC}`}>출발일별 요금</h3>
-      {confirmedSet.size > 0 && <p className="text-[9px] text-slate-400 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
+      {confirmedSet.size > 0 && <p className="text-[9px] text-admin-muted-2 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>
@@ -812,7 +812,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
               {/* 월 구분 헤더 — ERR-20260418-16: 단일 월 청크에서도 월 표기 */}
               {(
                 <tr>
-                  <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-admin-sm font-bold text-[#001f3f] bg-slate-100 px-2 py-1 border-b border-slate-300">
+                  <td colSpan={3 + (hasChild ? 1 : 0) + 1} className="text-admin-sm font-bold text-[#001f3f] bg-admin-surface-2 px-2 py-1 border-b border-admin-border-strong">
                     {month}
                   </td>
                 </tr>
@@ -822,38 +822,38 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
                 const isSoldout = row.status === 'soldout';
                 const isMin = isMinPrice && !isSoldout && !tierMinShown;
                 if (isMin) tierMinShown = true;
-                const bgClass = rIdx % 2 === 1 ? 'bg-slate-50' : '';
+                const bgClass = rIdx % 2 === 1 ? 'bg-admin-bg' : '';
                 return (
                   <tr key={`${month}-${rIdx}`} className={bgClass}>
-                    <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap text-slate-700 font-medium">
+                    <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-center whitespace-nowrap text-admin-text-2 font-medium">
                       {row.dow || '-'}
                     </td>
-                    <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-left leading-snug">
+                    <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-left leading-snug">
                       {hasDepartureDates && row.dates.length > 0 ? (
                         <span className="inline">
                           {row.dates.map((dn, di) => {
                             const isConfirmed = confirmedSet.has(dn.iso);
                             return (
                               <React.Fragment key={di}>
-                                <span className={isConfirmed ? 'text-red-600 font-bold' : 'text-slate-700'}>{dn.day}</span>
-                                {di < row.dates.length - 1 && <span className="text-slate-300">, </span>}
+                                <span className={isConfirmed ? 'text-red-600 font-bold' : 'text-admin-text-2'}>{dn.day}</span>
+                                {di < row.dates.length - 1 && <span className="text-admin-muted-2">, </span>}
                               </React.Fragment>
                             );
                           })}
                         </span>
                       ) : (
-                        <span className="text-slate-700">{tiers!.find(t => t.adult_price === row.adult && (t.departure_day_of_week || '') === (row.dow || ''))?.period_label || '-'}</span>
+                        <span className="text-admin-text-2">{tiers!.find(t => t.adult_price === row.adult && (t.departure_day_of_week || '') === (row.dow || ''))?.period_label || '-'}</span>
                       )}
                     </td>
-                    <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
+                    <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-admin-border text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-admin-muted-2 line-through' : isMin ? 'text-red-600 font-bold' : 'font-medium'} ${EC}`}>
                       {row.adult ? `₩${row.adult.toLocaleString()}` : '-'}
                     </td>
                     {hasChild && (
-                      <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-slate-100 text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-gray-400 line-through' : ''} ${EC}`}>
+                      <td {...E} className={`text-admin-md py-1.5 px-2 border-b border-admin-border text-right whitespace-nowrap tabular-nums ${isSoldout ? 'text-admin-muted-2 line-through' : ''} ${EC}`}>
                         {row.child ? `₩${row.child.toLocaleString()}` : '-'}
                       </td>
                     )}
-                    <td className="text-admin-sm py-1 px-2 border-b border-slate-100 text-center whitespace-nowrap">
+                    <td className="text-admin-sm py-1 px-2 border-b border-admin-border text-center whitespace-nowrap">
                       {isSoldout && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded font-bold">마감</span>}
                       {isMin && !isSoldout && <span className="text-red-600 font-bold text-[10px]">🔥최저가</span>}
                     </td>
@@ -1010,7 +1010,7 @@ const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string;
   CRITICAL: { bg: 'bg-red-50', border: 'border-red-200', title: 'text-red-800', dot: '🔴' },
   PAYMENT:  { bg: 'bg-orange-50', border: 'border-orange-200', title: 'text-orange-800', dot: '🟠' },
   POLICY:   { bg: 'bg-blue-50', border: 'border-blue-200', title: 'text-blue-800', dot: '🔵' },
-  INFO:     { bg: 'bg-slate-50', border: 'border-slate-200', title: 'text-slate-700', dot: '⚪' },
+  INFO:     { bg: 'bg-admin-bg', border: 'border-admin-border-mid', title: 'text-admin-text-2', dot: '⚪' },
 };
 
 // ══════════════════════════════════════════════════════════
@@ -1048,7 +1048,7 @@ function IncludeExcludeInfo({ view }: {
           {basicInc.length > 0 && (
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
               {basicInc.map((item, idx) => (
-                <span key={idx} className="text-[11px] text-slate-700 leading-snug break-keep">
+                <span key={idx} className="text-[11px] text-admin-text-2 leading-snug break-keep">
                   <span className="text-[10px] mr-0.5">{item.icon}</span>
                   {item.text}
                 </span>
@@ -1057,7 +1057,7 @@ function IncludeExcludeInfo({ view }: {
           )}
           {/* 프로그램/특전 항목이 있으면 구분선 아래 컴팩트 표시 */}
           {programInc.length > 0 && (
-            <p className={`${basicInc.length > 0 ? 'mt-1.5 pt-1.5 border-t border-blue-100' : ''} text-[10px] text-slate-500 leading-snug break-keep`}>
+            <p className={`${basicInc.length > 0 ? 'mt-1.5 pt-1.5 border-t border-blue-100' : ''} text-[10px] text-admin-muted leading-snug break-keep`}>
               ✅ {programInc.join(', ')}
             </p>
           )}
@@ -1068,10 +1068,10 @@ function IncludeExcludeInfo({ view }: {
       {basicExc.length > 0 && (
         <section className="bg-red-50/60 p-2 rounded">
           <h3 className="font-bold text-red-900 mb-1 text-[11px]">불포함 사항</h3>
-          <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>
+          <p {...E} className={`text-[11px] text-admin-text-2 leading-snug break-keep ${EC}`}>
             {basicExc.map((item, idx) => (
               <span key={idx}>
-                {idx > 0 && <span className="mx-1 text-slate-300">|</span>}
+                {idx > 0 && <span className="mx-1 text-admin-muted-2">|</span>}
                 {item}
               </span>
             ))}
@@ -1085,7 +1085,7 @@ function IncludeExcludeInfo({ view }: {
           <h3 className="font-bold text-orange-900 mb-1 text-[11px]">💲 추가 요금 안내</h3>
           <div className="space-y-0.5">
             {surchargeLines.map((item, idx) => (
-              <p key={idx} className="text-[10px] text-slate-600 leading-snug break-keep">
+              <p key={idx} className="text-[10px] text-admin-muted leading-snug break-keep">
                 • {item.label}
               </p>
             ))}
@@ -1097,7 +1097,7 @@ function IncludeExcludeInfo({ view }: {
       {cleanShopping && cleanShopping !== '노쇼핑' && (
         <section className="bg-purple-50/60 p-2 rounded">
           <h3 className="font-bold text-purple-900 mb-0.5 text-[11px]">🛍️ 쇼핑센터</h3>
-          <p {...E} className={`text-[11px] text-slate-700 leading-snug break-keep ${EC}`}>{cleanShopping}</p>
+          <p {...E} className={`text-[11px] text-admin-text-2 leading-snug break-keep ${EC}`}>{cleanShopping}</p>
         </section>
       )}
     </div>
@@ -1134,7 +1134,7 @@ function NoticesPage({ noticesParsed, customerNotes }: {
 
       {/* ═══ 새 형식: 4-Type 2단 그리드 유의사항 ═══ */}
       {typedNotices.length > 0 && (
-        <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
+        <div className="bg-admin-bg border border-admin-border-mid rounded p-2.5">
           <h3 className="font-bold text-[#001f3f] mb-1.5 text-[11px]">예약 시 유의사항</h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
             {typedNotices.map((notice, idx) => {
@@ -1149,7 +1149,7 @@ function NoticesPage({ noticesParsed, customerNotes }: {
                   </div>
                   <div className="space-y-0.5">
                     {lines.map((line, lIdx) => (
-                      <p key={lIdx} {...E} className={`text-[10px] text-slate-600 leading-snug break-keep ${EC}`}>
+                      <p key={lIdx} {...E} className={`text-[10px] text-admin-muted leading-snug break-keep ${EC}`}>
                         {line.startsWith('•') ? line : `• ${line}`}
                       </p>
                     ))}
@@ -1158,7 +1158,7 @@ function NoticesPage({ noticesParsed, customerNotes }: {
               );
             })}
           {/* 법적 방어 문구 */}
-          <p className="text-[9px] text-slate-400 mt-1.5 italic">※ 여권, 환불, 취소수수료 등 공통 규정은 별도 발송되는 [예약 안내문]을 반드시 확인하시기 바랍니다.</p>
+          <p className="text-[9px] text-admin-muted-2 mt-1.5 italic">※ 여권, 환불, 취소수수료 등 공통 규정은 별도 발송되는 [예약 안내문]을 반드시 확인하시기 바랍니다.</p>
           </div>
         </div>
       )}
@@ -1172,7 +1172,7 @@ function NoticesPage({ noticesParsed, customerNotes }: {
         const rightCol = shortItems.filter((_, i) => i % 2 === 1);
 
         return (
-          <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
+          <div className="bg-admin-bg border border-admin-border-mid rounded p-2.5">
             <h3 className="font-bold text-[#001f3f] mb-1.5 text-[11px]">예약 시 유의사항</h3>
             {shortItems.length > 0 && (
               <div className="flex gap-0 mb-1.5">
@@ -1180,7 +1180,7 @@ function NoticesPage({ noticesParsed, customerNotes }: {
                   {leftCol.map((note, idx) => (
                     <div key={idx} className="flex items-start gap-1.5">
                       <span className="shrink-0 text-admin-xs leading-none mt-0.5">{getNoteEmoji(note)}</span>
-                      <p {...E} className={`text-[11px] text-slate-600 leading-snug break-keep ${EC}`}>{note}</p>
+                      <p {...E} className={`text-[11px] text-admin-muted leading-snug break-keep ${EC}`}>{note}</p>
                     </div>
                   ))}
                 </div>
@@ -1189,18 +1189,18 @@ function NoticesPage({ noticesParsed, customerNotes }: {
                   {rightCol.map((note, idx) => (
                     <div key={idx} className="flex items-start gap-1.5">
                       <span className="shrink-0 text-admin-xs leading-none mt-0.5">{getNoteEmoji(note)}</span>
-                      <p {...E} className={`text-[11px] text-slate-600 leading-snug break-keep ${EC}`}>{note}</p>
+                      <p {...E} className={`text-[11px] text-admin-muted leading-snug break-keep ${EC}`}>{note}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
             {longItems.length > 0 && (
-              <div className={`space-y-1.5 ${shortItems.length > 0 ? 'pt-1.5 border-t border-slate-200' : ''}`}>
+              <div className={`space-y-1.5 ${shortItems.length > 0 ? 'pt-1.5 border-t border-admin-border-mid' : ''}`}>
                 {longItems.map((note, idx) => (
                   <div key={idx} className="flex items-start gap-1.5">
                     <span className="shrink-0 text-admin-xs leading-none mt-0.5">{getNoteEmoji(note)}</span>
-                    <p {...E} className={`text-[11px] text-slate-600 leading-snug break-keep ${EC}`}>{note}</p>
+                    <p {...E} className={`text-[11px] text-admin-muted leading-snug break-keep ${EC}`}>{note}</p>
                   </div>
                 ))}
               </div>
@@ -1420,13 +1420,13 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
             </div>
 
             {/* 우측: 카드 */}
-            <div className="flex-1 bg-slate-50/80 rounded-xl p-3 border border-slate-200">
+            <div className="flex-1 bg-admin-bg/80 rounded-admin-md p-3 border border-admin-border-mid">
               {/* [1] 동선 배지 — 항상 최상단 고정 */}
-              <div className="mb-2 pb-1.5 border-b border-slate-200">
+              <div className="mb-2 pb-1.5 border-b border-admin-border-mid">
                 {routeNodes.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {routeNodes.map((n, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-admin-sm font-semibold px-2 py-1 rounded">
+                      <span key={i} className="inline-flex items-center gap-1 bg-admin-surface-2 text-admin-text-2 text-admin-sm font-semibold px-2 py-1 rounded">
                         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                         🗺️ {((n as any).activity || '').replace(/^📍\s*/, '')}
                       </span>
@@ -1454,7 +1454,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                 }
 
                 return <>
-                <div className="relative border-l-2 border-slate-200 ml-2 space-y-1.5 pb-0.5">
+                <div className="relative border-l-2 border-admin-border-mid ml-2 space-y-1.5 pb-0.5">
                   {normalItems.map((entry, sIdx) => {
                     // TransportBar 렌더
                     if (isTransportSegment(entry)) {
@@ -1507,9 +1507,9 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                                   {badge.label}
                                 </span>
                                 <span {...E} className="font-black text-admin-md text-blue-900">{displayName}</span>
-                                {displayDesc && <span className="text-admin-xs text-gray-500 font-normal">{displayDesc}</span>}
+                                {displayDesc && <span className="text-admin-xs text-admin-muted font-normal">{displayDesc}</span>}
                               </>;
-                            })() : <span {...E} className={`font-bold ${isPrep ? 'text-slate-500' : 'text-slate-800'}`}>{item.activity}</span>}
+                            })() : <span {...E} className={`font-bold ${isPrep ? 'text-admin-muted' : 'text-admin-text-2'}`}>{item.activity}</span>}
                             {(() => {
                               const desc = attr?.short_desc || attractionNote;
                               if (!desc) return null;
@@ -1517,7 +1517,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                               if (seenAttractionIdsForDesc.has(dedupKey)) return null;
                               seenAttractionIdsForDesc.add(dedupKey);
                               return (
-                                <span className="text-admin-xs text-slate-500 font-normal"> — {desc}</span>
+                                <span className="text-admin-xs text-admin-muted font-normal"> — {desc}</span>
                               );
                             })()}
                             {item.note && (
@@ -1537,7 +1537,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                       {optionalItems.map((opt, oIdx) => {
                         const text = opt.activity.replace(/^\[.*?\]\s*/, '').replace(/^☆\s*/, '');
                         if (!text || text.startsWith('☆')) return null;
-                        return <p key={oIdx} className="text-[11px] text-slate-700 leading-snug">• {text}</p>;
+                        return <p key={oIdx} className="text-[11px] text-admin-text-2 leading-snug">• {text}</p>;
                       })}
                     </div>
                   </div>
@@ -1581,26 +1581,26 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                 const mealD = day.meals?.dinner_note || (day.meals?.dinner ? '현지식' : '불포함');
                 const isLong = hotelText.length > 25;
                 return (
-                  <div className="mt-2 bg-white rounded-lg border border-slate-200 px-2 py-1.5">
+                  <div className="mt-2 bg-white rounded-lg border border-admin-border-mid px-2 py-1.5">
                     {isLong ? (
                       <>
-                        <div className="flex items-center gap-1 text-admin-sm font-semibold text-slate-800">
+                        <div className="flex items-center gap-1 text-admin-sm font-semibold text-admin-text-2">
                           {hotelIcon} <span {...E} className={EC}>{hotelText}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-admin-xs text-slate-600 mt-0.5">
-                          <span>☕{mealB}</span><span className="text-slate-300">|</span>
-                          <span>🍜{mealL}</span><span className="text-slate-300">|</span>
+                        <div className="flex items-center gap-2 text-admin-xs text-admin-muted mt-0.5">
+                          <span>☕{mealB}</span><span className="text-admin-muted-2">|</span>
+                          <span>🍜{mealL}</span><span className="text-admin-muted-2">|</span>
                           <span>🍽️{mealD}</span>
                         </div>
                       </>
                     ) : (
                       <div className="flex items-center justify-between text-admin-sm">
-                        <div className="flex items-center gap-1 font-semibold text-slate-800">
+                        <div className="flex items-center gap-1 font-semibold text-admin-text-2">
                           {hotelIcon} <span {...E} className={EC}>{hotelText}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-admin-xs text-slate-500 shrink-0">
-                          <span>☕{mealB}</span><span className="text-slate-300">|</span>
-                          <span>🍜{mealL}</span><span className="text-slate-300">|</span>
+                        <div className="flex items-center gap-2 text-admin-xs text-admin-muted shrink-0">
+                          <span>☕{mealB}</span><span className="text-admin-muted-2">|</span>
+                          <span>🍜{mealL}</span><span className="text-admin-muted-2">|</span>
                           <span>🍽️{mealD}</span>
                         </div>
                       </div>
@@ -1634,7 +1634,7 @@ function ResolvedNoticesA4Page({ notices, packageId }: {
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(termsUrl)}`;
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
+    <div className="bg-admin-bg border border-admin-border-mid rounded p-2.5">
       <div className="flex items-start justify-between gap-3 mb-1.5">
         <div className="flex-1">
           <h3 className="font-bold text-[#001f3f] text-[11px]">예약 시 유의사항 · 특별약관</h3>
@@ -1645,7 +1645,7 @@ function ResolvedNoticesA4Page({ notices, packageId }: {
           )}
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={qrUrl} alt="약관 전문 QR" width={70} height={70} className="shrink-0 border border-slate-300 rounded" />
+        <img src={qrUrl} alt="약관 전문 QR" width={70} height={70} className="shrink-0 border border-admin-border-strong rounded" />
       </div>
 
       {critical.length > 0 && (
@@ -1662,7 +1662,7 @@ function ResolvedNoticesA4Page({ notices, packageId }: {
                 </div>
                 <div className="space-y-0.5">
                   {lines.map((line, lIdx) => (
-                    <p key={lIdx} className="text-[9px] text-slate-600 leading-tight break-keep">
+                    <p key={lIdx} className="text-[9px] text-admin-muted leading-tight break-keep">
                       {line.startsWith('•') ? line : `• ${line}`}
                     </p>
                   ))}
@@ -1673,7 +1673,7 @@ function ResolvedNoticesA4Page({ notices, packageId }: {
         </div>
       )}
 
-      <p className="text-[9px] text-slate-500 italic border-t border-slate-200 pt-1 mt-1">
+      <p className="text-[9px] text-admin-muted italic border-t border-admin-border-mid pt-1 mt-1">
         ※ 여권/비자·결제·책임·쇼핑환불 등 표준 약관 전문은 우측 QR 또는 별도 발송되는 [예약 안내문]을 반드시 확인하시기 바랍니다.
       </p>
     </div>

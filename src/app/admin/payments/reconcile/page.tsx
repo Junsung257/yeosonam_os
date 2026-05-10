@@ -71,11 +71,11 @@ export default function LedgerReconcilePage() {
   if (loading && !data) {
     return (
       <div className="p-6 space-y-3 max-w-3xl">
-        <div className="h-5 bg-slate-100 rounded animate-pulse w-36" />
+        <div className="h-5 bg-admin-surface-2 rounded animate-pulse w-36" />
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-3">
-            <div className="h-3.5 bg-slate-100 rounded animate-pulse flex-1" />
-            <div className="h-4 bg-slate-100 rounded-full animate-pulse w-16" />
+          <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-3">
+            <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+            <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
           </div>
         ))}
       </div>
@@ -85,7 +85,7 @@ export default function LedgerReconcilePage() {
     return (
       <div className="p-6">
         <p className="text-red-600 text-sm">오류: {error}</p>
-        <button onClick={load} className="mt-2 px-3 py-1 text-sm bg-slate-100 rounded">재시도</button>
+        <button onClick={load} className="mt-2 px-3 py-1 text-sm bg-admin-surface-2 rounded">재시도</button>
       </div>
     );
   }
@@ -98,8 +98,8 @@ export default function LedgerReconcilePage() {
     <div className="p-6 max-w-5xl mx-auto">
       <header className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">원장 정합성 (Phase 2a)</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-xl font-bold text-admin-text-2">원장 정합성 (Phase 2a)</h1>
+          <p className="text-xs text-admin-muted mt-0.5">
             bookings.paid_amount / total_paid_out vs SUM(ledger_entries) 일일 대조
           </p>
         </div>
@@ -134,20 +134,20 @@ export default function LedgerReconcilePage() {
               </p>
             )}
           </div>
-          <div className="text-right text-xs text-slate-500">
+          <div className="text-right text-xs text-admin-muted">
             <div>마지막 ledger 활동</div>
-            <div className="font-medium text-slate-700">{fmtDate(data.last_entry_at)}</div>
+            <div className="font-medium text-admin-text-2">{fmtDate(data.last_entry_at)}</div>
             <div className="mt-1.5">최종 점검</div>
-            <div className="font-medium text-slate-700">{fmtDate(data.checked_at)}</div>
+            <div className="font-medium text-admin-text-2">{fmtDate(data.checked_at)}</div>
           </div>
         </div>
       </section>
 
       {/* 최근 7일 차트 */}
       <section className="mb-6">
-        <h2 className="text-sm font-bold text-slate-700 mb-2">최근 7일 ledger 활동</h2>
+        <h2 className="text-sm font-bold text-admin-text-2 mb-2">최근 7일 ledger 활동</h2>
         {data.daily.length === 0 ? (
-          <p className="text-xs text-slate-400">기록 없음 (이중쓰기 시작 후 첫 거래 대기 중)</p>
+          <p className="text-xs text-admin-muted-2">기록 없음 (이중쓰기 시작 후 첫 거래 대기 중)</p>
         ) : (
           <div className="bg-white border rounded p-4">
             <div className="flex items-end gap-1 h-32">
@@ -159,15 +159,15 @@ export default function LedgerReconcilePage() {
                          style={{ height: `${Math.max(2, h)}%` }}
                          title={`${d.count}건 / paid ${d.paid_total.toLocaleString()} / payout ${d.payout_total.toLocaleString()}`}
                     />
-                    <span className="text-[10px] text-slate-500">{d.date.slice(5)}</span>
+                    <span className="text-[10px] text-admin-muted">{d.date.slice(5)}</span>
                   </div>
                 );
               })}
             </div>
-            <div className="grid grid-cols-7 gap-1 mt-2 text-[10px] text-slate-500 tabular-nums text-center">
+            <div className="grid grid-cols-7 gap-1 mt-2 text-[10px] text-admin-muted tabular-nums text-center">
               {data.daily.map(d => (
                 <div key={d.date}>
-                  <div className="font-medium text-slate-700">{d.count}건</div>
+                  <div className="font-medium text-admin-text-2">{d.count}건</div>
                   <div className="text-green-600">+{(d.paid_total / 10000).toFixed(0)}만</div>
                   <div className="text-red-500">-{(Math.abs(d.payout_total) / 10000).toFixed(0)}만</div>
                 </div>
@@ -183,7 +183,7 @@ export default function LedgerReconcilePage() {
           <h2 className="text-sm font-bold text-red-700 mb-2">Drift 상위 20건</h2>
           <div className="bg-white border rounded overflow-hidden">
             <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-admin-bg text-admin-muted">
                 <tr>
                   <th className="text-left p-2">Booking</th>
                   <th className="text-left p-2">계정</th>
@@ -214,7 +214,7 @@ export default function LedgerReconcilePage() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-admin-muted mt-2">
             drift &gt; 0 = bookings 가 ledger 보다 많음 (ledger 누락) · drift &lt; 0 = ledger 가 더 많음 (잔액 보정 누락)
           </p>
         </section>

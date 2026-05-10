@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Wallet, Receipt, Clock, AlertCircle, Coins } from 'lucide-react';
 
 interface Settlement {
   id: string;
@@ -111,116 +114,131 @@ export default function SettlementsPage() {
   const pendingCount = settlements.filter(s => s.status === 'PENDING').length;
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-admin-lg font-semibold text-slate-800">정산 관리</h1>
-          <p className="text-admin-sm text-slate-500 mt-1">월간 어필리에이트 수수료 정산</p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="space-y-5">
+      <PageHeader
+        title="정산 관리"
+        subtitle="월간 어필리에이트 수수료 정산"
+        actions={
           <select
             value={period}
             onChange={e => setPeriod(e.target.value)}
-            className="border-2 border-admin-border rounded-lg px-3 py-2 text-admin-sm text-admin-text bg-admin-surface focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 transition-colors"
+            className="h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           >
             {getMonthOptions().map(m => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-        </div>
-      </div>
+        }
+      />
 
       {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: '총 지급 예정액', value: `₩${totalPayout.toLocaleString()}`, color: 'text-purple-700' },
-          { label: '총 원천세 공제', value: `₩${totalTax.toLocaleString()}`, color: 'text-red-600' },
-          { label: '지급 대기', value: `${readyCount}건`, color: 'text-blue-600' },
-          { label: '이월 대기', value: `${pendingCount}건`, color: 'text-slate-600' },
-        ].map(card => (
-          <div key={card.label} className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-            <p className="text-[11px] text-slate-500">{card.label}</p>
-            <p className={`text-xl font-bold mt-1 ${card.color}`}>{card.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard
+          label="총 지급 예정액"
+          value={`₩${totalPayout.toLocaleString()}`}
+          icon={Wallet}
+          tone="positive"
+        />
+        <KpiCard
+          label="총 원천세 공제"
+          value={`-₩${totalTax.toLocaleString()}`}
+          icon={Receipt}
+          tone="negative"
+        />
+        <KpiCard
+          label="지급 대기"
+          value={readyCount.toLocaleString()}
+          unit="건"
+          icon={Clock}
+        />
+        <KpiCard
+          label="이월 대기"
+          value={pendingCount.toLocaleString()}
+          unit="건"
+          icon={AlertCircle}
+          tone={pendingCount > 0 ? 'negative' : 'neutral'}
+        />
       </div>
 
       {/* 정산 현황 테이블 */}
-      <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-admin-base font-semibold text-slate-800">{period} 정산 현황</h2>
-          <span className="text-[11px] text-slate-500">{settlements.length}건</span>
+      <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-admin-border flex items-center justify-between">
+          <h2 className="text-admin-h3 text-admin-text admin-num">{period} 정산 현황</h2>
+          <span className="text-admin-xs text-admin-muted admin-num">{settlements.length}건</span>
         </div>
-        <table className="w-full text-admin-sm">
+        <table className="admin-data-table">
           <thead>
-            <tr className="border-b-2 border-slate-100">
+            <tr>
               {['파트너', '건수', '발생 수수료', '이월 포함', '원천세', '실지급액', '상태', '액션'].map(h => (
-                <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">{h}</th>
+                <th key={h}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-slate-100">
+                <tr key={i}>
                   {[100, 40, 80, 80, 60, 80, 56, 80].map((w, j) => (
-                    <td key={j} className="px-3 py-3">
-                      <div className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
+                    <td key={j}>
+                      <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
                     </td>
                   ))}
                 </tr>
               ))
             ) : settlements.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-14 text-center">
+                <td colSpan={8} className="py-14 text-center" style={{ height: 'auto' }}>
                   <div className="flex flex-col items-center gap-3">
-                    <svg className="w-10 h-10 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>
-                    <p className="text-admin-sm font-medium text-slate-500">이번 달 정산 데이터가 없습니다.</p>
+                    <div className="w-12 h-12 rounded-full bg-admin-surface-2 flex items-center justify-center text-admin-muted">
+                      <Coins size={20} strokeWidth={1.75} />
+                    </div>
+                    <p className="text-admin-sm font-medium text-admin-muted">이번 달 정산 데이터가 없습니다.</p>
                   </div>
                 </td>
               </tr>
             ) : settlements.map(s => (
-              <tr key={s.id} className="border-b border-slate-200 hover:bg-slate-50">
-                <td className="px-3 py-2">
-                  <div className="font-medium text-slate-800">{s.affiliates?.name}</div>
-                  <div className="text-[11px] text-slate-500 font-mono">{s.affiliates?.referral_code}</div>
+              <tr key={s.id}>
+                <td>
+                  <div className="font-medium text-admin-text">{s.affiliates?.name}</div>
+                  <div className="text-admin-xs text-admin-muted font-mono">{s.affiliates?.referral_code}</div>
                 </td>
-                <td className="px-3 py-2 text-slate-800">{s.qualified_booking_count}건</td>
-                <td className="px-3 py-2 text-slate-800">₩{s.total_amount.toLocaleString()}</td>
-                <td className="px-3 py-2 font-medium text-slate-800">₩{s.final_total.toLocaleString()}</td>
-                <td className="px-3 py-2 text-red-600">
-                  {s.tax_deduction > 0 ? `-₩${s.tax_deduction.toLocaleString()}` : '-'}
+                <td className="admin-num">{s.qualified_booking_count}건</td>
+                <td className="admin-num">₩{s.total_amount.toLocaleString()}</td>
+                <td className="font-medium admin-num">₩{s.final_total.toLocaleString()}</td>
+                <td className="text-danger admin-num">
+                  {s.tax_deduction > 0 ? `-₩${s.tax_deduction.toLocaleString()}` : '—'}
                 </td>
-                <td className="px-3 py-2 font-bold text-green-700">₩{s.final_payout.toLocaleString()}</td>
-                <td className="px-3 py-2">
-                  <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGES[s.status]}`}>
+                <td className="font-bold text-success admin-num">₩{s.final_payout.toLocaleString()}</td>
+                <td>
+                  <span className={`px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${STATUS_BADGES[s.status]}`}>
                     {STATUS_LABELS[s.status]}
                   </span>
                 </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-1">
+                <td>
+                  <div className="flex gap-1.5 items-center">
                     {s.status === 'READY' && (
-                      <button
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => updateStatus(s.id, 'COMPLETED')}
                         disabled={statusUpdating === s.id}
-                        className="text-[11px] px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                       >
                         지급 완료
-                      </button>
+                      </Button>
                     )}
                     {['READY', 'PENDING'].includes(s.status) && (
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => updateStatus(s.id, 'VOID')}
                         disabled={statusUpdating === s.id}
-                        className="text-[11px] px-2 py-1 bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50 disabled:opacity-50"
                       >
                         취소
-                      </button>
+                      </Button>
                     )}
                     <Link
                       href={`/admin/affiliates/${s.affiliates?.id}`}
-                      className="text-[11px] px-2 py-1 text-blue-600 hover:underline"
+                      className="text-admin-xs text-brand hover:text-brand-dark font-medium"
                     >
                       상세
                     </Link>
@@ -234,27 +252,28 @@ export default function SettlementsPage() {
 
       {/* 미마감 어필리에이트 */}
       {unsettledAffiliates.length > 0 && (
-        <div className="bg-white border border-slate-100 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200">
-            <h2 className="text-admin-base font-semibold text-slate-800">정산 마감 대기 ({unsettledAffiliates.length}명)</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+        <div className="admin-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-admin-border">
+            <h2 className="text-admin-h3 text-admin-text">정산 마감 대기 <span className="admin-num text-admin-muted">({unsettledAffiliates.length}명)</span></h2>
+            <p className="text-admin-xs text-admin-muted mt-0.5 admin-num">
               아래 파트너는 {period} 정산 마감이 실행되지 않았습니다.
             </p>
           </div>
           <div>
             {unsettledAffiliates.map(a => (
-              <div key={a.id} className="px-4 py-2 flex items-center justify-between border-b border-slate-200 last:border-b-0">
+              <div key={a.id} className="px-4 py-2 flex items-center justify-between border-b border-admin-border last:border-b-0">
                 <div>
-                  <span className="font-medium text-slate-800 text-admin-sm">{a.name}</span>
-                  <span className="ml-2 text-[11px] text-slate-500 font-mono">{a.referral_code}</span>
+                  <span className="font-medium text-admin-text text-admin-sm">{a.name}</span>
+                  <span className="ml-2 text-admin-xs text-admin-muted font-mono">{a.referral_code}</span>
                 </div>
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => closeSettlement(a.id)}
                   disabled={closing === a.id}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-[11px] rounded hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {closing === a.id ? '마감 중...' : '정산 마감 실행'}
-                </button>
+                  {closing === a.id ? '마감 중…' : '정산 마감 실행'}
+                </Button>
               </div>
             ))}
           </div>

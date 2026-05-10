@@ -89,21 +89,21 @@ export default function PartnerPreviewClient() {
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">파트너 프론트 미리보기</h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <h1 className="text-lg font-semibold text-admin-text">파트너 프론트 미리보기</h1>
+        <p className="text-sm text-admin-muted mt-1">
           공개 가입 폼·코브랜딩 랜딩·인플루언서 포털을 새 탭에서 바로 엽니다. 추천코드는 이 브라우저에만 저장됩니다.
         </p>
       </div>
 
-      <div className="rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-white p-4 space-y-3">
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">추천코드 (슬러그)</label>
+      <div className="rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-white p-4 space-y-3">
+        <label className="block text-xs font-semibold text-admin-muted uppercase tracking-wide">추천코드 (슬러그)</label>
         <input
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           onBlur={() => hydrated && persist(code)}
           placeholder="예: HEIZE"
-          className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          className="w-full rounded-md border border-admin-border-mid px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
           autoComplete="off"
           spellCheck={false}
         />
@@ -111,32 +111,32 @@ export default function PartnerPreviewClient() {
           <button
             type="button"
             onClick={() => persist(code)}
-            className="text-xs px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200"
+            className="text-xs px-3 py-1.5 rounded-md bg-admin-surface-2 text-admin-text-2 hover:bg-slate-200"
           >
             코드 저장 (로컬)
           </button>
           {envDefault ? (
-            <span className="text-xs text-slate-400 self-center">
-              빌드 시 기본값: <span className="font-mono text-slate-600">{envDefault}</span> (NEXT_PUBLIC_DEV_AFFILIATE_CODE)
+            <span className="text-xs text-admin-muted-2 self-center">
+              빌드 시 기본값: <span className="font-mono text-admin-muted">{envDefault}</span> (NEXT_PUBLIC_DEV_AFFILIATE_CODE)
             </span>
           ) : null}
         </div>
       </div>
 
       {siteOrigin ? (
-        <div className="rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-slate-50/80 p-4 space-y-2">
+        <div className="rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-admin-bg/80 p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">공유용 전체 URL 복사</p>
+            <p className="text-xs font-semibold text-admin-muted uppercase tracking-wide">공유용 전체 URL 복사</p>
             {copiedHint ? (
               <span className="text-[11px] text-emerald-600 font-medium">{copiedHint === '복사 실패' ? copiedHint : `복사됨: ${copiedHint}`}</span>
             ) : null}
           </div>
-          <p className="text-[11px] text-slate-400 break-all">기준 도메인: {siteOrigin}</p>
+          <p className="text-[11px] text-admin-muted-2 break-all">기준 도메인: {siteOrigin}</p>
           <div className="flex flex-col gap-2">
             <button
               type="button"
               onClick={() => onCopy('가입 신청', absolute('/partner-apply'))}
-              className="text-left text-xs px-3 py-2 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-slate-700"
+              className="text-left text-xs px-3 py-2 rounded-md bg-white border border-admin-border-mid hover:bg-admin-bg text-admin-text-2"
             >
               가입 신청 페이지 URL
             </button>
@@ -146,8 +146,8 @@ export default function PartnerPreviewClient() {
               onClick={() => onCopy('코브랜딩', absolute(withUrl))}
               className={`text-left text-xs px-3 py-2 rounded-md border ${
                 safeCode
-                  ? 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                  : 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed'
+                  ? 'bg-white border-admin-border-mid hover:bg-admin-bg text-admin-text-2'
+                  : 'bg-admin-surface-2 border-admin-border text-admin-muted-2 cursor-not-allowed'
               }`}
             >
               코브랜딩 랜딩 URL (/with/…)
@@ -158,8 +158,8 @@ export default function PartnerPreviewClient() {
               onClick={() => onCopy('인플루언서 포털', absolute(portalUrl))}
               className={`text-left text-xs px-3 py-2 rounded-md border ${
                 safeCode
-                  ? 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                  : 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed'
+                  ? 'bg-white border-admin-border-mid hover:bg-admin-bg text-admin-text-2'
+                  : 'bg-admin-surface-2 border-admin-border text-admin-muted-2 cursor-not-allowed'
               }`}
             >
               인플루언서 포털 URL (/influencer/…)
@@ -169,7 +169,7 @@ export default function PartnerPreviewClient() {
       ) : null}
 
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">열기</p>
+        <p className="text-xs font-semibold text-admin-muted uppercase tracking-wide">열기</p>
         <ul className="space-y-2">
           <li>
             <a
@@ -194,7 +194,7 @@ export default function PartnerPreviewClient() {
               className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm ${
                 safeCode
                   ? 'border-emerald-200 bg-emerald-50/80 text-emerald-900 hover:bg-emerald-50'
-                  : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                  : 'border-admin-border-mid bg-admin-bg text-admin-muted-2 cursor-not-allowed'
               }`}
             >
               <span>코브랜딩 랜딩 (고객용)</span>
@@ -213,7 +213,7 @@ export default function PartnerPreviewClient() {
               className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm ${
                 safeCode
                   ? 'border-violet-200 bg-violet-50/80 text-violet-900 hover:bg-violet-50'
-                  : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                  : 'border-admin-border-mid bg-admin-bg text-admin-muted-2 cursor-not-allowed'
               }`}
             >
               <span>인플루언서 포털 (파트너용)</span>
@@ -223,7 +223,7 @@ export default function PartnerPreviewClient() {
         </ul>
       </div>
 
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-admin-muted-2">
         운영 메뉴: <span className="font-mono">/admin/applications</span> (신청 심사),{' '}
         <span className="font-mono">/admin/affiliates</span> (제휴 관리).
       </p>

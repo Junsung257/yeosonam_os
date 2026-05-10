@@ -7,6 +7,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import { Bell, AlertTriangle, CheckCircle2, Trophy } from 'lucide-react';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 interface Alert {
   id: number;
@@ -33,13 +36,13 @@ const CATEGORY_LABELS: Record<string, { label: string; emoji: string; color: str
   policy_winner: { label: '정책 winner', emoji: '🏆', color: 'bg-blue-50 text-blue-800 border-blue-200' },
   feature_change: { label: 'features 변경', emoji: '🔄', color: 'bg-amber-50 text-amber-800 border-amber-200' },
   ltr_ready: { label: 'LTR 학습 준비', emoji: '📊', color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  general: { label: '일반', emoji: 'ℹ️', color: 'bg-slate-50 text-slate-800 border-slate-200' },
+  general: { label: '일반', emoji: 'ℹ️', color: 'bg-admin-bg text-admin-text-2 border-admin-border-mid' },
 };
 
 const SEVERITY_BADGE: Record<string, string> = {
   critical: 'bg-rose-100 text-rose-700',
   warning: 'bg-amber-100 text-amber-700',
-  info: 'bg-slate-100 text-slate-700',
+  info: 'bg-admin-surface-2 text-admin-text-2',
 };
 
 export default function AdminAlertsPage() {
@@ -73,44 +76,69 @@ export default function AdminAlertsPage() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-extrabold text-slate-900">🔔 운영 알림</h1>
-        <p className="text-xs text-slate-500 mt-0.5">정책 winner · features 변경 · LTR 시그널 통합. 자비스가 push 알림 자동 누적.</p>
-      </div>
+    <div className="max-w-6xl mx-auto space-y-5">
+      <PageHeader
+        title="운영 알림"
+        subtitle="정책 winner · features 변경 · LTR 시그널 통합. 자비스가 push 알림 자동 누적."
+      />
 
       {/* 통계 카드 */}
       {stats && (
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi label="총 알림" value={stats.total} />
-          <Kpi label="미확인" value={stats.unacked} tone={stats.unacked > 0 ? 'warning' : 'good'} />
-          <Kpi label="이번 주 critical" value={stats.by_severity.critical ?? 0} tone={stats.by_severity.critical ? 'critical' : 'good'} />
-          <Kpi label="정책 winner 누적" value={stats.by_category.policy_winner ?? 0} />
+          <KpiCard label="총 알림" value={stats.total.toLocaleString()} icon={Bell} />
+          <KpiCard
+            label="미확인"
+            value={stats.unacked.toLocaleString()}
+            icon={AlertTriangle}
+            tone={stats.unacked > 0 ? 'negative' : 'positive'}
+          />
+          <KpiCard
+            label="이번 주 critical"
+            value={(stats.by_severity.critical ?? 0).toLocaleString()}
+            icon={AlertTriangle}
+            tone={stats.by_severity.critical ? 'negative' : 'positive'}
+          />
+          <KpiCard
+            label="정책 winner 누적"
+            value={(stats.by_category.policy_winner ?? 0).toLocaleString()}
+            icon={Trophy}
+          />
         </section>
       )}
 
       {/* 필터 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex flex-wrap items-center gap-3">
-        <label className="text-xs font-semibold text-slate-700">카테고리:</label>
-        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-          className="text-xs border border-slate-300 rounded px-2 py-1">
+      <section className="admin-card p-4 flex flex-wrap items-center gap-3">
+        <label className="text-admin-xs font-semibold text-admin-text-2">카테고리</label>
+        <select
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          className="h-8 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+        >
           <option value="">전체</option>
           {Object.keys(CATEGORY_LABELS).map(c => (
             <option key={c} value={c}>{CATEGORY_LABELS[c].emoji} {CATEGORY_LABELS[c].label}</option>
           ))}
         </select>
 
-        <label className="text-xs font-semibold text-slate-700">심각도:</label>
-        <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}
-          className="text-xs border border-slate-300 rounded px-2 py-1">
+        <label className="text-admin-xs font-semibold text-admin-text-2">심각도</label>
+        <select
+          value={severityFilter}
+          onChange={e => setSeverityFilter(e.target.value)}
+          className="h-8 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+        >
           <option value="">전체</option>
           <option value="critical">critical</option>
           <option value="warning">warning</option>
           <option value="info">info</option>
         </select>
 
-        <label className="text-xs flex items-center gap-1 ml-auto cursor-pointer">
-          <input type="checkbox" checked={showAcked} onChange={e => setShowAcked(e.target.checked)} />
+        <label className="text-admin-xs flex items-center gap-1.5 ml-auto cursor-pointer text-admin-text-2">
+          <input
+            type="checkbox"
+            checked={showAcked}
+            onChange={e => setShowAcked(e.target.checked)}
+            className="rounded border-admin-border-mid text-brand focus:ring-brand/30"
+          />
           확인된 알림도 표시
         </label>
       </section>
@@ -118,18 +146,21 @@ export default function AdminAlertsPage() {
       {/* 알림 목록 */}
       <section className="space-y-2">
         {loading ? (
-          <p className="text-center text-sm text-slate-400 py-8">로딩중...</p>
+          <p className="text-center text-admin-sm text-admin-muted-2 py-8">로딩 중…</p>
         ) : filtered.length === 0 ? (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 text-center">
-            <p className="text-emerald-700 font-semibold">🎉 미확인 알림 없음</p>
-            <p className="text-xs text-emerald-600 mt-1">모든 시그널이 ✓ 처리됐어요. 새 알림 발생 시 자동 누적.</p>
+          <div className="flex flex-col items-center justify-center py-12 text-center bg-admin-surface rounded-admin-md border border-admin-border-mid">
+            <div className="w-12 h-12 rounded-full bg-status-successBg flex items-center justify-center text-status-successFg mb-3">
+              <CheckCircle2 size={20} strokeWidth={1.75} />
+            </div>
+            <p className="text-admin-base font-semibold text-admin-text">미확인 알림 없음</p>
+            <p className="text-admin-xs text-admin-muted mt-1">모든 시그널이 ✓ 처리됐어요. 새 알림 발생 시 자동 누적.</p>
           </div>
         ) : (
           filtered.map(a => {
             const cat = CATEGORY_LABELS[a.category] ?? CATEGORY_LABELS.general;
             const acked = !!a.acknowledged_at;
             return (
-              <div key={a.id} className={`border rounded-xl p-4 ${acked ? 'bg-slate-50/60 border-slate-200 opacity-70' : cat.color}`}>
+              <div key={a.id} className={`border rounded-admin-md p-4 ${acked ? 'bg-admin-bg/60 border-admin-border-mid opacity-70' : cat.color}`}>
                 <div className="flex items-start gap-3">
                   <span className="text-2xl flex-shrink-0">{cat.emoji}</span>
                   <div className="flex-1 min-w-0">
@@ -137,21 +168,23 @@ export default function AdminAlertsPage() {
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${SEVERITY_BADGE[a.severity] ?? SEVERITY_BADGE.info}`}>
                         {a.severity}
                       </span>
-                      <span className="text-[10px] font-medium text-slate-500">{cat.label}</span>
-                      <span className="text-[10px] text-slate-400">{new Date(a.created_at).toLocaleString('ko-KR')}</span>
+                      <span className="text-[10px] font-medium text-admin-muted">{cat.label}</span>
+                      <span className="text-[10px] text-admin-muted-2">{fmtDateTime(a.created_at)}</span>
                       {acked && <span className="text-[10px] text-emerald-600 ml-auto">✓ 확인됨</span>}
                     </div>
-                    <p className="text-sm font-bold text-slate-900 leading-snug">{a.title}</p>
-                    {a.message && <p className="text-xs text-slate-700 mt-1 leading-relaxed break-keep">{a.message}</p>}
+                    <p className="text-sm font-bold text-admin-text leading-snug">{a.title}</p>
+                    {a.message && <p className="text-xs text-admin-text-2 mt-1 leading-relaxed break-keep">{a.message}</p>}
                     {a.ref_type && a.ref_id && (
-                      <p className="text-[10px] text-slate-500 mt-1.5 font-mono">
-                        {a.ref_type}: <code className="bg-slate-100 px-1 rounded">{a.ref_id}</code>
+                      <p className="text-[10px] text-admin-muted mt-1.5 font-mono">
+                        {a.ref_type}: <code className="bg-admin-surface-2 px-1 rounded">{a.ref_id}</code>
                       </p>
                     )}
                   </div>
                   {!acked && (
-                    <button onClick={() => ack(a.id)}
-                      className="text-xs font-semibold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 px-3 py-1.5 rounded transition flex-shrink-0">
+                    <button
+                      onClick={() => ack(a.id)}
+                      className="h-8 px-3 text-admin-sm font-medium text-brand bg-admin-surface border border-admin-border-mid hover:bg-brand-light hover:border-brand rounded-admin-sm transition-colors flex-shrink-0"
+                    >
                       ✓ 확인
                     </button>
                   )}
@@ -161,19 +194,6 @@ export default function AdminAlertsPage() {
           })
         )}
       </section>
-    </div>
-  );
-}
-
-function Kpi({ label, value, tone }: { label: string; value: number; tone?: 'good' | 'warning' | 'critical' }) {
-  const cls = tone === 'critical' ? 'bg-rose-50 border-rose-200 text-rose-800'
-    : tone === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800'
-    : tone === 'good' ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-    : 'bg-slate-50 border-slate-200 text-slate-800';
-  return (
-    <div className={`rounded-xl border p-4 ${cls}`}>
-      <div className="text-[10px] uppercase tracking-wide opacity-70">{label}</div>
-      <div className="text-2xl font-extrabold tabular-nums mt-1">{value}</div>
     </div>
   );
 }

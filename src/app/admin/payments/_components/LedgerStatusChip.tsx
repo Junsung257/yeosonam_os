@@ -51,14 +51,14 @@ export default function LedgerStatusChip() {
 
   if (error) {
     return (
-      <span className="px-2 py-0.5 text-[11px] rounded bg-slate-100 text-slate-400 border border-slate-200">
+      <span className="px-2 py-0.5 text-[11px] rounded bg-admin-surface-2 text-admin-muted-2 border border-admin-border-mid">
         원장 ?
       </span>
     );
   }
   if (!state) {
     return (
-      <span className="px-2 py-0.5 text-[11px] rounded bg-slate-100 text-slate-400 border border-slate-200">
+      <span className="px-2 py-0.5 text-[11px] rounded bg-admin-surface-2 text-admin-muted-2 border border-admin-border-mid">
         원장 …
       </span>
     );

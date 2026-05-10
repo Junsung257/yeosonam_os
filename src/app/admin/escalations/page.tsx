@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { RefreshCw } from 'lucide-react';
 
 interface Inquiry {
   id: string;
@@ -42,9 +45,8 @@ const RISK_EMOJI: Record<string, string> = {
 };
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleString('ko-KR', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+  // locale-stable: "MM-DD HH:mm" (예: "05-10 13:30")
+  return s ? s.slice(5, 16).replace('T', ' ') : '';
 }
 
 function minutesAgo(s: string) {
@@ -108,43 +110,38 @@ export default function EscalationsPage() {
   const totalPending = tasks.length + inquiries.length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-admin-lg font-bold text-slate-800 flex items-center gap-2">
-            에스컬레이션 관제탑
-            {totalPending > 0 && (
-              <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
-                {totalPending}
-              </span>
-            )}
-          </h1>
-          <p className="text-admin-sm text-slate-500 mt-1">
-            JARVIS 에이전트 일시정지 및 고객 직접 연결 요청을 통합 관리합니다.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={load}
-          className="text-admin-sm bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50"
-        >
-          새로고침
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="에스컬레이션 관제탑"
+        subtitle="JARVIS 에이전트 일시정지 및 고객 직접 연결 요청을 통합 관리합니다"
+        badge={
+          totalPending > 0 ? (
+            <span className="bg-danger text-white text-admin-xs font-bold px-2 py-0.5 rounded-full admin-num">
+              {totalPending}
+            </span>
+          ) : undefined
+        }
+        actions={
+          <Button variant="secondary" size="sm" onClick={load}>
+            <RefreshCw size={14} />
+            새로고침
+          </Button>
+        }
+      />
 
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
         <button
           type="button"
           onClick={() => setTab('tasks')}
-          className={`text-admin-sm px-4 py-1.5 rounded-md transition ${
+          className={`text-admin-sm px-3 h-8 rounded-admin-xs transition-colors ${
             tab === 'tasks'
-              ? 'bg-white text-slate-800 font-medium shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
+              ? 'bg-admin-surface text-admin-text font-semibold shadow-admin-xs'
+              : 'text-admin-muted hover:text-admin-text-2'
           }`}
         >
           JARVIS 에스컬레이션
           {tasks.length > 0 && (
-            <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+            <span className="ml-1.5 bg-danger text-white text-admin-2xs px-1.5 py-0.5 rounded-full admin-num">
               {tasks.length}
             </span>
           )}
@@ -152,15 +149,15 @@ export default function EscalationsPage() {
         <button
           type="button"
           onClick={() => setTab('inquiries')}
-          className={`text-admin-sm px-4 py-1.5 rounded-md transition ${
+          className={`text-admin-sm px-3 h-8 rounded-admin-xs transition-colors ${
             tab === 'inquiries'
-              ? 'bg-white text-slate-800 font-medium shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
+              ? 'bg-admin-surface text-admin-text font-semibold shadow-admin-xs'
+              : 'text-admin-muted hover:text-admin-text-2'
           }`}
         >
           고객 직접 연결
           {inquiries.length > 0 && (
-            <span className="ml-1.5 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+            <span className="ml-1.5 bg-warning text-white text-admin-2xs px-1.5 py-0.5 rounded-full admin-num">
               {inquiries.length}
             </span>
           )}
@@ -170,13 +167,13 @@ export default function EscalationsPage() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-start gap-3">
-              <div className="w-2 h-2 rounded-full bg-slate-100 animate-pulse mt-1.5 shrink-0" />
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-start gap-3">
+              <div className="w-2 h-2 rounded-full bg-admin-surface-2 animate-pulse mt-1.5 shrink-0" />
               <div className="flex-1 space-y-2">
-                <div className="h-3.5 bg-slate-100 rounded animate-pulse w-48" />
-                <div className="h-3 bg-slate-100 rounded animate-pulse w-72" />
+                <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-48" />
+                <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-72" />
               </div>
-              <div className="h-5 bg-slate-100 rounded-full animate-pulse w-16" />
+              <div className="h-5 bg-admin-surface-2 rounded-full animate-pulse w-16" />
             </div>
           ))}
         </div>
@@ -185,9 +182,9 @@ export default function EscalationsPage() {
           {tab === 'tasks' && (
             <div className="space-y-2">
               {tasks.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-                  <p className="text-slate-500 text-admin-base font-medium">처리 대기 중인 에스컬레이션이 없습니다</p>
-                  <p className="text-slate-400 text-admin-sm mt-1">JARVIS가 모든 요청을 정상 처리 중입니다</p>
+                <div className="text-center py-20 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                  <p className="text-admin-muted text-admin-base font-medium">처리 대기 중인 에스컬레이션이 없습니다</p>
+                  <p className="text-admin-muted-2 text-admin-sm mt-1">JARVIS가 모든 요청을 정상 처리 중입니다</p>
                 </div>
               ) : tasks.map((task) => {
                 const ctx = task.task_context ?? {};
@@ -196,7 +193,7 @@ export default function EscalationsPage() {
                 return (
                   <div
                     key={task.id}
-                    className={`bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 ${RISK_COLOR[task.risk_level]} p-4`}
+                    className={`bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 ${RISK_COLOR[task.risk_level]} p-4`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -204,31 +201,31 @@ export default function EscalationsPage() {
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${RISK_BADGE[task.risk_level]}`}>
                             {RISK_EMOJI[task.risk_level]} {task.risk_level.toUpperCase()}
                           </span>
-                          <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                          <span className="text-[11px] bg-admin-surface-2 text-admin-muted px-2 py-0.5 rounded-full">
                             {task.performative}
                           </span>
-                          <span className={`text-[11px] font-medium ${mins > 30 ? 'text-red-500' : 'text-slate-400'}`}>
+                          <span className={`text-[11px] font-medium ${mins > 30 ? 'text-red-500' : 'text-admin-muted-2'}`}>
                             {mins < 60 ? `${mins}분 전` : `${Math.floor(mins / 60)}시간 전`}
                             {mins > 30 && ' ⚠️ 장기 대기'}
                           </span>
                         </div>
                         {preview && (
-                          <p className="text-slate-800 text-admin-base leading-relaxed break-words line-clamp-3">
+                          <p className="text-admin-text-2 text-admin-base leading-relaxed break-words line-clamp-3">
                             {preview.slice(0, 300)}
                           </p>
                         )}
-                        <p className="text-[11px] text-slate-400 mt-2 font-mono">
+                        <p className="text-[11px] text-admin-muted-2 mt-2 font-mono">
                           task: {task.id.slice(0, 8)}…
                         </p>
                       </div>
-                      <button
-                        type="button"
+                      <Button
+                        variant="primary"
                         onClick={() => takeover(task.id)}
                         disabled={takingOver === task.id}
-                        className="shrink-0 bg-blue-600 text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 whitespace-nowrap"
+                        className="shrink-0 whitespace-nowrap"
                       >
                         {takingOver === task.id ? '처리 중…' : '직접 대응'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );
@@ -239,13 +236,13 @@ export default function EscalationsPage() {
           {tab === 'inquiries' && (
             <div className="space-y-2">
               {inquiries.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-                  <p className="text-slate-500 text-admin-base font-medium">처리 대기 중인 문의가 없습니다</p>
+                <div className="text-center py-20 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                  <p className="text-admin-muted text-admin-base font-medium">처리 대기 중인 문의가 없습니다</p>
                 </div>
               ) : inquiries.map((inq) => (
                 <div
                   key={inq.id}
-                  className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 border-l-amber-400 p-4"
+                  className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 border-l-amber-400 p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -253,24 +250,24 @@ export default function EscalationsPage() {
                         <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
                           {inq.inquiry_type}
                         </span>
-                        <span className="text-[11px] text-slate-400">{fmtDate(inq.created_at)}</span>
+                        <span className="text-[11px] text-admin-muted-2">{fmtDate(inq.created_at)}</span>
                       </div>
-                      <p className="text-slate-800 text-admin-base leading-relaxed whitespace-pre-wrap break-words">
+                      <p className="text-admin-text-2 text-admin-base leading-relaxed whitespace-pre-wrap break-words">
                         {inq.question}
                       </p>
                       {inq.customer_name && (
-                        <p className="text-admin-sm text-slate-500 mt-2">
+                        <p className="text-admin-sm text-admin-muted mt-2">
                           고객: {inq.customer_name}{inq.customer_email ? ` (${inq.customer_email})` : ''}
                         </p>
                       )}
                     </div>
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
                       onClick={() => resolveInquiry(inq.id)}
-                      className="shrink-0 bg-blue-600 text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+                      className="shrink-0"
                     >
                       처리 완료
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}

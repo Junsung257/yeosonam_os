@@ -308,7 +308,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-lg hover:bg-blue-700 text-sm flex items-center gap-2 transition"
+          className="fixed bottom-6 right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
           title="입금/출금 매칭 명령 (⌘K)"
         >
           <kbd className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-mono">⌘K</kbd>
@@ -319,7 +319,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 토스트 */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-2 rounded shadow-lg text-sm ${
+          className={`fixed bottom-6 right-6 z-50 px-4 py-2 rounded shadow-admin-md text-sm ${
             toast.kind === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
           }`}
           role="status"
@@ -338,31 +338,31 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
           aria-label="입금/출금 매칭 명령"
         >
           <div
-            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl"
+            className="bg-white rounded-admin-md shadow-2xl w-full max-w-2xl"
             onClick={e => e.stopPropagation()}
           >
             <Command shouldFilter={false} loop>
               <div className="px-4 pt-4 pb-2">
-                <div className="text-[11px] text-slate-500 mb-1.5">
-                  예시: <code className="bg-slate-100 px-1 rounded">260505_남영선_베스트아시아</code>{' '}
-                  · <code className="bg-slate-100 px-1 rounded">BK-0042</code>
-                  {' '}· <code className="bg-slate-100 px-1 rounded">남영선</code>
+                <div className="text-[11px] text-admin-muted mb-1.5">
+                  예시: <code className="bg-admin-surface-2 px-1 rounded">260505_남영선_베스트아시아</code>{' '}
+                  · <code className="bg-admin-surface-2 px-1 rounded">BK-0042</code>
+                  {' '}· <code className="bg-admin-surface-2 px-1 rounded">남영선</code>
                 </div>
                 <Command.Input
                   value={input}
                   onValueChange={setInput}
                   placeholder="출발일_고객명_랜드사… 한 줄 입력"
                   autoFocus
-                  className="w-full text-base outline-none border-0 placeholder:text-slate-400 bg-transparent"
+                  className="w-full text-base outline-none border-0 placeholder:text-admin-muted-2 bg-transparent"
                 />
               </div>
 
-              <div className="border-t border-slate-100" />
+              <div className="border-t border-admin-border" />
 
               <Command.List className="max-h-[60vh] overflow-y-auto p-3">
                 {loading && (
                   <Command.Loading>
-                    <div className="px-3 py-4 text-sm text-slate-500 flex items-center gap-2">
+                    <div className="px-3 py-4 text-sm text-admin-muted flex items-center gap-2">
                       <Spinner /> 조회 중…
                     </div>
                   </Command.Loading>
@@ -387,18 +387,18 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
                 )}
 
                 {!loading && !error && !result && input.trim() === '' && (
-                  <div className="px-3 py-12 text-center text-sm text-slate-400">
+                  <div className="px-3 py-12 text-center text-sm text-admin-muted-2">
                     <p className="mb-1">메모 형식으로 입력하세요</p>
                     <p className="text-xs">출발일(YYMMDD) _ 고객명 _ 랜드사약칭</p>
                   </div>
                 )}
               </Command.List>
 
-              <div className="px-4 py-2 border-t border-slate-100 text-[11px] text-slate-400 flex justify-between">
+              <div className="px-4 py-2 border-t border-admin-border text-[11px] text-admin-muted-2 flex justify-between">
                 <span>
-                  <kbd className="bg-slate-100 px-1 rounded">↑↓</kbd> 선택{' '}
-                  <kbd className="bg-slate-100 px-1 rounded">Enter</kbd> 확정{' '}
-                  <kbd className="bg-slate-100 px-1 rounded">Esc</kbd> 닫기
+                  <kbd className="bg-admin-surface-2 px-1 rounded">↑↓</kbd> 선택{' '}
+                  <kbd className="bg-admin-surface-2 px-1 rounded">Enter</kbd> 확정{' '}
+                  <kbd className="bg-admin-surface-2 px-1 rounded">Esc</kbd> 닫기
                 </span>
                 <span>⌘K로 토글</span>
               </div>
@@ -428,7 +428,7 @@ const BRANCH_INFO: Record<MatchBranch, { label: string; color: string; desc: str
   },
   D: {
     label: '❓ 매칭 불충분',
-    color: 'bg-slate-50 text-slate-700 border-slate-200',
+    color: 'bg-admin-bg text-admin-text-2 border-admin-border-mid',
     desc: '입력을 수정하거나 후보 검토',
   },
 };
@@ -458,7 +458,7 @@ function ResultPanel({
 
       {result.bookings.length > 0 && (
         <div>
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1 px-2">
+          <div className="text-[11px] font-semibold text-admin-muted uppercase tracking-wide mb-1 px-2">
             예약 후보 ({result.bookings.length})
           </div>
           <Command.Group>
@@ -472,26 +472,26 @@ function ResultPanel({
                   if (result.branch === 'A' && idx === 0) onConfirm(b);
                 }}
                 disabled={confirming !== null && confirming !== b.id}
-                className="flex items-center justify-between gap-3 px-3 py-2 rounded cursor-pointer hover:bg-slate-50 data-[selected=true]:bg-blue-50 data-[disabled=true]:opacity-40"
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded cursor-pointer hover:bg-admin-bg data-[selected=true]:bg-blue-50 data-[disabled=true]:opacity-40"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                  <div className="flex items-center gap-2 text-sm font-medium text-admin-text-2">
                     <span>{b.customer_name ?? '이름 없음'}</span>
-                    <span className="text-slate-400">/</span>
-                    <span className="text-slate-600 font-mono text-xs">{b.booking_no}</span>
+                    <span className="text-admin-muted-2">/</span>
+                    <span className="text-admin-muted font-mono text-xs">{b.booking_no}</span>
                     {b.departure_date && (
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-admin-muted">
                         {b.departure_date.slice(2, 10).replace(/-/g, '')}
                       </span>
                     )}
                     {b.land_operator_name && (
-                      <span className="text-xs text-slate-500">· {b.land_operator_name}</span>
+                      <span className="text-xs text-admin-muted">· {b.land_operator_name}</span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs text-admin-muted mt-0.5 truncate">
                     {b.reasons.slice(0, 3).join(' · ')}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                  <div className="text-[11px] text-admin-muted-2 mt-0.5 tabular-nums">
                     판매가 {fmtKRW(b.total_price)} · 수금 {fmtKRW(b.paid_amount)} · 잔금{' '}
                     {fmtKRW(Math.max(0, b.total_price - b.paid_amount))}
                   </div>
@@ -546,8 +546,8 @@ function ResultPanel({
       )}
 
       {result.similarCustomers.length > 0 && result.branch !== 'A' && (
-        <div className="border border-slate-200 rounded-lg p-3 text-sm">
-          <div className="font-semibold text-slate-700 mb-1.5 text-xs">비슷한 고객 후보</div>
+        <div className="border border-admin-border-mid rounded-lg p-3 text-sm">
+          <div className="font-semibold text-admin-text-2 mb-1.5 text-xs">비슷한 고객 후보</div>
           <div className="flex flex-wrap gap-1.5">
             {result.similarCustomers.map(name => (
               <button
@@ -560,7 +560,7 @@ function ResultPanel({
                     ),
                   )
                 }
-                className="text-xs px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded transition"
+                className="text-xs px-2 py-0.5 bg-admin-surface-2 hover:bg-slate-200 rounded transition"
               >
                 {name}
               </button>
@@ -614,8 +614,8 @@ function ScoreBar({ score }: { score: number }) {
   const color =
     score >= 0.85 ? 'bg-emerald-500' : score >= 0.6 ? 'bg-blue-500' : 'bg-slate-300';
   return (
-    <div className="flex items-center gap-1 text-[10px] text-slate-500 w-14">
-      <div className="flex-1 h-1.5 bg-slate-100 rounded overflow-hidden">
+    <div className="flex items-center gap-1 text-[10px] text-admin-muted w-14">
+      <div className="flex-1 h-1.5 bg-admin-surface-2 rounded overflow-hidden">
         <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="tabular-nums">{pct}</span>
@@ -626,7 +626,7 @@ function ScoreBar({ score }: { score: number }) {
 function Spinner() {
   return (
     <span
-      className="inline-block w-3 h-3 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin"
+      className="inline-block w-3 h-3 border-2 border-admin-border-strong border-t-blue-500 rounded-full animate-spin"
       aria-hidden
     />
   );

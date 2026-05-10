@@ -33,9 +33,9 @@ export default function ScoringKpiWidget() {
   if (!stats) return null;
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-4">
+    <section className="bg-white border border-admin-border-mid rounded-admin-md p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+        <h3 className="text-sm font-bold text-admin-text-2 flex items-center gap-1.5">
           <span>⭐</span>
           <span>추천 시스템</span>
         </h3>
@@ -45,19 +45,19 @@ export default function ScoringKpiWidget() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Link href="/admin/scoring" className="bg-slate-50 rounded-lg p-3 hover:bg-slate-100 transition">
-          <div className="text-[10px] text-slate-400 uppercase">활성 정책</div>
-          <div className="text-sm font-bold text-slate-900 mt-0.5 truncate">
+        <Link href="/admin/scoring" className="bg-admin-bg rounded-lg p-3 hover:bg-admin-surface-2 transition">
+          <div className="text-[10px] text-admin-muted-2 uppercase">활성 정책</div>
+          <div className="text-sm font-bold text-admin-text mt-0.5 truncate">
             {stats.active_policy_version ?? '—'}
           </div>
         </Link>
 
-        <div className="bg-slate-50 rounded-lg p-3">
-          <div className="text-[10px] text-slate-400 uppercase">점수 그룹</div>
-          <div className="text-sm font-bold text-slate-900 mt-0.5 tabular-nums">
+        <div className="bg-admin-bg rounded-lg p-3">
+          <div className="text-[10px] text-admin-muted-2 uppercase">점수 그룹</div>
+          <div className="text-sm font-bold text-admin-text mt-0.5 tabular-nums">
             {stats.total_groups.toLocaleString()}
           </div>
-          <div className="text-[10px] text-slate-500">
+          <div className="text-[10px] text-admin-muted">
             {stats.total_score_rows.toLocaleString()} score row
           </div>
         </div>
@@ -65,23 +65,23 @@ export default function ScoringKpiWidget() {
         <Link href="/admin/scoring/funnel" className={`rounded-lg p-3 transition ${
           stats.ltr_ready ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-violet-50 hover:bg-violet-100'
         }`}>
-          <div className="text-[10px] text-slate-500 uppercase">LTR 학습</div>
+          <div className="text-[10px] text-admin-muted uppercase">LTR 학습</div>
           <div className={`text-sm font-bold mt-0.5 tabular-nums ${
             stats.ltr_ready ? 'text-emerald-700' : 'text-violet-700'
           }`}>
             {stats.ltr_ready ? '✓ Ready' : `${stats.ltr_samples}/1000`}
           </div>
-          <div className="text-[10px] text-slate-500">
+          <div className="text-[10px] text-admin-muted">
             {stats.ltr_ready ? '학습 가능' : '데이터 누적 중'}
           </div>
         </Link>
 
         <Link href="/admin/alerts" className={`rounded-lg p-3 transition ${
-          stats.unacked_alerts > 0 ? 'bg-amber-50 hover:bg-amber-100' : 'bg-slate-50 hover:bg-slate-100'
+          stats.unacked_alerts > 0 ? 'bg-amber-50 hover:bg-amber-100' : 'bg-admin-bg hover:bg-admin-surface-2'
         }`}>
-          <div className="text-[10px] text-slate-500 uppercase">미해결 알림</div>
+          <div className="text-[10px] text-admin-muted uppercase">미해결 알림</div>
           <div className={`text-sm font-bold mt-0.5 tabular-nums ${
-            stats.unacked_alerts > 0 ? 'text-amber-700' : 'text-slate-500'
+            stats.unacked_alerts > 0 ? 'text-amber-700' : 'text-admin-muted'
           }`}>
             {stats.unacked_alerts}
           </div>

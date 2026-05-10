@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import PolicyWeightsCompare from '@/components/admin/PolicyWeightsCompare';
-import { fmt만 as fmtKRW } from '@/lib/admin-utils';
+import { fmt만 as fmtKRW, fmtDateTime } from '@/lib/admin-utils';
 
 interface ScoringPolicy {
   id: string;
@@ -257,10 +257,10 @@ export default function ScoringAdminPage() {
 
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
-      <div className="h-5 bg-slate-100 rounded animate-pulse w-36" />
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+      <div className="h-5 bg-admin-surface-2 rounded animate-pulse w-36" />
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-8 bg-slate-50 rounded-lg animate-pulse" />
+          <div key={i} className="h-8 bg-admin-bg rounded-lg animate-pulse" />
         ))}
       </div>
     </div>
@@ -270,42 +270,42 @@ export default function ScoringAdminPage() {
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-8">
       <header>
-        <h1 className="text-xl font-bold text-slate-900">패키지 점수 정책</h1>
-        <p className="text-xs text-slate-500 mt-1">
+        <h1 className="text-xl font-bold text-admin-text">패키지 점수 정책</h1>
+        <p className="text-xs text-admin-muted mt-1">
           버전 <span className="font-mono">{policy.version}</span>
-          {policy.updated_at && <span className="ml-2">· 수정 {new Date(policy.updated_at).toLocaleString('ko-KR')}</span>}
+          {policy.updated_at && <span className="ml-2">· 수정 {fmtDateTime(policy.updated_at)}</span>}
         </p>
       </header>
 
       {toast && (
-        <div className={`fixed top-4 right-4 px-4 py-2 rounded-lg text-sm shadow-lg z-50 ${
+        <div className={`fixed top-4 right-4 px-4 py-2 rounded-lg text-sm shadow-admin-md z-50 ${
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>{toast.msg}</div>
       )}
 
       {/* 가중치 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800">기준 가중치 (10 axis)</h2>
-          <p className="text-xs text-slate-500 mt-0.5">합이 1.0이 되도록 자동 정규화. base 6 + P1 4 (climate·popularity·korean_meal·free_time).</p>
+          <h2 className="text-sm font-semibold text-admin-text-2">기준 가중치 (10 axis)</h2>
+          <p className="text-xs text-admin-muted mt-0.5">합이 1.0이 되도록 자동 정규화. base 6 + P1 4 (climate·popularity·korean_meal·free_time).</p>
         </div>
 
         {/* Base 6 */}
         <div>
-          <p className="text-[11px] font-bold text-slate-700 mb-2">기본 axis</p>
+          <p className="text-[11px] font-bold text-admin-text-2 mb-2">기본 axis</p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {(['price', 'hotel', 'meal', 'free_options', 'shopping_avoidance', 'reliability'] as const).map(k => (
               <div key={k}>
-                <label className="block text-xs text-slate-600 mb-1">
+                <label className="block text-xs text-admin-muted mb-1">
                   {WEIGHT_LABELS[k]}
                 </label>
                 <input
                   type="number" min={0} max={1} step={0.05}
-                  className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"
+                  className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"
                   value={weights[k] ?? 0}
                   onChange={e => setWeights({ ...weights, [k]: parseFloat(e.target.value) || 0 })}
                 />
-                <div className="text-[10px] text-slate-400 mt-0.5" title={WEIGHT_DESCRIPTIONS[k]}>
+                <div className="text-[10px] text-admin-muted-2 mt-0.5" title={WEIGHT_DESCRIPTIONS[k]}>
                   정규화 {weightSum > 0 ? ((weights[k] ?? 0) / weightSum * 100).toFixed(1) : '0.0'}% · {WEIGHT_DESCRIPTIONS[k]}
                 </div>
               </div>
@@ -328,7 +328,7 @@ export default function ScoringAdminPage() {
                   value={weights[k] ?? 0}
                   onChange={e => setWeights({ ...weights, [k]: parseFloat(e.target.value) || 0 })}
                 />
-                <div className="text-[10px] text-slate-400 mt-0.5" title={WEIGHT_DESCRIPTIONS[k]}>
+                <div className="text-[10px] text-admin-muted-2 mt-0.5" title={WEIGHT_DESCRIPTIONS[k]}>
                   정규화 {weightSum > 0 ? ((weights[k] ?? 0) / weightSum * 100).toFixed(1) : '0.0'}% · {WEIGHT_DESCRIPTIONS[k]}
                 </div>
               </div>
@@ -336,7 +336,7 @@ export default function ScoringAdminPage() {
           </div>
         </div>
 
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-admin-muted">
           현재 합: {weightSum.toFixed(2)} (자동 정규화 후 1.00)
         </div>
       </section>
@@ -345,32 +345,32 @@ export default function ScoringAdminPage() {
       <PolicyWeightsCompare />
 
       {/* 호텔 프리미엄 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800">호텔 등급별 등가 금액 (KRW)</h2>
-          <p className="text-xs text-slate-500 mt-0.5">실효가격에서 차감되는 호텔 가치. 등급 높을수록 큰 값.</p>
+          <h2 className="text-sm font-semibold text-admin-text-2">호텔 등급별 등가 금액 (KRW)</h2>
+          <p className="text-xs text-admin-muted mt-0.5">실효가격에서 차감되는 호텔 가치. 등급 높을수록 큰 값.</p>
         </div>
         <div className="grid grid-cols-5 gap-3">
           {HOTEL_GRADES.map(g => (
             <div key={g}>
-              <label className="block text-xs text-slate-600 mb-1">{g}</label>
+              <label className="block text-xs text-admin-muted mb-1">{g}</label>
               <input
                 type="number" min={0} step={10000}
-                className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"
+                className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"
                 value={hotelPremium[g] ?? 0}
                 onChange={e => setHotelPremium({ ...hotelPremium, [g]: parseInt(e.target.value) || 0 })}
               />
-              <div className="text-[10px] text-slate-400 mt-0.5">{fmtKRW(hotelPremium[g] ?? 0)}</div>
+              <div className="text-[10px] text-admin-muted-2 mt-0.5">{fmtKRW(hotelPremium[g] ?? 0)}</div>
             </div>
           ))}
         </div>
       </section>
 
       {/* 브랜드 티어 보너스 */}
-      <section className="bg-white border border-amber-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white border border-amber-200 rounded-admin-md p-5 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-amber-800">호텔 브랜드 보너스 상한 (KRW/박)</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-admin-muted mt-0.5">
             같은 성급 내 브랜드 tier에 따라 최대 이 금액만큼 추가 차감. 0 = 비활성화.
           </p>
         </div>
@@ -381,9 +381,9 @@ export default function ScoringAdminPage() {
             value={brandMaxBonus}
             onChange={e => setBrandMaxBonus(parseInt(e.target.value) || 0)}
           />
-          <span className="text-xs text-slate-500">{fmtKRW(brandMaxBonus)}</span>
+          <span className="text-xs text-admin-muted">{fmtKRW(brandMaxBonus)}</span>
         </div>
-        <div className="text-xs text-slate-500 bg-amber-50 rounded p-3 space-y-1">
+        <div className="text-xs text-admin-muted bg-amber-50 rounded p-3 space-y-1">
           <p className="font-semibold text-amber-800">계산 예시 (5성, 기본 15만/박 기준)</p>
           {[
             { label: 'Aman / 아만 (1.0)', bonus: brandMaxBonus },
@@ -436,11 +436,11 @@ export default function ScoringAdminPage() {
                 ].map(({ brand, stars, score }) => {
                   const bonus = score > 0.5 ? Math.round((score - 0.5) * brandMaxBonus * 2) : 0;
                   return (
-                    <tr key={brand} className="even:bg-slate-50">
-                      <td className="px-2 py-1 border border-slate-200">{brand}</td>
-                      <td className="px-2 py-1 border border-slate-200 text-slate-500">{stars}</td>
-                      <td className="px-2 py-1 border border-slate-200 text-right font-mono">{score.toFixed(2)}</td>
-                      <td className="px-2 py-1 border border-slate-200 text-right font-mono text-emerald-700">
+                    <tr key={brand} className="even:bg-admin-bg">
+                      <td className="px-2 py-1 border border-admin-border-mid">{brand}</td>
+                      <td className="px-2 py-1 border border-admin-border-mid text-admin-muted">{stars}</td>
+                      <td className="px-2 py-1 border border-admin-border-mid text-right font-mono">{score.toFixed(2)}</td>
+                      <td className="px-2 py-1 border border-admin-border-mid text-right font-mono text-emerald-700">
                         {bonus > 0 ? `+${fmtKRW(bonus)}` : '—'}
                       </td>
                     </tr>
@@ -453,41 +453,41 @@ export default function ScoringAdminPage() {
       </section>
 
       {/* 직항 보너스 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
-        <h2 className="text-sm font-semibold text-slate-800 mb-3">직항 프리미엄 (KRW)</h2>
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <h2 className="text-sm font-semibold text-admin-text-2 mb-3">직항 프리미엄 (KRW)</h2>
         <input
           type="number" min={0} step={10000}
-          className="w-40 text-sm border border-slate-300 rounded px-2 py-1.5"
+          className="w-40 text-sm border border-admin-border-strong rounded px-2 py-1.5"
           value={flightDirect}
           onChange={e => setFlightDirect(parseInt(e.target.value) || 0)}
         />
-        <span className="ml-2 text-xs text-slate-500">{fmtKRW(flightDirect)}</span>
+        <span className="ml-2 text-xs text-admin-muted">{fmtKRW(flightDirect)}</span>
       </section>
 
       {/* 헤도닉 (읽기 전용) */}
-      <section className="bg-slate-50 border border-slate-200 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-slate-800 mb-2">헤도닉 학습 (자동 갱신, 읽기 전용)</h2>
-        <p className="text-xs text-slate-500 mb-3">매일 새벽 cron이 시장 데이터로 implicit price 자동 학습.</p>
+      <section className="bg-admin-bg border border-admin-border-mid rounded-admin-md p-5">
+        <h2 className="text-sm font-semibold text-admin-text-2 mb-2">헤도닉 학습 (자동 갱신, 읽기 전용)</h2>
+        <p className="text-xs text-admin-muted mb-3">매일 새벽 cron이 시장 데이터로 implicit price 자동 학습.</p>
         <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
           <div>
-            <dt className="text-slate-500">쇼핑 1회당 회피 가치</dt>
-            <dd className="font-mono text-slate-900">{fmtKRW(policy.hedonic_coefs.shopping_per_count)}</dd>
+            <dt className="text-admin-muted">쇼핑 1회당 회피 가치</dt>
+            <dd className="font-mono text-admin-text">{fmtKRW(policy.hedonic_coefs.shopping_per_count)}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">식사 1회당 가치</dt>
-            <dd className="font-mono text-slate-900">{fmtKRW(policy.hedonic_coefs.meal_per_count)}</dd>
+            <dt className="text-admin-muted">식사 1회당 가치</dt>
+            <dd className="font-mono text-admin-text">{fmtKRW(policy.hedonic_coefs.meal_per_count)}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">호텔 등급 1단계당</dt>
-            <dd className="font-mono text-slate-900">{fmtKRW(policy.hedonic_coefs.hotel_grade_step)}</dd>
+            <dt className="text-admin-muted">호텔 등급 1단계당</dt>
+            <dd className="font-mono text-admin-text">{fmtKRW(policy.hedonic_coefs.hotel_grade_step)}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">출처</dt>
-            <dd className="text-slate-900">{policy.hedonic_coefs.computed_from} · 표본 {policy.hedonic_coefs.sample_size}개</dd>
+            <dt className="text-admin-muted">출처</dt>
+            <dd className="text-admin-text">{policy.hedonic_coefs.computed_from} · 표본 {policy.hedonic_coefs.sample_size}개</dd>
           </div>
           <div>
-            <dt className="text-slate-500">마지막 학습</dt>
-            <dd className="text-slate-900">{policy.hedonic_coefs.computed_at ? new Date(policy.hedonic_coefs.computed_at).toLocaleString('ko-KR') : '아직 없음'}</dd>
+            <dt className="text-admin-muted">마지막 학습</dt>
+            <dd className="text-admin-text">{policy.hedonic_coefs.computed_at ? fmtDateTime(policy.hedonic_coefs.computed_at) : '아직 없음'}</dd>
           </div>
         </dl>
       </section>
@@ -514,13 +514,13 @@ export default function ScoringAdminPage() {
 
       {/* 미매핑 패키지 리포트 */}
       {unmapped.length > 0 && (
-        <section className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
+        <section className="bg-yellow-50 border border-yellow-200 rounded-admin-md p-5">
           <h2 className="text-sm font-semibold text-amber-900">매핑 미해결 패키지 ({unmapped.length}개)</h2>
           <p className="text-xs text-amber-800 mt-1 mb-3">랜드사를 어드민 패키지 페이지에서 수동 지정하세요.</p>
           <ul className="text-xs space-y-1 max-h-64 overflow-y-auto">
             {unmapped.map(p => (
-              <li key={p.id} className="text-slate-700">
-                <span className="font-mono text-[10px] text-slate-400">{p.id.slice(0, 8)}</span> {p.title}
+              <li key={p.id} className="text-admin-text-2">
+                <span className="font-mono text-[10px] text-admin-muted-2">{p.id.slice(0, 8)}</span> {p.title}
               </li>
             ))}
           </ul>
@@ -528,31 +528,31 @@ export default function ScoringAdminPage() {
       )}
 
       {/* 그룹 미리보기 — 정책 변경 효과 즉시 검증 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800">그룹 미리보기 (정책 시뮬레이션)</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-semibold text-admin-text-2">그룹 미리보기 (정책 시뮬레이션)</h2>
+          <p className="text-xs text-admin-muted mt-0.5">
             가중치 변경 후 같은 목적지·날짜 그룹에서 어떻게 순위가 바뀌는지 즉시 확인.
             ⚠ 어드민 전용 — 점수 숫자가 노출됩니다.
           </p>
         </div>
         <div className="flex gap-2 items-end flex-wrap">
           <div className="flex-1 min-w-[140px]">
-            <label className="block text-xs text-slate-600 mb-1">목적지</label>
+            <label className="block text-xs text-admin-muted mb-1">목적지</label>
             <input value={previewDest} onChange={e => setPreviewDest(e.target.value)}
               placeholder="다낭 / 장가계 / 나트랑"
-              className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"/>
+              className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-44">
-            <label className="block text-xs text-slate-600 mb-1">출발일 (선택)</label>
+            <label className="block text-xs text-admin-muted mb-1">출발일 (선택)</label>
             <input type="date" value={previewDate} onChange={e => setPreviewDate(e.target.value)}
-              className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"/>
+              className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-24">
-            <label className="block text-xs text-slate-600 mb-1">±일</label>
+            <label className="block text-xs text-admin-muted mb-1">±일</label>
             <input type="number" min={0} max={30} value={previewWindow}
               onChange={e => setPreviewWindow(parseInt(e.target.value) || 0)}
-              className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"/>
+              className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <button onClick={handlePreview} disabled={previewLoading}
             className="px-4 py-1.5 bg-slate-700 text-white text-sm rounded hover:bg-slate-800 disabled:opacity-50">
@@ -562,9 +562,9 @@ export default function ScoringAdminPage() {
 
         {allPolicies.length > 1 && (
           <div className="flex items-center gap-2 text-xs">
-            <label className="text-slate-600">정책 (A/B 비교):</label>
+            <label className="text-admin-muted">정책 (A/B 비교):</label>
             <select value={previewPolicyId} onChange={e => setPreviewPolicyId(e.target.value)}
-              className="text-xs border border-slate-300 rounded px-2 py-1">
+              className="text-xs border border-admin-border-strong rounded px-2 py-1">
               <option value="">활성 정책 (default)</option>
               {allPolicies.map(p => (
                 <option key={p.id} value={p.id}>
@@ -576,12 +576,12 @@ export default function ScoringAdminPage() {
         )}
 
         {previewResult && previewResult.ranked.length > 0 && (
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="border border-admin-border-mid rounded-lg overflow-hidden">
+            <div className="bg-admin-bg px-3 py-2 text-xs text-admin-muted">
               그룹 <span className="font-mono">{previewResult.group_key}</span> · 총 {previewResult.group_size}개
             </div>
             <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-admin-bg text-admin-muted">
                 <tr>
                   <th className="px-2 py-2 text-center w-8">#</th>
                   <th className="px-2 py-2 text-left">상품명</th>
@@ -593,28 +593,28 @@ export default function ScoringAdminPage() {
               </thead>
               <tbody>
                 {previewResult.ranked.map(item => (
-                  <tr key={item.package_id} className={`border-t border-slate-100 ${item.rank === 1 ? 'bg-amber-50' : ''}`}>
+                  <tr key={item.package_id} className={`border-t border-admin-border ${item.rank === 1 ? 'bg-amber-50' : ''}`}>
                     <td className="px-2 py-2 text-center font-bold">
                       {item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}
                     </td>
-                    <td className="px-2 py-2 text-slate-800">
+                    <td className="px-2 py-2 text-admin-text-2">
                       <div>{item.title}</div>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-[10px] text-admin-muted-2">
                         {item.departure_date ?? '—'} · 호텔 {item.features.hotel_avg_grade?.toFixed(1) ?? '—'}성 ·
                         식 {item.features.meal_count} · 무료옵션 {item.features.free_option_count} ·
                         쇼핑 {item.features.shopping_count}회 {item.features.is_direct_flight && '· 직항'}
                       </div>
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-slate-700">
+                    <td className="px-2 py-2 text-right font-mono text-admin-text-2">
                       {item.list_price.toLocaleString()}
                     </td>
-                    <td className="px-2 py-2 text-right font-mono font-semibold text-slate-900">
+                    <td className="px-2 py-2 text-right font-mono font-semibold text-admin-text">
                       {item.effective_price.toLocaleString()}
                     </td>
                     <td className="px-2 py-2 text-right font-mono text-violet-700">
                       {item.topsis_score.toFixed(3)}
                     </td>
-                    <td className="px-2 py-2 text-[10px] text-slate-600">
+                    <td className="px-2 py-2 text-[10px] text-admin-muted">
                       {item.breakdown.why.slice(0, 3).join(' · ')}
                     </td>
                   </tr>
@@ -626,40 +626,40 @@ export default function ScoringAdminPage() {
       </section>
 
       {/* 옵션 시장가 카탈로그 */}
-      <section className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800">옵션 시장가 카탈로그</h2>
-          <p className="text-xs text-slate-500 mt-0.5">무료로 포함된 옵션의 시장가. 실효가격에서 차감되어 가성비 비교에 사용.</p>
+          <h2 className="text-sm font-semibold text-admin-text-2">옵션 시장가 카탈로그</h2>
+          <p className="text-xs text-admin-muted mt-0.5">무료로 포함된 옵션의 시장가. 실효가격에서 차감되어 가성비 비교에 사용.</p>
         </div>
 
         {/* 추가 폼 */}
         <div className="flex gap-2 items-end">
           <div className="flex-1">
-            <label className="block text-xs text-slate-600 mb-1">옵션명</label>
+            <label className="block text-xs text-admin-muted mb-1">옵션명</label>
             <input value={newRateName} onChange={e => setNewRateName(e.target.value)}
               placeholder="예: 2층버스 시티투어"
-              className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"/>
+              className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-32">
-            <label className="block text-xs text-slate-600 mb-1">목적지 (선택)</label>
+            <label className="block text-xs text-admin-muted mb-1">목적지 (선택)</label>
             <input value={newRateDest} onChange={e => setNewRateDest(e.target.value)}
               placeholder="다낭"
-              className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"/>
+              className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-32">
-            <label className="block text-xs text-slate-600 mb-1">시장가 (KRW)</label>
+            <label className="block text-xs text-admin-muted mb-1">시장가 (KRW)</label>
             <input type="number" min={0} step={10000} value={newRateValue}
               onChange={e => setNewRateValue(parseInt(e.target.value) || 0)}
-              className="w-full text-sm border border-slate-300 rounded px-2 py-1.5"/>
+              className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <button onClick={handleAddRate}
             className="px-3 py-1.5 bg-slate-700 text-white text-sm rounded hover:bg-slate-800">추가</button>
         </div>
 
         {/* 목록 */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden">
+        <div className="border border-admin-border-mid rounded-lg overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-600">
+            <thead className="bg-admin-bg text-xs text-admin-muted">
               <tr>
                 <th className="px-3 py-2 text-left">옵션명</th>
                 <th className="px-3 py-2 text-left">목적지</th>
@@ -670,13 +670,13 @@ export default function ScoringAdminPage() {
             </thead>
             <tbody>
               {rates.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400 text-xs">아직 등록된 시장가가 없습니다</td></tr>
+                <tr><td colSpan={5} className="px-3 py-8 text-center text-admin-muted-2 text-xs">아직 등록된 시장가가 없습니다</td></tr>
               ) : rates.map(r => (
-                <tr key={r.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-800">{r.tour_name}</td>
-                  <td className="px-3 py-2 text-slate-600">{r.destination ?? '—'}</td>
+                <tr key={r.id} className="border-t border-admin-border">
+                  <td className="px-3 py-2 text-admin-text-2">{r.tour_name}</td>
+                  <td className="px-3 py-2 text-admin-muted">{r.destination ?? '—'}</td>
                   <td className="px-3 py-2 text-right font-mono">{r.market_rate_krw.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500">{r.source}</td>
+                  <td className="px-3 py-2 text-xs text-admin-muted">{r.source}</td>
                   <td className="px-3 py-2 text-right">
                     <button onClick={() => handleDeleteRate(r.id)}
                       className="text-xs text-red-600 hover:underline">삭제</button>

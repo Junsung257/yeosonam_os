@@ -103,17 +103,17 @@ export default function TenantTokensPage() {
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">테넌트 API 토큰 관리</h1>
-        <p className="text-sm text-slate-500 mt-1">여행사별 소셜/광고 플랫폼 OAuth 토큰을 AES-256 암호화로 안전하게 보관합니다</p>
+        <h1 className="text-2xl font-bold text-admin-text">테넌트 API 토큰 관리</h1>
+        <p className="text-sm text-admin-muted mt-1">여행사별 소셜/광고 플랫폼 OAuth 토큰을 AES-256 암호화로 안전하게 보관합니다</p>
       </div>
 
       {/* 테넌트 선택 */}
       <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-slate-700">여행사 선택</label>
+        <label className="text-sm font-medium text-admin-text-2">여행사 선택</label>
         <select
           value={selectedTenant}
           onChange={e => setSelectedTenant(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {tenants.map(t => (
             <option key={t.id} value={t.id}>{t.name}</option>
@@ -136,15 +136,15 @@ export default function TenantTokensPage() {
 
       {/* 토큰 추가 폼 */}
       {showForm && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
-          <h2 className="text-base font-semibold text-slate-800">새 토큰 등록</h2>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+          <h2 className="text-base font-semibold text-admin-text-2">새 토큰 등록</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">플랫폼</label>
+              <label className="block text-sm font-medium text-admin-text-2 mb-1">플랫폼</label>
               <select
                 value={form.provider}
                 onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {PROVIDERS.map(p => (
                   <option key={p} value={p}>{PROVIDER_LABELS[p]?.label ?? p}</option>
@@ -152,43 +152,43 @@ export default function TenantTokensPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">만료일 (선택)</label>
+              <label className="block text-sm font-medium text-admin-text-2 mb-1">만료일 (선택)</label>
               <input
                 type="datetime-local"
                 value={form.expires_at}
                 onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Access Token <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-medium text-admin-text-2 mb-1">Access Token <span className="text-red-500">*</span></label>
             <textarea
               value={form.access_token}
               onChange={e => setForm(f => ({ ...f, access_token: e.target.value }))}
               rows={3}
               placeholder="access_token 값을 여기에 붙여넣으세요 (저장 시 AES-256 암호화됩니다)"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Refresh Token (선택)</label>
+            <label className="block text-sm font-medium text-admin-text-2 mb-1">Refresh Token (선택)</label>
             <input
               type="text"
               value={form.refresh_token}
               onChange={e => setForm(f => ({ ...f, refresh_token: e.target.value }))}
               placeholder="refresh_token"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Scopes (쉼표 구분, 선택)</label>
+            <label className="block text-sm font-medium text-admin-text-2 mb-1">Scopes (쉼표 구분, 선택)</label>
             <input
               type="text"
               value={form.scopes}
               onChange={e => setForm(f => ({ ...f, scopes: e.target.value }))}
               placeholder="예: ads_management, pages_show_list"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <button
@@ -202,19 +202,19 @@ export default function TenantTokensPage() {
       )}
 
       {/* 토큰 목록 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">등록된 토큰</h2>
-          <span className="text-xs text-slate-400">access_token은 표시되지 않습니다 (보안)</span>
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-5 py-3 border-b border-admin-border flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-admin-text-2">등록된 토큰</h2>
+          <span className="text-xs text-admin-muted-2">access_token은 표시되지 않습니다 (보안)</span>
         </div>
         {tokens.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-sm">등록된 토큰이 없습니다</div>
+          <div className="p-6 text-center text-admin-muted-2 text-sm">등록된 토큰이 없습니다</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+            <thead className="bg-admin-bg">
               <tr>
                 {['플랫폼', '스코프', '만료일', '상태', '최종수정', ''].map(h => (
-                  <th key={h} className="text-left py-2.5 px-4 font-medium text-slate-500 text-xs">{h}</th>
+                  <th key={h} className="text-left py-2.5 px-4 font-medium text-admin-muted text-xs">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -223,33 +223,33 @@ export default function TenantTokensPage() {
                 const p = PROVIDER_LABELS[token.provider];
                 const expired = isExpired(token.expires_at);
                 return (
-                  <tr key={token.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <tr key={token.id} className="border-t border-admin-border hover:bg-admin-bg">
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p?.color ?? 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p?.color ?? 'bg-admin-surface-2 text-admin-muted'}`}>
                         {p?.icon} {p?.label ?? token.provider}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-500 text-xs">
+                    <td className="py-3 px-4 text-admin-muted text-xs">
                       {token.scopes.length > 0 ? token.scopes.join(', ') : '—'}
                     </td>
                     <td className="py-3 px-4">
                       {token.expires_at ? (
-                        <span className={`text-xs ${expired ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
+                        <span className={`text-xs ${expired ? 'text-red-600 font-medium' : 'text-admin-muted'}`}>
                           {expired ? '⚠️ 만료됨' : new Date(token.expires_at).toLocaleDateString('ko-KR')}
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400">—</span>
+                        <span className="text-xs text-admin-muted-2">—</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        !token.is_active ? 'bg-slate-100 text-slate-400' :
+                        !token.is_active ? 'bg-admin-surface-2 text-admin-muted-2' :
                         expired ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
                       }`}>
                         {!token.is_active ? '비활성' : expired ? '만료됨' : '활성'}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-400 text-xs">
+                    <td className="py-3 px-4 text-admin-muted-2 text-xs">
                       {new Date(token.updated_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="py-3 px-4">

@@ -282,7 +282,7 @@ export default function UploadPage() {
     if (status === 'done') return <span className="text-green-600 text-admin-sm font-medium">완료</span>;
     if (status === 'error') return <span className="text-red-600 text-admin-sm font-medium">오류</span>;
     if (status === 'processing') return <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
-    return <span className="text-slate-500 text-admin-sm">대기</span>;
+    return <span className="text-admin-muted text-admin-sm">대기</span>;
   };
 
   const textChunkCount = textInput.split(/={3,}/).filter(s => s.trim().length > 50).length || (textInput.trim().length > 50 ? 1 : 0);
@@ -304,8 +304,8 @@ export default function UploadPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-admin-lg font-semibold text-slate-800">문서 업로드</h1>
-        <p className="text-admin-sm text-slate-500 mt-1">
+        <h1 className="text-admin-lg font-semibold text-admin-text-2">문서 업로드</h1>
+        <p className="text-admin-sm text-admin-muted mt-1">
           텍스트를 붙여넣고 &ldquo;큐에 추가&rdquo;를 누르면 즉시 처리 시작 — 처리 중에도 계속 추가 가능, 최대 {MAX_CONCURRENT}개 병렬
         </p>
       </div>
@@ -313,19 +313,19 @@ export default function UploadPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           {/* 드래그 존 */}
-          <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="bg-white p-5 rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
             <div
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
               className={`border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer ${
-                dragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                dragActive ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid bg-admin-bg hover:border-admin-border-strong'
               }`}
               onClick={() => fileInputRef.current?.click()}
             >
-              <svg className="mx-auto h-10 w-10 text-slate-400 mb-3" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+              <svg className="mx-auto h-10 w-10 text-admin-muted-2 mb-3" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                 <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h24a4 4 0 004-4V20m-18-8v12m0 0l-4-4m4 4l4-4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <p className="text-slate-800 text-admin-base font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
-              <p className="text-[11px] text-slate-500 mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 10MB</p>
+              <p className="text-admin-text-2 text-admin-base font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
+              <p className="text-[11px] text-admin-muted mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 10MB</p>
               <p className="text-[11px] text-blue-600">[랜드사_커미션%]상품명.pdf 형식으로 파일명 작성 시 자동 추출</p>
               <input
                 ref={fileInputRef}
@@ -340,23 +340,23 @@ export default function UploadPage() {
             <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={bulkMode} onChange={e => setBulkMode(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                <span className="text-sm font-medium text-slate-700">⚡ 벌크 모드</span>
+                  className="w-4 h-4 rounded border-admin-border-strong text-blue-600 focus:ring-blue-500" />
+                <span className="text-sm font-medium text-admin-text-2">⚡ 벌크 모드</span>
               </label>
-              <span className="text-[11px] text-slate-500">{bulkMode ? '분류/마케팅/관광지 스킵 → 2배 빠름' : '전체 처리 (기본)'}</span>
+              <span className="text-[11px] text-admin-muted">{bulkMode ? '분류/마케팅/관광지 스킵 → 2배 빠름' : '전체 처리 (기본)'}</span>
             </div>
 
-            <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600">
-              <p className="font-semibold mb-1 text-slate-800">파일명 규칙 (선택)</p>
-              <p><span className="font-mono bg-slate-100 px-1 rounded">[모두투어_10%]다낭3박4일.pdf</span> — 랜드사: 모두투어, 커미션: 10%</p>
-              <p className="mt-0.5 text-slate-500">규칙 없는 파일도 정상 처리됩니다.</p>
+            <div className="mt-3 p-3 bg-admin-bg border border-admin-border-mid rounded-lg text-[11px] text-admin-muted">
+              <p className="font-semibold mb-1 text-admin-text-2">파일명 규칙 (선택)</p>
+              <p><span className="font-mono bg-admin-surface-2 px-1 rounded">[모두투어_10%]다낭3박4일.pdf</span> — 랜드사: 모두투어, 커미션: 10%</p>
+              <p className="mt-0.5 text-admin-muted">규칙 없는 파일도 정상 처리됩니다.</p>
             </div>
           </div>
 
           {/* 텍스트 병렬 처리 영역 */}
           <div className="bg-white p-5 rounded-lg border border-blue-200 ring-1 ring-blue-100">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-admin-sm font-semibold text-slate-800">텍스트 직접 붙여넣기</p>
+              <p className="text-admin-sm font-semibold text-admin-text-2">텍스트 직접 붙여넣기</p>
               {processingCount > 0 && (
                 <span className="text-[11px] text-blue-600 font-medium flex items-center gap-1.5">
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
@@ -364,8 +364,8 @@ export default function UploadPage() {
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">
-              <span className="font-mono bg-slate-100 px-1 rounded">===</span>로 구분해서 한번에 여러 개 추가 가능.{' '}
+            <p className="text-[11px] text-admin-muted-2 mb-2">
+              <span className="font-mono bg-admin-surface-2 px-1 rounded">===</span>로 구분해서 한번에 여러 개 추가 가능.{' '}
               <span className="text-blue-600 font-medium">처리 중에도 계속 추가</span> — 최대 {MAX_CONCURRENT}개 동시 처리
             </p>
             {addedFlash && (
@@ -384,12 +384,12 @@ export default function UploadPage() {
                 }
               }}
               placeholder={"상품1 원문 (랜드사명·커미션 포함해도 자동 마스킹)\n\n===\n\n상품2 원문...\n\n===\n\n상품3 원문..."}
-              className={`w-full h-48 p-3 border rounded-lg text-admin-xs text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                addedFlash ? 'border-green-300 bg-green-50/30' : 'border-slate-200'
+              className={`w-full h-48 p-3 border rounded-lg text-admin-xs text-admin-text-2 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                addedFlash ? 'border-green-300 bg-green-50/30' : 'border-admin-border-mid'
               }`}
             />
             <div className="flex items-center justify-between mt-2">
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-admin-muted-2">
                 {textInput.length > 0
                   ? `${textInput.length}자 · ${textChunkCount}개 감지 · Ctrl+Enter로 빠른 추가`
                   : '원문 그대로 붙여넣기 — 랜드사명·커미션은 자동 마스킹'}
@@ -411,9 +411,9 @@ export default function UploadPage() {
 
           {/* 큐 컨트롤 */}
           {queue.length > 0 && (
-            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <div className="bg-white p-4 rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
               <div className="mb-3">
-                <div className="flex justify-between text-[11px] text-slate-500 mb-1">
+                <div className="flex justify-between text-[11px] text-admin-muted mb-1">
                   <span>
                     {processingCount > 0
                       ? `${processingCount}개 병렬 처리 중 · 완료 ${doneCount}/${queue.length}`
@@ -451,14 +451,14 @@ export default function UploadPage() {
                     {doneCount > 0 && (
                       <button
                         onClick={() => router.push('/admin/packages')}
-                        className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded text-admin-sm hover:bg-slate-50 transition"
+                        className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition"
                       >
                         상품 목록에서 확인
                       </button>
                     )}
                     <button
                       onClick={resetQueue}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-admin-sm hover:bg-slate-50 transition"
+                      className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-admin-sm hover:bg-admin-bg transition"
                     >
                       초기화
                     </button>
@@ -470,29 +470,29 @@ export default function UploadPage() {
 
           {/* 세션 비용 요약 */}
           {completedItems.length > 0 && (
-            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-              <p className="text-[11px] font-semibold text-slate-800 mb-2 flex items-center gap-1.5">
+            <div className="bg-white p-4 rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+              <p className="text-[11px] font-semibold text-admin-text-2 mb-2 flex items-center gap-1.5">
                 {dominantProvider === 'deepseek' ? '🔵' : '🟡'} 세션 비용 요약
               </p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-                <span className="text-slate-500">처리 완료</span>
-                <span className="font-medium text-slate-800">{totalProducts}개 상품 ({completedItems.length}건)</span>
+                <span className="text-admin-muted">처리 완료</span>
+                <span className="font-medium text-admin-text-2">{totalProducts}개 상품 ({completedItems.length}건)</span>
 
-                <span className="text-slate-500">총 비용</span>
-                <span className="font-mono font-semibold text-slate-800">
+                <span className="text-admin-muted">총 비용</span>
+                <span className="font-mono font-semibold text-admin-text-2">
                   ${totalCostUsd.toFixed(5)}
                 </span>
 
-                <span className="text-slate-500">상품당 평균</span>
-                <span className="font-mono text-slate-700">${avgCostPerProduct.toFixed(5)}</span>
+                <span className="text-admin-muted">상품당 평균</span>
+                <span className="font-mono text-admin-text-2">${avgCostPerProduct.toFixed(5)}</span>
 
                 {cacheSavedUsd > 0 && (
                   <>
-                    <span className="text-slate-500">캐시 절감</span>
+                    <span className="text-admin-muted">캐시 절감</span>
                     <span className="font-mono text-green-600">
                       ${cacheSavedUsd.toFixed(5)}
                       {totalCostUsd + cacheSavedUsd > 0 && (
-                        <span className="text-[10px] text-slate-400 ml-1">
+                        <span className="text-[10px] text-admin-muted-2 ml-1">
                           ({Math.round(cacheSavedUsd / (totalCostUsd + cacheSavedUsd) * 100)}% 절약)
                         </span>
                       )}
@@ -500,14 +500,14 @@ export default function UploadPage() {
                   </>
                 )}
               </div>
-              <p className="text-[10px] text-slate-400 mt-2">파싱 AI 비용 기준 (DeepSeek/Gemini). 관광지 매칭 등 부가 비용 미포함.</p>
+              <p className="text-[10px] text-admin-muted-2 mt-2">파싱 AI 비용 기준 (DeepSeek/Gemini). 관광지 매칭 등 부가 비용 미포함.</p>
             </div>
           )}
 
           {/* AI 추출 항목 안내 */}
-          <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-            <p className="text-[11px] font-semibold text-slate-800 mb-2">AI 자동 추출 항목</p>
-            <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600">
+          <div className="p-4 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <p className="text-[11px] font-semibold text-admin-text-2 mb-2">AI 자동 추출 항목</p>
+            <div className="grid grid-cols-2 gap-1 text-[11px] text-admin-muted">
               <span>- 상품명/카테고리/타입</span>
               <span>- 날짜별 성인/아동 가격</span>
               <span>- 발권마감/최소인원</span>
@@ -517,23 +517,23 @@ export default function UploadPage() {
               <span>- 출발요일/항공편</span>
               <span>- 일정표 전체</span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2">
+            <p className="text-[10px] text-admin-muted-2 mt-2">
               랜드사명·커미션·원가 등 민감정보는 내부 필드에만 저장 — 블로그/카드뉴스용 원문에서 자동 마스킹
             </p>
           </div>
         </div>
 
         {/* 처리 목록 — 최신순 */}
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800 text-admin-base">처리 목록</h2>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="px-4 py-3 border-b border-admin-border-mid flex items-center justify-between">
+            <h2 className="font-semibold text-admin-text-2 text-admin-base">처리 목록</h2>
             {queue.length > 0 && (
-              <span className="text-[11px] text-slate-500">{queue.length}개 · 완료 {doneCount}</span>
+              <span className="text-[11px] text-admin-muted">{queue.length}개 · 완료 {doneCount}</span>
             )}
           </div>
 
           {queue.length === 0 ? (
-            <div className="text-center text-slate-500 py-16 text-admin-sm">
+            <div className="text-center text-admin-muted py-16 text-admin-sm">
               텍스트를 붙여넣고 &ldquo;큐에 추가 →&rdquo;를 누르세요
             </div>
           ) : (
@@ -541,11 +541,11 @@ export default function UploadPage() {
               {[...queue].reverse().map((item) => (
                 <div
                   key={item.id}
-                  className={`flex items-start gap-3 px-4 py-2 border-b border-slate-200 last:border-b-0 ${item.status === 'processing' ? 'bg-blue-50' : ''}`}
+                  className={`flex items-start gap-3 px-4 py-2 border-b border-admin-border-mid last:border-b-0 ${item.status === 'processing' ? 'bg-blue-50' : ''}`}
                 >
                   <div className="mt-0.5 flex-shrink-0">{statusIcon(item.status)}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-admin-sm font-medium text-slate-800 truncate">
+                    <p className="text-admin-sm font-medium text-admin-text-2 truncate">
                       {item.status === 'done' ? (item.title || item.file.name) : item.file.name}
                     </p>
                     {item.status === 'done' && (
@@ -555,7 +555,7 @@ export default function UploadPage() {
                             <span className="text-[11px] font-semibold text-blue-600">{item.productCount}개 상품 자동 등록</span>
                             <ul className="mt-1 space-y-0.5">
                               {item.titles?.map((t, idx) => (
-                                <li key={idx} className="text-[11px] text-slate-500">- {t}</li>
+                                <li key={idx} className="text-[11px] text-admin-muted">- {t}</li>
                               ))}
                             </ul>
                           </div>
@@ -578,7 +578,7 @@ export default function UploadPage() {
                               <span className="text-[11px] text-green-600 font-medium">커미션 {item.commissionRate}%</span>
                             )}
                             {item.tokenUsage && (
-                              <span className="text-[11px] text-slate-400" title={`in:${item.tokenUsage.inputTokens} out:${item.tokenUsage.outputTokens} cache:${item.tokenUsage.cacheHitTokens}`}>
+                              <span className="text-[11px] text-admin-muted-2" title={`in:${item.tokenUsage.inputTokens} out:${item.tokenUsage.outputTokens} cache:${item.tokenUsage.cacheHitTokens}`}>
                                 {item.tokenUsage.provider === 'deepseek' ? '🔵' : '🟡'} ${item.tokenUsage.costUsd.toFixed(5)}{item.tokenUsage.cacheHitTokens > 0 ? ' ⚡캐시' : ''}
                               </span>
                             )}
@@ -588,7 +588,7 @@ export default function UploadPage() {
                         {item.verifyStatus === 'verifying' && (
                           <div className="flex items-center gap-1 mt-1">
                             <div className="w-2.5 h-2.5 border border-slate-400 border-t-transparent rounded-full animate-spin" />
-                            <span className="text-[10px] text-slate-400">원문 대조 검증 중...</span>
+                            <span className="text-[10px] text-admin-muted-2">원문 대조 검증 중...</span>
                           </div>
                         )}
                         {item.verifyStatus === 'clean' && (
@@ -601,12 +601,12 @@ export default function UploadPage() {
                               className={`text-[10px] font-medium flex items-center gap-1 ${item.verifyStatus === 'blocked' ? 'text-red-500' : 'text-yellow-600'}`}
                             >
                               {item.verifyStatus === 'blocked' ? '✗' : '⚠'} 원문 대조 {item.verifyReport.warnCount + item.verifyReport.failCount}건
-                              <span className="text-slate-400">{item.verifyExpanded ? '▲' : '▼'}</span>
+                              <span className="text-admin-muted-2">{item.verifyExpanded ? '▲' : '▼'}</span>
                             </button>
                             {item.verifyExpanded && (
-                              <ul className="mt-1 space-y-0.5 pl-2 border-l-2 border-slate-200">
+                              <ul className="mt-1 space-y-0.5 pl-2 border-l-2 border-admin-border-mid">
                                 {item.verifyReport.checks.filter(c => c.status === 'warn' || c.status === 'fail').map(c => (
-                                  <li key={c.id} className="text-[10px] text-slate-500">
+                                  <li key={c.id} className="text-[10px] text-admin-muted">
                                     <span className={c.status === 'fail' ? 'text-red-500' : 'text-yellow-600'}>[{c.id}] {c.label}</span>
                                     {c.detail && ` — ${c.detail}`}
                                   </li>
@@ -631,14 +631,14 @@ export default function UploadPage() {
                       </div>
                     )}
                     {item.status === 'waiting' && (
-                      <p className="text-[11px] text-slate-500">대기 중</p>
+                      <p className="text-[11px] text-admin-muted">대기 중</p>
                     )}
                     {item.status === 'processing' && (
                       <p className="text-[11px] text-blue-500">AI 분석 중...</p>
                     )}
                   </div>
                   {!item.rawText && (
-                    <div className="text-[11px] text-slate-500 flex-shrink-0">
+                    <div className="text-[11px] text-admin-muted flex-shrink-0">
                       {(item.file.size / 1024).toFixed(0)}KB
                     </div>
                   )}

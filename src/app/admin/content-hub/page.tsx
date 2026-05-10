@@ -72,7 +72,10 @@ export default function ContentHubPage() {
 
   // ── 토스트 ─────────────────────────────────────────────
   const { toast: _t } = useToast();
-  const showToast = (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|복사됨|생성/.test(msg) ? 'success' : /필수/.test(msg) ? 'warning' : 'info');
+  const showToast = useCallback(
+    (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|복사됨|생성/.test(msg) ? 'success' : /필수/.test(msg) ? 'warning' : 'info'),
+    [_t],
+  );
 
   // 슬라이드 캡처 ref
   const slideCanvasRef = useRef<HTMLDivElement>(null);
@@ -234,14 +237,14 @@ export default function ContentHubPage() {
       showToast('ZIP 다운로드 완료');
     } catch { showToast('다운로드 실패'); }
     finally { setPublishing(false); }
-  }, [activeSet, selectedPkg]);
+  }, [activeSet, selectedPkg, showToast]);
 
   // ── 블로그 복사 ────────────────────────────────────────
   const handleCopyBlog = useCallback(() => {
     if (!activeSet?.blogHtml) return;
     navigator.clipboard.writeText(activeSet.blogHtml);
     showToast('블로그 텍스트 복사됨');
-  }, [activeSet]);
+  }, [activeSet, showToast]);
 
   // ── 블로그 공개 발행 ──────────────────────────────────
   const [blogPublishing, setBlogPublishing] = useState(false);
@@ -293,7 +296,7 @@ export default function ContentHubPage() {
     } finally {
       setBlogPublishing(false);
     }
-  }, [creativeSets, selectedPkgId, tone]);
+  }, [creativeSets, selectedPkgId, tone, showToast]);
 
   // ── 렌더링 ─────────────────────────────────────────────
 
@@ -305,17 +308,17 @@ export default function ContentHubPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-admin-lg font-semibold text-slate-800">콘텐츠 허브</h1>
-          <p className="text-[11px] text-slate-500 mt-0.5">상품 선택 한 번으로 모든 채널 광고소재 생성</p>
+          <h1 className="text-admin-lg font-semibold text-admin-text-2">콘텐츠 허브</h1>
+          <p className="text-[11px] text-admin-muted mt-0.5">상품 선택 한 번으로 모든 채널 광고소재 생성</p>
         </div>
         {/* 스텝 인디케이터 */}
         <div className="flex items-center gap-2">
           {[1, 2, 3].map(s => (
             <div key={s} className="flex items-center gap-1">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-admin-xs font-bold transition ${
-                step >= s ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
+                step >= s ? 'bg-blue-600 text-white' : 'bg-slate-200 text-admin-muted-2'
               }`}>{s}</div>
-              <span className="text-[11px] text-slate-500 hidden sm:inline">
+              <span className="text-[11px] text-admin-muted hidden sm:inline">
                 {s === 1 ? '설정' : s === 2 ? '편집' : '발행'}
               </span>
               {s < 3 && <div className={`w-8 h-0.5 ${step > s ? 'bg-blue-600' : 'bg-slate-200'}`} />}
@@ -329,27 +332,27 @@ export default function ContentHubPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* 좌측: 상품 + 앵글 */}
           <div className="space-y-4">
-            <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-2">상품 선택</label>
+            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">상품 선택</label>
               <select value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
-                className="w-full border border-slate-200 rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
+                className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
                 <option value="">상품 선택...</option>
                 {packages.map(p => (
                   <option key={p.id} value={p.id}>{p.title} ({p.destination})</option>
                 ))}
               </select>
               {selectedPkg && (
-                <div className="mt-3 p-3 bg-slate-50 rounded text-admin-xs text-slate-600 space-y-1">
-                  <p><span className="font-medium text-slate-700">목적지:</span> {selectedPkg.destination}</p>
-                  <p><span className="font-medium text-slate-700">기간:</span> {selectedPkg.duration}일</p>
-                  <p><span className="font-medium text-slate-700">가격:</span> {(selectedPkg.price || 0).toLocaleString()}원~</p>
-                  <p><span className="font-medium text-slate-700">유형:</span> {selectedPkg.product_type || '-'}</p>
+                <div className="mt-3 p-3 bg-admin-bg rounded text-admin-xs text-admin-muted space-y-1">
+                  <p><span className="font-medium text-admin-text-2">목적지:</span> {selectedPkg.destination}</p>
+                  <p><span className="font-medium text-admin-text-2">기간:</span> {selectedPkg.duration}일</p>
+                  <p><span className="font-medium text-admin-text-2">가격:</span> {(selectedPkg.price || 0).toLocaleString()}원~</p>
+                  <p><span className="font-medium text-admin-text-2">유형:</span> {selectedPkg.product_type || '-'}</p>
                 </div>
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-2">앵글 선택 (다중)</label>
+            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">앵글 선택 (다중)</label>
               <div className="grid grid-cols-2 gap-2">
                 {(Object.entries(ANGLE_PRESETS) as [AngleType, typeof ANGLE_PRESETS[AngleType]][]).map(([key, preset]) => (
                   <button key={key} onClick={() => {
@@ -357,10 +360,10 @@ export default function ContentHubPage() {
                     next.has(key) ? next.delete(key) : next.add(key);
                     setSelectedAngles(next);
                   }} className={`px-3 py-2 rounded border text-admin-xs text-left transition ${
-                    selectedAngles.has(key) ? 'border-blue-600 bg-blue-50 text-slate-800' : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                    selectedAngles.has(key) ? 'border-blue-600 bg-blue-50 text-admin-text-2' : 'border-admin-border-mid text-admin-muted hover:bg-admin-bg'
                   }`}>
                     <span className="font-semibold">{preset.label}</span>
-                    <span className="block text-[10px] text-slate-400 mt-0.5">{preset.description}</span>
+                    <span className="block text-[10px] text-admin-muted-2 mt-0.5">{preset.description}</span>
                   </button>
                 ))}
               </div>
@@ -369,8 +372,8 @@ export default function ContentHubPage() {
 
           {/* 우측: 채널 + 옵션 */}
           <div className="space-y-4">
-            <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-2">채널 선택</label>
+            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">채널 선택</label>
               <div className="space-y-2">
                 {(Object.entries(CHANNEL_PRESETS) as [Channel, typeof CHANNEL_PRESETS[Channel]][]).map(([key, preset]) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer">
@@ -380,22 +383,22 @@ export default function ContentHubPage() {
                         next.has(key) ? next.delete(key) : next.add(key);
                         setSelectedChannels(next);
                       }}
-                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-[#005d90]" />
-                    <span className="text-admin-sm text-slate-700">{preset.label}</span>
-                    <span className="text-[10px] text-slate-400">{preset.description}</span>
+                      className="w-4 h-4 rounded border-admin-border-strong text-blue-600 focus:ring-[#005d90]" />
+                    <span className="text-admin-sm text-admin-text-2">{preset.label}</span>
+                    <span className="text-[10px] text-admin-muted-2">{preset.description}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             {/* 디자인 템플릿 선택 */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-2">디자인 템플릿</label>
+            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">디자인 템플릿</label>
               <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
                 {TEMPLATE_PRESETS.map(t => (
                   <button key={t.id} onClick={() => setTemplateId(t.id)}
                     className={`p-2.5 rounded border text-left transition ${
-                      templateId === t.id ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'
+                      templateId === t.id ? 'border-blue-600 bg-blue-50' : 'border-admin-border-mid hover:bg-admin-bg'
                     }`}>
                     {/* 미니 프리뷰 */}
                     <div className="w-full h-12 rounded mb-1.5 flex items-center justify-center text-[10px] font-bold"
@@ -406,20 +409,20 @@ export default function ContentHubPage() {
                       }}>
                       {t.name}
                     </div>
-                    <p className="text-[11px] font-medium text-slate-700">{t.name}</p>
-                    <p className="text-[9px] text-slate-400 mt-0.5">{t.description}</p>
+                    <p className="text-[11px] font-medium text-admin-text-2">{t.name}</p>
+                    <p className="text-[9px] text-admin-muted-2 mt-0.5">{t.description}</p>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">이미지 비율</label>
+                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">이미지 비율</label>
                 <div className="flex gap-2">
                   {(Object.entries(RATIO_SIZE) as [ImageRatio, typeof RATIO_SIZE[ImageRatio]][]).map(([key, v]) => (
                     <button key={key} onClick={() => setRatio(key)}
-                      className={`px-3 py-1.5 rounded text-admin-xs transition ${ratio === key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      className={`px-3 py-1.5 rounded text-admin-xs transition ${ratio === key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                       {v.label}
                     </button>
                   ))}
@@ -427,7 +430,7 @@ export default function ContentHubPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">
+                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">
                   슬라이드 개수: <span className="text-blue-600 font-bold">{slideCount}장</span>
                 </label>
                 <input type="range" min={3} max={10} value={slideCount} onChange={e => setSlideCount(parseInt(e.target.value))}
@@ -435,9 +438,9 @@ export default function ContentHubPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">톤</label>
+                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">톤</label>
                 <select value={tone} onChange={e => setTone(e.target.value)}
-                  className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm">
+                  className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm">
                   <option value="professional">전문가</option>
                   <option value="casual">캐주얼</option>
                   <option value="emotional">감성적</option>
@@ -446,10 +449,10 @@ export default function ContentHubPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">추가 지시사항</label>
+                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">추가 지시사항</label>
                 <textarea value={extraPrompt} onChange={e => setExtraPrompt(e.target.value)}
                   placeholder="AI에게 추가로 지시할 내용... (예: 5성급 호텔 강조)"
-                  className="w-full border border-slate-200 rounded px-3 py-2 text-admin-xs h-16 resize-none" />
+                  className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-xs h-16 resize-none" />
               </div>
             </div>
 
@@ -469,7 +472,7 @@ export default function ContentHubPage() {
             {creativeSets.map((set, i) => (
               <button key={i} onClick={() => { setActiveSetIdx(i); setActiveSlideIdx(0); setActiveElementIdx(null); }}
                 className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
-                  i === activeSetIdx ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  i === activeSetIdx ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
                 }`}>
                 {ANGLE_PRESETS[set.angle].label} · {CHANNEL_PRESETS[set.channel].label}
               </button>
@@ -486,7 +489,7 @@ export default function ContentHubPage() {
                   {activeSet.slides.map((slide, i) => (
                     <button key={slide.id} onClick={() => { setActiveSlideIdx(i); setActiveElementIdx(null); }}
                       className={`flex-shrink-0 w-14 h-14 rounded border-2 text-[11px] font-bold flex items-center justify-center transition ${
-                        i === activeSlideIdx ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-slate-200 text-slate-400 hover:border-slate-300'
+                        i === activeSlideIdx ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-admin-border-mid text-admin-muted-2 hover:border-admin-border-strong'
                       }`}>{i + 1}</button>
                   ))}
                   <button onClick={() => {
@@ -497,12 +500,12 @@ export default function ContentHubPage() {
                         color: '#ffffff', textAlign: 'center', x: 10, y: 40, width: 80, height: 20 }],
                     };
                     setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, slides: [...s.slides, newSlide] } : s));
-                  }} className="flex-shrink-0 w-14 h-14 rounded border-2 border-dashed border-slate-300 text-slate-400 text-[18px] flex items-center justify-center hover:bg-slate-50">+</button>
+                  }} className="flex-shrink-0 w-14 h-14 rounded border-2 border-dashed border-admin-border-strong text-admin-muted-2 text-[18px] flex items-center justify-center hover:bg-admin-bg">+</button>
                 </div>
 
                 {/* 캔버스 */}
                 {activeSlide && (
-                  <div className="bg-slate-100 rounded-lg p-4 flex items-center justify-center overflow-hidden">
+                  <div className="bg-admin-surface-2 rounded-lg p-4 flex items-center justify-center overflow-hidden">
                     <div ref={slideCanvasRef}
                       style={{
                         width: rSize.w, height: rSize.h,
@@ -569,23 +572,23 @@ export default function ContentHubPage() {
               </div>
 
               {/* 우측: 편집 패널 */}
-              <div className="w-72 bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-4 flex-shrink-0 overflow-y-auto max-h-[calc(100vh-200px)]">
+              <div className="w-72 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-4 flex-shrink-0 overflow-y-auto max-h-[calc(100vh-200px)]">
                 {activeElement && activeElement.type === 'text' ? (
                   <>
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase">텍스트 편집</p>
+                    <p className="text-[11px] font-semibold text-admin-muted uppercase">텍스트 편집</p>
 
                     {/* 폰트 */}
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">폰트</label>
+                      <label className="block text-[10px] text-admin-muted-2 mb-1">폰트</label>
                       <select value={activeElement.fontFamily || 'Pretendard'} onChange={e => updateElement('fontFamily', e.target.value)}
-                        className="w-full border border-slate-200 rounded px-2 py-1.5 text-admin-xs">
+                        className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs">
                         {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
                     </div>
 
                     {/* 크기 */}
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">
+                      <label className="block text-[10px] text-admin-muted-2 mb-1">
                         크기 <span className="text-blue-600 font-bold">{activeElement.fontSize || 32}px</span>
                       </label>
                       <input type="range" min={12} max={96} value={activeElement.fontSize || 32}
@@ -603,7 +606,7 @@ export default function ContentHubPage() {
                       ].map((btn, i) => (
                         <button key={i} onClick={() => updateElement(btn.key, btn.active ? btn.off : btn.on)}
                           className={`w-8 h-8 rounded border text-admin-sm font-bold transition ${
-                            btn.active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            btn.active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-admin-muted border-admin-border-mid hover:bg-admin-bg'
                           }`}
                           style={{ fontStyle: btn.label === 'I' ? 'italic' : 'normal', textDecoration: btn.label === 'U' ? 'underline' : btn.label === 'S' ? 'line-through' : 'none' }}>
                           {btn.label}
@@ -616,7 +619,7 @@ export default function ContentHubPage() {
                       {(['left', 'center', 'right'] as const).map(align => (
                         <button key={align} onClick={() => updateElement('textAlign', align)}
                           className={`flex-1 py-1.5 rounded border text-[11px] transition ${
-                            activeElement.textAlign === align ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200'
+                            activeElement.textAlign === align ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-admin-muted border-admin-border-mid'
                           }`}>
                           {align === 'left' ? '좌' : align === 'center' ? '중' : '우'}
                         </button>
@@ -625,11 +628,11 @@ export default function ContentHubPage() {
 
                     {/* 글자 색상 */}
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">글자 색상</label>
+                      <label className="block text-[10px] text-admin-muted-2 mb-1">글자 색상</label>
                       <div className="flex flex-wrap gap-1.5">
                         {PALETTE.map(c => (
                           <button key={c} onClick={() => updateElement('color', c)}
-                            className={`w-6 h-6 rounded-full border-2 transition ${activeElement.color === c ? 'border-blue-600 scale-110' : 'border-slate-200'}`}
+                            className={`w-6 h-6 rounded-full border-2 transition ${activeElement.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                             style={{ backgroundColor: c }} />
                         ))}
                         <input type="color" value={activeElement.color || '#ffffff'}
@@ -640,29 +643,29 @@ export default function ContentHubPage() {
 
                     {/* 배경 색상 (텍스트 배경) */}
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">텍스트 배경</label>
+                      <label className="block text-[10px] text-admin-muted-2 mb-1">텍스트 배경</label>
                       <div className="flex items-center gap-2">
                         <input type="color" value={activeElement.bgColor || '#000000'}
                           onChange={e => updateElement('bgColor', e.target.value)}
                           className="w-8 h-8 rounded cursor-pointer" />
                         <button onClick={() => updateElement('bgColor', undefined)}
-                          className="text-[11px] text-slate-400 hover:text-slate-600">투명</button>
+                          className="text-[11px] text-admin-muted-2 hover:text-admin-muted">투명</button>
                       </div>
                     </div>
                   </>
                 ) : (
                   <>
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase">슬라이드 배경</p>
+                    <p className="text-[11px] font-semibold text-admin-muted uppercase">슬라이드 배경</p>
 
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">배경색</label>
+                      <label className="block text-[10px] text-admin-muted-2 mb-1">배경색</label>
                       <input type="color" value={activeSlide?.bgColor || '#1a1a2e'}
                         onChange={e => updateSlideBg('bgColor', e.target.value)}
                         className="w-10 h-10 rounded cursor-pointer" />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1">
+                      <label className="block text-[10px] text-admin-muted-2 mb-1">
                         오버레이 투명도: {activeSlide?.bgOpacity ?? 70}%
                       </label>
                       <input type="range" min={0} max={100} value={activeSlide?.bgOpacity ?? 70}
@@ -670,7 +673,7 @@ export default function ContentHubPage() {
                         className="w-full accent-blue-600" />
                     </div>
 
-                    <p className="text-[10px] text-slate-400 mt-4">요소를 클릭하면 편집할 수 있습니다</p>
+                    <p className="text-[10px] text-admin-muted-2 mt-4">요소를 클릭하면 편집할 수 있습니다</p>
                   </>
                 )}
 
@@ -693,12 +696,12 @@ export default function ContentHubPage() {
           {/* 블로그 편집 */}
           {activeSet.channel === 'naver_blog' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
-                <p className="text-admin-xs font-semibold text-slate-700 mb-2">네이버 블로그 포스팅</p>
+              <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">네이버 블로그 포스팅</p>
                 <textarea
                   value={activeSet.blogHtml || ''}
                   onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, blogHtml: e.target.value } : s))}
-                  className="w-full h-96 border border-slate-200 rounded p-3 text-admin-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#005d90]"
+                  className="w-full h-96 border border-admin-border-mid rounded p-3 text-admin-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#005d90]"
                 />
               </div>
 
@@ -706,9 +709,9 @@ export default function ContentHubPage() {
               <div className="bg-white border border-indigo-200 rounded-lg p-5 space-y-3">
                 <p className="text-admin-xs font-semibold text-indigo-700 mb-1">블로그 SEO 설정 (공개 발행 시 필수)</p>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">URL 슬러그 (영문/숫자/-)</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그 (영문/숫자/-)</label>
                   <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-slate-400">/blog/</span>
+                    <span className="text-[11px] text-admin-muted-2">/blog/</span>
                     <input
                       value={activeSet.slug || ''}
                       onChange={e => {
@@ -716,39 +719,39 @@ export default function ContentHubPage() {
                         setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, slug } : s));
                       }}
                       placeholder="bangkok-5days-value-trip"
-                      className="flex-1 border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-indigo-400"
+                      className="flex-1 border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-indigo-400"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">SEO 제목 (검색 결과에 표시)</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 (검색 결과에 표시)</label>
                   <input
                     value={activeSet.seoTitle || ''}
                     onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, seoTitle: e.target.value } : s))}
                     placeholder="방콕 5일 가성비 여행 추천 | 2026 최신 가이드"
                     maxLength={60}
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-indigo-400"
+                    className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-indigo-400"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">{(activeSet.seoTitle || '').length}/60자</p>
+                  <p className="text-[10px] text-admin-muted-2 mt-0.5">{(activeSet.seoTitle || '').length}/60자</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">SEO 설명</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명</label>
                   <textarea
                     value={activeSet.seoDescription || ''}
                     onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, seoDescription: e.target.value } : s))}
                     placeholder="방콕 5일 패키지 여행의 모든 것. 항공+호텔+관광 포함, 가성비 추천 일정..."
                     maxLength={160}
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm h-16 resize-none focus:ring-1 focus:ring-indigo-400"
+                    className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm h-16 resize-none focus:ring-1 focus:ring-indigo-400"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">{(activeSet.seoDescription || '').length}/160자</p>
+                  <p className="text-[10px] text-admin-muted-2 mt-0.5">{(activeSet.seoDescription || '').length}/160자</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">OG 이미지 URL (선택)</label>
+                  <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지 URL (선택)</label>
                   <input
                     value={activeSet.ogImageUrl || ''}
                     onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, ogImageUrl: e.target.value } : s))}
                     placeholder="https://images.pexels.com/..."
-                    className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-indigo-400"
+                    className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-indigo-400"
                   />
                 </div>
               </div>
@@ -757,26 +760,26 @@ export default function ContentHubPage() {
 
           {/* 검색광고 편집 */}
           {activeSet.channel === 'google_search' && activeSet.adCopy && (
-            <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
-              <p className="text-admin-xs font-semibold text-slate-700 mb-2">구글 검색광고 카피</p>
+            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+              <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">구글 검색광고 카피</p>
               {activeSet.adCopy.headlines.map((h, i) => (
                 <div key={i}>
-                  <label className="text-[10px] text-slate-400">제목 {i + 1} (30자)</label>
+                  <label className="text-[10px] text-admin-muted-2">제목 {i + 1} (30자)</label>
                   <input value={h} onChange={e => {
                     const newHeadlines = [...(activeSet.adCopy?.headlines || [])];
                     newHeadlines[i] = e.target.value;
                     setCreativeSets(prev => prev.map((s, si) => si === activeSetIdx ? { ...s, adCopy: { ...s.adCopy!, headlines: newHeadlines } } : s));
-                  }} maxLength={30} className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm" />
+                  }} maxLength={30} className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                 </div>
               ))}
               {activeSet.adCopy.descriptions.map((d, i) => (
                 <div key={i}>
-                  <label className="text-[10px] text-slate-400">설명 {i + 1} (90자)</label>
+                  <label className="text-[10px] text-admin-muted-2">설명 {i + 1} (90자)</label>
                   <textarea value={d} onChange={e => {
                     const newDescs = [...(activeSet.adCopy?.descriptions || [])];
                     newDescs[i] = e.target.value;
                     setCreativeSets(prev => prev.map((s, si) => si === activeSetIdx ? { ...s, adCopy: { ...s.adCopy!, descriptions: newDescs } } : s));
-                  }} maxLength={90} className="w-full border border-slate-200 rounded px-3 py-1.5 text-admin-sm h-16 resize-none" />
+                  }} maxLength={90} className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm h-16 resize-none" />
                 </div>
               ))}
             </div>
@@ -784,7 +787,7 @@ export default function ContentHubPage() {
 
           {/* 하단 버튼 */}
           <div className="flex gap-2">
-            <button onClick={() => setStep(1)} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50">이전</button>
+            <button onClick={() => setStep(1)} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">이전</button>
             <div className="flex-1" />
             <button onClick={() => setStep(3)} className="px-6 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded hover:bg-blue-700">발행 준비</button>
           </div>
@@ -794,32 +797,32 @@ export default function ContentHubPage() {
       {/* ═══════════════ Step 3: 발행 ═══════════════ */}
       {step === 3 && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
-            <p className="text-admin-base font-semibold text-slate-800 mb-4">생성된 콘텐츠 ({creativeSets.length}개)</p>
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+            <p className="text-admin-base font-semibold text-admin-text-2 mb-4">생성된 콘텐츠 ({creativeSets.length}개)</p>
             <div className="space-y-3">
               {creativeSets.map((set, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div key={i} className="flex items-center justify-between p-3 bg-admin-bg rounded-lg">
                   <div>
-                    <p className="text-admin-sm font-medium text-slate-800">
+                    <p className="text-admin-sm font-medium text-admin-text-2">
                       {ANGLE_PRESETS[set.angle].label} · {CHANNEL_PRESETS[set.channel].label}
                     </p>
-                    <p className="text-[11px] text-slate-400">추적 ID: {set.trackingId}</p>
+                    <p className="text-[11px] text-admin-muted-2">추적 ID: {set.trackingId}</p>
                   </div>
                   <div className="flex gap-2">
                     {set.slides.length > 0 && (
                       <button onClick={() => { setActiveSetIdx(i); handleDownloadZip(); }} disabled={publishing}
-                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
+                        className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                         {publishing ? '...' : 'ZIP'}
                       </button>
                     )}
                     {set.blogHtml && (
                       <>
                         <button onClick={() => { setActiveSetIdx(i); handleCopyBlog(); }}
-                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
+                          className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                           복사
                         </button>
                         <button onClick={() => { setActiveSetIdx(i); setStep(2); }}
-                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
+                          className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                           편집으로
                         </button>
                         <button onClick={() => handlePublishBlog(i)} disabled={blogPublishing || !set.slug}
@@ -836,7 +839,7 @@ export default function ContentHubPage() {
                         );
                         showToast('카피 복사됨');
                       }}
-                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[11px] rounded hover:bg-slate-50">
+                        className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                         카피 복사
                       </button>
                     )}
@@ -847,8 +850,8 @@ export default function ContentHubPage() {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => setStep(2)} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50">편집으로</button>
-            <button onClick={() => { setStep(1); setCreativeSets([]); }} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-admin-sm rounded hover:bg-slate-50">새로 만들기</button>
+            <button onClick={() => setStep(2)} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">편집으로</button>
+            <button onClick={() => { setStep(1); setCreativeSets([]); }} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">새로 만들기</button>
           </div>
         </div>
       )}

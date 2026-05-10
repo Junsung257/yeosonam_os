@@ -153,8 +153,8 @@ export default function IntegrationsPage() {
     <div className="space-y-6">
       {/* 헤더 */}
       <div>
-        <h1 className="text-admin-lg font-bold text-slate-800">외부 플랫폼 연동</h1>
-        <p className="text-admin-sm text-slate-500 mt-1">
+        <h1 className="text-admin-lg font-bold text-admin-text-2">외부 플랫폼 연동</h1>
+        <p className="text-admin-sm text-admin-muted mt-1">
           Google Ads, Meta 등 외부 광고·분석 플랫폼을 연결하여 마케팅 자동화를 활성화하세요.
         </p>
       </div>
@@ -163,7 +163,7 @@ export default function IntegrationsPage() {
       {loading ? (
         <div className="space-y-4">
           {[1, 2].map((i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 animate-pulse h-24" />
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border-mid p-5 animate-pulse h-24" />
           ))}
         </div>
       ) : (
@@ -171,28 +171,28 @@ export default function IntegrationsPage() {
           {integrations.map((item) => (
             <div
               key={item.platform}
-              className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between gap-4"
+              className="bg-white rounded-admin-md border border-admin-border-mid p-5 flex items-center justify-between gap-4"
             >
               {/* 플랫폼 정보 */}
               <div className="flex items-center gap-4">
                 <span className="text-2xl">{PLATFORM_ICONS[item.platform] ?? '🔗'}</span>
                 <div>
-                  <p className="text-admin-base font-semibold text-slate-800">{item.label}</p>
+                  <p className="text-admin-base font-semibold text-admin-text-2">{item.label}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`w-2 h-2 rounded-full ${item.connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    <span className="text-admin-xs text-slate-500">
+                    <span className="text-admin-xs text-admin-muted">
                       {item.connected
                         ? `연결됨 · ${item.connected_at ? new Date(item.connected_at).toLocaleDateString('ko-KR') : ''}`
                         : '미연결'}
                     </span>
                   </div>
                   {item.connected && item.scopes.length > 0 && (
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-admin-muted-2 mt-0.5">
                       범위: {item.scopes.slice(0, 2).join(', ')}{item.scopes.length > 2 ? ' 외' : ''}
                     </p>
                   )}
                   {item.connected && item.expires_at && (
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-admin-muted-2">
                       만료: {new Date(item.expires_at).toLocaleDateString('ko-KR')}
                     </p>
                   )}
@@ -217,7 +217,7 @@ export default function IntegrationsPage() {
                     연결하기
                   </button>
                 ) : (
-                  <span className="text-admin-xs text-slate-400 px-4 py-2">준비 중</span>
+                  <span className="text-admin-xs text-admin-muted-2 px-4 py-2">준비 중</span>
                 )}
               </div>
             </div>
@@ -226,7 +226,7 @@ export default function IntegrationsPage() {
       )}
 
       {/* 안내 */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-admin-sm text-blue-700">
+      <div className="bg-blue-50 border border-blue-200 rounded-admin-md p-4 text-admin-sm text-blue-700">
         <p className="font-semibold mb-1">연동 안내</p>
         <ul className="list-disc list-inside space-y-0.5 text-admin-xs">
           <li>OAuth 토큰은 AES-256-GCM으로 암호화되어 DB에 저장됩니다.</li>
@@ -237,23 +237,23 @@ export default function IntegrationsPage() {
       </div>
 
       {/* AI 정책 운영 */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+      <div className="bg-white rounded-admin-md border border-admin-border-mid p-5 space-y-4">
         <div>
-          <h2 className="text-admin-md font-bold text-slate-800">AI 모델 전환 정책</h2>
-          <p className="text-admin-xs text-slate-500 mt-1">
+          <h2 className="text-admin-md font-bold text-admin-text-2">AI 모델 전환 정책</h2>
+          <p className="text-admin-xs text-admin-muted mt-1">
             `system_ai_policies`를 수정해 재배포 없이 태스크별 모델을 즉시 전환합니다.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
-            className="border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             placeholder="task (예: card-news, blog-generate, *)"
             value={policyForm.task}
             onChange={(e) => setPolicyForm((p) => ({ ...p, task: e.target.value }))}
           />
           <select
-            className="border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             value={policyForm.provider}
             onChange={(e) => setPolicyForm((p) => ({ ...p, provider: e.target.value as AiProvider }))}
           >
@@ -262,13 +262,13 @@ export default function IntegrationsPage() {
             <option value="gemini">gemini</option>
           </select>
           <input
-            className="border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             placeholder="model"
             value={policyForm.model ?? ''}
             onChange={(e) => setPolicyForm((p) => ({ ...p, model: e.target.value || null }))}
           />
           <select
-            className="border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             value={policyForm.fallback_provider ?? ''}
             onChange={(e) => setPolicyForm((p) => ({ ...p, fallback_provider: (e.target.value || null) as AiProvider | null }))}
           >
@@ -278,14 +278,14 @@ export default function IntegrationsPage() {
             <option value="gemini">gemini</option>
           </select>
           <input
-            className="border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             placeholder="fallback_model"
             value={policyForm.fallback_model ?? ''}
             onChange={(e) => setPolicyForm((p) => ({ ...p, fallback_model: e.target.value || null }))}
           />
           <input
             type="number"
-            className="border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             placeholder="timeout_ms"
             value={policyForm.timeout_ms ?? ''}
             onChange={(e) => setPolicyForm((p) => ({ ...p, timeout_ms: e.target.value ? Number(e.target.value) : null }))}
@@ -293,7 +293,7 @@ export default function IntegrationsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="text-admin-xs text-slate-600 flex items-center gap-2">
+          <label className="text-admin-xs text-admin-muted flex items-center gap-2">
             <input
               type="checkbox"
               checked={policyForm.enabled}
@@ -302,7 +302,7 @@ export default function IntegrationsPage() {
             활성
           </label>
           <input
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-admin-sm"
+            className="flex-1 border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm"
             placeholder="note"
             value={policyForm.note ?? ''}
             onChange={(e) => setPolicyForm((p) => ({ ...p, note: e.target.value || null }))}
@@ -316,9 +316,9 @@ export default function IntegrationsPage() {
           </button>
         </div>
 
-        <div className="border border-slate-200 rounded-lg overflow-hidden">
+        <div className="border border-admin-border-mid rounded-lg overflow-hidden">
           <table className="w-full text-admin-xs">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-admin-bg text-admin-muted">
               <tr>
                 <th className="text-left px-3 py-2">task</th>
                 <th className="text-left px-3 py-2">provider/model</th>
@@ -334,16 +334,16 @@ export default function IntegrationsPage() {
                   <tr key={i} className="border-t border-slate-50">
                     {Array.from({ length: 6 }).map((__, j) => (
                       <td key={j} className="px-3 py-3">
-                        <div className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: j === 0 ? 80 : j === 5 ? 60 : 48 }} />
+                        <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: j === 0 ? 80 : j === 5 ? 60 : 48 }} />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : aiPolicies.length === 0 ? (
-                <tr><td className="px-3 py-3 text-slate-500" colSpan={6}>정책 없음</td></tr>
+                <tr><td className="px-3 py-3 text-admin-muted" colSpan={6}>정책 없음</td></tr>
               ) : (
                 aiPolicies.map((p) => (
-                  <tr key={p.task} className="border-t border-slate-100">
+                  <tr key={p.task} className="border-t border-admin-border">
                     <td className="px-3 py-2 font-mono">{p.task}</td>
                     <td className="px-3 py-2">{p.provider} / {p.model ?? '-'}</td>
                     <td className="px-3 py-2">{p.fallback_provider ? `${p.fallback_provider}/${p.fallback_model ?? '-'}` : '-'}</td>

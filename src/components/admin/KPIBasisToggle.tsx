@@ -23,7 +23,7 @@ export default function KPIBasisToggle({
 }) {
   const padding = size === 'sm' ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-admin-xs';
   return (
-    <div className="inline-flex bg-slate-100 rounded-md p-0.5" role="tablist" aria-label="KPI 산식 기준">
+    <div className="inline-flex bg-admin-surface-2 rounded-md p-0.5" role="tablist" aria-label="KPI 산식 기준">
       {KPI_BASIS_OPTIONS.map(opt => {
         const active = opt.id === value;
         return (
@@ -35,8 +35,8 @@ export default function KPIBasisToggle({
             title={opt.description}
             className={`${padding} rounded font-medium transition-colors ${
               active
-                ? 'bg-white text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white text-admin-text-2 shadow-admin-xs'
+                : 'text-admin-muted hover:text-admin-text-2'
             }`}
           >
             {opt.label}

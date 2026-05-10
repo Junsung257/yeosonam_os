@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 interface Preview {
   internal_code: string;
@@ -99,27 +100,27 @@ export default function BandImportPage() {
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">밴드 게시글 임포트</h1>
-        <p className="text-sm text-slate-500 mt-1">밴드 게시글을 붙여넣으면 AI가 상품 정보를 자동 추출합니다</p>
+        <h1 className="text-2xl font-bold text-admin-text">밴드 게시글 임포트</h1>
+        <p className="text-sm text-admin-muted mt-1">밴드 게시글을 붙여넣으면 AI가 상품 정보를 자동 추출합니다</p>
       </div>
 
       {/* 입력 영역 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            밴드 게시글 URL <span className="text-slate-400">(선택 — 중복 방지용)</span>
+          <label className="block text-sm font-medium text-admin-text-2 mb-1">
+            밴드 게시글 URL <span className="text-admin-muted-2">(선택 — 중복 방지용)</span>
           </label>
           <input
             type="url"
             value={bandPostUrl}
             onChange={e => setBandPostUrl(e.target.value)}
             placeholder="https://band.us/band/.../post/..."
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
+          <label className="block text-sm font-medium text-admin-text-2 mb-1">
             게시글 내용 붙여넣기 <span className="text-red-500">*</span>
           </label>
           <textarea
@@ -127,9 +128,9 @@ export default function BandImportPage() {
             onChange={e => setRawText(e.target.value)}
             rows={10}
             placeholder="밴드 게시글 전체 텍스트를 여기에 붙여넣으세요&#10;(상품명, 여행지, 가격, 일정, 포함사항 등이 포함된 내용)"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
           />
-          <p className="text-xs text-slate-400 mt-1">{rawText.length.toLocaleString()}자</p>
+          <p className="text-xs text-admin-muted-2 mt-1">{rawText.length.toLocaleString()}자</p>
         </div>
 
         <button
@@ -154,8 +155,8 @@ export default function BandImportPage() {
 
       {/* AI 추출 미리보기 */}
       {preview && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
-          <h2 className="text-base font-semibold text-slate-800">AI 추출 결과</h2>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+          <h2 className="text-base font-semibold text-admin-text-2">AI 추출 결과</h2>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
             <Field label="상품코드 (예정)" value={preview.internal_code} />
@@ -188,7 +189,7 @@ export default function BandImportPage() {
             </button>
             <button
               onClick={() => setPreview(null)}
-              className="px-4 py-2.5 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition"
+              className="px-4 py-2.5 border border-admin-border-strong text-admin-muted rounded-lg text-sm hover:bg-admin-bg transition"
             >
               취소
             </button>
@@ -197,37 +198,37 @@ export default function BandImportPage() {
       )}
 
       {/* 임포트 이력 */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
-        <h2 className="text-base font-semibold text-slate-800 mb-3">임포트 이력</h2>
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <h2 className="text-base font-semibold text-admin-text-2 mb-3">임포트 이력</h2>
         {logs.length === 0 ? (
-          <p className="text-sm text-slate-400">아직 임포트 이력이 없습니다</p>
+          <p className="text-sm text-admin-muted-2">아직 임포트 이력이 없습니다</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left py-2 pr-4 font-medium text-slate-500">게시글</th>
-                  <th className="text-left py-2 pr-4 font-medium text-slate-500">상태</th>
-                  <th className="text-left py-2 font-medium text-slate-500">임포트 일시</th>
+                <tr className="border-b border-admin-border">
+                  <th className="text-left py-2 pr-4 font-medium text-admin-muted">게시글</th>
+                  <th className="text-left py-2 pr-4 font-medium text-admin-muted">상태</th>
+                  <th className="text-left py-2 font-medium text-admin-muted">임포트 일시</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map(log => (
-                  <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <tr key={log.id} className="border-b border-admin-border hover:bg-admin-bg">
                     <td className="py-2 pr-4 max-w-xs truncate">
                       {log.post_url ? (
                         <a href={log.post_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                           {log.post_title || log.post_url}
                         </a>
                       ) : (
-                        <span className="text-slate-500">텍스트 붙여넣기</span>
+                        <span className="text-admin-muted">텍스트 붙여넣기</span>
                       )}
                     </td>
                     <td className="py-2 pr-4">
                       <StatusBadge status={log.status} />
                     </td>
-                    <td className="py-2 text-slate-500">
-                      {new Date(log.imported_at).toLocaleString('ko-KR')}
+                    <td className="py-2 text-admin-muted">
+                      {fmtDateTime(log.imported_at)}
                     </td>
                   </tr>
                 ))}
@@ -243,8 +244,8 @@ export default function BandImportPage() {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="font-medium text-slate-900">{value}</p>
+      <p className="text-xs text-admin-muted">{label}</p>
+      <p className="font-medium text-admin-text">{value}</p>
     </div>
   );
 }
@@ -253,11 +254,11 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     imported: 'bg-green-50 text-green-700',
     pending:  'bg-yellow-50 text-yellow-700',
-    skipped:  'bg-slate-100 text-slate-500',
+    skipped:  'bg-admin-surface-2 text-admin-muted',
     failed:   'bg-red-50 text-red-600',
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] ?? 'bg-slate-100 text-slate-500'}`}>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] ?? 'bg-admin-surface-2 text-admin-muted'}`}>
       {status}
     </span>
   );
