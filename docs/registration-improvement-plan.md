@@ -175,6 +175,33 @@
 
 **기대 효과**: 1차 추출 파싱 실패율 -30% → callWithZodValidation 재시도 횟수 감소 → 토큰 절감 + 평균 latency 단축.
 
+### 3-4. Zod refine 게이트 보강 (W30/W31/W32) — **적용됨**
+**근거**: 등록된 상품은 모바일 랜딩 / A4 포스터 / 블로그 / 카드뉴스에 그대로 렌더. INSERT 전 Zod에서 차단하지 않으면 잘못된 데이터가 4~7개 채널에 동시 노출.
+
+**기존 적용된 refine** (W19/W26/W27/W28):
+- W19 — duration vs days.length 일치
+- W26 — inclusions 콤마 포함 (top-level) 차단
+- W27 — 하루 flight activity 분리 차단 (병합 토큰 "→" 강제)
+- W28 — 호텔 activity 앞절 붙이기 차단
+
+**신규 추가** (`src/lib/package-schema.ts`):
+- **W30 — Day 번호 정합성**: `days[].day` 가 정렬 시 `[1..N]` 연속이어야 함. gap·중복·1부터 시작 안 함 모두 차단. 모바일 랜딩 일정 섹션이 빈 카드 노출되거나 timeline 스킵되는 문제 차단.
+- **W31 — Surcharge 기간 역전**: `start > end` 차단. 모바일 가격표·블로그 carousel에 "MM.DD ~ MM.DD" 이상한 날짜 범위 노출 방지.
+- **W32 — Optional tours 중복**: 같은 `name + region + day` 이중 등록 차단. day 가 다르면 의도적 중복 허용 (다른 날 같은 투어 가능). 모바일·A4 동일 투어 이중 노출 방지.
+
+**스모크 테스트 결과** (5/5 통과):
+- 정상 pkg → 통과 ✓
+- Day 번호 [1,2,4,4,5] → W30 차단 ✓
+- Surcharge start=2026-08-15 > end=2026-07-15 → W31 차단 ✓
+- 같은 투어 2회 등록 → W32 차단 ✓
+- day 다른 동일 투어 → 통과 (의도된 허용) ✓
+
+**기대 효과**: 렌더링 단계에서 발견될 잘못된 데이터를 INSERT 전에 차단 → 모든 채널 정확도 ↑.
+
+**여전히 누락**:
+- `optional_tours[].name` 모호성 (ERR-KUL-04 — 지역명 없는 일반명)
+- `hotel.grade` 7종 enum 강제 (629건 기존 데이터 호환성 우려)
+
 ---
 
 ## 4. 1분기 권장 (난이도 4~5, 큰 PR)
@@ -259,6 +286,7 @@
 - [x] llm-gateway.ts: `escalateIfLowConfidence` 메커니즘 (콜러 wiring 대기)
 - [x] cove_audit.js: RARR-style chunked retrieval + verification questions
 - [x] llm-retry.ts: BAML SAP 파서 흡수 (10/10 edge case 통과)
+- [x] package-schema.ts: W30/W31/W32 refine (Day 정합성 / Surcharge 기간 / OT 중복)
 - [ ] NormalizedIntakeSchema에 `confidence` 필드 추가 + system prompt 자기평가 강제
 - [ ] normalize-with-llm.ts → llmCall 라우팅 마이그레이션 (현재 OpenAI/Gemini SDK 직접 호출)
 - [ ] WDK durable workflow (1분기)

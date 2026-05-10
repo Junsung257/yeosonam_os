@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod';
+import { REGION_LIST } from './constants/regions';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Sub-schemas — 작은 단위부터 정의
@@ -28,11 +29,8 @@ export const PhotoSchema = z.object({
 });
 export type Photo = z.infer<typeof PhotoSchema>;
 
-/** 지역 enum — itinerary-render.ts의 REGION_ALIAS와 동기화 */
-export const RegionEnum = z.enum([
-  '말레이시아', '싱가포르', '태국', '베트남', '대만', '일본',
-  '중국', '라오스', '몽골', '필리핀', '인도네시아',
-]);
+/** 지역 enum — constants/regions.ts의 REGION_LIST가 SSoT */
+export const RegionEnum = z.enum(REGION_LIST);
 export type Region = z.infer<typeof RegionEnum>;
 
 /** 선택관광 — region 필수 (단, "쿠알라 야경투어"처럼 이름에 지역 있으면 ACL이 자동 주입) */
@@ -322,10 +320,99 @@ export const PackageStrictSchema = PackageCoreSchema.extend({
   // W29 — notices_parsed 의 PAYMENT/RESERVATION 타입에 "출발N일전" 형태 주의
   // → standard-terms.ts 의 formatCancellationDates 가 negative lookbehind 로 방어.
   //    Zod 차단하지 않음 (정보성). post_register_audit 에서 체크.
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // W30 — Day 번호 정합성 (renders empty Day if numbering has gaps)
+  // 모바일 랜딩 일정 섹션 / A4 포스터 타임라인은 days 배열을 day 번호 기준으로 sort
+  // 후 1..N 으로 가정하여 렌더. gap 이 있으면 빈 day 카드가 노출되거나 timeline 스킵.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (pkg.itinerary_data) {
+    const days = Array.isArray(pkg.itinerary_data)
+      ? pkg.itinerary_data
+      : (pkg.itinerary_data.days || []);
+    if (days.length > 0) {
+      const dayNumbers = days.map((d: { day?: number }) => d?.day).filter((n: unknown): n is number => typeof n === 'number');
+      const sorted = [...dayNumbers].sort((a, b) => a - b);
+      // 1, 2, 3, ... 순열인지 검증
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i] !== i + 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `[W30] Day 번호 정합성 위반: 정렬 시 [${sorted.join(',')}] 인데 [1..${sorted.length}] 연속이어야 함. 누락·중복·1부터 시작 안함 등 → 모바일 랜딩 일정 섹션이 빈 카드 노출 또는 timeline 스킵.`,
+            path: ['itinerary_data'],
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // W31 — Surcharge 기간 역전 (start > end)
+  // 모바일 가격표·블로그 carousel 가 "MM.DD ~ MM.DD" 로 렌더 → 역전되면 이상한 표기.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (Array.isArray(pkg.surcharges)) {
+    pkg.surcharges.forEach((s, idx) => {
+      if (!s?.start || !s?.end) return;
+      // YYYY-MM-DD 문자열 비교는 사전순 == 시간순이라 안전
+      if (s.start > s.end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `[W31] surcharges[${idx}] "${s.name ?? ''}" 기간 역전: start=${s.start} > end=${s.end}. 가격표·carousel 에 잘못된 날짜 범위 노출 위험.`,
+          path: ['surcharges', idx],
+        });
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // W32 — 선택관광 중복 (same name + region + day = 이중 노출)
+  // 모바일 랜딩 / A4 포스터 둘 다 optional_tours 를 region 별 그룹핑하여 그대로 렌더.
+  // 같은 투어가 2번 들어가면 사용자에게도 2번 노출 → 신뢰 손상 + UX 혼란.
+  // 단, day 가 다르면 의도적 (다른 날 같은 투어 가능) 이므로 허용.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (Array.isArray(pkg.optional_tours) && pkg.optional_tours.length > 1) {
+    const seen = new Map<string, number[]>();
+    pkg.optional_tours.forEach((t, idx) => {
+      const key = `${(t.name ?? '').trim().toLowerCase()}|${t.region ?? ''}|${t.day ?? ''}`;
+      const list = seen.get(key);
+      if (list) list.push(idx);
+      else seen.set(key, [idx]);
+    });
+    for (const [key, idxList] of seen) {
+      if (idxList.length > 1 && key.split('|')[0]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `[W32] optional_tours 중복: "${pkg.optional_tours[idxList[0]].name}" (region=${pkg.optional_tours[idxList[0]].region ?? '없음'}, day=${pkg.optional_tours[idxList[0]].day ?? '없음'}) 이 ${idxList.length}회 등록 (인덱스 ${idxList.join(', ')}). 동일 투어 이중 노출 위험.`,
+          path: ['optional_tours', idxList[1]],
+        });
+      }
+    }
+  }
 });
 
 export type PackageCore = z.infer<typeof PackageCoreSchema>;
 export type PackageStrict = z.infer<typeof PackageStrictSchema>;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Agent Proposal Schema — AI 에이전트가 결재함(agent_actions)에 올리는 제안용
+//  - title.min(5), display_title 등 사람이 한번 더 검수할 때 필요한 필드 강제
+//  - PackageCoreSchema 위에 .passthrough() 로 임의 필드 허용 (DB schema drift 흡수)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const AgentProposalSchema = PackageCoreSchema.extend({
+  title: z.string().min(5, '상품명은 5자 이상이어야 합니다.'),
+  display_title: z.string().min(5, '노출 상품명은 5자 이상이어야 합니다.'),
+  short_code: z.string().min(4, 'short_code는 4자 이상이어야 합니다.'),
+  land_operator_id: z.string().uuid('랜드사 ID는 올바른 형식(UUID)이어야 합니다.'),
+  price_dates: z.array(PriceDateSchema).min(1, '최소 1개 이상의 확정 날짜(price_dates)가 필요합니다.'),
+  itinerary_data: z.union([
+    z.array(DayScheduleSchema).min(1, '최소 1일 이상의 일정 데이터가 필요합니다.'),
+    z.object({ days: z.array(DayScheduleSchema).min(1, '최소 1일 이상의 일정 데이터가 필요합니다.') }).passthrough(),
+  ]),
+}).passthrough();
+
+export type AgentProposal = z.infer<typeof AgentProposalSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Validation helpers
