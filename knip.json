@@ -11,6 +11,7 @@
     "src/app/sw.ts",
     "src/middleware.ts",
     "src/instrumentation.ts",
+    "src/env.ts",
     "src/inngest/**/*.ts",
     "scripts/**/*.{js,mjs,cjs,ts}",
     "db/**/*.{js,mjs,cjs}",
