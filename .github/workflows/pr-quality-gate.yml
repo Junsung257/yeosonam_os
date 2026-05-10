@@ -1,0 +1,91 @@
+name: PR Quality Gate
+
+# PR 마다 자동 실행되는 핵심 게이트:
+#   - Type check (tsc --noEmit)
+#   - Unit tests (vitest run)
+#   - Dead code (knip dependencies/devDependencies)
+#   - Bundle budget (check:bundle:ci — App Router 전체 라우트 raw KB ceiling)
+#
+# main 푸시에도 동일 검증 (가드 이중화).
+# 빌드 자체는 Vercel preview deploy 가 처리하므로 여기서는 type/test/static 분석만.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# 동일 PR 의 이전 run 은 자동 cancel (불필요한 자원 소모 방지)
+concurrency:
+  group: pr-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  type-and-test:
+    name: TypeScript + Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Type check
+        run: npm run type-check
+      - name: Unit tests
+        run: npm test
+
+  dead-code:
+    name: Knip dead-code & unused deps
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      # check:deadcode:deps 만 strict — 미사용 deps 0건 강제
+      # 미사용 files/exports 는 정보 출력만 (knip 자체는 화이트리스트 운영 중)
+      - name: Knip — unused dependencies
+        run: npm run check:deadcode:deps
+
+  circular-deps:
+    name: Dependency-cruiser (순환 의존)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      # baseline (supabase.ts ↔ db/* facade) 화이트리스트, 신규 순환만 차단
+      - name: Circular dependency check
+        run: npm run check:deps:circular
+
+  bundle-budget:
+    name: Next build + bundle budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      # NEXT_PUBLIC_* 는 빌드 타임 inline 되므로 dummy 값으로 통과
+      - name: Build (no analyze)
+        run: npm run build
+        env:
+          SKIP_ENV_VALIDATION: 'true'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+          NEXT_PUBLIC_BASE_URL: 'https://example.com'
+      - name: Bundle budget check (--fail)
+        run: npm run check:bundle:ci
