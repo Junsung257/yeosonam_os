@@ -13,6 +13,8 @@
     "check:bundle:ci": "node scripts/check-bundle-budget.mjs --fail",
     "check:deadcode": "knip --reporter compact",
     "check:deadcode:deps": "knip --include dependencies,devDependencies --reporter compact",
+    "check:deps": "depcruise --config .dependency-cruiser.cjs src",
+    "check:deps:circular": "depcruise --config .dependency-cruiser.cjs --output-type err src",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
@@ -124,6 +126,7 @@
     "@vitest/coverage-v8": "^4.1.5",
     "cheerio": "^1.2.0",
     "cross-env": "^10.1.0",
+    "dependency-cruiser": "^17.4.0",
     "knip": "^6.12.2",
     "vitest": "^4.1.5"
   }
