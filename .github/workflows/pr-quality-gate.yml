@@ -15,10 +15,11 @@ on:
   push:
     branches: [main]
 
-# 동일 PR 의 이전 run 은 자동 cancel (불필요한 자원 소모 방지)
+# 동일 PR 의 이전 run 은 자동 cancel (불필요한 자원 소모 방지).
+# main push 는 cancel 안 함 (history 보존 + branch protection required-check 안정성).
 concurrency:
   group: pr-quality-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   type-and-test:
@@ -79,11 +80,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --no-audit --no-fund
-      # NEXT_PUBLIC_* 는 빌드 타임 inline 되므로 dummy 값으로 통과
+      # NEXT_PUBLIC_* 는 빌드 타임 inline 되므로 dummy 값으로 통과.
+      # SKIP_ENV_VALIDATION 은 의도적으로 설정 X — env.ts 는 모두 .optional() 이라 dummy 값만으로 schema 통과.
+      # 진짜 필수 키는 호출 측 requireEnv() 가 런타임에 fail-fast (Vercel 에서 catch).
       - name: Build (no analyze)
         run: npm run build
         env:
-          SKIP_ENV_VALIDATION: 'true'
           NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
           NEXT_PUBLIC_BASE_URL: 'https://example.com'

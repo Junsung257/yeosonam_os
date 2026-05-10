@@ -194,8 +194,15 @@ export function hasBlogApiKey(): boolean {
   return !!getProviderApiKey(policy.provider);
 }
 
-/** 테스트/디버깅용 — 캐시된 클라이언트 리셋 (API 키 교체 후 호출) */
+/**
+ * 테스트/디버깅용 — 캐시된 클라이언트 리셋 (API 키 교체 후 호출).
+ * production NODE_ENV 에서는 호출해도 no-op (실수 방어).
+ */
 export function _resetBlogAiClientCacheForTest(): void {
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[blog-ai-caller] _resetBlogAiClientCacheForTest 는 production 에서 no-op');
+    return;
+  }
   cachedDeepseek = null; cachedDeepseekKey = null;
   cachedAnthropic = null; cachedAnthropicKey = null;
   cachedGemini = null; cachedGeminiKey = null;

@@ -7,7 +7,14 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
-import { rateLimit, rateLimitAI, rateLimitMutation, getRateLimitBackend } from './rate-limiter';
+import {
+  rateLimit,
+  rateLimitAI,
+  rateLimitMutation,
+  getRateLimitBackend,
+  extractClientIp,
+  _resetRateLimiterStateForTest,
+} from './rate-limiter';
 
 function makeReq(ip = '1.2.3.4'): NextRequest {
   const headers = new Headers({ 'x-forwarded-for': ip });
@@ -25,6 +32,8 @@ describe('rate-limiter (in-memory fallback)', () => {
     setNodeEnv('production');
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    // 캐시된 redisClient/limiter/memoryStore 모두 리셋 (cross-test 오염 방지)
+    _resetRateLimiterStateForTest();
   });
 
   it('Upstash 환경변수 없으면 memory backend로 식별된다', () => {
@@ -92,6 +101,48 @@ describe('rate-limiter (in-memory fallback)', () => {
       const r = await rateLimit(req, { limit: 1, window: 60 });
       expect(r).toBeNull();
     }
+  });
+
+  // ── 코드리뷰 fix: IP 추출 우선순위 ─────────────────────────────────────
+  it('extractClientIp: x-vercel-forwarded-for 우선', () => {
+    const headers = new Headers({
+      'x-vercel-forwarded-for': '203.0.113.1',
+      'x-forwarded-for': '1.2.3.4', // 위조 시도
+      'x-real-ip': '10.0.0.1',
+    });
+    const req = { headers } as unknown as import('next/server').NextRequest;
+    expect(extractClientIp(req)).toBe('203.0.113.1');
+  });
+
+  it('extractClientIp: vercel 헤더 없으면 x-real-ip 폴백', () => {
+    const headers = new Headers({ 'x-real-ip': '10.0.0.5', 'x-forwarded-for': '1.2.3.4' });
+    const req = { headers } as unknown as import('next/server').NextRequest;
+    expect(extractClientIp(req)).toBe('10.0.0.5');
+  });
+
+  it('extractClientIp: 모든 헤더 없으면 unknown', () => {
+    const req = { headers: new Headers() } as unknown as import('next/server').NextRequest;
+    expect(extractClientIp(req)).toBe('unknown');
+  });
+
+  it('rate limit: x-vercel-forwarded-for 가 위조 x-forwarded-for 보다 우선 (spoofing 차단)', async () => {
+    const headers = new Headers({
+      'x-vercel-forwarded-for': '203.0.113.99',
+      'x-forwarded-for': '1.1.1.1', // 위조
+    });
+    const req = { headers } as unknown as import('next/server').NextRequest;
+    for (let i = 0; i < 3; i++) await rateLimit(req, { limit: 3, window: 60 });
+    const blocked = await rateLimit(req, { limit: 3, window: 60 });
+    expect(blocked!.status).toBe(429);
+
+    // 다른 vercel IP 는 통과 — 위조한 x-forwarded-for 가 키로 안 쓰임 확인
+    const headers2 = new Headers({
+      'x-vercel-forwarded-for': '203.0.113.100',
+      'x-forwarded-for': '1.1.1.1', // 동일 위조값
+    });
+    const req2 = { headers: headers2 } as unknown as import('next/server').NextRequest;
+    const ok = await rateLimit(req2, { limit: 3, window: 60 });
+    expect(ok).toBeNull(); // 다른 진짜 IP → 통과
   });
 
   it('keyFn 옵션으로 키 추출 커스터마이즈 가능', async () => {

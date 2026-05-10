@@ -113,6 +113,58 @@ export const env = createEnv({
   /**
    * dev / test 에서는 빌드 게이트 비활성화 (개발 편의).
    * production build 만 강제.
+   *
+   * SKIP_ENV_VALIDATION=true 는 CI dummy 빌드용 escape — 실제 deploy 환경에선 절대 설정 X.
    */
   skipValidation: process.env.NODE_ENV !== 'production' || process.env.SKIP_ENV_VALIDATION === 'true',
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// requireEnv — 호출 시점 fail-fast 헬퍼 (코드리뷰 fix)
+//
+// 모든 env 가 .optional() 라 t3-env 빌드 게이트가 사실상 검증을 안 함.
+// 진짜 필수 키는 호출 측에서 requireEnv() 로 강제 — undefined 즉시 throw.
+//
+// 사용:
+//   const url = requireEnv('SUPABASE_URL');         // 없으면 throw, 있으면 string
+//   const key = requireEnv('ANTHROPIC_API_KEY', '주문 처리 시 필수');
+// ────────────────────────────────────────────────────────────────────────────
+
+type EnvKeys = keyof typeof env;
+
+/**
+ * env 키가 정의되어 있지 않으면 즉시 throw.
+ * @param key env 키
+ * @param hint 에러 메시지에 추가할 컨텍스트 (어디에 필요한지)
+ * @returns 검증된 string (never undefined)
+ */
+export function requireEnv<K extends EnvKeys>(key: K, hint?: string): string {
+  const value = env[key];
+  if (value === undefined || value === null || value === '') {
+    const ctx = hint ? ` (${hint})` : '';
+    throw new Error(`[env] 필수 환경변수 ${String(key)} 누락${ctx}. Vercel 환경변수 설정 확인 필요.`);
+  }
+  return String(value);
+}
+
+/**
+ * 여러 키를 한 번에 검증. 누락 시 모든 누락 키를 한 메시지로 throw.
+ * 시작 시점(API 라우트 진입 / 모듈 init) 에서 batch 검증용.
+ */
+export function requireEnvAll<K extends EnvKeys>(keys: readonly K[], hint?: string): Record<K, string> {
+  const missing: string[] = [];
+  const result = {} as Record<K, string>;
+  for (const key of keys) {
+    const value = env[key];
+    if (value === undefined || value === null || value === '') {
+      missing.push(String(key));
+    } else {
+      result[key] = String(value);
+    }
+  }
+  if (missing.length > 0) {
+    const ctx = hint ? ` (${hint})` : '';
+    throw new Error(`[env] 필수 환경변수 누락${ctx}: ${missing.join(', ')}`);
+  }
+  return result;
+}

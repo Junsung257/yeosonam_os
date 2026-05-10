@@ -23,10 +23,18 @@ interface RateLimitOptions {
   limit?: number;
   /** 윈도우 초 */
   window?: number;
-  /** 키 추출 함수 (기본: IP) */
+  /** 키 추출 함수 (기본: IP, x-vercel-forwarded-for 우선) */
   keyFn?: (req: NextRequest) => string;
   /** Upstash 사용 시 prefix (기본: 'rl') */
   prefix?: string;
+  /**
+   * Upstash 일시 장애 + in-memory fallback 시도 시:
+   *   - false (기본): in-memory fallback 으로 통과 (가용성 우선)
+   *   - true: Upstash 에러 시 즉시 429 반환 (정책 무결성 우선) — AI/billing 등 critical 라우트
+   *
+   * 보안 권고: rateLimitAI 류는 failClosed=true 검토.
+   */
+  failClosed?: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -71,6 +79,9 @@ interface BucketEntry {
   resetAt: number;
 }
 
+// 메모리 보호: 위조 IP 무한 생성 공격 시 OOM 방지.
+// 청소는 60s 마다 (윈도우 60s 와 동조) + MAX_KEYS 도달 시 LRU eviction.
+const MEMORY_MAX_KEYS = 50_000;
 const memoryStore = new Map<string, BucketEntry>();
 
 if (typeof setInterval !== 'undefined') {
@@ -79,7 +90,7 @@ if (typeof setInterval !== 'undefined') {
     for (const [key, entry] of memoryStore.entries()) {
       if (entry.resetAt < now) memoryStore.delete(key);
     }
-  }, 600_000).unref?.();
+  }, 60_000).unref?.();
 }
 
 function memoryCheck(
@@ -90,6 +101,11 @@ function memoryCheck(
   const now = Date.now();
   const entry = memoryStore.get(key);
   if (!entry || entry.resetAt < now) {
+    // MAX_KEYS 도달 시 가장 오래된 항목 1개 evict (LRU 근사 — Map 삽입 순서)
+    if (memoryStore.size >= MEMORY_MAX_KEYS) {
+      const firstKey = memoryStore.keys().next().value;
+      if (firstKey !== undefined) memoryStore.delete(firstKey);
+    }
     const resetAt = now + windowMs;
     memoryStore.set(key, { count: 1, resetAt });
     return { ok: true, remaining: limit - 1, resetAt };
@@ -99,6 +115,34 @@ function memoryCheck(
     return { ok: false, remaining: 0, resetAt: entry.resetAt };
   }
   return { ok: true, remaining: limit - entry.count, resetAt: entry.resetAt };
+}
+
+/**
+ * Vercel 환경의 신뢰 가능한 IP 추출.
+ *
+ * 우선순위:
+ *   1. x-vercel-forwarded-for: Vercel edge 가 직접 주입, 위조 불가능 (left-most = 진짜 클라)
+ *   2. x-real-ip: Vercel 동일 출처
+ *   3. x-forwarded-for: 일반 프록시 — 위조 가능. left-most 만 사용
+ *   4. 'unknown' fallback
+ *
+ * 보안: 일반 x-forwarded-for 단독 사용은 spoofing 위험 (curl -H "X-Forwarded-For: 1.2.3.4")
+ */
+export function extractClientIp(req: NextRequest): string {
+  const vercelFwd = req.headers.get('x-vercel-forwarded-for');
+  if (vercelFwd) return vercelFwd.split(',')[0]?.trim() || 'unknown';
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) return realIp.trim() || 'unknown';
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0]?.trim() || 'unknown';
+  return 'unknown';
+}
+
+/** 테스트/디버깅용 — 메모리 스토어 강제 리셋 */
+export function _resetRateLimiterStateForTest(): void {
+  memoryStore.clear();
+  redisClient = null;
+  limiterCache.clear();
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -118,9 +162,8 @@ export async function rateLimit(
   const limit = opts.limit ?? 60;
   const windowSec = opts.window ?? 60;
   const prefix = opts.prefix ?? 'rl';
-  const key = opts.keyFn
-    ? opts.keyFn(req)
-    : (req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown');
+  const failClosed = opts.failClosed === true;
+  const key = opts.keyFn ? opts.keyFn(req) : extractClientIp(req);
 
   const limiter = getLimiter(limit, windowSec, prefix);
 
@@ -135,8 +178,15 @@ export async function rateLimit(
       remaining = r.remaining;
       resetAt = r.reset;
     } catch (err) {
-      // Upstash 일시 장애 시 in-memory로 우회 (최후의 보루)
-      console.warn('[rate-limiter] Upstash error, falling back to memory:', err);
+      console.warn('[rate-limiter] Upstash error:', err);
+      if (failClosed) {
+        // 정책 무결성 우선 — 즉시 429 반환 (AI/billing 등 critical)
+        return NextResponse.json(
+          { error: 'Rate limit 일시 장애. 잠시 후 다시 시도.' },
+          { status: 429, headers: { 'Retry-After': '5' } },
+        );
+      }
+      // 가용성 우선 — in-memory fallback (분산 카운트 정확도 손해)
       const m = memoryCheck(key, limit, windowSec * 1000);
       ok = m.ok;
       remaining = m.remaining;
@@ -166,9 +216,12 @@ export async function rateLimit(
   );
 }
 
-/** AI 호출 라우트용 — 더 엄격한 제한 */
+/**
+ * AI 호출 라우트용 — 더 엄격한 제한 + Upstash 장애 시 fail-closed.
+ * 비싼 LLM 호출이라 분산 카운트가 깨지면 비용 폭발 → 정책 무결성 우선.
+ */
 export async function rateLimitAI(req: NextRequest): Promise<NextResponse | null> {
-  return rateLimit(req, { limit: 20, window: 60, prefix: 'rl-ai' });
+  return rateLimit(req, { limit: 20, window: 60, prefix: 'rl-ai', failClosed: true });
 }
 
 /** 일반 mutation 라우트용 */

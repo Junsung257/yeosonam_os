@@ -43,6 +43,34 @@ const DEFAULT_THRESHOLD = 0.97;
 const DEFAULT_TTL_HOURS = 24;
 const MAX_PROMPT_CHARS = 8000;
 
+// ────────────────────────────────────────────────────────────────────────────
+// PII Redaction (코드리뷰 fix)
+//   prompt_text 컬럼은 디버깅·재학습용으로 평문 보존하지만,
+//   qa-chat 등 사용자 자유입력 task 에서 전화/이메일/주민/계좌 가 들어올 수 있음.
+//   service_role 키 누출 시 캐시 dump 위험을 감안해 *저장 시점에 마스킹*.
+//   임베딩은 원문 그대로 → 의미 검색 정확도 손해 없음.
+// ────────────────────────────────────────────────────────────────────────────
+// 순서 중요 — 가장 specific 한 패턴부터. phone_intl 류 광범위 패턴은 마지막.
+const PII_PATTERNS: Array<{ name: string; re: RegExp; mask: string }> = [
+  { name: 'rrn',       re: /\b\d{6}[-\s]?[1-4]\d{6}\b/g, mask: '[주민번호]' },
+  { name: 'card',      re: /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g, mask: '[카드]' },
+  { name: 'phone_kr',  re: /\b01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}\b/g, mask: '[전화]' },
+  // 한국 일반전화 (02-XXX-XXXX, 0XX-XXX-XXXX, 0XX-XXXX-XXXX)
+  { name: 'phone_kr_landline', re: /\b0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}\b/g, mask: '[전화]' },
+  { name: 'email',     re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, mask: '[이메일]' },
+  // 계좌: 카드/전화 매칭 후 남은 가변 길이 숫자 — 너무 광범위라 cap 적용
+  { name: 'account',   re: /\b\d{3,6}-\d{2,6}-\d{4,8}\b/g, mask: '[계좌]' },
+];
+
+/** prompt_text 저장 직전 PII 마스킹. 임베딩에는 적용 안 함 (의미 검색 정확도 보존). */
+export function redactPiiForStorage(text: string): string {
+  let out = text;
+  for (const { re, mask } of PII_PATTERNS) {
+    out = out.replace(re, mask);
+  }
+  return out;
+}
+
 export interface SemanticCacheLookupResult {
   hit: boolean;
   response?: string;
@@ -158,7 +186,8 @@ export async function storeSemanticCache(
       task,
       prompt_hash: promptHash,
       prompt_emb: emb as unknown as string,
-      prompt_text: prompt.slice(0, MAX_PROMPT_CHARS),
+      // 코드리뷰 fix: PII 마스킹 후 저장 (임베딩은 원문 — 검색 정확도 보존)
+      prompt_text: redactPiiForStorage(prompt.slice(0, MAX_PROMPT_CHARS)),
       response,
       metadata: opts.metadata ?? {},
       expires_at: expiresAt,

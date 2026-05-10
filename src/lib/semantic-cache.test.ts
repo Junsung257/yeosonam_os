@@ -26,6 +26,34 @@ vi.mock('@/lib/secret-registry', () => ({
 // llm-gateway 는 무거운 의존성(Anthropic/OpenAI 초기화) → 가벼운 stub 으로 대체
 vi.mock('@/lib/llm-gateway', () => ({}));
 
+describe('redactPiiForStorage — 코드리뷰 fix', () => {
+  it('전화번호 010-1234-5678 마스킹', async () => {
+    const { redactPiiForStorage } = await import('./semantic-cache');
+    expect(redactPiiForStorage('연락처 010-1234-5678 으로 연락주세요')).toContain('[전화]');
+    expect(redactPiiForStorage('010 1234 5678')).toContain('[전화]');
+    expect(redactPiiForStorage('01012345678')).toContain('[전화]');
+  });
+
+  it('이메일 마스킹', async () => {
+    const { redactPiiForStorage } = await import('./semantic-cache');
+    const r = redactPiiForStorage('user@example.com 으로 보내주세요');
+    expect(r).toContain('[이메일]');
+    expect(r).not.toContain('user@example.com');
+  });
+
+  it('카드/계좌/주민번호 마스킹', async () => {
+    const { redactPiiForStorage } = await import('./semantic-cache');
+    expect(redactPiiForStorage('1234-5678-9012-3456')).toContain('[카드]');
+    expect(redactPiiForStorage('900101-1234567')).toContain('[주민번호]');
+  });
+
+  it('PII 없는 일반 텍스트는 그대로 통과', async () => {
+    const { redactPiiForStorage } = await import('./semantic-cache');
+    const text = '다낭 5박 6일 가족 여행 추천 부탁드립니다';
+    expect(redactPiiForStorage(text)).toBe(text);
+  });
+});
+
 describe('semantic-cache — 안전성 가드', () => {
   beforeEach(() => {
     embedTextMock.mockReset();
