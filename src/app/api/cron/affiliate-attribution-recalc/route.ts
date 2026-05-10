@@ -43,14 +43,20 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     let updated = 0;
-    for (const b of (bookings || []) as Array<{
+    type BookingRow = {
       id: string;
       created_at: string;
       referral_code: string | null;
       affiliate_id: string | null;
       total_price: number | null;
       influencer_commission: number | null;
-    }>) {
+    };
+    const bookingList = (bookings || []) as BookingRow[];
+
+    // 예약별 처리 — 각 예약 독립 (touch select → affiliates select → bookings update).
+    // 외부 API 호출 없음, 같은 예약에 동시 처리 없음 → chunk=10 동시성 안전.
+    const CHUNK = 10;
+    async function processBooking(b: BookingRow) {
       const windowStart = new Date(new Date(b.created_at).getTime() - 24 * 60 * 60 * 1000).toISOString();
       const { data: touches } = await supabaseAdmin
         .from('affiliate_touchpoints')
@@ -66,7 +72,7 @@ export async function GET(request: NextRequest) {
       const refs: string[] = ((touches || []) as Array<{ referral_code?: string | null }>)
         .map((t: { referral_code?: string | null }) => t.referral_code || '')
         .filter((v: string) => v.length > 0);
-      if (!refs.length) continue;
+      if (!refs.length) return;
 
       let chosenRef: string | null = null;
       let split: Record<string, unknown> = { model, refs };
@@ -85,14 +91,14 @@ export async function GET(request: NextRequest) {
         chosenRef = uniqueRefs[uniqueRefs.length - 1] || null;
       }
 
-      if (!chosenRef) continue;
+      if (!chosenRef) return;
       const { data: aff } = await supabaseAdmin
         .from('affiliates')
         .select('id')
         .eq('referral_code', chosenRef)
         .eq('is_active', true)
         .maybeSingle();
-      if (!aff) continue;
+      if (!aff) return;
       const affiliateId = (aff as { id: string }).id;
 
       const { error: upErr } = await supabaseAdmin
@@ -106,6 +112,11 @@ export async function GET(request: NextRequest) {
         })
         .eq('id', b.id);
       if (!upErr) updated += 1;
+    }
+
+    for (let i = 0; i < bookingList.length; i += CHUNK) {
+      const batch = bookingList.slice(i, i + CHUNK);
+      await Promise.allSettled(batch.map(processBooking));
     }
 
     await reportAffiliateCronSuccess('affiliate-attribution-recalc', { model, processed: (bookings || []).length, updated });

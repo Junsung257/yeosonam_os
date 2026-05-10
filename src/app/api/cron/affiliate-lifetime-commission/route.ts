@@ -24,15 +24,20 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     let applied = 0;
-    for (const b of (bookings || []) as Array<{
+    type BookingRow = {
       id: string;
       lead_customer_id: string | null;
       affiliate_id: string | null;
       total_price: number | null;
       lifetime_commission: number | null;
-    }>) {
-      if (!b.lead_customer_id) continue;
-      if ((b.lifetime_commission || 0) > 0) continue;
+    };
+    const bookingList = (bookings || []) as BookingRow[];
+
+    // chunk=10 병렬 — 각 booking 독립, 외부 API 없음
+    const CHUNK = 10;
+    async function processBooking(b: BookingRow) {
+      if (!b.lead_customer_id) return;
+      if ((b.lifetime_commission || 0) > 0) return;
 
       const { data: links } = await supabaseAdmin
         .from('affiliate_lifetime_links')
@@ -42,12 +47,12 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: true })
         .limit(1);
       const first = (links || [])[0] as { affiliate_id: string; experiment_group: string } | undefined;
-      if (!first) continue;
-      if (first.experiment_group !== 'lifetime_0_5') continue;
-      if (b.affiliate_id && b.affiliate_id === first.affiliate_id) continue;
+      if (!first) return;
+      if (first.experiment_group !== 'lifetime_0_5') return;
+      if (b.affiliate_id && b.affiliate_id === first.affiliate_id) return;
 
       const amount = Math.max(0, Math.round((Number(b.total_price) || 0) * 0.005));
-      if (amount <= 0) continue;
+      if (amount <= 0) return;
 
       const { error: upErr } = await supabaseAdmin
         .from('bookings')
@@ -61,7 +66,7 @@ export async function GET(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', b.id);
-      if (upErr) continue;
+      if (upErr) return;
 
       await supabaseAdmin.from('affiliate_reward_events').insert({
         affiliate_id: first.affiliate_id,
@@ -71,6 +76,11 @@ export async function GET(request: NextRequest) {
         payload: { booking_id: b.id, rate: 0.005 },
       } as never).then(() => {}).catch(() => {});
       applied += 1;
+    }
+
+    for (let i = 0; i < bookingList.length; i += CHUNK) {
+      const batch = bookingList.slice(i, i + CHUNK);
+      await Promise.allSettled(batch.map(processBooking));
     }
 
     await reportAffiliateCronSuccess('affiliate-lifetime-commission', { checked: (bookings || []).length, applied });

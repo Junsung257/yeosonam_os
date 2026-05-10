@@ -24,25 +24,30 @@ export async function GET(request: NextRequest) {
     }
 
     let drafted = 0;
-    for (const a of affiliates as Array<{ id: string; name: string; referral_code: string }>) {
-      const { count: clicks14 } = await supabaseAdmin
-        .from('affiliate_touchpoints')
-        .select('id', { count: 'exact', head: true })
-        .eq('referral_code', a.referral_code)
-        .eq('is_bot', false)
-        .eq('is_duplicate', false)
-        .gte('clicked_at', since14);
+    const affList = affiliates as Array<{ id: string; name: string; referral_code: string }>;
 
-      if ((clicks14 || 0) > 0) continue;
-
-      const { data: exists } = await supabaseAdmin
-        .from('agent_actions')
-        .select('id')
-        .eq('action_type', 'send_alimtalk')
-        .contains('payload', { template: 'affiliate_reactivation', affiliate_id: a.id })
-        .gte('created_at', since14)
-        .maybeSingle();
-      if (exists) continue;
+    // chunk=10 병렬 — 각 어필리에이트 독립, 외부 API 없음.
+    // count + exists 체크를 Promise.all 로 묶어 round-trip 추가 절감.
+    const CHUNK = 10;
+    async function processAffiliate(a: typeof affList[number]) {
+      const [clicksRes, existsRes] = await Promise.all([
+        supabaseAdmin
+          .from('affiliate_touchpoints')
+          .select('id', { count: 'exact', head: true })
+          .eq('referral_code', a.referral_code)
+          .eq('is_bot', false)
+          .eq('is_duplicate', false)
+          .gte('clicked_at', since14),
+        supabaseAdmin
+          .from('agent_actions')
+          .select('id')
+          .eq('action_type', 'send_alimtalk')
+          .contains('payload', { template: 'affiliate_reactivation', affiliate_id: a.id })
+          .gte('created_at', since14)
+          .maybeSingle(),
+      ]);
+      if ((clicksRes.count || 0) > 0) return;
+      if (existsRes.data) return;
 
       await supabaseAdmin.from('agent_actions').insert({
         action_type: 'send_alimtalk',
@@ -59,6 +64,11 @@ export async function GET(request: NextRequest) {
         },
       } as never);
       drafted += 1;
+    }
+
+    for (let i = 0; i < affList.length; i += CHUNK) {
+      const batch = affList.slice(i, i + CHUNK);
+      await Promise.allSettled(batch.map(processAffiliate));
     }
 
     await reportAffiliateCronSuccess('affiliate-reactivation-campaign', { drafted });

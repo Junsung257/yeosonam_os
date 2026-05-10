@@ -40,7 +40,11 @@ export async function GET(request: Request) {
     const skipped: string[] = [];
     const carried: string[] = [];
 
-    for (const aff of affiliates) {
+    // 어필리에이트별 처리 — Supabase RPC/INSERT 부하를 고려해 chunk=10 동시성.
+    // 각 어필리에이트 작업은 서로 독립 (같은 affiliate_id 중복 호출 없음).
+    // calculateDraftForAffiliate 가 외부 API 호출을 포함하지 않으므로 병렬 안전.
+    const CHUNK = 10;
+    async function processAffiliate(aff: typeof affiliates[number]) {
       const { data: existingAction } = await supabaseAdmin
         .from('agent_actions')
         .select('id')
@@ -50,7 +54,7 @@ export async function GET(request: Request) {
         .maybeSingle();
       if (existingAction) {
         skipped.push(aff.name);
-        continue;
+        return;
       }
 
       const draft = await calculateDraftForAffiliate(
@@ -62,7 +66,7 @@ export async function GET(request: Request) {
       );
       if (!draft) {
         skipped.push(aff.name);
-        continue;
+        return;
       }
 
       const summary = draft.qualified
@@ -80,6 +84,11 @@ export async function GET(request: Request) {
 
       if (draft.qualified) drafted.push(draft.affiliate_name);
       else carried.push(draft.affiliate_name);
+    }
+
+    for (let i = 0; i < affiliates.length; i += CHUNK) {
+      const batch = affiliates.slice(i, i + CHUNK);
+      await Promise.allSettled(batch.map(processAffiliate));
     }
 
     await supabaseAdmin.from('audit_logs').insert({
