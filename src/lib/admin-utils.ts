@@ -36,6 +36,31 @@ export function fmtDate(d?: string): string {
   return d ? d.slice(2, 10).replace(/-/g, '-') : '';
 }
 
+/** ISO 날짜 → MM-DD (예: "2024-12-25T..." → "12-25") */
+export function fmtMonthDay(d?: string | null): string {
+  return d ? d.slice(5, 10) : '';
+}
+
+/** ISO 날짜 → MM-DD HH:mm (예: "2024-12-25T13:30:00" → "12-25 13:30") */
+export function fmtMonthDayTime(d?: string | null): string {
+  if (!d) return '';
+  return d.slice(5, 16).replace('T', ' ');
+}
+
+/**
+ * ⚠️ Hydration 안전 가이드라인
+ *
+ * Client 컴포넌트(`'use client'`)에서 `new Date(x).toLocaleString('ko-KR', ...)`,
+ * `toLocaleDateString`, `toLocaleTimeString` 직접 사용 금지.
+ *
+ * 이유: 서버(en-US Locale)와 클라이언트(ko-KR) 가 다르게 렌더되어 hydration mismatch
+ * 콘솔 경고를 띄우고 SSR 콘텐츠를 폐기 후 client-only 재렌더 → LCP 영향.
+ *
+ * 사례: ERR-blog-queue-locale-hydration@2026-05-10 (page-audit-2026-05-10 P0)
+ *
+ * 정답: 위 fmtDate / fmtMonthDay 계열 함수 사용 (단순 ISO 슬라이싱, locale-stable)
+ */
+
 /**
  * departure_days 정규화 — 저장 포맷 혼재(JSON string / array / plain string) 방어
  * ERR-KUL-01: A4 포스터에 `["금"]` JSON 배열 문자열이 그대로 노출되는 사고 방지

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/customer-name';
+import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -12,11 +13,15 @@ export async function GET(request: NextRequest) {
 
   // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용)
   if (phone) {
+    const safePhone = escapePostgrestFilterValue(phone);
     const normalized = phone.replace(/[^0-9]/g, '');
+    if (!safePhone && !normalized) {
+      return NextResponse.json({ customers: [] });
+    }
     const { data } = await supabaseAdmin
       .from('customers')
       .select('id, name, phone, grade, mileage')
-      .or(`phone.eq.${phone},phone.eq.${normalized}`)
+      .or(`phone.eq.${safePhone || normalized},phone.eq.${normalized}`)
       .is('deleted_at', null)
       .limit(1);
     return NextResponse.json({ customers: data || [] });

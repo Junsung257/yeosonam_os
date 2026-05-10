@@ -8,9 +8,51 @@
     "@typescript-eslint/no-empty-function": "off",
     "@typescript-eslint/ban-ts-comment": "off",
     "react/no-unescaped-entities": "off",
-    "@next/next/no-img-element": "off"
+    "@next/next/no-img-element": "off",
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "CallExpression[callee.object.type='NewExpression'][callee.object.callee.name='Date'][callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+        "message": "Hydration mismatch 위험 (ERR-blog-queue-locale-hydration@2026-05-10). 서버(en-US)와 클라이언트(ko-KR) 가 다르게 렌더링됨. @/lib/admin-utils 의 fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime 사용."
+      },
+      {
+        "selector": "CallExpression[callee.name='getSecret'] > Literal[value=/^NEXT_PUBLIC_/]",
+        "message": "client bundle 에서 getSecret('NEXT_PUBLIC_*') 는 항상 null 반환 (process.env[key] 동적 인덱싱 webpack inline 불가). process.env.NEXT_PUBLIC_X 정적 참조 사용 (ERR-secret-registry-client-bundle@2026-05-10)."
+      }
+    ]
   },
   "overrides": [
+    {
+      "files": [
+        "src/app/api/**/*.{ts,tsx}",
+        "src/middleware.ts",
+        "src/app/admin/blog/BlogDataFetcher.tsx",
+        "src/app/admin/packages/**/review/page.tsx",
+        "src/app/admin/scoring/funnel/page.tsx",
+        "src/app/blog/**/page.tsx",
+        "src/app/m/admin/page.tsx",
+        "src/components/reviews/**/*.{ts,tsx}",
+        "src/lib/content-pipeline/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+        "src/lib/**/*.{ts,tsx}",
+        "src/app/itinerary/**/print/page.tsx"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "warn",
+          {
+            "selector": "CallExpression[callee.object.type='NewExpression'][callee.object.callee.name='Date'][callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+            "message": "Hydration mismatch 위험 (ERR-blog-queue-locale-hydration@2026-05-10). 서버(en-US)와 클라이언트(ko-KR) 가 다르게 렌더링됨. @/lib/admin-utils 의 fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime 사용."
+          }
+        ]
+      }
+    },
     {
       "files": [
         "src/components/admin/YeosonamA4Template.tsx",

@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getSecret } from '@/lib/secret-registry';
+// NOTE: client-side에서는 getSecret() 의 동적 process.env[key] 가 inline 안 되어
+// 항상 null 이 됨. NEXT_PUBLIC_* 는 정적 참조(process.env.NEXT_PUBLIC_X) 로만 접근.
 
 export type PushStatus =
   | 'unsupported'
@@ -53,7 +54,7 @@ export function usePushSubscription() {
 
   const subscribe = useCallback(async () => {
     setError(null);
-    const vapid = getSecret('NEXT_PUBLIC_VAPID_PUBLIC_KEY');
+    const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!vapid) {
       setError('VAPID 공개키가 설정되지 않았습니다.');
       setStatus('error');

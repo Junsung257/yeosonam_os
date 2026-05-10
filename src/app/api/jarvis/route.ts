@@ -23,8 +23,12 @@ import { resolveSpecialist, mergeOrchestrationContext } from '@/lib/jarvis/orche
 import { recordPlatformLearningEvent } from '@/lib/platform-learning'
 import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
 import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
+import { rateLimitAI } from '@/lib/rate-limiter'
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimitAI(req)
+  if (limited) return limited
+
   let taskId: string | null = null
   try {
     const body = await req.json()

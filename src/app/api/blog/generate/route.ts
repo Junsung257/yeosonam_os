@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
+import { getPrompt } from '@/lib/prompt-loader';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 /**
  * 블로그 AI 초안 생성 API
@@ -57,7 +59,8 @@ ${catName}
 6. 마지막에 여소남 안내 한 줄 + yeosonam.com 링크 (스타일 가이드 CTA 톤에 맞출 것).
 7. 마크다운만 출력 (코드블록으로 감싸지 말 것).`;
 
-    const systemPrompt = `${BLOG_STYLE_GUIDE}
+    const styleGuide = await getPrompt('blog-style-guide', BLOG_STYLE_GUIDE);
+    const systemPrompt = `${styleGuide}
 
 ## 모드 오버라이드 (이 요청은 정보성 단독 주제)
 
@@ -87,7 +90,7 @@ ${catName}
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'AI 생성 실패' },
+      { error: logAndSanitize('blog-generate', err, 'AI 생성 실패') },
       { status: 500 },
     );
   }

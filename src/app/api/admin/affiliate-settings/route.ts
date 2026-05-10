@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 type AttributionModel = 'last_touch' | 'first_touch' | 'linear';
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     .select('key, value')
     .eq('key', 'affiliate_attribution_model')
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
 
   const model = normalizeModel((data as { value?: { model?: string } } | null)?.value?.model);
   return NextResponse.json({ attribution_model: model });
@@ -53,7 +54,7 @@ export async function PATCH(request: NextRequest) {
       } as never,
       { onConflict: 'key' },
     );
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
   return NextResponse.json({ ok: true, attribution_model: model });
 }
 

@@ -13,7 +13,7 @@ const FX_API_URL = 'https://open.er-api.com/v6/latest/USD';
 
 async function fetchLiveRate(): Promise<number | null> {
   try {
-    const res = await fetch(FX_API_URL, { cache: 'no-store' });
+    const res = await fetch(FX_API_URL, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const json = await res.json() as { result?: string; rates?: Record<string, number> };
     const rate = json.rates?.KRW;

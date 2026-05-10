@@ -105,7 +105,8 @@ export default function RfqChatPage() {
   }
 
   function fmtTime(s: string) {
-    return new Date(s).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    // locale-stable: "HH:mm" (ISO 슬라이싱)
+    return s ? s.slice(11, 16) : '';
   }
 
   // ── 렌더 ─────────────────────────────────────────────────────────────────

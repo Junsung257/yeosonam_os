@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
+import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,10 +47,12 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from('attractions')
       .select('id, name, aliases, region, country, category, emoji, short_desc');
-    if (unmatched.region) {
-      query = query.or(`region.eq.${unmatched.region},country.eq.${unmatched.country || unmatched.region}`);
-    } else if (unmatched.country) {
-      query = query.eq('country', unmatched.country);
+    const safeRegion = unmatched.region ? escapePostgrestFilterValue(unmatched.region) : '';
+    const safeCountry = unmatched.country ? escapePostgrestFilterValue(unmatched.country) : '';
+    if (safeRegion) {
+      query = query.or(`region.eq.${safeRegion},country.eq.${safeCountry || safeRegion}`);
+    } else if (safeCountry) {
+      query = query.eq('country', safeCountry);
     }
 
     const { data: candidates, error: e2 } = await query.limit(500);

@@ -28,6 +28,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { getPrompt } from '@/lib/prompt-loader';
+import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+
+const INVOICE_PARSE_FALLBACK = `이 청구서(인보이스) 이미지를 분석해서 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요.
+
+{
+  "vendor": "공급업체명 또는 랜드사명",
+  "invoice_date": "YYYY-MM-DD 형식 또는 null",
+  "currency": "KRW 또는 USD 또는 기타 통화코드",
+  "amount_krw": 원화 금액(숫자) 또는 null,
+  "amount_usd": 달러 금액(숫자) 또는 null,
+  "items": [
+    { "description": "항목 설명", "amount": 금액(숫자) }
+  ],
+  "total": 합계금액(숫자) 또는 null
+}
+
+규칙:
+- 금액은 쉼표 없는 순수 숫자로
+- 날짜가 없으면 invoice_date는 null
+- 항목이 없으면 items는 빈 배열 []
+- 반드시 valid JSON만 반환`;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,6 +78,9 @@ interface Discrepancy {
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -93,25 +119,7 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(geminiApiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const prompt = `이 청구서(인보이스) 이미지를 분석해서 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요.
-
-{
-  "vendor": "공급업체명 또는 랜드사명",
-  "invoice_date": "YYYY-MM-DD 형식 또는 null",
-  "currency": "KRW 또는 USD 또는 기타 통화코드",
-  "amount_krw": 원화 금액(숫자) 또는 null,
-  "amount_usd": 달러 금액(숫자) 또는 null,
-  "items": [
-    { "description": "항목 설명", "amount": 금액(숫자) }
-  ],
-  "total": 합계금액(숫자) 또는 null
-}
-
-규칙:
-- 금액은 쉼표 없는 순수 숫자로
-- 날짜가 없으면 invoice_date는 null
-- 항목이 없으면 items는 빈 배열 []
-- 반드시 valid JSON만 반환`;
+    const prompt = await getPrompt('invoice-parse-v1', INVOICE_PARSE_FALLBACK);
 
     const result = await model.generateContent([
       prompt,
@@ -152,9 +160,10 @@ export async function POST(request: NextRequest) {
       .limit(200);
 
     if (landOperatorId) {
-      // land_operator_id 연결은 booking → package → land_operator_id 경로라서
-      // 직접 필터 대신 memo 기반 soft 필터 (추후 FK 추가 시 개선)
-      query = query.ilike('memo', `%${landOperatorId}%`);
+      const safeLandOpId = escapePostgrestIlikeValue(landOperatorId);
+      if (safeLandOpId) {
+        query = query.ilike('memo', `%${safeLandOpId}%`);
+      }
     }
 
     const { data: ledgerEntries, error: ledgerError } = await query;

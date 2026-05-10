@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { normalizeImageFromUrl } from '@/lib/blog-image-normalize';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -15,7 +16,7 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   const auth = request.headers.get('authorization');
   const cronSecret = getSecret('CRON_SECRET');
-  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqualString(auth, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

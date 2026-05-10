@@ -17,6 +17,12 @@ export async function GET(request: NextRequest) {
   const supabase = supabaseAdmin;
 
   try {
+    // UUID 형식 사전 검증 — 잘못된 affiliateId 는 빈 결과 반환 (500 회피)
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (affiliateId && !UUID_RE.test(affiliateId)) {
+      return NextResponse.json({ settlements: [] });
+    }
+
     let query = supabase
       .from('settlements')
       .select('*, affiliates(id, name, referral_code, grade, payout_type)')

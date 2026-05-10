@@ -7,6 +7,7 @@ import {
   getStatusLabel, getStatusBadgeClass,
 } from '@/lib/booking-state-machine';
 import LedgerViewer from './LedgerViewer';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1319,7 +1320,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                             <p className="text-[13px] text-gray-600 mt-0.5 leading-relaxed">{log.content}</p>
                           )}
                           <p className="text-[11px] text-gray-400 mt-1">
-                            {new Date(log.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            {fmtMonthDayTime(log.created_at)}
                             {' · '}{log.created_by}
                           </p>
                         </div>
@@ -1443,7 +1444,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                             <p className="text-[11px] text-gray-400">
                               <span className="font-medium text-gray-500">{meta.label}</span>
                               {' · '}
-                              {new Date(tx.received_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              {fmtMonthDayTime(tx.received_at)}
                               {tx.memo && ` · ${tx.memo}`}
                             </p>
                           </div>

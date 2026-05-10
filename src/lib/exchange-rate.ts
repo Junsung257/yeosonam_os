@@ -23,7 +23,7 @@ async function fetchRateFromApi(): Promise<number | null> {
       ? `https://v6.exchangerate-api.com/v6/${apiKey}/pair/USD/KRW`
       : 'https://open.er-api.com/v6/latest/USD'; // 무료 플랜 (API 키 불필요)
 
-    const res = await fetch(url, { next: { revalidate: 3600 } });
+    const res = await fetch(url, { next: { revalidate: 3600 }, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const json = await res.json();
 

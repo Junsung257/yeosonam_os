@@ -4,8 +4,9 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
+import { BackToTop } from '@/components/blog/BackToTop';
 
-export const revalidate = 300;
+export const revalidate = 86400;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -248,6 +249,12 @@ function SideCard({ post }: { post: BlogPost }) {
           {dest && <span>{dest}</span>}
           {dest && <span className="text-[#D1D5DB]">·</span>}
           <span>📖 {readMin}분 읽기</span>
+          {post.view_count && post.view_count >= 100 && (
+            <>
+              <span className="text-[#D1D5DB]">·</span>
+              <span>👁 {post.view_count >= 1000 ? `${(post.view_count / 1000).toFixed(1)}k` : post.view_count}</span>
+            </>
+          )}
         </div>
       </div>
     </Link>
@@ -361,6 +368,7 @@ export default async function BlogListPage({
 
   return (
     <>
+      <BackToTop />
       <script
         suppressHydrationWarning
         type="application/ld+json"

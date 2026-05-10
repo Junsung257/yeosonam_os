@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,7 +88,7 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '업데이트 실패' },
+      { error: logAndSanitize('admin-flight-alerts-patch', err, '업데이트 실패') },
       { status: 500 },
     );
   }

@@ -97,3 +97,12 @@ tmp-*.html
 
 # Lazyweb 디자인 리포트 (로컬 분석 전용)
 .lazyweb/
+
+# Page audit 산출물 (test infra만 commit, 결과 + 인증 상태는 로컬 전용)
+tests/audit/results*.ndjson
+tests/audit/results*.json
+tests/audit/run.log
+tests/audit/auth.json
+
+# 임시 디버그 텍스트 dump
+.tmp-detail-html.txt

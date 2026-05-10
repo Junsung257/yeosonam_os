@@ -243,10 +243,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       // ── Postback (fire-and-forget) ──────────────────────
       // 외부 광고 플랫폼 전환 통보. await 차단으로 응답 지연 방지 — 실패해도 Conversion DB 기록은 이미 적재됨.
-      // Google Ads 전환 Postback
+      // Google Ads 전환 Postback (5s timeout — fire-and-forget이지만 행 시 lambda 점유 방어)
       if (attributed_gclid && getSecret('GOOGLE_CONVERSION_ID')) {
         fetch(
-          `https://www.googleadservices.com/pagead/conversion/${getSecret('GOOGLE_CONVERSION_ID')}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
+          `https://www.googleadservices.com/pagead/conversion/${getSecret('GOOGLE_CONVERSION_ID')}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`,
+          { signal: AbortSignal.timeout(5000) },
         )
           .then(() => console.log('[Postback] Google Ads 전환 완료'))
           .catch(e => console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e));
@@ -265,6 +266,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               custom_data: { value: final_sales_price, currency: 'KRW' } }],
             access_token: metaAccessToken,
           }),
+          signal: AbortSignal.timeout(5000),
         })
           .then(() => console.log('[Postback] Meta CAPI 전환 완료'))
           .catch(e => console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e));

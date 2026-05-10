@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { TravelPackageInsertSchema } from '@/lib/validators/package-schema';
+import { AgentProposalSchema } from '@/lib/package-schema';
 import { validatePackageBusinessRules } from '@/lib/validators/package-rules';
 import { z } from 'zod';
 
@@ -10,7 +10,7 @@ import { z } from 'zod';
 export async function submitPackageProposal(payload: any, summary: string, requestedBy: string = 'jarvis') {
   try {
     // 1. Zod 강제 검증: 규격에 어긋나는 키/타입이 있으면 ZodError 발생
-    const validatedPayload = TravelPackageInsertSchema.parse(payload);
+    const validatedPayload = AgentProposalSchema.parse(payload);
 
     // 2. 비즈니스 규칙 검증 (W13~W19): raw_text 대조로 환각/교차오염 감지
     const { warnings } = validatePackageBusinessRules(validatedPayload as any);

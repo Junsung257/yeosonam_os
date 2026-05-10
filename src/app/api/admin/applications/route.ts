@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
+import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
 
 // GET: 파트너 신청 목록
 export async function GET(request: NextRequest) {
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
   if (status) query = query.eq('status', status);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
 
   return NextResponse.json({ applications: data || [] });
 }
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
           pin,
           payout_type: app.business_type === 'business' ? 'BUSINESS' : 'PERSONAL',
           business_number: app.business_number || null,
-          commission_rate: 0.09,
+          commission_rate: getDefaultAffiliateCommissionRate(),
           is_active: true,
           memo: `채널: ${app.channel_type} / ${app.channel_url}${app.intro ? ` / ${app.intro}` : ''}`,
         })
@@ -127,9 +129,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'action은 approve 또는 reject' }, { status: 400 });
   } catch (error) {
-    console.error('[Applications]', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리 실패' },
+      { error: logAndSanitize('admin-applications', error, '처리 실패') },
       { status: 500 }
     );
   }

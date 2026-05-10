@@ -12,6 +12,7 @@ import {
 } from '@/lib/booking-state-machine';
 import type { MessageLog } from '@/lib/supabase';
 import BookingConciergeAdminPanel from '@/components/booking/BookingConciergeAdminPanel';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 interface BookingDetail {
@@ -795,7 +796,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                     <p className="text-xs text-admin-muted mt-0.5 leading-relaxed">{log.content}</p>
                   )}
                   <p className="text-xs text-admin-muted-2 mt-1">
-                    {new Date(log.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {fmtMonthDayTime(log.created_at)}
                     {' · '}{log.created_by}
                   </p>
                 </div>

@@ -8,6 +8,12 @@ export async function GET(
   if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
   const { id } = await params;
 
+  // UUID 형식 사전 검증 — 잘못된 ID 는 빈 결과로 (500 회피)
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ data: [] });
+  }
+
   const { data, error } = await supabaseAdmin
     .from('post_trip_reviews')
     .select('id, overall_rating, value_for_money, itinerary_quality, guide_quality, accommodation_quality, food_quality, title, review_text, pros, cons, helpful_count, source_type, status, created_at, customers(name)')

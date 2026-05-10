@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 // GET: 감사 로그 타임라인 조회
 export async function GET(request: NextRequest) {
@@ -28,12 +30,22 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ logs: data || [] });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
+    return NextResponse.json({ error: logAndSanitize('audit-logs-get', err, '조회 실패') }, { status: 500 });
   }
 }
 
 // POST: 감사 로그 기록
 export async function POST(request: NextRequest) {
+  // 인증 게이트 — 감사 로그 위조 방지 (S2 보안 강화)
+  const token = request.cookies.get('sb-access-token')?.value;
+  if (!token) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+  }
+  const verified = await verifySupabaseAccessToken(token);
+  if (!verified.ok) {
+    return NextResponse.json({ error: '세션이 유효하지 않습니다.' }, { status: 401 });
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -63,6 +75,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ log: data }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '로그 기록 실패' }, { status: 500 });
+    return NextResponse.json({ error: logAndSanitize('audit-logs-post', err, '로그 기록 실패') }, { status: 500 });
   }
 }

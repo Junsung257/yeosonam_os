@@ -20,12 +20,17 @@ export async function GET(request: NextRequest) {
 
   try {
     if (id) {
-      // 단건 조회
+      // UUID 형식 사전 검증 — 잘못된 입력은 500 대신 404 로 응답
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(id)) {
+        return NextResponse.json({ error: '어필리에이트를 찾을 수 없습니다.' }, { status: 404 });
+      }
+      // 단건 조회 — maybeSingle() 로 0행은 null 반환 (.single() 의 PGRST116 에러 회피)
       const { data, error } = await supabase
         .from('affiliates')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       if (!data) return NextResponse.json({ error: '어필리에이트를 찾을 수 없습니다.' }, { status: 404 });

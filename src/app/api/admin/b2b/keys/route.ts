@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 async function requireAdmin(request: NextRequest): Promise<string | null> {
   const token =
@@ -49,8 +50,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: masked });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: logAndSanitize('admin-b2b-keys', err) }, { status: 500 });
   }
 }
 
@@ -112,7 +112,6 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: logAndSanitize('admin-b2b-keys', err) }, { status: 500 });
   }
 }

@@ -84,6 +84,11 @@ export async function calculateDraftForAffiliate(
       .eq('status', 'pending'),
   ]);
 
+  // 정산 계산은 silent error 시 0건으로 처리되어 과소 지급 위험 → 명시적 throw
+  if (bookingsRes.error) throw new Error(`settlement bookings query failed: ${bookingsRes.error.message}`);
+  if (prevSettlementRes.error) throw new Error(`settlement prev-carryover query failed: ${prevSettlementRes.error.message}`);
+  if (pendingAdjustmentsRes.error) throw new Error(`settlement adjustments query failed: ${pendingAdjustmentsRes.error.message}`);
+
   const bookings = bookingsRes.data;
   const prevSettlement = prevSettlementRes.data;
   const pendingAdjustments = pendingAdjustmentsRes.data;

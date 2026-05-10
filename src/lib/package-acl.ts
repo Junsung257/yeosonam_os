@@ -15,6 +15,7 @@
 
 import { formatDepartureDays } from './admin-utils';
 import type { PackageCore } from './package-schema';
+import { REGION_KEYWORD_MAP } from './constants/regions';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Photo 정규화 — 구형식 {url,thumb,credit} → 신형식 {src_medium,src_large,photographer}
@@ -60,31 +61,18 @@ export function normalizePhotos(photos: unknown, fallbackAlt = ''): NewPhoto[] {
 //  OptionalTour 정규화 — region 추론 + price 통일
 // ═══════════════════════════════════════════════════════════════════════════
 
-const REGION_INFERENCE: Record<string, string> = {
-  '말레이시아': '말레이시아', '쿠알라': '말레이시아', '말라카': '말레이시아', '겐팅': '말레이시아',
-  '싱가포르': '싱가포르',
-  '태국': '태국', '방콕': '태국', '파타야': '태국', '푸켓': '태국',
-  '베트남': '베트남', '다낭': '베트남', '하노이': '베트남', '나트랑': '베트남',
-  '대만': '대만', '타이페이': '대만', '타이베이': '대만',
-  '일본': '일본', '후쿠오카': '일본', '오사카': '일본', '홋카이도': '일본',
-  '중국': '중국', '서안': '중국', '북경': '중국', '상해': '중국', '장가계': '중국', '칭다오': '중국',
-  '라오스': '라오스', '몽골': '몽골',
-  '필리핀': '필리핀', '보홀': '필리핀', '세부': '필리핀',
-  '인도네시아': '인도네시아', '발리': '인도네시아',
-};
-
 function inferRegion(name: string, explicit?: string | null): string | null {
   if (explicit && explicit.trim()) return explicit.trim();
   if (!name) return null;
   // 괄호 내 키워드 우선
   const paren = name.match(/\(([^)]+)\)/);
   if (paren) {
-    for (const [kw, region] of Object.entries(REGION_INFERENCE)) {
+    for (const [kw, region] of Object.entries(REGION_KEYWORD_MAP)) {
       if (paren[1].includes(kw)) return region;
     }
   }
   // 본문 키워드
-  for (const [kw, region] of Object.entries(REGION_INFERENCE)) {
+  for (const [kw, region] of Object.entries(REGION_KEYWORD_MAP)) {
     if (name.includes(kw)) return region;
   }
   return null;

@@ -6,6 +6,7 @@ import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-des
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor';
 import { critiqueReply, applyCritique } from '@/lib/jarvis/response-critic';
 import { llmCall, tryDeepSeekStream } from '@/lib/llm-gateway';
+import { rateLimitAI } from '@/lib/rate-limiter';
 import { resolveAffiliateScopeId } from '@/lib/affiliate-scope';
 import { advanceCustomerJourney, type CustomerJourneySnapshot } from '@/lib/customer-journey';
 import { recordPlatformLearningEvent } from '@/lib/platform-learning';
@@ -138,6 +139,9 @@ function encodeEvent(ev: StreamEvent, encoder: TextEncoder) {
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   const body = await request.json();
   const {
     message,

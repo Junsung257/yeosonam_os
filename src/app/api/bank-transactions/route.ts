@@ -21,6 +21,7 @@ import {
   BookingCandidate,
 } from '@/lib/payment-matcher';
 import { learnAlias } from '@/lib/slack-ingest';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // 매칭 성공 후 counterparty_name ↔ customer 매핑 학습 (best-effort)
 async function learnAliasForMatch(bookingId: string, counterpartyName: string | undefined | null) {
@@ -597,9 +598,9 @@ export async function PATCH(request: NextRequest) {
       // 이 RPC 는 bookings 갱신 + 기존 ledger 합계와의 차이를 manual_adjust 로 보정 INSERT 까지 atomic.
       const { data, error } = await supabaseAdmin.rpc('resync_paid_amounts_with_ledger');
       if (error) {
-        console.error('[resync] RPC 실패:', error.message);
+        console.error('[resync] RPC 실패:', error);
         return NextResponse.json(
-          { error: `재동기화 RPC 실패: ${error.message}. 마이그레이션 적용 상태를 확인하세요.` },
+          { error: `재동기화 RPC 실패: ${sanitizeDbError(error)}. 마이그레이션 적용 상태를 확인하세요.` },
           { status: 500 },
         );
       }

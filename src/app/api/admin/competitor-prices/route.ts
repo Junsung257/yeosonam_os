@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,12 +33,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (competitorErr) throw competitorErr;
 
     // 여소남 최저가 병합 (travel_packages에서 destination + duration 기준)
+    // 실제 컬럼: status (active 식별), price (정수), duration (정수). selling_price·is_active·duration_days 는 없음.
     let yeosonamQuery = supabaseAdmin
       .from('travel_packages')
-      .select('destination, duration_days, selling_price, title')
-      .eq('is_active', true)
-      .not('selling_price', 'is', null)
-      .order('selling_price', { ascending: true });
+      .select('destination, duration, price, title, status')
+      .in('status', ['active', 'published', 'approved'])
+      .not('price', 'is', null)
+      .order('price', { ascending: true });
 
     if (destination) {
       yeosonamQuery = yeosonamQuery.eq('destination', destination);
@@ -48,11 +50,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // destination + duration 기준 여소남 최저가 집계
     const yeosonamMinMap: Record<string, { minPrice: number; title: string }> = {};
-    for (const pkg of yeosonamData ?? []) {
-      const key = `${pkg.destination}__${pkg.duration_days}`;
+    for (const pkg of (yeosonamData ?? []) as Array<{ destination: string | null; duration: number | null; price: number | null; title: string }>) {
+      if (!pkg.destination || pkg.duration == null || pkg.price == null) continue;
+      const key = `${pkg.destination}__${pkg.duration}`;
       const existing = yeosonamMinMap[key];
-      if (!existing || pkg.selling_price < existing.minPrice) {
-        yeosonamMinMap[key] = { minPrice: pkg.selling_price, title: pkg.title };
+      if (!existing || pkg.price < existing.minPrice) {
+        yeosonamMinMap[key] = { minPrice: pkg.price, title: pkg.title };
       }
     }
 
@@ -73,7 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } catch (err) {
     console.error('[competitor-prices GET] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+      { error: logAndSanitize('admin-competitor-prices', err, '처리 실패') },
       { status: 500 },
     );
   }
@@ -133,7 +136,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (err) {
     console.error('[competitor-prices POST] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+      { error: logAndSanitize('admin-competitor-prices', err, '처리 실패') },
       { status: 500 },
     );
   }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { IntegrationStatus } from '@/app/api/admin/integrations/route';
+import { fmtDate } from '@/lib/admin-utils';
 
 const PLATFORM_ICONS: Record<string, string> = {
   google_ads: '🔵',
@@ -182,7 +183,7 @@ export default function IntegrationsPage() {
                     <span className={`w-2 h-2 rounded-full ${item.connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                     <span className="text-admin-xs text-admin-muted">
                       {item.connected
-                        ? `연결됨 · ${item.connected_at ? new Date(item.connected_at).toLocaleDateString('ko-KR') : ''}`
+                        ? `연결됨 · ${fmtDate(item.connected_at ?? undefined)}`
                         : '미연결'}
                     </span>
                   </div>
@@ -193,7 +194,7 @@ export default function IntegrationsPage() {
                   )}
                   {item.connected && item.expires_at && (
                     <p className="text-[11px] text-admin-muted-2">
-                      만료: {new Date(item.expires_at).toLocaleDateString('ko-KR')}
+                      만료: {fmtDate(item.expires_at)}
                     </p>
                   )}
                 </div>

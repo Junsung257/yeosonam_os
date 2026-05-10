@@ -23,6 +23,7 @@ import {
 import { invalidateQaChatPackageCache } from '@/lib/qa-chat-packages';
 import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
 import { getSecret } from '@/lib/secret-registry';
+import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -286,9 +287,12 @@ export async function GET(request: NextRequest) {
 
     // 검색: title/internal_code/short_code/destination/land_operator
     if (q) {
-      query = query.or(
-        `title.ilike.%${q}%,internal_code.ilike.%${q}%,short_code.ilike.%${q}%,destination.ilike.%${q}%,land_operator.ilike.%${q}%`,
-      );
+      const safeQ = escapePostgrestIlikeValue(q);
+      if (safeQ) {
+        query = query.or(
+          `title.ilike.%${safeQ}%,internal_code.ilike.%${safeQ}%,short_code.ilike.%${safeQ}%,destination.ilike.%${safeQ}%,land_operator.ilike.%${safeQ}%`,
+        );
+      }
     }
 
     const { data, error, count } = await query;

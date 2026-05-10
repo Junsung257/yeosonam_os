@@ -137,7 +137,8 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
         });
 
         setCampaigns(mapped);
-        setLastSync(new Date().toLocaleTimeString('ko-KR'));
+        // ko-KR locale 회피 (ERR-blog-queue-locale-hydration). UTC HH:mm 사용.
+        setLastSync(new Date().toISOString().slice(11, 16));
 
         // Auto Kill
         if (autoKill) {

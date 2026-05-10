@@ -11,6 +11,7 @@ import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE_BULK } from '@/lib/prompt-version';
 import { getTopPerformingBlogExcerpts, formatFewShotBlock } from '@/lib/blog-few-shot';
 import { pickMarketingPrice } from '@/lib/marketing-price';
+import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 
 export const maxDuration = 60;
 
@@ -50,16 +51,21 @@ export async function POST(request: NextRequest) {
     // 관광지 조회 (복합 지역 분리 검색)
     let attractions: AttractionData[] = [];
     if (pkg.destination) {
-      const destParts = pkg.destination.split(/[\/\s]+/).filter(Boolean);
-      const orFilters = destParts
-        .flatMap((part: string) => [`region.ilike.%${part}%`, `country.ilike.%${part}%`])
-        .join(',');
-      const { data: attrData } = await supabaseAdmin
-        .from('attractions')
-        .select('name, short_desc, photos, country, region, badge_type, emoji, aliases, category')
-        .or(orFilters)
-        .limit(500);
-      attractions = (attrData || []) as AttractionData[];
+      const destParts = pkg.destination
+        .split(/[\/\s]+/)
+        .map((p: string) => escapePostgrestIlikeValue(p))
+        .filter(Boolean);
+      if (destParts.length > 0) {
+        const orFilters = destParts
+          .flatMap((part: string) => [`region.ilike.%${part}%`, `country.ilike.%${part}%`])
+          .join(',');
+        const { data: attrData } = await supabaseAdmin
+          .from('attractions')
+          .select('name, short_desc, photos, country, region, badge_type, emoji, aliases, category')
+          .or(orFilters)
+          .limit(500);
+        attractions = (attrData || []) as AttractionData[];
+      }
     }
 
     // 서브 키워드 N개 선택

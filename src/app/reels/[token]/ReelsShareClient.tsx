@@ -58,11 +58,8 @@ export default function ReelsShareClient({ reel }: Props) {
   const prev = () => setCurrentIdx((i) => (i === 0 ? photos.length - 1 : i - 1));
   const next = () => setCurrentIdx((i) => (i === photos.length - 1 ? 0 : i + 1));
 
-  const travelDate = new Date(reel.created_at).toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  // locale-stable: "YYYY-MM-DD" 표기 (예: "2024-12-25")
+  const travelDate = reel.created_at ? reel.created_at.slice(0, 10) : '';
 
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-between py-8 px-4">

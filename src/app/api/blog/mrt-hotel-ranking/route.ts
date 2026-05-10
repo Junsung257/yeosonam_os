@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { mrtProvider, buildMylinkUrl } from '@/lib/travel-providers/mrt';
+import { getPrompt } from '@/lib/prompt-loader';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const maxDuration = 60;
 
@@ -101,16 +103,20 @@ export async function POST(request: NextRequest) {
     const internalLink = `${baseUrl}/free-travel`;
 
     // 3. LLM 블로그 생성
-    const systemPrompt = `당신은 한국 여행 블로그 전문 작가입니다. SEO 최적화된 호텔 랭킹 블로그를 작성합니다.
+    const MRT_SYSTEM_FALLBACK = `당신은 한국 여행 블로그 전문 작가입니다. SEO 최적화된 호텔 랭킹 블로그를 작성합니다.
 규칙:
 - 마크다운 형식 (# H1, ## H2, ### H3)
-- H1: "${h1}" 그대로 사용
-- H2 4~6개, 각 H2에 "${keyword}" 또는 관련어 자연스럽게 포함
+- H1: "{{h1}}" 그대로 사용
+- H2 4~6개, 각 H2에 "{{keyword}}" 또는 관련어 자연스럽게 포함
 - 1800~2500자
 - 각 호텔 섹션: 이름·별점·위치·가격·특징·예약링크 포함
 - 추측 형용사("아름다운/환상적인/완벽한") 금지 — 구체 수치만
-- 결론에 내부링크(자유여행 플래너) 1회 의무: ${internalLink}
+- 결론에 내부링크(자유여행 플래너) 1회 의무: {{internalLink}}
 - 마크다운만 출력 (코드블록 X)`;
+    const systemPrompt = (await getPrompt('mrt-hotel-ranking-system', MRT_SYSTEM_FALLBACK))
+      .replace('{{h1}}', h1)
+      .replace('{{keyword}}', keyword)
+      .replace('{{internalLink}}', internalLink);
 
     const userPrompt = `다음 ${city} ${tierLabel} 호텔 ${topN}곳을 랭킹 형식으로 소개하는 SEO 블로그를 작성하세요.
 
@@ -186,7 +192,7 @@ ${hotelLines}
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '생성 실패' },
+      { error: logAndSanitize('mrt-hotel-ranking', err, '생성 실패') },
       { status: 500 },
     );
   }

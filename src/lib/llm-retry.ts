@@ -118,7 +118,7 @@ export function stripMarkdownJson(raw: string): string {
   if (!raw) return raw;
 
   // 1) 코드펜스 제거 (앞·뒤 모두)
-  let s = raw
+  const s = raw
     .replace(/^[\s﻿]*```(?:json)?\s*/i, '')
     .replace(/\s*```[\s﻿]*$/i, '')
     .trim();

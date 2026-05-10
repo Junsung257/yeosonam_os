@@ -12,6 +12,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { getPrompt } from '@/lib/prompt-loader';
+import { logAndSanitize } from '@/lib/error-sanitizer';
+
+const PASSPORT_OCR_FALLBACK = `이 여권 이미지에서 다음 정보를 추출하여 JSON으로만 응답하세요. 설명 없이 JSON만 반환하세요.
+
+{
+  "surname": "성 (한글 또는 영문)",
+  "given_name": "이름 (한글 또는 영문)",
+  "passport_no": "여권 번호 (예: M12345678)",
+  "nationality": "국적 코드 (예: KOR, CHN, USA)",
+  "birth_date": "생년월일 YYYY-MM-DD 형식",
+  "expiry_date": "만료일 YYYY-MM-DD 형식",
+  "gender": "성별 M 또는 F",
+  "mrz_line1": "MRZ 첫째 줄 (기계 판독 영역 전체)",
+  "mrz_line2": "MRZ 둘째 줄"
+}
+
+읽을 수 없는 필드는 null로 표시. 날짜는 반드시 YYYY-MM-DD 형식. MRZ의 날짜는 YYMMDD → YYYY-MM-DD 변환.`;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -32,6 +51,9 @@ interface PassportData {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   const apiKey = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) {
     return NextResponse.json({ error: 'GEMINI_API_KEY 또는 GOOGLE_AI_API_KEY 미설정' }, { status: 503 });
@@ -66,21 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const prompt = `이 여권 이미지에서 다음 정보를 추출하여 JSON으로만 응답하세요. 설명 없이 JSON만 반환하세요.
-
-{
-  "surname": "성 (한글 또는 영문)",
-  "given_name": "이름 (한글 또는 영문)",
-  "passport_no": "여권 번호 (예: M12345678)",
-  "nationality": "국적 코드 (예: KOR, CHN, USA)",
-  "birth_date": "생년월일 YYYY-MM-DD 형식",
-  "expiry_date": "만료일 YYYY-MM-DD 형식",
-  "gender": "성별 M 또는 F",
-  "mrz_line1": "MRZ 첫째 줄 (기계 판독 영역 전체)",
-  "mrz_line2": "MRZ 둘째 줄"
-}
-
-읽을 수 없는 필드는 null로 표시. 날짜는 반드시 YYYY-MM-DD 형식. MRZ의 날짜는 YYMMDD → YYYY-MM-DD 변환.`;
+    const prompt = await getPrompt('passport-ocr-v1', PASSPORT_OCR_FALLBACK);
 
     const result = await model.generateContent([
       prompt,
@@ -120,8 +128,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ ok: true, data: result_data });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'OCR 처리 실패';
-    console.error('[passport/ocr] 오류:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: logAndSanitize('passport-ocr', err, 'OCR 처리 실패') },
+      { status: 500 },
+    );
   }
 }

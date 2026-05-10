@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 type Row = {
   id: string;
@@ -178,12 +179,7 @@ export default function BookingConciergeAdminPanel(props: {
                 {m.role === 'user' ? '고객' : m.role === 'staff' ? '상담(내부)' : m.role === 'assistant' ? 'AI' : m.role}
               </span>
               <span className="text-[10px] tabular-nums">
-                {new Date(m.created_at).toLocaleString('ko-KR', {
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {fmtMonthDayTime(m.created_at)}
               </span>
             </div>
             {m.role === 'staff' && m.metadata?.by && (

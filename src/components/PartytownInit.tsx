@@ -10,8 +10,11 @@ const PT_ENABLED = process.env.NEXT_PUBLIC_PARTYTOWN === '1';
 export default function PartytownInit() {
   if (!PT_ENABLED) return null;
 
+  // Partytown 은 다른 모든 스크립트 전에 초기화돼야 forward 가 동작 (Next.js 14 App Router 에서는 안전).
+  // 룰 경고는 pages router 시대 가이드라인이라 본 케이스엔 부적합.
   return (
     <>
+      {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
       <Script
         id="partytown-config"
         strategy="beforeInteractive"
@@ -19,6 +22,7 @@ export default function PartytownInit() {
           __html: `partytown={lib:'/~partytown/',forward:['fbq','_fbq','kakaoPixel','clarity']};`,
         }}
       />
+      {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
       <Script id="partytown-lib" src="/~partytown/partytown.js" strategy="beforeInteractive" />
     </>
   );

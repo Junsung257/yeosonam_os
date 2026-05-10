@@ -318,7 +318,7 @@ function airportToDepCity(ap?: string | null): string | null {
   return stripped || null;
 }
 
-function resolveAirlineHeader(pkg: RenderPackageInput): AirlineHeader {
+export function resolveAirlineHeader(pkg: RenderPackageInput): AirlineHeader {
   const meta = pkg.itinerary_data?.meta ?? null;
   const flightNumber = meta?.flight_out?.trim() || null;
   const airlineRaw = pkg.airline || meta?.airline || null;
@@ -443,7 +443,7 @@ function formatSurchargeObject(s: SurchargeObject): MergedSurcharge {
   return { label, structured: s, raw: null, name, period, priceLabel };
 }
 
-function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
+export function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
   merged: MergedSurcharge[];
   excludes: CanonicalExcludes;
 } {
@@ -488,7 +488,7 @@ const INTERNAL_KEYWORDS = /커미션|commission_rate|정산|LAND_OPERATOR|스키
  *   2) customer_notes (고객 노출 OK 검증 통과 자유 텍스트)
  *   3) special_notes는 더 이상 fallback 출처가 아님 (ERR-special-notes-leak 차단)
  */
-function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
+export function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
   const fromHighlights = pkg.itinerary_data?.highlights?.shopping?.trim();
   if (fromHighlights) {
     return {
@@ -515,7 +515,7 @@ function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
 //  선택관광 정규화
 // ═══════════════════════════════════════════════════════════════════════════
 
-function resolveOptionalTours(pkg: RenderPackageInput): CanonicalOptionalTours {
+export function resolveOptionalTours(pkg: RenderPackageInput): CanonicalOptionalTours {
   const tours = pkg.optional_tours ?? [];
   const flat = tours.map(normalizeOptionalTour);
   const groups = groupOptionalToursByRegion(tours);

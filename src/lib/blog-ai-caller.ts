@@ -68,10 +68,12 @@ export async function generateBlogJSON(
       model,
       max_tokens: opts.maxTokens || 2000,
       temperature,
-      system: opts.systemPrompt,
+      system: opts.systemPrompt
+        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: { type: 'ephemeral' as const } }]
+        : undefined,
       messages: [{ role: 'user', content: prompt }],
     });
-    const text = r.content.filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+    const text = r.content.filter((x) => x.type === 'text').map((x) => (x as Anthropic.TextBlock).text).join('\n');
     return text || '{}';
   }
 
@@ -131,10 +133,12 @@ export async function generateBlogText(
       model,
       max_tokens: opts.maxTokens || 2000,
       temperature,
-      system: opts.systemPrompt,
+      system: opts.systemPrompt
+        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: { type: 'ephemeral' as const } }]
+        : undefined,
       messages: [{ role: 'user', content: prompt }],
     });
-    return r.content.filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+    return r.content.filter((x) => x.type === 'text').map((x) => (x as Anthropic.TextBlock).text).join('\n');
   }
 
   // Gemini

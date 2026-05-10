@@ -43,7 +43,7 @@ async function runSerpRankSnapshot(request: NextRequest) {
   for (const kw of keywords) {
     try {
       const url = `https://serpapi.com/search.json?engine=naver&q=${encodeURIComponent(kw)}&api_key=${serpApiKey}`;
-      const res = await fetch(url, { next: { revalidate: 0 } });
+      const res = await fetch(url, { next: { revalidate: 0 }, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) {
         errors.push(`serpapi HTTP ${res.status} (${kw})`);
         continue;

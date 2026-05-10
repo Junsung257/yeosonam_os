@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const authHeader = request.headers.get('Authorization') ?? '';
   const expected = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
-  if (authHeader !== expected) {
+  if (!safeEqualString(authHeader, expected)) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 

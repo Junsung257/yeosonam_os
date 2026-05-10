@@ -17,6 +17,19 @@ import pdfParse from 'pdf-parse';
 import * as XLSX from 'xlsx';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { getPrompt } from '@/lib/prompt-loader';
+
+const PRODUCT_SCAN_FALLBACK = `당신은 여행사 내부 ERP용 상품 파일 분석 전문가입니다.
+문서에서 상품 정보를 추출하여 순수 JSON으로만 응답하세요 (마크다운 코드블록 없이).
+
+규칙:
+- destination_code: IATA 도시코드 3자리 대문자 (마카오→MAC, 방콕→BKK 등)
+- departure_region_code: 출발 공항코드 (부산/김해→PUS, 인천/서울→ICN, 김포→GMP, 제주→CJU, 대구→TAE, 광주→KWJ)
+- duration_days: 여행 총 일수 숫자만 (3박5일→5, 4박6일→6)
+- net_price: 원가(도매가) 원화 정수. 달러($)면 ×1350 환산. 없으면 null
+- departure_date: 가장 빠른 출발일 YYYY-MM-DD. 없으면 null
+- ai_tags: 상품 특징 태그 배열 (예: ["노팁노옵션", "소규모", "실속", "골프포함"])`;
 
 // ─── 코드 매핑 테이블 ─────────────────────────────────────────
 
@@ -147,16 +160,7 @@ async function analyzeWithDeepSeek(
   if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
   const client = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 
-  const systemPrompt = `당신은 여행사 내부 ERP용 상품 파일 분석 전문가입니다.
-문서에서 상품 정보를 추출하여 순수 JSON으로만 응답하세요 (마크다운 코드블록 없이).
-
-규칙:
-- destination_code: IATA 도시코드 3자리 대문자 (마카오→MAC, 방콕→BKK 등)
-- departure_region_code: 출발 공항코드 (부산/김해→PUS, 인천/서울→ICN, 김포→GMP, 제주→CJU, 대구→TAE, 광주→KWJ)
-- duration_days: 여행 총 일수 숫자만 (3박5일→5, 4박6일→6)
-- net_price: 원가(도매가) 원화 정수. 달러($)면 ×1350 환산. 없으면 null
-- departure_date: 가장 빠른 출발일 YYYY-MM-DD. 없으면 null
-- ai_tags: 상품 특징 태그 배열 (예: ["노팁노옵션", "소규모", "실속", "골프포함"])`;
+  const systemPrompt = await getPrompt('product-scan-system', PRODUCT_SCAN_FALLBACK);
 
   const userContent = `파일명 힌트:
 - 랜드사: ${hints.supplierName ?? '불명'}(코드: ${hints.supplierCode ?? '?'})
@@ -270,6 +274,9 @@ async function getNextInternalCode(
 // ─── Route Handler ─────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;

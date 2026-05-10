@@ -19,12 +19,13 @@ import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { parseShinhanSMS } from '@/lib/sms-parser';
 import { matchPaymentToBookings, classifyMatch, BookingCandidate } from '@/lib/payment-matcher';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export async function POST(request: NextRequest) {
   // 웹훅 시크릿 검증
   const secret = request.headers.get('x-webhook-secret');
   const expected = getSecret('SMS_WEBHOOK_SECRET');
-  if (!expected || secret !== expected) {
+  if (!expected || !safeEqualString(secret, expected)) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 

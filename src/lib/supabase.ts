@@ -14,9 +14,16 @@ const PACKAGE_LIST_SELECT = `
   audit_status, internal_code
 `.replace(/\s+/g, ' ').trim();
 
-const supabaseUrl = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
+// Next.js 클라이언트 번들링: process.env.NEXT_PUBLIC_* 는 정적 참조여야 inline됨.
+// getSecret() 의 동적 인덱싱(process.env[key])은 client bundle 에서 undefined 가 되어
+// /m/admin/* 등 client 컴포넌트가 "Supabase가 구성되지 않았습니다" 로 크래시한다.
+// 정적 참조(↓) 를 우선 사용하고 server-only 키는 getSecret 으로 보강.
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  getSecret('SUPABASE_URL');
 const supabaseKey =
-  getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY') || getSecret('SUPABASE_ANON_KEY');
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  getSecret('SUPABASE_ANON_KEY');
 const supabaseServiceKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
 
 function isValidUrl(url?: string | null): url is string {

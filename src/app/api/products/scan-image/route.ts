@@ -12,12 +12,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { analyzeFromText } from '@/lib/band-ai-analyzer';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 type AllowedType = typeof ALLOWED_TYPES[number];
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   if (!getSecret('ANTHROPIC_API_KEY')) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY 미설정' }, { status: 503 });
   }

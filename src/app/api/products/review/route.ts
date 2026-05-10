@@ -13,6 +13,23 @@ import { searchPexelsPhotos } from '@/lib/pexels';
 import { generateAdVariants } from '@/lib/ai';
 import { checkAiCopyConsistency } from '@/lib/ai-consistency-checker';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { getPrompt } from '@/lib/prompt-loader';
+
+const PRODUCT_FAQ_FALLBACK = `
+다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
+답변은 반드시 원문에 근거하여 작성하고, 원문에 없는 내용은 "별도 문의 부탁드립니다"로 처리하세요.
+원가/랜드사 등 내부 정보는 절대 포함하지 마세요.
+
+출력 형식 (JSON 배열만, 마크다운 없이):
+[{"q":"질문","a":"답변"},...]
+
+상품명: {{display_name}}
+목적지: {{destination}}
+
+원문:
+{{snippet}}
+`.trim();
 
 // ─── VA 검수 체크리스트 계산 ──────────────────────────────────────────────
 // 각 상품이 ACTIVE 진입해도 안전한지 자동 검증
@@ -109,24 +126,36 @@ export async function GET() {
 
 // ─── POST: 액션 라우터 ────────────────────────────────────────────────────────
 
+const VALID_ACTIONS = ['approve', 'reject', 'faq', 'images', 'marketing'] as const;
+type ReviewAction = typeof VALID_ACTIONS[number];
+
 export async function POST(req: NextRequest) {
+  const limited = await rateLimitAI(req);
+  if (limited) return limited;
+
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
+
+  if (!action || !VALID_ACTIONS.includes(action as ReviewAction)) {
+    return NextResponse.json(
+      { error: `action은 ${VALID_ACTIONS.join('/')} 중 하나여야 합니다.` },
+      { status: 400 },
+    );
+  }
 
   try {
     const body = await req.json();
 
-    switch (action) {
+    switch (action as ReviewAction) {
       case 'approve':  return handleApprove(body);
       case 'reject':   return handleReject(body);
       case 'faq':      return handleFaq(body);
       case 'images':   return handleImages(body);
       case 'marketing':return handleMarketing(body);
-      default:
-        return NextResponse.json({ error: `알 수 없는 action: ${action}` }, { status: 400 });
     }
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    console.error('[products/review] 오류:', e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }
 
@@ -293,20 +322,10 @@ async function handleFaq(body: { product_id: string }) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    const prompt = `
-다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
-답변은 반드시 원문에 근거하여 작성하고, 원문에 없는 내용은 "별도 문의 부탁드립니다"로 처리하세요.
-원가/랜드사 등 내부 정보는 절대 포함하지 마세요.
-
-출력 형식 (JSON 배열만, 마크다운 없이):
-[{"q":"질문","a":"답변"},...]
-
-상품명: ${(product as any).display_name ?? ''}
-목적지: ${(product as any).destination ?? ''}
-
-원문:
-${snippet}
-`.trim();
+    const prompt = (await getPrompt('product-faq-generation', PRODUCT_FAQ_FALLBACK))
+      .replace('{{display_name}}', (product as any).display_name ?? '')
+      .replace('{{destination}}', (product as any).destination ?? '')
+      .replace('{{snippet}}', snippet);
 
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();

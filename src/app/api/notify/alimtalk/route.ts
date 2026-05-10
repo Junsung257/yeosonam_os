@@ -14,12 +14,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { sendPreparationGuide, sendPassportExpiryNotice } from '@/lib/kakao';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export async function POST(request: NextRequest) {
   // cron secret 검증
   const secret = request.headers.get('x-cron-secret');
   const cronSecret = getSecret('CRON_SECRET');
-  if (!cronSecret || secret !== cronSecret) {
+  if (!cronSecret || !safeEqualString(secret, cronSecret)) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 

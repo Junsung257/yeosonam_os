@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
+import { safeEqualString } from '@/lib/timing-safe';
 
 /**
  * Vercel Cron은 `Authorization: Bearer ${CRON_SECRET}` 를 붙이고,
@@ -12,7 +13,7 @@ export function isCronAuthorized(request: NextRequest | Request): boolean {
   const authHeader = request.headers.get('authorization');
   const url = request instanceof NextRequest ? request.nextUrl : new URL(request.url);
   const querySecret = url.searchParams.get('secret');
-  return authHeader === `Bearer ${secret}` || querySecret === secret;
+  return safeEqualString(authHeader, `Bearer ${secret}`) || safeEqualString(querySecret, secret);
 }
 
 /**

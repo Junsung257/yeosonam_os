@@ -15,6 +15,25 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getPrompt } from '@/lib/prompt-loader';
+
+const REVIEW_SENTIMENT_FALLBACK = `다음 여행 패키지 리뷰를 분석하여 JSON으로 응답하세요.
+
+별점: {{rating}}/5
+리뷰 내용: {{content}}
+
+다음 형식의 JSON만 반환하세요 (설명 없이):
+{
+  "sentiment_score": 0-100 사이의 정수 (0=매우 부정, 100=매우 긍정),
+  "tags": {
+    "숙소": 0-100,
+    "가이드": 0-100,
+    "일정": 0-100,
+    "식사": 0-100
+  }
+}
+
+리뷰 내용에서 해당 카테고리 언급이 없으면 별점 기반으로 기본값 추정.`;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -37,23 +56,9 @@ async function analyzeReviewSentiment(content: string, rating: number): Promise<
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const prompt = `다음 여행 패키지 리뷰를 분석하여 JSON으로 응답하세요.
-
-별점: ${rating}/5
-리뷰 내용: ${content || '(내용 없음)'}
-
-다음 형식의 JSON만 반환하세요 (설명 없이):
-{
-  "sentiment_score": 0-100 사이의 정수 (0=매우 부정, 100=매우 긍정),
-  "tags": {
-    "숙소": 0-100,
-    "가이드": 0-100,
-    "일정": 0-100,
-    "식사": 0-100
-  }
-}
-
-리뷰 내용에서 해당 카테고리 언급이 없으면 별점 기반으로 기본값 추정.`;
+  const prompt = (await getPrompt('review-sentiment-v1', REVIEW_SENTIMENT_FALLBACK))
+    .replace('{{rating}}', String(rating))
+    .replace('{{content}}', content || '(내용 없음)');
 
   try {
     const result = await model.generateContent(prompt);

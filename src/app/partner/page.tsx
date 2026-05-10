@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 interface OperatorInfo {
   id: string;
@@ -242,9 +243,7 @@ export default function PartnerPortalPage() {
                     </td>
                     <td style={styles.td}>{b.package_title}</td>
                     <td style={styles.td}>
-                      {b.departure_date
-                        ? new Date(b.departure_date).toLocaleDateString('ko-KR')
-                        : '-'}
+                      {b.departure_date ? fmtDateISO(b.departure_date) : '-'}
                     </td>
                     <td style={{ ...styles.td, textAlign: 'center' }}>{b.adult_count}명</td>
                     <td style={styles.td}>

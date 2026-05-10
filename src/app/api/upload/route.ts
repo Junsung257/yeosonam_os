@@ -20,6 +20,26 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 import { getSecret } from '@/lib/secret-registry';
+import { getPrompt } from '@/lib/prompt-loader';
+
+const ATTRACTION_EXTRACT_FALLBACK = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
+
+★ name 규칙 (가장 중요):
+- name은 반드시 2~6자의 짧은 핵심 키워드만. 수식어/설명 절대 포함 금지.
+- 입력: "절벽에 새겨진 황금불상 황금절벽사원 및 코끼리트래킹" → name: "황금절벽사원" (수식어 제거)
+- 입력: "방콕의 현대식 야시장 아시아티크" → name: "아시아티크" (수식어 제거)
+- 입력: "태국에서 가장 오래된 왓포사원" → name: "왓포사원" (수식어 제거)
+- 입력: "호텔 투숙 및 휴식" → skip: true (관광지 아님)
+- 입력: "파타야로 이동" → skip: true (이동)
+
+카테고리: sightseeing|temple|market|museum|nature|palace|shopping|entertainment|park|beach|cultural
+관광 활동이 아닌 항목(이동, 수속, 호텔체크인, 자유시간, 휴식, 조식, 체크아웃, 공항이동 등)은 skip:true.
+
+목록:
+{{names_list}}
+
+반환 형식 (JSON 배열만, 마크다운 없이):
+[{"name":"짧은키워드","desc":"매력적 1줄 설명(15~25자)","category":"sightseeing","emoji":"🏛️","skip":false}]`;
 
 /** 파싱 실패·BLOCKED 건 DLQ (비동기 적재, 실패해도 업로드 응답은 유지) */
 function scheduleUploadReviewInsert(row: {
@@ -1049,24 +1069,8 @@ export async function POST(request: NextRequest) {
               const uniqueNames = [...new Set(newActivities.map(a => a.activity))].slice(0, 30); // 최대 30개
               const dest = newActivities[0]?.destination || '';
 
-              const prompt = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
-
-★ name 규칙 (가장 중요):
-- name은 반드시 2~6자의 짧은 핵심 키워드만. 수식어/설명 절대 포함 금지.
-- 입력: "절벽에 새겨진 황금불상 황금절벽사원 및 코끼리트래킹" → name: "황금절벽사원" (수식어 제거)
-- 입력: "방콕의 현대식 야시장 아시아티크" → name: "아시아티크" (수식어 제거)
-- 입력: "태국에서 가장 오래된 왓포사원" → name: "왓포사원" (수식어 제거)
-- 입력: "호텔 투숙 및 휴식" → skip: true (관광지 아님)
-- 입력: "파타야로 이동" → skip: true (이동)
-
-카테고리: sightseeing|temple|market|museum|nature|palace|shopping|entertainment|park|beach|cultural
-관광 활동이 아닌 항목(이동, 수속, 호텔체크인, 자유시간, 휴식, 조식, 체크아웃, 공항이동 등)은 skip:true.
-
-목록:
-${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
-
-반환 형식 (JSON 배열만, 마크다운 없이):
-[{"name":"짧은키워드","desc":"매력적 1줄 설명(15~25자)","category":"sightseeing","emoji":"🏛️","skip":false}]`;
+              const prompt = (await getPrompt('attraction-extract-v1', ATTRACTION_EXTRACT_FALLBACK))
+                .replace('{{names_list}}', uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n'));
 
               try {
                 const result = await model.generateContent(prompt);

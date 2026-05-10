@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 
 /**
  * POST /api/attractions/photos — Pexels에서 사진 검색
@@ -69,6 +70,16 @@ export async function POST(request: NextRequest) {
  * body: { id: string, photos: Array<{pexels_id, src_medium, src_large, photographer}> }
  */
 export async function PATCH(request: NextRequest) {
+  // 인증 게이트 — 큐레이팅된 사진 변경은 인증 세션만 허용 (S2 보안 강화)
+  const token = request.cookies.get('sb-access-token')?.value;
+  if (!token) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+  }
+  const verified = await verifySupabaseAccessToken(token);
+  if (!verified.ok) {
+    return NextResponse.json({ error: '세션이 유효하지 않습니다.' }, { status: 401 });
+  }
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {

@@ -27,7 +27,7 @@ import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 
-export const revalidate = 300;
+export const revalidate = 86400;
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
 // 이 한 줄이 "발행 직후 첫 요청 race로 404가 캐시되는" 패턴을 구조적으로 차단한다.
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
@@ -40,7 +40,7 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(2000);
+      .limit(500);
     const rows = (data || []) as Array<{ slug: string | null }>;
     return rows
       .map((r) => r.slug)
@@ -915,19 +915,32 @@ export default async function BlogDetailPage({
                 {prevNext.prev ? (
                   <Link
                     href={`/blog/${prevNext.prev.slug}`}
-                    className="group flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-5 transition hover:border-brand/30 hover:shadow-md"
+                    className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
                   >
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      ← 이전 글
-                    </span>
-                    {prevNext.prev.destination && (
-                      <span className="text-xs text-slate-500">{prevNext.prev.destination}</span>
+                    {prevNext.prev.og_image_url && (
+                      <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
+                        <Image
+                          src={prevNext.prev.og_image_url}
+                          alt=""
+                          fill
+                          className="object-cover transition duration-300 group-hover:scale-105"
+                          sizes="96px"
+                        />
+                      </div>
                     )}
-                    <span className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
-                      {(prevNext.prev.seo_title || '여행 가이드')
-                        .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-                        .trim()}
-                    </span>
+                    <div className="flex flex-col justify-center gap-1 p-4 min-w-0">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        ← 이전 글
+                      </span>
+                      {prevNext.prev.destination && (
+                        <span className="text-xs text-slate-500">{prevNext.prev.destination}</span>
+                      )}
+                      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                        {(prevNext.prev.seo_title || '여행 가이드')
+                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                          .trim()}
+                      </span>
+                    </div>
                   </Link>
                 ) : (
                   <div />
@@ -935,19 +948,32 @@ export default async function BlogDetailPage({
                 {prevNext.next ? (
                   <Link
                     href={`/blog/${prevNext.next.slug}`}
-                    className="group flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-5 text-right transition hover:border-brand/30 hover:shadow-md"
+                    className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
                   >
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      다음 글 →
-                    </span>
-                    {prevNext.next.destination && (
-                      <span className="text-xs text-slate-500">{prevNext.next.destination}</span>
+                    <div className="flex flex-col justify-center gap-1 p-4 min-w-0 text-right flex-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        다음 글 →
+                      </span>
+                      {prevNext.next.destination && (
+                        <span className="text-xs text-slate-500">{prevNext.next.destination}</span>
+                      )}
+                      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                        {(prevNext.next.seo_title || '여행 가이드')
+                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                          .trim()}
+                      </span>
+                    </div>
+                    {prevNext.next.og_image_url && (
+                      <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
+                        <Image
+                          src={prevNext.next.og_image_url}
+                          alt=""
+                          fill
+                          className="object-cover transition duration-300 group-hover:scale-105"
+                          sizes="96px"
+                        />
+                      </div>
                     )}
-                    <span className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
-                      {(prevNext.next.seo_title || '여행 가이드')
-                        .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-                        .trim()}
-                    </span>
                   </Link>
                 ) : (
                   <div />

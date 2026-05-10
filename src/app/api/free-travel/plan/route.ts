@@ -17,6 +17,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 import { aggregator } from '@/lib/travel-providers';
 import { buildMylinkUrl } from '@/lib/travel-providers/mrt';
 import type { FlightResult, StayResult, ActivityResult } from '@/lib/travel-providers/types';
@@ -217,6 +219,9 @@ function makeEncoder(controller: ReadableStreamDefaultController) {
 // ─── 핸들러 ──────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   const body = await request.json();
   const reqParsed = RequestSchema.safeParse(body);
   if (!reqParsed.success) {
@@ -561,7 +566,7 @@ JSON 필드:
       } catch (err) {
         sendWithRequestId('error', {
           code: 'PLAN_FAILED',
-          message: err instanceof Error ? err.message : '처리 실패',
+          message: logAndSanitize('free-travel-plan', err, '처리 실패'),
         });
       } finally {
         clearInterval(heartbeat);

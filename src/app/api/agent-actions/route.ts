@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { isValidTransition } from '@/lib/agent-action-machine'
 import { executeAction } from '@/lib/agent-action-executor'
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify'
 
 // ── 화이트리스트 ────────────────────────────────────────────────────
 const VALID_AGENT_TYPES = ['operations', 'sales', 'marketing', 'finance', 'products', 'system'] as const
@@ -60,6 +61,16 @@ export async function GET(request: NextRequest) {
 
 // ── POST: 새 액션 등록 (에이전트가 기안서 제출) ─────────────────────
 export async function POST(request: NextRequest) {
+  // 인증 게이트 — 에이전트 액션 제출은 인증된 세션만 허용 (S2 보안 강화)
+  const token = request.cookies.get('sb-access-token')?.value
+  if (!token) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
+  }
+  const verified = await verifySupabaseAccessToken(token)
+  if (!verified.ok) {
+    return NextResponse.json({ error: '세션이 유효하지 않습니다.' }, { status: 401 })
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },

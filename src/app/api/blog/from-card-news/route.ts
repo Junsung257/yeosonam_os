@@ -13,6 +13,7 @@ import { ContentBrief } from '@/lib/validators/content-brief';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { getSecret } from '@/lib/secret-registry';
 import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/blog-review-quotes';
+import { safeEqualString } from '@/lib/timing-safe';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -22,7 +23,7 @@ function isPublisherBridge(request: NextRequest, body: { publisher_bridge?: bool
   if (!body.publisher_bridge) return false;
   const secret = getSecret('CRON_SECRET');
   if (!secret) return false;
-  return request.headers.get('authorization') === `Bearer ${secret}`;
+  return safeEqualString(request.headers.get('authorization'), `Bearer ${secret}`);
 }
 
 /**

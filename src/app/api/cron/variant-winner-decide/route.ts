@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isCronOrVercelAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { detectVariantWinner } from '@/lib/card-news-html/winner-detector';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -46,8 +47,8 @@ export async function GET(request: NextRequest) {
     .is('winner_decided_at', null);
 
   if (error) {
-    console.error('[variant-winner-decide]', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[variant-winner-decide]', error);
+    return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   // 2. variant_group_id 별로 그룹 + 가장 늦은 발행 시간 계산

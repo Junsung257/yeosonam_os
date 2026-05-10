@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { isSupabaseConfigured, getAdCreatives, saveCreatives } from '@/lib/supabase';
 import { generateAdVariants } from '@/lib/ai';
 import type { AiModel, CreativePlatform } from '@/types/meta-ads';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
+
+const PostBodySchema = z.object({
+  package_id: z.string().uuid('package_id는 UUID 형식이어야 합니다.'),
+  ai_model: z.enum(['openai', 'gemini']).optional().default('openai'),
+});
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -31,16 +38,22 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   try {
-    const { package_id, ai_model = 'openai' } = await request.json();
-
-    if (!package_id) {
-      return NextResponse.json({ error: 'package_id 필수' }, { status: 400 });
+    const parsed = PostBodySchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues.map(i => `[${i.path.join('.')}] ${i.message}`).join(' / ') },
+        { status: 400 },
+      );
     }
+    const { package_id, ai_model } = parsed.data;
 
     // 상품 정보 조회
     const { createClient } = await import('@supabase/supabase-js');

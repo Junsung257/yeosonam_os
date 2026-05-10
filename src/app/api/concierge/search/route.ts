@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { searchHotels, searchActivities, searchCruises, MockSearchResult } from '@/lib/mock-apis';
 import { searchTenantProducts, isSupabaseConfigured, CrossSearchResult } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import { getPrompt } from '@/lib/prompt-loader';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 function tenantToMock(r: CrossSearchResult): MockSearchResult {
   return {
@@ -91,14 +94,16 @@ async function callGemini(
   query: string
 ): Promise<MockSearchResult[]> {
   const today = new Date().toISOString().slice(0, 10);
-  const systemPrompt = `당신은 여행 플랫폼 AI 컨시어지입니다. 사용자의 자연어 여행 요청을 분석해서 적절한 검색 도구를 호출하세요.
-오늘 날짜: ${today}
+  const CONCIERGE_SYSTEM_FALLBACK = `당신은 여행 플랫폼 AI 컨시어지입니다. 사용자의 자연어 여행 요청을 분석해서 적절한 검색 도구를 호출하세요.
+오늘 날짜: {{today}}
 - 패키지/투어/종합여행 요청 → search_tenant_products (마진 높은 입점 상품 우선)
 - 호텔/숙박 요청 → search_hotels
 - 투어/액티비티/체험 요청 → search_activities
 - 크루즈/유람선 요청 → search_cruises + search_tenant_products(category:cruise)
 - 복합 요청 → 여러 도구 동시 호출 가능 (search_tenant_products는 항상 포함 권장)
 - 날짜/인원이 명시되지 않으면 적절한 기본값 사용 (날짜: 오늘+7일, 인원: 2명)`;
+  const systemPrompt = (await getPrompt('concierge-search-system', CONCIERGE_SYSTEM_FALLBACK))
+    .replace('{{today}}', today);
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   const contents = [{ role: 'user', parts: [{ text: query }] }];
@@ -190,6 +195,9 @@ async function callGemini(
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   try {
     const { query } = await request.json();
     if (!query?.trim()) {
@@ -213,9 +221,8 @@ export async function POST(request: NextRequest) {
     const results = await callGemini(apiKey, query);
     return NextResponse.json({ results });
   } catch (error) {
-    console.error('[컨시어지 검색] 오류:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '검색 처리 실패' },
+      { error: logAndSanitize('concierge-search', error, '검색 처리 실패') },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { fmtDate, fmtMonthDayTime } from '@/lib/admin-utils';
 
 interface Tenant { id: string; name: string; }
 
@@ -235,7 +236,7 @@ export default function TenantTokensPage() {
                     <td className="py-3 px-4">
                       {token.expires_at ? (
                         <span className={`text-xs ${expired ? 'text-red-600 font-medium' : 'text-admin-muted'}`}>
-                          {expired ? '⚠️ 만료됨' : new Date(token.expires_at).toLocaleDateString('ko-KR')}
+                          {expired ? '⚠️ 만료됨' : fmtDate(token.expires_at)}
                         </span>
                       ) : (
                         <span className="text-xs text-admin-muted-2">—</span>
@@ -250,7 +251,7 @@ export default function TenantTokensPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-admin-muted-2 text-xs">
-                      {new Date(token.updated_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      {fmtMonthDayTime(token.updated_at)}
                     </td>
                     <td className="py-3 px-4">
                       <button

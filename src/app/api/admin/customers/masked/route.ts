@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { maskPhone, maskEmail, type AdminRole } from '@/lib/pii-mask';
+import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 
 /**
  * GET /api/admin/customers/masked
@@ -65,7 +66,10 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+      const safeSearch = escapePostgrestIlikeValue(search);
+      if (safeSearch) {
+        query = query.or(`name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%`);
+      }
     }
 
     const { data, count, error } = await query;

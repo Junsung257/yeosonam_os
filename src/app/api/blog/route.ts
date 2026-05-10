@@ -22,6 +22,11 @@ export async function GET(request: NextRequest) {
   try {
     // 단건 조회 (id) — 관리자 편집용 (status 무관)
     if (id) {
+      // UUID 형식 사전 검증 — 잘못된 ID 는 500 대신 404
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(id)) {
+        return NextResponse.json({ error: '글을 찾을 수 없습니다' }, { status: 404 });
+      }
       const { data, error } = await supabaseAdmin
         .from('content_creatives')
         .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, travel_packages(id, title, destination, price, duration, nights, category)')

@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSecret } from '@/lib/secret-registry'
 import { supabaseAdmin } from '@/lib/supabase'
+import { logAndSanitize } from '@/lib/error-sanitizer'
+import { safeEqualString } from '@/lib/timing-safe'
 import crypto from 'crypto'
 
 function verifyKakaoSignature(body: string, signature: string): boolean {
   const secret = getSecret('KAKAO_CHANNEL_SECRET') || ''
-  if (!secret) return true // 시크릿 미설정 시 검증 스킵
+  if (!secret) return true // 시크릿 미설정 시 검증 스킵 (로컬 개발 편의)
   const hash = crypto.createHmac('sha256', secret).update(body).digest('hex')
-  return hash === signature
+  return safeEqualString(hash, signature)
 }
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
   const signature = req.headers.get('x-kakao-signature') || ''
 
-  // 서명 검증 (프로덕션에서만 활성화)
-  if (process.env.NODE_ENV === 'production') {
-    if (!verifyKakaoSignature(rawBody, signature)) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    }
+  // 서명 검증 — KAKAO_CHANNEL_SECRET 설정 시 모든 환경에서 강제 (verifyKakaoSignature 내부에서 미설정 시 skip)
+  if (!verifyKakaoSignature(rawBody, signature)) {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
   try {
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('[카카오 웹훅] 오류:', error)
+    logAndSanitize('webhooks-kakao', error)
     return NextResponse.json({
       version: '2.0',
       template: { outputs: [{ simpleText: { text: '죄송합니다. 잠시 후 다시 시도해주세요.' } }] }

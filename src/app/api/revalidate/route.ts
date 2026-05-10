@@ -13,6 +13,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { revalidatePath } from 'next/cache';
+import { safeEqualString } from '@/lib/timing-safe';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
     if (!expectedSecret) {
       return NextResponse.json({ error: 'REVALIDATE_SECRET 미설정' }, { status: 500 });
     }
-    if (secret !== expectedSecret) {
+    if (!safeEqualString(secret, expectedSecret)) {
       return NextResponse.json({ error: 'Invalid secret' }, { status: 401 });
     }
 
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, revalidated });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'revalidate failed' },
+      { error: sanitizeDbError(err, 'revalidate failed') },
       { status: 500 },
     );
   }

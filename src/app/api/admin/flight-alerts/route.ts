@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ flights: data ?? [] });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
+      { error: logAndSanitize('admin-flight-alerts-get', err, '조회 실패') },
       { status: 500 },
     );
   }
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, flight_id: data?.id }, { status: 201 });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '등록 실패' },
+      { error: logAndSanitize('admin-flight-alerts-post', err, '등록 실패') },
       { status: 500 },
     );
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 // POST: 분쟁 플래그 토글
 export async function POST(
@@ -43,7 +44,7 @@ export async function POST(
   } catch (error) {
     console.error('[Dispute]', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리 실패' },
+      { error: logAndSanitize('admin-bookings-dispute', error, '처리 실패') },
       { status: 500 }
     );
   }

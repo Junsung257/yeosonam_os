@@ -9,6 +9,7 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/prompt-version';
+import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 
 /** slug 중복 방지: 동일 slug 존재 시 -2, -3 접미사 자동 부여 */
 async function ensureUniqueSlug(baseSlug: string): Promise<string> {
@@ -65,16 +66,21 @@ export async function POST(request: NextRequest) {
     // 관광지 조회 (블로그 생성 시 자동 결합용) — "다낭/호이안" 같은 복합 지역 분리 검색
     let attractions: AttractionData[] = [];
     if (channel === 'naver_blog' && pkg.destination) {
-      const destParts = pkg.destination.split(/[\/\s]+/).filter(Boolean);
-      const orFilters = destParts
-        .flatMap((part: string) => [`region.ilike.%${part}%`, `country.ilike.%${part}%`])
-        .join(',');
-      const { data: attrData } = await supabaseAdmin
-        .from('attractions')
-        .select('name, short_desc, photos, country, region, badge_type, emoji, aliases, category')
-        .or(orFilters)
-        .limit(500);
-      attractions = (attrData || []) as AttractionData[];
+      const destParts = pkg.destination
+        .split(/[\/\s]+/)
+        .map((p: string) => escapePostgrestIlikeValue(p))
+        .filter(Boolean);
+      if (destParts.length > 0) {
+        const orFilters = destParts
+          .flatMap((part: string) => [`region.ilike.%${part}%`, `country.ilike.%${part}%`])
+          .join(',');
+        const { data: attrData } = await supabaseAdmin
+          .from('attractions')
+          .select('name, short_desc, photos, country, region, badge_type, emoji, aliases, category')
+          .or(orFilters)
+          .limit(500);
+        attractions = (attrData || []) as AttractionData[];
+      }
     }
 
     let slides = null;

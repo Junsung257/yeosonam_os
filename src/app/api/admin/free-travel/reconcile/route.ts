@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 import { reconcileOtaReport } from '@/lib/free-travel/reconcile';
 import { requireAdminApiToken } from '@/lib/api-auth';
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
       );
     }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+      { error: logAndSanitize('admin-reconcile', err, '처리 실패') },
       { status: 500 },
     );
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 // 어드민이 AI 제어권을 가져와 직접 대응할 때 호출
 export async function POST(request: NextRequest) {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, taskId, status: 'resumed' });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: logAndSanitize('admin-hitl-takeover', err, '처리 실패') },
       { status: 500 },
     );
   }

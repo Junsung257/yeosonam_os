@@ -4,6 +4,7 @@ import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 import { FEW_SHOT_EXAMPLES } from '@/prompts/blog/few-shot-examples';
 import { pickBlogVariations } from '@/prompts/blog/variations';
+import { getPrompt } from '@/lib/prompt-loader';
 
 /**
  * Call 3: 여소남 블로그 에디터 (큐레이터 페르소나)
@@ -100,7 +101,8 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     `### 예시 ${i + 1}: ${ex.title}\n\n${ex.body}`
   ).join('\n\n---\n\n');
 
-  const prompt = `${BLOG_STYLE_GUIDE}
+  const styleGuide = await getPrompt('blog-style-guide', BLOG_STYLE_GUIDE);
+  const prompt = `${styleGuide}
 
 ---
 

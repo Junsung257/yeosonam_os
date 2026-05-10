@@ -2,6 +2,14 @@
  * Secret Registry
  * - 비즈니스 로직에서 process.env 직접 접근 대신 이 레이어를 사용한다.
  * - 신규 키 추가 시 여기에만 정의하면 감사/검증 지점이 단일화된다.
+ *
+ * ⚠️ 클라이언트 컴포넌트(`'use client'`)에서는 사용 금지.
+ * `getSecret()` 의 `process.env[key]` 동적 인덱싱은 webpack 이 inline 못해서
+ * client bundle 에서 항상 `null` 반환. NEXT_PUBLIC_* 가 필요한 client 코드는
+ * 반드시 `process.env.NEXT_PUBLIC_X` 정적 참조를 직접 사용하라.
+ *
+ * 사례: ERR-secret-registry-client-bundle@2026-05-10
+ *   /m/admin/* + /auth/callback + usePushSubscription 등이 이 패턴으로 크래시함.
  */
 
 export type SecretKey =

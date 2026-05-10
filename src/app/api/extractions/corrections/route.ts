@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { escapePostgrestFilterValue, isValidUuid } from '@/lib/supabase-filter-safe';
 
 interface CorrectionInput {
   package_id?: string;
@@ -122,8 +123,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ stats: 'destination', rows: data || [] });
     }
 
-    const landOperatorId = searchParams.get('land_operator_id');
-    const destination = searchParams.get('destination');
+    const rawLandOpId = searchParams.get('land_operator_id');
+    const rawDestination = searchParams.get('destination');
+    const landOperatorId = isValidUuid(rawLandOpId) ? rawLandOpId : null;
+    const destination = rawDestination ? escapePostgrestFilterValue(rawDestination) || null : null;
     const limit = Number(searchParams.get('limit') || 8);
     const minSeverity = searchParams.get('min_severity') || 'low';
 

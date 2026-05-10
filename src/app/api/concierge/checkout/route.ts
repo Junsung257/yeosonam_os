@@ -53,8 +53,9 @@ export async function POST(request: NextRequest) {
   }
   const items = cart.items;
 
-  // ② 멱등성 키 — session + timestamp (초 단위)
-  const idempotency_key = `${session_id}-${Math.floor(Date.now() / 1000)}`;
+  // ② 멱등성 키 — 클라이언트 제공 or session + ms + nonce (초 단위는 동시 요청 충돌 위험)
+  const { idempotency_key: clientKey } = body as { idempotency_key?: string };
+  const idempotency_key = clientKey || `${session_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // ③ 기존 트랜잭션 확인 (멱등성)
   const existing = await getTransactionByIdempotencyKey(idempotency_key);

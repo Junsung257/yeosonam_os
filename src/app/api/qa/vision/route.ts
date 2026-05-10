@@ -3,11 +3,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { applyMarkup } from '@/lib/price-dates';
 import { getSecret } from '@/lib/secret-registry';
+import { rateLimitAI } from '@/lib/rate-limiter';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const maxDuration = 60;
 
 // 경쟁사 견적서 이미지 → Vision AI 분석 → 여소남 패키지 방어 영업
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitAI(request);
+  if (limited) return limited;
+
   const apiKey = getSecret('GEMINI_API_KEY') ?? getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) {
     return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 });
@@ -138,7 +143,7 @@ ${userMessage ? `고객 메시지: ${userMessage}` : ''}
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: logAndSanitize('qa-vision', err, '견적서 분석 실패') },
       { status: 500 },
     );
   }

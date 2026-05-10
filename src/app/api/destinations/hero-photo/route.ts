@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 
 async function copyPexelsToStorage(pexelsUrl: string, storagePath: string): Promise<string> {
-  const res = await fetch(pexelsUrl);
+  const res = await fetch(pexelsUrl, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Pexels fetch 실패: ${res.status}`);
   const buf = await res.arrayBuffer();
 

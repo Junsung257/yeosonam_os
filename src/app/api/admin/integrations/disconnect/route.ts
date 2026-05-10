@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 /**
  * POST /api/admin/integrations/disconnect
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, platform, disconnected_at: new Date().toISOString() });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+      { error: logAndSanitize('admin-integrations-disconnect', err, '처리 실패') },
       { status: 500 },
     );
   }

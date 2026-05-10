@@ -333,8 +333,10 @@ export async function middleware(request: NextRequest) {
     return response || NextResponse.next();
   }
 
-  // ── 3-1. 개발 전용: 어드민 페이지 우회 쿠키 허용 (프로덕션 완전 차단) ──
-  if (isDev && isAdminPath && request.cookies.get('ys-dev-admin')?.value === '1') {
+  // ── 3-1. 개발 전용: 어드민 페이지 + API 우회 쿠키 허용 (프로덕션 완전 차단) ──
+  // Dev에서 ys-dev-admin 쿠키가 있으면 어드민 페이지뿐 아니라 그 페이지가 호출하는 API도 통과시킴
+  // (admin 페이지 클라이언트 fetch가 /api/* 로 가기 때문)
+  if (isDev && request.cookies.get('ys-dev-admin')?.value === '1') {
     return response || NextResponse.next();
   }
 

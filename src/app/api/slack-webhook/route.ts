@@ -24,6 +24,7 @@ import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { ingestSlackRawEvent } from '@/lib/slack-ingest';
+import { safeEqualString } from '@/lib/timing-safe';
 
 // ─── [1] Slack HMAC-SHA256 서명 검증 ─────────────────────────────────────────
 
@@ -42,7 +43,7 @@ async function verifySlackSignature(req: NextRequest, body: string): Promise<boo
     .update(`v0:${timestamp}:${body}`)
     .digest('hex');
 
-  return `v0=${hmac}` === slackSig;
+  return safeEqualString(`v0=${hmac}`, slackSig);
 }
 
 // ─── [2] 재귀 딥 텍스트 추출기 ───────────────────────────────────────────────

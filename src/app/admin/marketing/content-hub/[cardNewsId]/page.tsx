@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import InstagramPublishModal from '@/components/admin/InstagramPublishModal';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 interface Render { format: string; url: string; slide_index: number }
@@ -348,7 +349,7 @@ export default function ContentHubPage() {
 
                 {ig.scheduled_for && (
                   <div className="text-sm text-admin-muted">
-                    예약 발행: <span className="font-medium">{new Date(ig.scheduled_for).toLocaleString('ko-KR')}</span>
+                    예약 발행: <span className="font-medium">{fmtMonthDayTime(ig.scheduled_for)}</span>
                   </div>
                 )}
                 {ig.post_id && (
@@ -508,7 +509,7 @@ export default function ContentHubPage() {
                             <p className="text-sm font-medium text-admin-text-2">{d.platform}</p>
                             {d.scheduled_for && (
                               <p className="text-xs text-admin-muted-2 mt-0.5">
-                                예약: {new Date(d.scheduled_for).toLocaleString('ko-KR')}
+                                예약: {fmtMonthDayTime(d.scheduled_for)}
                               </p>
                             )}
                           </div>

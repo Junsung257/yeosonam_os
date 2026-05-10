@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,10 +93,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       step: '1_conversations_anonymize',
       ok: !error,
       affected: count ?? undefined,
-      error: error?.message,
+      error: error ? sanitizeDbError(error) : undefined,
     });
   } catch (e) {
-    steps.push({ step: '1_conversations_anonymize', ok: false, error: String(e) });
+    steps.push({ step: '1_conversations_anonymize', ok: false, error: sanitizeDbError(e) });
   }
 
   // ── Step 2: customers soft delete (PII null화) ─────────────────────────────
@@ -117,10 +118,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       step: '2_customers_soft_delete',
       ok: !error,
       affected: count ?? undefined,
-      error: error?.message,
+      error: error ? sanitizeDbError(error) : undefined,
     });
   } catch (e) {
-    steps.push({ step: '2_customers_soft_delete', ok: false, error: String(e) });
+    steps.push({ step: '2_customers_soft_delete', ok: false, error: sanitizeDbError(e) });
   }
 
   // ── Step 3: bookings actual_payer_name null화 ──────────────────────────────
@@ -133,10 +134,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       step: '3_bookings_payer_anonymize',
       ok: !error,
       affected: count ?? undefined,
-      error: error?.message,
+      error: error ? sanitizeDbError(error) : undefined,
     });
   } catch (e) {
-    steps.push({ step: '3_bookings_payer_anonymize', ok: false, error: String(e) });
+    steps.push({ step: '3_bookings_payer_anonymize', ok: false, error: sanitizeDbError(e) });
   }
 
   // ── Step 4: booking_companions 여권정보 null화 ─────────────────────────────
@@ -163,13 +164,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         step: '4_booking_companions_anonymize',
         ok: !error,
         affected: count ?? undefined,
-        error: error?.message,
+        error: error ? sanitizeDbError(error) : undefined,
       });
     } else {
       steps.push({ step: '4_booking_companions_anonymize', ok: true, affected: 0 });
     }
   } catch (e) {
-    steps.push({ step: '4_booking_companions_anonymize', ok: false, error: String(e) });
+    steps.push({ step: '4_booking_companions_anonymize', ok: false, error: sanitizeDbError(e) });
   }
 
   // ── Step 5: agent_tasks anonymize ─────────────────────────────────────────
@@ -182,10 +183,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       step: '5_agent_tasks_anonymize',
       ok: !error,
       affected: count ?? undefined,
-      error: error?.message,
+      error: error ? sanitizeDbError(error) : undefined,
     });
   } catch (e) {
-    steps.push({ step: '5_agent_tasks_anonymize', ok: false, error: String(e) });
+    steps.push({ step: '5_agent_tasks_anonymize', ok: false, error: sanitizeDbError(e) });
   }
 
   // ── Step 6: gdpr_deletion_log 기록 ────────────────────────────────────────
@@ -199,7 +200,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     steps.push({ step: '6_audit_log_written', ok: true });
   } catch (e) {
-    steps.push({ step: '6_audit_log_written', ok: false, error: String(e) });
+    steps.push({ step: '6_audit_log_written', ok: false, error: sanitizeDbError(e) });
   }
 
   return NextResponse.json({
