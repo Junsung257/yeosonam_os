@@ -66,7 +66,38 @@ export interface ValidateRetryOptions<T> extends Pick<RetryOptions, 'maxAttempts
   /**
    * 각 시도 직전(시도 N+1 호출 직전) 호출되는 훅. 디버깅·텔레메트리·로깅 용.
    */
-  onAttempt?: (info: { attempt: number; feedback: string | null; reason?: 'first' | 'json_parse' | 'zod_validate' }) => void;
+  onAttempt?: (info: { attempt: number; feedback: string | null; reason?: 'first' | 'json_parse' | 'zod_validate' | 'self_refine' }) => void;
+  /**
+   * **Self-Refine (arXiv:2303.17651)**: Zod 통과 후 도메인 critic 검사.
+   *
+   * - 반환값이 `null` 이면 통과 — 검증 종료, 결과 반환
+   * - 반환값이 `string` 이면 critique 메시지로 간주 → feedback 에 붙여 1회 재요청 (최대 `maxRefineRounds` 회)
+   *
+   * 사용 예 (블로그 환각 검증):
+   * ```ts
+   * criticOnSuccess: async (data) => {
+   *   if (data.body.includes('2억 여행자보험')) return '원문에 없는 보험 금액 환각';
+   *   return null;
+   * }
+   * ```
+   *
+   * Zod schema 가 잡지 못하는 의미적 오류(환각·출처 불일치·톤 위반 등)에 사용.
+   */
+  criticOnSuccess?: (parsed: T) => string | null | Promise<string | null>;
+  /** Self-Refine 최대 라운드 수 (기본 1 — 1회 재정제까지) */
+  maxRefineRounds?: number;
+}
+
+/** Self-Refine 발동 시 throw — withRetry 가 catch 하여 재시도 */
+export class SelfRefineRetryError extends Error {
+  readonly feedback: string;
+  readonly critique: string;
+  constructor(feedback: string, critique: string) {
+    super(critique);
+    this.name = 'SelfRefineRetryError';
+    this.feedback = feedback;
+    this.critique = critique;
+  }
 }
 
 /** Zod 검증 실패를 재시도 대상으로 명시 (withRetry 가 잡음) */
@@ -110,8 +141,11 @@ export async function callWithZodValidation<T>(
 
   // feedback 은 시도 간에 공유되어야 함 (클로저로 전달)
   let pendingFeedback: string | null = null;
-  let lastReason: 'first' | 'json_parse' | 'zod_validate' = 'first';
+  let lastReason: 'first' | 'json_parse' | 'zod_validate' | 'self_refine' = 'first';
   let attemptCounter = 0;
+  let refineRounds = 0;
+  const maxRefineRounds = options.maxRefineRounds ?? 1;
+  const critic = options.criticOnSuccess;
 
   return withRetry(async () => {
     attemptCounter += 1;
@@ -141,13 +175,25 @@ export async function callWithZodValidation<T>(
       throw new ZodValidationRetryError(pendingFeedback, validated.error.issues);
     }
 
-    // 성공 — feedback 초기화 (retry 래퍼 입장에선 도달 불가지만 안전)
+    // 3) Self-Refine — 도메인 critic (arXiv:2303.17651). Zod 가 못 잡는 의미적 오류 검사.
+    //    refineRounds 가 maxRefineRounds 미만일 때만 발동 (무한 루프 방지)
+    if (critic && refineRounds < maxRefineRounds) {
+      const critique = await critic(validated.data);
+      if (critique && critique.trim()) {
+        refineRounds += 1;
+        pendingFeedback = truncateFeedback(buildSelfRefineFeedback(critique), maxFeedbackChars);
+        lastReason = 'self_refine';
+        throw new SelfRefineRetryError(pendingFeedback, critique);
+      }
+    }
+
+    // 성공
     pendingFeedback = null;
     return validated.data;
   }, {
     maxAttempts: options.maxAttempts ?? 3,
     label,
-    // Zod/JSON 에러는 재시도, 권한 에러는 재시도 안 함 (기본 정책 유지)
+    // Zod/JSON/Self-Refine 에러 모두 재시도 대상 (withRetry 기본 정책)
   });
 }
 
@@ -186,6 +232,25 @@ function buildZodFeedback(issues: z.ZodIssue[]): string {
   ].join('\n');
 }
 
+/**
+ * Self-Refine feedback 메시지 (arXiv:2303.17651).
+ * critic 이 반환한 문제점을 모델에게 전달해 자기수정 유도.
+ */
+function buildSelfRefineFeedback(critique: string): string {
+  return [
+    '',
+    '=====',
+    '이전 응답이 스키마는 통과했지만 도메인 검증에서 다음 문제가 발견됨:',
+    `- ${critique}`,
+    '',
+    '규칙:',
+    '- 위 비판을 정확히 반영해 다시 JSON만 반환',
+    '- 다른 통과 필드는 그대로 유지하고 문제 부분만 정정',
+    '- 환각·출처 불일치·원문 외 정보 삽입 절대 금지',
+    '=====',
+  ].join('\n');
+}
+
 function buildJsonParseFeedback(responseExcerpt: string, parseErr: string): string {
   const head = responseExcerpt.slice(0, 200).replace(/\n/g, ' ');
   return [
@@ -218,6 +283,9 @@ export async function parseWithValidation<T>(args: {
   maxAttempts?: number;
   maxFeedbackChars?: number;
   onAttempt?: ValidateRetryOptions<T>['onAttempt'];
+  /** Self-Refine critic — Zod 통과 후 도메인 검증 (선택) */
+  criticOnSuccess?: ValidateRetryOptions<T>['criticOnSuccess'];
+  maxRefineRounds?: number;
 }): Promise<RetryResult<T> | RetryFail> {
   return callWithZodValidation({
     label: args.label,
@@ -225,6 +293,8 @@ export async function parseWithValidation<T>(args: {
     maxAttempts: args.maxAttempts,
     maxFeedbackChars: args.maxFeedbackChars,
     onAttempt: args.onAttempt,
+    criticOnSuccess: args.criticOnSuccess,
+    maxRefineRounds: args.maxRefineRounds,
     fn: async (feedback) => {
       const fullPrompt = feedback ? `${args.basePrompt}${feedback}` : args.basePrompt;
       return args.caller(fullPrompt);
