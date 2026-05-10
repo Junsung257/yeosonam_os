@@ -80,7 +80,7 @@ export async function critiqueCover(input: CoverCriticInput): Promise<CoverCriti
     schema: CoverCritiqueSchema,
     maxAttempts: 3,
     fn: async (feedback) => {
-      const raw = await generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.3 });
+      const raw = await generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.3, longCache: true });
       // 길이 제한 초과 값을 Zod 검증 전에 선제 트렁케이트 (카드 UI 고정 제약)
       try {
         const parsed = JSON.parse(raw);

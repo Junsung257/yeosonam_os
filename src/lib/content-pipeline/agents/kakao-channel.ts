@@ -53,7 +53,7 @@ export async function generateKakaoChannelMessage(input: KakaoChannelInput): Pro
     label: 'kakao-channel',
     schema: KakaoChannelMessageSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.7 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.7, longCache: true }),
   });
 
   if (result.success) return result.value;

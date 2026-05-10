@@ -189,7 +189,7 @@ export async function designBriefStructure(input: StructureInput): Promise<Struc
     label: 'structure-designer',
     schema: StructureOutputSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.6 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.6, longCache: true }),
   });
 
   if (result.success) return result.value;

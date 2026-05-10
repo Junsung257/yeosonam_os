@@ -60,7 +60,7 @@ export async function generateGoogleAdsRSA(input: GoogleAdsRSAInput): Promise<Go
     label: 'google-ads-rsa',
     schema: GoogleAdsRSASchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75, longCache: true }),
   });
 
   if (result.success) return result.value;

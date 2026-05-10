@@ -159,22 +159,33 @@ const attr = matchAttraction(item.activity, attractions, pkg.destination);
 - 방금 Edit 한 파일: 다시 Read 하지 않음 (Edit 성공 = 반영됨).
 - 서브에이전트 결과: 핵심 요약만 메인 컨텍스트에 가져옴 (전체 출력 X).
 
-### 11-4. 외부 AI API 모델 선택 자동 기준
+### 11-4. 외부 AI API 모델 선택 자동 기준 (V3 — 2026-05 동기화)
+
+> **SSOT**: `src/lib/llm-gateway.ts` 의 `ROUTING` 테이블이 실제 정책. 본 표는 가이드 요약.
+> **V3 (2026-05-01)** 부터 DeepSeek V4 가 primary, Gemini 2.5 Flash 가 fallback. Claude/GPT 는 라우팅에서 제거 (단 `register` 시 longCache opt-in 으로 부분 사용).
 
 새 AI 호출 코드를 작성할 때 아래 기준을 자동 적용:
 
-| 작업 | 모델 | 이유 |
-|------|------|------|
-| 라우팅·분류·메타 추출 | `claude-haiku-4-5-20251001` 또는 `gemini-2.5-flash` | 단순, 속도 우선 |
-| 블로그·카드뉴스·카피 생성 | `gemini-2.5-flash` | 창작, 비용 우선 |
-| 상품 정규화 (복잡) | `claude-sonnet-4-6` (Prompt Cache 필수) | 정확도, 규칙 복잡 |
-| 환각 교차검증 | `gemini-2.5-flash` | 감사 전용, 저비용 |
-| JARVIS 에이전트 루프 | `gemini-2.5-flash` executor + `gemini-2.5-pro` advisor (막힐 때 1회) | Advisor 패턴 |
-| RAG 컨텍스트 생성·인덱싱 | `claude-haiku-4-5-20251001` + system cache | 반복 호출, 캐시 필수 |
-| 고객 실시간 상담 | `gemini-3.1-flash-lite-preview` | 스트리밍, 최저비용 |
+| 작업 | 권장 task (llm-gateway) | 실제 모델 (executor) | Fallback | 이유 |
+|------|------------------------|---------------------|----------|------|
+| 라우팅·분류·메타 추출 | `extract-meta`, `classify`, `summary` | `deepseek-v4-flash` | `gemini-2.5-flash` | DeepSeek 자동 prompt cache, 비용 최저 |
+| 블로그·카드뉴스·카피 생성 | `blog-generate`, `card-news`, `content-brief` | `deepseek-v4-flash` | `gemini-2.5-flash` | 창작·재시도 부담 적음 |
+| 상품 정규화 (복잡) | `normalize-complex` | `deepseek-v4-pro` + advisor | `gemini-2.5-flash` | Pro + advisor 패턴 박음 |
+| 환각 교차검증 | `cross-validate`, `judge`, `response-critic` | `deepseek-v4-flash` | `gemini-2.5-flash` | 감사 전용, 저비용 |
+| JARVIS 에이전트 루프 | `jarvis-simple` / `jarvis-complex` | `deepseek-v4-flash` (simple) / `deepseek-v4-pro` advisor (complex) | `gemini-2.5-flash` | Advisor 패턴 + Confidence-gated escalation |
+| 자유여행 플래너 | `free-travel-extract` / `-itinerary` / `-compose` | `deepseek-v4-flash` | `gemini-2.5-flash` | 3-step 직렬 (병렬화 후보) |
+| HWP/PDF 여행상품 구조화 | `parse_travel_doc` | `deepseek-v4-flash` | `gemini-2.5-flash` | maxRetries=3 |
+| 고객 실시간 상담 | `qa-chat` (`tryDeepSeekStream` 우선) | `deepseek-v4-flash` (streaming) | `gemini-2.5-flash` | TTFT 최적, JSON `reply` 부분 추출 |
+| 고객 팩트 추출 | `customer-fact-extract` | `deepseek-v4-flash` | `gemini-2.5-flash` | Mem0 스타일 |
 
-**절대 금지**: 단순 분류·추출·라우팅에 Sonnet/Pro 사용.
-**신규 Claude 호출 시 필수**: `cache_control: { type: 'ephemeral' }` system + tools에 항상 적용.
+**절대 금지**:
+- 단순 분류·추출·라우팅에 `deepseek-v4-pro` 사용 (Flash 로 충분).
+- `llm-gateway.ts` 우회하고 `new OpenAI()` / `new Anthropic()` / `new GoogleGenerativeAI()` 직접 호출 (예외: `normalize-with-llm`, `gemini-agent-loop-v2`, `blog-ai-caller`, `jarvis/deepseek-agent-loop-v2` 같은 전문 모듈만 — 클라이언트 싱글톤 캐싱 필수).
+
+**캐싱 정책 (필수)**:
+- **DeepSeek**: 프롬프트 캐싱 자동 (별도 플래그 불필요). system prompt 를 user prompt 와 분리해 호출하면 자동 적중 — 동일 system 으로 N회 호출 시 input 90% 할인.
+- **Claude (Anthropic)**: `cache_control: { type: 'ephemeral' }` 기본 5분. 1시간 내 반복 호출 워크로드(시간당 publisher, 카드뉴스 일괄 생성, 7-플랫폼 fan-out)는 **`longCache: true`** 로 `ttl: '1h'` opt-in — `blog-ai-caller.ts`, `llm-gateway.ts (callClaude)` 둘 다 지원.
+- **Gemini**: `cachedContent` API 미사용 (현재 인프라). 향후 도입 시 별도 PR.
 
 ### 11-5. llm-gateway.ts 사용 강제
 

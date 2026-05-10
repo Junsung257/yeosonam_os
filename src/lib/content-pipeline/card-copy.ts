@@ -112,7 +112,7 @@ ${JSON.stringify(overflowItems.map(s => ({
 
 반드시 입력된 position만 포함하고, headline/body만 반환하라.`;
 
-      const text = (await generateBlogJSON(prompt, { temperature: 0.3 }))
+      const text = (await generateBlogJSON(prompt, { temperature: 0.3, longCache: true }))
         .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
       let fixes: Array<{ position: number; headline: string; body: string }> = [];

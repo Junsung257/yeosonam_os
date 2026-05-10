@@ -49,7 +49,7 @@ export async function writeCardCopy(
     label: 'card-news-copywriter',
     schema: CardCopyOutputSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75, longCache: true }),
   });
 
   if (result.success) return result.value;

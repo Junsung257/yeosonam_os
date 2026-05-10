@@ -23,6 +23,20 @@ export interface BlogCallOptions {
   temperature?: number;
   systemPrompt?: string;
   maxTokens?: number;
+  /**
+   * Claude prompt cache TTL 을 1h 로 확장 (기본 5min ephemeral).
+   * 동일 systemPrompt 로 1시간 내 2회 이상 호출되는 워크로드(시간당 publisher,
+   * 카드뉴스 N개 일괄 생성, 7-플랫폼 fan-out 등)에 적용 시 net 절감.
+   * DeepSeek/Gemini 에는 영향 없음 — 두 공급자는 자동 prompt cache.
+   * Anthropic SDK 는 ttl 필드를 비표준으로 받아 anthropic-beta 헤더 자동 처리.
+   */
+  longCache?: boolean;
+}
+
+// Anthropic SDK 타입이 ttl 을 직접 노출하지 않아 캐스팅 — 런타임은 그대로 통과.
+type CacheControlEphemeral = { type: 'ephemeral'; ttl?: '5m' | '1h' };
+function buildCacheControl(longCache: boolean | undefined): CacheControlEphemeral {
+  return longCache ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
 }
 
 function isDeepSeekModel(model: string): boolean {
@@ -110,7 +124,7 @@ export async function generateBlogJSON(
       max_tokens: opts.maxTokens || 2000,
       temperature,
       system: opts.systemPrompt
-        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: { type: 'ephemeral' as const } }]
+        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: buildCacheControl(opts.longCache) as { type: 'ephemeral' } }]
         : undefined,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -167,7 +181,7 @@ export async function generateBlogText(
       max_tokens: opts.maxTokens || 2000,
       temperature,
       system: opts.systemPrompt
-        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: { type: 'ephemeral' as const } }]
+        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: buildCacheControl(opts.longCache) as { type: 'ephemeral' } }]
         : undefined,
       messages: [{ role: 'user', content: prompt }],
     });

@@ -69,7 +69,7 @@ export async function generateMetaAds(input: MetaAdsInput): Promise<MetaAds> {
     label: 'meta-ads',
     schema: MetaAdsSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.8 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.8, longCache: true }),
   });
 
   if (result.success) return result.value;

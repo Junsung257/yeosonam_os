@@ -87,7 +87,7 @@ JSON만 출력.`;
     label: 'competitor-ad-analyzer',
     schema: CompetitorPatternSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.3 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.3, longCache: true }),
   });
 
   if (result.success) return result.value;

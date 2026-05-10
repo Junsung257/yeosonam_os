@@ -55,7 +55,7 @@ export async function generateInstagramCaption(input: InstagramCaptionInput): Pr
     label: 'instagram-caption',
     schema: InstagramCaptionSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.85 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.85, longCache: true }),
   });
 
   if (result.success) return result.value;

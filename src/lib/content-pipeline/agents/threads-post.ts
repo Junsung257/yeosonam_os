@@ -53,7 +53,7 @@ export async function generateThreadsPost(input: ThreadsPostInput): Promise<Thre
     label: 'threads-post',
     schema: ThreadsPostSchema,
     maxAttempts: 3,
-    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.9 }),
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.9, longCache: true }),
   });
 
   if (result.success) return result.value;
