@@ -188,13 +188,15 @@
 - **W30 — Day 번호 정합성**: `days[].day` 가 정렬 시 `[1..N]` 연속이어야 함. gap·중복·1부터 시작 안 함 모두 차단. 모바일 랜딩 일정 섹션이 빈 카드 노출되거나 timeline 스킵되는 문제 차단.
 - **W31 — Surcharge 기간 역전**: `start > end` 차단. 모바일 가격표·블로그 carousel에 "MM.DD ~ MM.DD" 이상한 날짜 범위 노출 방지.
 - **W32 — Optional tours 중복**: 같은 `name + region + day` 이중 등록 차단. day 가 다르면 의도적 중복 허용 (다른 날 같은 투어 가능). 모바일·A4 동일 투어 이중 노출 방지.
+- **W33 — departure_days ↔ price_dates 요일 정합성**: `departure_days="월/수"` 인데 `price_dates`에 토요일이 섞여 있으면 차단. LLM 파싱 오류로 두 필드 중 하나가 잘못된 케이스 (모바일 캘린더 혼란). "매일"·숫자 포함 패턴(특정 날짜 나열)은 자동 스킵.
 
-**스모크 테스트 결과** (5/5 통과):
+**스모크 테스트 결과** (5/5 + W33 6/6 = 11/11 통과):
 - 정상 pkg → 통과 ✓
 - Day 번호 [1,2,4,4,5] → W30 차단 ✓
 - Surcharge start=2026-08-15 > end=2026-07-15 → W31 차단 ✓
 - 같은 투어 2회 등록 → W32 차단 ✓
 - day 다른 동일 투어 → 통과 (의도된 허용) ✓
+- W33: 월/수+토요일 → 차단 ✓ / 매일+다양 → 통과 ✓ / 5/9,5/26+5/9 → 통과 (스킵) ✓ / 매주 금요일+금 → 통과 ✓ / departure_days null → 통과 ✓
 
 **기대 효과**: 렌더링 단계에서 발견될 잘못된 데이터를 INSERT 전에 차단 → 모든 채널 정확도 ↑.
 
@@ -286,7 +288,7 @@
 - [x] llm-gateway.ts: `escalateIfLowConfidence` 메커니즘 (콜러 wiring 대기)
 - [x] cove_audit.js: RARR-style chunked retrieval + verification questions
 - [x] llm-retry.ts: BAML SAP 파서 흡수 (10/10 edge case 통과)
-- [x] package-schema.ts: W30/W31/W32 refine (Day 정합성 / Surcharge 기간 / OT 중복)
+- [x] package-schema.ts: W30/W31/W32/W33 refine (Day 정합성 / Surcharge 기간 / OT 중복 / 요일 정합성)
 - [ ] NormalizedIntakeSchema에 `confidence` 필드 추가 + system prompt 자기평가 강제
 - [ ] normalize-with-llm.ts → llmCall 라우팅 마이그레이션 (현재 OpenAI/Gemini SDK 직접 호출)
 - [ ] WDK durable workflow (1분기)

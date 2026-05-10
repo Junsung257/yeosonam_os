@@ -366,6 +366,45 @@ export const PackageStrictSchema = PackageCoreSchema.extend({
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // W33 — departure_days ↔ price_dates 요일 정합성
+  // departure_days="월/수" 인데 price_dates에 토요일이 섞여 있으면 LLM 파싱 오류.
+  // 모바일 캘린더가 price_dates 기준으로 출발일을 표시하므로, 두 값이 충돌하면
+  // 고객은 "월/수 출발이라더니 토요일 왜 있어?" 라고 혼란.
+  //
+  // 적용 범위:
+  //   - departure_days 가 "매일"/"매일출발" 이면 스킵 (모든 요일 허용)
+  //   - 숫자가 포함된 형태("5/9, 5/26") 는 특정 날짜 나열이라 스킵
+  //   - 순수 요일 패턴 ("월/수", "매주 금요일", "월화수") 만 검증
+  // ═══════════════════════════════════════════════════════════════════════
+  if (typeof pkg.departure_days === 'string' && Array.isArray(pkg.price_dates) && pkg.price_dates.length > 0) {
+    const dd = pkg.departure_days.trim();
+    const isEveryday = /^매일(?:출발)?$/.test(dd);
+    const hasDigits = /\d/.test(dd);
+    if (!isEveryday && !hasDigits) {
+      const dayChars = dd.match(/[월화수목금토일]/g) || [];
+      if (dayChars.length > 0) {
+        const DOW_INDEX: Record<string, number> = { 일: 0, 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6 };
+        const allowedDOW = new Set(dayChars.map(c => DOW_INDEX[c]));
+        const DOW_NAME = '일월화수목금토';
+        pkg.price_dates.forEach((pd: { date?: string }, idx: number) => {
+          if (!pd?.date) return;
+          const d = new Date(pd.date + 'T00:00:00');
+          if (isNaN(d.getTime())) return;
+          const dow = d.getDay();
+          if (!allowedDOW.has(dow)) {
+            const actualName = DOW_NAME[dow];
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `[W33] price_dates[${idx}] ${pd.date} 는 ${actualName}요일인데 departure_days="${dd}" (${dayChars.join('/')} 요일만 허용) 와 불일치. 모바일 캘린더에 잘못된 출발일 노출 위험 — 두 필드 중 하나가 LLM 파싱 오류일 가능성 높음.`,
+              path: ['price_dates', idx, 'date'],
+            });
+          }
+        });
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // W32 — 선택관광 중복 (same name + region + day = 이중 노출)
   // 모바일 랜딩 / A4 포스터 둘 다 optional_tours 를 region 별 그룹핑하여 그대로 렌더.
   // 같은 투어가 2번 들어가면 사용자에게도 2번 노출 → 신뢰 손상 + UX 혼란.
