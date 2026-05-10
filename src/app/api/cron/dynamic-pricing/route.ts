@@ -144,24 +144,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5. Bulk update (배치 10개씩)
+    // 5. Bulk update — chunk=10 진짜 병렬 (inner Promise.all)
+    //    각 row 는 다른 package_id 의 UPDATE 라 서로 독립. 외부 API 없음.
     const CHUNK = 10;
     const updateErrors: string[] = [];
     for (let i = 0; i < updates.length; i += CHUNK) {
       const chunk = updates.slice(i, i + CHUNK);
-      for (const row of chunk) {
-        const { error: updateErr } = await supabaseAdmin
-          .from('travel_packages')
-          .update({
-            price_markup_rate: row.price_markup_rate,
-            dp_reason: row.dp_reason,
-            dp_triggered_at: row.dp_triggered_at,
-            view_count_weekly_snap: row.view_count_weekly_snap,
-            view_count_snap_at: row.view_count_snap_at,
-          })
-          .eq('id', row.id);
-        if (updateErr) updateErrors.push(`${row.id}: ${updateErr.message}`);
-      }
+      const results = await Promise.all(
+        chunk.map((row) =>
+          supabaseAdmin
+            .from('travel_packages')
+            .update({
+              price_markup_rate: row.price_markup_rate,
+              dp_reason: row.dp_reason,
+              dp_triggered_at: row.dp_triggered_at,
+              view_count_weekly_snap: row.view_count_weekly_snap,
+              view_count_snap_at: row.view_count_snap_at,
+            })
+            .eq('id', row.id),
+        ),
+      );
+      results.forEach((res, idx) => {
+        if (res.error) updateErrors.push(`${chunk[idx].id}: ${res.error.message}`);
+      });
     }
     if (updateErrors.length > 0) {
       await sendSlackAlert(`[dynamic-pricing] 업데이트 실패 ${updateErrors.length}건`, { errors: updateErrors });

@@ -171,15 +171,18 @@ export async function GET(request: Request) {
       // 뷰 미존재 시 무시 (P2 마이그레이션 미적용 상태)
     }
 
-    for (const finding of findings) {
-      await supabaseAdmin.from('agent_actions').insert({
-        agent_type: 'finance',
-        action_type: 'notify_affiliate_anomaly',
-        summary: `[이상탐지] ${finding.affiliate_name} — ${finding.kind}`,
-        payload: finding as any,
-        requested_by: 'jarvis',
-        priority: 'critical',
-      });
+    // findings N개 단건 INSERT → bulk insert 1회
+    if (findings.length > 0) {
+      await supabaseAdmin.from('agent_actions').insert(
+        findings.map((finding) => ({
+          agent_type: 'finance',
+          action_type: 'notify_affiliate_anomaly',
+          summary: `[이상탐지] ${finding.affiliate_name} — ${finding.kind}`,
+          payload: finding as any,
+          requested_by: 'jarvis',
+          priority: 'critical',
+        })),
+      );
     }
 
     await supabaseAdmin.from('audit_logs').insert({

@@ -97,28 +97,31 @@ export async function GET(request: NextRequest) {
       byAff.set(r.affiliate_id, arr);
     }
 
-    const drafted: string[] = [];
-    for (const [affiliate_id, rows] of byAff.entries()) {
+    // 어필리에이트별 INSERT N회 → bulk insert 1회 (round-trip N→1)
+    const insertPayload = [...byAff.entries()].map(([affiliate_id, rows]) => {
       const totalBookings = rows.reduce((s: number, r: Record<string, unknown>) => s + Number(r.bookings), 0);
       const totalRevenue = rows.reduce((s: number, r: Record<string, unknown>) => s + Number(r.revenue), 0);
       const totalCommission = rows.reduce((s: number, r: Record<string, unknown>) => s + Number(r.commission), 0);
+      return {
+        action_type: 'send_alimtalk',
+        status: 'pending',
+        priority: 'normal',
+        summary: `[24h 리포트] ${rows.length}개 콘텐츠 → 예약 ${totalBookings}건 (${Math.round(totalRevenue / 10000)}만원, 커미션 ${Math.round(totalCommission / 10000)}만원)`,
+        payload: {
+          affiliate_id,
+          template: 'content_24h_report',
+          data: { rows, totalBookings, totalRevenue, totalCommission },
+        },
+      };
+    });
 
-      const { data: action } = await supabaseAdmin
+    let drafted: string[] = [];
+    if (insertPayload.length > 0) {
+      const { data: actions } = await supabaseAdmin
         .from('agent_actions')
-        .insert({
-          action_type: 'send_alimtalk',
-          status: 'pending',
-          priority: 'normal',
-          summary: `[24h 리포트] ${rows.length}개 콘텐츠 → 예약 ${totalBookings}건 (${Math.round(totalRevenue / 10000)}만원, 커미션 ${Math.round(totalCommission / 10000)}만원)`,
-          payload: {
-            affiliate_id,
-            template: 'content_24h_report',
-            data: { rows, totalBookings, totalRevenue, totalCommission },
-          },
-        } as never)
-        .select('id')
-        .single();
-      if (action) drafted.push((action as { id: string }).id);
+        .insert(insertPayload as never)
+        .select('id');
+      drafted = ((actions || []) as Array<{ id: string }>).map((a) => a.id);
     }
 
     await reportAffiliateCronSuccess('affiliate-content-24h-report', {

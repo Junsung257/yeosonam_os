@@ -213,24 +213,40 @@ export async function GET(request: NextRequest) {
           .in('slug', slugs)
           .eq('channel', 'naver_blog')
 
+        // 단건 upsert N회 → bulk upsert 1회 (round-trip N→1)
+        const upsertRows: Array<{
+          content_creative_id: string
+          date: string
+          impressions: number
+          clicks: number
+          ctr: number
+          avg_position: number
+          top_query: string | null
+        }> = []
         for (const cc of (creatives ?? []) as { id: string; slug: string }[]) {
           const m = slugToMetrics.get(cc.slug)
           if (!m) continue
           const avgPosition = m.impressions > 0 ? m.position / m.impressions : 0
           const ctr = m.impressions > 0 ? m.clicks / m.impressions : 0
-
-          await supabaseAdmin
+          upsertRows.push({
+            content_creative_id: cc.id,
+            date: dateStr,
+            impressions: m.impressions,
+            clicks: m.clicks,
+            ctr: Number(ctr.toFixed(4)),
+            avg_position: Number(avgPosition.toFixed(2)),
+            top_query: m.topQuery || null,
+          })
+        }
+        if (upsertRows.length > 0) {
+          const { error: bulkErr } = await supabaseAdmin
             .from('blog_search_metrics')
-            .upsert({
-              content_creative_id: cc.id,
-              date: dateStr,
-              impressions: m.impressions,
-              clicks: m.clicks,
-              ctr: Number(ctr.toFixed(4)),
-              avg_position: Number(avgPosition.toFixed(2)),
-              top_query: m.topQuery || null,
-            }, { onConflict: 'content_creative_id,date' })
-          gscStats.rows_inserted++
+            .upsert(upsertRows, { onConflict: 'content_creative_id,date' })
+          if (bulkErr) {
+            push(`  GSC bulk upsert 실패: ${bulkErr.message}`)
+          } else {
+            gscStats.rows_inserted = upsertRows.length
+          }
         }
         gscStats.pages_processed = creatives?.length ?? 0
       }
