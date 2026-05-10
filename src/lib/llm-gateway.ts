@@ -17,6 +17,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { trackDeepSeekCost, trackCost } from '@/lib/jarvis/cost-tracker';
 import { getProviderApiKey, resolveAiPolicy, resolveAiPolicyRuntime } from '@/lib/ai-provider-policy';
 import { getSecret } from '@/lib/secret-registry';
+import { traceLlmCall, recordLlmUsage } from '@/lib/telemetry/llm-tracer';
 
 // ─── 모델 상수 ───────────────────────────────────────────────────────────────
 
@@ -487,19 +488,37 @@ async function callClaude(
 // ─── 단건 호출 헬퍼 ──────────────────────────────────────────────────────────
 
 async function callModel(ref: ModelRef, params: GatewayCallParams): Promise<GatewayResult> {
-  if (ref.provider === 'deepseek') {
-    const client = getDeepSeek();
-    if (!client) return { success: false, errors: ['DEEPSEEK_API_KEY 없음'] };
-    return callDeepSeek(client, ref.model, params);
-  }
-  if (ref.provider === 'gemini') {
-    const client = getGemini();
-    if (!client) return { success: false, errors: ['Gemini API 키 없음'] };
-    return callGemini(client, ref.model, params);
-  }
-  const client = getClaude();
-  if (!client) return { success: false, errors: ['ANTHROPIC_API_KEY 없음'] };
-  return callClaude(client, ref.model, params);
+  // OTel span — Vercel OTel collector 또는 OTLP endpoint 로 전송 (미설정 시 no-op)
+  return traceLlmCall(
+    { task: params.task, provider: ref.provider, model: ref.model },
+    async (span) => {
+      let result: GatewayResult;
+      if (ref.provider === 'deepseek') {
+        const client = getDeepSeek();
+        if (!client) return { success: false, errors: ['DEEPSEEK_API_KEY 없음'] };
+        result = await callDeepSeek(client, ref.model, params);
+      } else if (ref.provider === 'gemini') {
+        const client = getGemini();
+        if (!client) return { success: false, errors: ['Gemini API 키 없음'] };
+        result = await callGemini(client, ref.model, params);
+      } else {
+        const client = getClaude();
+        if (!client) return { success: false, errors: ['ANTHROPIC_API_KEY 없음'] };
+        result = await callClaude(client, ref.model, params);
+      }
+      // span 에 usage 기록 (성공·실패 모두)
+      if (result._usage) {
+        recordLlmUsage(span, {
+          input: result._usage.input,
+          output: result._usage.output,
+          cache_hit: result._usage.cache_hit,
+          latency_ms: result.elapsed_ms,
+        });
+      }
+      span.setAttribute('llm.success', result.success);
+      return result;
+    },
+  );
 }
 
 async function callModelWithTimeout(
