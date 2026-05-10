@@ -91,7 +91,9 @@ export type SecretKey =
   | 'RESEND_FROM_EMAIL'
   | 'SUPABASE_URL'
   | 'VA_EMAIL_FROM'
-  | 'VAPID_SUBJECT';
+  | 'VAPID_SUBJECT'
+  | 'UPSTASH_REDIS_REST_URL'
+  | 'UPSTASH_REDIS_REST_TOKEN';
 
 export function getSecret(key: SecretKey): string | null {
   const value = process.env[key];

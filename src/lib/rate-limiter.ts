@@ -1,21 +1,22 @@
 /**
  * @file rate-limiter.ts
- * @description In-memory 슬라이딩 윈도우 rate limiter.
+ * @description Rate limiter with Upstash Redis backend + in-memory fallback.
+ *
+ * 동작:
+ * - UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN 가 있으면 Upstash 슬라이딩 윈도우 사용 (분산 안전)
+ * - 둘 중 하나라도 없으면 in-memory 슬라이딩 윈도우 fallback (per-instance)
+ * - NODE_ENV === 'development' 항상 통과
  *
  * 사용:
  * ```ts
- * // API 라우트 최상단
  * const limited = await rateLimit(request, { limit: 20, window: 60 });
  * if (limited) return limited; // 429 응답 반환
  * ```
- *
- * 주의:
- * - 서버리스/엣지 환경에서는 인스턴스가 분산되므로 per-instance 제한만 가능.
- *   글로벌 제한이 필요하면 Upstash Redis 기반으로 교체 필요.
- * - 개발 환경에서는 항상 통과.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
 interface RateLimitOptions {
   /** 허용 요청 수 (윈도우 내) */
@@ -24,24 +25,85 @@ interface RateLimitOptions {
   window?: number;
   /** 키 추출 함수 (기본: IP) */
   keyFn?: (req: NextRequest) => string;
+  /** Upstash 사용 시 prefix (기본: 'rl') */
+  prefix?: string;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Upstash backend (있으면 우선 사용)
+// ────────────────────────────────────────────────────────────────────────────
+
+let redisClient: Redis | null = null;
+function getRedis(): Redis | null {
+  if (redisClient) return redisClient;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  redisClient = new Redis({ url, token });
+  return redisClient;
+}
+
+// limiter 인스턴스 캐시 — (limit, window, prefix) 조합별로 1회만 생성
+const limiterCache = new Map<string, Ratelimit>();
+function getLimiter(limit: number, windowSec: number, prefix: string): Ratelimit | null {
+  const redis = getRedis();
+  if (!redis) return null;
+  const key = `${prefix}:${limit}:${windowSec}`;
+  let lim = limiterCache.get(key);
+  if (!lim) {
+    lim = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(limit, `${windowSec} s`),
+      analytics: true,
+      prefix,
+    });
+    limiterCache.set(key, lim);
+  }
+  return lim;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// In-memory fallback (Upstash 미설정 시)
+// ────────────────────────────────────────────────────────────────────────────
 
 interface BucketEntry {
   count: number;
   resetAt: number;
 }
 
-const store = new Map<string, BucketEntry>();
+const memoryStore = new Map<string, BucketEntry>();
 
-// 메모리 누수 방지: 만료된 항목 주기적으로 정리 (10분마다)
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of store.entries()) {
-      if (entry.resetAt < now) store.delete(key);
+    for (const [key, entry] of memoryStore.entries()) {
+      if (entry.resetAt < now) memoryStore.delete(key);
     }
   }, 600_000).unref?.();
 }
+
+function memoryCheck(
+  key: string,
+  limit: number,
+  windowMs: number,
+): { ok: boolean; remaining: number; resetAt: number } {
+  const now = Date.now();
+  const entry = memoryStore.get(key);
+  if (!entry || entry.resetAt < now) {
+    const resetAt = now + windowMs;
+    memoryStore.set(key, { count: 1, resetAt });
+    return { ok: true, remaining: limit - 1, resetAt };
+  }
+  entry.count++;
+  if (entry.count > limit) {
+    return { ok: false, remaining: 0, resetAt: entry.resetAt };
+  }
+  return { ok: true, remaining: limit - entry.count, resetAt: entry.resetAt };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Public API (인터페이스 호환 유지)
+// ────────────────────────────────────────────────────────────────────────────
 
 /**
  * 요청을 rate limit 체크한다.
@@ -54,45 +116,67 @@ export async function rateLimit(
   if (process.env.NODE_ENV === 'development') return null;
 
   const limit = opts.limit ?? 60;
-  const windowMs = (opts.window ?? 60) * 1000;
+  const windowSec = opts.window ?? 60;
+  const prefix = opts.prefix ?? 'rl';
   const key = opts.keyFn
     ? opts.keyFn(req)
     : (req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown');
 
-  const now = Date.now();
-  const entry = store.get(key);
+  const limiter = getLimiter(limit, windowSec, prefix);
 
-  if (!entry || entry.resetAt < now) {
-    store.set(key, { count: 1, resetAt: now + windowMs });
-    return null;
+  let ok: boolean;
+  let remaining: number;
+  let resetAt: number;
+
+  if (limiter) {
+    try {
+      const r = await limiter.limit(key);
+      ok = r.success;
+      remaining = r.remaining;
+      resetAt = r.reset;
+    } catch (err) {
+      // Upstash 일시 장애 시 in-memory로 우회 (최후의 보루)
+      console.warn('[rate-limiter] Upstash error, falling back to memory:', err);
+      const m = memoryCheck(key, limit, windowSec * 1000);
+      ok = m.ok;
+      remaining = m.remaining;
+      resetAt = m.resetAt;
+    }
+  } else {
+    const m = memoryCheck(key, limit, windowSec * 1000);
+    ok = m.ok;
+    remaining = m.remaining;
+    resetAt = m.resetAt;
   }
 
-  entry.count++;
-  if (entry.count > limit) {
-    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    return NextResponse.json(
-      { error: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(retryAfter),
-          'X-RateLimit-Limit': String(limit),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(Math.ceil(entry.resetAt / 1000)),
-        },
+  if (ok) return null;
+
+  const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+  return NextResponse.json(
+    { error: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.' },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': String(retryAfter),
+        'X-RateLimit-Limit': String(limit),
+        'X-RateLimit-Remaining': String(Math.max(0, remaining)),
+        'X-RateLimit-Reset': String(Math.ceil(resetAt / 1000)),
       },
-    );
-  }
-
-  return null;
+    },
+  );
 }
 
 /** AI 호출 라우트용 — 더 엄격한 제한 */
 export async function rateLimitAI(req: NextRequest): Promise<NextResponse | null> {
-  return rateLimit(req, { limit: 20, window: 60 });
+  return rateLimit(req, { limit: 20, window: 60, prefix: 'rl-ai' });
 }
 
 /** 일반 mutation 라우트용 */
 export async function rateLimitMutation(req: NextRequest): Promise<NextResponse | null> {
-  return rateLimit(req, { limit: 100, window: 60 });
+  return rateLimit(req, { limit: 100, window: 60, prefix: 'rl-mut' });
+}
+
+/** 백엔드 상태 확인 (테스트/디버깅용) */
+export function getRateLimitBackend(): 'upstash' | 'memory' {
+  return getRedis() ? 'upstash' : 'memory';
 }

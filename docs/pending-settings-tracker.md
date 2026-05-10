@@ -52,6 +52,12 @@
 - 🔑 `INNGEST_EVENT_KEY` — Inngest 대시보드 > 앱 > Event Key
 - 🔑 `INNGEST_SIGNING_KEY` — Inngest 대시보드 > 앱 > Signing Key
 
+### Rate Limiting (Upstash Redis) — P0-1 2026-05-10 추가
+> 코드 통합 완료. 키만 주입하면 자동으로 분산 rate limit 활성화. 미설정 시 in-memory fallback 동작.
+> 권장: Vercel Marketplace → Upstash Redis 1-click 프로비저닝 (무료 티어 10K req/day)
+- 🔑 `UPSTASH_REDIS_REST_URL` — Upstash 콘솔 > Database > REST API > URL
+- 🔑 `UPSTASH_REDIS_REST_TOKEN` — Upstash 콘솔 > Database > REST API > Token
+
 ---
 
 ## ⚙️ 광고/발행 토글 — 대표님 승인 후 dry-run→실운영 전환
