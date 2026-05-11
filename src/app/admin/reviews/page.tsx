@@ -95,9 +95,11 @@ export default function ReviewsAdminPage() {
   const triggerSentimentCron = async () => {
     setTriggering(true);
     try {
-      // client bundle 에서 정적 참조여야 inline 됨 (getSecret 동적 인덱싱은 client에서 null)
-      const secret = process.env.NEXT_PUBLIC_CRON_SECRET ?? '';
-      const res = await fetch(`/api/cron/review-sentiment?secret=${secret}`);
+      const res = await fetch('/api/admin/cron-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '/api/cron/review-sentiment' }),
+      });
       const json = await res.json() as { ok?: boolean; analyzed?: number; failed?: number; error?: string };
       if (!json.ok) {
         alert(`분석 실패: ${json.error ?? '알 수 없는 오류'}`);
