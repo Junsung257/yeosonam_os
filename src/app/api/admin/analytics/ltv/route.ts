@@ -3,11 +3,20 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // LTV 코호트 분석 — UTM 채널별 평생 결제액 집계
 // bookings.utm_source 기준으로 cohort 분류
+//
+// 감사: docs/audits/2026-05-11-admin-perf-audit.md
+// 개선: 페이지네이션 가드(limit) + CDN 5분 캐시. 5분 stale 허용 (코호트는 실시간 X).
+
+const LTV_BOOKING_LIMIT = 5000;
+const CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=120, s-maxage=300, stale-while-revalidate=600',
+} as const;
+
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ cohorts: [] });
 
   try {
-    // 완료된 예약만 (fully_paid + deposit_paid 이상)
+    // 완료된 예약만 (fully_paid + deposit_paid 이상). 최근순 limit 가드.
     const { data: bookings, error } = await supabaseAdmin
       .from('bookings')
       .select(
@@ -15,10 +24,14 @@ export async function GET() {
       )
       .in('status', ['deposit_paid', 'waiting_balance', 'fully_paid'])
       .eq('is_deleted', false)
-      .not('lead_customer_id', 'is', null);
+      .not('lead_customer_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(LTV_BOOKING_LIMIT);
 
     if (error) throw error;
-    if (!bookings?.length) return NextResponse.json({ cohorts: [] });
+    if (!bookings?.length) {
+      return NextResponse.json({ cohorts: [] }, { headers: CACHE_HEADERS });
+    }
 
     // 고객별 첫 예약 채널 결정 (첫 예약의 utm_source)
     type BookingRow = {
@@ -83,7 +96,15 @@ export async function GET() {
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue);
 
-    return NextResponse.json({ cohorts, totalCustomers: customerFirstChannel.size });
+    return NextResponse.json(
+      {
+        cohorts,
+        totalCustomers: customerFirstChannel.size,
+        bookingLimit: LTV_BOOKING_LIMIT,
+        sampledBookings: bookings.length,
+      },
+      { headers: CACHE_HEADERS },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },

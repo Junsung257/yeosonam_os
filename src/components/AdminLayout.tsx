@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import useSWR from 'swr';
 import {
   LayoutDashboard, Inbox, BookOpenCheck, Users, Wallet, FileText,
   Package, ClipboardCheck, Upload, Building2, ScrollText, MapPinned, Mountain, Globe,
@@ -18,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAutoRefreshSession } from '@/hooks/useAutoRefreshSession';
+import AdminSwrProvider from './admin/SwrProvider';
 import {
   DensityProvider,
   DensityToggle,
@@ -308,11 +310,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     return (window.localStorage.getItem('admin.sidebar-mode') as 'full' | 'slim') ?? 'full';
   });
   const [cmdOpen, setCmdOpen] = useState(false);
-  const [pendingActionsCount, setPendingActionsCount] = useState(0);
-  const [unmatchedAttrCount, setUnmatchedAttrCount] = useState(0);
-  const [ledgerDriftCount, setLedgerDriftCount] = useState(0);
-  const [pendingReviewCount, setPendingReviewCount] = useState(0);
-  const [blogQueueCount, setBlogQueueCount] = useState(0);
   const { favs, isFav, toggle: toggleFav } = useFavorites();
 
   useAutoRefreshSession();
@@ -323,45 +320,30 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     }
   }, [sidebarMode]);
 
-  useEffect(() => {
-    const fetchCount = () => {
-      fetch('/api/agent-actions?status=pending&limit=1')
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          if (d?.total != null) setPendingActionsCount(d.total);
-        })
-        .catch(() => {});
-    };
-    fetchCount();
-    const interval = setInterval(fetchCount, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  // ── 사이드바 배지 통합 fetch (SWR 60초 폴링) ──────────────────────────
+  // 감사: docs/audits/2026-05-11-admin-perf-audit.md
+  // 기존 5개 fetch + setInterval → 단일 RPC + SWR dedup + 30s 캐시.
+  const { data: badges } = useSWR<{
+    pendingActions: number;
+    unmatchedPending: number;
+    pendingPackages: number;
+    ledgerDrift: number;
+    blogQueue: number;
+  }>('/api/admin/badge-counts', {
+    refreshInterval: 60_000,
+    dedupingInterval: 30_000,
+  });
+  const pendingActionsCount = badges?.pendingActions ?? 0;
+  const unmatchedAttrCount  = badges?.unmatchedPending ?? 0;
+  const pendingReviewCount  = badges?.pendingPackages ?? 0;
+  const ledgerDriftCount    = badges?.ledgerDrift ?? 0;
+  const blogQueueCount      = badges?.blogQueue ?? 0;
 
   // ShortcutsBridge → CommandPalette 토글 이벤트 수신
   useEffect(() => {
     const handler = () => setCmdOpen((v) => !v);
     window.addEventListener('admin:toggle-cmd', handler);
     return () => window.removeEventListener('admin:toggle-cmd', handler);
-  }, []);
-
-  // 미처리 건수 배지 — 마운트 1회 fetch (reconcile은 RPC 비용으로 주기 없음)
-  useEffect(() => {
-    fetch('/api/unmatched?summary=1')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.counts?.pending != null) setUnmatchedAttrCount(d.counts.pending); })
-      .catch(() => {});
-    fetch('/api/admin/ledger/reconcile-status')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.drift_count != null) setLedgerDriftCount(d.drift_count); })
-      .catch(() => {});
-    fetch('/api/packages?status=pending&limit=1')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.count != null) setPendingReviewCount(d.count); })
-      .catch(() => {});
-    fetch('/api/blog/queue?status=pending')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.counts?.pending != null) setBlogQueueCount(d.counts.pending); })
-      .catch(() => {});
   }, []);
 
   const handleLogout = async () => {
@@ -652,10 +634,12 @@ function HelpEventBridge() {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <DensityProvider>
-      <ShortcutsBridge>
-        <AdminLayoutInner>{children}</AdminLayoutInner>
-      </ShortcutsBridge>
-    </DensityProvider>
+    <AdminSwrProvider>
+      <DensityProvider>
+        <ShortcutsBridge>
+          <AdminLayoutInner>{children}</AdminLayoutInner>
+        </ShortcutsBridge>
+      </DensityProvider>
+    </AdminSwrProvider>
   );
 }

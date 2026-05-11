@@ -24,42 +24,16 @@ export interface UnmatchedSummary {
   }>;
 }
 
-async function countUnmatched(filter: (q: ReturnType<typeof supabaseAdmin.from>) => ReturnType<typeof supabaseAdmin.from>): Promise<number> {
-  let q = supabaseAdmin.from('unmatched_activities').select('*', { count: 'exact', head: true });
-  q = filter(q);
-  const { count, error } = await q;
-  if (error) throw error;
-  return count ?? 0;
-}
-
+/**
+ * 어드민 사이드바 미매칭 배지 — 단일 RPC 로 7개 count → 1 round-trip.
+ * 마이그레이션: 20260518000000_admin_perf_summary_rpcs.sql
+ * 감사: docs/audits/2026-05-11-admin-perf-audit.md (모든 어드민 페이지에서 31s → ~50ms)
+ */
 export async function getUnmatchedSummary(): Promise<UnmatchedSummary> {
   const { minOccurrences: highOccMin } = getUnmatchedBootstrapEnvDefaults();
-  const [pending, ignored, added, all, pending_high_occurrence, auto_alias_resolved_total, manual_link_alias_total, recentRes] = await Promise.all([
-    countUnmatched(q => q.eq('status', 'pending')),
-    countUnmatched(q => q.eq('status', 'ignored')),
-    countUnmatched(q => q.eq('status', 'added')),
-    countUnmatched(q => q),
-    countUnmatched(q => q.eq('status', 'pending').gte('occurrence_count', highOccMin)),
-    countUnmatched(q => q.eq('resolved_kind', 'auto_cron_high_confidence')),
-    countUnmatched(q => q.eq('resolved_kind', 'manual_link_alias')),
-    supabaseAdmin
-      .from('unmatched_activities')
-      .select('id, activity, resolved_at, resolved_attraction_id, occurrence_count')
-      .eq('resolved_kind', 'auto_cron_high_confidence')
-      .order('resolved_at', { ascending: false })
-      .limit(8),
-  ]);
-
-  if (recentRes.error) throw recentRes.error;
-
-  return {
-    counts: { pending, ignored, added, all },
-    pending_high_occurrence,
-    auto_alias_resolved_total,
-    manual_link_alias_total,
-    high_occurrence_threshold: highOccMin,
-    recent_auto_alias: (recentRes.data || []) as UnmatchedSummary['recent_auto_alias'],
-  };
+  const { data, error } = await supabaseAdmin.rpc('get_unmatched_summary', { p_high_occ_min: highOccMin });
+  if (error) throw error;
+  return data as UnmatchedSummary;
 }
 
 export interface BootstrapCandidateRow {
