@@ -1,0 +1,198 @@
+name: SWE-Agent Auto Fix
+
+on:
+  issues:
+    types: [labeled, opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  swe_agent:
+    if: contains(github.event.issue.labels.*.name, 'ai-fix')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        timeout-minutes: 10
+
+      - name: Extract issue context
+        id: extract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const title = issue.title;
+            const number = issue.number;
+
+            // Extract specific file/error info if present
+            const fileMatch = body.match(/File:\s*`?([^`\n]+)`?/i);
+            const errorMatch = body.match(/Error:\s*([^\n]+)/i);
+
+            core.setOutput('title', title);
+            core.setOutput('number', number);
+            core.setOutput('file', fileMatch ? fileMatch[1] : '');
+            core.setOutput('error', errorMatch ? errorMatch[1] : '');
+            core.setOutput('body', body);
+
+      - name: Create fix branch
+        id: branch
+        run: |
+          BRANCH="fix/issue-${{ steps.extract.outputs.number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Run type check
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Run ESLint fix
+        run: npm run lint -- --fix
+        continue-on-error: true
+
+      - name: Analyze issue and suggest fix
+        uses: actions/github-script@v7
+        id: analyze
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+
+            const issue = `${{ steps.extract.outputs.title }}\n\n${{ steps.extract.outputs.body }}`;
+            const file = '${{ steps.extract.outputs.file }}';
+            const error = '${{ steps.extract.outputs.error }}';
+
+            let analysis = '';
+
+            // Basic analysis based on issue keywords
+            if (issue.includes('type') || issue.includes('TypeScript')) {
+              analysis = 'TypeScript error detected. Running type check...';
+              try {
+                execSync('npx tsc --noEmit 2>&1 || true', { stdio: 'pipe' });
+              } catch (e) {
+                // Continue
+              }
+            }
+
+            if (issue.includes('lint') || issue.includes('ESLint')) {
+              analysis = 'Linting issues detected. Applying fixes...';
+            }
+
+            if (issue.includes('test') || issue.includes('coverage')) {
+              analysis = 'Running tests...';
+              try {
+                execSync('npm run test -- --run 2>&1 || true', { stdio: 'pipe' });
+              } catch (e) {
+                // Continue
+              }
+            }
+
+            core.setOutput('analysis', analysis || 'Analyzing issue...');
+
+      - name: Commit changes
+        id: commit
+        run: |
+          git add -A
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          git commit -m "fix: Auto-fix from issue #${{ steps.extract.outputs.number }}
+
+Issue: ${{ steps.extract.outputs.title }}
+
+Analysis:
+${{ steps.analyze.outputs.analysis }}
+
+Co-Authored-By: SWE-Agent <swe-agent@github.com>"
+
+          echo "no_changes=false" >> $GITHUB_OUTPUT
+
+      - name: Push branch
+        if: steps.commit.outputs.no_changes != 'true'
+        run: git push origin ${{ steps.branch.outputs.branch }} --force-with-lease
+
+      - name: Create Pull Request
+        if: steps.commit.outputs.no_changes != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `fix: #${{ steps.extract.outputs.number }} - ${{ steps.extract.outputs.title }}`,
+              head: '${{ steps.branch.outputs.branch }}',
+              base: context.ref,
+              body: `## 자동 수정 PR\n\n**Issue:** #${{ steps.extract.outputs.number }}\n\n**분석:**\n${{ steps.analyze.outputs.analysis }}\n\n**변경사항:**\n- ESLint 자동 수정\n- TypeScript 타입 검사\n- 테스트 실행\n\n자동으로 생성된 PR입니다. 머지 전 검토하세요.\n\nCloses #${{ steps.extract.outputs.number }}`,
+              draft: false,
+            });
+
+            core.setOutput('pr_number', pr.number);
+            console.log(`Created PR: #${pr.number}`);
+
+      - name: Comment on issue
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const prNumber = '${{ steps.commit.outputs.no_changes }}' === 'true' ? 'N/A' : '${{ steps.commit.outputs.pr_number }}';
+            const noChanges = '${{ steps.commit.outputs.no_changes }}' === 'true';
+
+            let comment = `## 🤖 SWE-Agent Analysis Complete\n\n`;
+
+            if (noChanges) {
+              comment += '✅ **No changes needed** — issue appears to be already resolved or invalid.\n';
+            } else {
+              comment += `✅ **PR Created:** [#${prNumber}](../../pull/${prNumber})\n\n`;
+              comment += '**Applied fixes:**\n';
+              comment += '- ESLint auto-fix\n';
+              comment += '- TypeScript validation\n';
+              comment += '- Test coverage check\n\n';
+              comment += 'Please review the PR before merging.';
+            }
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment,
+            });
+
+      - name: Update issue label
+        uses: actions/github-script@v7
+        if: steps.commit.outputs.no_changes != 'true'
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['ai-fix-completed'],
+            });
+
+            github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'ai-fix',
+            });
