@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * 자동 아카이브 크론 — 매일 새벽 1시 실행
@@ -12,7 +13,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * 대상: status가 approved, active, pending, pending_review, draft 인 상품만
  */
 export const dynamic = 'force-dynamic';
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
@@ -110,3 +111,5 @@ export async function GET() {
     return NextResponse.json({ error: '자동 아카이브 실패' }, { status: 500 });
   }
 }
+
+export const GET = withCronGuard(getHandler);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * 블로그 라이프사이클 크론 — 매일 1:30 KST 실행
@@ -16,7 +17,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *   정보성 블로그(product_id IS NULL)는 절대 건드리지 않는다 (영구 SEO 자산).
  */
 export const dynamic = 'force-dynamic';
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
@@ -92,3 +93,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

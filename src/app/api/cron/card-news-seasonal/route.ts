@@ -21,7 +21,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isCronOrVercelAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { isCronOrVercelAuthorized, cronUnauthorizedResponse, withCronGuard } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSeasonalContext } from '@/lib/card-news-html/seasonal';
@@ -34,7 +34,7 @@ export const maxDuration = 300; // Hobby plan 상한(300s). 2 그룹 처리는 M
 const MAX_GROUPS_PER_RUN = 2;
 const SAME_DESTINATION_LOOKBACK_DAYS = 14;
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isCronOrVercelAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
@@ -185,3 +185,5 @@ export async function GET(request: NextRequest) {
     duration_ms: Date.now() - startedAt,
   });
 }
+
+export const GET = withCronGuard(getHandler);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
+import { withCronGuard } from '@/lib/cron-auth';
 
 // 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
  *   B) prompt-optimizer 호출 — 성과 분석 → agent_actions 제안 등록
  *   C) (옵션) AUTO_APPROVE_LEARNING=true → prompt_versions 자동 활성화
  */
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
@@ -139,3 +140,5 @@ export async function GET() {
     return NextResponse.json(result, { status: 500 });
   }
 }
+
+export const GET = withCronGuard(getHandler);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifySlack } from '@/lib/slack-notifier';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * GET /api/cron/payment-rules-learn
@@ -11,7 +12,7 @@ import { notifySlack } from '@/lib/slack-notifier';
  * 향후 resolver 가 후보 점수 계산 시 룰 매치 가산 신호로 활용 (Phase 5).
  */
 export const dynamic = 'force-dynamic';
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -41,3 +42,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

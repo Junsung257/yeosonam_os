@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isCronOrVercelAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { isCronOrVercelAuthorized, cronUnauthorizedResponse, withCronGuard } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { detectVariantWinner } from '@/lib/card-news-html/winner-detector';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -25,7 +25,7 @@ export const maxDuration = 300;
 
 const MIN_GROUP_HOURS = 72;
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isCronOrVercelAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
@@ -109,3 +109,5 @@ export async function GET(request: NextRequest) {
     duration_ms: Date.now() - startedAt,
   });
 }
+
+export const GET = withCronGuard(getHandler);

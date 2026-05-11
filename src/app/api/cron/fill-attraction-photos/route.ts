@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * 사진 없는 관광지 자동 Pexels 백필 — 이미지 파이프라인 Tier 3
@@ -16,7 +17,7 @@ import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured } from '@/lib/p
  * 응답: { ok, total, filled, skipped, errors, durationMs }
  */
 export const dynamic = 'force-dynamic';
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -99,3 +100,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

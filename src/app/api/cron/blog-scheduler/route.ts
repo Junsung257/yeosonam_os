@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { refillWeeklyQueue, assignPublishSlots, DEFAULT_POSTS_PER_DAY } from '@/lib/blog-scheduler';
 import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * 블로그 스케줄러 크론 — 매주 월요일 0시 실행
@@ -12,7 +13,7 @@ import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
  *   3) 각 항목에 target_publish_at 슬롯 할당 (하루 6개, 2시간 간격)
  */
 export const dynamic = 'force-dynamic';
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
@@ -39,3 +40,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

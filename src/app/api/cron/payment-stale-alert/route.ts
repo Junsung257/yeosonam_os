@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifySlack } from '@/lib/slack-notifier';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * GET /api/cron/payment-stale-alert
@@ -10,7 +11,7 @@ import { notifySlack } from '@/lib/slack-notifier';
  * 입금 / 출금 분리 표시 (사장님이 어느 쪽에 손 댈지 판단).
  */
 export const dynamic = 'force-dynamic';
-export async function GET(_req: NextRequest) {
+const getHandler = async (_req: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -77,3 +78,5 @@ export async function GET(_req: NextRequest) {
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

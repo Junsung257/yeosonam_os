@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
+import { withCronGuard } from '@/lib/cron-auth';
 
 const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
@@ -18,7 +19,7 @@ const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, P
  * 기본은 /api/cron/affiliate-settlement-draft가 agent_actions 기안 → 사장님 결재함 승인.
  */
 export const dynamic = 'force-dynamic';
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
 
   if (process.env.ENABLE_DIRECT_SETTLEMENT !== 'true') {
@@ -165,3 +166,5 @@ export async function GET() {
     return NextResponse.json({ error: err instanceof Error ? err.message : '정산 크론 실패' }, { status: 500 });
   }
 }
+
+export const GET = withCronGuard(getHandler);

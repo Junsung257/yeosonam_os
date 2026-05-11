@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { withCronGuard } from '@/lib/cron-auth';
 
 const TOP_CITIES = [
   '다낭', '나트랑', '방콕', '도쿄', '오사카',
@@ -17,7 +18,7 @@ const TIERS = ['luxury', 'mid'] as const;
 export const maxDuration = 300;
 
 export const dynamic = 'force-dynamic';
-export async function GET(request: Request) {
+const getHandler = async (request: Request) => {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? new URL(request.url).origin;
   const results: { city: string; tier: string; ok: boolean; slug?: string; error?: string }[] = [];
 
@@ -44,3 +45,5 @@ export async function GET(request: Request) {
 
   return NextResponse.json({ ok, err, results });
 }
+
+export const GET = withCronGuard(getHandler);

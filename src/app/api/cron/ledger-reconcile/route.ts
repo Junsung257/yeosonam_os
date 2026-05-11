@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withCronGuard } from '@/lib/cron-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -34,7 +35,7 @@ interface DriftRow {
   drift: number;
 }
 
-export async function GET(_request: NextRequest) {
+const getHandler = async (_request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -122,3 +123,5 @@ export async function GET(_request: NextRequest) {
     { status: 200 },
   );
 }
+
+export const GET = withCronGuard(getHandler);

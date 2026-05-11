@@ -54,3 +54,22 @@ export function requireCronBearer(request: NextRequest): NextResponse | null {
   }
   return null;
 }
+
+type NextHandler = (req: NextRequest, ctx?: any) => Promise<NextResponse>;
+
+/**
+ * Cron 엔드포인트 래퍼. requireCronBearer() 검증 후 핸들러 실행.
+ * 동적 라우트([id] 등)의 ctx 파라미터도 지원.
+ *
+ * 사용:
+ *   export const GET = withCronGuard(async (req) => {
+ *     return NextResponse.json({ ok: true });
+ *   });
+ */
+export function withCronGuard(handler: NextHandler): NextHandler {
+  return async (req: NextRequest, ctx?: any): Promise<NextResponse> => {
+    const authError = requireCronBearer(req);
+    if (authError) return authError;
+    return ctx ? handler(req, ctx) : handler(req);
+  };
+}

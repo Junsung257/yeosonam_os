@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withCronGuard } from '@/lib/cron-auth';
 import {
   isSupabaseConfigured,
   getExpiredBids,
@@ -13,7 +14,7 @@ import {
 // }
 
 export const dynamic = 'force-dynamic';
-export async function GET(_request: NextRequest) {
+const getHandler = async (_request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
@@ -77,3 +78,5 @@ export async function GET(_request: NextRequest) {
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

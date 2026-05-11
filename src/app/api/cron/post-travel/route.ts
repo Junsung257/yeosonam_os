@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   isSupabaseConfigured,
   getVouchersForReviewNotification,
   updateVoucher,
 } from '@/lib/supabase';
 import { sendReviewRequestAlimtalk } from '@/lib/kakao';
+import { withCronGuard } from '@/lib/cron-auth';
 
 /**
  * GET /api/cron/post-travel
@@ -43,12 +44,8 @@ import { sendReviewRequestAlimtalk } from '@/lib/kakao';
  * // 알림톡 공유 링크 클릭 후 신규 예약 연결 → 추천인 보상(마일리지) 지급
  */
 export const dynamic = 'force-dynamic';
-export async function GET(): Promise<NextResponse> {
-  // ── 간단한 Cron Secret 검증 (선택사항, 보안 강화 시 활성화) ──
-  // const authHeader = request.headers.get('authorization');
-  // if (process.env['CRON_SECRET'] && authHeader !== `Bearer ${process.env['CRON_SECRET']}`) {
-  //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // }
+
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
 
   if (!isSupabaseConfigured) {
     console.log('[post-travel cron] Supabase 미설정 — Mock 실행');
@@ -122,4 +119,6 @@ export async function GET(): Promise<NextResponse> {
     failed: failedCount,
     results,
   });
-}
+};
+
+export const GET = withCronGuard(getHandler);
