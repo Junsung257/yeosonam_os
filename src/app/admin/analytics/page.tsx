@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import useSWR from 'swr';
 
 interface CohortRow {
   channel: string;
@@ -9,6 +9,11 @@ interface CohortRow {
   avgLtv: number;
   avgBookingsPerCustomer: number;
   totalBookings: number;
+}
+
+interface LtvResponse {
+  cohorts: CohortRow[];
+  totalCustomers?: number;
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -41,21 +46,12 @@ function fmt만(n: number) {
 }
 
 export default function AnalyticsPage() {
-  const [cohorts, setCohorts] = useState<CohortRow[]>([]);
-  const [total, setTotal]     = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch('/api/admin/analytics/ltv')
-      .then((r) => r.json())
-      .then((d) => {
-        setCohorts(d.cohorts ?? []);
-        setTotal(d.totalCustomers ?? 0);
-      })
-      .catch(() => setFetchError('데이터를 불러오지 못했습니다.'))
-      .finally(() => setLoading(false));
-  }, []);
+  // 감사(2026-05-11): useEffect fetch → useSWR. LTV API 는 5분 ISR 캐시 적용 완료.
+  const { data, error, isLoading } = useSWR<LtvResponse>('/api/admin/analytics/ltv');
+  const cohorts = data?.cohorts ?? [];
+  const total = data?.totalCustomers ?? 0;
+  const loading = isLoading;
+  const fetchError = error ? '데이터를 불러오지 못했습니다.' : null;
 
   const maxRevenue = Math.max(...cohorts.map((c) => c.totalRevenue), 1);
 
