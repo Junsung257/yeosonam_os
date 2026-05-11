@@ -40,7 +40,7 @@ export interface PublishingPolicy {
   daily_summary_webhook?: string | null;
 }
 
-export async function getActivePolicy(scope: string = 'global'): Promise<PublishingPolicy> {
+export async function getBlogPublishingPolicy(scope: string = 'global'): Promise<PublishingPolicy> {
   try {
     const { data } = await supabaseAdmin
       .from('publishing_policies')
@@ -78,7 +78,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
   product_added: number;
   total_added: number;
 }> {
-  const policy = await getActivePolicy('global');
+  const policy = await getBlogPublishingPolicy('global');
   const postsPerDay = opts?.postsPerDay ?? policy.posts_per_day;
   const weeklyTarget = postsPerDay * 7;
   const productTarget = Math.floor(weeklyTarget * policy.product_ratio);
@@ -306,7 +306,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
  * - 같은 destination 1일 N개 제한 (per_destination_daily_cap)
  */
 export async function assignPublishSlots(postsPerDay?: number): Promise<{ assigned: number }> {
-  const policy = await getActivePolicy('global');
+  const policy = await getBlogPublishingPolicy('global');
   const ppd = postsPerDay ?? policy.posts_per_day;
   const slots = policy.slot_times.length > 0 ? policy.slot_times : DAILY_PUBLISH_SLOTS;
   const destCap = policy.per_destination_daily_cap;

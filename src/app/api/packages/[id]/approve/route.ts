@@ -175,8 +175,8 @@ export async function PATCH(
     let orchestratorInfo: { triggered: boolean; reason?: string } | null = null;
 
     // 정책 조회
-    const { getActivePolicy } = await import('@/lib/blog-scheduler');
-    const policy = await getActivePolicy('global').catch(() => null);
+    const { getBlogPublishingPolicy } = await import('@/lib/blog-scheduler');
+    const policy = await getBlogPublishingPolicy('global').catch(() => null);
 
     // 1) Multi-angle drip (정책과 무관 — 항상 ON, 가성비 좋음)
     try {

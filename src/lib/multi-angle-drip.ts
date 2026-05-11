@@ -15,7 +15,7 @@
  */
 
 import { supabaseAdmin } from './supabase';
-import { getActivePolicy } from './blog-scheduler';
+import { getBlogPublishingPolicy } from './blog-scheduler';
 import type { AngleType } from './content-generator';
 import { researchKeywordsBatch, classifyKeywordTier } from './keyword-research';
 
@@ -123,7 +123,7 @@ export async function enqueueMultiAngleDrip(
     return result;
   }
 
-  const policy = await getActivePolicy('global');
+  const policy = await getBlogPublishingPolicy('global');
   const count = policy.multi_angle_count;
   const gapDays = policy.multi_angle_gap_days;
   const angles = selectAnglesForProduct(pkg, count);

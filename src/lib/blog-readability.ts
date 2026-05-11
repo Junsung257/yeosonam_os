@@ -27,6 +27,8 @@ export interface ReadabilityResult {
   issues: string[];
 }
 
+import { stripMarkup } from './blog-text-utils';
+
 const DOUBLE_NEGATIVE_PATTERNS = [
   /없지\s*않[다았]/g,
   /아닐\s*수\s*없[다었]/g,
@@ -34,22 +36,9 @@ const DOUBLE_NEGATIVE_PATTERNS = [
   /안\s*하지\s*않/g,
 ];
 
-function stripMarkup(s: string): string {
-  return s
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/#{1,6}\s+/g, ' ')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/==([^=]+)==/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\|/g, ' ')
-    .trim();
-}
-
 export function computeReadability(blogHtml: string): ReadabilityResult {
-  const text = stripMarkup(blogHtml);
+  // 문장 분리에 '\n+' 를 사용하므로 줄바꿈을 보존해야 한다.
+  const text = stripMarkup(blogHtml, { stripTablePipes: true, collapseWhitespace: false });
   const issues: string[] = [];
 
   if (text.length < 100) {

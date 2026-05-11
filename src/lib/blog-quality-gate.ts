@@ -13,6 +13,7 @@
 
 import { supabaseAdmin } from './supabase';
 import { checkReadability } from './blog-readability';
+import { stripMarkup } from './blog-text-utils';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -54,21 +55,6 @@ interface CheckInput {
   excludeContentCreativeId?: string | null;
   blog_type?: 'product' | 'info';   // 임계값 분기 (기본 product)
   primary_keyword?: string | null;  // 키워드 밀도 측정 대상
-}
-
-// 마크다운/HTML 태그 제거해서 순수 텍스트 길이 측정
-function stripMarkup(raw: string): string {
-  return raw
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/#{1,6}\s+/g, ' ')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/==([^=]+)==/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
