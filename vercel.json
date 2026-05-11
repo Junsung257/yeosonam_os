@@ -299,6 +299,22 @@
     {
       "path": "/api/cron/inp-monitor",
       "schedule": "40 16 * * *"
+    },
+    {
+      "path": "/api/cron/solapi-review-request",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/gsc-index-rank",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/cron/programmatic-seo-generator",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/blog-regenerate-zero-click",
+      "schedule": "0 5 * * 1"
     }
   ],
   "functions": {
@@ -343,6 +359,9 @@
     "src/app/api/cron/rag-incremental/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/serp-rank-snapshot/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/rank-tracking/route.ts": { "maxDuration": 180 },
+    "src/app/api/cron/gsc-index-rank/route.ts": { "maxDuration": 180 },
+    "src/app/api/cron/programmatic-seo-generator/route.ts": { "maxDuration": 180 },
+    "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/content-drift-detect/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/churn-detect/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/fraud-detect/route.ts": { "maxDuration": 180 },
