@@ -50,8 +50,12 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
     actual_payer_name: actualPayerName,
   }];
 
-  let totalMatchedAmount = 0;
+  // 감사(2026-05-11 Phase 4-C): 직렬 N+1 (UPDATE + RPC × N) → bounded concurrency 병렬.
+  // 메모리 매칭 계산은 동기로 다 끝낸 뒤, DB 작업만 CONCURRENCY=5 chunk 로 발사.
+  // update_booking_ledger 는 idempotency_key + per-tx ledger entry 라 동시성 안전.
 
+  // 1) 메모리 매칭 — 동기, 빠름
+  const matchedTxs: Array<{ tx: { id: string; amount: number; counterparty_name: string | null; transaction_type: string }; confidence: number }> = [];
   for (const tx of unmatched) {
     const candidates = matchPaymentToBookings({
       amount:     tx.amount,
@@ -61,24 +65,26 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
     const guarded   = applyDuplicateNameGuard(candidates);
     const best      = guarded[0];
     if (!best) continue;
+    if (classifyMatch(best.confidence) !== 'auto') continue;
+    matchedTxs.push({ tx, confidence: best.confidence });
+  }
 
-    const matchClass = classifyMatch(best.confidence);
-    if (matchClass !== 'auto') continue;
-
-    // 매칭 성공 → bank_transactions 업데이트
+  let totalMatchedAmount = 0;
+  // 2) DB 적용 — bounded concurrency 5
+  const RETRO_CONCURRENCY = 5;
+  const nowIso = new Date().toISOString();
+  const applyOne = async ({ tx, confidence }: typeof matchedTxs[number]) => {
+    // 한 tx 의 UPDATE + RPC 는 직렬 (atomic 그룹), tx 들 간만 병렬.
     await supabase
       .from('bank_transactions')
       .update({
         booking_id:       bookingId,
         match_status:     'auto',
-        match_confidence: best.confidence,
+        match_confidence: confidence,
         matched_by:       'retroactive',
-        matched_at:       new Date().toISOString(),
+        matched_at:       nowIso,
       })
       .eq('id', tx.id);
-
-    // Phase 2a — bookings.paid_amount += tx.amount + ledger 이중쓰기 (per tx, atomic)
-    //   tx 1건 단위로 ledger entry 를 남겨 감사 시 어느 거래에서 얼마 들어왔는지 추적 가능.
     await supabaseAdmin.rpc('update_booking_ledger', {
       p_booking_id: bookingId,
       p_paid_delta: tx.amount,
@@ -86,11 +92,18 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
       p_source: 'booking_create_softmatch',
       p_source_ref_id: tx.id,
       p_idempotency_key: `retroactive:${bookingId}:${tx.id}`,
-      p_memo: `retroactive softmatch ${best.confidence.toFixed(2)}`,
+      p_memo: `retroactive softmatch ${confidence.toFixed(2)}`,
       p_created_by: 'retroactive',
     });
-
-    totalMatchedAmount += tx.amount;
+    return tx.amount;
+  };
+  for (let i = 0; i < matchedTxs.length; i += RETRO_CONCURRENCY) {
+    const chunk = matchedTxs.slice(i, i + RETRO_CONCURRENCY);
+    const results = await Promise.allSettled(chunk.map(applyOne));
+    for (const r of results) {
+      if (r.status === 'fulfilled') totalMatchedAmount += r.value;
+      else console.warn('[소급매칭] tx 적용 실패:', r.reason);
+    }
   }
 
   if (totalMatchedAmount > 0) {

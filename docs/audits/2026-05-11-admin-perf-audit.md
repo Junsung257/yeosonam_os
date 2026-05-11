@@ -369,7 +369,44 @@
 - attractions: 필터 변경 시 자동 fetch + 같은 필터 재진입 dedup 30s.
 - ESLint 가드: 향후 어드민 페이지가 layout.tsx 의 AdminLayout 위에 또 wrap 시도 시 CI 차단.
 
-## 15. 관련 파일
+## 15. Phase 4 적용 결과 (2026-05-11) — 시스템 안정성·일관성
+
+### Phase 4-A — 자동 회귀 perf 가드 (691564b)
+
+| 파일 | 변화 |
+|------|------|
+| [db/check_admin_perf_regression.js](../../db/check_admin_perf_regression.js) | 신규 — Phase 0~3 의 6개 hot path 응답 시간 임계값 가드. fetch 기반, warm-up 1 + 측정 2 median. |
+| [package.json](../../package.json) | `npm run check:perf` (dev 느슨), `npm run check:perf:ci` (prod 엄격) |
+
+서버 미가동 시 명확한 skip 메시지 + exit 0 (CI 모드는 1). 인증 401/403 시 dev-admin-bypass 안내.
+
+### Phase 4-B — Cache-Control 프리셋 유틸 (fcb4a5c)
+
+| 파일 | 변화 |
+|------|------|
+| [src/lib/admin-cache.ts](../../src/lib/admin-cache.ts) | 신규 — 5개 named preset (`hot`/`analytics`/`list`/`detail`/`config`). 각각 Cache-Control 값 + rationale. |
+| [src/app/api/admin/badge-counts/route.ts](../../src/app/api/admin/badge-counts/route.ts) | `ADMIN_CACHE.hot` |
+| [src/app/api/admin/analytics/ltv/route.ts](../../src/app/api/admin/analytics/ltv/route.ts) | `ADMIN_CACHE.analytics` |
+| [src/app/api/admin/affiliate-analytics/route.ts](../../src/app/api/admin/affiliate-analytics/route.ts) | `ADMIN_CACHE.analytics` |
+| [src/app/api/bookings/route.ts](../../src/app/api/bookings/route.ts) GET | `ADMIN_CACHE.list` |
+
+향후 정책 변경은 `admin-cache.ts` 한 곳만 수정.
+
+### Phase 4-C — bookings POST tryRetroactiveMatch N+1 → bounded concurrency
+
+| 파일 | 변화 |
+|------|------|
+| [src/app/api/bookings/route.ts](../../src/app/api/bookings/route.ts) `tryRetroactiveMatch` | 메모리 매칭 + DB 적용 분리. DB 작업을 CONCURRENCY=5 `Promise.allSettled` chunk. `update_booking_ledger` 는 idempotency_key + per-tx ledger entry 로 동시성 안전. |
+
+### Before / After
+
+| 지표 | Before | After |
+|------|-------|-------|
+| unmatched 100건 매칭 | 직렬 2N = 200 round-trip | 5 chunk 병렬 = wall time ~ 1/5 |
+| 동시성 안전 | atomic per-tx ✓ | atomic per-tx ✓ (변경 없음) |
+| 매칭 로직 | matchPaymentToBookings | matchPaymentToBookings (변경 없음) |
+
+## 16. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)
