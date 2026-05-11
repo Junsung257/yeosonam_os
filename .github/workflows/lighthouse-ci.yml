@@ -1,0 +1,98 @@
+name: Lighthouse CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'next.config.js'
+      - 'package.json'
+      - '.github/workflows/lighthouse-ci.yml'
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Start dev server
+        run: |
+          npm run dev &
+          # Wait for server to be ready
+          for i in {1..60}; do
+            if curl -s http://localhost:3000 > /dev/null; then
+              echo "✓ Server ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/60)"
+            sleep 1
+          done
+          echo "✗ Server failed to start"
+          exit 1
+        env:
+          NODE_ENV: production
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@latest
+
+      - name: Run Lighthouse CI
+        id: lighthouse
+        continue-on-error: true
+        run: lhci autorun
+
+      - name: Parse results
+        id: parse
+        if: always()
+        run: |
+          if [ -f .lighthouseci/summary.json ]; then
+            echo "lh_report=exists" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && steps.parse.outputs.lh_report == 'exists'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = JSON.parse(fs.readFileSync('.lighthouseci/summary.json', 'utf8'));
+
+            let comment = '## 🚀 Lighthouse Performance Report\n\n';
+            comment += '| URL | Performance | Accessibility | Best Practices | SEO |\n';
+            comment += '|-----|-------------|---|---|---|\n';
+
+            summary.forEach(result => {
+              const perf = Math.round(result.summary.performance * 100);
+              const a11y = Math.round(result.summary.accessibility * 100);
+              const bp = Math.round(result.summary['best-practices'] * 100);
+              const seo = Math.round(result.summary.seo * 100);
+
+              comment += `| ${result.url} | ${perf}% | ${a11y}% | ${bp}% | ${seo}% |\n`;
+            });
+
+            github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: comment,
+              event: 'COMMENT'
+            });
+
+      - name: Check assertions
+        if: steps.lighthouse.outcome == 'failure'
+        run: |
+          echo "❌ Lighthouse assertions failed"
+          exit 1
