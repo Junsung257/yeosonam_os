@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/customer-name';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
   const id    = searchParams.get('id');
   const phone = searchParams.get('phone');
 
-  // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용)
+  // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용 — public)
   if (phone) {
     const safePhone = escapePostgrestFilterValue(phone);
     const normalized = phone.replace(/[^0-9]/g, '');
@@ -25,6 +26,15 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .limit(1);
     return NextResponse.json({ customers: data || [] });
+  }
+
+  // 상세 조회 + 목록 조회 — admin only
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다' },
+      { status: 401 }
+    );
   }
 
   if (id) {
@@ -50,6 +60,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다' },
+      { status: 401 }
+    );
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }

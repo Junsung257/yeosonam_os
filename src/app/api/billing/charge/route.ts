@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { decrypt } from '@/lib/encryption';
+import { isValidAdminApiToken } from '@/lib/api-auth';
 
 const TOSS_BASE = 'https://api.tosspayments.com/v1';
 
@@ -24,6 +25,14 @@ interface SubscriptionRow {
 }
 
 export async function POST(request: NextRequest) {
+  // Inngest 또는 ADMIN_API_TOKEN 인증 필수 (청구 권한)
+  if (!isValidAdminApiToken(request)) {
+    return NextResponse.json(
+      { error: '권한이 없습니다 (x-admin-token 필수)' },
+      { status: 401 }
+    );
+  }
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const secretKey = getSecret('TOSS_SECRET_KEY');

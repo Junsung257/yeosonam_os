@@ -2,19 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { encrypt, decrypt, maskBankInfo } from '@/lib/encryption';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 const GRADE_LABELS: Record<number, string> = {
   1: '브론즈', 2: '실버', 3: '골드', 4: '플래티넘', 5: '다이아',
 };
 
-// GET: 어필리에이트 목록 또는 단건 조회
+// GET: 어필리에이트 목록 또는 단건 조회 — admin only
 export async function GET(request: NextRequest) {
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다' },
+      { status: 401 }
+    );
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
-  const showBankInfo = searchParams.get('showBankInfo') === 'true';
 
   const supabase = supabaseAdmin;
 
@@ -35,12 +43,10 @@ export async function GET(request: NextRequest) {
       if (error) throw error;
       if (!data) return NextResponse.json({ error: '어필리에이트를 찾을 수 없습니다.' }, { status: 404 });
 
-      // 계좌 정보 처리
+      // 계좌 정보 처리 — 항상 masked (plaintext 절대 반환 금지)
       let bankInfo = null;
       if (data.encrypted_bank_info) {
-        bankInfo = showBankInfo
-          ? decrypt(data.encrypted_bank_info)
-          : maskBankInfo(decrypt(data.encrypted_bank_info));
+        bankInfo = maskBankInfo(decrypt(data.encrypted_bank_info));
       }
 
       return NextResponse.json({
@@ -76,8 +82,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: 어필리에이트 신규 등록
+// POST: 어필리에이트 신규 등록 — admin only
 export async function POST(request: NextRequest) {
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다' },
+      { status: 401 }
+    );
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
