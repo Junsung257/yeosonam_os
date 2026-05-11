@@ -1,0 +1,8191 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "여소남OS API",
+    "description": "B2B2C Travel Platform API",
+    "version": "1.0.0",
+    "contact": {
+      "name": "여소남 OS Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://yeosonam.com/api",
+      "description": "Production"
+    },
+    {
+      "url": "http://localhost:3000/api",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "src/app/admin/affiliate-analytics": {
+      "get": {
+        "summary": "GET src/app/admin/affiliate-analytics",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/admin/applications": {
+      "get": {
+        "summary": "GET src/app/admin/applications",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/admin/applications",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/booking-tasks": {
+      "get": {
+        "summary": "GET src/app/admin/booking-tasks",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "priority_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/admin/booking-tasks/run-now": {
+      "post": {
+        "summary": "POST src/app/admin/booking-tasks/run-now",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/booking-tasks/{id}/resolve": {
+      "post": {
+        "summary": "POST src/app/admin/booking-tasks/{id}/resolve",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/booking-tasks/{id}/snooze": {
+      "post": {
+        "summary": "POST src/app/admin/booking-tasks/{id}/snooze",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/bookings/{id}/dispute": {
+      "post": {
+        "summary": "POST src/app/admin/bookings/{id}/dispute",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/dashboard": {
+      "get": {
+        "summary": "사장의 관제실 대시보드 API",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/admin/jarvis/bot-profile": {
+      "get": {
+        "summary": "GET src/app/admin/jarvis/bot-profile",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "403": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/admin/jarvis/bot-profile",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "403": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/jarvis/usage": {
+      "get": {
+        "summary": "GET src/app/admin/jarvis/usage",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "403": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/admin/mock-configs": {
+      "get": {
+        "summary": "GET src/app/admin/mock-configs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/admin/mock-configs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/admin/mock-configs/{name}": {
+      "put": {
+        "summary": "PUT src/app/admin/mock-configs/{name}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/affiliates/leaderboard": {
+      "get": {
+        "summary": "GET src/app/affiliates/leaderboard",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "anonymized",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/affiliates": {
+      "get": {
+        "summary": "GET src/app/affiliates",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "showBankInfo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/affiliates",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/affiliates",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/agent/prompt-optimizer": {
+      "get": {
+        "summary": "GET src/app/agent/prompt-optimizer",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/agent/prompt-optimizer",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/agent-actions": {
+      "get": {
+        "summary": "GET src/app/agent-actions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/agent-actions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/agent-actions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/attractions/photos": {
+      "post": {
+        "summary": "POST /api/attractions/photos — Pexels에서 사진 검색",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH /api/attractions/photos — 선택한 사진을 관광지에 저장",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/attractions": {
+      "get": {
+        "summary": "GET src/app/attractions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "country",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "badge_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "photos_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/attractions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/attractions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/attractions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/attractions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/audit-logs": {
+      "get": {
+        "summary": "GET src/app/audit-logs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "targetType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/audit-logs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/audit-pkg-to-ir": {
+      "post": {
+        "summary": "POST src/app/audit-pkg-to-ir",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/auth/refresh": {
+      "post": {
+        "summary": "POST src/app/auth/refresh",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "502": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/auth/session": {
+      "post": {
+        "summary": "POST src/app/auth/session",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/auth/session",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/bank-transactions": {
+      "get": {
+        "summary": "GET src/app/bank-transactions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "aggregate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "booking_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "match_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/bank-transactions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/bank-transactions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/bank-transactions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/blog/ad-mapping": {
+      "get": {
+        "summary": "블로그 ↔ 광고 캠페인 매핑 관리",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "content_creative_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/blog/ad-mapping",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/blog/ad-mapping",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/blog/ad-mapping",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/blog/bulk-generate": {
+      "post": {
+        "summary": "동일 상품으로 N개 블로그를 일괄 생성 (긴꼬리 SEO 전략)",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/blog/from-card-news": {
+      "post": {
+        "summary": "카드뉴스를 기반으로 블로그 자동 생성 (하이브리드 이미지)",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/blog/generate": {
+      "post": {
+        "summary": "블로그 AI 초안 생성 API",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/blog/queue": {
+      "get": {
+        "summary": "블로그 자동 발행 큐 관리 API",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/blog/queue",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/blog/queue",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/blog/queue",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/blog/reindex": {
+      "post": {
+        "summary": "POST /api/blog/reindex",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/blog": {
+      "get": {
+        "summary": "공개 블로그 API — 발행된(published) 블로그 글만 반환",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "admin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/blog",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/blog",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/blog-categories": {
+      "get": {
+        "summary": "블로그 카테고리 CRUD",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/blog-categories",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/blog-categories",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/blog-categories",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/blog-engagement": {
+      "post": {
+        "summary": "블로그 체류 시간 / 스크롤 깊이 / CTA 클릭 수집",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/bookings": {
+      "get": {
+        "summary": "GET src/app/bookings",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "departure_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "departure_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/bookings",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/bookings",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/bookings/{id}/cancel": {
+      "post": {
+        "summary": "POST src/app/bookings/{id}/cancel",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/bookings/{id}": {
+      "get": {
+        "summary": "GET src/app/bookings/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/bookings/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/bookings/{id}/timeline": {
+      "get": {
+        "summary": "GET src/app/bookings/{id}/timeline",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/bookings/{id}/timeline",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/bookings/{id}/transition": {
+      "post": {
+        "summary": "POST src/app/bookings/{id}/transition",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/brand-kits": {
+      "get": {
+        "summary": "GET src/app/brand-kits",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/campaigns/creatives": {
+      "get": {
+        "summary": "GET src/app/campaigns/creatives",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "creative_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/campaigns/creatives",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/campaigns/generate": {
+      "post": {
+        "summary": "POST src/app/campaigns/generate",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/campaigns/launch": {
+      "post": {
+        "summary": "POST /api/campaigns/launch",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/campaigns/performance": {
+      "get": {
+        "summary": "GET src/app/campaigns/performance",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "creative_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/capital": {
+      "get": {
+        "summary": "GET src/app/capital",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/capital",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/capital",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/card-news/pexels": {
+      "get": {
+        "summary": "Pexels 이미지 검색 서버사이드 프록시",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/card-news/render": {
+      "post": {
+        "summary": "POST /api/card-news/render",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/card-news/render-v2": {
+      "post": {
+        "summary": "POST src/app/card-news/render-v2",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/card-news": {
+      "get": {
+        "summary": "GET src/app/card-news",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "package_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/card-news",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/card-news/{id}/confirm": {
+      "post": {
+        "summary": "POST src/app/card-news/{id}/confirm",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/card-news/{id}/create-variant": {
+      "post": {
+        "summary": "POST src/app/card-news/{id}/create-variant",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/card-news/{id}/publish-instagram": {
+      "post": {
+        "summary": "POST /api/card-news/[id]/publish-instagram",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/card-news/{id}": {
+      "get": {
+        "summary": "GET src/app/card-news/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/card-news/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/card-news/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/checkout/complete": {
+      "post": {
+        "summary": "POST /api/checkout/complete",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/competitor-ads": {
+      "get": {
+        "summary": "GET src/app/competitor-ads",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "brand",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/competitor-ads",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/concierge/cart": {
+      "get": {
+        "summary": "GET src/app/concierge/cart",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/concierge/cart",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/concierge/cart",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/concierge/checkout": {
+      "post": {
+        "summary": "POST src/app/concierge/checkout",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/concierge/search": {
+      "post": {
+        "summary": "POST src/app/concierge/search",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/concierge/transactions": {
+      "get": {
+        "summary": "GET src/app/concierge/transactions",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/concierge/transactions/{id}": {
+      "get": {
+        "summary": "GET src/app/concierge/transactions/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/concierge/transactions/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/blog-body": {
+      "post": {
+        "summary": "POST src/app/content/blog-body",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/cover-critic": {
+      "post": {
+        "summary": "POST src/app/content/cover-critic",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/generate-all": {
+      "get": {
+        "summary": "GET src/app/content/generate-all",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/content/generate-all",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/google-ads-rsa": {
+      "post": {
+        "summary": "POST src/app/content/google-ads-rsa",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/instagram-caption": {
+      "post": {
+        "summary": "POST src/app/content/instagram-caption",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/kakao-channel": {
+      "post": {
+        "summary": "POST src/app/content/kakao-channel",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/meta-ads": {
+      "post": {
+        "summary": "POST src/app/content/meta-ads",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content/threads-post": {
+      "post": {
+        "summary": "POST src/app/content/threads-post",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content-analytics": {
+      "get": {
+        "summary": "콘텐츠 성과 분석 API",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/content-brief": {
+      "post": {
+        "summary": "POST /api/content-brief",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content-gaps": {
+      "get": {
+        "summary": "콘텐츠 갭 분석 API — \"블로그가 없는 고전환 상품\" 자동 감지",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/content-hub/generate": {
+      "post": {
+        "summary": "POST src/app/content-hub/generate",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content-hub/publish": {
+      "post": {
+        "summary": "POST src/app/content-hub/publish",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/content-hub": {
+      "get": {
+        "summary": "GET src/app/content-hub",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/content-hub",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/content-hub",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/content-queue": {
+      "get": {
+        "summary": "VA 콘텐츠 검수 API",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/content-queue",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/cron/ad-optimizer": {
+      "get": {
+        "summary": "GET /api/cron/ad-optimizer",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {}
+      }
+    },
+    "src/app/cron/affiliate-anomaly-detect": {
+      "get": {
+        "summary": "GET src/app/cron/affiliate-anomaly-detect",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/affiliate-dormant": {
+      "get": {
+        "summary": "GET src/app/cron/affiliate-dormant",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "secret",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/affiliate-settlement-draft": {
+      "get": {
+        "summary": "GET src/app/cron/affiliate-settlement-draft",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/agent-executor": {
+      "get": {
+        "summary": "GET src/app/cron/agent-executor",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/cron/auto-archive": {
+      "get": {
+        "summary": "자동 아카이브 크론 — 매일 0시 실행",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/blog-learn": {
+      "get": {
+        "summary": "블로그 자기학습 크론 — 매주 일요일 23시 실행 (KST 월요일 스케줄러 직전)",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/blog-lifecycle": {
+      "get": {
+        "summary": "블로그 라이프사이클 크론 — 매일 1:30 KST 실행",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/blog-scheduler": {
+      "get": {
+        "summary": "블로그 스케줄러 크론 — 매주 월요일 0시 실행",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/booking-tasks-runner": {
+      "get": {
+        "summary": "GET src/app/cron/booking-tasks-runner",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/dlq-replay": {
+      "get": {
+        "summary": "GET src/app/cron/dlq-replay",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/embed-products": {
+      "get": {
+        "summary": "GET src/app/cron/embed-products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/journey-scheduler": {
+      "get": {
+        "summary": "고객 여정 타임머신 스케줄러",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/meta-optimize": {
+      "get": {
+        "summary": "Vercel Cron 엔트리포인트",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/payment-heartbeat": {
+      "get": {
+        "summary": "GET src/app/cron/payment-heartbeat",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/post-travel": {
+      "get": {
+        "summary": "GET /api/cron/post-travel",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/cron/publish-scheduled": {
+      "get": {
+        "summary": "GET src/app/cron/publish-scheduled",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/rfq-timeout": {
+      "get": {
+        "summary": "GET src/app/cron/rfq-timeout",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/settlement-auto": {
+      "get": {
+        "summary": "2026-04-15 변경: 자비스 기안 전용 모드 기본값.",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/slack-gap-fill": {
+      "get": {
+        "summary": "GET src/app/cron/slack-gap-fill",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/sync-creative-performance": {
+      "get": {
+        "summary": "GET src/app/cron/sync-creative-performance",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/sync-engagement": {
+      "get": {
+        "summary": "GET src/app/cron/sync-engagement",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/cron/visual-baseline-monitor": {
+      "get": {
+        "summary": "GET src/app/cron/visual-baseline-monitor",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/customers": {
+      "get": {
+        "summary": "GET src/app/customers",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortDir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trashed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minSales",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxSales",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minBookings",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxBookings",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "grade",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/customers",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/customers",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/customers",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/customers/{id}/mileage-history": {
+      "get": {
+        "summary": "GET /api/customers/[id]/mileage-history */",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /api/customers/[id]/mileage-history",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/customers/{id}/notes": {
+      "get": {
+        "summary": "GET src/app/customers/{id}/notes",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/customers/{id}/notes",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/customers/{id}/notes",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/dashboard/chart": {
+      "get": {
+        "summary": "GET src/app/dashboard/chart",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/dashboard": {
+      "get": {
+        "summary": "GET src/app/dashboard",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/departing-locations": {
+      "get": {
+        "summary": "GET src/app/departing-locations",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/departing-locations",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/departing-locations",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/exchange-rate": {
+      "get": {
+        "summary": "GET src/app/exchange-rate",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/generate": {
+      "post": {
+        "summary": "POST src/app/generate",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/influencer/assets": {
+      "get": {
+        "summary": "GET src/app/influencer/assets",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "package_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/influencer/dashboard": {
+      "post": {
+        "summary": "POST src/app/influencer/dashboard",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "401": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "429": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/influencer/links": {
+      "get": {
+        "summary": "GET src/app/influencer/links",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/influencer/links",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/influencer/track": {
+      "get": {
+        "summary": "GET src/app/influencer/track",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pkg",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sub",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/itinerary/{id}/screenshot": {
+      "post": {
+        "summary": "POST /api/itinerary/[id]/screenshot",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/jarvis/approve": {
+      "post": {
+        "summary": "POST src/app/jarvis/approve",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/jarvis/bulk-process": {
+      "post": {
+        "summary": "POST src/app/jarvis/bulk-process",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/jarvis/kakao-inbox": {
+      "get": {
+        "summary": "GET src/app/jarvis/kakao-inbox",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/jarvis": {
+      "post": {
+        "summary": "POST src/app/jarvis",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/jarvis/stream": {
+      "post": {
+        "summary": "POST src/app/jarvis/stream",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/land-operators": {
+      "get": {
+        "summary": "GET src/app/land-operators",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/land-operators",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/land-operators",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/leads": {
+      "post": {
+        "summary": "POST src/app/leads",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/margin": {
+      "get": {
+        "summary": "GET src/app/margin",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "packageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/margin",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/marketing-logs": {
+      "get": {
+        "summary": "GET src/app/marketing-logs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "package_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/marketing-logs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "422": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/marketing-logs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/master/ledger": {
+      "get": {
+        "summary": "GET src/app/master/ledger",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/meta/campaigns": {
+      "get": {
+        "summary": "GET src/app/meta/campaigns",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/meta/campaigns",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/meta/campaigns/{id}": {
+      "get": {
+        "summary": "GET src/app/meta/campaigns/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/meta/campaigns/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/meta/campaigns/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/meta/creatives/deploy": {
+      "post": {
+        "summary": "POST src/app/meta/creatives/deploy",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/meta/creatives": {
+      "get": {
+        "summary": "GET src/app/meta/creatives",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/meta/creatives",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/meta/optimize": {
+      "post": {
+        "summary": "POST src/app/meta/optimize",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/meta/performance": {
+      "get": {
+        "summary": "GET src/app/meta/performance",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/meta/performance",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/notify/alimtalk": {
+      "post": {
+        "summary": "POST src/app/notify/alimtalk",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/packages/inquiry": {
+      "post": {
+        "summary": "POST src/app/packages/inquiry",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/packages/kakao-copy": {
+      "post": {
+        "summary": "POST /api/packages/kakao-copy",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/packages/reextract": {
+      "post": {
+        "summary": "POST src/app/packages/reextract",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/packages": {
+      "get": {
+        "summary": "GET src/app/packages",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "aggregate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/packages",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/packages",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/packages",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/packages/{id}/approve": {
+      "patch": {
+        "summary": "audit_status === 'warnings' 상품을 강제 승인할 때 true */",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/packages/{id}/inventory": {
+      "get": {
+        "summary": "GET src/app/packages/{id}/inventory",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/packages/{id}/regenerate-copies": {
+      "post": {
+        "summary": "POST src/app/packages/{id}/regenerate-copies",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/packages/{id}/terms": {
+      "get": {
+        "summary": "GET /api/packages/:id/terms?surface=mobile|a4|booking_guide",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/partner-apply": {
+      "post": {
+        "summary": "POST src/app/partner-apply",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/policies": {
+      "get": {
+        "summary": "GET src/app/policies",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/policies",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/policies",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/policies",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/products/review": {
+      "get": {
+        "summary": "GET src/app/products/review",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/products/review",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/products": {
+      "get": {
+        "summary": "GET src/app/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "supplier_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "departure_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/products/scan": {
+      "post": {
+        "summary": "POST src/app/products/scan",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "422": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/push/subscribe": {
+      "post": {
+        "summary": "POST src/app/push/subscribe",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/push/subscribe",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/qa/chat": {
+      "post": {
+        "summary": "POST src/app/qa/chat",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/qa": {
+      "get": {
+        "summary": "GET src/app/qa",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/qa",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/qa",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/recommendations/convert": {
+      "post": {
+        "summary": "POST src/app/recommendations/convert",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/recommendations": {
+      "get": {
+        "summary": "GET src/app/recommendations",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "algorithm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/recommendations",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/register-via-ir": {
+      "post": {
+        "summary": "POST src/app/register-via-ir",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "422": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/revalidate": {
+      "post": {
+        "summary": "POST src/app/revalidate",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/reviews": {
+      "get": {
+        "summary": "GET src/app/reviews",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "고객 리뷰 제출 API",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/interview": {
+      "post": {
+        "summary": "POST src/app/rfq/interview",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq": {
+      "get": {
+        "summary": "GET src/app/rfq",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/rfq",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/analyze": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}/analyze",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/rfq/{id}/analyze",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/bid": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}/bid",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/rfq/{id}/bid",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/bid/{bidId}/proposal": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}/bid/{bidId}/proposal",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bidId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/rfq/{id}/bid/{bidId}/proposal",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bidId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/rfq/{id}/bid/{bidId}/proposal",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bidId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/contract": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}/contract",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/messages": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}/messages",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/rfq/{id}/messages",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/proposals": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}/proposals",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}": {
+      "get": {
+        "summary": "GET src/app/rfq/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/rfq/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rfq/{id}/select": {
+      "post": {
+        "summary": "POST src/app/rfq/{id}/select",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/rss": {
+      "get": {
+        "summary": "GET src/app/rss",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/secure-chat": {
+      "get": {
+        "summary": "GET src/app/secure-chat",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "bookingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rfqId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "viewAs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/secure-chat",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/secure-chat",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/settlements": {
+      "get": {
+        "summary": "GET src/app/settlements",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "affiliateId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/settlements",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/settlements",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/settlements/{id}/pdf": {
+      "get": {
+        "summary": "GET src/app/settlements/{id}/pdf",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/share": {
+      "get": {
+        "summary": "GET src/app/share",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/share",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/slack-webhook": {
+      "post": {
+        "summary": "POST src/app/slack-webhook",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "401": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/sms/payments": {
+      "get": {
+        "summary": "GET src/app/sms/payments",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/sms/payments",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/sms/receive": {
+      "post": {
+        "summary": "POST src/app/sms/receive",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "401": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/tax/export": {
+      "get": {
+        "summary": "GET src/app/tax/export",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/tax": {
+      "get": {
+        "summary": "GET src/app/tax",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/tax/{id}": {
+      "put": {
+        "summary": "PUT src/app/tax/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/tenant/inventory": {
+      "get": {
+        "summary": "GET src/app/tenant/inventory",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/tenant/inventory",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/tenant/inventory",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/tenant/products": {
+      "get": {
+        "summary": "GET src/app/tenant/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/tenant/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/tenant/products",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/tenant/rfqs": {
+      "get": {
+        "summary": "GET src/app/tenant/rfqs",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "src/app/tenant/rfqs/{rfqId}": {
+      "get": {
+        "summary": "GET src/app/tenant/rfqs/{rfqId}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "rfqId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/tenant/settlements": {
+      "get": {
+        "summary": "GET src/app/tenant/settlements",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          }
+        }
+      }
+    },
+    "src/app/tenants": {
+      "get": {
+        "summary": "GET src/app/tenants",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/tenants",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/tenants/{id}": {
+      "get": {
+        "summary": "GET src/app/tenants/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT src/app/tenants/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/terms-templates": {
+      "get": {
+        "summary": "GET src/app/terms-templates",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "land_operator_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/terms-templates",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/terms-templates/{id}": {
+      "get": {
+        "summary": "GET src/app/terms-templates/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/terms-templates/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE src/app/terms-templates/{id}",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "src/app/tracking": {
+      "post": {
+        "summary": "POST src/app/tracking",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/unmatched": {
+      "get": {
+        "summary": "GET /api/unmatched — 미매칭 목록 조회 (관리자용)",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /api/unmatched — 미매칭 관광지 자동 수집",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {},
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH /api/unmatched — 상태 변경 또는 별칭 연결",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "409": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/upload": {
+      "post": {
+        "summary": "POST src/app/upload",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/voucher": {
+      "get": {
+        "summary": "GET src/app/voucher",
+        "tags": [
+          "app"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "html",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "404": {
+            "description": "Client error"
+          },
+          "503": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST src/app/voucher",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH src/app/voucher",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Client error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "src/app/webhooks/kakao": {
+      "post": {
+        "summary": "POST src/app/webhooks/kakao",
+        "tags": [
+          "app"
+        ],
+        "parameters": [],
+        "responses": {
+          "401": {
+            "description": "Client error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}
