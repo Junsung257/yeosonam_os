@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import useSWR from 'swr';
 import dynamic from 'next/dynamic';
 
 const AreaChart = dynamic(() => import('recharts').then(m => ({ default: m.AreaChart })), { ssr: false });
@@ -149,12 +150,13 @@ export default function LedgerPage() {
   type Tab = 'overview' | 'income' | 'expense' | 'trash';
 
   const [tab,        setTab]        = useState<Tab>('overview');
+  // 감사(2026-05-11 Phase 5-A'): 4 fetch Promise.all → 4 useSWR.
+  // 페이지 재진입 시 dedup, mutation 후 mutate() 로 단일 무효화.
   const [txs,        setTxs]        = useState<BankTx[]>([]);
   const [trashTxs,   setTrashTxs]   = useState<BankTx[]>([]);
   const [chartData,  setChartData]  = useState<MonthlyPoint[]>([]);
   const [capital,    setCapital]    = useState<{ entries: CapitalEntry[]; total: number }>({ entries: [], total: 0 });
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
-  const [loading,    setLoading]    = useState(true);
   const [undoInfo,   setUndoInfo]   = useState<{ ids: string[]; items: BankTx[]; countdown: number } | null>(null);
   const [anomalies,  setAnomalies]  = useState<AnomalyItem[]>([]);
   const [showAI,     setShowAI]     = useState(false);
@@ -163,29 +165,37 @@ export default function LedgerPage() {
   const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── 데이터 로드 ─────────────────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [txRes, trashRes, chartRes, capRes] = await Promise.all([
-        fetch('/api/bank-transactions?status=active'),
-        fetch('/api/bank-transactions?status=excluded'),
-        fetch('/api/bank-transactions?aggregate=monthly&months=12'),
-        fetch('/api/capital'),
-      ]);
-      const [txData, trashData, chartD, capData] = await Promise.all([
-        txRes.json(), trashRes.json(), chartRes.json(), capRes.json(),
-      ]);
-      setTxs(txData.transactions || []);
-      setTrashTxs(trashData.transactions || []);
-      setChartData(chartD.chartData || []);
-      setCapital({ entries: capData.entries || [], total: capData.total || 0 });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // ── 데이터 로드 (SWR) ──────────────────────────────────────────────────
+  const { data: txData, isLoading: txLoading, mutate: mutateTxs } =
+    useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=active');
+  const { data: trashData, mutate: mutateTrash } =
+    useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=excluded');
+  const { data: chartD } =
+    useSWR<{ chartData: MonthlyPoint[] }>('/api/bank-transactions?aggregate=monthly&months=12');
+  const { data: capData, mutate: mutateCapital } =
+    useSWR<{ entries: CapitalEntry[]; total: number }>('/api/capital');
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  const loading = txLoading;
+
+  useEffect(() => {
+    if (txData?.transactions) setTxs(txData.transactions);
+  }, [txData]);
+  useEffect(() => {
+    if (trashData?.transactions) setTrashTxs(trashData.transactions);
+  }, [trashData]);
+  useEffect(() => {
+    if (chartD?.chartData) setChartData(chartD.chartData);
+  }, [chartD]);
+  useEffect(() => {
+    if (capData) setCapital({ entries: capData.entries || [], total: capData.total || 0 });
+  }, [capData]);
+
+  // mutation 후 호출용 — 4개 키 일괄 무효화.
+  const loadAll = useCallback(() => {
+    mutateTxs();
+    mutateTrash();
+    mutateCapital();
+  }, [mutateTxs, mutateTrash, mutateCapital]);
 
   // ── KPI 계산 ───────────────────────────────────────────────────────────
   const totalIncome  = txs.filter(t => t.transaction_type === '입금' && !t.is_refund).reduce((s, t) => s + t.amount, 0);

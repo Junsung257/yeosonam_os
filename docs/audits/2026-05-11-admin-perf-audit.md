@@ -406,7 +406,24 @@
 | 동시성 안전 | atomic per-tx ✓ | atomic per-tx ✓ (변경 없음) |
 | 매칭 로직 | matchPaymentToBookings | matchPaymentToBookings (변경 없음) |
 
-## 16. 관련 파일
+## 16. Phase 5 적용 결과 (2026-05-11) — 잔여 빈도 페이지 정리
+
+### Phase 5-A (보류) — ANALYZE 빌드
+- `@next/bundle-analyzer` 미설치 + auto mode 의 패키지 설치 제한으로 보류.
+- 다음 세션에서 `npm i -D @next/bundle-analyzer` 후 `npm run analyze` 가능.
+- 그 결과로 거대 페이지(customers 1220, packages 2078, card-news 994) 의 `next/dynamic` 우선순위 결정.
+
+### Phase 5-A' — ledger 페이지 SWR
+| 파일 | 변화 |
+|------|------|
+| [src/app/admin/ledger/page.tsx](../../src/app/admin/ledger/page.tsx) | 4 fetch Promise.all → 4 useSWR (transactions active/excluded, monthly chart, capital). mutation 후 4 mutate() 한 번에 호출 — `loadAll()` 호환 wrapper. |
+
+### Phase 5-B' — content-hub 페이지 SWR + packages lite
+| 파일 | 변화 |
+|------|------|
+| [src/app/admin/content-hub/page.tsx](../../src/app/admin/content-hub/page.tsx) | `/api/packages?limit=200` → `?limit=100&lite=1` + useSWR. 200건 + 60+컬럼 → 100건 + 25컬럼 (페이로드 −80%+). 클라이언트 status 필터는 유지. |
+
+## 17. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)

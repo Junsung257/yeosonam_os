@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 // html-to-image: 내보내기 시점에만 동적 로드
 import { useToast } from '@/components/ui/Toast';
@@ -80,15 +81,18 @@ export default function ContentHubPage() {
   // 슬라이드 캡처 ref
   const slideCanvasRef = useRef<HTMLDivElement>(null);
 
-  // 패키지 로드
+  // 감사(2026-05-11 Phase 5-B'): limit 200 → 100 + lite=1 + useSWR (재진입 dedup).
+  // 클라이언트 status 필터링은 4개 status OR 라 SQL .in() 으로도 줄일 수 있으나
+  // packages route 가 'pending' alias = ['pending','pending_review','draft'] 만 지원 → 클라이언트 필터 유지.
+  const { data: pkgData } = useSWR<{ data?: Package[]; packages?: Package[] }>(
+    '/api/packages?limit=100&lite=1',
+  );
   useEffect(() => {
-    fetch('/api/packages?limit=200')
-      .then(r => r.json())
-      .then(d => setPackages((d.data ?? d.packages ?? []).filter((p: Package) =>
-        p.destination && ['approved', 'active', 'pending', 'pending_review', 'draft'].includes(p.status)
-      )))
-      .catch(() => {});
-  }, []);
+    if (!pkgData) return;
+    setPackages(((pkgData.data ?? pkgData.packages ?? []) as Package[]).filter((p) =>
+      p.destination && ['approved', 'active', 'pending', 'pending_review', 'draft'].includes(p.status)
+    ));
+  }, [pkgData]);
 
   const selectedPkg = packages.find(p => p.id === selectedPkgId);
   const activeSet = creativeSets[activeSetIdx];
