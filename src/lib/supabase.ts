@@ -456,7 +456,9 @@ export async function getCustomers(opts: {
     const to = from + limit - 1;
 
     const isJsSort = sortBy === 'bookingCount' || sortBy === 'totalSales';
-    let query = supabaseAdmin.from('customers').select('*', { count: 'exact' });
+    // 감사(2026-05-11 §10): 어드민 목록에서 쓰는 컬럼만 명시 — payload 축소.
+    const LIST_COLUMNS = 'id, name, phone, email, passport_no, passport_expiry, birth_date, mileage, grade, status, total_spent, cafe_sync_data, tags, memo, created_at, deleted_at';
+    let query = supabaseAdmin.from('customers').select(LIST_COLUMNS, { count: 'exact' });
 
     if (trashed) {
       query = query.not('deleted_at', 'is', null);
@@ -479,9 +481,18 @@ export async function getCustomers(opts: {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const { data: statsRows, error: statsErr } = await supabaseAdmin
+    // 감사(2026-05-11 §10): customer_booking_stats 전체 fetch → 페이지 ids 만.
+    // JS sort/필터 시는 전체 필요. DB sort + 필터 없음일 때만 좁힘 (대다수 케이스).
+    const needsAllStats = isJsSort || minSales !== undefined || maxSales !== undefined
+      || minBookings !== undefined || maxBookings !== undefined;
+    const pageIds = (data || []).map((c: any) => c.id).filter(Boolean);
+    let statsQuery = supabaseAdmin
       .from('customer_booking_stats')
       .select('customer_id, booking_count, total_sales');
+    if (!needsAllStats && pageIds.length > 0) {
+      statsQuery = statsQuery.in('customer_id', pageIds);
+    }
+    const { data: statsRows, error: statsErr } = await statsQuery;
     if (statsErr) {
       console.warn('[getCustomers] customer_booking_stats 조회 실패 — 통계 0 처리:', statsErr.message);
     }

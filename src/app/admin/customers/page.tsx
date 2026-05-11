@@ -125,14 +125,40 @@ export default function CustomersPage() {
   const [openMenuId, setOpenMenuId]     = useState<string | null>(null);
 
   // ── 사이드 드로어 ──────────────────────────────────────────────────────────
+  // 감사(2026-05-11): 3개 fetch → useSWR (mileage 는 탭 조건부). drawer 재오픈 시 캐시 적중.
   const [drawer, setDrawer]                     = useState<Customer | null>(null);
   const [drawerTab, setDrawerTab]               = useState<'info' | 'bookings' | 'consultations' | 'mileage'>('info');
-  const [drawerBookings, setDrawerBookings]     = useState<Booking[]>([]);
-  const [drawerNotes, setDrawerNotes]           = useState<Note[]>([]);
-  const [drawerMileage, setDrawerMileage]       = useState<MileageHistory[]>([]);
-  const [drawerLoading, setDrawerLoading]       = useState(false);
   const [editInfo, setEditInfo]                 = useState<Partial<Customer>>({});
   const [savingInfo, setSavingInfo]             = useState(false);
+
+  const drawerCustomerId = drawer?.id ?? null;
+  const {
+    data: drawerBookingsData,
+    isLoading: bookingsLoading,
+    mutate: mutateDrawerBookings,
+  } = useSWR<{ bookings: Booking[] }>(
+    drawerCustomerId ? `/api/bookings?customerId=${drawerCustomerId}` : null,
+  );
+  const {
+    data: drawerNotesData,
+    isLoading: notesLoading,
+    mutate: mutateDrawerNotes,
+  } = useSWR<{ notes: Note[] }>(
+    drawerCustomerId ? `/api/customers/${drawerCustomerId}/notes` : null,
+  );
+  // mileage 는 mileage 탭 활성화 시에만 fetch (lazy).
+  const {
+    data: drawerMileageData,
+    mutate: mutateDrawerMileage,
+  } = useSWR<{ history: MileageHistory[] }>(
+    drawerCustomerId && drawerTab === 'mileage'
+      ? `/api/customers/${drawerCustomerId}/mileage-history`
+      : null,
+  );
+  const drawerBookings = drawerBookingsData?.bookings ?? [];
+  const drawerNotes    = drawerNotesData?.notes ?? [];
+  const drawerMileage  = drawerMileageData?.history ?? [];
+  const drawerLoading  = bookingsLoading || notesLoading;
 
   // ── 상담로그 ───────────────────────────────────────────────────────────────
   const [noteInput, setNoteInput]       = useState('');
@@ -191,8 +217,10 @@ export default function CustomersPage() {
   const load = useCallback(() => { mutateList(); }, [mutateList]);
 
   // ─── 드로어 ────────────────────────────────────────────────────────────────
+  // 감사(2026-05-11): bookings/notes/mileage fetch 는 SWR 가 자동 처리 (drawerCustomerId 변경 시).
+  // openDrawer 는 state set 만, mileage 는 탭 활성화 시 lazy fetch.
 
-  async function openDrawer(c: Customer) {
+  function openDrawer(c: Customer) {
     setOpenMenuId(null);
     setDrawer(c);
     setDrawerTab('info');
@@ -202,29 +230,11 @@ export default function CustomersPage() {
       birth_date: c.birth_date ?? '', memo: c.memo ?? '',
       status: c.status ?? '잠재고객',
     });
-    setDrawerBookings([]); setDrawerNotes([]); setDrawerMileage([]);
-    setDrawerLoading(true);
-    const [bRes, nRes] = await Promise.all([
-      fetch(`/api/bookings?customerId=${c.id}`),
-      fetch(`/api/customers/${c.id}/notes`),
-    ]);
-    const [bData, nData] = await Promise.all([bRes.json(), nRes.json()]);
-    setDrawerBookings(bData.bookings || []);
-    setDrawerNotes(nData.notes || []);
-    setDrawerLoading(false);
-  }
-
-  async function loadMileageHistory(id: string) {
-    const res  = await fetch(`/api/customers/${id}/mileage-history`);
-    const data = await res.json();
-    setDrawerMileage(data.history || []);
   }
 
   function handleDrawerTabChange(t: typeof drawerTab) {
     setDrawerTab(t);
-    if (t === 'mileage' && drawer && drawerMileage.length === 0) {
-      loadMileageHistory(drawer.id);
-    }
+    // mileage 탭 활성화 시 SWR key 가 enable 되며 자동 fetch.
   }
 
   // ─── 생애주기 상태 즉시 변경 ──────────────────────────────────────────────
@@ -276,7 +286,11 @@ export default function CustomersPage() {
     });
     const data = await res.json();
     if (data.note) {
-      setDrawerNotes(prev => [data.note, ...prev]);
+      // SWR 캐시에 낙관적 추가 + 백그라운드 revalidate.
+      mutateDrawerNotes(
+        (cur) => ({ notes: [data.note, ...(cur?.notes ?? [])] }),
+        { revalidate: false },
+      );
       setNoteInput('');
       showToast('상담 기록 저장');
     }
@@ -299,7 +313,7 @@ export default function CustomersPage() {
     if (data.mileage !== undefined) {
       setDrawer(prev => prev ? { ...prev, mileage: data.mileage } : prev);
       setCustomers(prev => prev.map(c => c.id === drawer.id ? { ...c, mileage: data.mileage } : c));
-      await loadMileageHistory(drawer.id);
+      await mutateDrawerMileage();
       setMileageInput('');
       showToast(`마일리지 ${delta > 0 ? '+' : ''}${delta.toLocaleString()}P 조정`);
     } else {

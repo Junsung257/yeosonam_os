@@ -259,7 +259,29 @@
 
 > **유보**: drawer 의 bookings/notes/mileage fetch 는 별도 SWR 마이그로 분리 (Phase 1-C). customers list API 의 `count: 'exact'` 비용(3.6s) 도 별도 작업.
 
-## 10. 관련 파일
+## 10. Phase 1-C 적용 결과 (2026-05-11) — customers 마무리
+
+### 변경 사항
+
+| 파일 | 변화 |
+|------|------|
+| [src/lib/supabase.ts](../../src/lib/supabase.ts) `getCustomers` | (1) `customer_booking_stats` 전체 fetch → 페이지 ids 만 `.in()` (JS sort/필터 시는 전체 유지). (2) `select('*')` → 17개 컬럼 명시 |
+| [src/app/admin/customers/page.tsx](../../src/app/admin/customers/page.tsx) | drawer 의 bookings/notes/mileage 3 fetch → 3 useSWR. mileage 는 탭 활성화 시에만 fetch. openDrawer는 setState 만, mutation 후 `mutate()` 로 캐시 갱신 |
+
+### Before / After (dev, warm)
+
+| 지표 | Before | After | 변화 |
+|------|-------:|------:|-----:|
+| `/api/customers?page=1&limit=30` | 5.7s | 0.5~2.2s | **−91%** (warm) |
+| drawer 재오픈 (같은 customer) | 매번 2~3 fetch | dedup 30s → 0 fetch | 즉시 |
+| mileage 탭 — 안 열 때 | 항상 fetch (조건부 였지만 redirected) | 미발사 | −100% |
+
+### Phase 1-C 핵심
+
+- customer_booking_stats 의 무한 행 fetch 제거 — N(전체) → 30(페이지) 로 좁힘.
+- drawer 의 모든 fetch SWR 화 — 같은 고객 재오픈 시 즉시 표시.
+
+## 11. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)
