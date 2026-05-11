@@ -82,6 +82,8 @@ export function pickCanaryEngine(requested?: IrCanaryEngine | null): IrCanaryEng
   const target = requested || fallback;
   if (target === 'claude' && !getSecret('ANTHROPIC_API_KEY')) {
     // Claude 키 부재 — DeepSeek 로 graceful degrade.
+    // 조용한 강등이 2주간 미발견되는 것을 막기 위해 명시적으로 경고 로깅.
+    console.warn('[ir-canary] ANTHROPIC_API_KEY 부재 — claude → deepseek graceful degrade');
     return 'deepseek';
   }
   return target;

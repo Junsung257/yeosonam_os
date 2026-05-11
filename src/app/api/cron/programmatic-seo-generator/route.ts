@@ -190,6 +190,13 @@ async function processTopic(
     .eq('id', topic.id);
 
   if (updErr) {
+    // Orphan 방어: 큐 INSERT 는 성공했으나 토픽 status 가 'pending' 으로 남았다.
+    // 다음 회차 cron 이 같은 토픽을 다시 promote → 큐에 중복 행이 쌓인다.
+    // 방금 INSERT 한 큐 행을 롤백해서 토픽 'pending' 상태와 정합시킨다.
+    await supabaseAdmin
+      .from('blog_topic_queue')
+      .delete()
+      .eq('id', topicQueueId);
     return {
       id: topic.id,
       destination: topic.destination,
@@ -197,7 +204,7 @@ async function processTopic(
       status: 'failed',
       topic: hint.title,
       topic_queue_id: topicQueueId,
-      reason: `queue inserted but topic update failed: ${updErr.message}`,
+      reason: `queue inserted but topic update failed: ${updErr.message} (queue row rolled back)`,
     };
   }
 

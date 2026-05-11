@@ -43,7 +43,7 @@ interface RankRow {
 
 interface RegenResult {
   slug: string;
-  status: 'replaced' | 'gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error';
+  status: 'replaced' | 'gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error' | 'race_skipped' | 'log_failed';
   gateSummary?: string;
   reason?: string;
 }
@@ -170,18 +170,45 @@ async function runRegenerator(request: NextRequest) {
         continue;
       }
 
+      // Race lock: partial UNIQUE (slug, created_day_utc) WHERE reason='zero_click'.
+      // 동시 인스턴스가 이미 sentinel 박았으면 23505 → 즉시 skip (LLM 호출 회피).
+      // created_day_utc 는 app 이 채워야 한다 (timestamptz cast 가 IMMUTABLE 이 아니므로
+      // generated/expression 인덱스 불가 — 20260517000000_blog_regenerate_race_lock.sql 참고).
+      const oldHash = sha256(post.blog_html || '');
+      const createdDayUtc = Math.floor(Date.now() / 86_400_000);
+      const { data: lockRows, error: lockErr } = await supabaseAdmin
+        .from('blog_regenerate_log')
+        .insert({
+          post_id: post.id,
+          slug,
+          old_html_hash: oldHash,
+          reason: 'zero_click',
+          gate_passed: false,
+          gate_summary: 'in_progress',
+          created_day_utc: createdDayUtc,
+        })
+        .select('id')
+        .limit(1);
+
+      if (lockErr) {
+        if ((lockErr as { code?: string }).code === '23505') {
+          results.push({ slug, status: 'race_skipped', reason: 'concurrent regenerate detected' });
+          continue;
+        }
+        errors.push(`${slug} lock insert 실패: ${lockErr.message}`);
+        results.push({ slug, status: 'log_failed', reason: lockErr.message });
+        continue;
+      }
+      const logId = lockRows?.[0]?.id;
+      const updateLog = (patch: Record<string, unknown>) =>
+        logId
+          ? supabaseAdmin.from('blog_regenerate_log').update(patch).eq('id', logId)
+          : Promise.resolve({ error: null });
+
       try {
         const newHtml = await regenerateBlogBody(post.seo_title || slug, post.destination ?? null);
         if (!newHtml) {
-          await supabaseAdmin.from('blog_regenerate_log').insert({
-            post_id: post.id,
-            slug,
-            old_html_hash: sha256(post.blog_html || ''),
-            new_html_hash: null,
-            reason: 'zero_click',
-            gate_passed: false,
-            gate_summary: 'llm_failed',
-          });
+          await updateLog({ gate_summary: 'llm_failed' });
           results.push({ slug, status: 'llm_failed' });
           errors.push(`${slug}: LLM 생성 실패`);
           continue;
@@ -201,16 +228,11 @@ async function runRegenerator(request: NextRequest) {
           excludeContentCreativeId: post.id,
         });
 
-        const oldHash = sha256(post.blog_html || '');
         const newHash = sha256(newHtml);
 
         if (!qa.passed) {
-          await supabaseAdmin.from('blog_regenerate_log').insert({
-            post_id: post.id,
-            slug,
-            old_html_hash: oldHash,
+          await updateLog({
             new_html_hash: newHash,
-            reason: 'zero_click',
             gate_passed: false,
             gate_summary: qa.summary.slice(0, 1000),
           });
@@ -230,12 +252,8 @@ async function runRegenerator(request: NextRequest) {
 
         if (upErr) {
           errors.push(`${slug} update 실패: ${upErr.message}`);
-          await supabaseAdmin.from('blog_regenerate_log').insert({
-            post_id: post.id,
-            slug,
-            old_html_hash: oldHash,
+          await updateLog({
             new_html_hash: newHash,
-            reason: 'zero_click',
             gate_passed: true,
             gate_summary: `DB 업데이트 실패: ${upErr.message}`.slice(0, 1000),
           });
@@ -243,12 +261,8 @@ async function runRegenerator(request: NextRequest) {
           continue;
         }
 
-        await supabaseAdmin.from('blog_regenerate_log').insert({
-          post_id: post.id,
-          slug,
-          old_html_hash: oldHash,
+        await updateLog({
           new_html_hash: newHash,
-          reason: 'zero_click',
           gate_passed: true,
           gate_summary: qa.summary.slice(0, 1000),
         });
@@ -260,6 +274,8 @@ async function runRegenerator(request: NextRequest) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`${slug} fatal: ${msg}`);
         results.push({ slug, status: 'error', reason: msg });
+        // 예외 시에도 sentinel 행을 finalize 해서 cooldown 보존.
+        await updateLog({ gate_summary: `fatal: ${msg}`.slice(0, 1000) });
       }
     }
 
