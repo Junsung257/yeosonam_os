@@ -119,16 +119,11 @@ export async function applySettlementApproval(draft: SettlementDraft): Promise<v
       { onConflict: 'affiliate_id,settlement_period' },
     );
 
-    const { data: aff } = await supabaseAdmin
-      .from('affiliates')
-      .select('booking_count')
-      .eq('id', draft.affiliate_id)
-      .maybeSingle();
-
-    await supabaseAdmin
-      .from('affiliates')
-      .update({ booking_count: (aff?.booking_count || 0) + draft.qualified_booking_count })
-      .eq('id', draft.affiliate_id);
+    // Atomic increment (race-condition free) — see migration 20260519080000
+    await supabaseAdmin.rpc('increment_affiliate_booking_count', {
+      p_affiliate_id: draft.affiliate_id,
+      p_delta: draft.qualified_booking_count,
+    });
   } else {
     await supabaseAdmin.from('settlements').upsert(
       {

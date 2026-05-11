@@ -649,16 +649,11 @@ export async function PATCH(request: NextRequest) {
       if (bk) {
         const overflow = Math.max(0, ((bk as any)?.paid_amount || 0) - ((bk as any)?.total_price || 0));
         if (overflow > 0 && (bk as any)?.lead_customer_id) {
-          const { data: cust } = await supabaseAdmin
-            .from('customers')
-            .select('mileage')
-            .eq('id', (bk as any).lead_customer_id)
-            .single();
-
-          await supabaseAdmin
-            .from('customers')
-            .update({ mileage: ((cust as any)?.mileage || 0) + overflow })
-            .eq('id', (bk as any).lead_customer_id);
+          // Atomic increment (race-condition free) — see migration 20260519080000
+          await supabaseAdmin.rpc('increment_customer_mileage', {
+            p_customer_id: (bk as any).lead_customer_id,
+            p_delta: overflow,
+          });
         }
       }
     }
