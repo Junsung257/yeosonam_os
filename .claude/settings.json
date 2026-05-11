@@ -7,6 +7,20 @@
     ]
   },
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"c:/Users/admin/Desktop/여소남OS\" && npx tsc --noEmit 2>&1 | tail -5",
+            "shell": "powershell",
+            "timeout": 30,
+            "statusMessage": "타입 검증 중..."
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

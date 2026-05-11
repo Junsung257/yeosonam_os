@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import MetaPixel from '@/components/MetaPixel';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import ConsentBanner from '@/components/ConsentBanner';
@@ -122,6 +123,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <JarvisFloatingWidget />
         <ConsentBanner />
+        <SpeedInsights />
       </body>
     </html>
   );
