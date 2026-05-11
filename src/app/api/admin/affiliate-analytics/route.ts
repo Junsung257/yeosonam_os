@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { ADMIN_CACHE } from '@/lib/admin-cache';
 import {
   parseBasis,
   bookingMonthByBasis,
@@ -334,12 +335,8 @@ export async function GET(request: NextRequest) {
         model_compare: modelCompare,
         cron_health: cronHealth,
       },
-      {
-        // 어필리에이트 분석은 실시간성 낮음 — 2분 브라우저 + 5분 CDN + 10분 SWR.
-        headers: {
-          'Cache-Control': 'private, max-age=120, s-maxage=300, stale-while-revalidate=600',
-        },
-      },
+      // 어필리에이트 분석은 실시간성 낮음 — analytics 프리셋(2분/5분/10분).
+      { headers: ADMIN_CACHE.analytics },
     );
   } catch (err) {
     console.error('[Affiliate Analytics]', err);

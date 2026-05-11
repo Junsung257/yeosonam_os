@@ -6,6 +6,7 @@ import { dispatchPushAsync } from '@/lib/push-dispatcher';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { checkSelfReferral } from '@/lib/affiliate/self-referral';
 import { getSecret } from '@/lib/secret-registry';
+import { ADMIN_CACHE } from '@/lib/admin-cache';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -141,12 +142,8 @@ export async function GET(request: NextRequest) {
   );
   return NextResponse.json(
     { bookings, count: bookings.length },
-    {
-      headers: {
-        // 어드민 목록 — 30초 브라우저 + 60초 CDN.
-        'Cache-Control': 'private, max-age=30, s-maxage=60, stale-while-revalidate=300',
-      },
-    },
+    // 어드민 목록 — list 프리셋(30s/60s/5분).
+    { headers: ADMIN_CACHE.list },
   );
 }
 

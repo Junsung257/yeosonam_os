@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { ADMIN_CACHE } from '@/lib/admin-cache';
 
 // LTV 코호트 분석 — UTM 채널별 평생 결제액 집계
 // bookings.utm_source 기준으로 cohort 분류
@@ -8,9 +9,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 // 개선: 페이지네이션 가드(limit) + CDN 5분 캐시. 5분 stale 허용 (코호트는 실시간 X).
 
 const LTV_BOOKING_LIMIT = 5000;
-const CACHE_HEADERS = {
-  'Cache-Control': 'private, max-age=120, s-maxage=300, stale-while-revalidate=600',
-} as const;
+const CACHE_HEADERS = ADMIN_CACHE.analytics;
 
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ cohorts: [] });

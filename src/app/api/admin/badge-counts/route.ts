@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { ADMIN_CACHE } from '@/lib/admin-cache';
 
 export const runtime = 'nodejs';
 // 동적이지만 응답 캐시 헤더로 CDN/브라우저 캐시 활용
@@ -66,11 +67,6 @@ export async function GET(_req: NextRequest) {
       blogQueue:   0,
       computedAt:  counts.computed_at ?? new Date().toISOString(),
     },
-    {
-      headers: {
-        // 30초 브라우저 캐시 + 60초 CDN 캐시 + 5분 stale-while-revalidate
-        'Cache-Control': 'private, max-age=30, s-maxage=60, stale-while-revalidate=300',
-      },
-    },
+    { headers: ADMIN_CACHE.hot },
   );
 }
