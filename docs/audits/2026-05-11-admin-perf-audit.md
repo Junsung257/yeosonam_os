@@ -330,7 +330,46 @@
 | `/api/bookings?limit=30&lite=1` warm | — | 0.52s | 추가 −40% |
 | 페이로드 (jsonb 5종 + 60컬럼 제외) | 100% | ~50% | −50% |
 
-## 13. 관련 파일
+## 13. Phase 3-A 적용 결과 (2026-05-11) — DB 인덱스 보강
+
+### EXPLAIN ANALYZE 결과 (적용 전)
+
+| Query | Plan | Execution |
+|------|------|----------:|
+| `travel_packages ORDER BY created_at DESC LIMIT 100` | **Seq Scan + Top-N heapsort** | **72 ms** ⚠️ |
+| `bookings ... WHERE (is_deleted IS NULL OR =false) LIMIT 30` | Seq Scan | 5 ms |
+| `customers WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 30` | Seq Scan | 0.2 ms |
+| `bookings WHERE affiliate_id IS NOT NULL LIMIT 20000` | Index Scan ✓ | 0.6 ms |
+
+### 추가 인덱스 (적용 후)
+
+| 파일 | 변화 |
+|------|------|
+| [supabase/migrations/20260518020000_admin_perf_phase3_missing_indexes.sql](../../supabase/migrations/20260518020000_admin_perf_phase3_missing_indexes.sql) | 신규: `idx_travel_packages_created_at(created_at DESC)`, `idx_customers_active_created(created_at DESC) WHERE deleted_at IS NULL` |
+
+### Before / After
+
+| Query | Before | After | 변화 |
+|------|------:|------:|-----:|
+| `travel_packages ORDER BY created_at DESC LIMIT 100` | 72 ms (Seq Scan) | **10 ms (Index Scan)** | **−86%** |
+
+> bookings/customers 는 현재 행 수(77)가 적어 planner 가 Seq Scan 을 선택. 행 증가 시 자동으로 인덱스 활용.
+
+## 14. Phase 3-B 적용 결과 (2026-05-11) — attractions SWR + ESLint 가드
+
+### 변경
+
+| 파일 | 변화 |
+|------|------|
+| [src/app/admin/attractions/page.tsx](../../src/app/admin/attractions/page.tsx) | `useEffect + fetch` → `useSWR` (filter 의존 dedup + keepPreviousData). `load()` 는 SWR mutate wrapper. |
+| [.eslintrc.json](../../.eslintrc.json) | 어드민 `page.tsx` 에서 `<AdminLayout>` JSX 검출 → **error**. 이중 wrap 안티패턴 재발 방지 (Phase 1-A 발견). |
+
+### 효과
+
+- attractions: 필터 변경 시 자동 fetch + 같은 필터 재진입 dedup 30s.
+- ESLint 가드: 향후 어드민 페이지가 layout.tsx 의 AdminLayout 위에 또 wrap 시도 시 CI 차단.
+
+## 15. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)
