@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { isValidTransition, ALLOWED_TRANSITIONS } from '@/lib/booking-state-machine';
 import { getNotificationAdapter } from '@/lib/notification-adapter';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
+import { validateRequest } from '@/lib/api-validation';
+
+const TransitionBodySchema = z.object({
+  to: z.enum([
+    'pending', 'waiting_deposit', 'deposit_paid', 'waiting_balance',
+    'fully_paid', 'cancelled', 'completed', 'refunded',
+  ]),
+});
 
 export async function POST(
   request: NextRequest,
@@ -12,11 +21,11 @@ export async function POST(
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
+  const validation = await validateRequest(request, TransitionBodySchema);
+  if (!validation.success) return validation.response;
+  const { to } = validation.data;
+
   try {
-    const { to } = await request.json();
-    if (!to) {
-      return NextResponse.json({ error: 'to (목표 상태) 가 필요합니다.' }, { status: 400 });
-    }
 
     // 현재 예약 조회
     const { data: booking, error: fetchErr } = await supabase

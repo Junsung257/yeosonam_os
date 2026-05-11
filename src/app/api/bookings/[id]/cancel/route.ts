@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { isSupabaseConfigured, supabase, createMessageLog } from '@/lib/supabase';
+import { validateRequest } from '@/lib/api-validation';
+
+const CancelBodySchema = z.object({
+  refund_amount: z.number().int().min(0).max(50_000_000).default(0),
+  penalty_fee: z.number().int().min(0).max(50_000_000).default(0),
+  reason: z.string().min(1).max(500).default('관리자 취소'),
+});
 
 export async function POST(
   request: NextRequest,
@@ -8,11 +16,14 @@ export async function POST(
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
+
+  const validation = await validateRequest(request, CancelBodySchema);
+  if (!validation.success) return validation.response;
+  const refundAmount = validation.data.refund_amount ?? 0;
+  const penaltyFee = validation.data.penalty_fee ?? 0;
+  const cancelReason = validation.data.reason ?? '관리자 취소';
+
   try {
-    const body = await request.json();
-    const refundAmount  = typeof body.refund_amount  === 'number' ? body.refund_amount  : 0;
-    const penaltyFee    = typeof body.penalty_fee    === 'number' ? body.penalty_fee    : 0;
-    const cancelReason  = (body.reason as string) || '관리자 취소';
 
     // 현재 예약 조회 (이미 취소된 경우 방지)
     const { data: current } = await supabase
