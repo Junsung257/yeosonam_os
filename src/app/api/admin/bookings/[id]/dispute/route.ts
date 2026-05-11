@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logError } from '@/lib/sentry-logger';
 
 // POST: 분쟁 플래그 토글
 const postHandler = async (
@@ -43,7 +44,7 @@ const postHandler = async (
 
     return NextResponse.json({ booking: data });
   } catch (error) {
-    console.error('[Dispute]', error);
+    logError('[admin/bookings/dispute] flag toggle failed', error);
     return NextResponse.json(
       { error: logAndSanitize('admin-bookings-dispute', error, '처리 실패') },
       { status: 500 }

@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logError } from '@/lib/sentry-logger';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 import {
   resolvePreviousPeriod,
@@ -112,7 +113,7 @@ export async function GET(request: Request) {
       details: { drafted, carried, skipped },
     });
   } catch (err) {
-    console.error('[정산 기안 크론 실패]', err);
+    logError('[cron/affiliate-settlement-draft] settlement draft failed', err);
     await reportAffiliateCronFailure('affiliate-settlement-draft', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '정산 기안 크론 실패' },

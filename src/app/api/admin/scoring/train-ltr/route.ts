@@ -18,6 +18,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { postAlert } from '@/lib/admin-alerts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logError } from '@/lib/sentry-logger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -85,7 +86,7 @@ const postHandler = async () => {
       }
       return NextResponse.json({ ok: true, samples, result });
     } catch (e) {
-      console.error('[ltr-train]', e);
+      logError('[admin/scoring/train-ltr] training failed', e);
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'failed', samples },
         { status: 500 },

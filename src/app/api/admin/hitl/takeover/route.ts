@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logWarning } from '@/lib/sentry-logger';
 
 // 어드민이 AI 제어권을 가져와 직접 대응할 때 호출
 const postHandler = async (request: NextRequest) => {
@@ -46,7 +47,7 @@ const postHandler = async (request: NextRequest) => {
       reviewed_by: adminId ?? 'admin',
       reviewed_at: new Date().toISOString(),
     });
-    if (approvalErr) console.warn('[hitl/takeover] agent_approvals insert 실패:', approvalErr.message);
+    if (approvalErr) logWarning('[admin/hitl/takeover] agent_approvals insert failed', approvalErr);
 
     // agent_incidents: 수동 핸드오프 감사 로그 (감사 로그 — 실패해도 메인 응답 유지)
     const { error: incidentErr } = await supabaseAdmin.from('agent_incidents').insert({
@@ -56,7 +57,7 @@ const postHandler = async (request: NextRequest) => {
       message: note ?? '어드민 직접 대응',
       details: { adminId: adminId ?? 'admin', takenOverAt: new Date().toISOString() },
     });
-    if (incidentErr) console.warn('[hitl/takeover] agent_incidents insert 실패:', incidentErr.message);
+    if (incidentErr) logWarning('[admin/hitl/takeover] agent_incidents insert failed', incidentErr);
 
     return NextResponse.json({ ok: true, taskId, status: 'resumed' });
   } catch (err) {

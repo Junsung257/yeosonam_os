@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { refillWeeklyQueue, assignPublishSlots, DEFAULT_POSTS_PER_DAY } from '@/lib/blog-scheduler';
 import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * 블로그 스케줄러 크론 — 매주 월요일 0시 실행
@@ -33,7 +34,7 @@ const getHandler = async () => {
       ranAt: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[blog-scheduler] 오류:', err);
+    logError('[cron/blog-scheduler] scheduler failed', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '스케줄러 실패' },
       { status: 500 },

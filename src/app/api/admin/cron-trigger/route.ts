@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * POST /api/admin/cron-trigger
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
-    console.error('[cron-trigger]', err);
+    logError('[admin/cron-trigger] cron request failed', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '요청 실패' },
       { status: 500 }

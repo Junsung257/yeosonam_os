@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { logWarning } from '@/lib/sentry-logger';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { runQualityGates } from '@/lib/blog-quality-gate';
@@ -163,12 +164,12 @@ async function runBlogPublisher(request: NextRequest) {
             try {
               await indexBlog(cid);
             } catch (e) {
-              console.warn('[blog-publisher] RAG 인덱싱 실패 (비중단):', e instanceof Error ? e.message : e);
+              logWarning('[cron/blog-publisher] RAG indexing failed (non-blocking)', e);
             }
           }),
         );
       } catch (e) {
-        console.warn('[blog-publisher] RAG 배치 조회 실패:', e instanceof Error ? e.message : e);
+        logWarning('[cron/blog-publisher] RAG batch fetch failed', e);
       }
     }
     try { revalidatePath('/blog'); } catch { /* noop */ }
@@ -430,7 +431,7 @@ async function processQueueItem(
       });
     } catch (e) {
       // 로그 저장 실패는 발행 성공을 롤백하지 않는다.
-      console.warn('[blog-publisher] marketing_logs 기록 실패(비중단):', e instanceof Error ? e.message : e);
+      logWarning('[cron/blog-publisher] marketing_logs record failed (non-blocking)', e);
     }
 
     try { revalidatePath(`/blog/${generated.slug}`); } catch { /* noop */ }

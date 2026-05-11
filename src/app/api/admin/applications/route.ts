@@ -4,6 +4,7 @@ import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
 import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logWarning } from '@/lib/sentry-logger';
 
 // GET: 파트너 신청 목록
 const getHandler = async (request: NextRequest) => {
@@ -110,7 +111,7 @@ const postHandler = async (request: NextRequest) => {
           customerPhone: app.phone,
         });
       } catch (notifyErr) {
-        console.warn('[Applications] 승인 알림 발송 실패:', notifyErr);
+        logWarning('[admin/applications] approval notification failed', notifyErr);
       }
 
       return NextResponse.json({ affiliate, message: '승인 완료' });

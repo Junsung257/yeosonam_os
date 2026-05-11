@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { recomputeAllScores } from '@/lib/scoring/recommend';
 import { fitHedonicCoefs } from '@/lib/scoring/hedonic-fit';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -34,7 +35,7 @@ const postHandler = async () => {
       second: { groups: second.groups, packages: second.packages, version: second.policy_version },
     });
   } catch (e) {
-    console.error('[admin/scoring/recompute] failed:', e);
+    logError('[admin/scoring/recompute] recompute failed', e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'failed' },
       { status: 500 },

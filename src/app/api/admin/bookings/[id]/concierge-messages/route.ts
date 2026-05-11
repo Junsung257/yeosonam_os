@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { allowRateLimit, getClientIpFromRequest } from '@/lib/simple-rate-limit';
+import { logError } from '@/lib/sentry-logger';
 
 export async function GET(
   request: NextRequest,
@@ -38,7 +39,7 @@ export async function GET(
     .limit(400);
 
   if (error) {
-    console.error('[admin/concierge-messages GET]', error);
+    logError('[admin/bookings/concierge-messages] GET failed', error);
     return NextResponse.json(
       { error: '메시지를 불러오지 못했습니다. booking_concierge_messages 마이그레이션을 확인하세요.' },
       { status: 500 },
@@ -83,7 +84,7 @@ export async function PATCH(
     .maybeSingle();
 
   if (uErr || !row) {
-    console.error('[admin/concierge-messages PATCH]', uErr);
+    if (uErr) logError('[admin/bookings/concierge-messages] PATCH failed', uErr);
     return NextResponse.json({ error: '갱신에 실패했습니다. 컬럼(concierge_ai_paused) 마이그레이션을 확인하세요.' }, { status: 500 });
   }
 
@@ -148,7 +149,7 @@ export async function POST(
   } as never);
 
   if (insErr) {
-    console.error('[admin/concierge-messages POST]', insErr);
+    logError('[admin/bookings/concierge-messages] POST failed', insErr);
     return NextResponse.json({ error: '저장에 실패했습니다.' }, { status: 500 });
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,7 +76,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       yeosonamPrices,
     });
   } catch (err) {
-    console.error('[competitor-prices GET] error:', err);
+    logError('[competitor-prices] GET failed', err);
     return NextResponse.json(
       { error: logAndSanitize('admin-competitor-prices', err, '처리 실패') },
       { status: 500 },
@@ -135,7 +136,7 @@ const postHandler = async (request: NextRequest): Promise<NextResponse> => {
 
     return NextResponse.json({ ok: true, data });
   } catch (err) {
-    console.error('[competitor-prices POST] error:', err);
+    logError('[competitor-prices] POST failed', err);
     return NextResponse.json(
       { error: logAndSanitize('admin-competitor-prices', err, '처리 실패') },
       { status: 500 },

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getKakaoAlimtalkDiagnostics } from '@/lib/kakao-diagnostics';
+import { logError } from '@/lib/sentry-logger';
 
 export const runtime = 'nodejs';
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + PAGE - 1);
     if (error) {
       recErrMsg = error.message;
-      console.error('[experiments] recommendation_outcomes', error);
+      logError('[admin/free-travel/experiments] recommendation_outcomes query failed', error);
       break;
     }
     const chunk = (data ?? []) as RecRow[];
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + PAGE - 1);
     if (error) {
       gbErrMsg = error.message;
-      console.error('[experiments] guidebook_events', error);
+      logError('[admin/free-travel/experiments] guidebook_events query failed', error);
       break;
     }
     const chunk = (data ?? []) as { action: string }[];

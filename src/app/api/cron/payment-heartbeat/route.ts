@@ -26,6 +26,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -156,7 +157,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ok: true, ...summary, alerts });
   } catch (e: any) {
-    console.error('[payment-heartbeat] 최상위 예외:', e?.message ?? String(e));
+    logError('[cron/payment-heartbeat] heartbeat failed', e);
     return NextResponse.json({ error: e?.message ?? 'heartbeat 실패' }, { status: 500 });
   }
 }

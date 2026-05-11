@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logError, logWarning } from '@/lib/sentry-logger';
 
 // 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
 export const dynamic = 'force-dynamic';
@@ -69,7 +70,7 @@ const getHandler = async () => {
       result.featured_rotated = { count: 0, reason: '30일 내 발행글 없음' };
     }
   } catch (err) {
-    console.warn('[blog-learn] featured 재선정 실패:', err);
+    logWarning('[cron/blog-learn] featured reselection failed', err);
     result.featured_error = err instanceof Error ? err.message : 'unknown';
   }
 
@@ -135,7 +136,7 @@ const getHandler = async () => {
 
     return NextResponse.json(result);
   } catch (err) {
-    console.error('[blog-learn] 오류:', err);
+    logError('[cron/blog-learn] learning failed', err);
     result.prompt_learning = { error: err instanceof Error ? err.message : '학습 실패' };
     return NextResponse.json(result, { status: 500 });
   }

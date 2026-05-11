@@ -8,6 +8,7 @@ import {
 import { pickPackageRepresentativeDate } from '@/lib/scoring/extract-features';
 import type { RawPackageRow } from '@/lib/scoring/extract-features';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -80,7 +81,7 @@ const postHandler = async (request: NextRequest) => {
 
     return NextResponse.json({ ok: true, mode: 'batch', attempted: (pkgs ?? []).length, synced });
   } catch (e) {
-    console.error('[admin/sync-mrt-hotel]', e);
+    logError('[admin/scoring/sync-mrt-hotel] sync failed', e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'failed' },
       { status: 500 },

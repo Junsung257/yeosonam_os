@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
+import { logError } from '@/lib/sentry-logger';
 import {
   parseBasis,
   bookingMonthByBasis,
@@ -339,7 +340,7 @@ export async function GET(request: NextRequest) {
       { headers: ADMIN_CACHE.analytics },
     );
   } catch (err) {
-    console.error('[Affiliate Analytics]', err);
+    logError('[affiliate-analytics] query failed', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }
 }
