@@ -304,7 +304,33 @@
 | `/admin/packages` Playwright warm | 90s timeout ⛔ | 정상 로드 예상 | — |
 | 페이지간 재진입 | 매번 fetch | SWR dedup 30s | 즉시 |
 
-## 12. 관련 파일
+## 12. Phase 2-B 적용 결과 (2026-05-11) — bookings GET
+
+### 발견
+
+- `bookings` 가 **110+ 컬럼** (jsonb 다수: metadata, local_expenses, surcharge_breakdown, terms_snapshot, commission_breakdown).
+- `getBookings` 가 `select('*')` 사용. 100건 × 110 컬럼 → 큰 페이로드.
+- API GET 에서 limit/offset 파라미터 미수신.
+- 응답에 Cache-Control 헤더 없음.
+
+### 변경
+
+| 파일 | 변화 |
+|------|------|
+| [src/lib/supabase.ts](../../src/lib/supabase.ts) `getBookings` | `BOOKING_LITE_FIELDS` 상수 신설 (어드민 목록용 50 컬럼). `lite?: boolean` 옵션 추가. lite 시 jsonb 컬럼 전체 제외. |
+| [src/app/api/bookings/route.ts](../../src/app/api/bookings/route.ts) GET | `lite=1` 파라미터 + `limit`/`offset` 수신. Cache-Control private,s-maxage=60,SWR=300 헤더. |
+| [src/app/admin/bookings/page.tsx](../../src/app/admin/bookings/page.tsx) | RSC 의 `getBookings()` → `getBookings(_,_,{lite:true})`. |
+| [src/app/admin/bookings/BookingsPageClient.tsx](../../src/app/admin/bookings/BookingsPageClient.tsx) | 클라이언트 fetch URL 에 `lite=1` 추가. |
+
+### Before / After (dev, warm)
+
+| 지표 | Before | After | 변화 |
+|------|-------:|------:|-----:|
+| `/api/bookings?limit=30` 첫 호출 | 9.6s | 0.83 ~ 1.36s | **−86%** |
+| `/api/bookings?limit=30&lite=1` warm | — | 0.52s | 추가 −40% |
+| 페이로드 (jsonb 5종 + 60컬럼 제외) | 100% | ~50% | −50% |
+
+## 13. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)

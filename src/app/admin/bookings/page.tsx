@@ -6,6 +6,7 @@ import BookingsPageClient from './BookingsPageClient';
 export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
 
 export default async function BookingsPage() {
-  const initialBookings = await getBookings();
+  // 감사(2026-05-11): lite=true — 110+ 컬럼 → 어드민 목록용 50개. 페이로드 50%+ 감소.
+  const initialBookings = await getBookings(undefined, undefined, { lite: true });
   return <BookingsPageClient initialBookings={initialBookings as any} />;
 }

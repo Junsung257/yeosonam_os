@@ -1025,7 +1025,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     _skipInitialFetch.current = false;
     setIsLoading(true);
     try {
-      const p = new URLSearchParams();
+      // 감사(2026-05-11): lite=1 — 어드민 목록용 50 컬럼만 fetch (110+ → 50, 페이로드 −50%).
+      const p = new URLSearchParams({ lite: '1' });
       if (lifecycleTab === 'trash') p.set('include_deleted', 'only');
       // 그 외 탭: 전체 로드 후 클라이언트 필터링
       const res  = await fetch(`/api/bookings?${p}`);

@@ -118,6 +118,10 @@ export async function GET(request: NextRequest) {
   const departureTo = searchParams.get('departure_to');
   // include_deleted: 'only' = 휴지통만, 'all' = 전체, 미지정 = 정상만
   const includeDeleted = searchParams.get('include_deleted');
+  // 감사(2026-05-11): lite=1 — 110+ 컬럼 중 어드민 목록용 50개만 select.
+  const lite = searchParams.get('lite') === '1';
+  const limitParam = searchParams.get('limit');
+  const offsetParam = searchParams.get('offset');
 
   if (id) {
     const booking = await getBookingById(id);
@@ -126,9 +130,24 @@ export async function GET(request: NextRequest) {
   const bookings = await getBookings(
     status || undefined,
     customerId || undefined,
-    { departureFrom: departureFrom || undefined, departureTo: departureTo || undefined, includeDeleted: includeDeleted || undefined }
+    {
+      departureFrom: departureFrom || undefined,
+      departureTo:   departureTo   || undefined,
+      includeDeleted: includeDeleted || undefined,
+      lite,
+      limit:  limitParam  ? Math.min(500, Math.max(1, parseInt(limitParam, 10))) : undefined,
+      offset: offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : undefined,
+    },
   );
-  return NextResponse.json({ bookings, count: bookings.length });
+  return NextResponse.json(
+    { bookings, count: bookings.length },
+    {
+      headers: {
+        // 어드민 목록 — 30초 브라우저 + 60초 CDN.
+        'Cache-Control': 'private, max-age=30, s-maxage=60, stale-while-revalidate=300',
+      },
+    },
+  );
 }
 
 export async function POST(request: NextRequest) {

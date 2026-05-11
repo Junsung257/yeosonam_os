@@ -689,6 +689,25 @@ export async function restoreCustomer(id: string) {
 }
 
 // 예약 목록 조회
+// 감사(2026-05-11 §12): bookings 가 110+ 컬럼(jsonb 다수).
+// 어드민 목록·고객드로어에서 쓰는 컬럼만 명시한 lite set — 페이로드 50%+ 감소.
+const BOOKING_LITE_FIELDS = [
+  'id', 'booking_no', 'package_id', 'package_title', 'lead_customer_id',
+  'adult_count', 'child_count', 'child_n_count', 'child_e_count', 'infant_count', 'single_charge_count',
+  'adult_price', 'child_price', 'child_n_price', 'child_e_price', 'infant_price',
+  'fuel_surcharge', 'single_charge', 'total_price', 'total_cost',
+  'status', 'departure_date', 'return_date', 'booking_date', 'created_at', 'updated_at',
+  'cancelled_at', 'voided_at', 'refunded_at', 'payment_date',
+  'departure_region', 'departing_location_id', 'land_operator', 'land_operator_id', 'manager_name',
+  'paid_amount', 'total_paid_out', 'payment_status', 'payment_method',
+  'channel_source', 'utm_source', 'utm_medium', 'utm_campaign',
+  'referral_code', 'affiliate_id', 'booking_type', 'influencer_commission', 'commission_rate',
+  'is_deleted', 'is_ticketed', 'is_manifest_sent', 'has_sent_docs',
+  'transfer_status', 'customer_receipt_status', 'has_tax_invoice',
+  'dispute_flag', 'cancel_reason', 'notes',
+  'flight_out', 'flight_out_time', 'flight_in', 'flight_in_time',
+].join(', ');
+
 export async function getBookings(
   status?: string,
   customerId?: string,
@@ -698,14 +717,18 @@ export async function getBookings(
     includeDeleted?: string;  // 'only' = 휴지통만, 'all' = 전체, 미지정 = 정상만
     limit?: number;           // 페이지 크기 (기본 100)
     offset?: number;          // 페이지 오프셋 (기본 0)
+    lite?: boolean;           // true = 어드민 목록용 컬럼만 (jsonb 등 제외)
   }
 ) {
   try {
     const pageLimit = opts?.limit ?? 100;
     const pageOffset = opts?.offset ?? 0;
+    const fields = opts?.lite
+      ? `${BOOKING_LITE_FIELDS}, customers!lead_customer_id(id,name,phone)`
+      : '*, customers!lead_customer_id(id,name,phone)';
     let query = supabaseAdmin
       .from('bookings')
-      .select('*, customers!lead_customer_id(id,name,phone)')
+      .select(fields)
       .order('created_at', { ascending: false })
       .range(pageOffset, pageOffset + pageLimit - 1);
 
