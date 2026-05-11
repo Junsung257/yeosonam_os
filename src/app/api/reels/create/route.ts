@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       createdAt: reelRows.created_at,
     });
   } catch (err) {
-    console.error('[reels/create] error:', err);
+    logError('[api/reels/create] reel creation failed', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '처리 실패' },
       { status: 500 },
