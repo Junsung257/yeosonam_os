@@ -7,6 +7,7 @@ import {
 } from '@/lib/mrt-hotel-intel';
 import { pickPackageRepresentativeDate } from '@/lib/scoring/extract-features';
 import type { RawPackageRow } from '@/lib/scoring/extract-features';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -17,7 +18,7 @@ export const maxDuration = 300;
  * - package_id 있으면 해당 패키지만 (departure_date 없으면 price_dates 대표일)
  * - stale_only true + limit → 오래된 패키지 일괄 갱신 (크론과 동일 로직)
  */
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -86,3 +87,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
 
   const { data, error } = await supabaseAdmin
@@ -12,4 +13,6 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
-}
+};
+
+export const GET = withAdminGuard(getHandler);

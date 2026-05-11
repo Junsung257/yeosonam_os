@@ -5,11 +5,12 @@
  */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ funnel: [], summary: null });
   }
@@ -45,3 +46,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

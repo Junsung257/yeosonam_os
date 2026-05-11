@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { matchPackagesToLandOperators } from '@/lib/scoring/match-land-operators';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-export async function POST() {
+const postHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   try {
     const result = await matchPackagesToLandOperators();
@@ -17,3 +18,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

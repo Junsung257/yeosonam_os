@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
  *   page       - 페이지 (기본 1)
  *   limit      - 페이지당 건수 (기본 20, 최대 100)
  */
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ data: [], total: 0 });
 
   const { searchParams } = request.nextUrl;
@@ -51,3 +52,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

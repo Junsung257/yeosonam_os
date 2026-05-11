@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 interface VerifyCheck {
   id: string;
@@ -8,7 +9,7 @@ interface VerifyCheck {
   detail?: string;
 }
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -169,3 +170,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

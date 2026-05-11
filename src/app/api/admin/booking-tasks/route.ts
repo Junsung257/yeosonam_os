@@ -9,8 +9,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ tasks: [], health: null }, { status: 200 });
   }
@@ -53,4 +54,6 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);

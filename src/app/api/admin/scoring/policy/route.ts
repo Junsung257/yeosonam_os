@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { invalidatePolicyCache } from '@/lib/scoring/policy';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ function normalizeWeights(input: unknown): Record<string, number> | null {
   return out;
 }
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   const { data, error } = await supabaseAdmin
     .from('scoring_policies').select('*')
@@ -36,7 +37,7 @@ export async function GET() {
   return NextResponse.json({ policy: data?.[0] ?? null });
 }
 
-export async function PUT(req: NextRequest) {
+const putHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
@@ -72,3 +73,7 @@ export async function PUT(req: NextRequest) {
   invalidatePolicyCache();
   return NextResponse.json({ policy: data?.[0] });
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const PUT = withAdminGuard(putHandler);

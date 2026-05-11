@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
  * destination 기준 경쟁사 가격 목록 + 여소남 최저가 병합 반환.
  * destination 미지정 시 전체 목록.
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ data: [], yeosonamPrices: [] });
   }
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * 새 경쟁사 가격 입력.
  * Body: { destination, duration, competitor, price, departureDate?, sourceUrl?, recordedBy? }
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+const postHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -141,3 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

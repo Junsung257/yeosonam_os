@@ -3,11 +3,12 @@
  */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ trends: [] });
   const { data, error } = await supabaseAdmin
     .from('v_package_rank_trends')
@@ -18,3 +19,5 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ trends: data ?? [] });
 }
+
+export const GET = withAdminGuard(getHandler);

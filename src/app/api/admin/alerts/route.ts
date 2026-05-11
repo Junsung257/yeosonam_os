@@ -5,11 +5,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) return NextResponse.json({ alerts: [], stats: null });
 
   const showAcked = req.nextUrl.searchParams.get('showAcked') === 'true';
@@ -38,7 +39,9 @@ export async function GET(req: NextRequest) {
   };
 
   return NextResponse.json({ alerts: alertsRes.data ?? [], stats });
-}
+};
+
+export const GET = withAdminGuard(getHandler);
 
 function countBy<T extends Record<string, unknown>>(arr: T[], key: keyof T): Record<string, number> {
   const out: Record<string, number> = {};

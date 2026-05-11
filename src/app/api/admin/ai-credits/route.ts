@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 const CNY_TO_USD = 0.138; // 고정환율 — 표시용 근사값
 
@@ -90,7 +91,7 @@ async function fetchDeepSeekBalance(): Promise<{
   }
 }
 
-export async function GET() {
+const getHandler = async () => {
   // 병렬 조회
   const [deepseekBalance, dsUsage, geminiUsage, claudeUsage] = await Promise.all([
     fetchDeepSeekBalance(),
@@ -130,3 +131,5 @@ export async function GET() {
 
   return NextResponse.json({ credits, updated_at: new Date().toISOString() });
 }
+
+export const GET = withAdminGuard(getHandler);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { recomputeAllScores } from '@/lib/scoring/recommend';
 import { fitHedonicCoefs } from '@/lib/scoring/hedonic-fit';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -10,7 +11,7 @@ export const maxDuration = 300;
  * 어드민 즉시 재계산 — 가중치/시장가 변경 후 미리보기용.
  * 흐름: 1차 점수 → 헤도닉 학습 → 2차 점수.
  */
-export async function POST() {
+const postHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -40,3 +41,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

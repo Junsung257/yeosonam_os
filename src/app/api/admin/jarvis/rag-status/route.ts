@@ -6,11 +6,12 @@
  */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
   const [totalRes, sourceRes, latestRes, profileRes] = await Promise.all([
     supabaseAdmin.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }),
@@ -33,3 +34,5 @@ export async function GET() {
     rag_ready: (totalRes.count ?? 0) > 0,
   });
 }
+
+export const GET = withAdminGuard(getHandler);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 /**
  * 순위 대시보드 데이터 API
@@ -9,7 +10,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *   GET ?view=top_movers → 7일 vs 14일 대비 상승/하락 TOP
  */
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
 
   const sp = request.nextUrl.searchParams;
@@ -129,3 +130,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);

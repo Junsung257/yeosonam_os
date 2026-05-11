@@ -202,6 +202,15 @@ export interface AdTrafficLog {
   consent_agreed: boolean;
   landing_page?: string | null;
   content_creative_id?: string | null;
+  // 2026-05-19: 비로그인 재방문 식별 + 디바이스 신호
+  visitor_uid?: string | null;
+  is_returning?: boolean | null;
+  device_type?: string | null;
+  device_os?: string | null;
+  browser_name?: string | null;
+  viewport_w?: number | null;
+  viewport_h?: number | null;
+  time_on_page_ms?: number | null;
   created_at: string;
 }
 
@@ -213,6 +222,7 @@ export interface AdSearchLog {
   search_category?: string | null;
   result_count?: number;
   lead_time_days?: number | null;
+  visitor_uid?: string | null;
   created_at: string;
 }
 
@@ -229,12 +239,17 @@ export interface AdEngagementLog {
     | 'scroll_50'
     | 'scroll_75'
     | 'scroll_90'
+    | 'page_exit'
     | string;
   product_id?: string | null;
   product_name?: string | null;
   cart_added: boolean;
   page_url?: string | null;
   lead_time_days?: number | null;
+  visitor_uid?: string | null;
+  time_on_page_ms?: number | null;
+  max_scroll_pct?: number | null;
+  interaction_count?: number | null;
   created_at: string;
 }
 

@@ -9,8 +9,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMrtReservations } from '@/lib/mrt-partner-api';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   const { searchParams } = request.nextUrl;
   const startDate      = searchParams.get('from') ?? new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const endDate        = searchParams.get('to')   ?? new Date().toISOString().slice(0, 10);
@@ -55,3 +56,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '처리 실패' }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);

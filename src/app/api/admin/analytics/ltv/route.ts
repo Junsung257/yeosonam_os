@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // LTV 코호트 분석 — UTM 채널별 평생 결제액 집계
 // bookings.utm_source 기준으로 cohort 분류
@@ -11,7 +12,7 @@ import { ADMIN_CACHE } from '@/lib/admin-cache';
 const LTV_BOOKING_LIMIT = 5000;
 const CACHE_HEADERS = ADMIN_CACHE.analytics;
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ cohorts: [] });
 
   try {
@@ -127,3 +128,5 @@ function normalizeChannel(raw: string): string {
   if (s.includes('organic') || s.includes('search')) return 'organic';
   return s;
 }
+
+export const GET = withAdminGuard(getHandler);

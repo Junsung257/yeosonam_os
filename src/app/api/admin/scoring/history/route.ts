@@ -5,11 +5,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ history: [] });
   const sp = req.nextUrl.searchParams;
   const packageId = sp.get('package_id');
@@ -27,3 +28,5 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ history: data ?? [] });
 }
+
+export const GET = withAdminGuard(getHandler);

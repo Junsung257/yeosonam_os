@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useChatStore } from '@/lib/chat-store';
 import type { DepartureHubId } from '@/lib/departure-hub';
 import { appendDepartureHubToSearchParams } from '@/lib/departure-hub';
+import { trackSearch } from '@/lib/tracker';
 
 interface Props {
   initialQ?: string;
@@ -68,13 +69,37 @@ export default function SearchBar({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (q.trim()) params.set('q', q.trim());
+    const trimmedQ = q.trim();
+    if (trimmedQ) params.set('q', trimmedQ);
     if (month) params.set('month', month);
     if (priceMin) params.set('priceMin', priceMin);
     if (priceMax) params.set('priceMax', priceMax);
     if (hub) appendDepartureHubToSearchParams(params, hub);
     if (urgency === '1') params.set('urgency', '1');
     if (category) params.set('category', category);
+
+    // 검색 이벤트 트래킹 (fire-and-forget). 빈 쿼리도 필터 검색이면 기록.
+    if (trimmedQ || month || priceMax || hub || category) {
+      // lead_time_days: 출발월(YYYY-MM)이 있으면 그 달 1일까지 일수
+      let leadTimeDays: number | undefined;
+      if (month) {
+        const [yy, mm] = month.split('-').map(Number);
+        if (yy && mm) {
+          const target = new Date(yy, mm - 1, 1).getTime();
+          leadTimeDays = Math.max(0, Math.round((target - Date.now()) / 86400000));
+        }
+      }
+      try {
+        trackSearch({
+          search_query: trimmedQ || `[filter:${category || hub || 'price'}]`,
+          search_category: category || hub || undefined,
+          lead_time_days: leadTimeDays,
+        });
+      } catch {
+        // tracker 실패는 검색 막지 않음
+      }
+    }
+
     const qs = params.toString();
     router.push(qs ? `/packages?${qs}` : '/packages');
   }

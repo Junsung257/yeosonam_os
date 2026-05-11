@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 /**
  * 토픽 권위 + Programmatic SEO 상태 조회 + 즉시 실행 트리거
@@ -9,7 +10,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *   POST  { action: 'promote', limit: N } → pending → queue 즉시 promote
  */
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
 
   const [
@@ -47,7 +48,7 @@ export async function GET() {
   });
 }
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const body = await request.json().catch(() => ({}));
@@ -76,3 +77,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 });
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

@@ -7,11 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { indexPackage, indexBlog, indexAttraction, indexPolicy } from '@/lib/jarvis/rag/indexer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
+const postHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'supabase 미설정' }, { status: 503 });
   try {
     const body = await req.json() as { source: string; id: string };
@@ -34,3 +35,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

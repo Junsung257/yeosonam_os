@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // frozen 상태의 agent_tasks 목록 조회 (에스컬레이션 대시보드용)
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ tasks: [] });
 
   const token =
@@ -31,3 +32,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

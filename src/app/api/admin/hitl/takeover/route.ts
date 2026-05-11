@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // 어드민이 AI 제어권을 가져와 직접 대응할 때 호출
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: false });
 
   const token =
@@ -65,3 +66,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

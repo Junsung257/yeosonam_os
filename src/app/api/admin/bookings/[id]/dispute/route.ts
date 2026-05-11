@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // POST: 분쟁 플래그 토글
-export async function POST(
+const postHandler = async (
   request: NextRequest,
   { params }: { params: { id: string } }
-) {
+) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -49,3 +50,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

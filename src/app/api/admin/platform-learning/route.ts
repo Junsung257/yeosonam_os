@@ -5,13 +5,14 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const SOURCES = new Set(['qa_chat', 'qa_escalation_cta', 'jarvis_v1', 'jarvis_v2_stream']);
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ events: [], total: 0 });
   }
@@ -49,3 +50,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ events: data ?? [], total: count ?? 0 });
 }
+
+export const GET = withAdminGuard(getHandler);

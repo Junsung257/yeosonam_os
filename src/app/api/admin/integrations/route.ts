@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export type Platform = 'google_ads' | 'meta' | 'naver' | 'google_analytics';
 
@@ -38,7 +39,7 @@ function emptyIntegrations(): IntegrationStatus[] {
  * 테넌트의 OAuth 플랫폼 연결 현황 반환.
  * tenant_id 미전달 시 첫 번째 활성 테넌트를 자동으로 사용 (단일 운영자 어드민 구조).
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   let tenantId = request.nextUrl.searchParams.get('tenant_id');
 
   if (!isSupabaseConfigured) {
@@ -88,3 +89,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

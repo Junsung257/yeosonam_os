@@ -11,6 +11,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { reconcileOtaReport } from '@/lib/free-travel/reconcile';
 import { requireAdminApiToken } from '@/lib/api-auth';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 const ItemSchema = z.object({
   ref_id:       z.string().optional(),
@@ -26,7 +27,7 @@ const RequestSchema = z.object({
   totalKrw:    z.number().int().min(0).optional(),
 });
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   const unauthorized = requireAdminApiToken(request);
   if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   const unauthorized = requireAdminApiToken(request);
   if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -92,3 +93,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ reports: data ?? [] });
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

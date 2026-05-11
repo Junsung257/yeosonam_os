@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   const dest = req.nextUrl.searchParams.get('destination');
   let q = supabaseAdmin
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ rates: data ?? [] });
 }
 
-export async function POST(req: NextRequest) {
+const postHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   let body: { tour_name?: string; destination?: string | null; market_rate_krw?: number; notes?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
@@ -44,3 +45,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ rate: data?.[0] });
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

@@ -16,6 +16,11 @@ import { withTimeout } from '@/lib/utils/timeout';
 import { requiresHITL, getHITLInfo } from './hitl';
 import { buildTenantSystemPrompt, isAgentAllowed } from './persona';
 import { trackCost, assertQuota, QuotaExceededError } from './cost-tracker';
+import { getActiveLessons, buildLessonsPromptFragment } from './jarvis-lessons';
+import {
+  getRelevantCorrections,
+  buildCorrectionsPromptFragment,
+} from '@/lib/response-learning';
 import type { StreamEvent } from './stream-encoder';
 import { getSecret } from '@/lib/secret-registry';
 import type { AgentType, AgentRunResult, JarvisContext, PendingActionInfo } from './types';
@@ -98,9 +103,32 @@ export async function* runDeepSeekAgentLoopV2(
 
   const tenantAwarePrompt = await buildTenantSystemPrompt(config.systemPrompt, params.ctx);
 
+  // Phase 2: 누적 학습 — 자비스 lessons + 응답 정정 메모리 주입 (5분 캐시)
+  let learningFragment = '';
+  try {
+    const [lessons, corrections] = await Promise.all([
+      getActiveLessons({
+        tenantId: params.ctx.tenantId ?? null,
+        agentType: config.agentType,
+        message: params.message,
+        limit: 5,
+      }),
+      getRelevantCorrections({
+        source: 'jarvis_v2',
+        tenantId: params.ctx.tenantId ?? null,
+        limit: 3,
+      }),
+    ]);
+    learningFragment =
+      buildLessonsPromptFragment(lessons) + buildCorrectionsPromptFragment(corrections);
+  } catch (e) {
+    // 학습 신호 로드 실패는 zero-shot 으로 폴백 (fail-open)
+    console.warn('[jarvis-v2] learning fragment 로드 실패:', e);
+  }
+
   // 2) 히스토리 + 현재 메시지 구성
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: tenantAwarePrompt },
+    { role: 'system', content: tenantAwarePrompt + learningFragment },
     ...(params.session?.messages ?? []).slice(-HISTORY_TURNS).map((m: any) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,

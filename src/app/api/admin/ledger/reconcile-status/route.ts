@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ interface DriftRow {
   drift: number;
 }
 
-export async function GET(_req: NextRequest) {
+const getHandler = async (_req: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -90,3 +91,5 @@ export async function GET(_req: NextRequest) {
     checked_at: new Date().toISOString(),
   });
 }
+
+export const GET = withAdminGuard(getHandler);

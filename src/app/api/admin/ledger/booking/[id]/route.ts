@@ -18,14 +18,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+const getHandler = async (
   _req: NextRequest,
   { params }: { params: { id: string } },
-) {
+) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -103,3 +104,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withAdminGuard(getHandler);

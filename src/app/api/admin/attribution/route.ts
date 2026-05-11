@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
  *   days        - 조회 기간 (기본 30, 최대 90)
  *   content_id  - 특정 콘텐츠 ID 필터 (옵션)
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json(buildMockAttribution());
   }
@@ -110,3 +111,5 @@ function buildMockAttribution() {
     mock: true,
   };
 }
+
+export const GET = withAdminGuard(getHandler);

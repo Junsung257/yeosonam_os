@@ -13,6 +13,20 @@ export async function POST(
     const refundAmount  = typeof body.refund_amount  === 'number' ? body.refund_amount  : 0;
     const penaltyFee    = typeof body.penalty_fee    === 'number' ? body.penalty_fee    : 0;
     const cancelReason  = (body.reason as string) || '관리자 취소';
+    // Phase 1 데이터 인텔리전스: 카테고리화된 사유 (자유텍스트는 보조)
+    const CANCEL_CATEGORIES = new Set([
+      'customer_request', 'customer_schedule', 'customer_health',
+      'customer_payment_fail', 'product_unavailable', 'price_mismatch',
+      'competitor_switch', 'land_operator_issue', 'force_majeure',
+      'duplicate_booking', 'system_error', 'admin_force', 'other',
+    ]);
+    const cancelCategoryRaw = typeof body.reason_category === 'string' ? body.reason_category : null;
+    const cancelReasonCategory = cancelCategoryRaw && CANCEL_CATEGORIES.has(cancelCategoryRaw)
+      ? cancelCategoryRaw
+      : null;
+    const cancelReasonSubnote = typeof body.reason_subnote === 'string'
+      ? body.reason_subnote.slice(0, 500)
+      : null;
 
     // 현재 예약 조회 (이미 취소된 경우 방지)
     const { data: current, error: selectErr } = await supabaseAdmin
@@ -33,16 +47,20 @@ export async function POST(
     }
 
     // bookings 업데이트
+    const updatePayload: Record<string, unknown> = {
+      status:       'cancelled',
+      refund_amount: refundAmount,
+      penalty_fee:   penaltyFee,
+      cancel_reason: cancelReason,
+      cancelled_at:  new Date().toISOString(),
+      updated_at:    new Date().toISOString(),
+    };
+    if (cancelReasonCategory) updatePayload.cancel_reason_category = cancelReasonCategory;
+    if (cancelReasonSubnote) updatePayload.cancel_reason_subnote = cancelReasonSubnote;
+
     const { data: booking, error: updateErr } = await supabaseAdmin
       .from('bookings')
-      .update({
-        status:       'cancelled',
-        refund_amount: refundAmount,
-        penalty_fee:   penaltyFee,
-        cancel_reason: cancelReason,
-        cancelled_at:  new Date().toISOString(),
-        updated_at:    new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', params.id)
       .select()
       .single();

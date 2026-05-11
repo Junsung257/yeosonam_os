@@ -31,6 +31,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 const INVOICE_PARSE_FALLBACK = `이 청구서(인보이스) 이미지를 분석해서 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요.
 
@@ -77,7 +78,7 @@ interface Discrepancy {
   ledger_amount: number | null;
 }
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   const limited = await rateLimitAI(request);
   if (limited) return limited;
 
@@ -216,3 +217,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

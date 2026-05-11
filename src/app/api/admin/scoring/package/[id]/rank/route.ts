@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
  * 특정 패키지의 그룹 내 순위/점수 조회 (어드민 운영 진단용).
  * 가장 최근 캐시된 score 1건 반환.
  */
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+const getHandler = async (_req: NextRequest, { params }: { params: { id: string } }) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   const { data, error } = await supabaseAdmin
     .from('package_scores')
@@ -21,3 +22,5 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
   return NextResponse.json({ score: data[0] });
 }
+
+export const GET = withAdminGuard(getHandler);

@@ -7,11 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
-export async function POST(
+const postHandler = async (
   request: NextRequest,
   { params }: { params: { id: string } },
-) {
+) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -44,3 +45,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

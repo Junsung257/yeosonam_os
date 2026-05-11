@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 /**
  * 발행 정책 관리 API
@@ -8,7 +9,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *   PATCH  /api/admin/publishing-policy           → 부분 업데이트 (scope 필수)
  */
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
 
   const scope = request.nextUrl.searchParams.get('scope');
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ items: data || [] });
 }
 
-export async function PATCH(request: NextRequest) {
+const patchHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -52,3 +53,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '업데이트 실패' }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const PATCH = withAdminGuard(patchHandler);

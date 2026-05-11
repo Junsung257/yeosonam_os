@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 /**
  * POST /api/admin/integrations/disconnect
@@ -9,7 +10,7 @@ import { logAndSanitize } from '@/lib/error-sanitizer';
  * tenant_api_tokens에서 해당 플랫폼 토큰을 is_active=false로 비활성화.
  * 토큰 데이터는 보존 (재연결 시 덮어씀).
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+const postHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ success: true, mock: true });
   }
@@ -43,3 +44,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

@@ -12,6 +12,13 @@ import { advanceCustomerJourney, type CustomerJourneySnapshot } from '@/lib/cust
 import { recordPlatformLearningEvent } from '@/lib/platform-learning';
 import { supervisorLite } from '@/lib/jarvis/supervisor-lite';
 import {
+  recordCritiqueResult,
+  getRelevantCorrections,
+  buildCorrectionsPromptFragment,
+  getNegativeExamples,
+  buildNegativePromptFragment,
+} from '@/lib/response-learning';
+import {
   createAgentTask,
   createApprovalRequest,
   transitionAgentTask,
@@ -22,6 +29,8 @@ import { requiresApproval } from '@/lib/jarvis/risk-scorer';
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing';
 import { allowRateLimit, getClientIpFromRequest } from '@/lib/simple-rate-limit';
 import { getSecret } from '@/lib/secret-registry';
+
+export const maxDuration = 60;
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9);
 
@@ -374,7 +383,22 @@ export async function POST(request: NextRequest) {
           ? `\n## 이 고객에 대해 기억하는 정보\n${memoryFacts.join('\n')}\n`
           : '';
 
-        const userPrompt = `${memoryContext}${affiliateContextText}
+        // ── Phase 2: 응답 학습 신호 — 정정 메모리 + 부정 예시 주입 ──
+        const destinationHint = extractQaDestinationHint(qaHintSource);
+        const [corrections, negExamples] = await Promise.all([
+          getRelevantCorrections({
+            source: 'qa_chat',
+            destination: destinationHint,
+            tenantId: affiliateScopeId,
+            limit: 5,
+          }),
+          getNegativeExamples({ destination: destinationHint, limit: 3 }),
+        ]);
+        const learningFragment =
+          buildCorrectionsPromptFragment(corrections) +
+          buildNegativePromptFragment(negExamples);
+
+        const userPrompt = `${memoryContext}${affiliateContextText}${learningFragment}
 ## 상품 목록
 ${packageContext}
 
@@ -458,6 +482,30 @@ ${message}`;
         }
         const finalReply = gated.reply;
         const finalEscalate = gated.escalate;
+
+        // ── Phase 2: critique 결과 영속화 (fire-and-forget, sampling 적용) ──
+        void recordCritiqueResult({
+          source: 'qa_chat',
+          sessionId: sessionId ?? null,
+          conversationId: sessionId ?? null,
+          traceId,
+          agentTaskId,
+          affiliateId: affiliateScopeId ?? null,
+          llmProvider: gen.provider ?? null,
+          llmModel: gen.model ?? null,
+          severity: critique.severity,
+          issues: critique.issues ?? [],
+          userQuestion: message,
+          reply: parsed.reply ?? '',
+          correctedReply: gated.wasGated ? finalReply : null,
+          wasGated: gated.wasGated,
+          metadata: {
+            destination_hint: destinationHint ?? null,
+            recommended_count: parsed.recommendedPackageIds?.length ?? 0,
+            corrections_applied: corrections.length,
+            negative_examples_applied: negExamples.length,
+          },
+        });
 
         const recommendedPackages = critique.severity === 'block'
           ? []

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 const RISK_EMOJI: Record<string, string> = {
   critical: '🚨',
@@ -11,7 +12,7 @@ const RISK_EMOJI: Record<string, string> = {
 
 // JARVIS 에이전트가 에스컬레이션 시 호출하는 엔드포인트
 // agent_tasks.status = 'frozen' 설정 + Slack 즉시 알림
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: false });
 
   const token =
@@ -65,3 +66,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

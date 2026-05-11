@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { hasPermission, getMenuForRole, type AdminRole } from '@/lib/admin-rbac';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 /**
  * POST /api/admin/rbac/check
@@ -16,7 +17,7 @@ import { hasPermission, getMenuForRole, type AdminRole } from '@/lib/admin-rbac'
  *   menu: ['/admin/bookings', ...],
  * }
  */
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ role: 'cs_agent', allowed: false, menu: [] });
   }
@@ -74,3 +75,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

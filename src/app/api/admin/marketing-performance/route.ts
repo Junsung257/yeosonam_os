@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 function lastNDays(n: number): string[] {
   const days: string[] = [];
@@ -48,7 +49,7 @@ function buildMockPerformance() {
  * - trend: 7일 시계열 (recharts LineChart용)
  * - recent_tasks: 에이전트 실행 최신 20건
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json(buildMockPerformance());
   }
@@ -190,3 +191,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

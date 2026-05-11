@@ -30,6 +30,13 @@ type TrackingPayload =
       current_cpc?: number;
       landing_page?: string;
       content_creative_id?: string;
+      visitor_uid?: string;
+      is_returning?: boolean;
+      device_type?: string;
+      device_os?: string;
+      browser_name?: string;
+      viewport_w?: number;
+      viewport_h?: number;
     }
   | {
       type: 'search';
@@ -39,6 +46,7 @@ type TrackingPayload =
       search_category?: string;
       result_count?: number;
       lead_time_days?: number;
+      visitor_uid?: string;
     }
   | {
       type: 'engagement';
@@ -51,6 +59,10 @@ type TrackingPayload =
       page_url?: string;
       cart_added?: boolean;
       lead_time_days?: number;
+      visitor_uid?: string;
+      time_on_page_ms?: number;
+      max_scroll_pct?: number;
+      interaction_count?: number;
       /** 콘텐츠 어트리뷰션: 카드뉴스·블로그 방문/클릭 이벤트 */
       content_id?: string;
       content_type?: 'card_news' | 'blog' | 'email';
@@ -111,6 +123,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         consent_agreed: consent,
         landing_page: body.landing_page ?? null,
         content_creative_id: body.content_creative_id ?? null,
+        visitor_uid: body.visitor_uid ?? null,
+        is_returning: body.is_returning ?? null,
+        device_type: body.device_type ?? null,
+        device_os: body.device_os ?? null,
+        browser_name: body.browser_name ?? null,
+        viewport_w: body.viewport_w ?? null,
+        viewport_h: body.viewport_h ?? null,
       });
       // 내부 조회수 원자적 증가 (어드민 대시보드 용)
       if (body.content_creative_id) {
@@ -145,6 +164,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         search_category: body.search_category ?? null,
         result_count: body.result_count ?? 0,
         lead_time_days: body.lead_time_days ?? null,
+        visitor_uid: body.visitor_uid ?? null,
       });
       return NextResponse.json({ ok: true }, { status: 202 });
     }
@@ -160,6 +180,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         cart_added: body.cart_added ?? false,
         page_url: body.page_url ?? null,
         lead_time_days: body.lead_time_days ?? null,
+        visitor_uid: body.visitor_uid ?? null,
+        time_on_page_ms: body.time_on_page_ms ?? null,
+        max_scroll_pct: body.max_scroll_pct ?? null,
+        interaction_count: body.interaction_count ?? null,
       });
       // 콘텐츠 어트리뷰션: view/click 이벤트만 기록
       if (

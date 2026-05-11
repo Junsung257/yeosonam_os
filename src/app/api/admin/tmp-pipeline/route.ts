@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export interface PipelineRow {
   productId: string;
@@ -22,7 +23,7 @@ export interface PipelineRow {
   threadsPublishedAt: string | null;
 }
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ rows: [] });
 
   const { searchParams } = request.nextUrl;
@@ -112,3 +113,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

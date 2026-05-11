@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { maskPhone, maskEmail, type AdminRole } from '@/lib/pii-mask';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 /**
  * GET /api/admin/customers/masked
@@ -12,7 +13,7 @@ import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
  *
  * Auth: Supabase Access Token (쿠키 sb-access-token 또는 Authorization 헤더)
  */
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ data: [], role: 'cs_agent' });
   }
@@ -105,3 +106,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

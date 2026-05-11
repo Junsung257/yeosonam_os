@@ -17,11 +17,12 @@ import { NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { postAlert } from '@/lib/admin-alerts';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-export async function POST() {
+const postHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'supabase 미설정' }, { status: 503 });
 
   // 학습 데이터 양 체크
@@ -101,3 +102,5 @@ export async function POST() {
     signals_preview: (signals ?? []).slice(0, 5),
   });
 }
+
+export const POST = withAdminGuard(postHandler);

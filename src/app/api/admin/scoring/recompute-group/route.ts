@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { recomputeGroupScores, recomputeGroupForPackage } from '@/lib/scoring/recommend';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -11,7 +12,7 @@ export const maxDuration = 60;
  * Body 형식 1: { package_id: "uuid" } — 패키지 ID로 자동 그룹 추론
  * Body 형식 2: { destination: "다낭", departure_date: "2026-04-20" }
  */
-export async function POST(req: NextRequest) {
+const postHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   let body: { package_id?: string; destination?: string; departure_date?: string | null };
   try { body = await req.json(); } catch {
@@ -35,3 +36,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

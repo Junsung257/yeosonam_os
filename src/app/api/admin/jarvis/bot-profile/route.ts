@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { invalidatePersonaCache } from '@/lib/jarvis/persona'
+import { withAdminGuard } from '@/lib/admin-guard';
 
 function resolveScope(req: NextRequest) {
   const role = req.headers.get('x-user-role') ?? 'anonymous'
@@ -26,7 +27,7 @@ function authorize(req: NextRequest, targetTenantId: string | null) {
   return false
 }
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   const tenantId = req.nextUrl.searchParams.get('tenantId')
   if (!tenantId) return NextResponse.json({ error: 'tenantId 필요' }, { status: 400 })
 
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ profile: data })
 }
 
-export async function PUT(req: NextRequest) {
+const putHandler = async (req: NextRequest) => {
   let body: any
   try { body = await req.json() } catch { body = {} }
 
@@ -90,3 +91,7 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ profile: result.data })
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const PUT = withAdminGuard(putHandler);

@@ -15,6 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,7 +37,7 @@ interface FeedItem {
   meta?: Record<string, unknown>;
 }
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ items: [], counts: {} });
 
   const { searchParams } = request.nextUrl;
@@ -218,3 +219,5 @@ function extractPayloadTitle(platform: string, payload: Record<string, unknown> 
   if (platform === 'google_ads_rsa') return ((payload.headlines as string[])?.[0]) ?? null;
   return null;
 }
+
+export const GET = withAdminGuard(getHandler);

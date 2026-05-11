@@ -6,11 +6,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { retrieve, type SourceType } from '@/lib/jarvis/rag/retriever';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ hits: [] });
   const sp = req.nextUrl.searchParams;
   const q = sp.get('q')?.trim();
@@ -49,3 +50,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);

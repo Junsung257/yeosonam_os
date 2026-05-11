@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { recordPlatformLearningEvent } from '@/lib/platform-learning';
 import { recordAgentIncident } from '@/lib/agent/tasking';
+import {
+  recordResponseFeedback,
+  promoteToNegativeExample,
+} from '@/lib/response-learning';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +14,12 @@ export async function POST(request: NextRequest) {
     const rating = body?.rating === 'down' ? 'down' : body?.rating === 'up' ? 'up' : null;
     const reason = typeof body?.reason === 'string' ? body.reason : null;
     const responseText = typeof body?.responseText === 'string' ? body.responseText : null;
+    const raterType: 'customer' | 'admin' | 'partner' =
+      body?.raterType === 'admin' ? 'admin'
+      : body?.raterType === 'partner' ? 'partner'
+      : 'customer';
+    const destination = typeof body?.destination === 'string' ? body.destination : null;
+    const promote = body?.promote === true;
 
     if (!rating) {
       return NextResponse.json({ error: 'rating 값이 필요합니다. (up/down)' }, { status: 400 });
@@ -29,6 +39,18 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // 새 response_feedback 테이블에 적재 (학습 신호 본체)
+      void recordResponseFeedback({
+        source: 'qa_chat',
+        sessionId,
+        conversationId: sessionId,
+        reply: responseText ?? '',
+        rating: rating === 'up' ? 1 : -1,
+        raterType,
+        reasonCategory: reason,
+        metadata: { legacy: true },
+      });
+
       if (rating === 'down') {
         await recordAgentIncident({
           sessionId,
@@ -38,8 +60,17 @@ export async function POST(request: NextRequest) {
           details: { reason, responseText },
           detectedBy: 'qa-feedback',
         });
-      }
 
+        // 어드민의 down + promote 옵션이면 즉시 negative example 박제
+        if (raterType === 'admin' && promote && responseText) {
+          void promoteToNegativeExample({
+            destination,
+            badReplyExcerpt: responseText,
+            issueCategory: reason,
+            severity: 'warn',
+          });
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });

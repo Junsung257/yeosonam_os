@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 async function requireAdmin(request: NextRequest): Promise<string | null> {
   const token =
@@ -22,7 +23,7 @@ function hashKey(rawKey: string): string {
 
 // ─── GET: 키 목록 ────────────────────────────────────────────
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ data: [] });
   }
@@ -62,7 +63,7 @@ interface KeyCreateBody {
   allowed_ips?: string[];
 }
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -115,3 +116,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: logAndSanitize('admin-b2b-keys', err) }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

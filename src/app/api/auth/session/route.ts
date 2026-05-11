@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
       return fail(400, 'access_token이 필요합니다.');
     }
     if (refresh_token !== undefined) {
-      if (typeof refresh_token !== 'string' || refresh_token.length < 20 || refresh_token.length > 6000) {
+      // Supabase 프로젝트별로 refresh_token 길이가 다르다 (관측: 12자). 하한은 명백한 junk만 차단.
+      if (typeof refresh_token !== 'string' || refresh_token.length < 8 || refresh_token.length > 6000) {
         return fail(400, 'refresh_token 형식이 올바르지 않습니다.');
       }
     }

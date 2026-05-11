@@ -315,16 +315,36 @@
     {
       "path": "/api/cron/blog-regenerate-zero-click",
       "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/snapshot-inventory",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-booking-pace",
+      "schedule": "0 19 * * 0"
+    },
+    {
+      "path": "/api/cron/sync-flight-availability",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/sync-ota-prices",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/demand-forecast",
+      "schedule": "0 20 * * 1"
     }
   ],
   "functions": {
-    "src/app/api/cron/**/*.ts": { "maxDuration": 60 },
+    "src/app/api/cron/**/*.ts": { "maxDuration": 180 },
     "src/app/api/cron/agent-executor/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/auto-publish-loop/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/blog-publisher/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/blog-learn/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/blog-scheduler/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/blog-daily-summary/route.ts": { "maxDuration": 180 },
+    "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/card-news-refine/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/card-news-seasonal/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/daily-marketing/route.ts": { "maxDuration": 300, "memory": 1024 },
@@ -333,39 +353,12 @@
     "src/app/api/cron/ig-trend-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/threads-trend-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/sync-engagement/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/sync-creative-performance/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/trend-topic-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/cron/topical-rebuild/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/scoring-recompute/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/land-operator-reliability/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/mrt-hotel-ranking/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/mrt-revenue-sync/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/dynamic-pricing/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/payment-rules-learn/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/review-sentiment/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/journey-scheduler/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/refresh-seasonal/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/setup-new-destinations/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/post-travel/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/post-travel-reels/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/ad-optimizer/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/meta-optimize/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/free-travel-retarget/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/affiliate-settlement-draft/route.ts": { "maxDuration": 300 },
-    "src/app/api/cron/affiliate-anomaly-detect/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/affiliate-attribution-recalc/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/booking-attribution-audit/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/ledger-reconcile/route.ts": { "maxDuration": 180 },
     "src/app/api/cron/rag-incremental/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/serp-rank-snapshot/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/rank-tracking/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/gsc-index-rank/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/programmatic-seo-generator/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/content-drift-detect/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/churn-detect/route.ts": { "maxDuration": 180 },
-    "src/app/api/cron/fraud-detect/route.ts": { "maxDuration": 180 },
-    "src/app/api/qa/chat/route.ts": { "maxDuration": 60 },
+    "src/app/api/cron/affiliate-settlement-draft/route.ts": { "maxDuration": 300 },
     "src/app/api/free-travel/plan/route.ts": { "maxDuration": 120 },
     "src/app/api/register-via-ir/route.ts": { "maxDuration": 300, "memory": 1024 },
     "src/app/api/content/generate-all/route.ts": { "maxDuration": 300, "memory": 1024 }

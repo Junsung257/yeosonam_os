@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ interface StepResult {
  *  5. agent_tasks anonymize
  *  6. gdpr_deletion_log 기록
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+const postHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -215,3 +216,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     },
   });
 }
+
+export const POST = withAdminGuard(postHandler);

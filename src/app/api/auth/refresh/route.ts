@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
   if (!refreshToken) {
     return fail(401, 'refresh_token 없음');
   }
-  // Supabase refresh token은 충분히 긴 난수 문자열이다.
-  if (refreshToken.length < 20 || refreshToken.length > 6000) {
+  // Supabase 프로젝트별로 refresh_token 길이가 다르다 (관측: 12자). 하한은 명백한 junk만 차단.
+  if (refreshToken.length < 8 || refreshToken.length > 6000) {
     return fail(400, 'refresh_token 형식 오류');
   }
 

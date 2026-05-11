@@ -24,12 +24,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 // 동적이지만 응답 캐시 헤더로 CDN/브라우저 캐시 활용
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest) {
+const getHandler = async (_req: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       pendingActions: 0,
@@ -70,3 +71,5 @@ export async function GET(_req: NextRequest) {
     { headers: ADMIN_CACHE.hot },
   );
 }
+
+export const GET = withAdminGuard(getHandler);

@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getMonthlyUsage } from '@/lib/jarvis/cost-tracker'
+import { withAdminGuard } from '@/lib/admin-guard';
 
 function authorize(req: NextRequest, tenantId: string | null) {
   const role = req.headers.get('x-user-role') ?? 'anonymous'
@@ -20,7 +21,7 @@ function authorize(req: NextRequest, tenantId: string | null) {
   return false
 }
 
-export async function GET(req: NextRequest) {
+const getHandler = async (req: NextRequest) => {
   const tenantId = req.nextUrl.searchParams.get('tenantId')
   const monthsParam = req.nextUrl.searchParams.get('months')
   if (!tenantId) return NextResponse.json({ error: 'tenantId 필요' }, { status: 400 })
@@ -60,3 +61,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(result)
 }
+
+export const GET = withAdminGuard(getHandler);

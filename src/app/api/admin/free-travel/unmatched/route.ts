@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { requireAdminApiToken } from '@/lib/api-auth';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 const ResolveSchema = z.object({
   unmatchedId: z.string().uuid(),
@@ -9,7 +10,7 @@ const ResolveSchema = z.object({
   reason: z.string().min(1).max(200).optional(),
 });
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   const unauthorized = requireAdminApiToken(request);
   if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ unmatched });
 }
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   const unauthorized = requireAdminApiToken(request);
   if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -105,3 +106,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true, resolvedAt: now, matchReason: 'manual' });
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

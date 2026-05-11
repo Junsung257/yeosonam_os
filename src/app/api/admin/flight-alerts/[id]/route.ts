@@ -7,13 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(
+const patchHandler = async (
   request: NextRequest,
   { params }: { params: { id: string } },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -93,3 +94,5 @@ export async function PATCH(
     );
   }
 }
+
+export const PATCH = withAdminGuard(patchHandler);

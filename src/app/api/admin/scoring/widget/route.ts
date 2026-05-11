@@ -6,11 +6,12 @@
  */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) return NextResponse.json({ active_policy_version: null });
   const [policyRes, groupsRes, ltrRes, alertsRes, abRes] = await Promise.all([
     supabaseAdmin.from('scoring_policies').select('version').eq('is_active', true).limit(1).single(),
@@ -34,3 +35,5 @@ export async function GET() {
     } : null,
   });
 }
+
+export const GET = withAdminGuard(getHandler);

@@ -3,9 +3,10 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
 import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // GET: 파트너 신청 목록
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ applications: [] });
 
   const { searchParams } = request.nextUrl;
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST: 승인 또는 거절
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -135,3 +136,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);
