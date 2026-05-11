@@ -3,7 +3,6 @@ import './globals.css';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import MetaPixel from '@/components/MetaPixel';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
-import ConsentBanner from '@/components/ConsentBanner';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
@@ -122,7 +121,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MetaPixel />
         {children}
         <JarvisFloatingWidget />
-        <ConsentBanner />
         <SpeedInsights />
       </body>
     </html>

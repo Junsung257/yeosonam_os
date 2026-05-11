@@ -9,7 +9,7 @@ export function initSentryServer() {
     // 에러만 기록
     sampleRate: 1.0,
     integrations: [
-      new Sentry.Integrations.Http({ tracing: true }),
+      Sentry.httpIntegration(),
     ],
   });
 }
