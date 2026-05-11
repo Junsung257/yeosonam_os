@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import useSWR from 'swr';
 import { useToast } from '@/components/ui/Toast';
 import nextDynamic from 'next/dynamic';
 import type { MarketingCopy } from '@/lib/ai';
@@ -861,23 +862,21 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   // 콘텐츠 현황 맵 (상품ID → 발행된 채널 Set)
   const [contentStatusMap, setContentStatusMap] = useState<Map<string, Set<string>>>(new Map());
 
-  // 콘텐츠 현황 로드
+  // 콘텐츠 현황 로드 — 감사(2026-05-11): limit 500 → 100 + SWR dedup 30s.
+  const { data: contentHubData } = useSWR<{ creatives: { product_id: string; channel: string }[] }>(
+    packages.length ? `/api/content-hub?status=published&limit=100` : null,
+  );
   useEffect(() => {
-    if (!packages.length) return;
-    const ids = packages.slice(0, 50).map((p: Package) => p.id);
-    fetch(`/api/content-hub?status=published&limit=500`)
-      .then(r => r.json())
-      .then(d => {
-        const m = new Map<string, Set<string>>();
-        (d.creatives || []).forEach((c: { product_id: string; channel: string }) => {
-          if (!ids.includes(c.product_id)) return;
-          if (!m.has(c.product_id)) m.set(c.product_id, new Set());
-          m.get(c.product_id)!.add(c.channel);
-        });
-        setContentStatusMap(m);
-      })
-      .catch(() => {});
-  }, [packages]);
+    if (!contentHubData || !packages.length) return;
+    const ids = new Set(packages.slice(0, 50).map((p: Package) => p.id));
+    const m = new Map<string, Set<string>>();
+    (contentHubData.creatives || []).forEach((c) => {
+      if (!ids.has(c.product_id)) return;
+      if (!m.has(c.product_id)) m.set(c.product_id, new Set());
+      m.get(c.product_id)!.add(c.channel);
+    });
+    setContentStatusMap(m);
+  }, [contentHubData, packages]);
 
   // handleBulkContentGen은 showToast 선언 뒤에 정의 (아래 참조)
 
@@ -1030,38 +1029,57 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     }
   };
 
-  const load = useCallback(async () => {
-    if (_skipInitialLoad.current) { _skipInitialLoad.current = false; return; }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set('limit', '500');
-      params.set('lite', '1');
-      params.set('status', statusFilter || 'all');
-      params.set('page', String(currentPage));
-      params.set('sort', sortBy);
-      if (searchQuery.trim()) params.set('q', searchQuery.trim());
-      if (landOperatorFilter) params.set('land_operator', landOperatorFilter);
-      const res = await fetch(`/api/packages?${params.toString()}`);
-      const json = await res.json();
-      const nextTotalPages = Math.max(1, json.totalPages || 1);
-      if (currentPage > nextTotalPages) {
-        setCurrentPage(nextTotalPages);
-        return;
-      }
-      setPackages(json.data || []);
-      setTotalPages(nextTotalPages);
-      setTotalCount(json.count || 0);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  // 감사(2026-05-11): limit 500 → 100 (페이지네이션 의미 회복) + SWR (filter dedup + keepPreviousData).
+  // load() 는 SWR mutate wrapper — mutation 후 호출되어 강제 재fetch.
+  const listKey = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('limit', '100');
+    params.set('lite', '1');
+    params.set('status', statusFilter || 'all');
+    params.set('page', String(currentPage));
+    params.set('sort', sortBy);
+    if (searchQuery.trim()) params.set('q', searchQuery.trim());
+    if (landOperatorFilter) params.set('land_operator', landOperatorFilter);
+    return `/api/packages?${params.toString()}`;
+  }, [statusFilter, searchQuery, landOperatorFilter, currentPage, sortBy]);
+
+  const {
+    data: listData,
+    isLoading: swrLoading,
+    mutate: mutateList,
+  } = useSWR<{ data: Package[]; count: number; totalPages: number }>(
+    // initialPackages 가 있으면 첫 마운트에서는 SWR fetch 안 함 (RSC 데이터로 대체).
+    _skipInitialLoad.current ? null : listKey,
+    { fallbackData: initialPackages?.length ? undefined : undefined },
+  );
+
+  useEffect(() => {
+    if (!listData) return;
+    const nextTotalPages = Math.max(1, listData.totalPages || 1);
+    if (currentPage > nextTotalPages) {
+      setCurrentPage(nextTotalPages);
+      return;
     }
-  }, [statusFilter, searchQuery, landOperatorFilter, currentPage]);
+    setPackages(listData.data || []);
+    setTotalPages(nextTotalPages);
+    setTotalCount(listData.count || 0);
+    setLoading(false);
+  }, [listData, currentPage]);
+
+  // 외부 호출용 (mutation 후 강제 재fetch).
+  const load = useCallback(() => {
+    if (_skipInitialLoad.current) { _skipInitialLoad.current = false; return; }
+    mutateList();
+  }, [mutateList]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [statusFilter, searchQuery, landOperatorFilter]);
+
+  // SWR 로딩과 첫 진입(initialPackages 없음) 시에만 loading=true.
+  useEffect(() => {
+    setLoading(swrLoading && !initialPackages?.length);
+  }, [swrLoading, initialPackages?.length]);
 
   const openSelectedDetail = useCallback(async (pkg: Package) => {
     // lite 응답에는 itinerary_data가 없을 수 있으므로 상세 조회 후 열기
@@ -1083,12 +1101,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     setSelected(pkg);
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      load();
-    }, 250);
-    return () => clearTimeout(t);
-  }, [load]);
+  // 감사(2026-05-11): debounce useEffect 제거 — SWR key 의존성이 자동 fetch.
+  // SWR dedup 30s 가 빠른 키 변경(타이핑 등) 자체를 흡수.
 
   useEffect(() => {
     loadLogs();

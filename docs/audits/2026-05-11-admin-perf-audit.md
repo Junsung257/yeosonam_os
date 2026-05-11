@@ -281,7 +281,30 @@
 - customer_booking_stats 의 무한 행 fetch 제거 — N(전체) → 30(페이지) 로 좁힘.
 - drawer 의 모든 fetch SWR 화 — 같은 고객 재오픈 시 즉시 표시.
 
-## 11. 관련 파일
+## 11. Phase 2-A 적용 결과 (2026-05-11) — packages 페이지
+
+### 발견
+
+- `PackagesPageClient.tsx` (2078줄) 의 `load()` 가 `limit=500` 으로 fetch — 페이지네이션 의미 상실, 페이로드 폭증.
+- content-hub 마운트 fetch 도 `limit=500`.
+- 두 fetch 합쳐 페이지 mount 시 1000행 fetch + count='exact'.
+
+### 변경
+
+| 파일 | 변화 |
+|------|------|
+| [src/app/admin/packages/PackagesPageClient.tsx](../../src/app/admin/packages/PackagesPageClient.tsx) | (1) `load()` `limit:'500'` → `'100'`. (2) `useEffect+fetch` 패턴 → `useSWR` (filter 의존성 자동 dedup + keepPreviousData). (3) 250ms debounce 제거 (SWR가 흡수). (4) content-hub fetch 도 SWR 화 + `limit 500 → 100`. |
+
+### Before / After (dev, warm)
+
+| 지표 | Before | After | 변화 |
+|------|-------:|------:|-----:|
+| `/api/packages?limit=...` | limit=500, 4.3s | limit=100, **0.85s** (캐시 적중) | **−80%** |
+| `/api/content-hub?limit=...` | limit=500 | limit=100, 0.8s (warm) | 페이로드 −80% |
+| `/admin/packages` Playwright warm | 90s timeout ⛔ | 정상 로드 예상 | — |
+| 페이지간 재진입 | 매번 fetch | SWR dedup 30s | 즉시 |
+
+## 12. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)
