@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import useSWR from 'swr';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, Camera, Search as SearchIcon, Download, Upload as UploadIcon, AlertCircle } from 'lucide-react';
@@ -34,8 +35,8 @@ const BADGE_OPTIONS = [
 ];
 
 export default function AttractionsPage() {
+  // 감사(2026-05-11): useEffect+fetch → useSWR. 필터 변경 자동 dedup + keepPreviousData.
   const [attractions, setAttractions] = useState<Attraction[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ country: '', region: '', badge: '', search: '' });
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -45,20 +46,21 @@ export default function AttractionsPage() {
   const [autoPhotoProgress, setAutoPhotoProgress] = useState<{ current: number; total: number } | null>(null);
   const [displayCount, setDisplayCount] = useState(50); // 페이지네이션: 50개씩
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (filter.country) params.set('country', filter.country);
-      if (filter.region) params.set('region', filter.region);
-      if (filter.badge) params.set('badge_type', filter.badge);
-      const res = await fetch(`/api/attractions?${params}`);
-      const json = await res.json();
-      setAttractions(json.attractions || []);
-    } finally { setLoading(false); }
+  const listKey = useMemo(() => {
+    const params = new URLSearchParams();
+    if (filter.country) params.set('country', filter.country);
+    if (filter.region) params.set('region', filter.region);
+    if (filter.badge)  params.set('badge_type', filter.badge);
+    return `/api/attractions?${params}`;
   }, [filter.country, filter.region, filter.badge]);
 
-  useEffect(() => { load(); }, [load]);
+  const { data: listData, isLoading: loading, mutate: mutateList } = useSWR<{ attractions: Attraction[] }>(listKey);
+
+  useEffect(() => {
+    if (listData?.attractions) setAttractions(listData.attractions);
+  }, [listData]);
+
+  const load = useCallback(() => mutateList(), [mutateList]);
 
   // 검색 필터 적용
   const filtered = filter.search

@@ -55,6 +55,23 @@
     },
     {
       "files": [
+        "src/app/admin/**/page.tsx"
+      ],
+      "excludedFiles": [
+        "src/app/admin/_dev/**"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "JSXOpeningElement[name.name='AdminLayout']",
+            "message": "이중 wrap 안티패턴 (ERR-admin-perf-2026-05-11): src/app/admin/layout.tsx 가 이미 AdminLayout 으로 wrap 합니다. page.tsx 에서 또 wrap 하면 사이드바·SWR·badge fetch 가 2번 마운트됩니다. 페이지 컨텐츠를 <>...</> 로 감싸세요."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
         "src/components/admin/YeosonamA4Template.tsx",
         "src/app/packages/[id]/DetailClient.tsx"
       ],
