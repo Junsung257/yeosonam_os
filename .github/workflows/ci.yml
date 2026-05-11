@@ -1,0 +1,145 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast checks first (type safety, linting)
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: TypeScript strict check
+        run: npx tsc --strict --noEmit
+
+      - name: ESLint
+        run: npx eslint src --format=compact
+
+      - name: Type coverage
+        run: node scripts/check-type-coverage.js
+
+  # Build & test
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Visual regression tests
+        run: npx playwright install && npm run test:visual
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+  # Performance checks (parallel)
+  performance:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci && npm run build
+
+      - name: Start dev server
+        run: |
+          npm run dev &
+          for i in {1..60}; do
+            curl -s http://localhost:3000 && exit 0
+            sleep 1
+          done
+          exit 1
+
+      - name: Lighthouse CI
+        continue-on-error: true
+        run: |
+          npm install -g @lhci/cli@latest
+          lhci autorun || true
+
+      - name: Bundle analysis
+        continue-on-error: true
+        run: |
+          SIZE=$(du -sh build/ | cut -f1)
+          echo "Bundle size: $SIZE"
+
+  # Security checks
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: quality
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Final status check
+  status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [quality, build, performance, security]
+    if: always()
+
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.quality.result }}" == "failure" ||
+                "${{ needs.build.result }}" == "failure" ]]; then
+            echo "❌ CI failed"
+            exit 1
+          fi
+          echo "✅ All critical checks passed"
