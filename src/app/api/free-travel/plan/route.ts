@@ -343,6 +343,10 @@ JSON 필드:
         let flights:    FlightResult[]   = [];
         let hotels:     StayResult[]     = [];
         let activities: ActivityResult[] = [];
+        // Step 2.5 의 fallbackPkgs (여소남 패키지 비교 후보) 도 OTA 검색과 독립이라
+        // 같은 Promise.allSettled 에 합쳐 round-trip 1회 절감.
+        type FallbackPkg = { id: string; title: string; price_adult: number | null; product_highlights: unknown };
+        let fallbackPkgs: FallbackPkg[] = [];
 
         const searchTasks: Promise<void>[] = [];
 
@@ -371,6 +375,7 @@ JSON 필드:
         }
 
         // Promise.allSettled: 한 카테고리 실패해도 나머지 결과는 정상 push
+        // fallback 패키지 조회(Supabase) 도 OTA 검색과 독립이라 같이 fan-out.
         await Promise.allSettled([
           ...searchTasks,
           aggregator.searchStays({
@@ -398,6 +403,10 @@ JSON 필드:
             }));
             sendWithRequestId('activities', { items: activities, providerErrors: r.errors ?? [] });
           }),
+
+          aggregator.getFallbackPackages(normalizedDestination).then((r) => {
+            fallbackPkgs = (r ?? []) as FallbackPkg[];
+          }),
         ]);
 
         if (hotels.length === 0) {
@@ -410,14 +419,12 @@ JSON 필드:
         }
 
         // ── Step 3: Decoy 패키지 비교 ────────────────────────────────────────
+        // fallbackPkgs 는 Step 2 fan-out 에서 이미 채워짐 (Supabase round-trip 절감).
         sendWithRequestId('status', { step: 'comparison', message: '여소남 패키지와 비교 중...' });
-
-        const fallbackPkgs = await aggregator.getFallbackPackages(normalizedDestination);
 
         const hasAnyResults = flights.length > 0 || hotels.length > 0 || activities.length > 0;
 
-        type FallbackPkg = { id: string; title: string; price_adult: number | null; product_highlights: unknown };
-        const pkgs = fallbackPkgs as FallbackPkg[];
+        const pkgs = fallbackPkgs;
 
         sendWithRequestId('status', { step: 'itinerary', message: 'DeepSeek로 일정표를 구성하는 중...' });
         const itineraryBuilt = await generateDayPlansWithLlmOrFallback({
