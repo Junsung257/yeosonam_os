@@ -28,23 +28,30 @@ export async function GET(request: NextRequest) {
   const basisMeta = getBasisMeta(basis);
 
   try {
-    // 1. 어필리에이트별 링크 통계
-    const { data: affiliates } = await supabaseAdmin
-      .from('affiliates')
-      .select('id, name, referral_code, grade, bonus_rate, commission_rate, booking_count, total_commission, is_active')
-      .order('total_commission', { ascending: false }) as any;
+    // 감사(2026-05-11): 3개 top 쿼리 직렬 → Promise.all 병렬 + bookings limit 가드.
+    // bookings 는 affiliate 보유 행 전체를 가져오되, 무한 성장 대비 20000행 hard limit.
+    // 코호트 결정(첫 예약 채널)에 모든 행이 필요하지만 affiliate booking 은 보통 < 1만건.
+    const BOOKING_LIMIT = 20000;
 
-    // 2. 링크 통계 (클릭/전환) — basis 무관
-    const { data: links } = await supabaseAdmin
-      .from('influencer_links')
-      .select('affiliate_id, click_count, conversion_count') as any;
-
-    // 3. 어필리에이트 예약 — basis 필터 적용을 위해 created_at + departure_date + status 모두 select
-    const { data: bookings } = await supabaseAdmin
-      .from('bookings')
-      .select('affiliate_id, adult_count, adult_price, child_count, child_price, influencer_commission, created_at, departure_date, status')
-      .not('affiliate_id', 'is', null)
-      .or('is_deleted.is.null,is_deleted.eq.false') as any;
+    const [affiliatesRes, linksRes, bookingsRes] = await Promise.all([
+      supabaseAdmin
+        .from('affiliates')
+        .select('id, name, referral_code, grade, bonus_rate, commission_rate, booking_count, total_commission, is_active')
+        .order('total_commission', { ascending: false }),
+      supabaseAdmin
+        .from('influencer_links')
+        .select('affiliate_id, click_count, conversion_count'),
+      supabaseAdmin
+        .from('bookings')
+        .select('affiliate_id, adult_count, adult_price, child_count, child_price, influencer_commission, created_at, departure_date, status')
+        .not('affiliate_id', 'is', null)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .order('created_at', { ascending: false })
+        .limit(BOOKING_LIMIT),
+    ]);
+    const affiliates = affiliatesRes.data as any;
+    const links = linksRes.data as any;
+    const bookings = bookingsRes.data as any;
 
     // 파트너별 집계
     const linkMap = new Map<string, { clicks: number; conversions: number }>();
@@ -302,30 +309,38 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      basis,
-      basisMeta: {
-        id: basisMeta.id,
-        label: basisMeta.label,
-        shortLabel: basisMeta.shortLabel,
-        description: basisMeta.description,
+    return NextResponse.json(
+      {
+        basis,
+        basisMeta: {
+          id: basisMeta.id,
+          label: basisMeta.label,
+          shortLabel: basisMeta.shortLabel,
+          description: basisMeta.description,
+        },
+        kpi: {
+          totalClicks,
+          totalConversions,
+          conversionRate: totalClicks > 0 ? Math.round((totalConversions / totalClicks) * 1000) / 10 : 0,
+          totalRevenue,
+          totalCommission,
+          partnerCount: (affiliates || []).length,
+          activeCount: (affiliates || []).filter((a: any) => a.is_active).length,
+        },
+        partners,
+        monthly,
+        sub_stats: subStats,
+        sub_trend: subTrend,
+        model_compare: modelCompare,
+        cron_health: cronHealth,
       },
-      kpi: {
-        totalClicks,
-        totalConversions,
-        conversionRate: totalClicks > 0 ? Math.round((totalConversions / totalClicks) * 1000) / 10 : 0,
-        totalRevenue,
-        totalCommission,
-        partnerCount: (affiliates || []).length,
-        activeCount: (affiliates || []).filter((a: any) => a.is_active).length,
+      {
+        // 어필리에이트 분석은 실시간성 낮음 — 2분 브라우저 + 5분 CDN + 10분 SWR.
+        headers: {
+          'Cache-Control': 'private, max-age=120, s-maxage=300, stale-while-revalidate=600',
+        },
       },
-      partners,
-      monthly,
-      sub_stats: subStats,
-      sub_trend: subTrend,
-      model_compare: modelCompare,
-      cron_health: cronHealth,
-    });
+    );
   } catch (err) {
     console.error('[Affiliate Analytics]', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });

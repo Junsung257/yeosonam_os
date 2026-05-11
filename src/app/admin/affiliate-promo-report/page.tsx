@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import AdminLayout from '@/components/AdminLayout';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Download } from 'lucide-react';
@@ -61,8 +60,7 @@ export default function AffiliatePromoReportPage() {
   };
 
   return (
-    <AdminLayout>
-      <div className="space-y-5">
+    <div className="space-y-5">
         <PageHeader
           title="프로모코드 성과 리포트"
           subtitle="코드별 예약/매출/커미션 성과를 확인합니다"
@@ -140,8 +138,7 @@ export default function AffiliatePromoReportPage() {
             </table>
           </div>
         )}
-      </div>
-    </AdminLayout>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import AdminLayout from '@/components/AdminLayout';
+import { useState } from 'react';
+import useSWR from 'swr';
 import KPIBasisToggle from '@/components/admin/KPIBasisToggle';
 import { DEFAULT_KPI_BASIS, getBasisMeta, type KPIBasis } from '@/lib/kpi-basis';
 import { fmtDateTime } from '@/lib/admin-utils';
@@ -77,51 +77,44 @@ interface CronHealth {
 const GRADE_LABELS = ['', '브론즈', '실버', '골드', '플래티넘', '다이아'];
 const GRADE_COLORS = ['', 'text-admin-muted', 'text-admin-muted', 'text-yellow-600', 'text-purple-600', 'text-blue-600'];
 
+interface AnalyticsResponse {
+  kpi: KPI | null;
+  partners: Partner[];
+  monthly: MonthlyData[];
+  sub_stats: SubStat[];
+  sub_trend: SubTrend[];
+  model_compare: ModelCompare | null;
+  cron_health: CronHealth[];
+}
+
+interface SettingsResponse {
+  attribution_model?: AttributionModel;
+}
+
 export default function AffiliateAnalyticsPage() {
-  const [kpi, setKpi] = useState<KPI | null>(null);
-  const [partners, setPartners] = useState<Partner[]>([]);
-  const [monthly, setMonthly] = useState<MonthlyData[]>([]);
-  const [subStats, setSubStats] = useState<SubStat[]>([]);
-  const [subTrend, setSubTrend] = useState<SubTrend[]>([]);
-  const [modelCompare, setModelCompare] = useState<ModelCompare | null>(null);
-  const [cronHealth, setCronHealth] = useState<CronHealth[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [attributionModel, setAttributionModel] = useState<AttributionModel>('last_touch');
+  // KPI 산식 기준 토글 — 예약(생성일, 수수료 정산) ↔ 매출 인식(출발일, IFRS 15)
+  const [basis, setBasis] = useState<KPIBasis>(DEFAULT_KPI_BASIS);
+  const basisMeta = getBasisMeta(basis);
   const [savingModel, setSavingModel] = useState(false);
 
-  // KPI 산식 기준 토글 — 예약(생성일, 수수료 정산) ↔ 매출 인식(출발일, IFRS 15)
-  // 어필리에이트 정산 정책은 commission(생성일) 기준이 default. 회계용 비교는 accounting.
-  const [basis, setBasis] = useState<KPIBasis>(DEFAULT_KPI_BASIS);
-  const [refetching, setRefetching] = useState(false);
-  const basisMeta = getBasisMeta(basis);
+  // SWR — basis 변경 시 자동 재fetch, keepPreviousData 로 토글 깜빡임 제거
+  const { data, isLoading, isValidating } = useSWR<AnalyticsResponse>(
+    `/api/admin/affiliate-analytics?basis=${basis}`,
+  );
+  const kpi          = data?.kpi ?? null;
+  const partners     = data?.partners ?? [];
+  const monthly      = data?.monthly ?? [];
+  const subStats     = data?.sub_stats ?? [];
+  const subTrend     = data?.sub_trend ?? [];
+  const modelCompare = data?.model_compare ?? null;
+  const cronHealth   = data?.cron_health ?? [];
+  const loading      = isLoading;
+  const refetching   = !isLoading && isValidating;
 
-  useEffect(() => {
-    // 초기 로드는 loading, basis 변경은 refetching (토글 유지)
-    const isInitial = kpi === null;
-    if (isInitial) setLoading(true); else setRefetching(true);
-    fetch(`/api/admin/affiliate-analytics?basis=${basis}`)
-      .then(r => r.json())
-      .then(data => {
-        setKpi(data.kpi || null);
-        setPartners(data.partners || []);
-        setMonthly(data.monthly || []);
-        setSubStats(data.sub_stats || []);
-        setSubTrend(data.sub_trend || []);
-        setModelCompare(data.model_compare || null);
-        setCronHealth(data.cron_health || []);
-      })
-      .finally(() => { setLoading(false); setRefetching(false); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basis]);
-
-  useEffect(() => {
-    fetch('/api/admin/affiliate-settings')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.attribution_model) setAttributionModel(d.attribution_model as AttributionModel);
-      })
-      .catch(() => {});
-  }, []);
+  const { data: settingsData, mutate: mutateSettings } = useSWR<SettingsResponse>(
+    '/api/admin/affiliate-settings',
+  );
+  const attributionModel: AttributionModel = settingsData?.attribution_model ?? 'last_touch';
 
   const saveAttributionModel = async (model: AttributionModel) => {
     setSavingModel(true);
@@ -132,7 +125,7 @@ export default function AffiliateAnalyticsPage() {
         body: JSON.stringify({ attribution_model: model }),
       });
       if (!res.ok) throw new Error();
-      setAttributionModel(model);
+      mutateSettings({ attribution_model: model }, { revalidate: false });
     } catch {
       alert('모델 저장 실패');
     } finally {
@@ -142,26 +135,24 @@ export default function AffiliateAnalyticsPage() {
 
   if (loading) {
     return (
-      <AdminLayout>
-        <div className="space-y-4 p-1">
-          <div className="grid grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
-                <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24" />
-                <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-32" />
-              </div>
-            ))}
-          </div>
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 h-40 animate-pulse" />
+      <div className="space-y-4 p-1">
+        <div className="grid grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
+              <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24" />
+              <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-32" />
+            </div>
+          ))}
         </div>
-      </AdminLayout>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 h-40 animate-pulse" />
+      </div>
     );
   }
 
   const maxRevenue = Math.max(...monthly.map(m => m.revenue), 1);
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -406,7 +397,7 @@ export default function AffiliateAnalyticsPage() {
           </div>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

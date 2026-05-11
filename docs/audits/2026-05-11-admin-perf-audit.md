@@ -215,7 +215,30 @@
 - 사이드바 배지가 60초마다 자동 갱신 (SWR refreshInterval) — 동일 데이터 페이지간 dedup.
 - 향후 Phase 1 SWR 마이그레이션의 기반 완료 (글로벌 `SWRConfig` provider 설치됨).
 
-## 8. 관련 파일
+## 8. Phase 1-A 적용 결과 (2026-05-11) — affiliate-analytics
+
+### 변경 사항
+
+| 파일 | 변화 |
+|------|------|
+| [src/app/admin/affiliate-analytics/page.tsx](../../src/app/admin/affiliate-analytics/page.tsx) | 이중 `<AdminLayout>` wrap 제거 + 2개 `useEffect` → 2개 `useSWR` (keepPreviousData 로 basis 토글 깜빡임 제거) |
+| [src/app/admin/affiliate-promo-report/page.tsx](../../src/app/admin/affiliate-promo-report/page.tsx) | 이중 `<AdminLayout>` wrap 제거 |
+| [src/app/api/admin/affiliate-analytics/route.ts](../../src/app/api/admin/affiliate-analytics/route.ts) | 3개 top 쿼리 직렬 → `Promise.all` 병렬 + bookings `limit(20000)` + 5분 CDN 캐시 |
+
+### Before / After
+
+| 지표 | Before | After | 변화 |
+|------|-------:|------:|-----:|
+| `/api/admin/affiliate-analytics` 첫 호출 | 3.8s | 1.4s | −63% |
+| `/api/admin/affiliate-analytics` 캐시 적중 | 3.8s | **0.24~0.31s** | **−92%** |
+| `/admin/affiliate-analytics` 페이지 AdminLayout 중복 mount | 2회 | 1회 | −50% |
+
+### 발견: 이중 `<AdminLayout>` wrap
+
+- `src/app/admin/layout.tsx` 가 이미 모든 어드민 페이지를 `<AdminLayout>` 으로 감싸지만, 2개 페이지 (`affiliate-analytics`, `affiliate-promo-report`)가 페이지 컴포넌트 내부에서 **추가로 wrap** 하여 사이드바·CommandPalette·SWR 가 두 번 마운트되고 있었음.
+- 다른 91개 어드민 페이지는 영향 없음.
+
+## 9. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)
