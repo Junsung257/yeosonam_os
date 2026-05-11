@@ -26,6 +26,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeWithLlm } from '@/lib/normalize-with-llm';
 import { convertIntakeToPackage, queueUnmatchedSegments } from '@/lib/ir-to-package';
 import { validateIntake, NORMALIZER_VERSION, type NormalizedIntake } from '@/lib/intake-normalizer';
+import { getIrCanaryStatus, pickCanaryEngine } from '@/lib/ir-canary';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Normalizer LLM 이 수 십 초 걸릴 수 있음
@@ -153,18 +154,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'landOperator·commissionRate 필수' }, { status: 400 });
     }
 
-    const engineMap: Record<string, 'deepseek' | 'gemini' | 'claude'> = {
-      deepseek: 'deepseek', gemini: 'gemini', claude: 'claude',
-    };
+    // ANTHROPIC_API_KEY 미설정 시 claude 요청을 deepseek 로 graceful degrade
+    const resolvedEngine = pickCanaryEngine(engine || null);
     const normResult = await normalizeWithLlm({
       rawText,
       landOperator,
       commissionRate,
-    }, { engine: engineMap[engine || 'deepseek'] || 'deepseek' });
+    }, { engine: resolvedEngine });
 
     if (!normResult.success || !normResult.ir) {
       return NextResponse.json(
-        { ok: false, step: 'normalize', engine: engine || 'deepseek', errors: normResult.errors, retryCount: normResult.retryCount },
+        { ok: false, step: 'normalize', engine: resolvedEngine, errors: normResult.errors, retryCount: normResult.retryCount, canary: getIrCanaryStatus() },
         { status: 422 },
       );
     }
@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       dryRun: true,
       engine: engine || 'deepseek',
+      canary: getIrCanaryStatus(),
       intakeId,
       ir,
       pkg: conversion.pkg,
@@ -287,6 +288,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     engine: engine || 'deepseek',
+    canary: getIrCanaryStatus(),
     intakeId,
     packageId: inserted.id,
     shortCode: inserted.short_code,
