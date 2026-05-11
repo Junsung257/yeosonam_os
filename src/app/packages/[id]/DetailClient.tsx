@@ -31,6 +31,7 @@ const TravelFitnessCard = nextDynamic(() => import('@/components/customer/Travel
 const TimezoneCard = nextDynamic(() => import('@/components/customer/TimezoneCard'), { loading: () => null });
 const PackingTipsCard = nextDynamic(() => import('@/components/customer/PackingTipsCard'), { loading: () => null });
 const PackageFAQ = nextDynamic(() => import('@/components/customer/PackageFAQ'), { loading: () => null });
+const ReviewDigestStrip = nextDynamic(() => import('@/components/customer/ReviewDigestStrip'), { ssr: false, loading: () => null });
 
 interface PriceTier {
   period_label: string;
@@ -696,6 +697,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
         )}
       </div>
+
+      {/* ═══ 리뷰 1줄 요약 strip (PR-F, cron review-digest 산출물) ═══ */}
+      <ReviewDigestStrip packageId={pkg.id} />
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}
       <section className="px-4 -mt-6 relative z-10">
