@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * 사진 없는 관광지 자동 Pexels 백필 — 이미지 파이프라인 Tier 3
@@ -72,13 +73,13 @@ const getHandler = async () => {
             .eq('id', attr.id);
 
           if (updateErr) {
-            console.error(`[fill-attraction-photos] UPDATE 실패 id=${attr.id}:`, updateErr.message);
+            logError(`[cron/fill-attraction-photos] update failed id=${attr.id}`, updateErr);
             errors++;
           } else {
             filled++;
           }
         } catch (e) {
-          console.error(`[fill-attraction-photos] id=${attr.id} 처리 실패:`, e instanceof Error ? e.message : e);
+          logError(`[cron/fill-attraction-photos] processing failed id=${attr.id}`, e);
           errors++;
         }
       })
@@ -93,7 +94,7 @@ const getHandler = async () => {
       durationMs: Date.now() - start,
     });
   } catch (error) {
-    console.error('[fill-attraction-photos] 크론 실패:', error);
+    logError('[cron/fill-attraction-photos] cron failed', error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : '처리 실패', durationMs: Date.now() - start },
       { status: 500 },

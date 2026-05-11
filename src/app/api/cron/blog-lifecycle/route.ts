@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * 블로그 라이프사이클 크론 — 매일 1:30 KST 실행
@@ -86,7 +87,7 @@ const getHandler = async () => {
     console.log(`[blog-lifecycle] ${archivedCount}개 블로그 아카이브`);
     return NextResponse.json({ archivedCount, archived, checkedAt: new Date().toISOString() });
   } catch (err) {
-    console.error('[blog-lifecycle] 오류:', err);
+    logError('[cron/blog-lifecycle] lifecycle processing failed', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '라이프사이클 처리 실패' },
       { status: 500 },

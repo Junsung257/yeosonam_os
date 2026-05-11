@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logError } from '@/lib/sentry-logger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -46,7 +47,7 @@ const getHandler = async (_request: NextRequest) => {
   const { data, error } = await supabaseAdmin.rpc('reconcile_ledger');
 
   if (error) {
-    console.error('[ledger-reconcile] RPC 실패:', error);
+    logError('[cron/ledger-reconcile] RPC failed', error);
     return NextResponse.json(
       { ok: false, error: error.message, code: error.code },
       { status: 500 },
@@ -71,12 +72,14 @@ const getHandler = async (_request: NextRequest) => {
   const sample = drifts.slice(0, 20);
   const totalAbsDrift = drifts.reduce((s: number, r: DriftRow) => s + Math.abs(Number(r.drift) || 0), 0);
 
-  console.error(
-    `[ledger-reconcile] ⚠️ drift ${driftCount}건 발견 (절대합 ${totalAbsDrift.toLocaleString()}원, ${elapsedMs}ms)`,
+  logError(
+    `[cron/ledger-reconcile] drift detected ${driftCount} (total abs drift ${totalAbsDrift}KRW, ${elapsedMs}ms)`,
+    { driftCount, totalAbsDrift, drifts: drifts.slice(0, 50), elapsedMs },
   );
   for (const row of drifts.slice(0, 50)) {
-    console.error(
-      `  - booking=${row.booking_id} account=${row.account} bookings=${row.bookings_balance} ledger=${row.ledger_sum} drift=${row.drift}`,
+    logError(
+      `[cron/ledger-reconcile] drift detail booking=${row.booking_id}`,
+      { account: row.account, bookings_balance: row.bookings_balance, ledger_sum: row.ledger_sum, drift: row.drift },
     );
   }
 

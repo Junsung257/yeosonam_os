@@ -26,6 +26,7 @@ import type { SlideV2 } from '@/lib/card-news/v2/types';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { onContentRefinementCreated } from '@/lib/task-hooks';
+import { logWarning } from '@/lib/sentry-logger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -233,7 +234,7 @@ async function runCardNewsRefine(request: NextRequest) {
           });
         } catch (e) {
           // federation 실패는 refine 성공에 영향 없음
-          console.warn('[card-news-refine] task-hook 실패 (무시):', e instanceof Error ? e.message : e);
+          logWarning('[cron/card-news-refine] task-hook failed (non-blocking)', e);
         }
       } catch (err) {
         summary.errors.push(`refine ${row.id}: ${err instanceof Error ? err.message : String(err)}`);

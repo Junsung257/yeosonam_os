@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { parseRawEvent, MAX_PARSE_ATTEMPTS } from '@/lib/slack-ingest';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ok: true, elapsed_ms: elapsed, ...summary });
   } catch (e: any) {
-    console.error('[dlq-replay] 최상위 예외:', e?.message ?? String(e));
+    logError('[cron/dlq-replay] replay failed', e);
     return NextResponse.json({ error: e?.message ?? 'replay 실패' }, { status: 500 });
   }
 }

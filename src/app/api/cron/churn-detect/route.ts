@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { logError } from '@/lib/sentry-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,7 +179,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : '취소 감지 실패';
-    console.error('[churn-detect] 오류:', err);
+    logError('[cron/churn-detect] detection failed', err);
     await sendSlackAlert(`[churn-detect] 크론 오류: ${message}`);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }

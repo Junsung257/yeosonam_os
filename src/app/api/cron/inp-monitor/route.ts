@@ -4,6 +4,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { getSecret } from '@/lib/secret-registry';
+import { logWarning } from '@/lib/sentry-logger';
 
 /**
  * INP 모니터링 — 매일 1회 실행 (PR-D)
@@ -64,12 +65,12 @@ async function callPsi(url: string, apiKey: string | null): Promise<PsiPayload |
       signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) {
-      console.warn(`[inp-monitor] PSI ${url} HTTP ${res.status}`);
+      logWarning(`[cron/inp-monitor] PSI request failed HTTP ${res.status}`, { url });
       return null;
     }
     return (await res.json()) as PsiPayload;
   } catch (e) {
-    console.warn(`[inp-monitor] PSI ${url} 호출 실패:`, e instanceof Error ? e.message : e);
+    logWarning(`[cron/inp-monitor] PSI request exception`, e);
     return null;
   }
 }

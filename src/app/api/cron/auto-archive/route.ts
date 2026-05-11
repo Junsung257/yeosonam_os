@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logError, logWarning } from '@/lib/sentry-logger';
 
 /**
  * 자동 아카이브 크론 — 매일 새벽 1시 실행
@@ -99,7 +100,7 @@ const getHandler = async () => {
         const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
         await skipBlogQueueForPackages(toArchive, 'auto_archived_package');
       } catch (e) {
-        console.warn('[auto-archive] blog_topic_queue skip 실패 (무시):', e);
+        logWarning('[cron/auto-archive] blog queue skip failed (non-blocking)', e);
       }
     }
 
@@ -107,7 +108,7 @@ const getHandler = async () => {
     return NextResponse.json({ archivedCount, message: `${archivedCount}개 상품 아카이브` });
 
   } catch (err) {
-    console.error('[auto-archive] 오류:', err);
+    logError('[cron/auto-archive] archive failed', err);
     return NextResponse.json({ error: '자동 아카이브 실패' }, { status: 500 });
   }
 }
