@@ -6,6 +6,7 @@ import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured, getBrandPla
 import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { getSecret } from '@/lib/secret-registry';
+import { logError, logWarning } from '@/lib/sentry-logger';
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest) {
               rewritten = true;
               kickRenderAfterCritic();
             } catch (regenErr) {
-              console.warn('[card-news POST] regenerate 재생성 실패(무시):', regenErr instanceof Error ? regenErr.message : regenErr);
+              logWarning('[api/card-news] regenerate failed (non-blocking)', regenErr);
             }
           }
           // cover_critic 스텝 완료 마킹 + critique 결과 기록
@@ -223,7 +224,7 @@ export async function POST(request: NextRequest) {
             rewritten,
           });
         } catch (err) {
-          console.warn('[card-news POST] 자동 cover critic 실패(무시):', err instanceof Error ? err.message : err);
+          logWarning('[api/card-news] cover critic failed (non-blocking)', err);
           updateFactoryJobStep(cardNews.id, 'cover_critic', 'failed', err instanceof Error ? err.message : '알 수 없는 오류');
         }
       }
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ card_news_id: cardNews.id, formats: ['1x1'] }),
-        }).catch(e => console.warn('[card-news POST] 자동 렌더 실패(무시):', e.message));
+        }).catch(e => logWarning('[api/card-news] auto render failed (non-blocking)', e));
       }
 
       return NextResponse.json({
@@ -308,7 +309,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ card_news: cardNews }, { status: 201 });
   } catch (error) {
-    console.error('카드뉴스 생성 실패:', error);
+    logError('[api/card-news] POST failed', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '생성 실패' },
       { status: 500 }
@@ -408,7 +409,7 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
           const arrMatch = cleaned.match(/\[[\s\S]*\]/);
           if (arrMatch) parsed = JSON.parse(arrMatch[0]);
         } catch {
-          console.warn('[Card News] JSON 복구 실패, fallback 사용');
+          logWarning('[api/card-news] JSON recovery failed, using fallback', null);
         }
       }
 
@@ -416,7 +417,7 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
         aiSlides = parsed.slice(0, slideCount);
       }
     } catch (err) {
-      console.warn('[Card News] AI 카피 실패, fallback 사용:', err instanceof Error ? err.message : err);
+      logWarning('[api/card-news] AI copy failed, using fallback', err);
     }
   }
 
@@ -443,7 +444,7 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
         const photos = await searchPexelsPhotos(keyword, 5);
         if (photos[0]?.src?.large2x) return photos[0].src.large2x;
       } catch (e) {
-        console.warn('[Card News] Pexels 검색 실패:', keyword, e instanceof Error ? e.message : e);
+        logWarning('[api/card-news] Pexels search failed', { keyword, error: e });
       }
     }
     // 2차: 키워드 단순화 후 재시도
@@ -550,7 +551,7 @@ ${toneDesc} 톤. 브랜드: 여소남. ${extraPrompt}
         aiSlides = parsed.slice(0, slideCount);
       }
     } catch (err) {
-      console.warn('[Info Card News] AI 카피 실패:', err instanceof Error ? err.message : err);
+      logWarning('[api/card-news] info card AI copy failed', err);
     }
   }
 
