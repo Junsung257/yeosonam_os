@@ -63,15 +63,30 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === 'bulk_tag') {
+      // 감사(2026-05-11): 기존 N+1 (SELECT+UPDATE × N) → 단일 RPC 1 round-trip.
+      // 마이그레이션: 20260518010000_admin_perf_customers_bulk_rpcs.sql
       const { ids, tag } = body as { ids: string[]; tag: string };
       if (!ids?.length || !tag) return NextResponse.json({ error: 'ids, tag 필요' }, { status: 400 });
-      for (const id of ids) {
-        const { data: cur } = await supabaseAdmin.from('customers').select('tags').eq('id', id).single();
-        const existing: string[] = (cur as any)?.tags || [];
-        const merged = Array.from(new Set([...existing, tag]));
-        await supabaseAdmin.from('customers').update({ tags: merged, updated_at: new Date().toISOString() }).eq('id', id);
-      }
-      return NextResponse.json({ ok: true });
+      const { data: updated, error } = await supabaseAdmin.rpc('merge_customer_tags', {
+        p_ids: ids,
+        p_tag: tag,
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, updated: updated ?? 0 });
+    }
+
+    if (body.action === 'bulk_field') {
+      // 동일 필드 일괄 변경 (예: 마일리지 리셋). 클라이언트 N PATCH → 1 UPDATE.
+      const { ids, field, value } = body as { ids: string[]; field: string; value: unknown };
+      const allowed = ['mileage', 'grade', 'status'];
+      if (!ids?.length) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      if (!allowed.includes(field)) return NextResponse.json({ error: '허용되지 않은 필드' }, { status: 400 });
+      const { error } = await supabaseAdmin
+        .from('customers')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, updated: ids.length });
     }
 
     if (!body.name?.trim()) {

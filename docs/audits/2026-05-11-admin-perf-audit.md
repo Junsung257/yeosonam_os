@@ -238,7 +238,28 @@
 - `src/app/admin/layout.tsx` 가 이미 모든 어드민 페이지를 `<AdminLayout>` 으로 감싸지만, 2개 페이지 (`affiliate-analytics`, `affiliate-promo-report`)가 페이지 컴포넌트 내부에서 **추가로 wrap** 하여 사이드바·CommandPalette·SWR 가 두 번 마운트되고 있었음.
 - 다른 91개 어드민 페이지는 영향 없음.
 
-## 9. 관련 파일
+## 9. Phase 1-B 적용 결과 (2026-05-11) — customers
+
+### 변경 사항
+
+| 파일 | 변화 |
+|------|------|
+| [supabase/migrations/20260518010000_admin_perf_customers_bulk_rpcs.sql](../../supabase/migrations/20260518010000_admin_perf_customers_bulk_rpcs.sql) | 신규: `merge_customer_tags(ids[], tag)` RPC |
+| [src/app/api/customers/route.ts](../../src/app/api/customers/route.ts) | `bulk_tag` N+1 (SELECT+UPDATE × N) → 단일 RPC. 신규 `bulk_field` action (마일리지 일괄 리셋 등) |
+| [src/app/admin/customers/page.tsx](../../src/app/admin/customers/page.tsx) | main load `useEffect` → `useSWR` (필터 의존 키, dedup 30s, keepPreviousData). `handleBulkMileageReset`: N PATCH → 1 POST bulk_field. load(args) 호출 8군데 → `setPage(1)` |
+
+### Before / After
+
+| 작업 | Before (round-trips) | After | 변화 |
+|------|---------------------:|------:|-----:|
+| 일괄 태깅 (100명) | 200 (SELECT + UPDATE × 100) | **1** (RPC) | **−99.5%** |
+| 일괄 마일리지 리셋 (100명) | 100 PATCH | **1** (UPDATE...IN) | **−99%** |
+| 필터 변경 후 동일 키 재진입 | 매번 fetch | dedup 30s | 무한 절감 |
+| 페이지 토글 (1↔2↔1) | 매번 fetch | SWR 캐시 적중 | 90%+ |
+
+> **유보**: drawer 의 bookings/notes/mileage fetch 는 별도 SWR 마이그로 분리 (Phase 1-C). customers list API 의 `count: 'exact'` 비용(3.6s) 도 별도 작업.
+
+## 10. 관련 파일
 
 - 측정 스크립트: [db/audit_admin_perf.js](../../db/audit_admin_perf.js)
 - AdminLayout 마운트 폭격: [src/components/AdminLayout.tsx:326-365](../../src/components/AdminLayout.tsx#L326-L365)

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
 import { GRADE_STYLE, LIFECYCLE_STAGES, getNextAction, type CustomerStatus } from '@/lib/mileage';
 import { BOOKING_STATUS_COLOR, BOOKING_STATUS_LABEL } from '@/lib/status-colors';
@@ -97,11 +98,12 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
 
 export default function CustomersPage() {
   // ── 목록 상태 ──────────────────────────────────────────────────────────────
+  // (감사 2026-05-11) main load 를 SWR 로 마이그 — 필터 dedup + 페이지간 캐시.
+  // customers 상태는 optimistic mutation 을 위해 별도 유지.
   const [customers, setCustomers]       = useState<Customer[]>([]);
   const [page, setPage]                 = useState(1);
   const [totalPages, setTotalPages]     = useState(1);
   const [totalCount, setTotalCount]     = useState(0);
-  const [isLoading, setIsLoading]       = useState(true);
   const [tab, setTab]                   = useState<'active' | 'trash'>('active');
   const [search, setSearch]             = useState('');
   const [sortBy, setSortBy]             = useState('created_at');
@@ -159,43 +161,34 @@ export default function CustomersPage() {
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }
 
-  // ─── 목록 로드 ─────────────────────────────────────────────────────────────
+  // ─── 목록 로드 (SWR) ────────────────────────────────────────────────────────
+  // 감사(2026-05-11): useEffect fetch → useSWR + dedup 30s + keepPreviousData.
+  const listKey = useMemo(() => {
+    const params = new URLSearchParams({
+      page: String(page), limit: '30', sortBy, sortDir,
+      trashed: String(tab === 'trash'),
+    });
+    if (search)       params.set('search', search);
+    if (gradeFilter)  params.set('grade', gradeFilter);
+    if (statusFilter) params.set('status', statusFilter);
+    return `/api/customers?${params}`;
+  }, [page, sortBy, sortDir, tab, search, gradeFilter, statusFilter]);
 
-  const load = useCallback(async (opts?: {
-    q?: string; p?: number; sb?: string; sd?: 'asc' | 'desc';
-    g?: string; st?: string; t?: 'active' | 'trash';
-  }) => {
-    setIsLoading(true);
-    try {
-      const q  = opts?.q  ?? search;
-      const p  = opts?.p  ?? page;
-      const sb = opts?.sb ?? sortBy;
-      const sd = opts?.sd ?? sortDir;
-      const g  = opts?.g  !== undefined ? opts.g  : gradeFilter;
-      const st = opts?.st !== undefined ? opts.st : statusFilter;
-      const t  = opts?.t  ?? tab;
+  const { data: listData, isLoading, mutate: mutateList } = useSWR<{
+    customers: Customer[]; count: number; totalPages: number;
+  }>(listKey);
 
-      const params = new URLSearchParams({
-        page: String(p), limit: '30', sortBy: sb, sortDir: sd,
-        trashed: String(t === 'trash'),
-      });
-      if (q)  params.set('search', q);
-      if (g)  params.set('grade', g);
-      if (st) params.set('status', st);
-
-      const res  = await fetch(`/api/customers?${params}`);
-      const data = await res.json();
-      setCustomers(data.customers || []);
-      setTotalPages(data.totalPages || 1);
-      setTotalCount(data.count || 0);
-      // 목록 변경 시 선택 초기화
+  useEffect(() => {
+    if (listData?.customers) {
+      setCustomers(listData.customers);
+      setTotalPages(listData.totalPages || 1);
+      setTotalCount(listData.count || 0);
       setSelectedIds(new Set());
-    } finally {
-      setIsLoading(false);
     }
-  }, [search, page, sortBy, sortDir, gradeFilter, statusFilter, tab]);
+  }, [listData]);
 
-  useEffect(() => { load(); }, [load]);
+  // 외부 호출용 — mutation 후 강제 재fetch.
+  const load = useCallback(() => { mutateList(); }, [mutateList]);
 
   // ─── 드로어 ────────────────────────────────────────────────────────────────
 
@@ -328,14 +321,18 @@ export default function CustomersPage() {
   // ─── 일괄 마일리지 초기화 ─────────────────────────────────────────────────
 
   async function handleBulkMileageReset() {
+    // 감사(2026-05-11): N PATCH round-trip → 단일 POST bulk_field 1 round-trip.
     const ids = [...selectedIds];
-    await Promise.all(ids.map(id =>
-      fetch('/api/customers', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, field: 'mileage', value: 0 }),
-      })
-    ));
+    if (!ids.length) return;
+    const res = await fetch('/api/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bulk_field', ids, field: 'mileage', value: 0 }),
+    });
+    if (!res.ok) {
+      showToast('마일리지 초기화 실패', 'error');
+      return;
+    }
     setCustomers(prev =>
       prev.map(c => selectedIds.has(c.id) ? { ...c, mileage: 0 } : c)
     );
@@ -395,7 +392,7 @@ export default function CustomersPage() {
   function handleSort(field: string) {
     const newDir = sortBy === field && sortDir === 'desc' ? 'asc' : 'desc';
     setSortBy(field); setSortDir(newDir);
-    load({ sb: field, sd: newDir, p: 1 });
+    setPage(1);
   }
   const sortIcon = (field: string) =>
     sortBy !== field ? <span className="text-admin-muted-2 ml-1">↕</span>
@@ -436,7 +433,8 @@ export default function CustomersPage() {
       setForm({ name: '', phone: '', email: '', passport_no: '', passport_expiry: '', birth_date: '', memo: '', gender: '' });
       setPhoneDupe(null);
       showToast('고객 등록 완료');
-      load({ p: 1 });
+      setPage(1);
+      mutateList();
     } else {
       showToast(data.error || '저장 실패', 'error');
     }
@@ -490,7 +488,7 @@ export default function CustomersPage() {
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="flex border border-admin-border-mid rounded overflow-hidden bg-white">
             {(['active', 'trash'] as const).map(t => (
-              <button key={t} onClick={() => { setTab(t); load({ t, p: 1 }); }}
+              <button key={t} onClick={() => { setTab(t); setPage(1); }}
                 className={`px-4 py-2 text-admin-sm font-medium ${tab === t ? 'bg-blue-600 text-white' : 'text-admin-muted hover:bg-admin-bg'}`}>
                 {t === 'active' ? '활성' : '휴지통'}
               </button>
@@ -498,20 +496,20 @@ export default function CustomersPage() {
           </div>
 
           <input value={search}
-            onChange={e => { setSearch(e.target.value); load({ q: e.target.value, p: 1 }); }}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="이름 / 전화번호 / 이메일"
             className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm w-52 focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
 
           <select value={gradeFilter}
-            onChange={e => { setGradeFilter(e.target.value); load({ g: e.target.value, p: 1 }); }}
+            onChange={e => { setGradeFilter(e.target.value); setPage(1); }}
             className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm">
             <option value="">전체 등급</option>
             {['VVIP', '우수', '일반', '신규'].map(g => <option key={g} value={g}>{g}</option>)}
           </select>
 
           <select value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value); load({ st: e.target.value, p: 1 }); }}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
             className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm">
             <option value="">전체 상태</option>
             {LIFECYCLE_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -724,10 +722,10 @@ export default function CustomersPage() {
         {/* 페이지네이션 */}
         {totalPages > 1 && (
           <div className="flex justify-center gap-2 mt-4">
-            <button disabled={page <= 1} onClick={() => { setPage(page - 1); load({ p: page - 1 }); }}
+            <button disabled={page <= 1} onClick={() => setPage(page - 1)}
               className="px-4 py-1.5 rounded border border-admin-border-strong text-admin-sm text-admin-text-2 disabled:opacity-40 hover:bg-admin-bg bg-white">이전</button>
             <span className="px-3 py-1.5 text-admin-sm text-admin-muted">{page} / {totalPages}</span>
-            <button disabled={page >= totalPages} onClick={() => { setPage(page + 1); load({ p: page + 1 }); }}
+            <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}
               className="px-4 py-1.5 rounded border border-admin-border-strong text-admin-sm text-admin-text-2 disabled:opacity-40 hover:bg-admin-bg bg-white">다음</button>
           </div>
         )}
