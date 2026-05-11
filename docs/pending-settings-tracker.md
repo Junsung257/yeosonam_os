@@ -29,6 +29,7 @@
 - ✅ `NEXT_PUBLIC_BASE_URL` = `https://www.yeosonam.com` — 설정 완료, www 카노니컬 통일 배포
 - ✅ `INDEXNOW_KEY` = `2bf8a3e4yeosonam7c1d9f6e0b5a` — 키 파일 공개 접근 허용, 25개 글 일괄 제출 완료
 - 👤 Google Indexing API — SA가 Search Console에서 **소유자(Owner)** 권한 없음 → 403 오류. Google Search Console → 설정 → 사용자 및 권한 → SA 이메일 추가 (Owner). 완료 후 `POST /api/blog/bulk-reindex` (Bearer SUPABASE_SERVICE_ROLE_KEY) 재실행
+- 🔑 `GSC_SERVICE_ACCOUNT_JSON` — `/api/cron/gsc-index-rank` 신규 크론 (2026-05-15)이 사용. 미설정 시 `GOOGLE_SERVICE_ACCOUNT_JSON` 으로 자동 fallback. 별도 SA 분리 시에만 신규 키 주입.
 
 ### 외부 API
 - 🔑 `ANTHROPIC_API_KEY` — Claude API (IR 파이프라인용, 기존 키 만료됨)
