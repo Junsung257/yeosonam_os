@@ -40,6 +40,8 @@ const PUBLIC_PATHS = [
   '/api/tenant/rfqs',
   // 광고 트래킹 (비회원 이벤트 수집 필요)
   '/api/tracking',
+  // 브리핑 PPT (공개 HTML 서빙)
+  '/briefings',
   // 크론 (서버-to-서버 호출)
   '/api/cron/post-travel',
   '/api/cron/ad-optimizer',
