@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import dynamic from 'next/dynamic';
 import localFont from 'next/font/local';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import PartytownInit from '@/components/PartytownInit';
 import MetaPixel from '@/components/MetaPixel';
@@ -176,6 +177,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <BottomTabBar />
         <ChatWidget />
         <JarvisFloatingWidget />
+        <SpeedInsights />
       </body>
     </html>
   );

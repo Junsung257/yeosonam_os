@@ -19,10 +19,10 @@ const isProd = process.env.NODE_ENV === 'production';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // ESLint 는 별도 step 에서 실행. next build 내부 lint 는 .eslintrc.json 플러그인 미설치로 실패하므로 일시 무력화.
-  // 운영 CI 에 `npm run lint` 를 별도 step 으로 명시하고 플러그인 설치 후 본 옵션 제거 권장.
+  // ESLint 빌드 통합 활성화 (2026-05-11 복원)
+  // 플러그인 설치 완료 → 빌드 중 lint 오류 즉시 감지
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   experimental: {
     instrumentationHook: true,

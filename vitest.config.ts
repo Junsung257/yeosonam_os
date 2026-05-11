@@ -20,9 +20,16 @@ export default defineConfig({
     exclude: ['node_modules', 'tests/visual', 'tests/regression', '.next', 'out'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      reporter: ['text', 'html', 'json', 'json-summary'],
       include: ['src/lib/**/*.ts'],
       exclude: ['src/lib/**/*.test.ts', 'src/lib/**/*.spec.ts'],
+      // PR마다 커버리지 기준 강제 (회귀 방지)
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 75,
+        statements: 80,
+      },
     },
   },
 });
