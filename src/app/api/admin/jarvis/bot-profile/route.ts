@@ -10,8 +10,25 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase'
 import { invalidatePersonaCache } from '@/lib/jarvis/persona'
+import { validateRequest, UuidSchema } from '@/lib/api-validation'
+
+const BotProfilePutSchema = z.object({
+  tenantId: UuidSchema,
+  bot_name: z.string().min(1).max(100).optional(),
+  greeting: z.string().max(2000).optional(),
+  persona_prompt: z.string().max(20000).optional(),
+  allowed_agents: z.array(z.string()).optional(),
+  allowed_tools: z.array(z.string()).optional(),
+  knowledge_scope: z.record(z.unknown()).optional(),
+  guardrails: z.record(z.unknown()).optional(),
+  branding: z.record(z.unknown()).optional(),
+  monthly_token_quota: z.number().int().min(0).optional(),
+  rate_limit_per_min: z.number().int().min(0).max(10000).optional(),
+  is_active: z.boolean().optional(),
+})
 
 function resolveScope(req: NextRequest) {
   const role = req.headers.get('x-user-role') ?? 'anonymous'
@@ -45,21 +62,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  let body: any
-  try { body = await req.json() } catch { body = {} }
+  const validation = await validateRequest(req, BotProfilePutSchema)
+  if (!validation.success) return validation.response
+  const { tenantId, ...patch } = validation.data
 
-  const { tenantId, ...patch } = body
-  if (!tenantId) return NextResponse.json({ error: 'tenantId 필요' }, { status: 400 })
   if (!authorize(req, tenantId)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  // 화이트리스트 — 허용된 필드만 업데이트
-  const allowed = ['bot_name', 'greeting', 'persona_prompt', 'allowed_agents', 'allowed_tools',
-    'knowledge_scope', 'guardrails', 'branding', 'monthly_token_quota', 'rate_limit_per_min', 'is_active'] as const
-  const updates: Record<string, any> = {}
-  for (const k of allowed) if (k in patch) updates[k] = patch[k]
-  updates.updated_at = new Date().toISOString()
+  const updates: Record<string, any> = { ...patch, updated_at: new Date().toISOString() }
 
   const { data: existing } = await supabaseAdmin
     .from('tenant_bot_profiles')

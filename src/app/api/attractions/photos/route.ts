@@ -1,22 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
+import { validateRequest, UuidSchema } from '@/lib/api-validation';
+
+const PhotoSearchSchema = z.object({
+  keyword: z.string().min(1).max(200),
+  per_page: z.number().int().min(1).max(10).default(5),
+});
+
+const PhotoItemSchema = z.object({
+  pexels_id: z.union([z.string(), z.number()]),
+  src_medium: z.string().url().max(500),
+  src_large: z.string().url().max(500),
+  photographer: z.string().max(200).optional(),
+  alt: z.string().max(500).optional(),
+});
+
+const PhotoSaveSchema = z.object({
+  id: UuidSchema,
+  photos: z.array(PhotoItemSchema).max(20),
+});
 
 /**
  * POST /api/attractions/photos — Pexels에서 사진 검색
- * body: { keyword: string, per_page?: number }
- * 반환: 선택 가능한 사진 목록
  */
 export async function POST(request: NextRequest) {
   if (!isPexelsConfigured()) {
     return NextResponse.json({ error: 'PEXELS_API_KEY 미설정', photos: [] }, { status: 503 });
   }
 
-  try {
-    const { keyword, per_page = 5 } = await request.json();
-    if (!keyword) return NextResponse.json({ error: 'keyword 필수' }, { status: 400 });
+  const validation = await validateRequest(request, PhotoSearchSchema);
+  if (!validation.success) return validation.response;
+  const { keyword, per_page } = validation.data;
 
-    const photos = await searchPexelsPhotos(keyword, Math.min(per_page, 10));
+  try {
+    const photos = await searchPexelsPhotos(keyword, per_page ?? 5);
 
     const simplified = photos.map(p => ({
       pexels_id: p.id,
@@ -40,11 +59,11 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
-  try {
-    const { id, photos } = await request.json();
-    if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
-    if (!Array.isArray(photos)) return NextResponse.json({ error: 'photos 배열 필요' }, { status: 400 });
+  const validation = await validateRequest(request, PhotoSaveSchema);
+  if (!validation.success) return validation.response;
+  const { id, photos } = validation.data;
 
+  try {
     const { error } = await supabaseAdmin
       .from('attractions')
       .update({ photos })
