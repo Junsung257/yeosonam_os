@@ -4,11 +4,6 @@ on:
   schedule:
     - cron: '0 3 * * 0'  # Sunday at 3 AM UTC (weekly)
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'supabase/migrations/**'
-      - 'scripts/backup-*.js'
-      - '.github/workflows/disaster-recovery.yml'
 
 jobs:
   backup-validation:

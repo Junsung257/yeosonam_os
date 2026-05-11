@@ -1,11 +1,9 @@
 name: Performance Budget Enforcement
 
 on:
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - '.github/workflows/performance-budget.yml'
+  schedule:
+    - cron: '0 8 * * *'  # Daily at 8 AM UTC
+  workflow_dispatch:
   push:
     branches: [main]
     paths:

@@ -12,6 +12,7 @@ jobs:
   bundle:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    continue-on-error: true  # bundlemon requires BUNDLEMON_PROJECT_ID secret
 
     steps:
       - name: Checkout code

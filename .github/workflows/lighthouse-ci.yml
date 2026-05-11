@@ -12,6 +12,7 @@ jobs:
   lighthouse:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true  # informational: needs Vercel preview URL + LHCI_GITHUB_APP_TOKEN
 
     steps:
       - name: Checkout code

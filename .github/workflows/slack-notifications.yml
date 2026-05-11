@@ -12,6 +12,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    continue-on-error: true  # requires SLACK_WEBHOOK_URL secret
 
     steps:
       - name: Checkout
