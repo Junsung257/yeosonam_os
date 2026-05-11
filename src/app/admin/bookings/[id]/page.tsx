@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, use } from 'react';
 import Link from 'next/link';
 import {
   JOURNEY_STEPS,
@@ -139,7 +139,8 @@ function ProgressBar({ status }: { status: string }) {
 }
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────
-export default function BookingJourneyPage({ params }: { params: { id: string } }) {
+export default function BookingJourneyPage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params);
   const { id } = params;
 
   const [booking, setBooking] = useState<BookingDetail | null>(null);

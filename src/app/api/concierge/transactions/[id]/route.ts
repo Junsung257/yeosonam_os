@@ -9,10 +9,8 @@ import {
 import { cancelProduct } from '@/lib/mock-apis';
 
 // GET /api/concierge/transactions/[id]
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -22,10 +20,8 @@ export async function GET(
 }
 
 // POST /api/concierge/transactions/[id]  body: { action: 'refund' }
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

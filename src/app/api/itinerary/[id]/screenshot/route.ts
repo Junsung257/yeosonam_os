@@ -9,10 +9,8 @@ import puppeteer from 'puppeteer';
  * summary  → 1장 (요금표 + 일정 개요)
  * detail   → 2장 (요금표 + 상세 일정표)
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const body = await request.json();
     const mode: 'summary' | 'detail' = body.mode ?? 'detail';

@@ -16,7 +16,8 @@ const ANGLE_LABELS: Record<string, string> = {
   food: '미식',
 };
 
-export default async function OgImage({ params }: { params: { slug: string } }) {
+export default async function OgImage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   let title = '여소남 여행 블로그';
   let destination = '';
   let angleLabel = '';

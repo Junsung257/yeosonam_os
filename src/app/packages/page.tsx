@@ -4,11 +4,12 @@ import PackagesClient from './PackagesClient';
 
 export const revalidate = 300; // 5분 ISR
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: { destination?: string; q?: string; month?: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    searchParams: Promise<{ destination?: string; q?: string; month?: string }>;
+  }
+): Promise<Metadata> {
+  const searchParams = await props.searchParams;
   const term = (searchParams.destination || searchParams.q || '').trim();
   const month = searchParams.month || '';
   if (term) {
@@ -44,11 +45,12 @@ function getSupabase() {
   );
 }
 
-export default async function PackagesPage({
-  searchParams,
-}: {
-  searchParams: { destination?: string; filter?: string; q?: string; month?: string; priceMax?: string };
-}) {
+export default async function PackagesPage(
+  props: {
+    searchParams: Promise<{ destination?: string; filter?: string; q?: string; month?: string; priceMax?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const destination = searchParams.destination || '';
   const filter = searchParams.filter || '';
   const q = searchParams.q?.trim() || '';

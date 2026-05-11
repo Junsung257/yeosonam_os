@@ -71,11 +71,12 @@ function ProgressBar({ status }: { status: string }) {
   );
 }
 
-export default async function MobileBookingDetail({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function MobileBookingDetail(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const booking = await fetchBooking(params.id);
   if (!booking) notFound();
 
@@ -240,7 +241,6 @@ export default async function MobileBookingDetail({
           </section>
         )}
       </main>
-
       <BookingActions
         bookingId={params.id}
         status={(booking as any).status}

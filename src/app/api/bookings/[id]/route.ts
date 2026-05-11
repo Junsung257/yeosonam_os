@@ -47,10 +47,8 @@ type PatchField = typeof PATCH_FIELDS[number];
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
@@ -82,10 +80,8 @@ export async function GET(
 
 // ── PATCH ─────────────────────────────────────────────────────────────────────
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },

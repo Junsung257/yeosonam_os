@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { updateMockConfig, isSupabaseConfigured } from '@/lib/supabase';
 
 // PUT /api/admin/mock-configs/[name]
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { name: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

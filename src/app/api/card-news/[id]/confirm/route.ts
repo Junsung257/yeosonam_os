@@ -11,10 +11,8 @@ import {
 import { getRateInfo } from '@/lib/exchange-rate';
 import { upsertCampaign } from '@/lib/supabase';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

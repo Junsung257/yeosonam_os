@@ -13,15 +13,16 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Next 15: serverComponentsExternalPackages → top-level serverExternalPackages 로 이동
+  // @resvg/resvg-js 는 .node native binding 포함 → webpack 이 처리 불가.
+  //   external 로 빼서 런타임에 require() 처리 (webpack 이 아예 터치 안 함).
+  // satori 도 yoga-wasm 번들 포함이라 external 권장.
+  serverExternalPackages: [
+    'isomorphic-dompurify',
+    '@resvg/resvg-js',
+    'satori',
+  ],
   experimental: {
-    // @resvg/resvg-js 는 .node native binding 포함 → webpack 이 처리 불가.
-    //   external 로 빼서 런타임에 require() 처리 (webpack 이 아예 터치 안 함).
-    // satori 도 yoga-wasm 번들 포함이라 external 권장.
-    serverComponentsExternalPackages: [
-      'isomorphic-dompurify',
-      '@resvg/resvg-js',
-      'satori',
-    ],
     // 자주 쓰는 큰 라이브러리에 자동 트리쉐이킹 적용 — dev 첫 컴파일/HMR 속도 개선.
     // 특히 lucide-react는 import 1개당 전체 아이콘 번들이 통째로 들어가는 패턴이라 효과 큼.
     // @supabase/supabase-js는 ESM/CJS 혼합이라 optimizePackageImports와 호환 안 됨(webpack chunk

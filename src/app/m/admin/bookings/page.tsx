@@ -65,11 +65,12 @@ async function fetchBookings(opts: {
   }));
 }
 
-export default async function MobileBookingsPage({
-  searchParams,
-}: {
-  searchParams: { tab?: string; departure?: string; sort?: string };
-}) {
+export default async function MobileBookingsPage(
+  props: {
+    searchParams: Promise<{ tab?: string; departure?: string; sort?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const tab = searchParams.tab ?? 'all';
   const activeTab = STATUS_TABS.find(t => t.key === tab) ?? STATUS_TABS[0];
   const departureToday = searchParams.departure === 'today';

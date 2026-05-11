@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   ShieldCheck, Award, Phone, ChevronDown, ChevronUp,
@@ -527,7 +527,8 @@ function ReviewSection({ score, count }: { score: number; count: number }) {
 // 메인 페이지
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function LandingPage({ params }: { params: { id: string } }) {
+export default function LandingPage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params);
   const searchParams = useSearchParams();
   const source = (searchParams.get('source') ?? 'default') as ChannelSource;
   const validSource: ChannelSource = ['insta', 'kakao'].includes(source) ? source : 'default';

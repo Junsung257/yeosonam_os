@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { cookies, type UnsafeUnwrappedCookies } from 'next/headers';
 import NotificationsClient from './_client';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +19,7 @@ export interface NotifRow {
 
 function userIdFromCookie(): string | null {
   try {
-    const token = cookies().get('sb-access-token')?.value;
+    const token = (cookies() as unknown as UnsafeUnwrappedCookies).get('sb-access-token')?.value;
     if (!token) return null;
     const payload = JSON.parse(
       Buffer.from(token.split('.')[1], 'base64').toString('utf-8'),
