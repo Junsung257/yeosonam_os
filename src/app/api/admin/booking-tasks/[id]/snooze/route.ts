@@ -7,7 +7,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { validateRequest } from '@/lib/api-validation';
+
+const SnoozeBodySchema = z
+  .object({
+    snoozed_until: z.string().datetime({ message: 'ISO 8601 datetime이어야 합니다' }).optional(),
+    hours: z.number().positive().optional(),
+    actor: z.string().min(1).optional(),
+  })
+  .refine(d => d.snoozed_until !== undefined || d.hours !== undefined, {
+    message: 'snoozed_until 또는 hours 중 하나가 필요합니다',
+  });
 
 export async function POST(
   request: NextRequest,
@@ -17,26 +29,16 @@ export async function POST(
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
+  const validation = await validateRequest(request, SnoozeBodySchema);
+  if (!validation.success) return validation.response;
+  const { snoozed_until, hours, actor: actorInput } = validation.data;
+
   try {
-    const body = await request.json().catch(() => ({}));
-    let until: string | null = null;
+    const until = snoozed_until
+      ? new Date(snoozed_until).toISOString()
+      : new Date(Date.now() + (hours as number) * 60 * 60 * 1000).toISOString();
 
-    if (typeof body.snoozed_until === 'string') {
-      const parsed = new Date(body.snoozed_until);
-      if (isNaN(parsed.getTime())) {
-        return NextResponse.json({ error: 'invalid snoozed_until' }, { status: 400 });
-      }
-      until = parsed.toISOString();
-    } else if (typeof body.hours === 'number' && body.hours > 0) {
-      until = new Date(Date.now() + body.hours * 60 * 60 * 1000).toISOString();
-    } else {
-      return NextResponse.json(
-        { error: 'snoozed_until 또는 hours 중 하나가 필요합니다' },
-        { status: 400 },
-      );
-    }
-
-    const actor = typeof body.actor === 'string' && body.actor ? `user:${body.actor}` : 'user:admin';
+    const actor = actorInput ? `user:${actorInput}` : 'user:admin';
 
     const { data, error } = await supabaseAdmin.rpc('snooze_booking_task', {
       p_task_id:       params.id,

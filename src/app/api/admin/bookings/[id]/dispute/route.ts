@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { validateRequest } from '@/lib/api-validation';
+
+const DisputeBodySchema = z.object({
+  dispute_flag: z.boolean(),
+  dispute_note: z.string().max(2000).optional().nullable(),
+});
 
 // POST: 분쟁 플래그 토글
 export async function POST(
@@ -8,14 +15,12 @@ export async function POST(
 ) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
+  const validation = await validateRequest(request, DisputeBodySchema);
+  if (!validation.success) return validation.response;
+  const { dispute_flag, dispute_note } = validation.data;
+
   try {
     const { id } = params;
-    const body = await request.json();
-    const { dispute_flag, dispute_note } = body;
-
-    if (typeof dispute_flag !== 'boolean') {
-      return NextResponse.json({ error: 'dispute_flag (boolean) 필수' }, { status: 400 });
-    }
 
     const { data, error } = await supabaseAdmin
       .from('bookings')

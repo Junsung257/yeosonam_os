@@ -6,7 +6,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { validateRequest } from '@/lib/api-validation';
+
+const ResolveBodySchema = z.object({
+  resolution: z.string().min(1).max(500).optional().default('manual'),
+  actor: z.string().min(1).max(100).optional(),
+});
 
 export async function POST(
   request: NextRequest,
@@ -16,10 +23,12 @@ export async function POST(
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
+  const validation = await validateRequest(request, ResolveBodySchema);
+  if (!validation.success) return validation.response;
+  const { resolution, actor: actorInput } = validation.data;
+
   try {
-    const body = await request.json().catch(() => ({}));
-    const resolution = typeof body.resolution === 'string' ? body.resolution : 'manual';
-    const actor      = typeof body.actor === 'string' && body.actor ? `user:${body.actor}` : 'user:admin';
+    const actor = actorInput ? `user:${actorInput}` : 'user:admin';
 
     const { data, error } = await supabaseAdmin.rpc('resolve_booking_task', {
       p_task_id:     params.id,
