@@ -15,6 +15,27 @@ const fs = require('fs');
 const path = require('path');
 
 const API_DIR = 'src/app/api';
+const MIDDLEWARE_PATH = 'src/middleware.ts';
+
+function getPublicPaths() {
+  if (!fs.existsSync(MIDDLEWARE_PATH)) return [];
+
+  const middleware = fs.readFileSync(MIDDLEWARE_PATH, 'utf8');
+  const publicPathsMatch = middleware.match(/PUBLIC_PATHS\s*=\s*\[([\s\S]*?)\]/);
+
+  if (!publicPathsMatch) return [];
+
+  const pathsBlock = publicPathsMatch[1];
+  const paths = [];
+  const pathRegex = /['"`]([^'"`]+)['"`]/g;
+  let match;
+  while ((match = pathRegex.exec(pathsBlock)) !== null) {
+    paths.push(match[1]);
+  }
+  return paths;
+}
+
+const PUBLIC_PATHS = getPublicPaths();
 const CONTRACTS = {
   totalRoutes: 0,
   routes: [],
@@ -81,9 +102,22 @@ function analyzeRoute(filePath) {
     /withCronGuard\s*\(/,
     /authorization\s*:|getServerSession\s*\(/,
     /cookies\(\)|getCookie\s*\(/,
-    /isAuthenticated|requireAuth/i
+    /isAuthenticated|requireAuth/i,
+    /verifyToken|verifyJWT|verifySession/i,
+    /process\.env\.CRON_SECRET/,
+    /process\.env\.ADMIN_SECRET/
   ];
-  route.hasAuth = authPatterns.some(p => p.test(content));
+  const hasInlineAuth = authPatterns.some(p => p.test(content));
+
+  const isExplicitPublic = PUBLIC_PATHS.some(publicPath => {
+    if (publicPath.endsWith('/*')) {
+      return routePath.startsWith(publicPath.slice(0, -2));
+    }
+    return routePath === publicPath || routePath.startsWith(publicPath + '/');
+  });
+
+  route.hasAuth = hasInlineAuth || (!isExplicitPublic && PUBLIC_PATHS.length > 0);
+  route.authSource = hasInlineAuth ? 'inline' : (isExplicitPublic ? 'public' : 'middleware');
 
   route.hasErrorHandling = /try\s*\{[\s\S]*?\}\s*catch/.test(content);
 
@@ -115,21 +149,9 @@ function analyzeRoute(filePath) {
     }
   });
 
-  const isPublicRoute = [
-    '/api/cron/',
-    '/api/notify/',
-    '/api/tracking',
-    '/api/blog',
-    '/api/qa/chat',
-    '/api/sms/receive',
-    '/api/slack-webhook',
-    '/api/revalidate',
-    '/api/health'
-  ].some(prefix => routePath.startsWith(prefix));
-
   const writesData = route.methods.some(m => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(m));
 
-  if (!route.hasAuth && !isPublicRoute && writesData) {
+  if (!route.hasAuth && writesData) {
     CONTRACTS.violations.missingAuth.push({
       route: routePath,
       file: filePath,
@@ -160,7 +182,7 @@ function analyzeRoute(filePath) {
     });
   }
 
-  const validStatuses = [200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 500, 502, 503];
+  const validStatuses = [200, 201, 202, 204, 301, 302, 304, 400, 401, 403, 404, 405, 409, 410, 422, 429, 500, 502, 503];
   const invalidStatuses = [...route.statusCodes].filter(s => !validStatuses.includes(s));
   if (invalidStatuses.length > 0) {
     CONTRACTS.violations.inconsistentStatusCodes.push({

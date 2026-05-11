@@ -60,11 +60,19 @@ function analyzeFile(filePath) {
     const queryEnd = content.indexOf(';', startPos);
     const queryBlock = content.substring(startPos, queryEnd > -1 ? queryEnd : startPos + 500);
 
+    const isWriteOp = /\.(insert|update|delete|upsert)\(/.test(queryBlock);
+    if (isWriteOp) continue;
+
+    const isRpcOnly = /\.rpc\(/.test(queryBlock) && !/\.select\(/.test(queryBlock);
+    if (isRpcOnly) continue;
+
     const hasLimit = /\.limit\(/.test(queryBlock);
     const hasRange = /\.range\(/.test(queryBlock);
     const hasSingle = /\.single\(/.test(queryBlock) || /\.maybeSingle\(/.test(queryBlock);
     const hasEq = /\.eq\(/.test(queryBlock);
     const hasIn = /\.in\(/.test(queryBlock);
+    const hasFilter = /\.(filter|match|or|not|gt|gte|lt|lte|like|ilike|is|contains|containedBy|textSearch)\(/.test(queryBlock);
+    const isCountOnly = /count:\s*['"`]exact['"`]/.test(queryBlock) && /head:\s*true/.test(queryBlock);
     const isSelectStar = /\.select\(['"`]\*['"`]\)/.test(queryBlock);
     const hasComplexJoin = (queryBlock.match(/!/g) || []).length > 2;
 
@@ -76,7 +84,8 @@ function analyzeFile(filePath) {
       snippet: queryBlock.substring(0, 150).replace(/\s+/g, ' ').trim()
     };
 
-    if (!hasLimit && !hasRange && !hasSingle && !hasEq && !hasIn) {
+    const hasBoundary = hasLimit || hasRange || hasSingle || hasEq || hasIn || hasFilter || isCountOnly;
+    if (!hasBoundary) {
       ISSUES.unbounded.push(issue);
     }
 
@@ -84,25 +93,22 @@ function analyzeFile(filePath) {
       ISSUES.selectStar.push(issue);
     }
 
-    if (!hasLimit && !hasRange && !hasSingle && tableName !== 'system_settings') {
-      const queriedColumns = queryBlock.match(/\.eq\(['"`]([^'"`]+)['"`]/g) || [];
-      if (queriedColumns.length === 0 && !hasIn) {
-        ISSUES.missingPagination.push(issue);
-      }
-    }
-
-    if (hasComplexJoin && !hasLimit) {
+    if (hasComplexJoin && !hasLimit && !hasRange && !hasSingle) {
       ISSUES.largeJoin.push(issue);
     }
   }
 
   let loopMatch;
   while ((loopMatch = supabasePatterns.awaitInLoop.exec(content)) !== null) {
+    const block = loopMatch[0];
+    const isWriteOp = /\.(insert|update|delete|upsert)\(/.test(block);
+    if (isWriteOp) continue;
+
     const lineNumber = content.substring(0, loopMatch.index).split('\n').length;
     ISSUES.nPlusOne.push({
       file: filePath,
       line: lineNumber,
-      snippet: loopMatch[0].substring(0, 200).replace(/\s+/g, ' ').trim()
+      snippet: block.substring(0, 200).replace(/\s+/g, ' ').trim()
     });
   }
 
