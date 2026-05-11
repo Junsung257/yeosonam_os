@@ -30,6 +30,7 @@ import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { renderSlideV2, FORMATS } from '@/lib/card-news/v2/render-v2';
 import { insertBlogTopicQueue } from '@/lib/card-news/blog-topic-queue';
+import { logError, logWarning } from '@/lib/sentry-logger';
 import type { FormatKey, SlideV2 } from '@/lib/card-news/v2/types';
 import type { TemplateFamily } from '@/lib/validators/content-brief';
 
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
         const msg = err instanceof Error ? err.message : String(err);
         const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 8).join('\n') : '';
         diagnostics.push({ step, ok: false, err: msg, stack });
-        console.error(`[render-v2] 진단 "${step}" 실패:`, msg, '\n', stack);
+        logError(`[api/card-news/render-v2] diagnostics "${step}" failed`, err, { diagnosticStep: step });
         return false;
       }
     };
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
       // 깨진 URL 사전 차단 — 빈 문자열/상대경로/data: 등 모두 제거
       if (!isValidImageUrl(slide.bg_image_url)) {
         if (slide.bg_image_url) {
-          console.warn(`[render-v2] slide ${i + 1} bg_image_url 무효 → 제거:`, slide.bg_image_url);
+          logWarning(`[api/card-news/render-v2] invalid bg_image_url removed`, new Error(`slide ${i + 1}: ${slide.bg_image_url}`));
         }
         slide.bg_image_url = undefined;
       }
@@ -232,9 +233,10 @@ export async function POST(request: NextRequest) {
           } catch (imgErr) {
             const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
             const errStack = imgErr instanceof Error ? (imgErr.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
-            console.warn(
-              `[render-v2] slide ${i + 1}/${fk} 1차 렌더 실패 (bg_image_url=${effectiveSlide.bg_image_url ?? '(없음)'}):`,
-              msg, '\n', errStack,
+            logWarning(
+              `[api/card-news/render-v2] slide ${i + 1}/${fk} first render attempt failed`,
+              imgErr,
+              { slideIndex: i + 1, format: fk, bgImageUrl: effectiveSlide.bg_image_url ?? undefined },
             );
             slideImageDisabled = true;
             stage = 'retry-render';
@@ -272,7 +274,7 @@ export async function POST(request: NextRequest) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
-          console.error(`[render-v2] slide ${i + 1}/${fk} 실패 (stage=${stage}):`, msg, '\n', stack);
+          logError(`[api/card-news/render-v2] slide ${i + 1}/${fk} render failed`, err, { slideIndex: i + 1, format: fk, stage });
           return {
             slide_index: i,
             format: fk,
@@ -299,7 +301,7 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', body.card_news_id);
       } catch (err) {
-        console.warn('[render-v2] family 동기화 실패 (렌더 결과는 OK):', err instanceof Error ? err.message : err);
+        logWarning('[api/card-news/render-v2] template family sync failed (render OK)', err);
       }
     }
 
@@ -324,7 +326,7 @@ export async function POST(request: NextRequest) {
           .eq('id', body.card_news_id);
       }
     } catch (e) {
-      console.warn('[render-v2] slide_image_urls 동기화 실패 (비중단):', e instanceof Error ? e.message : e);
+      logWarning('[api/card-news/render-v2] slide_image_urls sync failed (non-blocking)', e);
     }
 
     // content_factory_jobs.steps.satori_render 업데이트
@@ -384,17 +386,17 @@ export async function POST(request: NextRequest) {
             .from('card_news')
             .update({ status: 'DRAFT', updated_at: new Date().toISOString() })
             .eq('id', body.card_news_id);
-          console.warn(`[render-v2] 전체 렌더 실패 → DRAFT 복귀: ${body.card_news_id}`);
+          logWarning('[api/card-news/render-v2] overall render failed, reverted to DRAFT', new Error(body.card_news_id));
         }
       }
     } catch (transitionErr) {
-      console.warn('[render-v2] RENDERING→CONFIRMED 전환 실패 (렌더 결과는 OK):', transitionErr instanceof Error ? transitionErr.message : transitionErr);
+      logWarning('[api/card-news/render-v2] RENDERING→CONFIRMED transition failed (render OK)', transitionErr);
     }
 
     return NextResponse.json({ renders: results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[render-v2] 전체 실패:', msg);
+    logError('[api/card-news/render-v2] overall render process failed', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
