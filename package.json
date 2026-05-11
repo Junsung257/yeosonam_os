@@ -128,6 +128,7 @@
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^17.4.0",
     "knip": "^6.12.2",
+    "schema-dts": "^2.0.0",
     "vitest": "^4.1.5"
   }
 }

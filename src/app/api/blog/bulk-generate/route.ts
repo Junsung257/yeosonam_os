@@ -10,6 +10,7 @@ import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE_BULK } from '@/lib/prompt-version';
 import { getTopPerformingBlogExcerpts, formatFewShotBlock } from '@/lib/blog-few-shot';
+import { formatHookCandidatesBlock } from '@/lib/copywriting/hook-templates';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 
@@ -79,6 +80,8 @@ export async function POST(request: NextRequest) {
       { excludeProductId: pkg.id, limit: 3, minViewCount: 30 },
     );
     const fewShotBlock = formatFewShotBlock(fewShotExamples);
+    // angle별 후킹 후보 5개 (검증 사례 기반) — Hook 게이트 통과 확률 ↑
+    const hookBlock = formatHookCandidatesBlock(angle, { count: 5 });
 
     const angleLabel = ANGLE_PRESETS[angle].label;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
@@ -142,7 +145,7 @@ export async function POST(request: NextRequest) {
 - H1·H2에 "${keyword}" 자연스럽게 포함
 - 도입부 2~3줄에서 "${focus}" 관점 분명히 제시
 
-${fewShotBlock}## 초안 (참고용 — 구조만 차용, 문장은 아래 P0 세일즈 프레임으로 재작성)
+${hookBlock}${fewShotBlock}## 초안 (참고용 — 구조만 차용, 문장은 아래 P0 세일즈 프레임으로 재작성)
 ${baseBlog.substring(0, 3000)}
 
 ═══════════════════════════════════════════════

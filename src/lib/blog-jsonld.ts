@@ -10,7 +10,19 @@
  *
  * Why: rich snippet 노출 시 CTR 18-30% 상승. Naver는 표준 schema.org 미지원이지만
  *      Google에서 큰 효과 + Bing/Yandex/Daum 모두 인식.
+ *
+ * 타입 안전 (PR-C): schema-dts 의 WithContext<X> 타입으로 컴파일 타임 검증.
+ *   잘못된 schema 사용은 build 단계에서 차단 → rich result 누락 0건 보장.
  */
+
+import type {
+  WithContext,
+  BlogPosting,
+  BreadcrumbList,
+  FAQPage,
+  HowTo,
+  TouristTrip,
+} from 'schema-dts';
 
 export interface FaqItem { q: string; a: string }
 
@@ -99,7 +111,7 @@ interface HowToTouristInput {
 function buildHowToSchema(
   opts: HowToTouristInput,
   howToSteps: HowToStep[],
-): object | null {
+): WithContext<HowTo> | null {
   if (howToSteps.length < 3) return null
   const dur = opts.duration
   const totalTime =
@@ -124,13 +136,13 @@ function buildHowToSchema(
       name: s.name,
       text: s.text,
     })),
-  }
+  } as WithContext<HowTo>
 }
 
 function buildStandaloneTouristTripSchema(
   opts: HowToTouristInput,
   howToSteps: HowToStep[],
-): object | null {
+): WithContext<TouristTrip> | null {
   if (!opts.productId || !opts.destination) return null
   const itinerary =
     howToSteps.length > 0
@@ -165,7 +177,7 @@ function buildStandaloneTouristTripSchema(
       name: '여소남',
       url: opts.baseUrl,
     },
-  }
+  } as WithContext<TouristTrip>
 }
 
 /** 블로그 상세 페이지 — 모든 JSON-LD를 한 번에 생성 (드리프트 방지) */
@@ -191,11 +203,11 @@ export interface BlogPostPageJsonLdInput {
 }
 
 export interface BlogPostPageJsonLdBundle {
-  blogPosting: object
-  breadcrumbList: object
-  faqPage: object | null
-  howTo: object | null
-  touristTrip: object | null
+  blogPosting: WithContext<BlogPosting>
+  breadcrumbList: WithContext<BreadcrumbList>
+  faqPage: WithContext<FAQPage> | null
+  howTo: WithContext<HowTo> | null
+  touristTrip: WithContext<TouristTrip> | null
 }
 
 export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPostPageJsonLdBundle {
@@ -238,9 +250,9 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
   const howTo = buildHowToSchema(howToTouristBase, howToSteps)
   const touristTrip = buildStandaloneTouristTripSchema(howToTouristBase, howToSteps)
 
-  const faqPage =
+  const faqPage: WithContext<FAQPage> | null =
     faqItems.length > 0
-      ? {
+      ? ({
           '@context': 'https://schema.org',
           '@type': 'FAQPage',
           mainEntity: faqItems.map(faq => ({
@@ -248,10 +260,10 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
             name: faq.q,
             acceptedAnswer: { '@type': 'Answer', text: faq.a },
           })),
-        }
+        } as WithContext<FAQPage>)
       : null
 
-  const blogPosting: object = {
+  const blogPosting = ({
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: title,
@@ -322,9 +334,9 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
         ],
       }),
     }),
-  }
+  } as WithContext<BlogPosting>)
 
-  const breadcrumbList: object = {
+  const breadcrumbList = ({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
@@ -342,7 +354,7 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
           ]
         : [{ '@type': 'ListItem', position: 3, name: title, item: pageUrl }]),
     ],
-  }
+  } as WithContext<BreadcrumbList>)
 
   return { blogPosting, breadcrumbList, faqPage, howTo, touristTrip }
 }

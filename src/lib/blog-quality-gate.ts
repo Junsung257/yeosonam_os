@@ -33,7 +33,7 @@ const THRESHOLDS = {
 const DEDUP_WINDOW_DAYS = 14;
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -259,6 +259,77 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
   };
 }
 
+/**
+ * AI-readable Structure 게이트 — Cue / AI Overviews / SGE 인용 최적화.
+ *
+ * 검증 5축 (criteria, 3개 이상 충족 시 PASS):
+ *   1. H2 밀도: info=5~9개, product=3~6개 (인용 가능한 의미 단위)
+ *   2. 정의 문단: H1 직후 200자 안에 "~란/~이란/~은/~는 …다" 또는 한 줄 답변형 종결
+ *   3. FAQ 블록: "Q.~" / "## 자주 묻는 질문" / "Q:" 패턴 ≥3
+ *   4. 질문형 H2: "?" 로 끝나는 H2 ≥1 (검색쿼리 ↔ 헤딩 매칭)
+ *   5. 추출 가능 자료: 숫자 리스트 ≥1 OR 테이블 ≥1 OR bullet list ≥2
+ *
+ * Why: 네이버 Cue / Google AI Overviews 는 짧은 정의 + Q&A + 리스트를 우선 발췌.
+ */
+export function checkAiReadability(
+  blog_html: string,
+  blog_type: 'product' | 'info' = 'product',
+): GateResult {
+  const lines = blog_html.split('\n');
+
+  // 1) H2 밀도
+  const h2Lines = lines.filter(l => /^##\s+\S/.test(l.trim()));
+  const h2Count = h2Lines.length;
+  const h2Range = blog_type === 'info' ? { min: 5, max: 9 } : { min: 3, max: 6 };
+  const h2Ok = h2Count >= h2Range.min && h2Count <= h2Range.max;
+
+  // 2) 정의 문단 — H1 다음 200자
+  const h1Idx = lines.findIndex(l => /^#\s+\S/.test(l.trim()));
+  const intro = stripMarkup(
+    lines.slice(h1Idx >= 0 ? h1Idx + 1 : 0).join('\n')
+  ).slice(0, 200);
+  // "~은/는/이란/란 …다/입니다/이다/이에요" 한 문장형 정의
+  const definitionOk = /[가-힣]{2,}(은|는|이란|란)\s.+?(?:다|입니다|이다|이에요|예요)\.?/.test(intro)
+    || /^[가-힣A-Za-z0-9]{2,}\s*[—:].+/.test(intro.split('.')[0] || '');
+
+  // 3) FAQ 블록 — Q.~ / Q:~ / "자주 묻는 질문" 헤딩 ≥3 표지
+  const faqHeadingRe = /##\s*(자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)/i;
+  const hasFaqHeading = lines.some(l => faqHeadingRe.test(l));
+  const qPatterns = (blog_html.match(/(^|\n)\s*(?:[*-]\s*)?Q[\.\:\)]\s*/g) || []).length;
+  const qHeadings = lines.filter(l => /^###?\s*Q[\.\:]/i.test(l.trim())).length;
+  const faqOk = hasFaqHeading || qPatterns >= 3 || qHeadings >= 3;
+
+  // 4) 질문형 H2
+  const questionH2 = h2Lines.filter(l => /[\?？]\s*$/.test(l.trim())).length;
+  const questionH2Ok = questionH2 >= 1;
+
+  // 5) 추출 가능 자료
+  const numberedList = (blog_html.match(/(^|\n)\s*\d+\.\s+\S/g) || []).length;
+  const bulletList = (blog_html.match(/(^|\n)\s*[*-]\s+\S/g) || []).length;
+  const tableRow = (blog_html.match(/(^|\n)\s*\|.+\|/g) || []).length;
+  // table 은 2행 이상이어야 의미. bullet 은 2개 이상.
+  const extractableOk = numberedList >= 1 || tableRow >= 2 || bulletList >= 2;
+
+  const criteria = [
+    { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
+    { key: 'definition_paragraph', ok: definitionOk, intro_preview: intro.slice(0, 80) },
+    { key: 'faq_block', ok: faqOk, qPatterns, qHeadings, hasFaqHeading },
+    { key: 'question_h2', ok: questionH2Ok, count: questionH2 },
+    { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
+  ];
+  const okCount = criteria.filter(c => c.ok).length;
+  const passed = okCount >= 3;
+
+  return {
+    gate: 'ai_readability',
+    passed,
+    reason: passed
+      ? undefined
+      : `AI 인용 최적화 ${okCount}/5 — 통과 기준 3 미달 (실패: ${criteria.filter(c => !c.ok).map(c => c.key).join(', ')})`,
+    evidence: { score: okCount, criteria },
+  };
+}
+
 export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   const since = new Date();
   since.setDate(since.getDate() - DEDUP_WINDOW_DAYS);
@@ -326,6 +397,8 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(checkLinks(input.blog_html, baseUrl));
   // 가독성 게이트 (info=70점, product=60점 — 상품 블로그는 마케팅 톤 허용)
   gates.push(checkReadability(input.blog_html, blogType === 'info' ? 70 : 60));
+  // AI 인용 최적화 (Cue/AIO/SGE) — 9번째 게이트
+  gates.push(checkAiReadability(input.blog_html, blogType));
 
   const failed = gates.filter(g => !g.passed);
   const summary = failed.length === 0
