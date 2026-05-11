@@ -104,73 +104,74 @@ function buildKeywordTable(keywords: KeywordPerformance[]) {
  *   keywords: { revenue_generating[], spending_only[], insufficient_data[], all[] }
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const { searchParams } = request.nextUrl;
-  const dateParam     = searchParams.get('date');
-  const platformParam = searchParams.get('platform') ?? undefined;
-  const filterParam   = searchParams.get('filter') ?? 'all';
+  try {
+    const { searchParams } = request.nextUrl;
+    const dateParam     = searchParams.get('date');
+    const platformParam = searchParams.get('platform') ?? undefined;
+    const filterParam   = searchParams.get('filter') ?? 'all';
 
-  if (!isSupabaseConfigured) {
-    const mock = buildMockDashboard(dateParam);
-    // filter 파라미터 적용
-    if (filterParam !== 'all' && filterParam in mock.keywords) {
-      return NextResponse.json({
-        ...mock,
-        keywords: {
-          ...mock.keywords,
-          filtered: mock.keywords[filterParam as keyof typeof mock.keywords],
-          active_filter: filterParam,
-        },
-      });
+    if (!isSupabaseConfigured) {
+      const mock = buildMockDashboard(dateParam);
+      if (filterParam !== 'all' && filterParam in mock.keywords) {
+        return NextResponse.json({
+          ...mock,
+          keywords: {
+            ...mock.keywords,
+            filtered: mock.keywords[filterParam as keyof typeof mock.keywords],
+            active_filter: filterParam,
+          },
+        });
+      }
+      return NextResponse.json(mock);
     }
-    return NextResponse.json(mock);
+
+    const [adAccounts, keywords, stats] = await Promise.all([
+      getAdAccounts(),
+      getKeywordPerformances({
+        platform: platformParam,
+        periodStart: dateParam ?? new Date().toISOString().slice(0, 10),
+        periodEnd: dateParam ?? new Date().toISOString().slice(0, 10),
+      }),
+      getAdDashboardStats(dateParam ?? undefined),
+    ]);
+
+    const accountsWithAlert = adAccounts.map((acc) => ({
+      platform: acc.platform,
+      account_name: acc.account_name,
+      current_balance: acc.current_balance,
+      daily_budget: acc.daily_budget,
+      low_balance: acc.current_balance <= acc.low_balance_threshold,
+      last_synced_at: acc.last_synced_at,
+    }));
+
+    const overallRoas = calcRoas(stats.total_revenue, stats.total_spend);
+    const keywordTable = buildKeywordTable(keywords);
+
+    const filteredKeywords =
+      filterParam !== 'all' && filterParam in keywordTable
+        ? keywordTable[filterParam as keyof typeof keywordTable]
+        : keywordTable.all;
+
+    return NextResponse.json({
+      date: dateParam ?? new Date().toISOString().slice(0, 10),
+      kpis: {
+        total_spend:      stats.total_spend,
+        total_revenue:    stats.total_revenue,
+        total_net_profit: stats.total_net_profit,
+        overall_roas_pct: overallRoas,
+      },
+      ad_accounts: accountsWithAlert,
+      keywords: {
+        ...keywordTable,
+        filtered: filteredKeywords,
+        active_filter: filterParam,
+      },
+    });
+  } catch (err) {
+    console.error('[admin/dashboard]', err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : '대시보드 조회 실패' },
+      { status: 500 },
+    );
   }
-
-  // ── 실제 Supabase 데이터 ────────────────────────────────────
-
-  const [adAccounts, keywords, stats] = await Promise.all([
-    getAdAccounts(),
-    getKeywordPerformances({
-      platform: platformParam,
-      periodStart: dateParam ?? new Date().toISOString().slice(0, 10),
-      periodEnd: dateParam ?? new Date().toISOString().slice(0, 10),
-    }),
-    getAdDashboardStats(dateParam ?? undefined),
-  ]);
-
-  // 광고 계정 잔액 부족 경고 플래그
-  const accountsWithAlert = adAccounts.map((acc) => ({
-    platform: acc.platform,
-    account_name: acc.account_name,
-    current_balance: acc.current_balance,
-    daily_budget: acc.daily_budget,
-    low_balance: acc.current_balance <= acc.low_balance_threshold,
-    last_synced_at: acc.last_synced_at,
-  }));
-
-  // 통합 ROAS
-  const overallRoas = calcRoas(stats.total_revenue, stats.total_spend);
-
-  const keywordTable = buildKeywordTable(keywords);
-
-  // filter 파라미터 적용
-  const filteredKeywords =
-    filterParam !== 'all' && filterParam in keywordTable
-      ? keywordTable[filterParam as keyof typeof keywordTable]
-      : keywordTable.all;
-
-  return NextResponse.json({
-    date: dateParam ?? new Date().toISOString().slice(0, 10),
-    kpis: {
-      total_spend:      stats.total_spend,
-      total_revenue:    stats.total_revenue,
-      total_net_profit: stats.total_net_profit,
-      overall_roas_pct: overallRoas,
-    },
-    ad_accounts: accountsWithAlert,
-    keywords: {
-      ...keywordTable,
-      filtered: filteredKeywords,
-      active_filter: filterParam,
-    },
-  });
 }
