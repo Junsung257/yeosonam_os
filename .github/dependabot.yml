@@ -1,0 +1,48 @@
+version: 2
+
+updates:
+  # npm dependencies — weekly security checks
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - admin
+    assignees:
+      - admin
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-major: "chore(deps)!:"
+      include: "scope"
+    pull-request-branch-name:
+      separator: "/"
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    ignore:
+      # Ignore major versions of stable packages — require manual review
+      - dependency-name: "next"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "react"
+        update-types:
+          - "version-update:semver-major"
+
+  # GitHub Actions — keep workflows up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:30"
+    labels:
+      - "ci/cd"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
