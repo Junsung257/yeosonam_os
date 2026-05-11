@@ -9,6 +9,7 @@ import {
   isSupabaseConfigured,
   supabaseAdmin,
 } from '@/lib/supabase';
+import { logError, logWarning } from '@/lib/sentry-logger';
 import {
   runSanitizePipeline,
   buildFullTextForValidation,
@@ -177,7 +178,7 @@ export async function GET(request: NextRequest) {
 
       // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
       //    travel_packages 가 수만 건으로 늘어나면 메모리 위험. RPC 정상화 우선.
-      console.warn('[GET /api/packages?aggregate=destination] RPC failed, using in-memory fallback', rpcErr);
+      logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
         .select('destination, price, price_tiers, price_dates, country')
@@ -226,7 +227,7 @@ export async function GET(request: NextRequest) {
         try {
           lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
         } catch (e) {
-          console.warn('[GET /api/packages?id] lp hero resolve failed', e);
+          logWarning('[api/packages] GET lp hero resolve failed', e);
         }
       }
 
@@ -314,7 +315,7 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (error) {
-    console.error('패키지 조회 오류:', error);
+    logError('[api/packages] GET query failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '조회 실패' }, { status: 500 });
   }
 }
@@ -362,7 +363,7 @@ export async function POST(request: NextRequest) {
             // draft 로 저장하고 에러는 validation_errors 필드에 기록 — 어드민이 수동 수정
             body.status = 'draft';
             body.validation_errors = errMsgs;
-            console.warn(`[POST /api/packages] draft 저장 (ALLOW_DRAFT=true): ${errMsgs.length}건 위반`);
+            logWarning(`[api/packages] POST draft saved with validation errors`, new Error(`${errMsgs.length} violations`));
           } else {
             // Hard block — 어떤 프론트엔드/외부 API 도 불량 데이터 INSERT 불가
             return NextResponse.json({
@@ -374,7 +375,7 @@ export async function POST(request: NextRequest) {
         }
       } catch (e) {
         // ACL/Zod 모듈 import 자체 실패 — 이건 심각 (스키마 파일 결실)
-        console.error('[POST /api/packages] Zod 모듈 로드 실패:', e instanceof Error ? e.message : e);
+        logError('[api/packages] POST Zod module load failed', e);
         return NextResponse.json({
           error: 'Zod 검증기 로드 실패 — 서버 설정 오류',
           detail: e instanceof Error ? e.message : String(e),
@@ -413,7 +414,7 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (e) {
-        console.warn('[packages] 중복 감지 실패 (무시하고 진행):', e);
+        logWarning('[api/packages] POST duplicate detection failed (ignored)', e);
       }
     }
 
@@ -466,10 +467,10 @@ export async function POST(request: NextRequest) {
           console.log(`[Sanitizer] ${body.title}: ${sanitizeCorrections.length}건 교정`, sanitizeCorrections);
         }
         if (sanitizeWarnings.length > 0) {
-          console.warn(`[Sanitizer] ${body.title}: ${sanitizeWarnings.length}건 경고`, sanitizeWarnings.map(w => w.rule));
+          logWarning(`[api/packages] POST text sanitizer warnings`, new Error(`${sanitizeWarnings.length} violations for "${body.title}"`));
         }
       } catch (e) {
-        console.error('[Sanitizer] 정제 실패 (무시하고 진행):', e);
+        logError('[api/packages] POST text sanitizer pipeline failed', e);
       }
     }
 
@@ -533,7 +534,7 @@ export async function POST(request: NextRequest) {
           .from('travel_packages')
           .update(patch)
           .eq('id', result.id);
-        if (patchErr) console.error('[packages] 후처리 update 실패:', patchErr, patch);
+        if (patchErr) logError('[api/packages] POST post-processing update failed', new Error(patchErr.message));
       }
     }
 
@@ -546,7 +547,7 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
-    console.error('패키지 저장 오류:', error);
+    logError('[api/packages] POST save failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '저장 실패' }, { status: 500 });
   }
 }
@@ -587,7 +588,7 @@ export async function PATCH(request: NextRequest) {
         revalidateTag('packages'); // Task 4: Tag-based Invalidation 적용
         revalidateLandingPagesForPackageIds(packageIds);
       } catch (e) {
-        console.warn('[packages] revalidatePath/Tag 실패 (무시):', e);
+        logWarning('[api/packages] PATCH revalidate paths failed (ignored)', e);
       }
       invalidateQaChatPackageCache();
       return NextResponse.json({ success: true, count: packageIds.length });
@@ -608,7 +609,7 @@ export async function PATCH(request: NextRequest) {
         const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
         await skipBlogQueueForPackages(packageIds, 'bulk_archive_package');
       } catch (e) {
-        console.warn('[packages] blog_topic_queue skip (bulk_archive):', e);
+        logWarning('[api/packages] PATCH blog_topic_queue skip on bulk_archive', e);
       }
       const { revalidateTag } = await import('next/cache');
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
@@ -697,7 +698,7 @@ export async function PATCH(request: NextRequest) {
         const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
         await skipBlogQueueForPackages([packageId], 'package_rejected');
       } catch (e) {
-        console.warn('[packages] blog_topic_queue skip (reject):', e);
+        logWarning('[api/packages] PATCH blog_topic_queue skip on reject', e);
       }
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
@@ -778,7 +779,7 @@ export async function PATCH(request: NextRequest) {
         const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
         await skipBlogQueueForPackages([packageId], `package_${resolvedPkgStatus}`);
       } catch (e) {
-        console.warn('[packages] blog_topic_queue skip (status):', e);
+        logWarning('[api/packages] PATCH blog_topic_queue skip on status change', e);
       }
     }
 
@@ -831,13 +832,13 @@ export async function PATCH(request: NextRequest) {
             .from('extractions_corrections')
             .insert(correctionRows);
           if (corrErr) {
-            console.warn('[Reflexion auto-track] INSERT 실패 (무시):', corrErr.message);
+            logWarning('[api/packages] PATCH reflexion auto-track insert failed', corrErr);
           } else {
             console.log(`[Reflexion auto-track] ${correctionRows.length}건 정정 자동 적립 (package=${packageId})`);
           }
         }
       } catch (e) {
-        console.warn('[Reflexion auto-track] 예외 (무시):', e instanceof Error ? e.message : e);
+        logWarning('[api/packages] PATCH reflexion auto-track exception', e);
       }
     }
 
@@ -875,12 +876,12 @@ export async function PATCH(request: NextRequest) {
                   after_value: { status: 'PAUSED', reason: `패키지 상태: ${newStatus}` },
                 });
               } catch (err) {
-                console.warn(`캠페인 ${campaign.id} 자동 일시정지 실패:`, err);
+                logWarning('[api/packages] PATCH campaign auto-pause failed', err, { campaignId: campaign.id });
               }
             })
           );
         } catch (err) {
-          console.warn('품절/기간만료 자동 일시정지 사이드이펙트 실패:', err);
+          logWarning('[api/packages] PATCH auto-pause campaign side-effect failed', err);
         }
       })();
     }
@@ -893,7 +894,7 @@ export async function PATCH(request: NextRequest) {
     );
     return NextResponse.json({ success: true, package: result });
   } catch (error) {
-    console.error('패키지 수정 오류:', error);
+    logError('[api/packages] PATCH update failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '처리 실패' }, { status: 500 });
   }
 }
@@ -914,7 +915,7 @@ export async function DELETE(request: NextRequest) {
     revalidateLandingPagesForPackage(id, null);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('패키지 삭제 오류:', error);
+    logError('[api/packages] DELETE failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '삭제 실패' }, { status: 500 });
   }
 }
