@@ -358,19 +358,20 @@ export async function creditMileageForBooking(
     const newSpent   = currentSpent + txAmount;
 
     // total_spent 갱신 → DB 트리거가 grade 자동 재계산
-    await supabaseAdmin
-      .from('customers')
-      .update({ mileage: newMileage, total_spent: newSpent, updated_at: new Date().toISOString() })
-      .eq('id', customerId);
-
-    await supabaseAdmin.from('mileage_history').insert([{
-      customer_id:    customerId,
-      delta:          earned,
-      reason:         '예약 적립',
-      booking_id:     bookingId,
-      transaction_id: transactionId ?? null,
-      balance_after:  newMileage,
-    }]);
+    await Promise.all([
+      supabaseAdmin
+        .from('customers')
+        .update({ mileage: newMileage, total_spent: newSpent, updated_at: new Date().toISOString() })
+        .eq('id', customerId),
+      supabaseAdmin.from('mileage_history').insert([{
+        customer_id:    customerId,
+        delta:          earned,
+        reason:         '예약 적립',
+        booking_id:     bookingId,
+        transaction_id: transactionId ?? null,
+        balance_after:  newMileage,
+      }]),
+    ]);
 
     console.log(`[CRM마일리지] ${grade} +${earned.toLocaleString()}P (잔액 ${newMileage.toLocaleString()}P)`);
   } catch (e) {

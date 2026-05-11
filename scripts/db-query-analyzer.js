@@ -98,17 +98,43 @@ function analyzeFile(filePath) {
     }
   }
 
-  let loopMatch;
-  while ((loopMatch = supabasePatterns.awaitInLoop.exec(content)) !== null) {
-    const block = loopMatch[0];
-    const isWriteOp = /\.(insert|update|delete|upsert)\(/.test(block);
+  const forLoopPattern = /for\s*\([^)]*\)\s*\{/g;
+  let forMatch;
+  while ((forMatch = forLoopPattern.exec(content)) !== null) {
+    const forStart = forMatch.index;
+    const bodyStart = forStart + forMatch[0].length - 1;
+
+    let braceDepth = 0;
+    let bodyEnd = bodyStart;
+    for (let i = bodyStart; i < content.length; i++) {
+      const ch = content[i];
+      if (ch === '{') braceDepth++;
+      else if (ch === '}') {
+        braceDepth--;
+        if (braceDepth === 0) { bodyEnd = i + 1; break; }
+      }
+    }
+
+    const loopHeader = forMatch[0];
+    const loopBody = content.substring(bodyStart, bodyEnd);
+
+    if (!/await\s+supabaseAdmin/.test(loopBody)) continue;
+
+    const isWriteOp = /\.(insert|update|delete|upsert)\(/.test(loopBody);
     if (isWriteOp) continue;
 
-    const lineNumber = content.substring(0, loopMatch.index).split('\n').length;
+    const isBatchLoop = /for\s*\(\s*let\s+\w+\s*=\s*\d+\s*;[^;]+;\s*\w+\s*\+=\s*(?:BATCH|CHUNK|PAGE|\d+)/.test(loopHeader);
+    if (isBatchLoop) continue;
+
+    const isRetryLoop = /attempt|retry/i.test(loopHeader);
+    if (isRetryLoop) continue;
+
+    const lineNumber = content.substring(0, forStart).split('\n').length;
+    const snippet = (loopHeader + loopBody.substring(0, 180)).replace(/\s+/g, ' ').trim();
     ISSUES.nPlusOne.push({
       file: filePath,
       line: lineNumber,
-      snippet: block.substring(0, 200).replace(/\s+/g, ' ').trim()
+      snippet: snippet.substring(0, 200)
     });
   }
 

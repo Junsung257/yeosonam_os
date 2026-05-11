@@ -862,11 +862,13 @@ ${uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n')}
               }
             }
           } else {
-            // 기존 관광지 mention_count 증가
+            // 기존 관광지 mention_count 증가 (병렬 처리)
             const mentionNames = [...new Set(allActivities.map(a => a.activity))];
-            for (const name of mentionNames) {
-              await supabaseAdmin.rpc('increment_mention_count', { attraction_name: name }).catch(() => {});
-            }
+            await Promise.all(
+              mentionNames.map(name =>
+                supabaseAdmin.rpc('increment_mention_count', { attraction_name: name }).catch(() => {})
+              )
+            );
           }
         }
       } catch (attrError) {

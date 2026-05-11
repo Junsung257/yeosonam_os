@@ -642,18 +642,12 @@ export async function PATCH(request: NextRequest) {
     if (overflowAction === 'mileage' && txType === '입금') {
       const { data: bk } = await supabaseAdmin
         .from('bookings')
-        .select('total_price, lead_customer_id')
+        .select('total_price, lead_customer_id, paid_amount')
         .eq('id', bookingId)
         .single();
 
       if (bk) {
-        const { data: bkAfter } = await supabaseAdmin
-          .from('bookings')
-          .select('paid_amount')
-          .eq('id', bookingId)
-          .single();
-
-        const overflow = Math.max(0, ((bkAfter as any)?.paid_amount || 0) - ((bk as any)?.total_price || 0));
+        const overflow = Math.max(0, ((bk as any)?.paid_amount || 0) - ((bk as any)?.total_price || 0));
         if (overflow > 0 && (bk as any)?.lead_customer_id) {
           const { data: cust } = await supabaseAdmin
             .from('customers')
