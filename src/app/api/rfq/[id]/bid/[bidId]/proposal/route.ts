@@ -34,8 +34,9 @@ function validateChecklist(checklist: Partial<ProposalChecklist>): string[] {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string; bidId: string } }
+  props: { params: Promise<{ id: string; bidId: string }> }
 ) {
+  const params = await props.params;
   const { id: rfqId, bidId } = params;
 
   if (!isSupabaseConfigured) {
@@ -63,8 +64,9 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; bidId: string } }
+  props: { params: Promise<{ id: string; bidId: string }> }
 ) {
+  const params = await props.params;
   const { id: rfqId, bidId } = params;
 
   if (!isSupabaseConfigured) {
@@ -186,8 +188,9 @@ export async function POST(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; bidId: string } }
+  props: { params: Promise<{ id: string; bidId: string }> }
 ) {
+  const params = await props.params;
   const { id: rfqId, bidId } = params;
 
   if (!isSupabaseConfigured) {

@@ -54,11 +54,12 @@ interface UsageData {
 
 const AGENT_OPTIONS = ['concierge', 'operations', 'products', 'finance', 'marketing', 'sales', 'system']
 
-export default function TenantBotProfilePage(props: { params: Promise<{ tenantId: string }> | { tenantId: string } }) {
+export default function TenantBotProfilePage(props: { params: Promise<Promise<{ tenantId: string }> | { tenantId: string }> }) {
+  const params = use(props.params);
   // Next.js 14: params is plain object; 15+: Promise. Defensively support both.
-  const resolved = (props.params && typeof (props.params as { then?: unknown }).then === 'function')
-    ? use(props.params as Promise<{ tenantId: string }>)
-    : (props.params as { tenantId: string })
+  const resolved = (params && typeof (params as { then?: unknown }).then === 'function')
+    ? use(params as Promise<{ tenantId: string }>)
+    : (params as { tenantId: string })
   const { tenantId } = resolved
   const [profile, setProfile] = useState<BotProfile | null>(null)
   const [usage, setUsage] = useState<UsageData | null>(null)

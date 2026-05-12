@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -41,7 +41,8 @@ const ALL_TYPES = ['RESERVATION', 'PAYMENT', 'PASSPORT', 'LIABILITY', 'COMPLAINT
 const ALL_SURFACES: NoticeSurface[] = ['a4', 'mobile', 'booking_guide'];
 const ALL_SEVERITIES: NoticeSeverity[] = ['critical', 'standard', 'info'];
 
-export default function TermsTemplateEditPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+export default function TermsTemplateEditPage(props: { params: Promise<Promise<{ id: string }> | { id: string }> }) {
+  const params = use(props.params);
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -200,7 +201,6 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
           </button>
         </div>
       </div>
-
       {/* 기본 정보 */}
       <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
         <h2 className="text-sm font-bold text-admin-text">기본 정보</h2>
@@ -259,7 +259,6 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
           />
         </div>
       </section>
-
       {/* Scope */}
       <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
         <h2 className="text-sm font-bold text-admin-text">Scope (적용 조건)</h2>
@@ -300,7 +299,6 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
           </div>
         )}
       </section>
-
       {/* Notices */}
       <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -375,7 +373,6 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
           <p className="text-xs text-admin-muted-2 italic">블록이 없습니다. 상단 [+ 블록 추가] 버튼을 눌러 추가하세요.</p>
         )}
       </section>
-
       <div className="flex justify-end">
         <button
           onClick={save}

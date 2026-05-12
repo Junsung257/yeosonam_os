@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getInventoryBlocks, isSupabaseConfigured } from '@/lib/supabase';
 
 // GET /api/packages/[id]/inventory?from=YYYY-MM-DD&to=YYYY-MM-DD
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ blocks: [] });
   }

@@ -10,10 +10,8 @@ import {
 import { generateFactBombingReport } from '@/lib/rfq-ai';
 
 // GET: 기 분석된 TOP 3 제안서 + 순위 반환 (캐시된 결과)
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
@@ -74,10 +72,8 @@ const MOCK_RANKED: RfqProposal[] = [
   },
 ];
 
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {

@@ -7,10 +7,8 @@ import {
   GroupRfq,
 } from '@/lib/supabase';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { rfqId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ rfqId: string }> }) {
+  const params = await props.params;
   const { rfqId } = params;
   const { searchParams } = new URL(request.url);
   const tenantId = searchParams.get('tenant_id');

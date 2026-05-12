@@ -3,10 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { transitionAgentTask } from '@/lib/agent/tasking';
 import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });

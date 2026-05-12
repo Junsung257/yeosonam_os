@@ -128,13 +128,14 @@ function A4Page({ children }: { children: React.ReactNode }) {
 }
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────
-export default async function PrintPage({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams: { mode?: string; date?: string };
-}) {
+export default async function PrintPage(
+  props: {
+    params: Promise<{ id: string }>;
+    searchParams: Promise<{ mode?: string; date?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const departureDate = searchParams.date || null;
 
   const pkg = await loadPackage(params.id);

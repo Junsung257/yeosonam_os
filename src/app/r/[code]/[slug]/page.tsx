@@ -15,11 +15,12 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
-  params: { code: string; slug: string };
-  searchParams?: { sub?: string };
+  params: Promise<{ code: string; slug: string }>;
+  searchParams?: Promise<{ sub?: string }>;
 }
 
-export async function generateMetadata({ params }: Params): Promise<Metadata> {
+export async function generateMetadata(props: Params): Promise<Metadata> {
+  const params = await props.params;
   const { code: rawCode, slug } = params;
   const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
@@ -62,7 +63,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-export default async function AffiliateShortLinkPage({ params, searchParams }: Params) {
+export default async function AffiliateShortLinkPage(props: Params) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { code: rawCode, slug } = params;
   const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
   const subRaw =

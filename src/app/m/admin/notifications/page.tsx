@@ -17,9 +17,9 @@ export interface NotifRow {
   created_at: string;
 }
 
-function userIdFromCookie(): string | null {
+async function userIdFromCookie(): Promise<string | null> {
   try {
-    const token = cookies().get('sb-access-token')?.value;
+    const token = (await cookies()).get('sb-access-token')?.value;
     if (!token) return null;
     const payload = JSON.parse(
       Buffer.from(token.split('.')[1], 'base64').toString('utf-8'),
@@ -32,7 +32,7 @@ function userIdFromCookie(): string | null {
 
 async function fetchNotifs(): Promise<NotifRow[]> {
   if (!isSupabaseConfigured) return [];
-  const userId = userIdFromCookie();
+  const userId = await userIdFromCookie();
   if (!userId) return [];
   const { data } = await supabaseAdmin
     .from('push_notifications')

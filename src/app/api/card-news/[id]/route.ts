@@ -10,10 +10,8 @@ function resolveAppOriginForInternalFetch(): string {
   return `http://127.0.0.1:${process.env.PORT ?? 3000}`;
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -33,10 +31,8 @@ export async function GET(
  * 부분 업데이트 전용 PATCH. body 에 포함된 필드만 UPDATE.
  * (기존 구현은 title 누락 시 "제목 없음" 으로 덮어씀 — 버그였음)
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -129,10 +125,8 @@ export async function PATCH(
 }
 
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
