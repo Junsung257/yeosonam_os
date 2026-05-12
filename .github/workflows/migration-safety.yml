@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload safety report
         if: steps.changes.outputs.has_changes == 'true' && always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: migration-safety-report
           path: migration-safety-report.json

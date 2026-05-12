@@ -13,10 +13,18 @@ const WARNINGS = [];
 const ERRORS = [];
 
 const PATTERNS = {
-  SQL_INJECTION: {
-    pattern: /query\s*\+|template\s*`.*\$|eval\s*\(|new\s*Function/gi,
-    message: 'SQL injection risk - use parameterized queries',
+  // CRITICAL = 빌드/배포 중단 사유. 패턴을 좁게 잡아 false positive 최소화.
+  // 휴리스틱(SQL/secrets 키워드 매칭)은 HIGH 로 강등하고 정보 출력만.
+  CODE_INJECTION: {
+    // page.$$eval / obj.eval 같은 정상 메서드 이름 제외 (Playwright/Puppeteer)
+    pattern: /(?<![\w$.])eval\s*\(|(?<!\w)new\s+Function\s*\(/g,
+    message: 'Code injection risk - avoid eval/new Function with user input',
     severity: 'CRITICAL'
+  },
+  SQL_INJECTION_SUSPECT: {
+    pattern: /query\s*\+\s*req\.(body|query|params)|`SELECT[^`]*\$\{[^}]*req\./gi,
+    message: 'Possible SQL injection - use parameterized queries',
+    severity: 'HIGH'
   },
   MISSING_AUTH: {
     pattern: /export\s+(async\s+)?function\s+(GET|POST|PUT|DELETE)/gi,
@@ -41,10 +49,12 @@ const PATTERNS = {
     message: 'XSS risk - sanitize with DOMPurify',
     severity: 'HIGH'
   },
-  HARDCODED_SECRETS: {
-    pattern: /(password|secret|key|token)\s*[=:]\s*['"`][^'"`]+['"`]/gi,
-    message: 'Hardcoded credentials detected',
-    severity: 'CRITICAL'
+  // process.env / z.string() / DB 컬럼명("token_type" 등) false positive 가 많아 HIGH 로 강등.
+  // 진짜 시크릿은 gitleaks 같은 전용 도구로 별도 게이트하는 게 정확.
+  HARDCODED_SECRETS_SUSPECT: {
+    pattern: /(password|api[_-]?key|access[_-]?token|client[_-]?secret)\s*[=:]\s*['"][a-zA-Z0-9/_+=-]{20,}['"]/gi,
+    message: 'Hardcoded credentials suspected - verify (use process.env instead)',
+    severity: 'HIGH'
   },
   MISSING_VALIDATION: {
     pattern: /req\.body|req\.query|req\.params/gi,

@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload cost reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cost-monitoring-reports
           path: |
