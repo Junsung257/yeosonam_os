@@ -7,10 +7,8 @@ import {
 
 const TIER_DELAY_MS = parseInt(process.env.RFQ_TIER_DELAY_MINUTES ?? '10') * 60 * 1000;
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
 
   if (!isSupabaseConfigured) {
@@ -35,10 +33,8 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
 
   if (!isSupabaseConfigured) {

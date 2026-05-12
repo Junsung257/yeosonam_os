@@ -21,10 +21,8 @@ export const maxDuration = 120;
  *   - when='now' → 즉시 Threads Graph API 호출 (동기, 캐러셀 1~2분)
  *   - when='scheduled' → DB queued, /api/cron/publish-scheduled 가 매시간 처리
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }

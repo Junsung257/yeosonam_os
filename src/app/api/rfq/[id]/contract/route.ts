@@ -146,10 +146,8 @@ function generateContractHtml(params: {
 }
 
 // ── GET: 계약서 조회 ─────────────────────────────────────────────────────────
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
