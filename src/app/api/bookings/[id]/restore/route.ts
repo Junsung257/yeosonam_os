@@ -14,10 +14,8 @@ import { isSupabaseConfigured, supabaseAdmin, createMessageLog } from '@/lib/sup
  *
  * 데이터 손실 없음 — 복구 후에도 cancelled_at, cancel_reason 은 남아 "이 예약은 한 번 취소됐다 복구됨"을 알 수 있음.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

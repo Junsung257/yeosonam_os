@@ -5,10 +5,8 @@ import { isAdminRequest } from '@/lib/admin-guard';
 // ── PUT /api/brand-kits/[id] ───────────────────────────────────────────────
 // 브랜드킷 업데이트. 허용 필드: name, colors, fonts, logo_text, logo_url,
 // domain, voice_guide, voice_samples, is_active
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
@@ -46,10 +44,8 @@ export async function PUT(
 }
 
 // ── GET /api/brand-kits/[id] ───────────────────────────────────────────────
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
