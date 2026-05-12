@@ -47,6 +47,9 @@ import {
   buildConciergeExecutor,
 } from './agents/concierge'
 
+// S1 매직링크 통합 — 게스트 모드 가드레일 (Air Canada 방지) + tool whitelist (defense-in-depth)
+import { applyGuestGuardrail, filterGuestTools } from './guest-guardrail'
+
 /**
  * agent type → V2 config 조립. 전 agent V2 지원 (Phase 6 확장 완료).
  * ctx 는 concierge 등 tenant 스코프 executor 생성에 사용.
@@ -57,6 +60,17 @@ import {
  *       · surface='admin'    → products agent (관리자용 상품 CRUD)
  */
 async function buildConfig(agentType: AgentType, ctx: JarvisContext): Promise<DeepSeekAgentV2Config | null> {
+  const config = await buildConfigRaw(agentType, ctx)
+  if (!config) return null
+  // S1: 게스트(매직링크 진입 고객) — systemPrompt 가드레일 + mutating tool 화이트리스트
+  return {
+    ...config,
+    systemPrompt: applyGuestGuardrail(config.systemPrompt, ctx),
+    tools: filterGuestTools(config.tools as Array<{ name?: string } & Record<string, unknown>>, ctx) as typeof config.tools,
+  }
+}
+
+async function buildConfigRaw(agentType: AgentType, ctx: JarvisContext): Promise<DeepSeekAgentV2Config | null> {
   switch (agentType) {
     case 'operations':
       return {

@@ -59,6 +59,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/settlement-auto',
   '/api/cron/sync-creative-performance',
   '/api/cron/auto-archive',
+  '/api/cron/magic-tokens-cleanup',
   '/api/cron/resweep-unmatched',
   '/api/cron/embed-products',
   '/api/cron/blog-lifecycle',
@@ -205,6 +206,17 @@ const PUBLIC_PREFIXES = [
   '/api/package-reviews/',
   // Phase 3-G: 여권 OCR 고객 페이지
   '/passport-assist/',
+  // S1 매직링크 통합 — POST-confirm 착지 + 확인 라우트 (게스트)
+  '/m/link/',
+  '/api/m/',
+  // 자비스 게스트 챗 진입 (magic-session 쿠키로 인증, middleware 통과만 허용)
+  '/m/chat/',
+  '/m/booking/',
+  '/m/consent/',
+  '/m/companion/',
+  '/m/review/',
+  '/m/passport/',
+  '/m/pay/',
 ];
 
 // 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)

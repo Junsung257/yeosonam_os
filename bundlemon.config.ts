@@ -1,6 +1,6 @@
-import { BundlemonConfig } from 'bundlemon';
-
-const config: BundlemonConfig = {
+// bundlemon does not export a top-level config type in current versions —
+// keep the shape literal and let bundlemon validate at runtime.
+const config = {
   baseDir: './build',
   files: [
     {

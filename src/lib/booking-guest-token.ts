@@ -5,6 +5,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase';
 import { guestPortalTokenTtlDays } from '@/lib/booking-automation-policy';
+import { recordMagicLinkAudit } from '@/lib/magic-link-audit';
 
 export function hashGuestPortalToken(raw: string): string {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
@@ -38,6 +39,13 @@ export async function mintGuestPortalToken(bookingId: string): Promise<{ rawToke
 
   if (error) throw new Error(error.message);
 
+  // S1: 통합 감사 로그 — 기존 booking_guest_tokens 발급도 magic_link_audit 에 기록
+  void recordMagicLinkAudit({
+    actionType: 'booking_portal',
+    event: 'mint',
+    metadata: { source: 'booking_guest_tokens', booking_id: bookingId, ttl_days: ttlDays },
+  });
+
   return { rawToken, portalUrl: buildGuestPortalUrl(rawToken), expiresAt };
 }
 
@@ -57,7 +65,15 @@ export async function resolveGuestPortalBookingId(rawToken: string): Promise<{
     .gt('expires_at', now)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    void recordMagicLinkAudit({
+      actionType: 'booking_portal',
+      event: 'verify_fail',
+      success: false,
+      metadata: { source: 'booking_guest_tokens' },
+    });
+    return null;
+  }
   const row = data as { booking_id: string; id: string; expires_at: string };
   return { bookingId: row.booking_id, tokenRowId: row.id, tokenExpiresAt: row.expires_at };
 }
