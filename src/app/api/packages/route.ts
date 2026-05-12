@@ -248,9 +248,12 @@ export async function GET(request: NextRequest) {
     }
 
     // 목록 조회 — products JOIN 포함
+    // count: 'planned' — pg_stat 기반 추정 (수만 행 테이블에서 'exact' 보다 100배+ 빠름).
+    //   페이지 네비게이션 UI 목적에는 추정치로 충분. 정확도 필요 시 ?countMode=exact 명시.
+    const countMode = (searchParams.get('countMode') as 'exact' | 'planned' | 'estimated') || 'planned';
     let query = supabaseAdmin
       .from('travel_packages')
-      .select(lite ? PACKAGE_LIST_FIELDS_LITE : PACKAGE_LIST_FIELDS, { count: 'exact' })
+      .select(lite ? PACKAGE_LIST_FIELDS_LITE : PACKAGE_LIST_FIELDS, { count: countMode })
       .range(from, from + limit - 1);
 
     // 서버 정렬 (가격은 구조상 로컬 보조 정렬 유지 가능)
@@ -311,8 +314,10 @@ export async function GET(request: NextRequest) {
       attraction_preview_names: getAttractionPreviewNamesFromItinerary(row.itinerary_data, 4),
     }));
     const totalPages = Math.ceil((count ?? 0) / limit);
+    // Edge CDN cache 5분 + SWR 10분 (이전: 1분/2분).
+    //   상품 목록은 매분 바뀌지 않으므로 적극 캐시. 등록/승인 시 revalidatePath('/packages') 로 무효화.
     return NextResponse.json({ data: enrichedData, count: count ?? 0, totalPages }, {
-      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (error) {
     logError('[api/packages] GET query failed', error);
