@@ -91,4 +91,3 @@ export function DensityToggle({ className = '' }: DensityToggleProps) {
   );
 }
 
-export default DensityProvider;
