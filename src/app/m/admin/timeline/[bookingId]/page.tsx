@@ -38,11 +38,12 @@ async function fetchLogs(bookingId: string): Promise<TimelineRow[]> {
   return (data as TimelineRow[] | null) ?? [];
 }
 
-export default async function TimelinePage({
-  params,
-}: {
-  params: { bookingId: string };
-}) {
+export default async function TimelinePage(
+  props: {
+    params: Promise<{ bookingId: string }>;
+  }
+) {
+  const params = await props.params;
   const [meta, logs] = await Promise.all([
     fetchBookingMeta(params.bookingId),
     fetchLogs(params.bookingId),

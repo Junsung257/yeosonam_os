@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 
 interface BookingInfo {
   departure_date: string | null;
@@ -8,10 +8,11 @@ interface BookingInfo {
 }
 
 interface PageProps {
-  params: { token: string };
+  params: Promise<{ token: string }>;
 }
 
-export default function CompanionOnboardingPage({ params }: PageProps) {
+export default function CompanionOnboardingPage(props: PageProps) {
+  const params = use(props.params);
   const { token } = params;
 
   const [bookingInfo, setBookingInfo] = useState<BookingInfo | null>(null);

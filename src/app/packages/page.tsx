@@ -19,11 +19,12 @@ function hubMetaLabel(hub: DepartureHubId): string {
   return '청주 출발';
 }
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: { destination?: string; q?: string; month?: string; hub?: string; filter?: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    searchParams: Promise<{ destination?: string; q?: string; month?: string; hub?: string; filter?: string }>;
+  }
+): Promise<Metadata> {
+  const searchParams = await props.searchParams;
   let hub = normalizeDepartureHub(searchParams.hub);
   if ((searchParams.filter || '') === '인천출발' && !searchParams.hub) hub = 'incheon';
 
@@ -62,21 +63,22 @@ const PACKAGE_FIELDS = `
   products(internal_code, display_name)
 `;
 
-export default async function PackagesPage({
-  searchParams,
-}: {
-  searchParams: {
-    destination?: string;
-    filter?: string;
-    q?: string;
-    month?: string;
-    priceMin?: string;
-    priceMax?: string;
-    urgency?: string;
-    category?: string;
-    hub?: string;
-  };
-}) {
+export default async function PackagesPage(
+  props: {
+    searchParams: Promise<{
+      destination?: string;
+      filter?: string;
+      q?: string;
+      month?: string;
+      priceMin?: string;
+      priceMax?: string;
+      urgency?: string;
+      category?: string;
+      hub?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const destination = searchParams.destination || '';
   const rawFilter = searchParams.filter || '';
   /** 레거시 칩 "인천출발" 북마크 → 출발 허브 인천 (허브 필로 이관) */

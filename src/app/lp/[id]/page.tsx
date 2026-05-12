@@ -9,11 +9,12 @@ import { LpRouteSkeleton } from './LpRouteSkeleton';
 /** 세그먼트 ISR — unstable_cache(300s)와 함께 동작 */
 export const revalidate = 300;
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { id: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const data = await loadLpPackageForPage(params.id);
   if (!data) {
     return { title: '상품 | 여소남', robots: { index: false, follow: true } };
@@ -46,7 +47,8 @@ export async function generateMetadata({
   };
 }
 
-export default async function LpPage({ params }: { params: { id: string } }) {
+export default async function LpPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const data = await loadLpPackageForPage(params.id);
   if (!data) notFound();
 

@@ -15,10 +15,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { code: string } },
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const { code } = params;
 
   if (!isSupabaseConfigured || !supabaseAdmin) {

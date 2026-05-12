@@ -24,10 +24,11 @@ const PKG_CARD_FIELDS =
   'id, title, destination, country, price, display_title, product_summary, product_highlights, status';
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const params = await props.params;
   const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
   const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
   if (!looksLikeReferralCode(slug)) {
@@ -51,7 +52,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function AffiliateCoBrandLandingPage({ params }: PageProps) {
+export default async function AffiliateCoBrandLandingPage(props: PageProps) {
+  const params = await props.params;
   const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
   if (!looksLikeReferralCode(slug)) notFound();
 
@@ -129,7 +131,7 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
   const campaignEndsAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
   try {
-    const sid = cookies().get('ys_session_id')?.value || `ssr-${Date.now()}`;
+    const sid = (await cookies()).get('ys_session_id')?.value || `ssr-${Date.now()}`;
     await supabaseAdmin.from('affiliate_touchpoints').insert({
       session_id: sid,
       referral_code: row.referral_code,

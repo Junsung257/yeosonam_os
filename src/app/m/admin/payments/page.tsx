@@ -66,11 +66,12 @@ async function fetchTransactions(match: string[] | null): Promise<MobilePaymentR
   }));
 }
 
-export default async function MobilePaymentsPage({
-  searchParams,
-}: {
-  searchParams: { tab?: string };
-}) {
+export default async function MobilePaymentsPage(
+  props: {
+    searchParams: Promise<{ tab?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const tab = searchParams.tab ?? 'review';
   const activeTab = TABS.find(t => t.key === tab) ?? TABS[0];
   const rows = await fetchTransactions(activeTab.filter);
