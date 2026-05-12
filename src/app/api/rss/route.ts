@@ -2,12 +2,13 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
-export const dynamic = 'force-dynamic';
+// ISR 10분 — Edge CDN + 프레임워크 캐시 둘 다 활용. force-dynamic 보다 cold start 빠름.
+export const revalidate = 600;
 
 export async function GET() {
   const headers = {
     'Content-Type': 'application/rss+xml; charset=utf-8',
-    'Cache-Control': 'public, max-age=600, s-maxage=600',
+    'Cache-Control': 'public, max-age=600, s-maxage=600, stale-while-revalidate=3600',
   };
 
   if (!isSupabaseConfigured) {
@@ -15,9 +16,11 @@ export async function GET() {
   }
 
   try {
+    // blog_html 제외 (전체 본문은 무거움. snippet 은 seo_description fallback).
+    //   이전: blog_html 포함 시 50개 row 가 수 MB 됨 → 5초+ TTFB
     const { data: posts } = await supabaseAdmin
       .from('content_creatives')
-      .select('slug, seo_title, seo_description, blog_html, published_at, og_image_url, travel_packages(title, destination)')
+      .select('slug, seo_title, seo_description, published_at, og_image_url, travel_packages(title, destination)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
@@ -36,9 +39,8 @@ function buildFeed(posts: any[]): string {
     const desc = escXml(post.seo_description || '');
     const link = `${BASE_URL}/blog/${post.slug}`;
     const pubDate = post.published_at ? new Date(post.published_at).toUTCString() : new Date().toUTCString();
-    const snippet = escXml(
-      (post.blog_html || '').replace(/<[^>]*>/g, '').replace(/[#*\[\]()!|`>-]/g, '').trim().substring(0, 300)
-    );
+    // blog_html 안 가져오므로 seo_description 으로 fallback (이미 escape 된 desc 재사용).
+    const snippet = desc;
 
     return `    <item>
       <title>${title}</title>
