@@ -1,7 +1,7 @@
 import { supabaseAdmin, isSupabaseConfigured, getMessageLogs } from '@/lib/supabase';
 import BookingDetailClient from './BookingDetailClient';
 
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
 export default async function BookingDetailPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;

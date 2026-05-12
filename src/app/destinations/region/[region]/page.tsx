@@ -11,7 +11,7 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
 
 export const revalidate = 600;
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 

@@ -6,8 +6,8 @@ import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, Settings, Calendar, Tags } from 'lucide-react';
 
-// Windows dev: chunk race 방지 / Vercel(Linux): 60초 캐시
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+// Next 15: route segment config 는 정적 평가만 가능. 항상 'auto' (60초 캐시).
+export const dynamic = 'auto';
 export const revalidate = 60;
 
 function BlogTableSkeleton() {

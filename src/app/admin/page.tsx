@@ -1,9 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import AdminPageClient from './AdminPageClient';
 
-// Windows 로컬: force-dynamic (chunk race 회피)
-// Vercel(Linux): auto → 패키지 목록 server pre-fetch 후 클라이언트에 전달
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+// Next 15: 정적 평가만 가능. 항상 'auto' (운영 동작 유지).
+export const dynamic = 'auto';
 
 export default async function AdminPage() {
   // 대시보드에서 가장 먼저 보이는 데이터: 승인대기 + 전체 패키지 목록

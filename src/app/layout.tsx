@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import dynamic from 'next/dynamic';
 import localFont from 'next/font/local';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
@@ -10,9 +9,8 @@ import MsClarity from '@/components/MsClarity';
 import TrackerBootstrap from '@/components/TrackerBootstrap';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
-
-const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
-const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'), { ssr: false });
+import LayoutClientWidgets from '@/components/LayoutClientWidgets';
+// Next 15: ChatWidget·BottomTabBar 는 ssr:false 가 필요해 client wrapper 로 분리 (LayoutClientWidgets).
 // ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
 // PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
 
@@ -174,8 +172,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MsClarity />
         <AffiliateAttributionBanner />
         {children}
-        <BottomTabBar />
-        <ChatWidget />
+        <LayoutClientWidgets />
         <JarvisFloatingWidget />
         <SpeedInsights />
       </body>

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   return NextResponse.json({ note: data });
 }
 
-export async function DELETE(req: NextRequest, { params: _params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, _ctx: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   const { searchParams } = new URL(req.url);
