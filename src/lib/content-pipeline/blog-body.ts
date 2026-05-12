@@ -360,7 +360,10 @@ function injectEeatBox(
 ): string {
   if (/<!-- yeosonam-eeat -->/.test(text)) return text;
 
-  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+  // Hydration mismatch 회피: toLocaleDateString 은 서버(en-US)·클라이언트(ko-KR) 환경 차이로
+  //   다른 결과 반환. 수동 한국어 포맷으로 통일 (ERR-blog-queue-locale-hydration@2026-05-10).
+  const _now = new Date();
+  const today = `${_now.getFullYear()}년 ${_now.getMonth() + 1}월 ${_now.getDate()}일`;
   const dest = productContext?.destination || '여행지';
   const facts: string[] = [];
   if (productContext?.airline) facts.push(`항공편: ${productContext.airline}`);

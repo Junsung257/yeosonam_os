@@ -35,4 +35,3 @@ export function AlertIndicator({ level, tooltip, size = 16 }: AlertIndicatorProp
   );
 }
 
-export default AlertIndicator;

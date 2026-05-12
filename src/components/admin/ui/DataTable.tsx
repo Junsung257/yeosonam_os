@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import AlertIndicator, { type AlertLevel } from './AlertIndicator';
+import { AlertIndicator, type AlertLevel } from './AlertIndicator';
 
 export interface ColumnDef<T> {
   key: string;
@@ -162,4 +162,3 @@ export function DataTable<T>({
   );
 }
 
-export default DataTable;
