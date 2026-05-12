@@ -42,8 +42,31 @@ export async function generateMetadata({
     ? parts.join(' | ')
     : '여소남에서 안심 여행을 예약하세요.';
 
-  // OG 이미지: itinerary_data에서 첫 번째 호텔 사진 또는 기본 이미지
-  const ogImage = `${BASE_URL}/og-image.png`;
+  // OG 이미지: 상품 대표사진 → 호텔/관광지 사진 → 브랜드 기본 이미지 폴백
+  // 카톡/페북 미리보기는 절대 URL + 1200×630 권장
+  const firstItineraryPhoto = (() => {
+    try {
+      const days = Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : [];
+      for (const day of days) {
+        const items = Array.isArray(day?.items) ? day.items : [];
+        for (const it of items) {
+          const photo = it?.photo || it?.image || it?.hotel?.image;
+          if (typeof photo === 'string' && photo.startsWith('http')) return photo;
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  })();
+
+  const heroCandidate: string | null =
+    (Array.isArray(pkg.thumbnail_urls) && pkg.thumbnail_urls[0]) ||
+    pkg.hero_image_url ||
+    firstItineraryPhoto ||
+    null;
+
+  const ogImage = heroCandidate
+    ? (heroCandidate.startsWith('http') ? heroCandidate : `${BASE_URL}${heroCandidate}`)
+    : `${BASE_URL}/og-image.png`;
 
   return {
     title,

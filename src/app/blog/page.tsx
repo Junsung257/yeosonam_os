@@ -153,7 +153,6 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
 function HeroCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
-  const initial = dest?.[0] ?? '✈';
   const readMin = READING_TIME[ct] ?? 7;
   const angleLabel = post.angle_type ? ANGLE_LABELS[post.angle_type] : null;
 
@@ -170,9 +169,12 @@ function HeroCard({ post }: { post: BlogPost }) {
           loading="eager"
           fetchPriority="high"
           fallback={
-            <div className="absolute inset-0 bg-bg-section flex items-center justify-center">
-              <span className="text-[80px] font-black text-[#D1D5DB]">{initial}</span>
-            </div>
+            <img
+              src="/og-image.png"
+              alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
+              className="absolute inset-0 h-full w-full object-cover"
+              loading="eager"
+            />
           }
         />
       </div>
@@ -207,7 +209,6 @@ function HeroCard({ post }: { post: BlogPost }) {
 function SideCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
-  const initial = dest?.[0] ?? '✈';
   const readMin = READING_TIME[ct] ?? 5;
   const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
 
@@ -224,9 +225,12 @@ function SideCard({ post }: { post: BlogPost }) {
           className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
           fallback={
-            <div className="w-full h-full flex items-center justify-center">
-              <span className="text-[36px] font-black text-[#D1D5DB]">{initial}</span>
-            </div>
+            <img
+              src="/og-image.png"
+              alt={dest || '여소남 매거진'}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
           }
         />
       </div>
@@ -266,7 +270,6 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const dest = post.destination || post.travel_packages?.destination;
   const price = post.travel_packages?.price;
   const ct = post.content_type || 'guide';
-  const initial = dest?.[0] ?? '✈';
   const readMin = READING_TIME[ct] ?? 5;
   const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
 
@@ -282,9 +285,12 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           loading="lazy"
           fallback={
-            <div className="absolute inset-0 flex items-center justify-center bg-bg-section">
-              <span className="font-black text-[#D1D5DB]" style={{ fontSize: compact ? '36px' : '52px' }}>{initial}</span>
-            </div>
+            <img
+              src="/og-image.png"
+              alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '여소남 매거진'}
+              className="absolute inset-0 h-full w-full object-cover"
+              loading="lazy"
+            />
           }
         />
       </div>
