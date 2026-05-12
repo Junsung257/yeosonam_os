@@ -1,0 +1,107 @@
+name: API Contract Validation
+
+on:
+  pull_request:
+    paths:
+      - 'src/app/api/**'
+      - 'scripts/api-contract-validator.js'
+      - '.github/workflows/api-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/app/api/**'
+
+jobs:
+  contract-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Run API contract validator
+        id: validate
+        continue-on-error: true
+        run: node scripts/api-contract-validator.js
+
+      - name: Post contract report to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            if (!fs.existsSync('api-contract-report.json')) {
+              console.log('No report generated');
+              return;
+            }
+
+            const report = JSON.parse(fs.readFileSync('api-contract-report.json', 'utf8'));
+
+            let comment = `## 📋 API Contract Validation\n\n`;
+            comment += `**Total routes scanned:** ${report.totalRoutes}\n`;
+            comment += `**Total violations:** ${report.totalViolations}\n\n`;
+
+            comment += `### Compliance Metrics\n`;
+            comment += `| Metric | Coverage |\n|--------|----------|\n`;
+            comment += `| 🔐 Authentication | ${(report.compliance.auth * 100).toFixed(1)}% |\n`;
+            comment += `| 🛡️ Input Validation | ${(report.compliance.validation * 100).toFixed(1)}% |\n`;
+            comment += `| ⚠️ Error Handling | ${(report.compliance.errorHandling * 100).toFixed(1)}% |\n\n`;
+
+            const categories = [
+              { key: 'missingAuth', title: '🔐 Missing Authentication', severity: '🔴' },
+              { key: 'missingValidation', title: '🛡️ Missing Input Validation', severity: '🟠' },
+              { key: 'missingErrorHandling', title: '⚠️ Missing Error Handling', severity: '🟠' },
+              { key: 'inconsistentResponse', title: '📦 Inconsistent Response Patterns', severity: '🟡' },
+              { key: 'inconsistentStatusCodes', title: '🔢 Non-Standard Status Codes', severity: '🟡' }
+            ];
+
+            categories.forEach(cat => {
+              const items = report.violations[cat.key] || [];
+              if (items.length === 0) return;
+
+              comment += `\n<details><summary>${cat.severity} <strong>${cat.title}</strong> (${items.length})</summary>\n\n`;
+              items.slice(0, 10).forEach(item => {
+                comment += `- \`${item.route}\``;
+                if (item.methods) comment += ` — ${item.methods.join(', ')}`;
+                comment += `\n`;
+              });
+              if (items.length > 10) {
+                comment += `- ... and ${items.length - 10} more\n`;
+              }
+              comment += `\n</details>\n`;
+            });
+
+            if (report.totalViolations === 0) {
+              comment += `\n✅ **All API contracts validated**\n`;
+            }
+
+            comment += `\n---\n💡 **Run locally:** \`node scripts/api-contract-validator.js\``;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Upload contract report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: api-contract-report
+          path: api-contract-report.json
+          retention-days: 30
+
+      - name: Fail on critical violations
+        if: steps.validate.outcome == 'failure'
+        run: |
+          echo "❌ Critical API contract violations detected"
+          exit 1

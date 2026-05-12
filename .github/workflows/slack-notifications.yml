@@ -1,0 +1,152 @@
+name: Slack Notifications
+
+on:
+  deployment:
+    types: [created]
+  deployment_status:
+    types: [created, updated]
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true  # requires SLACK_WEBHOOK_URL secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify deployment start
+        if: github.event_name == 'deployment'
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "channel": "#deployments",
+              "username": "Deploy Bot",
+              "icon_emoji": ":rocket:",
+              "text": "🚀 Deployment starting",
+              "attachments": [
+                {
+                  "color": "#0099ff",
+                  "title": "Deployment Status",
+                  "text": "In Progress",
+                  "fields": [
+                    {
+                      "title": "Environment",
+                      "value": "${{ github.event.deployment.environment }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Ref",
+                      "value": "${{ github.ref }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Author",
+                      "value": "${{ github.actor }}",
+                      "short": true
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Notify deployment success
+        if: github.event.deployment_status.state == 'success'
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "channel": "#deployments",
+              "username": "Deploy Bot",
+              "icon_emoji": ":white_check_mark:",
+              "text": "✅ Deployment successful",
+              "attachments": [
+                {
+                  "color": "#36a64f",
+                  "title": "Deployment Complete",
+                  "text": "Successfully deployed to production",
+                  "fields": [
+                    {
+                      "title": "Environment",
+                      "value": "${{ github.event.deployment.environment }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Commit",
+                      "value": "${{ github.event.deployment.sha }}",
+                      "short": true
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Notify deployment failure
+        if: github.event.deployment_status.state == 'failure'
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "channel": "#deployments",
+              "username": "Deploy Bot",
+              "icon_emoji": ":x:",
+              "text": "❌ Deployment failed - @here",
+              "attachments": [
+                {
+                  "color": "#ff0000",
+                  "title": "Deployment Failed",
+                  "text": "${{ github.event.deployment_status.description }}",
+                  "fields": [
+                    {
+                      "title": "Environment",
+                      "value": "${{ github.event.deployment.environment }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Logs",
+                      "value": "${{ github.event.deployment_status.log_url }}",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Notify PR merge
+        if: github.event_name == 'push'
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "channel": "#releases",
+              "username": "Release Bot",
+              "icon_emoji": ":package:",
+              "text": "📦 Code merged to main",
+              "attachments": [
+                {
+                  "color": "#0099ff",
+                  "title": "Main Branch Updated",
+                  "text": "Latest commits merged",
+                  "fields": [
+                    {
+                      "title": "Author",
+                      "value": "${{ github.actor }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Commit",
+                      "value": "${{ github.event.head_commit.message }}",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
