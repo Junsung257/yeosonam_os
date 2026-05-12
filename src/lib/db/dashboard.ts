@@ -14,7 +14,11 @@
  *  - getNewBookingsMonthly():       생성일 KST 기준 신규예약 (영업)
  */
 
-import { getSupabase, supabaseAdmin } from '../supabase';
+import { getSupabaseAdmin, supabaseAdmin } from '../supabase';
+
+// Server-only module. All callers in src/app/api/** routes and admin server pages.
+// Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.
+const getSupabase = getSupabaseAdmin;
 
 // ─── V1: 이번 달 KPI ─────────────────────────────────────────
 
