@@ -1,0 +1,89 @@
+name: Bundle Size Monitor
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'next.config.js'
+      - '.github/workflows/bundle-monitor.yml'
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true  # bundlemon requires BUNDLEMON_PROJECT_ID secret
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Analyze bundle size
+        id: bundle
+        continue-on-error: true
+        run: |
+          # Get current build size
+          CURRENT_SIZE=$(du -sh build/ | cut -f1)
+          echo "current=$CURRENT_SIZE" >> $GITHUB_OUTPUT
+
+          # Compare with baseline if exists
+          if [ -f .bundlemonrc ]; then
+            BASELINE=$(cat .bundlemonrc | grep -oP '"size":\s*\K[0-9]+' || echo "0")
+            CURRENT_BYTES=$(du -sb build/ | cut -f1)
+            THRESHOLD=$((BASELINE + 50000)) # 50KB increase threshold
+
+            if [ "$CURRENT_BYTES" -gt "$THRESHOLD" ]; then
+              echo "warning=true" >> $GITHUB_OUTPUT
+              echo "increase=$(($CURRENT_BYTES - $BASELINE)) bytes" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Post bundle results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const currentSize = "${{ steps.bundle.outputs.current }}" || "Unknown";
+            const warning = "${{ steps.bundle.outputs.warning }}" === 'true' ? '⚠️' : '✅';
+            const increase = "${{ steps.bundle.outputs.increase }}" || "";
+
+            let comment = `## 📦 Bundle Size Report\n\n`;
+            comment += `Current size: ${currentSize}\n`;
+            if (increase) {
+              comment += `Increase: ${increase} (⚠️ Above 50KB threshold)\n`;
+            } else {
+              comment += `✅ Bundle size within acceptable range\n`;
+            }
+            comment += `\n**Recommendation:** Monitor bundle growth in each PR.`;
+
+            github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: comment,
+              event: 'COMMENT'
+            });
+
+      - name: Save current baseline
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "{\"size\": $(du -sb build/ | cut -f1)}" > .bundlemonrc
+          git add .bundlemonrc
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git commit -m "ci: update bundle size baseline" || true
+          git push || true

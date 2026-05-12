@@ -1,0 +1,111 @@
+name: Database Query Performance
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/db-query-analyzer.js'
+      - '.github/workflows/db-query-performance.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+
+jobs:
+  query-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Run query analyzer
+        id: analyze
+        continue-on-error: true
+        run: node scripts/db-query-analyzer.js
+
+      - name: Post analysis to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            if (!fs.existsSync('db-query-report.json')) {
+              console.log('No report generated');
+              return;
+            }
+
+            const report = JSON.parse(fs.readFileSync('db-query-report.json', 'utf8'));
+
+            let comment = `## 🗄️ Database Query Performance Report\n\n`;
+            comment += `**Total issues detected:** ${report.totalIssues}\n\n`;
+
+            if (report.totalIssues === 0) {
+              comment += `✅ No query performance issues detected\n`;
+            } else {
+              comment += `### Severity Breakdown\n`;
+              comment += `| Severity | Count |\n|----------|-------|\n`;
+              Object.entries(report.severityBreakdown).forEach(([severity, count]) => {
+                const icon = severity === 'critical' ? '🔴' : severity === 'high' ? '🟠' : '🟡';
+                comment += `| ${icon} ${severity.toUpperCase()} | ${count} |\n`;
+              });
+
+              comment += `\n### Issue Categories\n`;
+
+              const categories = [
+                { key: 'nPlusOne', title: '⚡ N+1 Query Patterns', fix: 'Use .in() or JOIN' },
+                { key: 'unbounded', title: '🚨 Unbounded Queries', fix: 'Add .limit() or .range()' },
+                { key: 'missingPagination', title: '📋 Missing Pagination', fix: 'Add .range(offset, limit)' },
+                { key: 'largeJoin', title: '🔗 Large JOINs', fix: 'Limit before joining' },
+                { key: 'sequentialAwait', title: '⏱️ Sequential Awaits', fix: 'Use Promise.all()' },
+                { key: 'selectStar', title: '📦 SELECT *', fix: 'Specify columns explicitly' }
+              ];
+
+              categories.forEach(cat => {
+                const issues = report.issues[cat.key] || [];
+                if (issues.length > 0) {
+                  comment += `\n<details><summary><strong>${cat.title}</strong> (${issues.length})</summary>\n\n`;
+                  comment += `**Fix:** ${cat.fix}\n\n`;
+                  issues.slice(0, 5).forEach(item => {
+                    comment += `- \`${item.file}:${item.line}\``;
+                    if (item.table) comment += ` — table: \`${item.table}\``;
+                    comment += `\n`;
+                  });
+                  if (issues.length > 5) {
+                    comment += `- ... and ${issues.length - 5} more\n`;
+                  }
+                  comment += `\n</details>\n`;
+                }
+              });
+            }
+
+            comment += `\n---\n💡 **Run locally:** \`node scripts/db-query-analyzer.js\``;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-query-report
+          path: db-query-report.json
+          retention-days: 30
+
+      - name: Fail on critical issues
+        if: steps.analyze.outcome == 'failure'
+        run: |
+          echo "❌ Critical database query issues detected. Review the report."
+          exit 1

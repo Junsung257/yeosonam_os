@@ -315,6 +315,38 @@ export async function sendGuidebookReadyAlimtalk(params: {
  *
  * [스케줄러 호출 시점]: 여행 end_date + 1일 (cron: /api/cron/post-travel)
  */
+/**
+ * 매직링크 전용 generic 알림톡 — POST-confirm 게이트로 안전.
+ *
+ * 템플릿 예시 (KAKAO_TEMPLATE_MAGIC_LINK):
+ *   안녕하세요 #{고객명}님!
+ *   #{안내내용}
+ *   👉 #{링크}
+ *   * 본인 확인을 위해 링크에서 "확인" 버튼을 눌러주세요.
+ */
+export async function sendMagicLinkAlimtalk(params: {
+  phone: string;
+  name: string;
+  label: string;
+  url: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_MAGIC_LINK || '';
+  if (!templateId) {
+    console.warn('[알림톡] KAKAO_TEMPLATE_MAGIC_LINK 환경변수 미설정 — 수기 발송 필요');
+    console.log('[매직링크 알림톡 수기모드]', params);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name,
+      '안내내용': params.label,
+      '링크': params.url,
+    },
+  });
+}
+
 export async function sendReviewRequestAlimtalk(params: {
   phone: string;
   name: string;

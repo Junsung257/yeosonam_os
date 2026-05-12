@@ -16,11 +16,10 @@
  */
 
 import { NextRequest } from 'next/server'
-import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify'
 import { supabaseAdmin } from '@/lib/supabase'
 import { prepareDispatch, runV2 } from '@/lib/jarvis/v2-dispatch'
 import { encodeSSE, encodeKeepalive, SSE_HEADERS } from '@/lib/jarvis/stream-encoder'
-import { resolveJarvisContext } from '@/lib/jarvis/context'
+import { resolveJarvisAuth, canAccessSession } from '@/lib/jarvis/auth-resolver'
 import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
 import type { AgentRunResult } from '@/lib/jarvis/types'
 import { mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
@@ -55,24 +54,20 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const token = req.cookies.get('sb-access-token')?.value
-  if (!token) {
-    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-  const verified = await verifySupabaseAccessToken(token)
-  if (!verified.ok) {
-    return new Response(JSON.stringify({ error: '세션이 유효하지 않습니다.' }), {
+  // S1: 인증 통합 — staff(sb-access-token) 또는 게스트(magic-session) 모두 진입 허용.
+  // 게스트는 자비스 V2 chat:read / chat:assist 스코프 강제. mutating 액션은 HITL 통과 필수.
+  const auth = await resolveJarvisAuth(req, body)
+  if (auth.type === 'unauthenticated') {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.', reason: auth.reason }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     })
   }
 
-  const ctx = resolveJarvisContext(req, body)
+  const ctx = auth.ctx
+  const isGuest = auth.type === 'guest'
 
-  // 1) 세션 로드/생성 (V1 과 동일 스키마)
+  // 1) 세션 로드/생성 — S1 게스트 격리: 다른 booking 의 sessionId 이어쓰기 거부.
   let session: any = null
   if (sessionId) {
     const { data } = await supabaseAdmin
@@ -80,7 +75,10 @@ export async function POST(req: NextRequest) {
       .select('*')
       .eq('id', sessionId)
       .single()
-    session = data
+    if (data && canAccessSession(auth, data)) {
+      session = data
+    }
+    // mismatch 면 session 은 null 로 두고 아래에서 새 세션 생성
   }
   if (!session) {
     const { data } = await supabaseAdmin
@@ -138,13 +136,14 @@ export async function POST(req: NextRequest) {
       let keepaliveTimer: ReturnType<typeof setInterval> | null = null
 
       try {
-        // 시작 이벤트 — agent 선택 결과
+        // 시작 이벤트 — agent 선택 결과 (게스트 여부 client 에 전달)
         controller.enqueue(encodeSSE({
           type: 'agent_picked',
           data: {
             sessionId: session.id,
             agent: dispatch.agentType,
             confidence: dispatch.routerConfidence,
+            isGuest,
             specialist: {
               id: dispatch.specialistPick.specialistId,
               label: dispatch.specialistPick.labelKo,
@@ -209,6 +208,8 @@ export async function POST(req: NextRequest) {
               pending_hitl: !!finalResult?.pendingActionId,
               trace_id: traceId,
               ttft_ms: firstTokenAt ? firstTokenAt - started : null,
+              is_guest: isGuest,
+              guest_action_type: isGuest && auth.type === 'guest' ? auth.magicSession.act : null,
             },
           })
         }

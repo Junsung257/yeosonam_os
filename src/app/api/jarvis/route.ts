@@ -8,7 +8,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify'
 import { supabaseAdmin } from '@/lib/supabase'
 import { routeMessage } from '@/lib/jarvis/claude-router'
 import { runOperationsAgent } from '@/lib/jarvis/agents/operations'
@@ -17,7 +16,7 @@ import { runFinanceAgent } from '@/lib/jarvis/agents/finance'
 import { runMarketingAgent } from '@/lib/jarvis/agents/marketing'
 import { runSalesAgent } from '@/lib/jarvis/agents/sales'
 import { runSystemAgent } from '@/lib/jarvis/agents/system'
-import { resolveJarvisContext } from '@/lib/jarvis/context'
+import { resolveJarvisAuth, canAccessSession } from '@/lib/jarvis/auth-resolver'
 import type { JarvisContext } from '@/lib/jarvis/types'
 import { resolveSpecialist, mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
 import { recordPlatformLearningEvent } from '@/lib/platform-learning'
@@ -38,18 +37,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '메시지가 필요합니다.' }, { status: 400 })
     }
 
-    const token = req.cookies.get('sb-access-token')?.value
-    if (!token) {
-      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
+    // S1: staff (sb-access-token) 또는 게스트 (magic-session) 모두 허용
+    const auth = await resolveJarvisAuth(req, body)
+    if (auth.type === 'unauthenticated') {
+      return NextResponse.json({ error: '인증이 필요합니다.', reason: auth.reason }, { status: 401 })
     }
-    const verified = await verifySupabaseAccessToken(token)
-    if (!verified.ok) {
-      return NextResponse.json({ error: '세션이 유효하지 않습니다.' }, { status: 401 })
-    }
+    const ctx: JarvisContext = auth.ctx
 
-    const ctx: JarvisContext = resolveJarvisContext(req, body)
-
-    // 1. 세션 가져오기 또는 생성
+    // 1. 세션 가져오기 또는 생성 — 게스트 격리 적용
     let session: any = null
     if (sessionId) {
       const { data } = await supabaseAdmin
@@ -57,7 +52,9 @@ export async function POST(req: NextRequest) {
         .select('*')
         .eq('id', sessionId)
         .single()
-      session = data
+      if (data && canAccessSession(auth, data)) {
+        session = data
+      }
     }
     if (!session) {
       const { data } = await supabaseAdmin

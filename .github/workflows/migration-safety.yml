@@ -1,0 +1,143 @@
+name: Migration Safety Check
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/migration-safety-checker.js'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  safety-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Get changed migration files
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only --diff-filter=A origin/main...HEAD | grep '^supabase/migrations/.*\.sql$' || true)
+          else
+            CHANGED=$(git diff --name-only --diff-filter=A HEAD~1...HEAD | grep '^supabase/migrations/.*\.sql$' || true)
+          fi
+
+          if [ -z "$CHANGED" ]; then
+            echo "No new migrations to check"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            FILES=$(echo "$CHANGED" | xargs -I {} basename {} | tr '\n' ' ')
+            echo "files=$FILES" >> $GITHUB_OUTPUT
+            echo "📋 Checking: $FILES"
+          fi
+
+      - name: Run migration safety checker
+        if: steps.changes.outputs.has_changes == 'true'
+        id: check
+        continue-on-error: true
+        run: |
+          node scripts/migration-safety-checker.js ${{ steps.changes.outputs.files }}
+
+      - name: Post safety report to PR
+        if: github.event_name == 'pull_request' && steps.changes.outputs.has_changes == 'true' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            if (!fs.existsSync('migration-safety-report.json')) {
+              return;
+            }
+
+            const report = JSON.parse(fs.readFileSync('migration-safety-report.json', 'utf8'));
+
+            let comment = `## 🔍 Migration Safety Report\n\n`;
+            comment += `**Files checked:** ${report.totalChecked}\n`;
+            comment += `**Files with issues:** ${report.files.length}\n`;
+            comment += `**Total issues:** ${report.totalIssues}\n\n`;
+
+            if (report.totalIssues === 0) {
+              comment += `✅ **All migrations are safe to apply**\n`;
+            } else {
+              const severityCounts = {};
+              report.files.forEach(({ issues }) => {
+                issues.forEach(issue => {
+                  severityCounts[issue.severity] = (severityCounts[issue.severity] || 0) + 1;
+                });
+              });
+
+              comment += `### Severity Breakdown\n`;
+              comment += `| Severity | Count |\n|----------|-------|\n`;
+              const order = ['blocking', 'critical', 'high', 'medium', 'low'];
+              const icons = { blocking: '🛑', critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
+              order.forEach(sev => {
+                if (severityCounts[sev]) {
+                  comment += `| ${icons[sev]} ${sev.toUpperCase()} | ${severityCounts[sev]} |\n`;
+                }
+              });
+
+              comment += `\n### Issues by File\n`;
+              report.files.forEach(({ file, issues }) => {
+                comment += `\n<details><summary><strong>${file}</strong> (${issues.length} issues)</summary>\n\n`;
+                issues.forEach(issue => {
+                  const icon = icons[issue.severity];
+                  comment += `- ${icon} **${issue.severity.toUpperCase()}** [${issue.type}]`;
+                  if (issue.lineNumber) comment += ` (line ${issue.lineNumber})`;
+                  comment += `\n  ${issue.description}\n`;
+                });
+                comment += `\n</details>\n`;
+              });
+
+              if (severityCounts.blocking > 0) {
+                comment += `\n### 🛑 BLOCKING Issues Detected\n`;
+                comment += `These operations cannot be safely applied to production.\n`;
+                comment += `Please rewrite the migration or document explicit override.\n`;
+              } else if (severityCounts.critical > 0) {
+                comment += `\n### 🔴 Critical Issues\n`;
+                comment += `Review required before applying. Consider lock-safe alternatives.\n`;
+              }
+
+              comment += `\n### 💡 Common Fixes\n`;
+              comment += `- **CREATE INDEX** → use \`CREATE INDEX CONCURRENTLY\`\n`;
+              comment += `- **ADD NOT NULL** → use \`ADD COLUMN ... DEFAULT value; ALTER COLUMN SET NOT NULL\`\n`;
+              comment += `- **DROP COLUMN** → consider soft-delete or staged migration\n`;
+              comment += `- **TRUNCATE** → use bounded \`DELETE WHERE ... LIMIT\`\n`;
+              comment += `- **New TABLE** → always add \`ALTER TABLE ... ENABLE ROW LEVEL SECURITY\` + policies\n`;
+            }
+
+            comment += `\n---\n💡 **Run locally:** \`node scripts/migration-safety-checker.js <files>\``;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Upload safety report
+        if: steps.changes.outputs.has_changes == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-safety-report
+          path: migration-safety-report.json
+          retention-days: 90
+
+      - name: Fail on blocking issues
+        if: steps.check.outcome == 'failure'
+        run: |
+          echo "🛑 Blocking migration safety issues detected"
+          exit 1

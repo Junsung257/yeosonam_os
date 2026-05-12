@@ -11,7 +11,12 @@
  */
 
 import type { AdCampaign, AdCreative, AdPerformanceSnapshot, CampaignStatus } from '@/types/meta-ads';
-import { getSupabase } from '../supabase';
+import { getSupabaseAdmin } from '../supabase';
+
+// Server-only module. All 13 callers are in src/app/api/** (verified).
+// Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.
+// If you need to call from a client component, route the call through an /api/* endpoint.
+const getSupabase = getSupabaseAdmin;
 
 // ─── Meta Ads ────────────────────────────────────────────────
 

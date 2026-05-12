@@ -33,10 +33,18 @@ jobs:
         timeout-minutes: 10
 
       - name: Build project
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+          NEXT_PUBLIC_BASE_URL: https://example.com
         run: npm run build
         timeout-minutes: 10
 
       - name: Start development server
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+          NEXT_PUBLIC_BASE_URL: https://example.com
         run: |
           npm run dev > /tmp/dev.log 2>&1 &
           sleep 10
