@@ -17,9 +17,9 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { code: string } },
+  { params }: { params: Promise<{ code: string }> },
 ) {
-  const { code } = params;
+  const { code } = await params;
 
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return NextResponse.redirect(new URL('/', request.url));

@@ -30,9 +30,9 @@ function esc(s: string): string {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { city: string } },
+  { params }: { params: Promise<{ city: string }> },
 ) {
-  const { city } = params;
+  const { city } = await params;
   const decoded = decodeURIComponent(city);
 
   if (!isSupabaseConfigured) {

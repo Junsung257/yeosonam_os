@@ -9,9 +9,9 @@ const TIER_DELAY_MS = parseInt(process.env.RFQ_TIER_DELAY_MINUTES ?? '10') * 60 
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!isSupabaseConfigured) {
     return NextResponse.json(
@@ -37,9 +37,9 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!isSupabaseConfigured) {
     return NextResponse.json(

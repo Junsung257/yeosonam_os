@@ -129,7 +129,7 @@ export default async function AffiliateCoBrandLandingPage({ params }: PageProps)
   const campaignEndsAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
   try {
-    const sid = cookies().get('ys_session_id')?.value || `ssr-${Date.now()}`;
+    const sid = (await cookies()).get('ys_session_id')?.value || `ssr-${Date.now()}`;
     await supabaseAdmin.from('affiliate_touchpoints').insert({
       session_id: sid,
       referral_code: row.referral_code,
