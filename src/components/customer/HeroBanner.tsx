@@ -38,7 +38,7 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
 
   return (
     <div
-      className="relative w-full aspect-[3/2] md:aspect-[16/7] overflow-hidden bg-bg-section"
+      className="relative w-full aspect-[16/9] md:aspect-[21/8] overflow-hidden bg-bg-section"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
