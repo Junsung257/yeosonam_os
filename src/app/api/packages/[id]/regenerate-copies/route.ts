@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateMarketingCopies } from '@/lib/ai';
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
 
   if (!id) {

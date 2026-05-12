@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-export async function GET(_req: NextRequest, { params }: { params: { city: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ city: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ data: null });
   const { city } = params;
   const destination = decodeURIComponent(city);
@@ -16,7 +17,8 @@ export async function GET(_req: NextRequest, { params }: { params: { city: strin
   return NextResponse.json({ data });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { city: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ city: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
   const { city } = params;
   const destination = decodeURIComponent(city);
@@ -45,7 +47,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { city: stri
   return NextResponse.json({ data });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { city: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ city: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
   const { city } = params;
   const destination = decodeURIComponent(city);

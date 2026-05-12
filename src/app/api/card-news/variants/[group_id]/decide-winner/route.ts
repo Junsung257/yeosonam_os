@@ -21,10 +21,8 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { group_id: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ group_id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

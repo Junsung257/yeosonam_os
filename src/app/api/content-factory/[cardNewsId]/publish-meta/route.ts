@@ -7,10 +7,8 @@ import { getSecret } from '@/lib/secret-registry';
 // ── POST /api/content-factory/[cardNewsId]/publish-meta ────────────────────
 // Content Hub 메타 광고 직접 발행.
 // 카드뉴스 1x1 렌더 이미지를 기반으로 Meta 캠페인을 생성+발행.
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { cardNewsId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ cardNewsId: string }> }) {
+  const params = await props.params;
   if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 

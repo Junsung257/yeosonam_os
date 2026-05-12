@@ -50,11 +50,12 @@ async function fetchActiveBookings(): Promise<BookingCandidate[]> {
   }));
 }
 
-export default async function MobilePaymentDetail({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function MobilePaymentDetail(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const tx = (await fetchTransaction(params.id)) as any;
   if (!tx) notFound();
 

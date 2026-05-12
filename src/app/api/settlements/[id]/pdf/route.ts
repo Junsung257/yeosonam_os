@@ -5,10 +5,8 @@ import { verifyInfluencerPinForReferral } from '@/lib/affiliate-influencer-auth'
 
 // GET /api/settlements/[id]/pdf — 정산 내역서 HTML (인쇄/PDF 변환용)
 // 인증: (1) 어드민 Supabase 세션 또는 (2) 헤더 x-referral-code + x-pin(4자리) + 정산 소유 파트너 일치
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const { id } = params;

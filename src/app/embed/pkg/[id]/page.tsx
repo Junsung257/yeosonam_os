@@ -20,8 +20,8 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
-  params: { id: string };
-  searchParams: { ref?: string };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ ref?: string }>;
 }
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,9 @@ interface AffiliateRow {
   logo_url: string | null;
 }
 
-export default async function EmbedWidget({ params, searchParams }: Params) {
+export default async function EmbedWidget(props: Params) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { id } = params;
   const ref = searchParams.ref ? normalizeAffiliateReferralCode(searchParams.ref) : '';
 

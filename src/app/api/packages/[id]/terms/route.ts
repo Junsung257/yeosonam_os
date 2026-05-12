@@ -7,7 +7,8 @@ import { resolveTermsForPackage, formatCancellationDates, type NoticeSurface } f
  * 해당 상품의 4-level 머지된 약관을 해소하여 반환.
  * 클라이언트(예: PosterStudio)에서 A4 프리뷰 시 사용.
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
   try {
     const { id } = params;

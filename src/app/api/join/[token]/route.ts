@@ -11,10 +11,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * Body: { name, passport_name, passport_no, birth_date, phone, email? }
  */
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { token: string } },
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -60,10 +58,8 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { token: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }

@@ -84,10 +84,8 @@ const MOCK_PROPOSALS: RfqProposal[] = [
   },
 ];
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {

@@ -6,10 +6,8 @@ import { getSecret } from '@/lib/secret-registry';
 
 // ── GET /api/content-factory/[cardNewsId] ──────────────────────────────────
 // Content Hub 폴링 API: 카드뉴스 1개의 전 채널 상태를 집계해 반환
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { cardNewsId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ cardNewsId: string }> }) {
+  const params = await props.params;
   if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   }
@@ -157,10 +155,8 @@ export async function GET(
 
 // ── POST /api/content-factory/[cardNewsId] ─────────────────────────────────
 // action: 'start' → orchestrator 호출 + job 상태 running으로 전환
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { cardNewsId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ cardNewsId: string }> }) {
+  const params = await props.params;
   if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 

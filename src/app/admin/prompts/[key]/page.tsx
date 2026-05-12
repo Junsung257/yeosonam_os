@@ -17,7 +17,8 @@ interface PromptVersion {
   change_note: string | null;
 }
 
-export default function PromptEditPage({ params }: { params: Promise<{ key: string }> | { key: string } }) {
+export default function PromptEditPage(props: { params: Promise<Promise<{ key: string }> | { key: string }> }) {
+  const params = use(props.params);
   // Next.js: in 14 params is a plain object, in 15+ a Promise. Defensively support both.
   const resolved = (params && typeof (params as { then?: unknown }).then === 'function')
     ? use(params as Promise<{ key: string }>)

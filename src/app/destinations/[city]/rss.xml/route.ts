@@ -28,10 +28,8 @@ function esc(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { city: string } },
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ city: string }> }) {
+  const params = await props.params;
   const { city } = params;
   const decoded = decodeURIComponent(city);
 

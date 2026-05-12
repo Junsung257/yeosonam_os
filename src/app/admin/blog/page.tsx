@@ -27,11 +27,12 @@ function BlogTableSkeleton() {
   );
 }
 
-export default function BlogAdminPage({
-  searchParams,
-}: {
-  searchParams: { status?: string; page?: string };
-}) {
+export default async function BlogAdminPage(
+  props: {
+    searchParams: Promise<{ status?: string; page?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const status = searchParams.status ?? 'all';
   const page = Math.max(1, Number(searchParams.page ?? '1'));
 
