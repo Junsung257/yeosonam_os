@@ -14,7 +14,7 @@ import {
   Activity, Siren, Timer,
   LogOut, Star, StarOff, Menu as MenuIcon, Eye,
   ArrowLeftRight, Unlink, FileSearch, PackagePlus, Combine,
-  Receipt, Plane, Palette, Target, Zap, Send,
+  Receipt, Plane, Palette, Target, Zap, Send, Link2,
   Tags, BadgeDollarSign, Settings, PencilLine, GitBranch, SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
@@ -65,6 +65,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/payments',           label: '입금 관리',    icon: Wallet },
       { href: '/admin/payments/reconcile', label: '입금 조정',    icon: ArrowLeftRight },
       { href: '/admin/booking-guide',      label: '예약 안내문',  icon: FileText },
+      { href: '/admin/magic-links',        label: '매직링크',     icon: Link2 },
       { href: '/admin/reviews',            label: '리뷰 감정분석', icon: Star },
       { href: '/admin/flight-alerts',      label: '항공 지연',    icon: Plane },
     ],
