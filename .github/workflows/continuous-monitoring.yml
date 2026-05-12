@@ -4,8 +4,6 @@ on:
   schedule:
     - cron: '*/15 * * * *'  # Every 15 minutes
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   health-checks:
@@ -308,7 +306,7 @@ jobs:
 
       - name: Upload health report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: health-check-results
           path: |
