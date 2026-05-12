@@ -32,7 +32,6 @@
 - 🔑 `GSC_SERVICE_ACCOUNT_JSON` — `/api/cron/gsc-index-rank` 신규 크론 (2026-05-15)이 사용. 미설정 시 `GOOGLE_SERVICE_ACCOUNT_JSON` 으로 자동 fallback. 별도 SA 분리 시에만 신규 키 주입.
 
 ### 외부 API
-- 🔑 `ANTHROPIC_API_KEY` — Claude API (IR 파이프라인용, 기존 키 만료됨)
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림
 - 🔑 `NEXT_PUBLIC_CONSULT_PHONE` — QA 채팅 전화 상담 버튼 (없으면 카톡만)
 
@@ -52,12 +51,6 @@
 - 🔑 `TOSS_SECRET_KEY` — TossPayments 대시보드 > 개발 > API 키 > 시크릿 키
 - 🔑 `INNGEST_EVENT_KEY` — Inngest 대시보드 > 앱 > Event Key
 - 🔑 `INNGEST_SIGNING_KEY` — Inngest 대시보드 > 앱 > Signing Key
-
-### Rate Limiting (Upstash Redis) — P0-1 2026-05-10 추가
-> 코드 통합 완료. 키만 주입하면 자동으로 분산 rate limit 활성화. 미설정 시 in-memory fallback 동작.
-> 권장: Vercel Marketplace → Upstash Redis 1-click 프로비저닝 (무료 티어 10K req/day)
-- 🔑 `UPSTASH_REDIS_REST_URL` — Upstash 콘솔 > Database > REST API > URL
-- 🔑 `UPSTASH_REDIS_REST_TOKEN` — Upstash 콘솔 > Database > REST API > Token
 
 ---
 
