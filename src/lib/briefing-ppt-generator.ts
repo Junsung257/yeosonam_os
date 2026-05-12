@@ -123,7 +123,7 @@ export const IMAGE_LIBRARY: Record<string, string> = {
  */
 export async function generateBriefingPPT(
   config: BriefingConfig
-): Promise<Buffer> {
+): Promise<ArrayBuffer> {
   const prs = new PptxGenJS();
 
   // 기본 설정
@@ -135,18 +135,15 @@ export async function generateBriefingPPT(
     await addSlideToPresentation(prs, slide, config);
   }
 
-  // PPT를 Buffer로 반환
-  return await prs.write({ outputType: "arraybuffer" });
+  // PPT를 ArrayBuffer로 반환 (write outputType:"arraybuffer" 의 실제 반환 타입)
+  return (await prs.write({ outputType: "arraybuffer" })) as ArrayBuffer;
 }
 
 /**
  * 개별 슬라이드 추가
  */
 async function addSlideToPresentation(
-  prs: PptxGenJS.PresentationProps & {
-    addSlide: (opts?: any) => PptxGenJS.ISlide;
-    defineLayout: (opts: any) => void;
-  },
+  prs: InstanceType<typeof PptxGenJS>,
   slide: BriefingSlide,
   config: BriefingConfig
 ) {
@@ -177,7 +174,7 @@ async function addSlideToPresentation(
  * 제목 슬라이드
  */
 function addTitleSlide(
-  slide: PptxGenJS.ISlide,
+  slide: PptxGenJS.Slide,
   briefing: BriefingSlide,
   config: BriefingConfig
 ) {
@@ -227,7 +224,7 @@ function addTitleSlide(
  * 2열 슬라이드 (이미지 + 텍스트)
  */
 async function addTwoColSlide(
-  slide: PptxGenJS.ISlide,
+  slide: PptxGenJS.Slide,
   briefing: BriefingSlide,
   config: BriefingConfig
 ) {
@@ -299,7 +296,7 @@ async function addTwoColSlide(
  * 표준 슬라이드
  */
 async function addStandardSlide(
-  slide: PptxGenJS.ISlide,
+  slide: PptxGenJS.Slide,
   briefing: BriefingSlide,
   config: BriefingConfig
 ) {
@@ -372,7 +369,7 @@ async function addStandardSlide(
  * 타임라인 슬라이드
  */
 function addTimelineSlide(
-  slide: PptxGenJS.ISlide,
+  slide: PptxGenJS.Slide,
   briefing: BriefingSlide,
   config: BriefingConfig
 ) {
@@ -384,7 +381,7 @@ function addTimelineSlide(
  * 그리드 슬라이드
  */
 function addGridSlide(
-  slide: PptxGenJS.ISlide,
+  slide: PptxGenJS.Slide,
   briefing: BriefingSlide,
   config: BriefingConfig
 ) {
