@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 const CHANNEL_TYPES = [
   { value: 'blog', label: '블로그' },
@@ -62,7 +63,7 @@ export default function PartnerApplyPage() {
             담당자가 검토 후 승인 결과를 안내드립니다.<br />
             보통 1~2일 영업일 내 처리됩니다.
           </p>
-          <a href="/" className="text-blue-600 text-sm hover:underline">홈으로 돌아가기</a>
+          <Link href="/" className="text-blue-600 text-sm hover:underline">홈으로 돌아가기</Link>
         </div>
       </div>
     );

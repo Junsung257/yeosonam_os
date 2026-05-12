@@ -17,9 +17,9 @@ import { getConsultTelHref } from '@/lib/consult-escalation';
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
 
-// ISR 5분 / Windows 로컬은 force-dynamic (chunk race 회피)
-export const revalidate = process.platform === 'win32' ? 0 : 300;
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+// Next 15: route segment config는 정적 평가만 가능. ISR 5분 + auto.
+export const revalidate = 300;
+export const dynamic = 'auto';
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';

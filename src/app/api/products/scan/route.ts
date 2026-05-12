@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
@@ -125,13 +125,29 @@ async function extractText(buffer: Buffer, filename: string): Promise<string> {
     return data.text;
   }
 
-  // Excel (xlsx / xls / xlsm)
+  // Excel (xlsx / xls / xlsm) — exceljs (xlsx 라이브러리는 prototype pollution/ReDoS CVE 패치 없음).
   if (['xlsx', 'xls', 'xlsm'].includes(ext)) {
-    const wb = XLSX.read(buffer, { type: 'buffer' });
-    return wb.SheetNames.map(sheetName => {
-      const ws = wb.Sheets[sheetName];
-      return `[시트: ${sheetName}]\n` + XLSX.utils.sheet_to_csv(ws);
-    }).join('\n\n');
+    const wb = new ExcelJS.Workbook();
+    // Node 24: Buffer<ArrayBuffer> 타입 변동 → exceljs 가 받는 ArrayBuffer 슬라이스로 통일.
+    const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    await wb.xlsx.load(ab);
+    const parts: string[] = [];
+    wb.eachSheet((ws) => {
+      const lines: string[] = [];
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        const cells: string[] = [];
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          const v = cell.value;
+          if (v === null || v === undefined) cells.push('');
+          else if (typeof v === 'object' && 'text' in v) cells.push(String((v as { text?: string }).text ?? ''));
+          else if (typeof v === 'object' && 'result' in v) cells.push(String((v as { result?: unknown }).result ?? ''));
+          else cells.push(String(v));
+        });
+        lines.push(cells.join(','));
+      });
+      parts.push(`[시트: ${ws.name}]\n` + lines.join('\n'));
+    });
+    return parts.join('\n\n');
   }
 
   // 텍스트 계열 (txt, csv 등)

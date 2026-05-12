@@ -2,7 +2,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { Suspense } from 'react';
 import PaymentsPageClient from './PaymentsPageClient';
 
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
 export default async function PaymentsPage() {
   if (!isSupabaseConfigured) {

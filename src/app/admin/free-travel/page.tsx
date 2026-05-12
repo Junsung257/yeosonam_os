@@ -2,8 +2,8 @@ import { Suspense } from 'react';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import FreeTravelPageClient from './FreeTravelPageClient';
 
-// Windows dev: chunk race 방지 / Vercel(Linux): 30초 캐시
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+// Next 15: 정적 평가만 가능. 항상 'auto' + 30초 캐시.
+export const dynamic = 'auto';
 export const revalidate = 30;
 
 function FreeTravelSkeleton() {

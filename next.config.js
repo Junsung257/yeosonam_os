@@ -24,19 +24,16 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
+  // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.
+  serverExternalPackages: [
+    'isomorphic-dompurify',
+    '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
+    'satori',          // yoga-wasm 번들 포함 — external 권장
+    'kordoc',          // ESM 전용 패키지 — 동적 import() 로 로드, webpack 번들 제외
+    'pdf-parse',
+  ],
   experimental: {
-    instrumentationHook: true,
-    // @resvg/resvg-js 는 .node native binding 포함 → webpack 이 처리 불가.
-    //   external 로 빼서 런타임에 require() 처리 (webpack 이 아예 터치 안 함).
-    // satori 도 yoga-wasm 번들 포함이라 external 권장.
-    serverComponentsExternalPackages: [
-      'isomorphic-dompurify',
-      '@resvg/resvg-js',
-      'satori',
-      // kordoc: ESM 전용 패키지 — 동적 import() 로 로드, external 로 webpack 번들 제외
-      'kordoc',
-      'pdf-parse',
-    ],
     // lucide-react: import 1개당 전체 아이콘 번들이 통째로 들어가는 패턴이라 barrel 최적화 효과 큼.
     // 주의: 실제 설치된 패키지만 등록할 것 — 미설치 패키지 등록 시 webpack factory undefined 에러 발생.
     optimizePackageImports: [

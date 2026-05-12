@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import dynamic from 'next/dynamic';
 import localFont from 'next/font/local';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
@@ -10,9 +9,8 @@ import MsClarity from '@/components/MsClarity';
 import TrackerBootstrap from '@/components/TrackerBootstrap';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
-
-const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
-const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'), { ssr: false });
+import LayoutClientWidgets from '@/components/LayoutClientWidgets';
+// Next 15: ChatWidget·BottomTabBar 는 ssr:false 가 필요해 client wrapper 로 분리 (LayoutClientWidgets).
 // ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
 // PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
 
@@ -58,11 +56,11 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
-    default: '여소남 | 단체·패키지 여행 전문 플랫폼',
+    default: '여소남 | 믿고 떠나는 프리미엄 패키지 여행',
     template: '%s | 여소남',
   },
   description:
-    '여소남은 단체여행·패키지여행 전문 AI 중개 플랫폼입니다. 랜드사 직거래 없이 안심하고 비교·예약하세요. 숨은 비용 없는 투명한 여행.',
+    '여소남은 믿고 떠나는 프리미엄 패키지 여행 전문 플랫폼입니다. 랜드사 직거래 없이 안심하고 비교·예약하세요. 숨은 비용 없는 투명한 여행.',
   keywords: [
     '단체여행', '패키지여행', '랜드사', '여행사', '해외여행',
     '단체해외여행', '허니문', '효도여행', '여행견적', '여행비교',
@@ -81,21 +79,21 @@ export const metadata: Metadata = {
     locale: 'ko_KR',
     url: BASE_URL,
     siteName: '여소남',
-    title: '여소남 | 단체·패키지 여행 전문 플랫폼',
-    description: '랜드사 직거래 없는 안심 여행. AI 비교로 숨은 비용 제로.',
+    title: '여소남 | 믿고 떠나는 프리미엄 패키지 여행',
+    description: '믿고 떠나는 프리미엄 패키지 여행. AI 비교로 숨은 비용 제로.',
     images: [
       {
         url: `${BASE_URL}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: '여소남 — 단체·패키지 여행 플랫폼',
+        alt: '여소남 — 믿고 떠나는 프리미엄 패키지 여행',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '여소남 | 단체·패키지 여행',
-    description: '랜드사 직거래 없는 안심 여행. AI 비교로 숨은 비용 제로.',
+    title: '여소남 | 믿고 떠나는 프리미엄 패키지 여행',
+    description: '믿고 떠나는 프리미엄 패키지 여행. AI 비교로 숨은 비용 제로.',
     images: [`${BASE_URL}/og-image.png`],
   },
   alternates: {
@@ -174,8 +172,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MsClarity />
         <AffiliateAttributionBanner />
         {children}
-        <BottomTabBar />
-        <ChatWidget />
+        <LayoutClientWidgets />
         <JarvisFloatingWidget />
         <SpeedInsights />
       </body>

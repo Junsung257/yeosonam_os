@@ -1,5 +1,6 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import ReviewForm from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
@@ -44,9 +45,9 @@ export default async function ReviewPage({ params }: { params: Promise<{ booking
           <p className="mt-2 text-[13px] text-slate-500">
             소중한 후기 감사합니다. 여소남 운영팀이 곧 승인 후 다른 고객님께 도움이 되도록 노출할게요.
           </p>
-          <a href="/" className="mt-5 inline-block text-[13px] text-brand hover:underline">
+          <Link href="/" className="mt-5 inline-block text-[13px] text-brand hover:underline">
             여소남 홈으로 →
-          </a>
+          </Link>
         </div>
       </main>
     );

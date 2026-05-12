@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import AffiliatesPageClient from './AffiliatesPageClient';
 
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 export const revalidate = 60;
 
 function AffiliatesSkeleton() {

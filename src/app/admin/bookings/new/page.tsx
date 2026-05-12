@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { NewBookingFormClient } from './NewBookingFormClient';
 
-export const dynamic = process.platform === 'win32' ? 'force-dynamic' : 'auto';
+export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
 const GRADE_LABELS: Record<number, string> = { 1: '브론즈', 2: '실버', 3: '골드', 4: '플래티넘', 5: '다이아' };
 

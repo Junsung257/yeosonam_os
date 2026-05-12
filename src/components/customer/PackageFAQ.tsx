@@ -93,19 +93,27 @@ function FaqRow({ item }: { item: FaqItem }) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between py-3.5 text-left gap-3 group"
+        className="w-full flex items-start justify-between py-3.5 text-left gap-3 group"
       >
-        <span className="text-sm font-medium text-gray-800 group-hover:text-brand transition-colors leading-snug">
-          {item.question}
+        <span className="flex items-start gap-2 flex-1 min-w-0">
+          <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-brand/10 text-brand text-xs font-bold mt-0.5">Q</span>
+          <span className="text-sm font-bold text-gray-900 group-hover:text-brand transition-colors leading-snug">
+            {item.question}
+          </span>
         </span>
-        <span className={`shrink-0 text-gray-400 text-base transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+        <span className={`shrink-0 text-gray-400 text-base transition-transform duration-200 mt-1 ${open ? 'rotate-180' : ''}`}>
           ∨
         </span>
       </button>
       {open && (
-        <p className="pb-4 text-sm text-gray-600 leading-relaxed -mt-1">
-          {item.answer}
-        </p>
+        <div className="pb-4 -mt-1">
+          <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-3 border-l-4 border-brand/40">
+            <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-gray-600 text-xs font-bold mt-0.5">A</span>
+            <p className="text-sm text-gray-700 leading-relaxed flex-1">
+              {item.answer}
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

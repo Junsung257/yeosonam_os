@@ -694,12 +694,33 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   // Append product ID suffix to prevent slug collisions between same-destination products
   const slug = `${seo.slug}-${product.id.slice(-6)}`;
 
+  // og_image_url 폴백 체인 — null 비율 83% 문제 해결 (2026-05-12)
+  // 1. 상품 대표사진 hero_image_url
+  // 2. 상품 thumbnail_urls[0]
+  // 3. 첫 매칭된 관광지의 첫 사진
+  // 4. 어떤 관광지든 첫 가용 사진
+  // 5. 브랜드 기본 OG (절대 null 반환 X)
+  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  const firstAttrPhoto =
+    attractions[0]?.photos?.[0]?.src_medium ||
+    attractions
+      .flatMap((a: any) => (Array.isArray(a?.photos) ? a.photos : []))
+      .find((p: any) => p?.src_medium)?.src_medium ||
+    null;
+  const og_image_url: string =
+    (product as { hero_image_url?: string | null }).hero_image_url ||
+    (Array.isArray((product as { thumbnail_urls?: string[] }).thumbnail_urls)
+      ? (product as { thumbnail_urls?: string[] }).thumbnail_urls?.[0]
+      : null) ||
+    firstAttrPhoto ||
+    `${baseUrl}/og-image.png`;
+
   return {
     blog_html,
     slug,
     seo_title: seo.seoTitle,
     seo_description: seo.seoDescription,
-    og_image_url: product.hero_image_url || attractions[0]?.photos?.[0]?.src_medium || null,
+    og_image_url,
   };
 }
 
