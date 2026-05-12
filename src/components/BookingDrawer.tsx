@@ -978,19 +978,51 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
   const handleConfirmSettlement = async (confirm: boolean) => {
     if (!bookingId) return;
+
+    // 정산확정 = 통장내역 기준 회계 마감 (사장님 모델)
+    // - 명목가(total_price) vs 실수령(paid_amount) 차이가 있어도 정상 정산으로 닫음
+    // - 미수 차액은 서비스 손비로 흡수, 수익은 paid_amount - total_paid_out 기준
+    // - DB 원본(paid_amount/total_price/total_cost)는 절대 변경하지 않음 (회계 감사 보존)
+    if (confirm) {
+      const totalPrice = Number(booking?.total_price ?? 0);
+      const paidAmount = Number(booking?.paid_amount ?? 0);
+      const unpaidDiff = totalPrice - paidAmount;
+      // 미수 ≥ 1만원이면 명시적 확인
+      if (unpaidDiff >= 10000) {
+        const won = (n: number) => `₩${n.toLocaleString('ko-KR')}`;
+        const ok = window.confirm(
+          `통장 입금 ${won(paidAmount)} / 매출 명목가 ${won(totalPrice)}\n` +
+          `→ 미수 ${won(unpaidDiff)}이 있습니다.\n\n` +
+          `정산확정 시 미수액은 서비스 손비로 처리되고\n` +
+          `회계는 통장 기준으로 마감됩니다. 진행하시겠습니까?`
+        );
+        if (!ok) return;
+      }
+    }
+
     setConfirmingSettlement(true);
     try {
       // 모드 자동 결정 — 장부(effectiveNet) 입력 여부로 accrual vs cash 분기
       // 관리자 판단 존중: 장부가 있으면 accrual, 없으면 cash (ERPNext Bank Recon 패턴)
       const autoMode: 'accrual' | 'cash' = blueprint.effectiveNet > 0 ? 'accrual' : 'cash';
+      const body = confirm ? {
+        settlement_confirmed_at: new Date().toISOString(),
+        settlement_confirmed_by: 'admin',
+        settlement_mode: autoMode,
+        // 정산확정 = done 탭으로 이동 + 결제 완납 표기 (사장님 모델)
+        status: 'completed',
+        payment_status: '완납',
+        // paid_amount / total_price 는 의도적으로 건드리지 않음 (DB 원본 보존)
+      } : {
+        settlement_confirmed_at: null,
+        settlement_confirmed_by: null,
+        settlement_mode: null,
+        // 해제 시 status / payment_status 는 자동 복원하지 않음 (수동 복원 안내)
+      };
       const res = await fetch(`/api/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settlement_confirmed_at: confirm ? new Date().toISOString() : null,
-          settlement_confirmed_by: confirm ? 'admin' : null,
-          settlement_mode:         confirm ? autoMode : null,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -1002,7 +1034,18 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       if (patchedPayload?.booking) {
         onSave?.(bookingId, patchedPayload.booking);
       }
-      showToast(confirm ? '✅ 정산 확정 — 목록에서 숨겨집니다' : '♻️ 정산 확정 해제');
+      if (confirm) {
+        const totalPrice = Number(booking?.total_price ?? 0);
+        const paidAmount = Number(booking?.paid_amount ?? 0);
+        const unpaid = totalPrice - paidAmount;
+        showToast(
+          unpaid > 0
+            ? `✅ 정산 확정 — 완료 마감 (미수 ₩${unpaid.toLocaleString('ko-KR')} 손비 처리)`
+            : '✅ 정산 확정 — 완료 상태로 마감',
+        );
+      } else {
+        showToast('♻️ 정산 확정 해제 — status/payment_status는 수동 복원 필요');
+      }
     } catch {
       showToast('네트워크 오류 — 다시 시도해주세요', 'err');
     } finally {
