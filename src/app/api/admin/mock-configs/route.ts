@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listMockConfigs, updateMockConfig, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // GET /api/admin/mock-configs
-export async function GET() {
+const getMockConfigs = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ configs: [] });
   }
   const configs = await listMockConfigs();
   return NextResponse.json({ configs });
-}
+};
+
+export const GET = withAdminGuard(getMockConfigs);
 
 // PUT /api/admin/mock-configs  body: { api_name, mode, delay_ms }
-export async function PUT(request: NextRequest) {
+const putMockConfigs = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -20,4 +23,6 @@ export async function PUT(request: NextRequest) {
 
   await updateMockConfig(api_name, { mode, delay_ms });
   return NextResponse.json({ ok: true });
-}
+};
+
+export const PUT = withAdminGuard(putMockConfigs);

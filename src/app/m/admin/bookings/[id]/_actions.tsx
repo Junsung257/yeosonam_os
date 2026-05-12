@@ -100,7 +100,7 @@ export default function BookingActions({
     <>
       {error && (
         <div
-          className="fixed left-4 right-4 z-40 bg-red-600 text-white text-sm rounded-xl px-4 py-3 shadow-lg"
+          className="fixed left-4 right-4 z-40 bg-red-600 text-white text-sm rounded-admin-md px-4 py-3 shadow-admin-md"
           style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
         >
           {error}
@@ -118,7 +118,7 @@ export default function BookingActions({
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className="fixed right-4 z-40 bg-slate-900 text-white rounded-full shadow-xl px-5 h-12 flex items-center gap-1.5 text-sm font-semibold active:scale-95 transition"
+          className="fixed right-4 z-40 bg-slate-900 text-white rounded-full shadow-admin-lg px-5 h-12 flex items-center gap-1.5 text-sm font-semibold active:scale-95 transition"
           style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }}
         >
           <ChevronUp size={18} />

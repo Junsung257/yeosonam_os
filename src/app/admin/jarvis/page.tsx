@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ActionCard } from './components/ActionCard'
 import AgentActionsPanel from './components/AgentActionsPanel'
+import JarvisRagStatusCard from '@/components/admin/JarvisRagStatusCard'
 
 const AGENT_LABELS: Record<string, string> = {
   operations: '운영',
@@ -140,32 +141,36 @@ export default function JarvisPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
+      {/* RAG 색인 상태 */}
+      <div className="mb-4">
+        <JarvisRagStatusCard />
+      </div>
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center text-white font-bold text-sm">J</div>
+        <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center text-white font-bold text-admin-base">J</div>
         <div>
-          <h1 className="font-semibold text-gray-900">자비스 AI</h1>
-          <p className="text-xs text-gray-400">여소남 OS 전체 통합제어</p>
+          <h1 className="text-admin-h3 text-admin-text leading-tight">자비스 AI</h1>
+          <p className="text-admin-xs text-admin-muted leading-tight">여소남 OS 전체 통합제어</p>
         </div>
         {/* 탭 */}
-        <div className="ml-4 flex gap-1 bg-slate-100 rounded-lg p-0.5">
+        <div className="ml-4 flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1">
           <button
             onClick={() => setActiveTab('chat')}
-            className={`px-3 py-1 text-[12px] font-medium rounded-md transition ${
-              activeTab === 'chat' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors ${
+              activeTab === 'chat' ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'
             }`}
           >
             채팅
           </button>
           <button
             onClick={() => setActiveTab('actions')}
-            className={`px-3 py-1 text-[12px] font-medium rounded-md transition flex items-center gap-1 ${
-              activeTab === 'actions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors inline-flex items-center gap-1 ${
+              activeTab === 'actions' ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'
             }`}
           >
             결재함
             {pendingCount > 0 && (
-              <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+              <span className="bg-danger text-white text-admin-2xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center admin-num">
                 {pendingCount}
               </span>
             )}
@@ -174,9 +179,9 @@ export default function JarvisPage() {
         {kakaoCount > 0 && (
           <button
             onClick={() => sendMessage(`미처리 카카오 메시지 ${kakaoCount}개 요약해줘`)}
-            className="ml-auto flex items-center gap-1.5 bg-yellow-400 text-yellow-900 text-xs font-semibold px-3 py-1.5 rounded-full hover:bg-yellow-500 transition"
+            className="ml-auto flex items-center gap-1.5 bg-status-warningBg text-status-warningFg text-admin-xs font-semibold px-3 h-8 rounded-full hover:opacity-80 transition-opacity"
           >
-            카카오 {kakaoCount}건
+            카카오 <span className="admin-num">{kakaoCount}</span>건
           </button>
         )}
         <button
@@ -188,9 +193,9 @@ export default function JarvisPage() {
             }])
             setSessionId(null)
           }}
-          className="ml-auto text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition bg-white"
+          className="ml-auto text-admin-xs text-admin-muted hover:text-admin-text px-3 h-8 border border-admin-border-mid rounded-admin-sm hover:bg-admin-surface-2 hover:border-admin-border-strong transition-colors bg-admin-surface font-medium"
         >
-          초��화
+          초기화
         </button>
       </div>
 
@@ -205,21 +210,21 @@ export default function JarvisPage() {
       {activeTab === 'chat' && (
         <>
           {/* 메시지 영역 */}
-          <div className="flex-1 overflow-y-auto bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto admin-card p-4 space-y-3">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-2' : ''}`}>
                   {/* Agent 뱃지 */}
                   {msg.agent && (
-                    <div className="text-xs text-purple-600 mb-1 font-medium">
+                    <div className="text-admin-xs text-brand mb-1 font-semibold uppercase tracking-wider">
                       {AGENT_LABELS[msg.agent] || msg.agent}
                     </div>
                   )}
                   {/* 말풍선 */}
-                  <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                  <div className={`rounded-admin-lg px-4 py-2.5 text-admin-sm whitespace-pre-wrap leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-purple-700 text-white rounded-tr-sm'
-                      : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm'
+                      ? 'bg-brand text-white rounded-tr-sm'
+                      : 'bg-admin-surface border border-admin-border-mid text-admin-text rounded-tl-sm shadow-admin-xs'
                   }`}>
                     {msg.content}
                   </div>
@@ -237,11 +242,11 @@ export default function JarvisPage() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3">
+                <div className="admin-card px-4 py-3">
                   <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.1s]" />
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                    <div className="w-2 h-2 bg-brand rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-brand rounded-full animate-bounce [animation-delay:0.1s]" />
+                    <div className="w-2 h-2 bg-brand rounded-full animate-bounce [animation-delay:0.2s]" />
                   </div>
                 </div>
               </div>
@@ -255,7 +260,7 @@ export default function JarvisPage() {
               <button
                 key={cmd}
                 onClick={() => sendMessage(cmd)}
-                className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-purple-200 text-purple-700 bg-white hover:bg-purple-50 transition"
+                className="whitespace-nowrap text-admin-xs px-3 py-1.5 rounded-full border border-brand/20 text-brand bg-brand-light hover:bg-brand-light/70 transition-colors font-medium"
               >
                 {cmd}
               </button>
@@ -273,19 +278,19 @@ export default function JarvisPage() {
                   sendMessage(input)
                 }
               }}
-              placeholder="자비스에게 명령하세요... (카카오 채팅 내역 붙여넣기 가능)"
-              className="flex-1 resize-none border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-purple-400 min-h-[42px] max-h-[120px]"
+              placeholder="자비스에게 명령하세요… (카카오 채팅 내역 붙여넣기 가능)"
+              className="flex-1 resize-none border border-admin-border-mid rounded-admin-md px-3 py-2 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors min-h-[42px] max-h-[120px]"
               rows={1}
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={loading || !input.trim()}
-              className="w-10 h-10 bg-purple-700 text-white rounded-xl flex items-center justify-center hover:bg-purple-800 disabled:opacity-40 transition"
+              className="w-10 h-10 bg-brand text-white rounded-admin-md flex items-center justify-center hover:bg-brand-dark disabled:opacity-40 disabled:bg-admin-border-mid transition-colors"
             >
               &uarr;
             </button>
           </div>
-          <p className="text-xs text-slate-400 mt-1">Enter 전송 / Shift+Enter 줄바꿈</p>
+          <p className="text-admin-xs text-admin-muted-2 mt-1.5">Enter 전송 / Shift+Enter 줄바꿈</p>
         </>
       )}
     </div>

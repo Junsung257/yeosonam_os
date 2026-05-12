@@ -36,7 +36,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
             <img src="/logo.png" alt="여소남" className="h-10 object-contain shrink-0" />
             <div>
               <h1 className="text-2xl font-extrabold text-[#001f3f] tracking-tight">여소남 예약 안내문</h1>
-              <p className="text-[11px] text-slate-500 mt-0.5">YEOSONAM BOOKING GUIDE</p>
+              <p className="text-[11px] text-admin-muted mt-0.5">YEOSONAM BOOKING GUIDE</p>
             </div>
           </div>
         </header>
@@ -45,7 +45,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
         <main className="flex-1 px-10 py-6 text-[#0b1c30]">
           {/* 상단 안내 */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
-            <p className="text-[13px] font-bold text-blue-900 mb-1">📋 본 안내문은 모든 여소남 여행상품에 공통 적용됩니다.</p>
+            <p className="text-admin-sm font-bold text-blue-900 mb-1">📋 본 안내문은 모든 여소남 여행상품에 공통 적용됩니다.</p>
             <p className="text-[11px] text-blue-700">상품별 세부 규정(취소수수료율, 써차지, 싱글차지 금액 등)은 상품 일정표를 참고하시기 바랍니다.</p>
           </div>
 
@@ -53,8 +53,8 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
           <div className="grid grid-cols-2 gap-4">
             {/* 좌측: 예약/결제 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">💳 예약 및 결제 규정</h2>
-              <div className="space-y-2 text-[11px] text-slate-700 leading-relaxed">
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-admin-border-mid">💳 예약 및 결제 규정</h2>
+              <div className="space-y-2 text-[11px] text-admin-text-2 leading-relaxed">
                 <div className="flex gap-2 items-start">
                   <span className="shrink-0 text-red-500 font-bold">①</span>
                   <p>예약금 입금 확인 후 예약이 확정되며, 미입금 시 <span className="font-bold text-red-600">자동 취소</span> 처리됩니다.</p>
@@ -80,18 +80,18 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
 
             {/* 우측: 취소/환불 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">🚫 취소 및 환불 규정</h2>
-              <div className="space-y-2 text-[11px] text-slate-700 leading-relaxed">
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-admin-border-mid">🚫 취소 및 환불 규정</h2>
+              <div className="space-y-2 text-[11px] text-admin-text-2 leading-relaxed">
                 <div className="bg-red-50 border border-red-200 rounded p-3">
                   <p className="font-bold text-red-800 mb-1">⚠️ 특별약관 적용 상품</p>
                   <p className="text-red-700">본 행사는 <span className="font-bold">특별약관이 적용</span>되며, 취소 시 상품별 특별약관에 따른 취소수수료가 부과됩니다. 상세 취소수수료율은 상품 일정표를 참고하시기 바랍니다.</p>
                 </div>
                 <div className="flex gap-2 items-start">
-                  <span className="shrink-0 text-slate-500 font-bold">•</span>
+                  <span className="shrink-0 text-admin-muted font-bold">•</span>
                   <p>취소 문의는 <span className="font-bold">평일 09시~18시</span>까지 상담 가능하며, 공휴일(토/일) 및 국가 지정 휴무일에는 취소 처리가 되지 않습니다.</p>
                 </div>
                 <div className="flex gap-2 items-start">
-                  <span className="shrink-0 text-slate-500 font-bold">•</span>
+                  <span className="shrink-0 text-admin-muted font-bold">•</span>
                   <p>업무 종료시간인 <span className="font-bold">18시 이후 취소 시 익일</span>로 계산됩니다.</p>
                 </div>
               </div>
@@ -102,8 +102,8 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
           <div className="grid grid-cols-2 gap-4 mt-4">
             {/* 좌측: 여행 필수 안내 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">🛂 여행 필수 안내</h2>
-              <div className="space-y-1.5 text-[11px] text-slate-700 leading-relaxed">
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-admin-border-mid">🛂 여행 필수 안내</h2>
+              <div className="space-y-1.5 text-[11px] text-admin-text-2 leading-relaxed">
                 <div className="flex gap-2 items-start">
                   <span className="shrink-0">🛂</span>
                   <p>여권 유효기간은 출발일 기준 <span className="font-bold text-red-600">6개월 이상</span> 남아 있어야 합니다. 여권 만료로 인한 출국 불가 시 여행사는 책임지지 않습니다.</p>
@@ -125,8 +125,8 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
 
             {/* 우측: 일반 안내 */}
             <section>
-              <h2 className="text-[14px] font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-slate-200">ℹ️ 일반 안내사항</h2>
-              <div className="space-y-1.5 text-[11px] text-slate-700 leading-relaxed">
+              <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-admin-border-mid">ℹ️ 일반 안내사항</h2>
+              <div className="space-y-1.5 text-[11px] text-admin-text-2 leading-relaxed">
                 <div className="flex gap-2 items-start">
                   <span className="shrink-0">🚫</span>
                   <p>본 상품은 <span className="font-bold">단체관광 목적의 패키지 상품</span>입니다. 개별 일정(친지 방문, 미계약 업체 조인 등)은 불가하며, 개별 일정 진행 시 포함된 식사/특전/샌딩 서비스가 제공되지 않습니다.</p>
@@ -156,7 +156,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
         <footer className="w-full bg-[#001f3f] py-4 px-10 mt-auto">
           <div className="flex justify-between items-center">
             <div>
-              <p className="text-white font-bold text-[12px]">여소남 여행사 (YEOSONAM TRAVEL)</p>
+              <p className="text-white font-bold text-admin-xs">여소남 여행사 (YEOSONAM TRAVEL)</p>
               <p className="text-blue-200 text-[10px] mt-0.5">본 안내문을 확인하시고 동의하신 후 예약을 진행해 주시기 바랍니다.</p>
             </div>
             <p className="text-blue-300 text-[9px]">© 2024 YEOSONAM. ALL RIGHTS RESERVED.</p>
@@ -171,10 +171,10 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
             <div className="flex items-baseline justify-between">
               <h1 className="text-xl font-extrabold text-[#001f3f]">상품별 적용 약관 전문</h1>
               {packageTitle && (
-                <p className="text-[11px] text-slate-600 truncate max-w-[60%]">{packageTitle}</p>
+                <p className="text-[11px] text-admin-muted truncate max-w-[60%]">{packageTitle}</p>
               )}
             </div>
-            <p className="text-[10px] text-slate-500 mt-1">
+            <p className="text-[10px] text-admin-muted mt-1">
               ※ 아래는 플랫폼 기본약관 · 랜드사 공통 · 랜드사 상품타입별 특약 · 상품 개별 특약을 4단계 우선순위로 해소한 전체 약관입니다.
               상위 tier가 같은 항목을 덮어쓴 경우 [출처] 배지로 표시됩니다.
             </p>
@@ -184,14 +184,14 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
               const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
               const isOverride = (notice._tier ?? 1) >= 2;
               const tierColor: Record<number, string> = {
-                1: 'text-slate-400', 2: 'text-blue-600', 3: 'text-purple-600', 4: 'text-red-600',
+                1: 'text-admin-muted-2', 2: 'text-blue-600', 3: 'text-purple-600', 4: 'text-red-600',
               };
               return (
                 <section key={idx} className="break-inside-avoid">
                   <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-[12px] font-extrabold text-[#001f3f]">{notice.title}</h2>
+                    <h2 className="text-admin-xs font-extrabold text-[#001f3f]">{notice.title}</h2>
                     {isOverride && notice._source && (
-                      <span className={`text-[9px] font-bold ${tierColor[notice._tier ?? 1]} bg-slate-50 px-1.5 py-0.5 rounded`}>
+                      <span className={`text-[9px] font-bold ${tierColor[notice._tier ?? 1]} bg-admin-bg px-1.5 py-0.5 rounded`}>
                         [{notice._source}]
                       </span>
                     )}
@@ -201,7 +201,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
                   </div>
                   <div className="space-y-0.5 pl-3">
                     {lines.map((line, lIdx) => (
-                      <p key={lIdx} className="text-[10px] text-slate-700 leading-snug break-keep">
+                      <p key={lIdx} className="text-[10px] text-admin-text-2 leading-snug break-keep">
                         {line.startsWith('•') ? line : `• ${line}`}
                       </p>
                     ))}

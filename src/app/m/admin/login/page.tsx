@@ -73,13 +73,13 @@ function MobileLoginForm() {
     >
       <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">여소남 OS</h1>
-          <p className="text-sm text-slate-500 mt-1">모바일 관리자</p>
+          <h1 className="text-2xl font-bold text-admin-text">여소남 OS</h1>
+          <p className="text-sm text-admin-muted mt-1">모바일 관리자</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1.5">이메일</label>
+            <label className="block text-xs font-medium text-admin-text-2 mb-1.5">이메일</label>
             <input
               type="email"
               required
@@ -90,11 +90,11 @@ function MobileLoginForm() {
               autoComplete="username"
               autoCapitalize="off"
               spellCheck={false}
-              className="w-full border border-slate-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full border border-admin-border-strong rounded-admin-md px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1.5">비밀번호</label>
+            <label className="block text-xs font-medium text-admin-text-2 mb-1.5">비밀번호</label>
             <input
               type="password"
               required
@@ -102,17 +102,17 @@ function MobileLoginForm() {
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               autoComplete="current-password"
-              className="w-full border border-slate-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full border border-admin-border-strong rounded-admin-md px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 pt-1">
+          <div className="flex items-center gap-2 text-xs text-admin-muted pt-1">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
             한 번 로그인하면 본인 폰에서 계속 유지됩니다 (최대 365일)
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-admin-md p-3">
               {error}
             </div>
           )}
@@ -120,13 +120,13 @@ function MobileLoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-medium hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors text-base mt-2 active:scale-[0.98]"
+            className="w-full bg-slate-900 text-white py-3.5 rounded-admin-md font-medium hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors text-base mt-2 active:scale-[0.98]"
           >
             {loading ? '로그인 중...' : '로그인'}
           </button>
         </form>
 
-        <p className="text-[11px] text-slate-400 text-center mt-6">
+        <p className="text-[11px] text-admin-muted-2 text-center mt-6">
           홈 화면에 추가하면 앱처럼 사용할 수 있습니다
         </p>
       </div>

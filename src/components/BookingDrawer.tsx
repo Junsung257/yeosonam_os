@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import Link from 'next/link';
 import {
   JOURNEY_STEPS, ALLOWED_TRANSITIONS, getStepIndex,
   getStatusLabel, getStatusBadgeClass,
 } from '@/lib/booking-state-machine';
+import LedgerViewer from './LedgerViewer';
+import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,8 @@ interface BookingDetail {
   settlement_mode?: 'accrual' | 'cash' | null;
   commission_rate?: number | null;
   commission_amount?: number | null;
+  /** assisted 모드에서 pending→계약금 단계 전이 전 운영자 승인 */
+  deposit_notice_blocked?: boolean;
 }
 
 interface MessageLog {
@@ -154,7 +158,7 @@ function AmountRow({
 //   C. cash        — 장부 비어있고 통장만 매칭됨 → 현금 기준 실현수익 노출
 //   D. confirmed   — settlement_confirmed_at 有 → 책 덮음 (어느 기준이든)
 
-function DualControlTower({
+const DualControlTower = React.memo(function DualControlTower({
   totalSale,
   effectiveNet,
   netOverride,
@@ -386,12 +390,12 @@ function DualControlTower({
       </div>
     </div>
   );
-}
+});
 
 // ─── Dynamic Quote Builder ────────────────────────────────────────────────────
 // 역할: 좌측 '장부상 계획(Blueprint)' 수치를 설정하는 예산안 도구
 
-function DynamicQuoteBuilder({
+const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
   rows, setRows, isDirty, setIsDirty,
   netOverride, setNetOverride,
   overrideMemo, setOverrideMemo,
@@ -764,7 +768,7 @@ function DynamicQuoteBuilder({
       </div>
     </div>
   );
-}
+});
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -795,6 +799,11 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   // 랜드사 커미션 (rate ↔ amount 상호 자동 계산, UI에서만 연동)
   const [commissionRate, setCommissionRate]     = useState<number | null>(null);
   const [commissionAmount, setCommissionAmount] = useState<number | null>(null);
+
+  // Phase 2a — append-only 원장 보기 모달
+  const [showLedger, setShowLedger] = useState(false);
+  const [issuingPortal, setIssuingPortal] = useState(false);
+  const [clearingGate, setClearingGate] = useState(false);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const visible = !!bookingId;
@@ -831,6 +840,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   }, [txs]);
 
   const transitions = booking ? (ALLOWED_TRANSITIONS[booking.status] ?? []) : [];
+  const depositTransitionBlocked =
+    !!booking && booking.status === 'pending' && booking.deposit_notice_blocked === true;
 
   // ── Data Fetch ─────────────────────────────────────────────────────────────
 
@@ -915,6 +926,50 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       onStatusChange?.(bookingId, to);
       showToast(`"${getStatusLabel(to)}"으로 변경됨`);
     } finally { setTransitioning(null); }
+  };
+
+  const handleClearDepositGate = async () => {
+    if (!bookingId) return;
+    setClearingGate(true);
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bookingId, deposit_notice_blocked: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? '게이트 해제 실패', 'err');
+        return;
+      }
+      await fetchAll(bookingId);
+      if (data.booking) onSave?.(bookingId, data.booking);
+      showToast('계약금 안내 단계로 넘길 수 있습니다');
+    } finally {
+      setClearingGate(false);
+    }
+  };
+
+  const handleIssueGuestPortal = async () => {
+    if (!bookingId) return;
+    setIssuingPortal(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/guest-portal`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? '링크 발급 실패', 'err');
+        return;
+      }
+      const url = data.portalUrl as string;
+      if (url && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        showToast('고객 링크를 클립보드에 복사했습니다');
+      } else {
+        showToast(url || '발급됨');
+      }
+    } finally {
+      setIssuingPortal(false);
+    }
   };
 
   // ── 정산 확정 / 되돌리기 ─────────────────────────────────────────────
@@ -1168,6 +1223,47 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                   </div>
                 )}
 
+                {booking.status === 'pending' && booking.deposit_notice_blocked && (
+                  <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-3 space-y-2">
+                    <p className="text-[12px] font-bold text-amber-950">계약금 안내 전 운영자 승인 필요</p>
+                    <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                      지금은 검수 후 전이하는 모드입니다. 허용 후 &quot;랜드사 승인 (계약금 청구)&quot; 버튼을 누르세요.
+                      전체 자동화 전환 시 서버 환경에{' '}
+                      <span className="font-mono text-[10px] bg-amber-100/80 px-1 rounded">BOOKING_AUTOMATION_TIER=full_auto</span>
+                      를 설정하면 이 단계가 기본 생략됩니다.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleClearDepositGate}
+                        disabled={clearingGate}
+                        className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[12px] font-semibold hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {clearingGate ? '처리 중…' : '계약금 안내 허용'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleIssueGuestPortal}
+                        disabled={issuingPortal}
+                        className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-amber-900 text-[12px] font-semibold hover:bg-amber-100/50 disabled:opacity-50"
+                      >
+                        {issuingPortal ? '발급 중…' : '고객 요약 링크 복사'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {booking.status !== 'cancelled' && !booking.deposit_notice_blocked && (
+                  <button
+                    type="button"
+                    onClick={handleIssueGuestPortal}
+                    disabled={issuingPortal}
+                    className="w-full text-[11px] text-slate-500 hover:text-blue-600 py-1.5 border border-dashed border-slate-200 rounded-lg hover:border-blue-200 transition disabled:opacity-50"
+                  >
+                    {issuingPortal ? '링크 발급 중…' : '고객용 예약 요약 링크 복사 (토큰)'}
+                  </button>
+                )}
+
                 {/* 기본 정보 */}
                 <div className="bg-white rounded-2xl ring-1 ring-gray-900/5 shadow-sm p-4">
                   <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">기본 정보</h3>
@@ -1224,7 +1320,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                             <p className="text-[13px] text-gray-600 mt-0.5 leading-relaxed">{log.content}</p>
                           )}
                           <p className="text-[11px] text-gray-400 mt-1">
-                            {new Date(log.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            {fmtMonthDayTime(log.created_at)}
                             {' · '}{log.created_by}
                           </p>
                         </div>
@@ -1283,18 +1379,28 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
                   🏦 통장 매칭 내역
                 </h3>
-                {txs.length > 0 && (
-                  <div className="flex items-center gap-3 text-[12px] tabular-nums">
-                    <span className="text-blue-600 font-semibold">
-                      📥 {reality.actualIncome.toLocaleString()}원
-                    </span>
-                    {reality.actualExpense > 0 && (
-                      <span className="text-red-500 font-semibold">
-                        📤 {reality.actualExpense.toLocaleString()}원
+                <div className="flex items-center gap-3 text-[12px] tabular-nums">
+                  {txs.length > 0 && (
+                    <>
+                      <span className="text-blue-600 font-semibold">
+                        📥 {reality.actualIncome.toLocaleString()}원
                       </span>
-                    )}
-                  </div>
-                )}
+                      {reality.actualExpense > 0 && (
+                        <span className="text-red-500 font-semibold">
+                          📤 {reality.actualExpense.toLocaleString()}원
+                        </span>
+                      )}
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowLedger(true)}
+                    className="text-[11px] px-2 py-0.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                    title="원장(append-only) 거래 흐름 보기"
+                  >
+                    📒 원장 보기
+                  </button>
+                </div>
               </div>
               {txLoading ? (
                 <div className="space-y-2">
@@ -1310,36 +1416,42 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {txs.map(tx => (
-                    <div key={tx.id} className={`rounded-xl p-3 ${
-                      tx.transaction_type === '입금' && !tx.is_refund
-                        ? 'bg-blue-50'
-                        : tx.transaction_type === '출금'
-                          ? 'bg-red-50/60'
-                          : 'bg-orange-50/60'
-                    }`}>
+                  {txs.map(tx => {
+                    // 4-사분면 분류: (입금/출금) × (정상/환불)
+                    //  ↓ 입금(정상) — 고객→우리 (계약금/잔금)
+                    //  ↩ 입금(환불) — 랜드사→우리 (환불받음)
+                    //  ↑ 출금(정상) — 우리→랜드사 (송금)
+                    //  ↪ 출금(환불) — 우리→고객 (환불해줌)
+                    const kind: 'in_normal' | 'in_refund' | 'out_normal' | 'out_refund' =
+                      tx.transaction_type === '입금'
+                        ? (tx.is_refund ? 'in_refund' : 'in_normal')
+                        : (tx.is_refund ? 'out_refund' : 'out_normal');
+                    const meta = ({
+                      in_normal:  { bg: 'bg-blue-50',     iconCls: 'bg-blue-500 text-white',          icon: '↓', label: '입금 (고객)',     amountCls: 'text-blue-600',   sign: '+' },
+                      in_refund:  { bg: 'bg-emerald-50',  iconCls: 'bg-emerald-100 text-emerald-700', icon: '↩', label: '환불받음 (랜드사)', amountCls: 'text-emerald-700', sign: '+' },
+                      out_normal: { bg: 'bg-red-50/60',   iconCls: 'bg-red-100 text-red-600',         icon: '↑', label: '송금 (랜드사)',    amountCls: 'text-red-600',    sign: '−' },
+                      out_refund: { bg: 'bg-orange-50/60',iconCls: 'bg-orange-100 text-orange-700',   icon: '↪', label: '환불해줌 (고객)',  amountCls: 'text-orange-700', sign: '−' },
+                    } as const)[kind];
+                    return (
+                    <div key={tx.id} className={`rounded-xl p-3 ${meta.bg}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[14px] font-bold flex-shrink-0 ${
-                            tx.transaction_type === '입금'
-                              ? tx.is_refund ? 'bg-orange-100 text-orange-600' : 'bg-blue-500 text-white'
-                              : 'bg-red-100 text-red-600'
-                          }`}>
-                            {tx.transaction_type === '입금' ? (tx.is_refund ? '↩' : '↓') : '↑'}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[14px] font-bold flex-shrink-0 ${meta.iconCls}`}>
+                            {meta.icon}
                           </div>
                           <div>
                             <p className="text-[13px] font-semibold text-gray-800">{tx.counterparty_name || '—'}</p>
                             <p className="text-[11px] text-gray-400">
-                              {new Date(tx.received_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              <span className="font-medium text-gray-500">{meta.label}</span>
+                              {' · '}
+                              {fmtMonthDayTime(tx.received_at)}
                               {tx.memo && ` · ${tx.memo}`}
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className={`text-[15px] font-extrabold tabular-nums ${
-                            tx.transaction_type === '입금' && !tx.is_refund ? 'text-blue-600' : 'text-red-600'
-                          }`}>
-                            {tx.transaction_type === '출금' ? '−' : '+'}{tx.amount.toLocaleString()}원
+                          <p className={`text-[15px] font-extrabold tabular-nums ${meta.amountCls}`}>
+                            {meta.sign}{tx.amount.toLocaleString()}원
                           </p>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded mt-0.5 inline-block font-semibold ${
                             tx.match_status === 'auto'   ? 'bg-green-100 text-green-700'  :
@@ -1351,7 +1463,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1365,7 +1478,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             <div className="flex gap-1.5 flex-wrap flex-1">
               {transitions.map(t => (
                 <button key={t.to} onClick={() => handleTransition(t.to)}
-                  disabled={transitioning !== null}
+                  disabled={transitioning !== null || (t.to === 'waiting_deposit' && depositTransitionBlocked)}
                   className={`px-3 py-1.5 text-[12px] font-semibold rounded-lg transition disabled:opacity-50 whitespace-nowrap ${
                     t.isMock
                       ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100'
@@ -1432,6 +1545,11 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             ${toast.type === 'err' ? 'bg-red-600' : 'bg-gray-900'}`}>
             {toast.type === 'err' ? '🚨' : '✅'} {toast.msg}
           </div>
+        )}
+
+        {/* ── Phase 2a 원장 보기 모달 ──────────────────────────────── */}
+        {showLedger && booking?.id && (
+          <LedgerViewer bookingId={booking.id} onClose={() => setShowLedger(false)} />
         )}
       </div>
     </>

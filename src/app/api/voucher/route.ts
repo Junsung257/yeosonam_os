@@ -8,6 +8,8 @@ import {
 } from '@/lib/supabase';
 import { generateVoucherData, renderVoucherHtml, type RawVoucherInput } from '@/lib/voucher-generator';
 import { sendVoucherIssuedAlimtalk } from '@/lib/kakao';
+import { verifyGuidebookToken } from '@/lib/guidebook-token';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 
 // ── Mock ───────────────────────────────────────────────────────
 
@@ -111,9 +113,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const id        = searchParams.get('id');
   const bookingId = searchParams.get('bookingId');
   const withHtml  = searchParams.get('html') === 'true';
+  const guideToken = searchParams.get('guideToken');
 
   if (!id && !bookingId) {
     return NextResponse.json({ error: 'id 또는 bookingId가 필요합니다' }, { status: 400 });
+  }
+
+  const tokenPayload = guideToken ? verifyGuidebookToken(guideToken) : null;
+  const hasGuideScope = Boolean(tokenPayload && bookingId && tokenPayload.bookingId === bookingId);
+  if (!hasGuideScope) {
+    const guard = await requireAuthenticatedRoute(request);
+    if (guard instanceof NextResponse) {
+      return NextResponse.json({ error: '인증 또는 유효한 가이드 토큰이 필요합니다' }, { status: 401 });
+    }
   }
 
   if (!isSupabaseConfigured) {

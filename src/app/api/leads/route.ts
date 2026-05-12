@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { findOrCreateCustomerByPhone } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { getSecret } from '@/lib/secret-registry';
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+  getSecret('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
 export async function POST(req: NextRequest) {
@@ -17,7 +19,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 인플루언서/제휴 추천인 코드 (미들웨어가 ?ref= 파라미터에서 쿠키로 저장)
-    const affRef = req.cookies.get('aff_ref')?.value || null;
+    const affRaw = req.cookies.get('aff_ref')?.value || null;
+    const affCanon = affRaw?.trim() ? normalizeAffiliateReferralCode(affRaw) : '';
+    const affRef = affCanon || null;
 
     const { error } = await supabase.from('leads').insert({
       product_id: productId,
@@ -33,6 +37,7 @@ export async function POST(req: NextRequest) {
       utm_medium: tracking?.utmMedium || null,
       utm_campaign: tracking?.utmCampaign || null,
       utm_content: tracking?.utmContent || null,
+      utm_term: tracking?.utmTerm || null,
       referrer: tracking?.referrer || null,
       landing_url: tracking?.landingUrl || null,
       scroll_depth_reached: tracking?.scrollDepthReached || 0,

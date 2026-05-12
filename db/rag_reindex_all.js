@@ -68,29 +68,37 @@ const adapters = {
   },
 
   async blogs(opt) {
-    let q = sb.from('blog_posts')
-      .select('id, tenant_id, slug, title, excerpt, body_md, created_at')
-      .eq('is_published', true)
+    // v4 fix (2026-04-30): blog_posts 테이블 없음. content_creatives 사용
+    let q = sb.from('content_creatives')
+      .select('id, tenant_id, slug, seo_title, seo_description, blog_html, ad_copy, created_at')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
       .order('created_at', { ascending: false })
     if (opt.tenant) q = q.eq('tenant_id', opt.tenant)
     if (opt.limit) q = q.limit(opt.limit)
     const { data, error } = await q
     if (error) throw error
-    return (data ?? []).map(b => ({
-      tenantId: b.tenant_id ?? null,
-      sourceType: 'blog',
-      sourceId: b.id,
-      sourceUrl: `/blog/${b.slug}`,
-      sourceTitle: b.title,
-      docSummary: b.excerpt ?? b.title,
-      body: b.body_md ?? '',
-    }))
+    return (data ?? []).map(b => {
+      // blog_html에서 태그 제거 (간단한 strip)
+      const stripped = (b.blog_html ?? b.ad_copy ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return {
+        tenantId: b.tenant_id ?? null,
+        sourceType: 'blog',
+        sourceId: b.id,
+        sourceUrl: `/blog/${b.slug}`,
+        sourceTitle: b.seo_title ?? '여행 가이드',
+        docSummary: b.seo_description ?? b.seo_title ?? '',
+        body: stripped,
+      };
+    })
   },
 
   async attractions(opt) {
+    // v4 fix (2026-04-30): destination 컬럼 없음 → country + region 사용
     let q = sb.from('attractions')
-      .select('id, name, destination, long_desc, short_desc, created_at')
-      .not('long_desc', 'is', null)
+      .select('id, name, country, region, long_desc, short_desc, created_at')
+      .or('long_desc.not.is.null,short_desc.not.is.null')
     if (opt.limit) q = q.limit(opt.limit)
     const { data, error } = await q
     if (error) throw error
@@ -100,8 +108,8 @@ const adapters = {
       sourceId: a.id,
       sourceUrl: null,
       sourceTitle: a.name,
-      docSummary: `${a.destination ?? ''} · ${a.short_desc ?? ''}`.slice(0, 300),
-      body: a.long_desc,
+      docSummary: `${[a.country, a.region].filter(Boolean).join(' · ')} · ${a.short_desc ?? ''}`.slice(0, 300),
+      body: [a.long_desc, a.short_desc].filter(Boolean).join('\n\n'),
     }))
   },
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
+import { runQualityGates } from '@/lib/blog-quality-gate';
 
 /**
  * 공개 블로그 API — 발행된(published) 블로그 글만 반환
@@ -21,6 +22,11 @@ export async function GET(request: NextRequest) {
   try {
     // 단건 조회 (id) — 관리자 편집용 (status 무관)
     if (id) {
+      // UUID 형식 사전 검증 — 잘못된 ID 는 500 대신 404
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(id)) {
+        return NextResponse.json({ error: '글을 찾을 수 없습니다' }, { status: 404 });
+      }
       const { data, error } = await supabaseAdmin
         .from('content_creatives')
         .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, travel_packages(id, title, destination, price, duration, nights, category)')
@@ -92,6 +98,8 @@ export async function GET(request: NextRequest) {
       total: count ?? 0,
       page,
       totalPages: Math.ceil((count ?? 0) / limit),
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (err) {
     return NextResponse.json(
@@ -148,7 +156,7 @@ export async function POST(request: NextRequest) {
       revalidatePath(`/blog/${cleanSlug}`);
 
       // 통합 색인 알림 (Google Indexing API + IndexNow + Bing sitemap ping)
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       notifyIndexing(`${baseUrl}/blog/${cleanSlug}`, baseUrl)
         .then(r => console.log(`[blog POST] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
         .catch(() => {});
@@ -185,7 +193,7 @@ export async function PATCH(request: NextRequest) {
       }
       revalidatePath('/blog');
       revalidatePath(`/blog/${target.slug}`);
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const report = await notifyIndexing(`${baseUrl}/blog/${target.slug}`, baseUrl);
       return NextResponse.json({ success: true, force_revalidate: true, slug: target.slug, indexing: report });
     }
@@ -203,9 +211,45 @@ export async function PATCH(request: NextRequest) {
     if (category !== undefined) updateData.category = category;
 
     // 상태 변경
+    let qaReport: Awaited<ReturnType<typeof runQualityGates>> | null = null;
     if (reqStatus === 'published') {
       updateData.status = 'published';
       updateData.published_at = new Date().toISOString();
+
+      // v1.5 quality gate — 수동 발행도 cron 발행과 동일 게이트 통과 검증.
+      // 실패해도 차단하지 않음 (어드민의 의도적 발행 존중) — 결과만 quality_gate 컬럼에 저장 + 응답 warnings.
+      try {
+        const { data: existing } = await supabaseAdmin
+          .from('content_creatives')
+          .select('blog_html, slug, destination, angle_type, product_id, travel_packages(destination)')
+          .eq('id', id)
+          .limit(1);
+        const row = existing?.[0] as {
+          blog_html?: string | null;
+          slug?: string | null;
+          destination?: string | null;
+          angle_type?: string | null;
+          product_id?: string | null;
+          travel_packages?: { destination?: string | null } | null;
+        } | undefined;
+        const finalHtml = (blog_html as string | undefined) ?? row?.blog_html ?? '';
+        const finalSlugForQa = (updateData.slug as string | undefined) ?? row?.slug ?? '';
+        const dest = row?.travel_packages?.destination ?? row?.destination ?? null;
+        if (finalHtml && finalSlugForQa) {
+          qaReport = await runQualityGates({
+            blog_html: finalHtml,
+            slug: finalSlugForQa,
+            destination: dest,
+            angle_type: row?.angle_type ?? null,
+            blog_type: row?.product_id ? 'product' : 'info',
+            primary_keyword: dest,
+            excludeContentCreativeId: id,
+          });
+          updateData.quality_gate = qaReport;
+        }
+      } catch (qaErr) {
+        console.warn('[blog PATCH] quality gate 실행 실패 (무시):', qaErr);
+      }
     } else if (reqStatus === 'draft') {
       updateData.status = 'draft';
     }
@@ -225,14 +269,21 @@ export async function PATCH(request: NextRequest) {
 
       // 통합 색인 알림 (Google Indexing API + IndexNow)
       if (finalSlug) {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
         notifyIndexing(`${baseUrl}/blog/${finalSlug}`, baseUrl)
           .then(r => console.log(`[blog PATCH] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
           .catch(() => {});
       }
     }
 
-    return NextResponse.json({ post: data?.[0], success: true });
+    return NextResponse.json({
+      post: data?.[0],
+      success: true,
+      // v1.5 게이트 실패 시 어드민 UI에 경고 표시용
+      quality_warnings: qaReport && !qaReport.passed
+        ? qaReport.gates.filter(g => !g.passed).map(g => ({ gate: g.gate, reason: g.reason }))
+        : null,
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '수정 실패' }, { status: 500 });
   }

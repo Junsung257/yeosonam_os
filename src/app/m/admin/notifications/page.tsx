@@ -54,7 +54,7 @@ export default async function MobileNotificationsPage() {
         rightSlot={
           <Link
             href="/m/admin/settings"
-            className="text-xs text-slate-500 px-3 py-1.5"
+            className="text-xs text-admin-muted px-3 py-1.5"
           >
             설정
           </Link>

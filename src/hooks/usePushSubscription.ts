@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+// NOTE: client-side에서는 getSecret() 의 동적 process.env[key] 가 inline 안 되어
+// 항상 null 이 됨. NEXT_PUBLIC_* 는 정적 참조(process.env.NEXT_PUBLIC_X) 로만 접근.
 
 export type PushStatus =
   | 'unsupported'

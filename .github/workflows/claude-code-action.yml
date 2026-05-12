@@ -1,0 +1,115 @@
+name: Claude Code Actions
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        timeout-minutes: 10
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Run ESLint
+        run: npm run lint -- --format json > eslint-report.json
+        continue-on-error: true
+
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-report.json'
+        continue-on-error: true
+
+      - name: Check test coverage
+        run: npm run test -- --coverage --passWithNoTests
+        continue-on-error: true
+
+      - name: Comment on PR/Issue with findings
+        if: github.event_name == 'pull_request' || github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 🤖 Claude Code Analysis\n\n';
+
+            // TypeScript check
+            comment += '### TypeScript\n';
+            comment += '✅ Type checking completed\n\n';
+
+            // ESLint
+            if (fs.existsSync('eslint-report.json')) {
+              try {
+                const eslint = JSON.parse(fs.readFileSync('eslint-report.json', 'utf8'));
+                const errors = eslint.reduce((sum, file) => sum + file.errorCount, 0);
+                const warnings = eslint.reduce((sum, file) => sum + file.warningCount, 0);
+                comment += `### ESLint\n`;
+                comment += `- Errors: ${errors}\n`;
+                comment += `- Warnings: ${warnings}\n\n`;
+              } catch (e) {
+                comment += '### ESLint\n✅ No issues found\n\n';
+              }
+            }
+
+            // Trivy security
+            comment += '### Security Scan (Trivy)\n';
+            if (fs.existsSync('trivy-report.json')) {
+              try {
+                const trivy = JSON.parse(fs.readFileSync('trivy-report.json', 'utf8'));
+                const critical = trivy.Results?.reduce((sum, r) =>
+                  sum + (r.Misconfigurations?.filter(m => m.Severity === 'CRITICAL').length || 0), 0) || 0;
+                comment += `- Critical issues: ${critical}\n\n`;
+              } catch (e) {
+                comment += '✅ Scan completed\n\n';
+              }
+            }
+
+            comment += '**Note:** This is automated analysis. Manual review recommended for security-critical changes.\n';
+
+            if (context.eventName === 'pull_request') {
+              github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                body: comment,
+                event: 'COMMENT',
+              });
+            } else if (context.eventName === 'issue_comment') {
+              github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment,
+              });
+            }

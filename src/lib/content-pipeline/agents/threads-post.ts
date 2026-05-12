@@ -11,10 +11,10 @@
  *   - 이모지 적당히
  *   - 알고리즘이 "참여 유도 질문" 선호
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const ThreadsPostSchema = z.object({
@@ -41,38 +41,23 @@ export interface ThreadsPostInput {
 }
 
 export async function generateThreadsPost(input: ThreadsPostInput): Promise<ThreadsPost> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[threads-post] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[threads-post] API 키 없음 → fallback');
     return fallbackThreadsPost(input);
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.9, responseMimeType: 'application/json' },
-  });
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'threads_post');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildThreadsPrompt(input);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await model.generateContent(
-        prompt + (attempt > 0 ? '\n\n## 재시도 — main 500자 이하 엄수, 후속 thread 0~4개.' : ''),
-      );
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = ThreadsPostSchema.safeParse(parsed);
-      if (checked.success) return checked.data;
-      console.warn('[threads-post] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-    } catch (err) {
-      console.warn(`[threads-post] 시도 ${attempt + 1} 실패:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const result = await callWithZodValidation({
+    label: 'threads-post',
+    schema: ThreadsPostSchema,
+    maxAttempts: 3,
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.9, longCache: true }),
+  });
 
+  if (result.success) return result.value;
+  console.warn('[threads-post] callWithZodValidation 실패 → fallback');
   return fallbackThreadsPost(input);
 }
 

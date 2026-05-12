@@ -4,16 +4,18 @@
  * GET /api/cron/affiliate-dormant?secret=CRON_SECRET
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
 const DORMANT_MONTHS = parseInt(process.env.DORMANT_MONTHS || '6');
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true, message: 'DB 미설정' });
 
-  const secret = request.nextUrl.searchParams.get('secret');
-  if (secret !== process.env.CRON_SECRET && !request.nextUrl.searchParams.get('force')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {
@@ -31,6 +33,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     if (!dormants?.length) {
+      await reportAffiliateCronSuccess('affiliate-dormant', { processed: 0, reason: 'no_dormant_targets' });
       return NextResponse.json({ ok: true, processed: 0, message: '휴면 대상 없음' });
     }
 
@@ -54,6 +57,7 @@ export async function GET(request: NextRequest) {
     );
 
     console.log(`[Affiliate Dormant] ${dormants.length}명 비활성 처리`);
+    await reportAffiliateCronSuccess('affiliate-dormant', { processed: dormants.length });
     return NextResponse.json({
       ok: true,
       processed: dormants.length,
@@ -61,6 +65,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     console.error('[Affiliate Dormant]', err);
+    await reportAffiliateCronFailure('affiliate-dormant', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : '처리 실패' }, { status: 500 });
   }
 }

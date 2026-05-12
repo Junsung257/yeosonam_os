@@ -8,7 +8,7 @@
  * - post-processing: headline ≤20자, body ≤40자, pexels_keyword ≤5단어
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import type { SlideRole } from './design-slides';
 import type { ParsedProductData } from './parse-product';
 
@@ -189,17 +189,9 @@ export async function generateCopies(
   hookType: string,
   patternExample?: WinningPattern,
 ): Promise<GeneratedCopy[]> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-
-  if (!apiKey) {
+  if (!hasBlogApiKey()) {
     return slideRoles.map(role => enforceLength(buildFallbackCopy(role, hookType)));
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: { temperature: 0.8 },
-  });
 
   // 병렬 생성
   const results = await Promise.allSettled(
@@ -215,8 +207,7 @@ export async function generateCopies(
 
       try {
         const prompt = `${SYSTEM}\n\n${rolePrompt}`;
-        const result = await model.generateContent(prompt);
-        const rawText = result.response.text();
+        const rawText = await generateBlogJSON(prompt, { temperature: 0.8 });
         const jsonStr = extractJSON(rawText);
         const parsed = JSON.parse(jsonStr) as GeneratedCopy;
         return enforceLength(parsed);

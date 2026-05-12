@@ -2,31 +2,47 @@
   "crons": [
     {
       "path": "/api/cron/meta-optimize",
-      "schedule": "0 0 * * *"
+      "schedule": "2 0 * * *"
     },
     {
       "path": "/api/cron/journey-scheduler",
-      "schedule": "0 0 * * *"
+      "schedule": "4 0 * * *"
     },
     {
       "path": "/api/cron/post-travel",
-      "schedule": "0 9 * * *"
+      "schedule": "5 9 * * *"
+    },
+    {
+      "path": "/api/cron/post-travel-reels",
+      "schedule": "10 10 * * *"
     },
     {
       "path": "/api/cron/ad-optimizer",
-      "schedule": "0 2 * * *"
+      "schedule": "2 2 * * *"
     },
     {
       "path": "/api/cron/sync-creative-performance",
-      "schedule": "0 0 * * *"
+      "schedule": "6 0 * * *"
     },
     {
       "path": "/api/cron/auto-archive",
       "schedule": "0 1 * * *"
     },
     {
+      "path": "/api/cron/resweep-unmatched",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/unmatched-auto-resolve",
+      "schedule": "45 1 * * *"
+    },
+    {
+      "path": "/api/cron/fill-attraction-photos",
+      "schedule": "0 3 * * *"
+    },
+    {
       "path": "/api/cron/agent-executor",
-      "schedule": "0 0 * * *"
+      "schedule": "8 0 * * *"
     },
     {
       "path": "/api/cron/embed-products",
@@ -37,12 +53,20 @@
       "schedule": "0 2 1 * *"
     },
     {
+      "path": "/api/cron/affiliate-dormant",
+      "schedule": "30 2 1 * *"
+    },
+    {
       "path": "/api/cron/affiliate-anomaly-detect",
-      "schedule": "0 9 * * *"
+      "schedule": "40 9 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-content-24h-report",
+      "schedule": "12 9 * * *"
     },
     {
       "path": "/api/cron/visual-baseline-monitor",
-      "schedule": "0 9 * * *"
+      "schedule": "24 9 * * *"
     },
     {
       "path": "/api/cron/blog-lifecycle",
@@ -61,6 +85,30 @@
       "schedule": "30 23 * * *"
     },
     {
+      "path": "/api/cron/blog-publisher",
+      "schedule": "4 2 * * *"
+    },
+    {
+      "path": "/api/cron/trend-topic-miner",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/serp-rank-snapshot",
+      "schedule": "30 21 * * *"
+    },
+    {
+      "path": "/api/cron/rank-tracking",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/topical-rebuild",
+      "schedule": "0 18 * * 0"
+    },
+    {
+      "path": "/api/cron/blog-daily-summary",
+      "schedule": "10 0 * * *"
+    },
+    {
       "path": "/api/cron/sync-engagement",
       "schedule": "0 4 * * *"
     },
@@ -70,7 +118,7 @@
     },
     {
       "path": "/api/cron/meta-token-refresh",
-      "schedule": "0 9 * * *"
+      "schedule": "36 9 * * *"
     },
     {
       "path": "/api/cron/dlq-replay",
@@ -79,6 +127,240 @@
     {
       "path": "/api/cron/booking-tasks-runner",
       "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/cron/variant-winner-decide",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/card-news-seasonal",
+      "schedule": "0 0 * * 1"
+    },
+    {
+      "path": "/api/cron/scoring-recompute",
+      "schedule": "30 19 * * *"
+    },
+    {
+      "path": "/api/cron/land-operator-reliability",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/payment-rules-learn",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/payment-stale-alert",
+      "schedule": "14 0 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-seasonal",
+      "schedule": "0 4 1 * *"
+    },
+    {
+      "path": "/api/cron/ltr-funnel-report",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/policy-ab-compare",
+      "schedule": "0 10 * * 6"
+    },
+    {
+      "path": "/api/cron/ledger-reconcile",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/rag-incremental",
+      "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/api/cron/setup-new-destinations",
+      "schedule": "20 2 * * *"
+    },
+    {
+      "path": "/api/cron/free-travel-retarget",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/free-travel-plan-housekeeping",
+      "schedule": "30 2 * * 0"
+    },
+    {
+      "path": "/api/cron/mrt-revenue-sync",
+      "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/cron/mrt-hotel-ranking",
+      "schedule": "0 2 * * 1"
+    },
+    {
+      "path": "/api/cron/booking-attribution-audit",
+      "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/cron/marketing-rules",
+      "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/concierge-cart-retarget",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-tier-rewards",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-reactivation-campaign",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-attribution-recalc",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-live-celebration",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-lifetime-commission",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-sub-daily-rollup",
+      "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/affiliate-model-compare-rollup",
+      "schedule": "40 6 * * *"
+    },
+    {
+      "path": "/api/cron/hard-block-alert",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/dynamic-pricing",
+      "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/hitl-reminder",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/content-drift-detect",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/churn-detect",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/weather-upsell",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/fx-rate-sync",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/review-sentiment",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/fraud-detect",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-marketing",
+      "schedule": "20 0 * * *"
+    },
+    {
+      "path": "/api/cron/band-rss",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/threads-trend-miner",
+      "schedule": "30 21 * * *"
+    },
+    {
+      "path": "/api/cron/ig-trend-miner",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/design-archetype-update",
+      "schedule": "0 4 * * 0"
+    },
+    {
+      "path": "/api/cron/auto-publish-loop",
+      "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cron/review-digest",
+      "schedule": "20 16 * * *"
+    },
+    {
+      "path": "/api/cron/inp-monitor",
+      "schedule": "40 16 * * *"
+    },
+    {
+      "path": "/api/cron/solapi-review-request",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/gsc-index-rank",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/cron/programmatic-seo-generator",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/blog-regenerate-zero-click",
+      "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/snapshot-inventory",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-booking-pace",
+      "schedule": "0 19 * * 0"
+    },
+    {
+      "path": "/api/cron/sync-flight-availability",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/sync-ota-prices",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/demand-forecast",
+      "schedule": "0 20 * * 1"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/cron/**/*.ts": { "maxDuration": 180 },
+    "src/app/api/cron/agent-executor/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/auto-publish-loop/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/blog-publisher/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/blog-learn/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/blog-scheduler/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/card-news-refine/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/card-news-seasonal/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/daily-marketing/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/design-archetype-update/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/embed-products/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/ig-trend-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/threads-trend-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/sync-engagement/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/trend-topic-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/topical-rebuild/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/mrt-hotel-ranking/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/post-travel-reels/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/rag-incremental/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/affiliate-settlement-draft/route.ts": { "maxDuration": 300 },
+    "src/app/api/free-travel/plan/route.ts": { "maxDuration": 120 },
+    "src/app/api/register-via-ir/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/content/generate-all/route.ts": { "maxDuration": 300, "memory": 1024 }
+  }
 }

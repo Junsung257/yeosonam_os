@@ -16,6 +16,8 @@ interface KakaoChannelParams {
   internalCode?: string;    // 예: PUS-ETC-FUK-03-0007
   productTitle?: string;
   departureDate?: string;   // 예: 2026-05-13
+  /** AI 채팅 에스컬레이션 등 — 클립보드 안내에 그대로 붙음 */
+  escalationSummary?: string;
   leadForm?: {
     name?: string;
     phone?: string;
@@ -44,6 +46,11 @@ export async function openKakaoChannel(params?: KakaoChannelParams): Promise<str
 
   if (params?.departureDate) {
     message += `출발일: ${params.departureDate}\n`;
+    hasContent = true;
+  }
+
+  if (params?.escalationSummary?.trim()) {
+    message += `\n[AI 상담에서 이어짐]\n${params.escalationSummary.trim()}\n\n`;
     hasContent = true;
   }
 
@@ -110,4 +117,9 @@ export async function openKakaoChannel(params?: KakaoChannelParams): Promise<str
 /** 카카오 채널 프로필 URL (채팅 없이 프로필만) */
 export function getKakaoChannelUrl() {
   return `https://pf.kakao.com/${KAKAO_CHANNEL_ID}`;
+}
+
+/** 1:1 채팅 진입 URL — 리드 파이프라인·랜딩 CTA 리다이렉트용 */
+export function getKakaoChannelChatUrl() {
+  return `https://pf.kakao.com/${KAKAO_CHANNEL_ID}/chat`;
 }

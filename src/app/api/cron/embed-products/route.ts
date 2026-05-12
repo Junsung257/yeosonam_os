@@ -15,6 +15,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { embedBatch } from '@/lib/embeddings';
 
@@ -59,18 +61,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Supabase 미구성' }, { status: 500 });
   }
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) {
     return NextResponse.json({ error: 'GOOGLE_AI_API_KEY 없음' }, { status: 500 });
   }
 
-  // 크론 시크릿 검증 (설정 시)
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = request.headers.get('authorization');
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   let totalEmbedded = 0;

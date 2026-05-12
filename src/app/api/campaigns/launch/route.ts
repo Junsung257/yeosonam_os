@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { hasSecrets } from '@/lib/secret-registry';
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,11 +73,7 @@ export async function POST(request: NextRequest) {
 
 async function launchMeta(creative: any, dailyBudget: number, sb: any): Promise<boolean> {
   // Meta API 키 확인
-  const accessToken = process.env.META_ACCESS_TOKEN;
-  const adAccountId = process.env.META_AD_ACCOUNT_ID;
-  const pageId = process.env.META_PAGE_ID;
-
-  if (!accessToken || !adAccountId || !pageId) {
+  if (!hasSecrets(['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID', 'META_PAGE_ID'])) {
     // Meta 미설정 → review 상태로만 변경
     await sb.from('ad_creatives').update({ status: 'review' }).eq('id', creative.id);
     return false;

@@ -29,8 +29,25 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { renderSlideV2, FORMATS } from '@/lib/card-news/v2/render-v2';
+import { insertBlogTopicQueue } from '@/lib/card-news/blog-topic-queue';
+import { logError, logWarning } from '@/lib/sentry-logger';
 import type { FormatKey, SlideV2 } from '@/lib/card-news/v2/types';
 import type { TemplateFamily } from '@/lib/validators/content-brief';
+
+// Vercel warm instance 재사용: 폰트 버퍼를 모듈 레벨에서 캐싱
+let _fontCache: { regular: ArrayBuffer; bold: ArrayBuffer } | null = null;
+
+async function loadFonts(): Promise<{ regular: ArrayBuffer; bold: ArrayBuffer }> {
+  if (_fontCache) return _fontCache;
+  const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
+  const boldPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Bold.otf');
+  const [reg, bold] = await Promise.all([readFile(regPath), readFile(boldPath)]);
+  _fontCache = {
+    regular: reg.buffer.slice(reg.byteOffset, reg.byteOffset + reg.byteLength) as ArrayBuffer,
+    bold: bold.buffer.slice(bold.byteOffset, bold.byteOffset + bold.byteLength) as ArrayBuffer,
+  };
+  return _fontCache;
+}
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -76,15 +93,13 @@ export async function POST(request: NextRequest) {
       body.family ?? (cn.template_family as TemplateFamily | undefined) ?? undefined;
     const templateVersion = (cn.template_version as string | undefined) ?? 'v2';
 
-    // 2. 폰트 로드 (모든 슬라이드 공유)
-    let fontRegular: ArrayBuffer | null = null;
-    let fontBold: ArrayBuffer | null = null;
+    // 2. 폰트 로드 (모듈 캐시 사용 — warm instance 재사용 시 I/O 없음)
+    let fontRegular: ArrayBuffer;
+    let fontBold: ArrayBuffer;
     try {
-      const regPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Regular.otf');
-      const boldPath = join(process.cwd(), 'public', 'fonts', 'Pretendard-Bold.otf');
-      const [reg, bold] = await Promise.all([readFile(regPath), readFile(boldPath)]);
-      fontRegular = reg.buffer.slice(reg.byteOffset, reg.byteOffset + reg.byteLength) as ArrayBuffer;
-      fontBold = bold.buffer.slice(bold.byteOffset, bold.byteOffset + bold.byteLength) as ArrayBuffer;
+      const fonts = await loadFonts();
+      fontRegular = fonts.regular;
+      fontBold = fonts.bold;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return NextResponse.json({ error: `폰트 로드 실패: ${msg}` }, { status: 500 });
@@ -126,7 +141,7 @@ export async function POST(request: NextRequest) {
         const msg = err instanceof Error ? err.message : String(err);
         const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 8).join('\n') : '';
         diagnostics.push({ step, ok: false, err: msg, stack });
-        console.error(`[render-v2] 진단 "${step}" 실패:`, msg, '\n', stack);
+        logError(`[api/card-news/render-v2] diagnostics "${step}" failed`, err, { diagnosticStep: step });
         return false;
       }
     };
@@ -183,18 +198,18 @@ export async function POST(request: NextRequest) {
       // 깨진 URL 사전 차단 — 빈 문자열/상대경로/data: 등 모두 제거
       if (!isValidImageUrl(slide.bg_image_url)) {
         if (slide.bg_image_url) {
-          console.warn(`[render-v2] slide ${i + 1} bg_image_url 무효 → 제거:`, slide.bg_image_url);
+          logWarning(`[api/card-news/render-v2] invalid bg_image_url removed`, new Error(`slide ${i + 1}: ${slide.bg_image_url}`));
         }
         slide.bg_image_url = undefined;
       }
       // 슬라이드 레벨에서 이미지 실패 한번 만나면 다음 format 에도 이미지 제외 — 성능 최적화
       let slideImageDisabled = false;
 
-      for (const fk of formats) {
+      // 슬라이드 내 각 포맷을 병렬(Promise.all)로 처리하여 Vercel Timeout 방지
+      const formatResults = await Promise.all(formats.map(async (fk) => {
         const format = FORMATS[fk];
         if (!format) {
-          results.push({ slide_index: i, format: fk, url: null, error: `알 수 없는 format: ${fk}` });
-          continue;
+          return { slide_index: i, format: fk, url: null as string | null, error: `알 수 없는 format: ${fk}` };
         }
 
         const renderPng = async (slideForRender: SlideV2): Promise<Buffer> => {
@@ -218,9 +233,10 @@ export async function POST(request: NextRequest) {
           } catch (imgErr) {
             const msg = imgErr instanceof Error ? imgErr.message : String(imgErr);
             const errStack = imgErr instanceof Error ? (imgErr.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
-            console.warn(
-              `[render-v2] slide ${i + 1}/${fk} 1차 렌더 실패 (bg_image_url=${effectiveSlide.bg_image_url ?? '(없음)'}):`,
-              msg, '\n', errStack,
+            logWarning(
+              `[api/card-news/render-v2] slide ${i + 1}/${fk} first render attempt failed`,
+              imgErr,
+              { slideIndex: i + 1, format: fk, bgImageUrl: effectiveSlide.bg_image_url ?? undefined },
             );
             slideImageDisabled = true;
             stage = 'retry-render';
@@ -228,7 +244,6 @@ export async function POST(request: NextRequest) {
             pngBuffer = await renderPng(retrySlide);
           }
 
-          // 결정적 path
           stage = 'upload';
           const storagePath = `${body.card_news_id}/v2-${templateVersion}-${fk}-slide-${i + 1}.png`;
           const { error: uploadError } = await supabaseAdmin.storage
@@ -255,20 +270,22 @@ export async function POST(request: NextRequest) {
               storage_path: storagePath,
             }, { onConflict: 'card_news_id,slide_index,format,template_version' });
 
-          results.push({ slide_index: i, format: fk, url: publicUrl });
+          return { slide_index: i, format: fk, url: publicUrl };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const stack = err instanceof Error ? (err.stack ?? '').split('\n').slice(0, 6).join('\n') : '';
-          console.error(`[render-v2] slide ${i + 1}/${fk} 실패 (stage=${stage}):`, msg, '\n', stack);
-          results.push({
+          logError(`[api/card-news/render-v2] slide ${i + 1}/${fk} render failed`, err, { slideIndex: i + 1, format: fk, stage });
+          return {
             slide_index: i,
             format: fk,
             url: null,
             error: `[${stage}] ${msg}`,
             stack,
-          });
+          };
         }
-      }
+      }));
+
+      results.push(...formatResults);
     }
 
     // 가능한 경우 slides 배열/카드 레코드 둘 다 template_family 동기화
@@ -284,14 +301,102 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', body.card_news_id);
       } catch (err) {
-        console.warn('[render-v2] family 동기화 실패 (렌더 결과는 OK):', err instanceof Error ? err.message : err);
+        logWarning('[api/card-news/render-v2] template family sync failed (render OK)', err);
       }
+    }
+
+    // 블로그 퍼블리셔·from-card-news 가 읽는 slide_image_urls 동기화 (1x1 전 슬라이드 성공 시)
+    try {
+      const bySlide = new Map<number, string>();
+      for (const r of results) {
+        if (r.format === '1x1' && r.url) bySlide.set(r.slide_index, r.url);
+      }
+      const ordered: string[] = [];
+      for (let i = 0; i < slides.length; i++) {
+        const u = bySlide.get(i);
+        if (u) ordered.push(u);
+      }
+      if (ordered.length === slides.length && ordered.length > 0) {
+        await supabaseAdmin
+          .from('card_news')
+          .update({
+            slide_image_urls: ordered,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', body.card_news_id);
+      }
+    } catch (e) {
+      logWarning('[api/card-news/render-v2] slide_image_urls sync failed (non-blocking)', e);
+    }
+
+    // content_factory_jobs.steps.satori_render 업데이트
+    try {
+      const hasAnySuccess = results.some(r => r.url !== null);
+      const stepStatus = hasAnySuccess ? 'done' : 'failed';
+      const failCount = results.filter(r => r.url === null).length;
+      const stepError = failCount > 0 ? `${failCount}슬라이드 렌더 실패` : null;
+      const now = new Date().toISOString();
+
+      const { data: jobRow } = await supabaseAdmin
+        .from('content_factory_jobs')
+        .select('steps, completed_steps, failed_steps')
+        .eq('card_news_id', body.card_news_id)
+        .maybeSingle();
+
+      if (jobRow) {
+        const steps = { ...(jobRow.steps as Record<string, unknown>) };
+        const prevStatus = (steps.satori_render as Record<string, unknown> | undefined)?.status;
+        steps.satori_render = { status: stepStatus, updated_at: now, error: stepError };
+        const isNewlyDone = stepStatus === 'done' && prevStatus !== 'done';
+        const isNewlyFailed = stepStatus === 'failed' && prevStatus !== 'failed';
+        await supabaseAdmin
+          .from('content_factory_jobs')
+          .update({
+            steps,
+            ...(isNewlyDone ? { completed_steps: (jobRow.completed_steps ?? 0) + 1 } : {}),
+            ...(isNewlyFailed ? { failed_steps: (jobRow.failed_steps ?? 0) + 1 } : {}),
+          })
+          .eq('card_news_id', body.card_news_id);
+      }
+    } catch {
+      // 스텝 업데이트 실패는 렌더 결과에 영향 없음
+    }
+
+    // RENDERING → CONFIRMED 자동 전환
+    // render-v2가 fire-and-forget으로 호출됐을 때, 렌더 완료 후 안전하게 CONFIRMED로 전환
+    try {
+      const { data: currentCn } = await supabaseAdmin
+        .from('card_news')
+        .select('status')
+        .eq('id', body.card_news_id)
+        .maybeSingle();
+
+      if (currentCn?.status === 'RENDERING') {
+        const anySuccess = results.some((r) => r.url !== null);
+        if (anySuccess) {
+          await supabaseAdmin
+            .from('card_news')
+            .update({ status: 'CONFIRMED', updated_at: new Date().toISOString() })
+            .eq('id', body.card_news_id);
+          await insertBlogTopicQueue(body.card_news_id, 'render_complete_hook');
+          console.log(`[render-v2] RENDERING → CONFIRMED 전환 완료: ${body.card_news_id}`);
+        } else {
+          // 전체 렌더 실패 → DRAFT로 복귀
+          await supabaseAdmin
+            .from('card_news')
+            .update({ status: 'DRAFT', updated_at: new Date().toISOString() })
+            .eq('id', body.card_news_id);
+          logWarning('[api/card-news/render-v2] overall render failed, reverted to DRAFT', new Error(body.card_news_id));
+        }
+      }
+    } catch (transitionErr) {
+      logWarning('[api/card-news/render-v2] RENDERING→CONFIRMED transition failed (render OK)', transitionErr);
     }
 
     return NextResponse.json({ renders: results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[render-v2] 전체 실패:', msg);
+    logError('[api/card-news/render-v2] overall render process failed', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

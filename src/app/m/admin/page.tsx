@@ -57,7 +57,7 @@ export default async function MobileAdminHome() {
       />
       <main className="px-4 py-4 space-y-4">
         <section>
-          <h2 className="text-xs font-semibold text-slate-500 px-1 mb-2">
+          <h2 className="text-xs font-semibold text-admin-muted px-1 mb-2">
             오늘 처리할 것
           </h2>
           <div className="grid grid-cols-1 gap-3">
@@ -91,19 +91,19 @@ export default async function MobileAdminHome() {
         </section>
 
         <section>
-          <h2 className="text-xs font-semibold text-slate-500 px-1 mb-2">
+          <h2 className="text-xs font-semibold text-admin-muted px-1 mb-2">
             빠른 이동
           </h2>
           <div className="grid grid-cols-2 gap-3">
             <Link
               href="/m/admin/bookings"
-              className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-sm font-medium text-slate-900 active:bg-slate-50"
+              className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3.5 text-sm font-medium text-admin-text active:bg-admin-bg"
             >
               전체 예약 →
             </Link>
             <Link
               href="/m/admin/payments"
-              className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-sm font-medium text-slate-900 active:bg-slate-50"
+              className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3.5 text-sm font-medium text-admin-text active:bg-admin-bg"
             >
               전체 입금 →
             </Link>

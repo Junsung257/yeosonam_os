@@ -3,6 +3,8 @@
 import { useParams } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { useInfluencerAuth } from '../auth-context';
+import { isSafeImageSrc } from '@/lib/image-url';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 interface CardNewsAsset {
   id: string;
@@ -38,7 +40,16 @@ export default function InfluencerAssets() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/influencer/assets?code=${code}`);
+      let pinHeader: Record<string, string> = {};
+      try {
+        const p = sessionStorage.getItem(`inf_pin_${code}`);
+        if (p) pinHeader = { 'x-influencer-pin': p };
+      } catch {
+        /* ignore */
+      }
+      const res = await fetch(`/api/influencer/assets?code=${encodeURIComponent(code)}`, {
+        headers: pinHeader,
+      });
       const json = await res.json();
       setCardNews(json.assets?.card_news || []);
       setCopies(json.assets?.marketing_copies || []);
@@ -100,9 +111,16 @@ export default function InfluencerAssets() {
               <div key={cn.id} className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                 {/* 썸네일 */}
                 <div className="aspect-square bg-gray-100 relative">
-                  {cn.thumbnail ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cn.thumbnail} alt="" className="w-full h-full object-cover" />
+                  {cn.thumbnail && isSafeImageSrc(cn.thumbnail) ? (
+                    <SafeCoverImg
+                      src={cn.thumbnail}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      fallback={
+                        <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300">🖼️</div>
+                      }
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300">🖼️</div>
                   )}

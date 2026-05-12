@@ -19,7 +19,12 @@
  * 로그 prefix: [ig-publish]
  */
 
-const GRAPH_API_BASE = 'https://graph.facebook.com/v18.0';
+import { resolveMetaToken } from './meta-token-resolver';
+import { supabaseAdmin, isSupabaseConfigured } from './supabase';
+import { decrypt } from './encryption';
+import { getSecret } from './secret-registry';
+
+const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
 
 export interface PublishCarouselInput {
   igUserId: string;
@@ -36,16 +41,48 @@ export interface PublishResult {
 }
 
 export function isInstagramConfigured(): boolean {
+  // 동기 버전 — env 만 체크. 실 토큰 조회는 getInstagramConfig() async.
   return !!(
-    process.env.META_ACCESS_TOKEN &&
-    process.env.META_IG_USER_ID
+    (getSecret('META_ACCESS_TOKEN') || getSecret('META_IG_USER_ID')) &&
+    getSecret('META_IG_USER_ID')
   );
 }
 
-export function getInstagramConfig(): { igUserId: string; accessToken: string } | null {
-  const token = process.env.META_ACCESS_TOKEN;
-  const userId = process.env.META_IG_USER_ID;
-  if (!token || !userId) return null;
+/**
+ * 토큰 해석 우선순위:
+ *   1. tenantId 지정 시 → instagram_accounts 테이블 (테넌트별 계정)
+ *   2. env META_ACCESS_TOKEN → DB system_secrets.META_ACCESS_TOKEN (플랫폼 공용 계정)
+ */
+export async function getInstagramConfig(
+  tenantId?: string | null,
+): Promise<{ igUserId: string; accessToken: string } | null> {
+  if (tenantId && isSupabaseConfigured) {
+    try {
+      const { data } = await supabaseAdmin
+        .from('instagram_accounts')
+        .select('ig_user_id, access_token')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (data?.ig_user_id && data?.access_token) {
+        let token: string;
+        try {
+          token = decrypt(data.access_token);
+        } catch {
+          token = data.access_token; // 암호화 전 레거시 레코드 폴백
+        }
+        return { igUserId: data.ig_user_id, accessToken: token };
+      }
+    } catch (err) {
+      console.warn('[ig-config] tenant 계정 조회 실패, 공용 계정으로 폴백:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 공용 계정 (env → DB system_secrets)
+  const userId = getSecret('META_IG_USER_ID');
+  if (!userId) return null;
+  const token = await resolveMetaToken('META_ACCESS_TOKEN');
+  if (!token) return null;
   return { igUserId: userId, accessToken: token };
 }
 
@@ -85,11 +122,15 @@ export async function publishCarouselToInstagram(input: PublishCarouselInput): P
     }
 
     // ── Step 2: 각 자식 컨테이너 FINISHED 폴링 ──────────────
-    for (let i = 0; i < childIds.length; i++) {
-      const poll = await pollContainerStatus(childIds[i], accessToken);
-      if (!poll.ok) {
-        console.error('[ig-publish] child-poll-fail', i + 1, poll.error);
-        return { ok: false, step: `child_poll_${i + 1}`, error: poll.error };
+    // PERF-01: sequential → parallel. 최악 대기 = N×90s → 90s (병렬).
+    // 모든 자식 polling 끝나면 결과 합치고, 하나라도 실패면 전체 실패.
+    const pollResults = await Promise.all(
+      childIds.map((childId) => pollContainerStatus(childId, accessToken)),
+    );
+    for (let i = 0; i < pollResults.length; i++) {
+      if (!pollResults[i].ok) {
+        console.error('[ig-publish] child-poll-fail', i + 1, pollResults[i].error);
+        return { ok: false, step: `child_poll_${i + 1}`, error: pollResults[i].error };
       }
     }
 

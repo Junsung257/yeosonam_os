@@ -54,8 +54,12 @@ interface UsageData {
 
 const AGENT_OPTIONS = ['concierge', 'operations', 'products', 'finance', 'marketing', 'sales', 'system']
 
-export default function TenantBotProfilePage(props: { params: Promise<{ tenantId: string }> }) {
-  const { tenantId } = use(props.params)
+export default function TenantBotProfilePage(props: { params: Promise<{ tenantId: string }> | { tenantId: string } }) {
+  // Next.js 14: params is plain object; 15+: Promise. Defensively support both.
+  const resolved = (props.params && typeof (props.params as { then?: unknown }).then === 'function')
+    ? use(props.params as Promise<{ tenantId: string }>)
+    : (props.params as { tenantId: string })
+  const { tenantId } = resolved
   const [profile, setProfile] = useState<BotProfile | null>(null)
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [saving, setSaving] = useState(false)
@@ -98,7 +102,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">로드 중...</div>
+  if (loading) return <div className="p-6 text-sm text-admin-muted">로드 중...</div>
   if (!profile) return <div className="p-6 text-sm text-red-500">프로파일 로드 실패</div>
 
   return (
@@ -106,7 +110,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">자비스 봇 설정</h1>
-          <p className="text-sm text-gray-500 mt-1">테넌트 ID: <code>{tenantId}</code></p>
+          <p className="text-sm text-admin-muted mt-1">테넌트 ID: <code>{tenantId}</code></p>
         </div>
         <button
           onClick={handleSave}
@@ -118,7 +122,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
       </header>
 
       {message && (
-        <div className="p-3 rounded bg-gray-100 text-sm">{message}</div>
+        <div className="p-3 rounded bg-admin-surface-2 text-sm">{message}</div>
       )}
 
       {/* ── 사용량 대시보드 ─────────────────────── */}
@@ -273,7 +277,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
       {usage?.history && usage.history.length > 0 && (
         <Section title="월별 사용량 히스토리">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-admin-bg">
               <tr>
                 <th className="text-left px-3 py-2">월</th>
                 <th className="text-right px-3 py-2">토큰</th>
@@ -285,7 +289,7 @@ export default function TenantBotProfilePage(props: { params: Promise<{ tenantId
             <tbody>
               {usage.history.map(h => (
                 <tr key={h.month} className="border-t">
-                  <td className="px-3 py-2">{new Date(h.month).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short' })}</td>
+                  <td className="px-3 py-2">{h.month?.slice(0, 7) ?? ''}</td>
                   <td className="text-right px-3 py-2">{h.total_tokens.toLocaleString()}</td>
                   <td className="text-right px-3 py-2">${Number(h.total_cost_usd).toFixed(4)}</td>
                   <td className="text-right px-3 py-2">{h.call_count.toLocaleString()}</td>
@@ -315,27 +319,30 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <div className="space-y-1">
       <label className="text-sm font-medium">{label}</label>
-      {hint && <p className="text-xs text-gray-500">{hint}</p>}
+      {hint && <p className="text-xs text-admin-muted">{hint}</p>}
       {children}
     </div>
   )
 }
 
 function UsageCard({ usage, quota }: { usage: UsageData | null; quota: number }) {
-  if (!usage) return null
+  if (!usage || !usage.current) return null
   const c = usage.current
-  const pct = c.quotaUsedPct ?? Math.min(100, Math.round((c.totalTokens / quota) * 100))
+  const totalTokens = c.totalTokens ?? 0
+  const totalCostUsd = c.totalCostUsd ?? 0
+  const callCount = c.callCount ?? 0
+  const pct = c.quotaUsedPct ?? (quota > 0 ? Math.min(100, Math.round((totalTokens / quota) * 100)) : 0)
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-green-500'
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-gray-50 rounded-lg">
-      <Stat label="이번 달 토큰" value={c.totalTokens.toLocaleString()} />
-      <Stat label="이번 달 비용" value={`$${c.totalCostUsd.toFixed(4)}`} />
-      <Stat label="호출 수" value={c.callCount.toLocaleString()} />
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-admin-bg rounded-lg">
+      <Stat label="이번 달 토큰" value={totalTokens.toLocaleString()} />
+      <Stat label="이번 달 비용" value={`$${totalCostUsd.toFixed(4)}`} />
+      <Stat label="호출 수" value={callCount.toLocaleString()} />
       <div className="col-span-2 md:col-span-1">
-        <div className="text-xs text-gray-500">쿼터 사용률</div>
+        <div className="text-xs text-admin-muted">쿼터 사용률</div>
         <div className="text-xl font-semibold">{pct}%</div>
-        <div className="h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+        <div className="h-2 bg-slate-200 rounded mt-1 overflow-hidden">
           <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
         </div>
       </div>
@@ -346,7 +353,7 @@ function UsageCard({ usage, quota }: { usage: UsageData | null; quota: number })
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xs text-admin-muted">{label}</div>
       <div className="text-xl font-semibold">{value}</div>
     </div>
   )

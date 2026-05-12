@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { fmtK, fmtDate } from '@/lib/admin-utils';
+import { fmtK, fmtDate, fmtMonthDayTime } from '@/lib/admin-utils';
 import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
@@ -90,30 +90,23 @@ export default async function MobilePaymentDetail({
         backHref="/m/admin/payments"
       />
       <main className="px-4 py-4 space-y-4 pb-8">
-        <section className="bg-white border border-slate-200 rounded-2xl px-4 py-4">
-          <div className="text-xs text-slate-500">금액</div>
+        <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-4">
+          <div className="text-xs text-admin-muted">금액</div>
           <div className="text-3xl font-bold tabular-nums text-emerald-700 mt-1">
             +{fmtK(tx.amount)}
           </div>
-          <div className="text-xs text-slate-500 mt-2">
-            {tx.received_at
-              ? new Date(tx.received_at).toLocaleString('ko-KR', {
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : '시각 미상'}
+          <div className="text-xs text-admin-muted mt-2">
+            {tx.received_at ? fmtMonthDayTime(tx.received_at) : '시각 미상'}
           </div>
           {tx.memo && (
-            <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600 whitespace-pre-wrap">
+            <div className="mt-3 pt-3 border-t border-admin-border text-xs text-admin-muted whitespace-pre-wrap">
               메모: {tx.memo}
             </div>
           )}
         </section>
 
         {tx.bookings ? (
-          <section className="bg-white border border-emerald-200 rounded-2xl px-4 py-4 space-y-3">
+          <section className="bg-white border border-emerald-200 rounded-admin-lg px-4 py-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-emerald-700">
                 현재 매칭된 예약
@@ -126,21 +119,21 @@ export default async function MobilePaymentDetail({
               href={`/m/admin/bookings/${tx.bookings.id}`}
               className="block"
             >
-              <div className="text-sm font-semibold text-slate-900">
+              <div className="text-sm font-semibold text-admin-text">
                 {tx.bookings.booking_no} · {tx.bookings.customers?.name ?? ''}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
+              <div className="text-xs text-admin-muted mt-0.5">
                 {tx.bookings.package_title}
               </div>
-              <div className="text-[11px] text-slate-500 mt-1 tabular-nums">
+              <div className="text-[11px] text-admin-muted mt-1 tabular-nums">
                 판매가 {fmtK(tx.bookings.total_price ?? 0)} · 입금{' '}
                 {fmtK(tx.bookings.paid_amount ?? 0)}
               </div>
             </Link>
           </section>
         ) : candidates.length > 0 ? (
-          <section className="bg-white border border-slate-200 rounded-2xl px-4 py-4 space-y-3">
-            <h3 className="text-xs font-semibold text-slate-500">
+          <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-4 space-y-3">
+            <h3 className="text-xs font-semibold text-admin-muted">
               매칭 후보 · 상위 {candidates.length}건
             </h3>
             <PaymentActions
@@ -162,7 +155,7 @@ export default async function MobilePaymentDetail({
             />
           </section>
         ) : (
-          <section className="bg-white border border-slate-200 rounded-2xl px-4 py-6 text-center text-sm text-slate-500">
+          <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-6 text-center text-sm text-admin-muted">
             일치하는 예약 후보를 찾지 못했습니다.
             <PaymentActions
               transactionId={tx.id}

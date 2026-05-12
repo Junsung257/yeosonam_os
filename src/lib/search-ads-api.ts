@@ -6,14 +6,15 @@
  */
 
 import type { SearchAdKeyword, Platform } from './keyword-brain';
+import { getSecret } from '@/lib/secret-registry';
 
 // ── 환경 변수 체크 ───────────────────────────────────────
 export function isNaverAdsConfigured(): boolean {
-  return !!(process.env.NEXT_PUBLIC_NAVER_ADS_API_KEY && process.env.NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID);
+  return !!(getSecret('NEXT_PUBLIC_NAVER_ADS_API_KEY') && getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'));
 }
 
 export function isGoogleAdsConfigured(): boolean {
-  return !!process.env.NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN;
+  return !!getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN');
 }
 
 // ── 공통 성과 데이터 타입 ────────────────────────────────

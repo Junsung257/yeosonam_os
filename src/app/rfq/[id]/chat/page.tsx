@@ -32,12 +32,14 @@ export default function RfqChatPage() {
   // 최초 로드
   useEffect(() => {
     fetchMessages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [id]);
 
   // 10초 폴링
   useEffect(() => {
     const interval = setInterval(fetchMessages, 10000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   }, [id]);
 
   // 자동 스크롤
@@ -103,7 +105,8 @@ export default function RfqChatPage() {
   }
 
   function fmtTime(s: string) {
-    return new Date(s).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    // locale-stable: "HH:mm" (ISO 슬라이싱)
+    return s ? s.slice(11, 16) : '';
   }
 
   // ── 렌더 ─────────────────────────────────────────────────────────────────
@@ -185,7 +188,7 @@ export default function RfqChatPage() {
                   <div
                     className={`px-4 py-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${
                       isCustomer
-                        ? 'bg-indigo-600 text-white rounded-tr-sm'
+                        ? 'bg-brand text-white rounded-tr-sm'
                         : 'bg-white border text-gray-800 rounded-tl-sm shadow-sm'
                     }`}
                   >
@@ -220,12 +223,12 @@ export default function RfqChatPage() {
             disabled={sending}
             placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
             rows={2}
-            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50"
+            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-50"
           />
           <button
             onClick={sendMessage}
             disabled={sending || !input.trim()}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"
+            className="bg-brand hover:bg-[#1B64DA] disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"
           >
             {sending ? '...' : '전송'}
           </button>

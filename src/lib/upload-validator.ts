@@ -82,6 +82,55 @@ export const ExtractedProductSchema = z.object({
 
 export type ExtractedProductInput = z.infer<typeof ExtractedProductSchema>;
 
+function padFlightInfoHHMM(fi: ExtractedData['flight_info']): void {
+  if (!fi || typeof fi !== 'object') return;
+  const keys = ['depart', 'arrive', 'return_depart', 'return_arrive'] as const;
+  for (const k of keys) {
+    const v = fi[k];
+    if (typeof v !== 'string') continue;
+    const m = v.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (m) fi[k] = `${m[1].padStart(2, '0')}:${m[2]}`;
+  }
+}
+
+/**
+ * Zod/LLM 보정 전에 규칙 기반으로 고칠 수 있는 값만 정리 (비용 0).
+ * - 항공 시각 9:05 → 09:05
+ * - duration 범위·정수화
+ * - title 비었을 때 원문 첫 유효 줄에서 제목 후보
+ */
+export function applyDeterministicExtractedDataFixes(ed: ExtractedData): void {
+  padFlightInfoHHMM(ed.flight_info);
+
+  if (ed.duration != null) {
+    if (!Number.isFinite(ed.duration)) {
+      ed.duration = undefined;
+    } else {
+      const n = Math.round(ed.duration);
+      if (n < 1) ed.duration = undefined;
+      else ed.duration = Math.min(60, n);
+    }
+  }
+
+  if (!ed.title?.trim() && ed.rawText?.trim()) {
+    const line = ed.rawText
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map(l => l.trim())
+      .find(l => l.length >= 4 && !/^[\d\s.,\-–—%]+$/.test(l));
+    if (line) ed.title = line.slice(0, 200);
+  }
+
+  if (ed.title && ed.title.length > 200) ed.title = ed.title.slice(0, 200);
+
+  if (ed.theme_tags && ed.theme_tags.length > 20) {
+    ed.theme_tags = ed.theme_tags.slice(0, 20);
+  }
+  if (ed.selling_points?.unique && ed.selling_points.unique.length > 5) {
+    ed.selling_points = { ...ed.selling_points, unique: ed.selling_points.unique.slice(0, 5) };
+  }
+}
+
 // ─── 검증 함수 ────────────────────────────────────────────────────────────────
 
 export interface ValidationResult {
@@ -126,6 +175,22 @@ export function validateExtractedProduct(ed: ExtractedData): ValidationResult {
   }
   if (!ed.destination) {
     warnings.push('목적지(destination)가 추출되지 않았습니다.');
+  }
+
+  // 포함/불포함 항목 충돌 감지
+  if (ed.inclusions?.length && ed.excludes?.length) {
+    // 주의사항·법규 텍스트는 AI가 양쪽에 중복 추출하는 false positive 패턴 — 필터 제외
+    const NOTICE_PATTERN = /금지|주의|반입|규정|벌금|환불|불가|위험|면세|세관|비자|여권|취소|압수/;
+    const MIN_LEN = 15;
+    const normalize = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+    const filteredInclusions = ed.inclusions.filter(s => s.length >= MIN_LEN && !NOTICE_PATTERN.test(s));
+    const inclSet = new Set(filteredInclusions.map(normalize));
+    const conflicts = ed.excludes.filter(ex =>
+      ex.length >= MIN_LEN && !NOTICE_PATTERN.test(ex) && inclSet.has(normalize(ex))
+    );
+    if (conflicts.length > 0) {
+      warnings.push(`포함/불포함 항목 충돌 (${conflicts.length}건): ${conflicts.slice(0, 3).join(', ')}`);
+    }
   }
 
   // ── C 파서 정제 레이어 연동 (text-sanitizer.ts) ──
@@ -268,6 +333,31 @@ function resolveDayOfWeek(raw: string): 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 
  *
  * DRAFT: 파싱 완료, 검토 전 정상 상태
  */
+// ─── 4단계 업로드 게이트 ───────────────────────────────────────────────────────
+
+export type UploadGate = 'BLOCKED' | 'REVIEW_NEEDED' | 'WARNING' | 'CLEAN';
+
+/**
+ * 4단계 게이트 분류:
+ *   BLOCKED       — 핵심 필드(title/destination) 누락 → DB 저장 차단
+ *   REVIEW_NEEDED — confidence 낮음 or 가격 없음 → 수동 검토 대기
+ *   WARNING       — 경고 3개 이상 → 저장하되 낮은 신뢰도 플래그
+ *   CLEAN         — 정상 → DRAFT 자동 저장
+ */
+export function classifyUploadGate(
+  validation: ValidationResult,
+  confidence: number,
+  priceRowCount: number,
+): UploadGate {
+  const criticalMissing = validation.errors.some(e =>
+    e.includes('title') || e.includes('destination')
+  );
+  if (criticalMissing) return 'BLOCKED';
+  if (confidence < 0.5 || priceRowCount === 0) return 'REVIEW_NEEDED';
+  if (validation.warnings.length >= 3) return 'WARNING';
+  return 'CLEAN';
+}
+
 export function determineProductStatus(opts: {
   confidence: number;
   netPrice: number;
@@ -290,7 +380,7 @@ export function determineProductStatus(opts: {
   // 가격 범위 강제: 1만원 미만 또는 5천만원 초과는 오파싱 가능성 높음
   if (netPrice > 0 && netPrice < PRICE_MIN) return 'REVIEW_NEEDED';
   if (netPrice > PRICE_MAX)      return 'REVIEW_NEEDED';
-  if (confidence < 0.60)         return 'REVIEW_NEEDED';
+  if (confidence < 0.70)         return 'REVIEW_NEEDED';
   if (priceRowCount === 0)       return 'REVIEW_NEEDED';
 
   return 'DRAFT';

@@ -355,13 +355,17 @@ async function insertOneTransaction(args: {
     return false; // 중복 스킵
   }
 
-  // auto 매칭 시 예약 반영 (RPC 원자적 증감)
+  // auto 매칭 시 예약 반영 (RPC 원자적 증감 + ledger 이중쓰기)
   if (matchClass === 'auto' && bestMatch) {
     await applyLedger({
       bookingId: bestMatch.booking.id,
       transactionType: tx.type,
       amount: tx.amount,
       isRefund,
+      source: 'slack_ingest',
+      sourceRefId: inserted.id,                              // bank_transactions.id
+      idempotencyKey: `slack:auto:${inserted.id}`,           // 동일 tx 재처리 시 ledger 중복 방지
+      memo: `slack auto-match ${tx.type} (${bestMatch.confidence.toFixed(2)})`,
     });
 
     await supabaseAdmin
@@ -410,6 +414,12 @@ export async function applyLedger(params: {
   amount: number;
   isRefund: boolean;
   rollback?: boolean;               // true면 부호 반전 (매칭 취소 등)
+  // Phase 2a — append-only ledger 이중쓰기 인자 (선택)
+  source?: string;                  // 'slack_ingest' | 'bank_tx_manual_match' 등
+  sourceRefId?: string | null;      // bank_transactions.id 등
+  idempotencyKey?: string | null;   // 재시도 안전성 보장. RPC 안에서 ':paid' / ':payout' 접미 분할
+  memo?: string | null;
+  createdBy?: string | null;
 }): Promise<string | null> {
   const { bookingId, transactionType, amount, isRefund, rollback = false } = params;
   const sign = rollback ? -1 : 1;
@@ -427,10 +437,20 @@ export async function applyLedger(params: {
     payoutDelta = amount * sign;
   }
 
+  // rollback 시 idempotency_key 충돌 방지 — undo 는 별도 entry 로 기록
+  const idem = params.idempotencyKey
+    ? rollback ? `${params.idempotencyKey}:rollback` : params.idempotencyKey
+    : null;
+
   const { data, error } = await supabaseAdmin.rpc('update_booking_ledger', {
     p_booking_id: bookingId,
     p_paid_delta: paidDelta,
     p_payout_delta: payoutDelta,
+    p_source: params.source ?? 'slack_ingest',
+    p_source_ref_id: params.sourceRefId ?? null,
+    p_idempotency_key: idem,
+    p_memo: params.memo ?? null,
+    p_created_by: params.createdBy ?? null,
   });
 
   if (error) {

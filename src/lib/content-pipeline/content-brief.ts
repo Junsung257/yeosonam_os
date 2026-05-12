@@ -1,8 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ContentBrief, parseAndValidateBrief, HookType } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS, TEMPLATE_META } from '@/lib/card-news/tokens';
 import { ANGLE_PRESETS } from '@/lib/content-generator';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { designBriefStructure, type StructureInput } from './agents/structure-designer';
 import { writeCardCopy } from './agents/card-news-copywriter';
 
@@ -136,6 +134,65 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
 
   // Stage 3: 결정론적 enricher
   return enrichBriefWithV2Slots(merged, input);
+}
+
+/**
+ * PR-7: ContentBrief 에서 card_news 영구 컬럼용 메타 추출.
+ *   - hook_type: 첫 번째 hook 섹션의 hook_type (없으면 첫 섹션의 hook_type)
+ *   - palette_category: template_family + 상품 시그널 → 카테고리 매핑
+ *   - design_archetype_id: null (발행 시점 매칭은 별도 후속 PR)
+ *
+ * 카드뉴스 INSERT/UPDATE 시 호출. critic gate가 이 값들을 사용.
+ */
+export function extractCardNewsMetadata(brief: ContentBrief, productSignals?: {
+  destination?: string;
+  product_summary?: string;
+  product_highlights?: string[];
+}): {
+  hook_type: string | null;
+  palette_category: string | null;
+} {
+  // hook_type
+  const hookSection = brief.sections.find((s) => s.role === 'hook');
+  const hook_type =
+    hookSection?.card_slide?.hook_type ??
+    brief.sections[0]?.card_slide?.hook_type ??
+    null;
+
+  // palette_category — 1차: photo_hint "PALETTE:xxx" 마커 검색
+  let palette_category: string | null = null;
+  for (const s of brief.sections) {
+    const hint = s.card_slide?.photo_hint ?? '';
+    const m = /PALETTE:(\w+)/.exec(hint);
+    if (m) {
+      palette_category = m[1];
+      break;
+    }
+  }
+
+  // 2차: template_family + 상품 키워드 휴리스틱
+  if (!palette_category) {
+    const family = brief.template_family_suggestion;
+    const text = [
+      productSignals?.destination,
+      productSignals?.product_summary,
+      ...(productSignals?.product_highlights ?? []),
+      ...brief.sections.map((s) => s.h2),
+      ...brief.key_selling_points,
+      brief.h1,
+    ].filter(Boolean).join(' ');
+
+    if (family === 'premium') palette_category = 'premium';
+    else if (family === 'bold') palette_category = 'urgency';
+    else if (/해변|풍경|자연|섬|산/.test(text)) palette_category = 'nature';
+    else if (/건축|성당|궁전|사원|타워/.test(text)) palette_category = 'architecture';
+    else if (/음식|맛집|야시장|쌀국수|요리|로컬푸드/.test(text)) palette_category = 'food';
+    else if (/시내|거리|골목|시장|투어/.test(text)) palette_category = 'street';
+    else if (/할인|특가|선착순|마감/.test(text)) palette_category = 'urgency';
+    else palette_category = 'default';
+  }
+
+  return { hook_type, palette_category };
 }
 
 // ──────────────────────────────────────────────────────
@@ -299,16 +356,18 @@ function enrichBriefWithV2Slots(brief: ContentBrief, input: BriefInput): Content
 // ──────────────────────────────────────────────────────
 function reorderH1WithPriceFront(h1: string, priceChip: string | null): string {
   if (!priceChip) return h1;
-  // 가격 + 선택적 suffix (부터/~/특가) 까지 한 덩어리로 매칭
-  const pricePattern = /(\d+만(?:\d+천)?원|\d{1,3}(?:,\d{3})+원|\d+,?\d{3,6}원)\s*(부터|~|특가)?/;
-  const match = h1.match(pricePattern);
-  if (!match) return h1;
-  const priceIdx = h1.indexOf(match[0]);
-  if (priceIdx < 20) return h1;
+  // 가격 + 선택적 suffix (부터|~|특가) 까지 한 덩어리로 매칭
+  const pricePattern = /(\d+만(?:\d+천)?원|\d{1,3}(?:,\d{3})+원|\d+,?\d{3,6}원)\s*(부터|~|특가)?/g;
+  const matchArr = h1.match(pricePattern);
+  if (!matchArr) return h1;
+  const matchStr = matchArr[0];
+  const priceIdx = h1.indexOf(matchStr);
+  if (priceIdx < 15) return h1; // 이미 15자 이내(앞쪽)에 있으면 무시
 
   const beforePrice = h1.slice(0, priceIdx).replace(/[,\s·!?]+$/, '').trim();
-  const afterPrice = h1.slice(priceIdx + match[0].length).replace(/^[,\s·!?]+/, '').trim();
-  const priceBlock = match[0].trim();
+  const afterPrice = h1.slice(priceIdx + matchStr.length).replace(/^[,\s·!?]+/, '').trim();
+  const priceBlock = matchStr.trim();
+  
   const reordered = `${priceBlock} ${beforePrice}${afterPrice ? ' ' + afterPrice : ''}`.trim();
   return reordered.slice(0, 70);
 }

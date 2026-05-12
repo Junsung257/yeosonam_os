@@ -1,0 +1,31 @@
+User-agent: *
+# 공개 페이지 — 크롤링 허용
+Allow: /$
+Allow: /packages/
+Allow: /blog/
+Allow: /destinations/
+Allow: /things-to-do/
+Allow: /group/
+Allow: /with/
+Allow: /influencer/
+Allow: /concierge
+Allow: /group-inquiry
+
+# API 전체 차단 — 함수 호출 낭비 방지
+Disallow: /api/
+
+# 어드민 차단
+Disallow: /admin/
+Disallow: /m/admin/
+
+# 내부 경로 차단
+Disallow: /embed/
+Disallow: /share/
+Disallow: /r/
+Disallow: /auth/
+Disallow: /rfq/
+Disallow: /free-travel/
+Disallow: /partner-apply/
+Disallow: /review/
+
+Sitemap: https://www.yeosonam.com/sitemap.xml

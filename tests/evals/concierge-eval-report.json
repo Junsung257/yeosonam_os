@@ -1,0 +1,39 @@
+{
+  "total": 5,
+  "passed": 5,
+  "score": 1,
+  "threshold": 0.95,
+  "details": [
+    {
+      "id": "qa-001",
+      "ok": true,
+      "expectedOk": true,
+      "forbiddenOk": true
+    },
+    {
+      "id": "qa-002",
+      "ok": true,
+      "expectedOk": true,
+      "forbiddenOk": true
+    },
+    {
+      "id": "qa-003",
+      "ok": true,
+      "expectedOk": true,
+      "forbiddenOk": true
+    },
+    {
+      "id": "qa-004",
+      "ok": true,
+      "expectedOk": true,
+      "forbiddenOk": true
+    },
+    {
+      "id": "qa-005",
+      "ok": true,
+      "expectedOk": true,
+      "forbiddenOk": true
+    }
+  ],
+  "generatedAt": "2026-05-03T15:26:25.994Z"
+}

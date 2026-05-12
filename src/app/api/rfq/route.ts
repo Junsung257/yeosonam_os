@@ -5,6 +5,7 @@ import {
   listGroupRfqs,
   GroupRfq,
 } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 const MOCK_RFQS: GroupRfq[] = [
   {
@@ -164,7 +165,7 @@ export async function POST(request: NextRequest) {
     const cr = (custom_requirements ?? {}) as Record<string, unknown>;
     if (cr.source === 'group_landing') {
       try {
-        const slackUrl = process.env.SLACK_GROUP_RFQ_WEBHOOK_URL;
+        const slackUrl = getSecret('SLACK_GROUP_RFQ_WEBHOOK_URL');
         if (slackUrl) {
           const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';
           const lines = [

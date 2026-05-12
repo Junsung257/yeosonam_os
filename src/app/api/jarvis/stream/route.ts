@@ -16,18 +16,27 @@
  */
 
 import { NextRequest } from 'next/server'
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify'
 import { supabaseAdmin } from '@/lib/supabase'
-import { prepareDispatch } from '@/lib/jarvis/v2-dispatch'
-import { runGeminiAgentLoopV2 } from '@/lib/jarvis/gemini-agent-loop-v2'
+import { prepareDispatch, runV2 } from '@/lib/jarvis/v2-dispatch'
 import { encodeSSE, encodeKeepalive, SSE_HEADERS } from '@/lib/jarvis/stream-encoder'
 import { resolveJarvisContext } from '@/lib/jarvis/context'
 import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
 import type { AgentRunResult } from '@/lib/jarvis/types'
+import { mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
+import { recordPlatformLearningEvent } from '@/lib/platform-learning'
+import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
+import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
+import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
+import { rateLimitAI } from '@/lib/rate-limiter'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimitAI(req)
+  if (limited) return limited
+
   if (process.env.JARVIS_STREAM_ENABLED === 'false') {
     return new Response(JSON.stringify({ error: 'streaming disabled' }), {
       status: 503,
@@ -42,6 +51,21 @@ export async function POST(req: NextRequest) {
   if (!message?.trim()) {
     return new Response(JSON.stringify({ error: '메시지가 필요합니다.' }), {
       status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const token = req.cookies.get('sb-access-token')?.value
+  if (!token) {
+    return new Response(JSON.stringify({ error: '인증이 필요합니다.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const verified = await verifySupabaseAccessToken(token)
+  if (!verified.ok) {
+    return new Response(JSON.stringify({ error: '세션이 유효하지 않습니다.' }), {
+      status: 401,
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -69,6 +93,27 @@ export async function POST(req: NextRequest) {
 
   // 2) Router + config 조립
   const dispatch = await prepareDispatch({ message, session, ctx })
+  const traceId = crypto.randomUUID()
+  const decision = supervisorLite({
+    message,
+    sessionId: session.id,
+    tenantId: ctx.tenantId,
+    affiliateId: null,
+    agentType: dispatch.agentType,
+    ctx,
+    correlationId: crypto.randomUUID(),
+    source: 'jarvis_stream',
+  })
+  const createdTask = await createAgentTask(decision.envelope)
+  await transitionAgentTask(createdTask.id, 'queued', 'running')
+  const rootSpan = await startTraceSpan({
+    traceId,
+    spanName: 'jarvis_stream_total',
+    sessionId: session.id,
+    taskId: createdTask.id,
+    agentType: dispatch.agentType,
+    metadata: { specialistId: dispatch.specialistPick.specialistId },
+  })
 
   // V2 미지원 agent → 클라이언트가 V1 (/api/jarvis) 로 폴백하도록 명시 응답
   if (!dispatch.supported || !dispatch.config) {
@@ -78,6 +123,7 @@ export async function POST(req: NextRequest) {
         agentType: dispatch.agentType,
         sessionId: session.id,
         reason: 'agent not yet V2-enabled',
+        specialist: dispatch.specialistPick,
       }),
       { status: 409, headers: { 'Content-Type': 'application/json' } },
     )
@@ -88,6 +134,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const started = Date.now()
       let finalResult: AgentRunResult | null = null
+      let firstTokenAt: number | null = null
       let keepaliveTimer: ReturnType<typeof setInterval> | null = null
 
       try {
@@ -98,6 +145,11 @@ export async function POST(req: NextRequest) {
             sessionId: session.id,
             agent: dispatch.agentType,
             confidence: dispatch.routerConfidence,
+            specialist: {
+              id: dispatch.specialistPick.specialistId,
+              label: dispatch.specialistPick.labelKo,
+              method: dispatch.specialistPick.method,
+            },
           },
         } as StreamEvent))
 
@@ -106,12 +158,15 @@ export async function POST(req: NextRequest) {
           try { controller.enqueue(encodeKeepalive()) } catch { /* closed */ }
         }, 15_000)
 
-        const generator = runGeminiAgentLoopV2(dispatch.config!, { message, session, ctx })
+        const generator = runV2(dispatch, { message, session, ctx }) as AsyncGenerator<StreamEvent, AgentRunResult>
         while (true) {
           const step = await generator.next()
           if (step.done) {
             finalResult = step.value
             break
+          }
+          if (firstTokenAt === null && (step.value as any)?.type === 'token') {
+            firstTokenAt = Date.now()
           }
           controller.enqueue(encodeSSE(step.value))
         }
@@ -130,14 +185,32 @@ export async function POST(req: NextRequest) {
               timestamp: new Date().toISOString(),
             },
           ]
+          const orchBase = mergeOrchestrationContext(session?.context, dispatch.specialistPick)
           await supabaseAdmin
             .from('jarvis_sessions')
             .update({
               messages: updatedMessages,
-              context: { ...(session?.context ?? {}), ...finalResult.contextUpdate },
+              context: { ...orchBase, ...finalResult.contextUpdate },
               updated_at: new Date().toISOString(),
             })
             .eq('id', session.id)
+
+          recordPlatformLearningEvent({
+            source: 'jarvis_v2_stream',
+            sessionId: session.id,
+            affiliateId: null,
+            tenantId: ctx.tenantId ?? null,
+            userMessage: message,
+            payload: {
+              agent: dispatch.agentType,
+              specialist_id: dispatch.specialistPick.specialistId,
+              specialist_method: dispatch.specialistPick.method,
+              tools_used: finalResult?.toolsUsed ?? [],
+              pending_hitl: !!finalResult?.pendingActionId,
+              trace_id: traceId,
+              ttft_ms: firstTokenAt ? firstTokenAt - started : null,
+            },
+          })
         }
 
         controller.enqueue(encodeSSE({
@@ -145,18 +218,48 @@ export async function POST(req: NextRequest) {
           data: {
             sessionId: session.id,
             agent: dispatch.agentType,
+            specialist: dispatch.specialistPick,
             latencyMs: Date.now() - started,
             toolsUsed: finalResult?.toolsUsed ?? [],
             pendingAction: finalResult?.pendingAction ?? null,
           },
         }))
       } catch (err) {
+        try {
+          await transitionAgentTask(createdTask.id, 'running', 'failed', {
+            last_error: err instanceof Error ? err.message : 'stream_error',
+          })
+        } catch {
+          // ignore
+        }
         console.error('[jarvis-stream] 오류:', err)
         controller.enqueue(encodeSSE({
           type: 'error',
           data: { message: err instanceof Error ? err.message : '스트리밍 오류' },
         }))
       } finally {
+        if (finalResult) {
+          try {
+            await transitionAgentTask(createdTask.id, 'running', 'done', {
+              completed_at: new Date().toISOString(),
+            })
+          } catch {
+            // ignore
+          }
+        }
+        try {
+          await endTraceSpan({
+            id: rootSpan.id,
+            startedAt: rootSpan.started_at,
+            metadata: {
+              traceId,
+              ttftMs: firstTokenAt ? firstTokenAt - started : null,
+              totalLatencyMs: Date.now() - started,
+            },
+          })
+        } catch {
+          // ignore
+        }
         if (keepaliveTimer) clearInterval(keepaliveTimer)
         controller.close()
       }

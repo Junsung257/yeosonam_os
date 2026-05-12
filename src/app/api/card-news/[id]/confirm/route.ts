@@ -10,6 +10,7 @@ import {
 } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { upsertCampaign } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function POST(
   request: NextRequest,
@@ -51,8 +52,8 @@ export async function POST(
 
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
 
     const { rate } = await getRateInfo();
@@ -74,7 +75,7 @@ export async function POST(
 
     // 3. 첫 번째 슬라이드를 광고 소재로 업로드
     const firstSlide = cardNews.slides[0];
-    const packageUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://yeosonam.com'}/packages`;
+    const packageUrl = `${getSecret('NEXT_PUBLIC_APP_URL') ?? 'https://yeosonam.com'}/packages`;
     const messageText = firstSlide
       ? `${firstSlide.headline}\n\n${firstSlide.body}`
       : cardNews.title;
@@ -143,8 +144,8 @@ export async function POST(
     if (errMsg.includes('META_TOKEN_EXPIRED')) {
       const { createClient } = await import('@supabase/supabase-js');
       const sb = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+        getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
       );
       sb.from('audit_logs').insert({
         action: 'META_TOKEN_EXPIRED',

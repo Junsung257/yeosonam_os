@@ -67,12 +67,12 @@ export function MobileActionSheet({
         {(title || description) && (
           <div className="px-5 pb-2">
             {title && (
-              <div className="text-base font-semibold text-slate-900">
+              <div className="text-base font-semibold text-admin-text">
                 {title}
               </div>
             )}
             {description && (
-              <div className="text-xs text-slate-500 mt-1">{description}</div>
+              <div className="text-xs text-admin-muted mt-1">{description}</div>
             )}
           </div>
         )}
@@ -85,10 +85,10 @@ export function MobileActionSheet({
               onClick={async () => {
                 await a.onClick();
               }}
-              className={`w-full rounded-2xl px-4 py-3.5 text-left transition active:scale-[0.99] disabled:opacity-40 ${
+              className={`w-full rounded-admin-lg px-4 py-3.5 text-left transition active:scale-[0.99] disabled:opacity-40 ${
                 a.destructive
                   ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                  : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                  : 'bg-admin-surface-2 text-admin-text hover:bg-slate-200'
               }`}
             >
               <div className="flex items-center gap-2 text-sm font-semibold">
@@ -96,7 +96,7 @@ export function MobileActionSheet({
                 <span>{a.label}</span>
               </div>
               {a.description && (
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-xs text-admin-muted mt-0.5">
                   {a.description}
                 </div>
               )}
@@ -105,7 +105,7 @@ export function MobileActionSheet({
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-2xl px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700"
+            className="w-full rounded-admin-lg px-4 py-3 text-sm font-medium text-admin-muted hover:text-admin-text-2"
           >
             {cancelLabel}
           </button>

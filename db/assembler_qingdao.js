@@ -17,6 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { findDuplicate, isSamePriceDates, isSameDeadline } = require('./templates/insert-template');
 
 // ── Supabase (--insert 모드용) ──
@@ -42,15 +43,16 @@ const O = (time, activity) => ({ time, activity, type: 'optional', transport: nu
 
 // ── 항공 2종: BX(부산) / SC(인천) — 원문에서 자동 감지 ──
 const AIRLINES = {
-  BX: { code: 'BX', name: 'BX(에어부산)', airport: '부산(김해)', flight_out: 'BX321', flight_in: 'BX322', flight_out_time: '10:30', arrival_time: '11:35', return_departure_time: '12:35', flight_in_time: '15:35' },
+  BX: { code: 'BX', name: 'BX(에어부산)', airport: '부산(김해)', flight_out: 'BX321', flight_in: 'BX322', flight_out_time: '10:30', arrival_time: '11:35', return_departure_time: '12:30', flight_in_time: '15:30' },
   SC: { code: 'SC', name: 'SC(산동항공)', airport: '인천', flight_out: 'SC4610', flight_in: 'SC4619', flight_out_time: '12:15', arrival_time: '13:05', return_departure_time: '19:30', flight_in_time: '21:55' },
 };
 
 const DESTINATION = {
   name: '칭다오', country: '중국', region_code: 'TAO',
   hotel_pool: [
+    { grade: '정5성', names: ['윈덤', '청도 윈덤', '윈덤호텔'], score: 3.5 },
     { grade: '5성', names: ['풀만호텔', '풀만', '이스트포포인츠쉐라톤', '이스트포포인츠'], score: 3 },
-    { grade: '준5성', names: ['지모힐튼', '힐튼호텔', '힐튼', '하이탠엑스포', '하이탠', '이스트쉐라톤', '이스트 쉐라톤', '쉐라톤'], score: 2 },
+    { grade: '준5성', names: ['글로리아 플라자', '글로리아플라자', '글로리아', '지모힐튼', '힐튼호텔', '힐튼', '하이탠엑스포', '하이탠', '이스트쉐라톤', '이스트 쉐라톤', '쉐라톤'], score: 2 },
   ],
   notices: [
     { type: 'CRITICAL', title: '필수 확인', text: '• 여권 유효기간 출발일기준 6개월이상\n• 일정 미참여시 1인 $150 패널티 (개별행동 금지)' },
@@ -77,9 +79,9 @@ const BLOCKS = [
 
   // ── Sightseeing (14건) ──
   {
-    code: 'TAO-B001', name: '천주교당', type: 'sightseeing', duration: 'half',
-    schedule: [N(null, '▶1943년 완공된 높이56m의 아름다운 독일식 건축 성당 천주교당')],
-    keywords: ['천주교당', '독일식.*성당', '고딕양식'],
+    code: 'TAO-B001', name: '천주교성당', type: 'sightseeing', duration: 'half',
+    schedule: [N(null, '▶1943년 완공된 높이56m의 아름다운 독일식 건축 천주교성당 (외관)')],
+    keywords: ['천주교성당', '천주교당', '독일식.*성당', '고딕양식'],
     score: 1.5,
   },
   {
@@ -121,7 +123,8 @@ const BLOCKS = [
   {
     code: 'TAO-B008', name: '지모고성', type: 'sightseeing', duration: 'half',
     schedule: [N(null, '▶춘추전국시대부터 이어져온 1400년 역사의 지모고성')],
-    keywords: ['지모고성', '지묵고성', '지모.*고성', '고대도시'],
+    // 주의: "대체"/"변경" 같은 조건부 문맥에서는 매칭 제외 (matchBlocks 에서 필터)
+    keywords: ['지모고성', '지묵고성', '고대도시'],
     score: 1.5,
   },
   {
@@ -149,13 +152,13 @@ const BLOCKS = [
     score: 2.0, is_optional: true, option_price_usd: 50,
   },
   {
-    code: 'TAO-B013', name: '노산 거봉 (케이블카)', type: 'sightseeing', duration: 'full',
+    code: 'TAO-B013', name: '노산 (양구/거봉코스)', type: 'sightseeing', duration: 'full',
     schedule: [
       N(null, '노산으로 이동 (약 1시간)'),
-      N(null, '▶노산 거봉 관광 (케이블카 왕복 포함)'),
+      N(null, '▶노산 양구코스 관광 — 왕복 케이블카 포함 (국가 5A급 풍경구, 바다와 산의 만남 / 현지 사정에 따라 거봉코스로 변경 가능)'),
       N(null, '청도 이동 (약 1시간)'),
     ],
-    keywords: ['노산', '거봉', '케이블카.*노산', '노산.*케이블카'],
+    keywords: ['노산', '거봉', '양구코스', '양커우코스', '케이블카.*노산', '노산.*케이블카'],
     score: 3.0, is_optional: true, option_price_usd: 100,
   },
   {
@@ -192,6 +195,12 @@ const BLOCKS = [
     keywords: ['전신마사지.*90', '마사지.*90분', '발.*전신.*90'],
     score: 2.0,
   },
+  {
+    code: 'TAO-M003', name: '전신마사지 1시간', type: 'massage', duration: 'half',
+    schedule: [N(null, '▶여행의 피로를 풀어주는 전신마사지 1시간')],
+    keywords: ['전신마사지\\s*1\\s*시간', '전신.*1시간'],
+    score: 1.5,
+  },
 
   // ── Shopping (1건) ──
   {
@@ -211,7 +220,7 @@ const TEMPLATES = [
     code: 'TAO-실속-2N', name: '칭다오 실속 2박3일', type: '실속', nights: 2, days: 3,
     signature_blocks: ['TAO-B001', 'TAO-B002', 'TAO-B003', 'TAO-B004', 'TAO-B005', 'TAO-B006', 'TAO-B011', 'TAO-B012'],
     excludes_blocks: ['TAO-B013'], // 노산 없음
-    inclusions: ['왕복 항공료 및 텍스', '유류할증료', '호텔 (2인1실)', '전용차량', '관광지입장료', '식사', '여행자보험 2억'],
+    inclusions: ['왕복 항공료 및 텍스', '유류할증료', '호텔 (2인1실)', '전용차량', '관광지입장료', '식사', '여행자보험'],
     excludes: ['기사/가이드경비 $40/인 (현지지불)', '매너팁', '개인경비', '유류변동분'],
   },
   {
@@ -268,8 +277,15 @@ function parseRawText(text) {
     rawNights: null,
     rawDays: null,
     rawTitle: null,
+    rawMinParticipants: null,
     departureDays: null, // "매주 수요일", "수/토 출발" 등
   };
+
+  // ── 최소 인원 추출 ("성인 N명 이상") ──
+  {
+    const m = text.match(/성인\s*(\d+)\s*명\s*이상/);
+    if (m) result.rawMinParticipants = parseInt(m[1]);
+  }
 
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
@@ -289,20 +305,23 @@ function parseRawText(text) {
   }
 
   // ── 출발요일 감지 ──
-  const DOW_CHARS = '월화수목금토일';
-  const dowPatterns = [
-    /매주\s*([월화수목금토일][/,]?[월화수목금토일]?\s*요?일?)(?:\s*출발)?/,  // "매주 수요일 출발"
-    /(?:출발|출발일)\s*[:：]?\s*(?:매주\s*)?([월화수목금토일][/,]?[월화수목금토일]?\s*요?일?)/, // "출발: 수/토요일"
-    /([월화수목금토일])[/,]([월화수목금토일])\s*(?:요일)?\s*출발/, // "수/토 출발"
-  ];
-  for (const pat of dowPatterns) {
-    const dowMatch = text.match(pat);
-    if (dowMatch) {
-      let raw = (dowMatch[1] || dowMatch[0]).trim();
-      // "매주" 제거
-      raw = raw.replace(/매주\s*/, '');
-      result.departureDays = raw.includes('요일') ? `매주 ${raw}` : `매주 ${raw}요일`;
-      break;
+  // "매일" / "주 7회" 우선 검사 (단일 DOW 오탐 방지)
+  if (/주\s*7\s*회\s*매일\s*출발|매일\s*출발|주\s*7\s*회/.test(text)) {
+    result.departureDays = '매일';
+  } else {
+    const dowPatterns = [
+      /매주\s*([월화수목금토일][/,]?[월화수목금토일]?\s*요?일?)(?:\s*출발)?/,  // "매주 수요일 출발"
+      /(?:출발|출발일)\s*[:：]?\s*(?:매주\s*)?([월화수목금토일][/,]?[월화수목금토일]?\s*요?일?)/, // "출발: 수/토요일"
+      /([월화수목금토일])[/,]([월화수목금토일])\s*(?:요일)?\s*출발/, // "수/토 출발"
+    ];
+    for (const pat of dowPatterns) {
+      const dowMatch = text.match(pat);
+      if (dowMatch) {
+        let raw = (dowMatch[1] || dowMatch[0]).trim();
+        raw = raw.replace(/매주\s*/, '');
+        result.departureDays = raw.includes('요일') ? `매주 ${raw}` : `매주 ${raw}요일`;
+        break;
+      }
     }
   }
 
@@ -378,14 +397,57 @@ function parseRawText(text) {
   // 일차순 정렬
   result.days.sort((a, b) => a.day - b.day);
 
-  // ── 포함/불포함 원문 파싱 ──
-  const incMatch = text.match(/포함\s*사항\s*[:：]?\s*(.+)/i);
-  if (incMatch) {
-    result.parsedInclusions = incMatch[1].split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  // ── 포함/불포함 원문 파싱 (섹션 기반, 다중 라인 지원) ──
+  // "포 함", "포    함", "포함", "포함사항" 모두 인식
+  // 다음 섹션 레이블("불 포 함", "선택관광", "쇼핑센터", "비 고", "제1일") 만날 때까지 수집
+  const NEXT_SECTION_RE = /^(불\s*포\s*함|선택\s*관광|쇼핑\s*센터|비\s*고|제\s*\d+\s*일|DAY\s*\d|출\s*발\s*[일인날]|항\s*공|룸\s*타\s*입|날\s*짜|지\s*역|교통편)/i;
+  function collectSection(startRe) {
+    const collected = [];
+    let active = false;
+    for (const line of lines) {
+      if (!active) {
+        if (startRe.test(line)) {
+          active = true;
+          // 같은 라인에 이어지는 내용이 있으면 추출
+          const rest = line.replace(startRe, '').replace(/^[:：\s]+/, '').trim();
+          if (rest) collected.push(rest);
+        }
+        continue;
+      }
+      // 다음 섹션 시작되면 중단
+      if (NEXT_SECTION_RE.test(line)) break;
+      if (line) collected.push(line);
+    }
+    return collected;
   }
-  const excMatch = text.match(/불포함\s*[:：]?\s*(.+)/i);
-  if (excMatch) {
-    result.parsedExcludes = excMatch[1].split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const incLines = collectSection(/^포\s*함(?:\s*사항)?/);
+  if (incLines.length > 0) {
+    // 콤마/♥ 경계로 항목 추출, 특전(♥...♥) 별도 유지
+    const items = [];
+    for (const line of incLines) {
+      // ♥...♥ 는 별도 특전 항목
+      const gemMatches = line.match(/♥\s*([^♥]+?)\s*♥/g);
+      if (gemMatches) {
+        gemMatches.forEach(g => {
+          const clean = g.replace(/♥/g, '').trim();
+          if (clean) items.push(clean);
+        });
+        // ♥ 제거 후 나머지 콤마 split
+        const rest = line.replace(/♥[^♥]*♥/g, '').trim();
+        if (rest) rest.split(/[,，]/).map(s => s.trim()).filter(Boolean).forEach(s => items.push(s));
+      } else {
+        line.split(/[,，]/).map(s => s.trim()).filter(Boolean).forEach(s => items.push(s));
+      }
+    }
+    result.parsedInclusions = items;
+  }
+  const excLines = collectSection(/^불\s*포\s*함/);
+  if (excLines.length > 0) {
+    const items = [];
+    for (const line of excLines) {
+      line.split(/[,，]/).map(s => s.trim()).filter(Boolean).forEach(s => items.push(s));
+    }
+    result.parsedExcludes = items;
   }
 
   // ── "선택관광:" 섹션 별도 파싱 (원문 그대로) ──
@@ -403,7 +465,7 @@ function parseRawText(text) {
       if (m) {
         const name = m[1].replace(/\[.*?\]/g, '').replace(/^[-·•]\s*/, '').trim();
         if (name && name.length >= 2) {
-          result.standaloneOptionals.push({ name, price_usd: parseInt(m[2]), price_krw: null, note: null });
+          result.standaloneOptionals.push({ name, price_usd: parseInt(m[2]), price_krw: null, note: null, region: DESTINATION.name });
         }
       }
     }
@@ -427,6 +489,15 @@ function matchBlocks(dayText) {
     });
 
     if (isMatch) {
+      // 🚨 조건부 문맥 필터 — "대체/변경/경우/또는" 과 같이 있는 라인만 매칭되면 일정 포함 아님
+      const matchingLines = dayText.filter(l =>
+        block.keywords.some(kw => { try { return new RegExp(kw, 'i').test(l); } catch { return l.includes(kw); } })
+      );
+      const allInConditional = matchingLines.length > 0 && matchingLines.every(l =>
+        /대체\s*진행|대체\s*운영|변경|일부\s*출발|출발팀은|경우에\s*따라|현지\s*사정/.test(l)
+      );
+      if (allInConditional) continue; // skip this block entirely
+
       // 옵션 줄에서만 매칭됐는지 확인
       const optionalLines = dayText.filter(l => /\[.*옵션\]|선택관광|\$\d+|☆/.test(l));
       const normalLines = dayText.filter(l => !/\[.*옵션\]|선택관광|\$\d+|☆/.test(l));
@@ -699,6 +770,9 @@ function matchTemplate(nights, allBlockCodes, productType) {
 
 function buildProduct(parsed, rawText) {
   const fullText = rawText || parsed.days.flatMap(d => d.lines).join('\n');
+  if (!fullText || !fullText.trim()) {
+    throw new Error('Rule Zero — raw_text 비어 있음. parseRawText 입력을 확인하십시오.');
+  }
 
   // ── 일자별 블록 매칭 ──
   const dayResults = [];
@@ -810,7 +884,7 @@ function buildProduct(parsed, rawText) {
         const name = match[1].replace(/\[.*?\]/g, '').replace(/^[-·•]\s*/, '').trim();
         if (!name || name.length < 2 || seenNames.has(name)) continue;
         seenNames.add(name);
-        optionalTours.push({ name, price_usd: parseInt(match[2]), price_krw: null, note: null });
+        optionalTours.push({ name, price_usd: parseInt(match[2]), price_krw: null, note: null, region: DESTINATION.name });
       }
     }
   }
@@ -881,7 +955,7 @@ function buildProduct(parsed, rawText) {
       schedule.push({ time: null, activity: '석식 후 호텔 투숙', type: 'normal', transport: null, note: null });
     } else if (isSecondLast && !isLast) {
       schedule.push({ time: null, activity: '석식 후', type: 'normal', transport: null, note: null });
-      schedule.push({ time: null, activity: '공항으로 이동', type: 'transport', transport: '전용차량', note: null });
+      schedule.push({ time: null, activity: '공항으로 이동', type: 'normal', transport: '전용차량', note: null });
     }
 
     if (isLast) {
@@ -889,7 +963,8 @@ function buildProduct(parsed, rawText) {
       schedule.push({ time: airline.flight_in_time, activity: `${airline.airport.replace(/\(.*/, '')} 도착`, type: 'normal', transport: null, note: null });
     }
 
-    const dayHotel = (isLast || isSecondLast)
+    // Day 2 (isSecondLast) 는 여전히 호텔 투숙함. 마지막 날만 호텔 없음.
+    const dayHotel = isLast
       ? { name: null, grade: null, note: null }
       : { name: hotel.name, grade: hotel.grade, note: null };
 
@@ -903,9 +978,30 @@ function buildProduct(parsed, rawText) {
   }
 
   // ── 최종 상품 객체 ──
-  const title = productType.type === '품격'
-    ? `품격 칭다오${allBlockCodes.includes('TAO-B006') ? '+맥주박물관' : ''} ${nights}박 ${days}일`
-    : `${allBlockCodes.includes('TAO-B013') ? '노산 ' : ''}칭다오${allBlockCodes.includes('TAO-B006') ? '+맥주박물관' : ''} ${nights}박 ${days}일`;
+  // 원문에서 "부산-청도 2박3일 XXXPKG [...]" 패턴 감지 시 그대로 사용
+  const rawTitleMatch = fullText.match(/(부산-청도\s*\d박\s*\d일\s*[가-힣]+PKG(?:\s*\[[^\]]+\])?)/);
+  const title = rawTitleMatch
+    ? rawTitleMatch[1].replace(/\s+/g, ' ').trim()
+    : (productType.type === '품격'
+      ? `품격 칭다오${allBlockCodes.includes('TAO-B006') ? '+맥주박물관' : ''} ${nights}박 ${days}일`
+      : `${allBlockCodes.includes('TAO-B013') ? '노산 ' : ''}칭다오${allBlockCodes.includes('TAO-B006') ? '+맥주박물관' : ''} ${nights}박 ${days}일`);
+
+  // product_summary 자동 생성 (모바일 "여소남의 추천 코멘트") — 친근/구체 톤
+  const hiLights = [];
+  if (allBlockCodes.includes('TAO-B013')) hiLights.push('도교의 성지 노산 케이블카');
+  if (allBlockCodes.includes('TAO-B006')) hiLights.push('100년 칭다오 맥주박물관');
+  if (allBlockCodes.includes('TAO-B015')) hiLights.push('명월산해간 불야성 야경');
+  if (allBlockCodes.includes('TAO-M002') && productType.type !== '실속') hiLights.push('발+전신마사지 90분 포함');
+  if (allBlockCodes.includes('TAO-M003') && productType.type !== '실속') hiLights.push('전신마사지 1시간');
+  const summaryPieces = [];
+  const airportShort = airline.airport.replace(/\(.*/, '');
+  summaryPieces.push(`${airportShort}에서 1시간 반이면 도착하는 칭다오!`);
+  if (hiLights.length > 0) summaryPieces.push(hiLights.slice(0, 3).join(', ') + '까지');
+  if (productType.type === '품격') summaryPieces.push('팁·옵션·쇼핑 걱정 없이 품격있게,');
+  else if (productType.type === '노산') summaryPieces.push('정5성 호텔 + 노팁·노옵션으로 편안하게,');
+  else summaryPieces.push('합리적인 가격에 핵심만 담아');
+  summaryPieces.push(`${nights}박${days}일 여유있게 다녀오세요.`);
+  const productSummary = summaryPieces.join(' ');
 
   // ── 출발요일 ──
   const departureDays = parsed.departureDays || null;
@@ -923,7 +1019,7 @@ function buildProduct(parsed, rawText) {
     departure_airport: airline.airport,
     departure_days: departureDays,
     airline: airline.name,
-    min_participants: 4,
+    min_participants: parsed.rawMinParticipants || 4,
     status: 'pending',
     price: lowestPrice,
     guide_tip: guideTip,
@@ -943,9 +1039,12 @@ function buildProduct(parsed, rawText) {
     accommodations: hotel.name
       ? [`${hotel.name}(${hotel.grade}) × ${nights}박`]
       : [],
-    product_summary: null,
+    product_summary: productSummary,
     itinerary: [],
-    raw_text: '',
+    // W-final F3 — Rule Zero 강제. fullText 빈 값은 buildProduct 진입부에서 throw됨.
+    raw_text: fullText,
+    raw_text_hash: crypto.createHash('sha256').update(fullText).digest('hex'),
+    parser_version: 'assembler_qingdao-v2026.04.21',
     filename: 'assembler_output',
     file_type: 'assembled',
     confidence: 0.85,
@@ -961,7 +1060,7 @@ function buildProduct(parsed, rawText) {
         flight_out: airline.flight_out,
         flight_in: airline.flight_in,
         departure_days: departureDays,
-        min_participants: 4,
+        min_participants: parsed.rawMinParticipants || 4,
         room_type: '2인1실',
         ticketing_deadline: null,
         hashtags: ['#칭다오', '#맥주박물관', ...productType.tags.map(t => `#${t}`)],
@@ -1210,7 +1309,8 @@ async function insertToDB(product, landOperatorId, commissionRate, ticketingDead
 
 const LAND_OPERATORS = {
   '투어폰': { id: '43a54eed-1390-4713-bb43-2624c87436a4', code: 'TP' },
-  '랜드부산': { id: 'bca5ed71-ef0a-4fd4-b24e-c88c3d1e7d73', code: 'LB' },
+  '랜드부산': { id: 'de5cd166-9f84-41f5-9124-e9b6b1081ffe', code: 'LB' },
+  '더투어': { id: 'ae53f857-de2a-43b6-8763-8289f75b91a0', code: 'TT' },
   '투어라운지': { id: null, code: 'TL' },
   '백두산관광': { id: null, code: 'BD' },
   '비루방': { id: null, code: 'VB' },

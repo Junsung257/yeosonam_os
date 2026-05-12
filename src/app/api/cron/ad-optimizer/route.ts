@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import {
   isSupabaseConfigured,
   getAdAccounts,
   updateAdAccountBalance,
   getKeywordPerformances,
   updateKeywordStatus,
+  updateKeywordBid,
 } from '@/lib/supabase';
 import {
   syncAdAccountBalance,
@@ -31,9 +33,19 @@ import {
  * vercel.json 등록:
  *   { "path": "/api/cron/ad-optimizer", "schedule": "0 * * * *" }  ← 매시 정각
  */
-export async function GET(): Promise<NextResponse> {
+export const dynamic = 'force-dynamic';
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
+  }
   const startAt = Date.now();
   const log: string[] = [];
+  const applyDbChanges =
+    process.env.AD_OPTIMIZER_APPLY_CHANGES === '1' ||
+    process.env.AD_OPTIMIZER_APPLY_CHANGES === 'true';
+  const applyOffpeakAdjustment =
+    process.env.AD_OPTIMIZER_APPLY_OFFPEAK_RULE === '1' ||
+    process.env.AD_OPTIMIZER_APPLY_OFFPEAK_RULE === 'true';
 
   const push = (msg: string) => {
     console.log('[ad-optimizer]', msg);
@@ -41,6 +53,7 @@ export async function GET(): Promise<NextResponse> {
   };
 
   push('=== AI 마케팅 관제소 최적화 시작 ===');
+  push(`[mode] ${applyDbChanges ? 'apply' : 'dry-run'} / offpeak=${applyOffpeakAdjustment ? 'on' : 'off'}`);
 
   if (!isSupabaseConfigured) {
     push('Supabase 미설정 — Mock 실행');
@@ -121,13 +134,13 @@ export async function GET(): Promise<NextResponse> {
     if (!kw) continue;
 
     if (action.type === 'PAUSE' && kw.status !== 'PAUSED') {
-      await updateKeywordStatus(kw.id, 'PAUSED');
+      if (applyDbChanges) await updateKeywordStatus(kw.id, 'PAUSED');
       push(`PAUSED: "${action.keyword}" — ${action.reason}`);
 
       // TODO: 실제 네이버 광고 API — 키워드 일시 중지
       // await fetch(`https://api.naver.com/ncc/adgroups/keywords/${kw.id}`, {
       //   method: 'PUT',
-      //   headers: { 'X-API-KEY': process.env.NAVER_AD_API_KEY! },
+      //   headers: { 'X-API-KEY': '<NAVER_AD_API_KEY>' },
       //   body: JSON.stringify({ userLock: true }),
       // });
 
@@ -137,7 +150,13 @@ export async function GET(): Promise<NextResponse> {
       // });
 
     } else if (action.type === 'FLAG_UP' && kw.status !== 'FLAGGED_UP') {
-      await updateKeywordStatus(kw.id, 'FLAGGED_UP');
+      if (applyDbChanges) {
+        await updateKeywordStatus(kw.id, 'FLAGGED_UP');
+        const upBid = Math.round((kw.current_bid || 0) * Number(process.env.AD_FLAG_UP_BID_FACTOR || 1.1));
+        if (upBid > 0) {
+          await updateKeywordBid(kw.id, upBid);
+        }
+      }
       push(`FLAGGED_UP: "${action.keyword}" — ${action.reason}`);
 
       // TODO: 실제 입찰가 상향 반영
@@ -170,10 +189,33 @@ export async function GET(): Promise<NextResponse> {
     }
   }
 
+  const kstHour = (new Date().getUTCHours() + 9) % 24;
+  if (kstHour >= 1 && kstHour < 7) {
+    const factor = Number(process.env.AD_OFFPEAK_BID_FACTOR || '0.85');
+    const minBid = Number(process.env.AD_MIN_BID_KRW || 70);
+    let adjusted = 0;
+    if (applyDbChanges && applyOffpeakAdjustment) {
+      for (const kw of kwPerfs.filter((k) => k.status === 'ACTIVE')) {
+        const nextBid = Math.max(minBid, Math.round((kw.current_bid || 0) * factor));
+        if (nextBid > 0 && nextBid < (kw.current_bid || 0)) {
+          await updateKeywordBid(kw.id, nextBid);
+          adjusted += 1;
+        }
+      }
+    }
+    push(
+      `[marketing-rules] KST ${kstHour}시 off-peak — 입찰 ${factor}배 감액 ${
+        applyDbChanges && applyOffpeakAdjustment ? `${adjusted}건 적용` : 'dry-run/off'
+      }`,
+    );
+  }
+
   push(`=== 완료 (${Date.now() - startAt}ms) ===`);
 
   return NextResponse.json({
     ok: true,
+    apply_db_changes: applyDbChanges,
+    apply_offpeak_adjustment: applyOffpeakAdjustment,
     elapsed_ms: Date.now() - startAt,
     optimization_summary: summary,
     low_balance_alerts: lowBalanceAlerts.length,

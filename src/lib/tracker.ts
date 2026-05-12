@@ -18,6 +18,10 @@ const USER_KEY = 'ys_user_id';
 const CONSENT_KEY = 'tc_consent'; // 마케팅 동의 여부 ('true' | 'false')
 const UTM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30일
 
+// 365일 first-party 쿠키 — 비로그인 재방문 식별
+const VISITOR_UID_COOKIE = 'ysm_uid';
+const VISITOR_UID_TTL_DAYS = 365;
+
 interface UtmData {
   source?: string;
   medium?: string;
@@ -49,6 +53,56 @@ export function getSessionId(): string {
     sessionStorage.setItem(SESSION_KEY, sid);
   }
   return sid;
+}
+
+// ── 365일 first-party visitor_uid (재방문 식별) ────────────────
+// PIPA: 비식별 UUID 만 저장. 개인정보 아님.
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function writeCookie(name: string, value: string, ttlDays: number) {
+  if (typeof document === 'undefined') return;
+  const exp = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${exp}; path=/; SameSite=Lax`;
+}
+
+/** 365일 first-party visitor UID. 신규 발급 여부도 함께 반환 (is_returning 판정). */
+export function getVisitorUid(): { uid: string; isReturning: boolean } {
+  if (typeof window === 'undefined') return { uid: 'ssr', isReturning: false };
+  const existing = readCookie(VISITOR_UID_COOKIE);
+  if (existing && existing.length >= 8) {
+    // 재방문 — TTL 재연장 (rolling 365)
+    writeCookie(VISITOR_UID_COOKIE, existing, VISITOR_UID_TTL_DAYS);
+    return { uid: existing, isReturning: true };
+  }
+  const fresh = crypto.randomUUID();
+  writeCookie(VISITOR_UID_COOKIE, fresh, VISITOR_UID_TTL_DAYS);
+  return { uid: fresh, isReturning: false };
+}
+
+// ── 디바이스 감지 (User-Agent 기반 가벼운 분류) ──────────────────
+function detectDevice(): { type: string; os: string; browser: string } {
+  if (typeof navigator === 'undefined') return { type: 'unknown', os: 'unknown', browser: 'unknown' };
+  const ua = navigator.userAgent || '';
+  const isTablet = /iPad|Tablet|PlayBook|(Android(?!.*Mobile))/i.test(ua);
+  const isMobile = /Mobi|iPhone|Android|IEMobile|BlackBerry|webOS|Opera Mini/i.test(ua) && !isTablet;
+  const type = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  let os = 'other';
+  if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Macintosh|Mac OS X/i.test(ua)) os = 'macOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+  let browser = 'other';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/Chrome\//i.test(ua)) browser = 'Chrome';
+  else if (/Safari\//i.test(ua)) browser = 'Safari';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/KAKAOTALK/i.test(ua)) browser = 'KakaoIn';
+  return { type, os, browser };
 }
 
 // ── 마케팅 동의 여부 ───────────────────────────────────────────
@@ -136,11 +190,20 @@ export function initTracker(): void {
   }
 
   const referrer = getReferrer();
+  const { uid: visitor_uid, isReturning: is_returning } = getVisitorUid();
+  const device = detectDevice();
 
   post({
     type: 'traffic',
     session_id: getSessionId(),
     user_id: getSavedUserId(),
+    visitor_uid,
+    is_returning,
+    device_type: device.type,
+    device_os: device.os,
+    browser_name: device.browser,
+    viewport_w: typeof window !== 'undefined' ? window.innerWidth : undefined,
+    viewport_h: typeof window !== 'undefined' ? window.innerHeight : undefined,
     ...utmData,
     // 인플루언서/제휴 추천이면 source에 반영
     ...(referrer && !utmData.source ? { source: referrer, medium: 'affiliate' } : {}),
@@ -190,30 +253,91 @@ export function trackSearch(params: {
   result_count?: number;
   lead_time_days?: number;
 }): void {
+  const { uid: visitor_uid } = getVisitorUid();
   post({
     type: 'search',
     session_id: getSessionId(),
     user_id: getSavedUserId(),
+    visitor_uid,
     ...params,
   });
 }
 
 // ── trackEngagement ────────────────────────────────────────────
 
+export type EngagementEventType =
+  | 'page_view'
+  | 'product_view'
+  | 'cart_added'
+  | 'checkout_start'
+  | 'scroll_25'
+  | 'scroll_50'
+  | 'scroll_75'
+  | 'scroll_90';
+
 export function trackEngagement(params: {
-  event_type: 'page_view' | 'product_view' | 'cart_added' | 'checkout_start';
+  event_type: EngagementEventType | string;
   product_id?: string;
   product_name?: string;
   page_url?: string;
   lead_time_days?: number;
+  time_on_page_ms?: number;
+  max_scroll_pct?: number;
+  interaction_count?: number;
 }): void {
+  const { uid: visitor_uid } = getVisitorUid();
   post({
     type: 'engagement',
     session_id: getSessionId(),
     user_id: getSavedUserId(),
+    visitor_uid,
     cart_added: params.event_type === 'cart_added',
     ...params,
   });
+}
+
+/** 스크롤 깊이 마일스톤 — 이탈 구간·히트맵 보조용 (ad_engagement_logs.event_type) */
+export function trackScrollMilestone(depthPct: 25 | 50 | 75 | 90, pageUrl: string): void {
+  const event_type = `scroll_${depthPct}` as EngagementEventType;
+  trackEngagement({ event_type, page_url: pageUrl });
+}
+
+/**
+ * 페이지 떠날 때(beforeunload/pagehide) 체류시간 + 최대 스크롤 기록.
+ * sendBeacon 우선 사용 (브라우저가 페이지 닫힘에도 전송 보장).
+ */
+export function trackPageExit(params: {
+  page_url: string;
+  time_on_page_ms: number;
+  max_scroll_pct: number;
+  interaction_count: number;
+}): void {
+  if (typeof window === 'undefined') return;
+  const { uid: visitor_uid } = getVisitorUid();
+  const body = JSON.stringify({
+    type: 'engagement',
+    session_id: getSessionId(),
+    user_id: getSavedUserId(),
+    visitor_uid,
+    event_type: 'page_exit',
+    ...params,
+  });
+  // sendBeacon: 페이지 닫힘에도 전송 보장 (대신 응답 무시)
+  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([body], { type: 'application/json' });
+      navigator.sendBeacon('/api/tracking', blob);
+      return;
+    } catch {
+      // fallback to fetch
+    }
+  }
+  fetch('/api/tracking', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => {});
 }
 
 // ── trackConversion ────────────────────────────────────────────

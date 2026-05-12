@@ -10,14 +10,15 @@
  */
 
 import { requestGoogleIndexing, IndexingResult } from './gsc-client';
+import { getSecret } from '@/lib/secret-registry';
 
-const INDEXNOW_KEY = process.env.INDEXNOW_KEY || '2bf8a3e4yeosonam7c1d9f6e0b5a';
+const INDEXNOW_KEY = getSecret('INDEXNOW_KEY') ?? '';
 
 export interface IndexingReport {
   url: string;
   google: 'success' | 'failed' | 'skipped';
   google_error?: string;
-  indexnow: 'success' | 'failed';
+  indexnow: 'success' | 'failed' | 'skipped';
   indexnow_error?: string;
   sitemap_pings: { provider: string; ok: boolean }[];
   duration_ms: number;
@@ -70,39 +71,60 @@ export async function notifyIndexing(
   report.google = googleResult.ok ? 'success' : 'failed';
   if (!googleResult.ok) report.google_error = googleResult.error;
 
-  // 2. IndexNow (Bing/Yandex/Seznam 통합)
-  try {
-    const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        host,
-        key: INDEXNOW_KEY,
-        keyLocation: `${baseUrl}/${INDEXNOW_KEY}.txt`,
-        urlList: [url],
-      }),
-    });
-    // IndexNow: 200 = 색인 요청 수락, 202 = 처리 중, 400 = 잘못된 요청, 403 = 키 미일치
-    report.indexnow = (indexnowRes.status === 200 || indexnowRes.status === 202) ? 'success' : 'failed';
-    if (!report.indexnow.includes('success')) {
-      report.indexnow_error = `HTTP ${indexnowRes.status}`;
+  // 2. IndexNow (Bing/Yandex/Seznam 통합) — INDEXNOW_KEY 미설정 시 스킵
+  if (!INDEXNOW_KEY) {
+    report.indexnow = 'skipped';
+    report.indexnow_error = 'INDEXNOW_KEY 미설정';
+  } else {
+    try {
+      const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host,
+          key: INDEXNOW_KEY,
+          keyLocation: `${baseUrl}/${INDEXNOW_KEY}.txt`,
+          urlList: [url],
+        }),
+      });
+      report.indexnow = indexnowRes.status === 200 || indexnowRes.status === 202 ? 'success' : 'failed';
+      if (report.indexnow !== 'success') {
+        report.indexnow_error = `HTTP ${indexnowRes.status}`;
+      }
+    } catch (err) {
+      report.indexnow_error = err instanceof Error ? err.message : String(err);
     }
-  } catch (err) {
-    report.indexnow_error = err instanceof Error ? err.message : String(err);
   }
 
-  // 3. Sitemap ping (Bing/네이버용 — 구글은 2023년 폐지됐지만 호환성 유지)
+  // 3. Sitemap ping (Bing) + WebSub/PubSubHubbub ping (Google Feedfetcher)
+  //    WebSub: Google이 구독하는 공개 허브에 RSS URL을 알려 즉시 재크롤링 유도.
+  //    Service Account 없이 Google에 새 글을 알리는 표준 방식 (WordPress/Blogger 동일 방식).
   if (pingSitemap) {
+    const rssUrl = `${baseUrl}/api/rss`;
     const pings = [
       { name: 'bing', url: `https://www.bing.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}` },
     ];
     for (const p of pings) {
       try {
-        const r = await fetch(p.url);
+        const r = await fetch(p.url, { method: 'GET' });
         report.sitemap_pings.push({ provider: p.name, ok: r.ok });
       } catch {
         report.sitemap_pings.push({ provider: p.name, ok: false });
       }
+    }
+
+    // Google WebSub/PubSubHubbub — form body 필수 (query param 방식은 411 에러)
+    try {
+      const body = `hub.mode=publish&hub.url=${encodeURIComponent(rssUrl)}`;
+      const r = await fetch('https://pubsubhubbub.appspot.com/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      // 204 No Content = 수락, 그 외는 실패
+      report.sitemap_pings.push({ provider: 'google_websub', ok: r.status === 204 });
+    } catch {
+      report.sitemap_pings.push({ provider: 'google_websub', ok: false });
     }
   }
 

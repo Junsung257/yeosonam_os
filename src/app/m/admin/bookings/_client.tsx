@@ -45,9 +45,9 @@ function fmtDepartureBig(iso: string | null): {
 const TONE_CLS: Record<string, string> = {
   hot: 'text-rose-600',
   warm: 'text-amber-600',
-  normal: 'text-slate-900',
-  past: 'text-slate-400',
-  none: 'text-slate-400',
+  normal: 'text-admin-text',
+  past: 'text-admin-muted-2',
+  none: 'text-admin-muted-2',
 };
 
 function PaidProgress({
@@ -67,7 +67,7 @@ function PaidProgress({
           style={{ width: `${Math.round(ratio * 100)}%` }}
         />
       </div>
-      <span className="text-[10px] text-slate-500 tabular-nums">
+      <span className="text-[10px] text-admin-muted tabular-nums">
         {Math.round(ratio * 100)}%
       </span>
     </div>
@@ -129,11 +129,11 @@ export default function BookingsClient({
 
   return (
     <>
-      <div className="px-3 pt-2 pb-1 bg-slate-50 flex items-center gap-2">
+      <div className="px-3 pt-2 pb-1 bg-admin-bg flex items-center gap-2">
         <div className="flex-1 relative">
           <Search
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-muted-2 pointer-events-none"
           />
           <input
             type="search"
@@ -142,13 +142,13 @@ export default function BookingsClient({
             placeholder="이름·예약번호·상품·출발일"
             autoComplete="off"
             spellCheck={false}
-            className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="w-full bg-white border border-admin-border-mid rounded-admin-md pl-8 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           />
           {q && (
             <button
               type="button"
               onClick={() => setQ('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-slate-400 active:bg-slate-100"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-admin-muted-2 active:bg-admin-surface-2"
               aria-label="검색 초기화"
             >
               <X size={14} />
@@ -158,7 +158,7 @@ export default function BookingsClient({
         <button
           type="button"
           onClick={cycleSort}
-          className="flex items-center gap-1 text-xs font-medium px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 active:bg-slate-100 whitespace-nowrap"
+          className="flex items-center gap-1 text-xs font-medium px-3 py-2 rounded-admin-md bg-white border border-admin-border-mid text-admin-text-2 active:bg-admin-surface-2 whitespace-nowrap"
           aria-label="정렬 변경"
         >
           <ArrowUpDown size={14} />
@@ -167,7 +167,7 @@ export default function BookingsClient({
       </div>
 
       {rows.length === 0 ? (
-        <div className="px-4 py-16 text-center text-sm text-slate-400">
+        <div className="px-4 py-16 text-center text-sm text-admin-muted-2">
           {q ? '검색 결과가 없습니다.' : '표시할 예약이 없습니다.'}
         </div>
       ) : (
@@ -183,12 +183,12 @@ export default function BookingsClient({
                   href={`/m/admin/bookings/${row.id}`}
                   badge={<MobileStatusBadge status={row.status} />}
                   title={
-                    <span className="text-lg font-bold text-slate-900 leading-tight">
+                    <span className="text-lg font-bold text-admin-text leading-tight">
                       {row.customer_name ?? '예약자 미지정'}
                     </span>
                   }
                   subtitle={
-                    <span className="text-xs text-slate-500 truncate block">
+                    <span className="text-xs text-admin-muted truncate block">
                       {row.package_title ?? '상품명 없음'}
                     </span>
                   }

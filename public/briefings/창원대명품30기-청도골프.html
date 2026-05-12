@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>창원대 명품 30기 · 부산-청도 3박4일 골프투어 브리핑</title>
+<link rel="stylesheet" href="/fonts/pretendard/pretendard.css" />
+<style>
+  :root{
+    --navy:#0B1F3A;
+    --navy-2:#13284A;
+    --gold:#C9A14A;
+    --gold-soft:#E2C781;
+    --ivory:#FBF8F1;
+    --paper:#FFFFFF;
+    --ink:#1A1A1A;
+    --muted:#6B7280;
+    --line:#E5E7EB;
+    --rose:#B83B5E;
+    --emerald:#0E6E5A;
+    --sky:#1E5BA8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    font-family:'Pretendard','Pretendard Variable',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    color:var(--ink);
+    background:#1a1a1a;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  /* === Deck === */
+  .deck{display:flex;flex-direction:column;gap:24px;padding:24px;align-items:center}
+  .slide{
+    width:1280px;
+    height:720px;
+    position:relative;
+    overflow:hidden;
+    background:var(--paper);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);
+    border-radius:6px;
+    page-break-after:always;
+    break-after:page;
+  }
+  .slide-num{
+    position:absolute;bottom:24px;right:32px;
+    font-size:11px;letter-spacing:.18em;color:var(--muted);
+    font-weight:500;
+  }
+  .brand-mark{
+    position:absolute;bottom:24px;left:32px;
+    font-size:11px;letter-spacing:.22em;color:var(--muted);font-weight:600;
+  }
+
+  /* === Typography === */
+  .display{font-size:84px;font-weight:800;line-height:1.05;letter-spacing:-.03em}
+  .h1{font-size:54px;font-weight:800;line-height:1.1;letter-spacing:-.02em}
+  .h2{font-size:38px;font-weight:700;line-height:1.2;letter-spacing:-.015em}
+  .h3{font-size:26px;font-weight:700;line-height:1.3}
+  .body{font-size:17px;line-height:1.7;color:#374151}
+  .small{font-size:13px;line-height:1.6;color:var(--muted)}
+  .kicker{
+    display:inline-block;font-size:12px;letter-spacing:.32em;font-weight:700;
+    color:var(--gold);text-transform:uppercase;
+  }
+  .serif{font-family:'Noto Serif KR',Georgia,serif}
+
+  /* === Cover === */
+  .cover{
+    background:
+      radial-gradient(1200px 600px at 20% 10%, rgba(201,161,74,.18), transparent 60%),
+      radial-gradient(900px 600px at 90% 110%, rgba(30,91,168,.25), transparent 60%),
+      linear-gradient(135deg, #0B1F3A 0%, #13284A 60%, #1B3463 100%);
+    color:#fff;
+    padding:80px;
+    display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .cover::before{
+    content:"";position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size:60px 60px;
+    pointer-events:none;
+  }
+  .cover-top{display:flex;justify-content:space-between;align-items:flex-start;z-index:2}
+  .cover-logo{display:flex;align-items:center;gap:14px}
+  .logo-dot{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold-soft));display:grid;place-items:center;font-weight:900;color:var(--navy);font-size:18px}
+  .cover-mid{z-index:2}
+  .cover-bottom{z-index:2;display:flex;justify-content:space-between;align-items:flex-end}
+  .cover-meta{display:flex;gap:48px}
+  .cover-meta div{display:flex;flex-direction:column;gap:6px}
+  .cover-meta .lbl{font-size:11px;letter-spacing:.28em;color:var(--gold);font-weight:700}
+  .cover-meta .val{font-size:18px;font-weight:600}
+  .ribbon{
+    display:inline-flex;align-items:center;gap:10px;
+    background:rgba(201,161,74,.12);
+    border:1px solid rgba(201,161,74,.45);
+    color:var(--gold-soft);
+    padding:8px 18px;border-radius:999px;font-size:13px;letter-spacing:.18em;font-weight:700;
+  }
+  .gold-line{width:84px;height:3px;background:var(--gold);margin:22px 0 28px}
+
+  /* === Generic section slide === */
+  .pad{padding:64px 80px}
+  .pad-tight{padding:48px 80px}
+  .header-row{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:32px}
+  .header-row .h2{margin-top:8px}
+  .day-chip{
+    display:inline-flex;align-items:center;gap:10px;
+    background:var(--navy);color:#fff;
+    padding:10px 18px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.08em;
+  }
+  .day-chip .pill{background:var(--gold);color:var(--navy);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:800}
+
+  /* === Two col === */
+  .two-col{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:start}
+  .two-col-img{
+    height:520px;border-radius:8px;overflow:hidden;position:relative;
+    background:linear-gradient(135deg,#1B3463,#0B1F3A);
+    background-size:cover!important;
+    background-position:center!important;
+  }
+  .two-col-img.golf{background-image:url('https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=1280&q=80');background-size:cover!important;background-position:center!important}
+  .two-col-img.beer{background-image:url('https://images.unsplash.com/photo-1608220945770-fed355f1a406?w=1280&q=80');background-size:cover!important;background-position:center!important}
+  .two-col-img.night{background-image:url('https://images.unsplash.com/photo-1516633472601-b52fc00c496e?w=1280&q=80');background-size:cover!important;background-position:center!important}
+  .two-col-img.hotel{background-image:url('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1280&q=80');background-size:cover!important;background-position:center!important}
+  .two-col-img.flight{background-image:url('https://images.unsplash.com/photo-1489824904134-891ab64532f1?w=1280&q=80');background-size:cover!important;background-position:center!important}
+  .two-col-img::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.10), transparent 60%);
+  }
+  .two-col-img .badge{
+    position:absolute;top:24px;left:24px;
+    background:rgba(0,0,0,.45);backdrop-filter:blur(8px);
+    color:#fff;font-size:11px;letter-spacing:.28em;font-weight:700;
+    padding:8px 14px;border-radius:4px;
+  }
+  .two-col-img .icon{
+    position:absolute;inset:0;display:grid;place-items:center;
+    font-size:140px;opacity:.85;
+  }
+  .two-col-img .caption{
+    position:absolute;bottom:24px;left:24px;right:24px;
+    color:#fff;font-size:13px;line-height:1.5;
+    background:linear-gradient(180deg, transparent, rgba(0,0,0,.6));
+    padding:60px 16px 16px;border-radius:4px;
+  }
+
+  /* === Lists === */
+  ul.clean{list-style:none}
+  ul.clean li{
+    position:relative;padding:10px 0 10px 22px;
+    border-bottom:1px dashed var(--line);font-size:16px;line-height:1.6;color:#1f2937;
+  }
+  ul.clean li::before{
+    content:"";position:absolute;left:0;top:18px;
+    width:6px;height:6px;background:var(--gold);border-radius:50%;
+  }
+  ul.clean li:last-child{border-bottom:none}
+
+  ul.check li{position:relative;padding:8px 0 8px 28px;font-size:15px;line-height:1.6;list-style:none}
+  ul.check li::before{
+    content:"✓";position:absolute;left:0;top:6px;
+    width:20px;height:20px;background:var(--emerald);color:#fff;border-radius:4px;
+    display:grid;place-items:center;font-size:12px;font-weight:800;
+  }
+
+  /* === Cards & boxes === */
+  .info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .info-card{
+    background:#fff;border:1px solid var(--line);border-radius:8px;padding:18px 20px;
+  }
+  .info-card .lbl{font-size:11px;letter-spacing:.22em;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+  .info-card .val{font-size:20px;font-weight:800;color:var(--navy);line-height:1.3}
+  .info-card .sub{font-size:12px;color:var(--muted);margin-top:4px}
+
+  .price-hero{
+    background:linear-gradient(135deg,#0B1F3A,#13284A);
+    color:#fff;border-radius:10px;padding:28px 32px;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .price-hero .price{font-size:54px;font-weight:900;letter-spacing:-.02em}
+  .price-hero .price small{font-size:18px;font-weight:600;color:var(--gold-soft);margin-left:6px}
+
+  .pill-row{display:flex;flex-wrap:wrap;gap:8px}
+  .pill-tag{
+    display:inline-block;background:#F3F4F6;color:#374151;
+    padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;
+  }
+  .pill-tag.gold{background:rgba(201,161,74,.15);color:#7A5A1F}
+  .pill-tag.emerald{background:rgba(14,110,90,.12);color:#0E6E5A}
+
+  /* === Itinerary timeline === */
+  .timeline{position:relative;padding-left:28px}
+  .timeline::before{
+    content:"";position:absolute;left:6px;top:8px;bottom:8px;
+    width:2px;background:linear-gradient(180deg,var(--gold),var(--line));
+  }
+  .timeline .ev{position:relative;padding:14px 0 14px 16px;margin-bottom:6px}
+  .timeline .ev::before{
+    content:"";position:absolute;left:-28px;top:22px;
+    width:14px;height:14px;border-radius:50%;
+    background:#fff;border:3px solid var(--gold);
+  }
+  .timeline .ev .t{font-size:12px;letter-spacing:.18em;color:var(--gold);font-weight:800;text-transform:uppercase}
+  .timeline .ev .l{font-size:18px;font-weight:700;color:var(--navy);margin-top:2px}
+  .timeline .ev .d{font-size:13px;color:#4B5563;margin-top:2px}
+
+  /* === Days grid (overview) === */
+  .days-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .day-card{
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    background:#fff;display:flex;flex-direction:column;height:480px;
+  }
+  .day-card .head{padding:20px;background:var(--navy);color:#fff}
+  .day-card .head .n{font-size:11px;letter-spacing:.28em;color:var(--gold);font-weight:800}
+  .day-card .head .t{font-size:22px;font-weight:800;margin-top:6px}
+  .day-card .head .d{font-size:12px;opacity:.7;margin-top:4px}
+  .day-card .body{padding:20px;flex:1;display:flex;flex-direction:column;gap:10px}
+  .day-card .body .row{display:flex;gap:10px;font-size:13px;color:#374151;line-height:1.5}
+  .day-card .body .row .ic{font-size:14px;color:var(--gold);font-weight:800;min-width:18px}
+  .day-card .foot{background:#F9FAFB;padding:12px 20px;font-size:11px;color:var(--muted);border-top:1px solid var(--line)}
+
+  /* === Highlights === */
+  .highlight-yellow{background:linear-gradient(180deg,transparent 60%,rgba(201,161,74,.35) 60%)}
+
+  /* === Table === */
+  table.t{width:100%;border-collapse:collapse;font-size:14px}
+  table.t th{
+    background:var(--navy);color:#fff;font-weight:700;
+    padding:12px 14px;text-align:left;font-size:13px;letter-spacing:.05em;
+  }
+  table.t td{padding:12px 14px;border-bottom:1px solid var(--line);color:#1f2937;vertical-align:top}
+  table.t tr:nth-child(even) td{background:#FAFAFA}
+  table.t .num{font-weight:800;color:var(--navy)}
+
+  /* === Highlight callout === */
+  .callout{
+    background:linear-gradient(135deg, rgba(201,161,74,.10), rgba(201,161,74,.04));
+    border-left:4px solid var(--gold);
+    padding:18px 22px;border-radius:6px;
+    font-size:15px;line-height:1.6;color:#374151;
+  }
+  .callout strong{color:var(--navy)}
+
+  .alert{
+    background:linear-gradient(135deg, rgba(184,59,94,.08), rgba(184,59,94,.02));
+    border-left:4px solid var(--rose);
+    padding:18px 22px;border-radius:6px;
+    font-size:14px;line-height:1.6;color:#374151;
+  }
+
+  /* === Won-woo-hoi support card (gold premium) === */
+  .gift-slide{
+    background:linear-gradient(135deg,#1A1208 0%,#2A1B0A 50%,#0F0904 100%);
+    color:#fff;padding:64px 80px;
+  }
+  .gift-slide::before{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(800px 400px at 80% 20%, rgba(201,161,74,.20), transparent 60%);
+  }
+  .gift-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:24px;position:relative;z-index:2}
+  .gift-card{
+    background:linear-gradient(180deg, rgba(201,161,74,.10), rgba(201,161,74,.02));
+    border:1px solid rgba(201,161,74,.35);
+    border-radius:10px;padding:22px;
+  }
+  .gift-card .ic{font-size:32px;margin-bottom:10px}
+  .gift-card .ttl{font-size:18px;font-weight:800;color:var(--gold-soft);margin-bottom:6px}
+  .gift-card .sub{font-size:13px;color:#D9CAA8;line-height:1.6}
+  .gift-card .price-tag{
+    display:inline-block;margin-top:10px;
+    background:rgba(201,161,74,.18);
+    color:var(--gold-soft);padding:4px 10px;border-radius:999px;
+    font-size:12px;font-weight:700;letter-spacing:.05em;
+  }
+
+  /* === Section divider slide === */
+  .divider-slide{
+    background:linear-gradient(135deg,#0B1F3A 0%, #1B3463 100%);
+    color:#fff;padding:80px;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .divider-slide .kicker{color:var(--gold-soft)}
+  .divider-slide .display{font-size:96px}
+
+  /* === Golf course detail === */
+  .gc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}
+  .gc-stat{
+    background:#F9FAFB;border:1px solid var(--line);
+    padding:14px;border-radius:8px;text-align:center;
+  }
+  .gc-stat .v{font-size:24px;font-weight:900;color:var(--navy);line-height:1}
+  .gc-stat .l{font-size:11px;color:var(--muted);letter-spacing:.12em;margin-top:6px;font-weight:600;text-transform:uppercase}
+
+  /* === Print === */
+  @page{
+    size:338.67mm 190.5mm;
+    margin:0mm
+  }
+
+  @media print{
+    html,body{
+      background:#fff;
+      margin:0;
+      padding:0;
+      width:1280px
+    }
+    .deck{padding:0;gap:0}
+    .slide{
+      width:1280px!important;
+      height:720px!important;
+      overflow:hidden!important;
+      box-shadow:none!important;
+      border-radius:0!important;
+      margin:0!important;
+      page-break-after:always!important;
+      break-after:page!important;
+      break-inside:avoid!important
+    }
+    .slide.pad{padding:64px 80px!important}
+    *{
+      -webkit-print-color-adjust:exact!important;
+      print-color-adjust:exact!important;
+      color-adjust:exact!important
+    }
+  }
+
+  /* === Print button === */
+  .toolbar{
+    position:fixed;top:16px;right:16px;z-index:1000;
+    background:#fff;border-radius:8px;padding:8px 14px;box-shadow:0 8px 24px rgba(0,0,0,.3);
+    display:flex;gap:8px;align-items:center;
+  }
+  .toolbar button{
+    background:var(--navy);color:#fff;border:0;padding:10px 16px;border-radius:6px;
+    font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;
+  }
+  .toolbar button:hover{background:var(--gold);color:var(--navy)}
+  .toolbar span{font-size:12px;color:var(--muted)}
+  @media print{.toolbar{display:none}}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span>📄 Ctrl+P → "PDF로 저장" 또는 슬라이드별 캡처 → PPT 삽입</span>
+  <button onclick="window.print()">PDF / PPT 저장</button>
+</div>
+
+<div class="deck">
+
+  <!-- ========================================
+       SLIDE 1 — COVER
+       ======================================== -->
+  <section class="slide cover">
+    <div class="cover-top">
+      <div class="cover-logo">
+        <div class="logo-dot">여</div>
+        <div>
+          <div style="font-size:11px;letter-spacing:.28em;color:var(--gold);font-weight:700">YEOSONAM TRAVEL</div>
+          <div style="font-size:13px;opacity:.7">Premium B2B2C Travel Platform</div>
+        </div>
+      </div>
+      <div class="ribbon">CONFIDENTIAL · 출발 전 최종 브리핑</div>
+    </div>
+
+    <div class="cover-mid">
+      <div class="kicker" style="color:var(--gold-soft)">CHANGWON UNIVERSITY · 30th PREMIUM CLASS</div>
+      <div class="gold-line"></div>
+      <div class="serif" style="font-size:24px;color:var(--gold-soft);font-weight:500;margin-bottom:10px">창원대 명품 30기 · 골프 투어</div>
+      <div class="display">부산 — 청도<br/><span style="color:var(--gold-soft)">3박 4일 · 36홀</span></div>
+      <p style="margin-top:22px;font-size:18px;line-height:1.6;max-width:780px;opacity:.85">
+        황해를 건너는 짧은 비행, 100년 역사의 맥주 도시에서 펼쳐지는<br/>
+        화산 · 영해 두 명문 코스 라운딩과 야경 미식의 4일.
+      </p>
+    </div>
+
+    <div class="cover-bottom">
+      <div class="cover-meta">
+        <div><div class="lbl">DEPARTURE</div><div class="val">2026.06.11 (목)</div></div>
+        <div><div class="lbl">RETURN</div><div class="val">2026.06.14 (일)</div></div>
+        <div><div class="lbl">AIRLINE</div><div class="val">BX · 에어부산</div></div>
+        <div><div class="lbl">PARTY</div><div class="val">성인 12명</div></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;letter-spacing:.28em;color:var(--gold);font-weight:700">BRIEFING DOC</div>
+        <div style="font-size:13px;opacity:.7;margin-top:4px">v.1.0 · 2026.05.11</div>
+      </div>
+    </div>
+
+    <div class="slide-num" style="color:rgba(255,255,255,.5)">01 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 2 — 환영 인사
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">WELCOME · 인사말</span>
+        <div class="h1" style="margin-top:10px">함께해 주셔서 <br/><span class="highlight-yellow">진심으로 감사드립니다</span></div>
+      </div>
+      <div class="day-chip">PROLOGUE</div>
+    </div>
+
+    <div class="two-col" style="grid-template-columns:1.3fr .7fr">
+      <div>
+        <p class="body" style="font-size:18px">
+          창원대학교 <strong>명품 30기</strong> 동문 여러분, 안녕하세요.<br/>
+          여소남 트래블이 이번 청도 골프 투어를 정성껏 준비했습니다.
+        </p>
+        <p class="body" style="margin-top:18px">
+          이번 일정은 단순한 라운딩을 넘어 <strong style="color:var(--navy)">100년 역사의 맥주 도시 청도</strong>의
+          깊이 있는 풍경과 미식, 그리고 두 명문 코스 <strong style="color:var(--emerald)">화산 CC · 영해 CC</strong>에서의
+          잊지 못할 36홀 라운딩으로 구성되어 있습니다.
+        </p>
+        <p class="body" style="margin-top:18px">
+          현지 가이드 미팅부터 호텔 체크인, 골프장 이동, 옵션 마사지와 야경 투어까지<br/>
+          <strong>도착 시간부터 귀국 게이트까지 한 점의 빈틈도 없도록</strong> 점검했습니다.
+        </p>
+
+        <div class="callout" style="margin-top:28px">
+          <strong>본 브리핑의 목적</strong> · 출발 전 일정 · 항공 · 호텔 · 골프장 · 옵션 · 비자 · 비상연락처까지
+          한 권으로 정리하여 동문 여러분의 여행 첫날 밤이 더욱 가벼우시도록 준비했습니다.
+        </div>
+      </div>
+
+      <div style="background:var(--ivory);border-radius:10px;padding:28px;border:1px solid var(--line)">
+        <div class="kicker">YOUR TRIP AT A GLANCE</div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:14px">
+          <div><div style="font-size:11px;color:var(--muted);letter-spacing:.14em">기간</div><div style="font-size:18px;font-weight:800;color:var(--navy)">3박 4일</div></div>
+          <div><div style="font-size:11px;color:var(--muted);letter-spacing:.14em">라운딩</div><div style="font-size:18px;font-weight:800;color:var(--navy)">36홀 (18 × 2일)</div></div>
+          <div><div style="font-size:11px;color:var(--muted);letter-spacing:.14em">숙소</div><div style="font-size:18px;font-weight:800;color:var(--navy)">준 5성급 · Four Points</div></div>
+          <div><div style="font-size:11px;color:var(--muted);letter-spacing:.14em">차량</div><div style="font-size:18px;font-weight:800;color:var(--navy)">전용 33인승</div></div>
+          <div><div style="font-size:11px;color:var(--muted);letter-spacing:.14em">쇼핑</div><div style="font-size:18px;font-weight:800;color:var(--emerald)">노쇼핑 (강제 일정 없음)</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · 창원대 명품 30기</div>
+    <div class="slide-num">02 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 3 — 한눈에 보는 일정
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">ITINERARY OVERVIEW · 한눈에 보기</span>
+        <div class="h1" style="margin-top:10px">4일, 8개 도시 명소, 36홀</div>
+      </div>
+      <div class="day-chip">SUMMARY</div>
+    </div>
+
+    <div class="days-grid">
+      <!-- Day 1 -->
+      <div class="day-card">
+        <div class="head">
+          <div class="n">DAY 01</div>
+          <div class="t">청도 입성</div>
+          <div class="d">06.11 (목) · BX321</div>
+        </div>
+        <div class="body">
+          <div class="row"><span class="ic">✈</span><span>김해 10:30 → 청도 11:35</span></div>
+          <div class="row"><span class="ic">★</span><span>칭다오 맥주박물관</span></div>
+          <div class="row"><span class="ic">★</span><span>다바오섬 (대복도)</span></div>
+          <div class="row"><span class="ic">★</span><span>피차이위엔거리</span></div>
+          <div class="row"><span class="ic">★</span><span>찌모루시장</span></div>
+          <div class="row"><span class="ic">★</span><span>청양 야시장</span></div>
+          <div class="row"><span class="ic">🍴</span><span>석식: 샤브샤브 무제한</span></div>
+        </div>
+        <div class="foot">호텔 체크인 · Four Points</div>
+      </div>
+
+      <!-- Day 2 -->
+      <div class="day-card">
+        <div class="head" style="background:#0E6E5A">
+          <div class="n" style="color:var(--gold-soft)">DAY 02</div>
+          <div class="t">화산 CC · 18홀</div>
+          <div class="d">06.12 (금) · 전일</div>
+        </div>
+        <div class="body">
+          <div class="row"><span class="ic">⛳</span><span>화산 CC 18홀 라운딩</span></div>
+          <div class="row"><span class="ic">🚌</span><span>호텔 → CC 약 1시간</span></div>
+          <div class="row"><span class="ic">💆</span><span>전신마사지 60분</span></div>
+          <div class="row"><span class="ic">🌆</span><span>해천대하 전망대</span></div>
+          <div class="row"><span class="ic">🎆</span><span>5.4광장 야경</span></div>
+          <div class="row"><span class="ic">🍴</span><span>석식: 양꼬치 무제한</span></div>
+        </div>
+        <div class="foot">호텔 투숙 · 동급</div>
+      </div>
+
+      <!-- Day 3 -->
+      <div class="day-card">
+        <div class="head" style="background:#0E6E5A">
+          <div class="n" style="color:var(--gold-soft)">DAY 03</div>
+          <div class="t">영해 CC · 18홀</div>
+          <div class="d">06.13 (토) · 전일</div>
+        </div>
+        <div class="body">
+          <div class="row"><span class="ic">⛳</span><span>영해 CC 18홀 라운딩</span></div>
+          <div class="row"><span class="ic">🚌</span><span>호텔 → CC 약 1시간</span></div>
+          <div class="row"><span class="ic">🌃</span><span>명월산해간 불야성</span></div>
+          <div class="row"><span class="ic">📷</span><span>빛의 축제 · 야경 투어</span></div>
+          <div class="row"><span class="ic">🍴</span><span>석식: 삼겹살 무제한</span></div>
+        </div>
+        <div class="foot">호텔 투숙 · 동급</div>
+      </div>
+
+      <!-- Day 4 -->
+      <div class="day-card">
+        <div class="head">
+          <div class="n">DAY 04</div>
+          <div class="t">귀국</div>
+          <div class="d">06.14 (일) · BX322</div>
+        </div>
+        <div class="body">
+          <div class="row"><span class="ic">🏨</span><span>호텔 조식</span></div>
+          <div class="row"><span class="ic">🚌</span><span>공항 이동 약 1시간</span></div>
+          <div class="row"><span class="ic">✈</span><span>청도 12:30 → 김해 15:30</span></div>
+          <div class="row" style="margin-top:auto;padding-top:30px;font-size:12px;color:var(--muted);font-style:italic">
+            상기 일정은 항공 및 현지 사정에 의해 변경될 수 있습니다.
+          </div>
+        </div>
+        <div class="foot">김해국제공항 도착</div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · 창원대 명품 30기</div>
+    <div class="slide-num">03 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 4 — 항공 정보
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">FLIGHT INFORMATION</span>
+        <div class="h1" style="margin-top:10px">에어부산 직항으로 <br/>편안하게 청도까지</div>
+      </div>
+      <div class="day-chip"><span class="pill">BX</span> 에어부산</div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <table class="t">
+          <thead>
+            <tr><th style="width:90px">편명</th><th>구간</th><th>출발</th><th>도착</th><th>소요</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="num">BX321</td>
+              <td>김해 (PUS) → 청도 (TAO)</td>
+              <td class="num">10:30</td>
+              <td class="num">11:35</td>
+              <td>1시간 35분</td>
+            </tr>
+            <tr>
+              <td class="num">BX322</td>
+              <td>청도 (TAO) → 김해 (PUS)</td>
+              <td class="num">12:30</td>
+              <td class="num">15:30</td>
+              <td>2시간 00분</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout" style="margin-top:24px">
+          <strong>출국 안내</strong> · 김해국제공항은 출발 <strong>2시간 30분 전 (08:00)</strong>까지 도착해 주십시오.<br/>
+          미팅 장소: <strong>3층 국제선 출국장 D 카운터 앞</strong>. 여소남 인솔자가 푯말과 함께 대기합니다.
+        </div>
+
+        <div class="pill-row" style="margin-top:20px">
+          <span class="pill-tag gold">위탁 수하물 23kg × 1</span>
+          <span class="pill-tag gold">기내 수하물 7kg</span>
+          <span class="pill-tag">기내식 제공</span>
+          <span class="pill-tag">한국어 안내방송</span>
+        </div>
+      </div>
+
+      <div class="two-col-img flight">
+        <div class="badge">AIR BUSAN · BX</div>
+        <div class="icon">✈️</div>
+        <div class="caption">
+          시차 <strong>1시간</strong> (한국이 1시간 빠름)<br/>
+          청도 교동국제공항(TAO) → 시내 약 1시간 (전용 33인승 대기)
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">04 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 5 — 호텔 정보
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">ACCOMMODATION · 숙소</span>
+        <div class="h1" style="margin-top:10px">청도 <span class="highlight-yellow">포포인츠 바이 쉐라톤</span></div>
+      </div>
+      <div class="day-chip">3박 · 준 5성급</div>
+    </div>
+
+    <div class="two-col">
+      <div class="two-col-img hotel">
+        <div class="badge">FOUR POINTS BY SHERATON · QINGDAO</div>
+        <div class="icon">🏨</div>
+        <div class="caption">
+          <strong>준 5성급</strong> · 198 객실 · 24시간 피트니스 · 테니스코트 · 라운지 바<br/>
+          모던 인더스트리얼 + 노티컬 인테리어의 메리어트 본보이 체인
+        </div>
+      </div>
+
+      <div>
+        <div class="h3" style="color:var(--navy)">청도 포포인츠 쉐라톤 또는 동급</div>
+        <p class="body" style="margin-top:10px">
+          메리어트 본보이 그룹의 준 5성급 비즈니스 호텔로,<br/>
+          청양 한인타운에서 가까워 야시장 도보 접근이 우수합니다.
+        </p>
+
+        <div class="info-grid" style="grid-template-columns:repeat(2,1fr);margin-top:22px">
+          <div class="info-card"><div class="lbl">객실</div><div class="val">198 ROOMS</div><div class="sub">2인 1실 · 트윈베드</div></div>
+          <div class="info-card"><div class="lbl">조식</div><div class="val">데일리 뷔페</div><div class="sub">3일 모두 호텔식</div></div>
+          <div class="info-card"><div class="lbl">피트니스</div><div class="val">24시간 운영</div><div class="sub">라운딩 전 컨디션 점검</div></div>
+          <div class="info-card"><div class="lbl">부대시설</div><div class="val">라운지 · 테니스</div><div class="sub">대형 행사장 508㎡ 보유</div></div>
+        </div>
+
+        <div class="alert" style="margin-top:20px">
+          <strong>※ 싱글차지 안내</strong> · 1인 1실 사용 시 12만원/3박/인 추가 (불포함)
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">05 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 6 — 1일차 디바이더
+       ======================================== -->
+  <section class="slide divider-slide">
+    <div class="kicker">DAY ONE · 2026.06.11 (목)</div>
+    <div class="gold-line" style="margin:30px 0"></div>
+    <div class="display">청도 입성<br/><span style="color:var(--gold-soft)">100년의 골목을 걷다</span></div>
+    <p style="margin-top:30px;font-size:20px;line-height:1.6;max-width:820px;opacity:.85">
+      김해를 출발해 정오 무렵 청도에 도착, 가이드 미팅 후 곧바로<br/>
+      칭다오 맥주 박물관 → 대복도 → 피차이위엔 → 찌모루시장 → 청양야시장으로 이어지는 도시 명소 풀코스.
+    </p>
+    <div class="slide-num" style="color:rgba(255,255,255,.5)">06 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 7 — 1일차 · 칭다오 맥주박물관
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">DAY 01 · STOP 1</span>
+        <div class="h1" style="margin-top:10px">칭다오 맥주박물관 <br/><span class="serif" style="color:var(--gold);font-size:32px;font-weight:500">青岛啤酒博物馆</span></div>
+      </div>
+      <div class="day-chip"><span class="pill">D1</span> 14:00 – 15:30</div>
+    </div>
+
+    <div class="two-col">
+      <div class="two-col-img beer">
+        <div class="badge">EST. 1903 · 120 YEARS</div>
+        <div class="icon">🍺</div>
+        <div class="caption">
+          1903년 독일이 세운 동방의 양조장.<br/>빨간 벽돌 외관과 옛 설비가 그대로 보존된 산업유산.
+        </div>
+      </div>
+      <div>
+        <p class="body">
+          <strong>1903년 독일 상인들이 세운 청도 맥주공장</strong>의 100주년 기념관(2003년 개관).
+          공장 부지 안에서 발효 탱크와 옛 독일 설비를 그대로 보며,
+          시음 코너에서 갓 뽑은 생맥주를 직접 맛볼 수 있습니다.
+        </p>
+
+        <div class="callout" style="margin-top:20px">
+          <strong>HIGHLIGHT</strong><br/>
+          ① 독일에서 가져온 1903년 양조 설비 원형 보존<br/>
+          ② 발효 진행 중인 탱크 전경 관람<br/>
+          ③ 무료 시음 — 갓 뽑은 청도 맥주 한 잔
+        </div>
+
+        <div class="info-grid" style="grid-template-columns:repeat(2,1fr);margin-top:18px">
+          <div class="info-card"><div class="lbl">주소</div><div class="val" style="font-size:14px">No.56 Dengzhou Road,<br/>Shibei District, Qingdao</div></div>
+          <div class="info-card"><div class="lbl">관람 소요</div><div class="val">약 90분</div><div class="sub">시음 + 기념품샵 포함</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 01</div>
+    <div class="slide-num">07 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 8 — 1일차 · 대복도 & 피차이위엔
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">DAY 01 · STOP 2 — 3</span>
+        <div class="h1" style="margin-top:10px">대복도 (다바오섬) <br/>& 피차이위엔거리</div>
+      </div>
+      <div class="day-chip"><span class="pill">D1</span> 15:30 – 18:00</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+      <div>
+        <div class="two-col-img" style="background-image:url('https://images.unsplash.com/photo-1490806843957-31f4c9a91c65?w=1280&q=80');background-size:cover;background-position:center;height:300px">
+          <div class="badge">大复道 · DABAO ISLAND</div>
+          <div class="icon">🏘️</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:18px">다바오섬 (大复道)</h3>
+        <p class="body" style="font-size:15px;margin-top:8px">
+          청도 주성 핵심지구 8만 4천㎡ 규모의 <strong>빨간 지붕 핫플레이스</strong>.
+          쇼핑센터 · 부티크 · 카페 · 레스토랑이 즐비한 청도의 떠오르는 거리.
+        </p>
+      </div>
+
+      <div>
+        <div class="two-col-img" style="background-image:url('https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1280&q=80');background-size:cover;background-position:center;height:300px">
+          <div class="badge">劈柴院 · PICHAIYUAN</div>
+          <div class="icon">🍢</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:18px">피차이위엔거리 (劈柴院)</h3>
+        <p class="body" style="font-size:15px;margin-top:8px">
+          <strong>110년 이상의 전통 먹자골목</strong>. 칭다오 토박이들의 즉석 꼬치 ·
+          전갈 · 양꼬치 · 해산물 · 만두까지, 청도 시내에서 가장 진한 길거리 미식.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:24px">
+      <strong>가이드 TIP</strong> · 다바오섬 → 피차이위엔은 도보 10분 거리.
+      두 곳을 묶어 천천히 산책하시면 청도의 <strong>구도심 100년 풍경</strong>을 한 번에 누릴 수 있습니다.
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 01</div>
+    <div class="slide-num">08 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 9 — 1일차 · 찌모루 & 청양야시장
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">DAY 01 · STOP 4 — 5</span>
+        <div class="h1" style="margin-top:10px">찌모루시장 & <br/>청양 야시장</div>
+      </div>
+      <div class="day-chip"><span class="pill">D1</span> 18:00 – 21:30</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+      <div>
+        <div class="two-col-img" style="background-image:url('https://images.unsplash.com/photo-1488309185417-d7f9f73721bb?w=1280&q=80');background-size:cover;background-position:center;height:280px">
+          <div class="badge">即墨路 · JIMOLU MARKET</div>
+          <div class="icon">🛍️</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:18px">찌모루시장 (即墨路)</h3>
+        <p class="body" style="font-size:15px;margin-top:8px">
+          중국 <strong>3대 짝퉁 쇼핑몰</strong>. 전통 가옥 외관에 층별로
+          가방 · 의류 · 시계 · 액세서리 · 중국 특산품이 가득.
+          가격 흥정은 시장의 묘미.
+        </p>
+        <div class="pill-row" style="margin-top:10px">
+          <span class="pill-tag">실내 쾌적</span>
+          <span class="pill-tag">흥정 가능</span>
+          <span class="pill-tag">사진 스팟</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="two-col-img night" style="height:280px">
+          <div class="badge">城阳夜市 · CHENGYANG NIGHT MARKET</div>
+          <div class="icon">🌃</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:18px">청양 야시장 (城阳夜市)</h3>
+        <p class="body" style="font-size:15px;margin-top:8px">
+          청도 <strong>한인타운 중심</strong>의 매일밤 열리는 거리 음식 천국.
+          꼬치 · 군만두 · 매운 가재 · 마라탕 · 야시장 굿즈까지.
+          호텔에서 도보 접근 가능.
+        </p>
+        <div class="pill-row" style="margin-top:10px">
+          <span class="pill-tag emerald">호텔 도보권</span>
+          <span class="pill-tag">현지인 인기</span>
+          <span class="pill-tag">늦은 시간 운영</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#0E6E5A;color:#fff;padding:18px 24px;border-radius:8px;margin-top:24px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;letter-spacing:.22em;color:var(--gold-soft);font-weight:700">DAY 01 · DINNER</div>
+        <div style="font-size:22px;font-weight:800;margin-top:6px">석식 · 샤브샤브 무제한</div>
+      </div>
+      <div style="font-size:13px;opacity:.85;text-align:right">조식 호텔식 · 중식 현지식 · 석식 샤브샤브</div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 01</div>
+    <div class="slide-num">09 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 10 — 2일차 디바이더
+       ======================================== -->
+  <section class="slide divider-slide" style="background:linear-gradient(135deg,#0E3A2E 0%, #0E6E5A 100%)">
+    <div class="kicker">DAY TWO · 2026.06.12 (금)</div>
+    <div class="gold-line" style="margin:30px 0"></div>
+    <div class="display">화산 CC<br/><span style="color:var(--gold-soft)">36홀의 시작, 첫 18홀</span></div>
+    <p style="margin-top:30px;font-size:20px;line-height:1.6;max-width:820px;opacity:.85">
+      호텔 조식 후 약 1시간 이동, 청도 명문 <strong>화산 골프 클럽</strong>에서<br/>
+      구릉지 평탄 코스 18홀. 라운딩 후 마사지와 5.4광장 야경으로 완벽한 하루.
+    </p>
+    <div class="slide-num" style="color:rgba(255,255,255,.5)">10 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 11 — 화산 CC 상세
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">GOLF COURSE · 화산 CC</span>
+        <div class="h1" style="margin-top:10px">청도 화산 국제 컨트리클럽 <br/><span class="serif" style="color:var(--gold);font-size:28px;font-weight:500">青岛华山国际乡村俱乐部</span></div>
+      </div>
+      <div class="day-chip" style="background:#0E6E5A"><span class="pill">D2</span> 18홀 · 전일</div>
+    </div>
+
+    <div class="two-col">
+      <div class="two-col-img golf">
+        <div class="badge">HUASHAN INTERNATIONAL CC · 36 HOLES</div>
+        <div class="icon">⛳</div>
+        <div class="caption">
+          청도시 65km · 청도공항 30km · 연청 1급 고속도로 인접<br/>
+          1,500묘 부지에 펼쳐진 36홀 명문 컨트리클럽
+        </div>
+      </div>
+
+      <div>
+        <p class="body">
+          청도 지역의 <strong>구릉지 특성을 살린 평탄 코스</strong>로 누구나 부담 없이 라운딩이 가능합니다.
+          클래식 코스 + 마스터 코스 총 36홀 규모의 대형 컨트리클럽.
+        </p>
+
+        <div class="gc-stats">
+          <div class="gc-stat"><div class="v">36</div><div class="l">HOLES TOTAL</div></div>
+          <div class="gc-stat"><div class="v">PAR 72</div><div class="l">CLASSIC · MASTER</div></div>
+          <div class="gc-stat"><div class="v">6,540m</div><div class="l">CLASSIC YARDAGE</div></div>
+          <div class="gc-stat"><div class="v">5,372m</div><div class="l">MASTER YARDAGE</div></div>
+        </div>
+
+        <div class="callout" style="margin-top:18px">
+          <strong>코스 특징</strong> · 경사가 거의 없는 평탄한 구릉지 / 신코스는 페어웨이가 좁고 워터해저드가 많아 전략적 플레이 필요 / 그린 관리 우수.
+        </div>
+
+        <div class="pill-row" style="margin-top:14px">
+          <span class="pill-tag gold">2인 1카트 · 2인 1캐디</span>
+          <span class="pill-tag">수영장 · 사우나 보유</span>
+          <span class="pill-tag">한국어 가능 캐디 일부</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 02</div>
+    <div class="slide-num">11 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 12 — 2일차 · 해천대하 + 5.4광장
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">DAY 02 · EVENING</span>
+        <div class="h1" style="margin-top:10px">라운딩 후 야경 투어 <br/><span class="highlight-yellow">청도의 밤</span></div>
+      </div>
+      <div class="day-chip" style="background:#0E6E5A"><span class="pill">D2</span> 17:30 – 22:00</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+      <div>
+        <div class="two-col-img" style="height:240px;background-image:url('https://images.unsplash.com/photo-1544161515-81205f8abecc?w=1280&q=80');background-size:cover;background-position:center">
+          <div class="badge">MASSAGE 60'</div>
+          <div class="icon">💆</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:14px;font-size:22px">전신 마사지 60분</h3>
+        <p class="small" style="margin-top:8px">
+          라운딩 후 근육 이완을 위한 <strong>전신 마사지 60분</strong> 포함.<br/>
+          (팁 불포함 · 일반적으로 10–20위안)
+        </p>
+      </div>
+
+      <div>
+        <div class="two-col-img" style="height:240px;background-image:url('https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=1280&q=80');background-size:cover;background-position:center">
+          <div class="badge">海天大酒店 · OBSERVATORY</div>
+          <div class="icon">🏙️</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:14px;font-size:22px">해천대하 전망대</h3>
+        <p class="small" style="margin-top:8px">
+          청도 도심의 <strong>81층 전망대</strong>.
+          황해와 청도 시가지가 한눈에 들어오는 도시 최고의 일몰 스팟.
+        </p>
+      </div>
+
+      <div>
+        <div class="two-col-img" style="height:240px;background-image:url('https://images.unsplash.com/photo-1493514789a586cb146fe2f1b3db3ce7?w=1280&q=80');background-size:cover;background-position:center">
+          <div class="badge">5.4 SQUARE · 五四广场</div>
+          <div class="icon">🎆</div>
+        </div>
+        <h3 class="h3" style="color:var(--navy);margin-top:14px;font-size:22px">5.4광장 야경</h3>
+        <p class="small" style="margin-top:8px">
+          '오월의 바람' 붉은 횃불 조형물.<br/>
+          청도 도심 야경의 시그니처 포토 스팟.
+        </p>
+      </div>
+    </div>
+
+    <div style="background:#0E6E5A;color:#fff;padding:18px 24px;border-radius:8px;margin-top:28px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;letter-spacing:.22em;color:var(--gold-soft);font-weight:700">DAY 02 · DINNER</div>
+        <div style="font-size:22px;font-weight:800;margin-top:6px">석식 · 양꼬치 무제한</div>
+      </div>
+      <div style="font-size:13px;opacity:.85;text-align:right">조식 호텔식 · 중식 골프장 클럽식 (불포함) · 석식 양꼬치</div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 02</div>
+    <div class="slide-num">12 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 13 — 3일차 디바이더
+       ======================================== -->
+  <section class="slide divider-slide" style="background:linear-gradient(135deg,#0B2E5C 0%, #1E5BA8 100%)">
+    <div class="kicker">DAY THREE · 2026.06.13 (토)</div>
+    <div class="gold-line" style="margin:30px 0"></div>
+    <div class="display">영해 CC<br/><span style="color:var(--gold-soft)">바다를 곁에 두고, 둘째 18홀</span></div>
+    <p style="margin-top:30px;font-size:20px;line-height:1.6;max-width:820px;opacity:.85">
+      청도 3대 골프장 중 하나인 <strong>영해 CC</strong>에서 18홀 라운딩.<br/>
+      저녁에는 2023년 오픈한 도시 최고 야경 명소 <strong>명월산해간 불야성</strong>으로.
+    </p>
+    <div class="slide-num" style="color:rgba(255,255,255,.5)">13 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 14 — 영해 CC 상세
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">GOLF COURSE · 영해 CC</span>
+        <div class="h1" style="margin-top:10px">청도 영해 골프 클럽 <br/><span class="serif" style="color:var(--gold);font-size:28px;font-weight:500">青岛瀛海高尔夫俱乐部</span></div>
+      </div>
+      <div class="day-chip" style="background:#1E5BA8"><span class="pill">D3</span> 18홀 · 전일</div>
+    </div>
+
+    <div class="two-col">
+      <div class="two-col-img" style="background-image:url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1280&q=80');background-size:cover;background-position:center;height:520px">
+        <div class="badge">YINGHAI GOLF CLUB · OCEANSIDE</div>
+        <div class="icon">⛳</div>
+        <div class="caption">
+          청도 3대 골프장 · 바다를 곁에 두고 펼쳐지는 평탄 코스<br/>
+          바닷바람의 영향으로 전략적 플레이가 묘미
+        </div>
+      </div>
+
+      <div>
+        <p class="body">
+          <strong>울창한 숲과 어우러진 자연 친화적 골프장</strong>으로 페어웨이와 그린 관리 상태가 우수합니다.
+          바다와 인접해 시원한 경치를 자랑하며, 코스는 평탄한 편이지만
+          <strong>바닷바람의 영향을 받아 전략적인 플레이가 필요</strong>합니다.
+        </p>
+
+        <div class="gc-stats">
+          <div class="gc-stat"><div class="v">18</div><div class="l">HOLES</div></div>
+          <div class="gc-stat"><div class="v">PAR 72</div><div class="l">CHAMPIONSHIP</div></div>
+          <div class="gc-stat"><div class="v">OCEAN</div><div class="l">VIEW</div></div>
+          <div class="gc-stat"><div class="v">평탄</div><div class="l">CONDITION</div></div>
+        </div>
+
+        <div class="callout" style="margin-top:18px">
+          <strong>코스 포인트</strong> · 바닷바람을 읽는 클럽 선택이 핵심 / 페어웨이·그린 컨디션 최상급 / 자연 경관과 어우러진 조경이 인상적.
+        </div>
+
+        <div class="pill-row" style="margin-top:14px">
+          <span class="pill-tag gold">2인 1카트 · 2인 1캐디</span>
+          <span class="pill-tag">청도 3대 명문</span>
+          <span class="pill-tag emerald">바다 전망</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 03</div>
+    <div class="slide-num">14 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 15 — 3일차 · 명월산해간 불야성
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">DAY 03 · EVENING</span>
+        <div class="h1" style="margin-top:10px">명월산해간 불야성 <br/><span class="serif" style="color:var(--gold);font-size:28px;font-weight:500">明月山海间不夜城</span></div>
+      </div>
+      <div class="day-chip" style="background:#1E5BA8"><span class="pill">D3</span> 19:00 – 22:00</div>
+    </div>
+
+    <div class="two-col">
+      <div class="two-col-img night">
+        <div class="badge">CITY OF LIGHT · OPEN 2023</div>
+        <div class="icon">🎇</div>
+        <div class="caption">
+          '명월산과 바다 사이 잠들지 않는 도시'<br/>
+          서안 대당불야성을 모티브로 한 청도의 새로운 야경 명소
+        </div>
+      </div>
+      <div>
+        <p class="body">
+          <strong>2023년 중국 정부가 관광객 유입을 위해 오픈한 테마파크</strong>로,
+          당나라 수도 서안의 대당불야성을 모티브로 조성되었습니다.
+          빛의 축제를 연상시키는 화려한 야경 · 크고 작은 공연 · 다양한 오락시설과 미식을 한 곳에서.
+        </p>
+
+        <div class="callout" style="margin-top:18px">
+          <strong>HIGHLIGHT</strong><br/>
+          ① 매시간 펼쳐지는 라이트쇼와 거리 공연<br/>
+          ② 당나라 풍 한복 체험 / 분장 포토존<br/>
+          ③ 청도 현지 미식 거리 — 산해진미 1번가
+        </div>
+
+        <div class="pill-row" style="margin-top:16px">
+          <span class="pill-tag gold">사진 명소</span>
+          <span class="pill-tag">야경 베스트</span>
+          <span class="pill-tag">청도 신상 테마파크</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#1E5BA8;color:#fff;padding:18px 24px;border-radius:8px;margin-top:24px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;letter-spacing:.22em;color:var(--gold-soft);font-weight:700">DAY 03 · DINNER</div>
+        <div style="font-size:22px;font-weight:800;margin-top:6px">석식 · 삼겹살 무제한</div>
+      </div>
+      <div style="font-size:13px;opacity:.85;text-align:right">조식 호텔식 · 중식 골프장 클럽식 (불포함) · 석식 삼겹살</div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 03</div>
+    <div class="slide-num">15 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 16 — 4일차 · 귀국
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">DAY 04 · 2026.06.14 (일)</span>
+        <div class="h1" style="margin-top:10px">귀국 · 김해로 <br/><span class="serif" style="color:var(--gold);font-size:28px;font-weight:500">See you again, Qingdao</span></div>
+      </div>
+      <div class="day-chip">FINAL DAY</div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="timeline">
+          <div class="ev">
+            <div class="t">07:30 — 08:30</div>
+            <div class="l">호텔 조식 · 짐 정리</div>
+            <div class="d">메리어트 본보이 데일리 뷔페</div>
+          </div>
+          <div class="ev">
+            <div class="t">09:00</div>
+            <div class="l">체크아웃 · 공항 이동 출발</div>
+            <div class="d">전용 33인승 차량 · 약 1시간 소요</div>
+          </div>
+          <div class="ev">
+            <div class="t">10:30</div>
+            <div class="l">청도 교동국제공항 도착</div>
+            <div class="d">탑승 수속 + 출국 심사</div>
+          </div>
+          <div class="ev">
+            <div class="t">12:30</div>
+            <div class="l">BX322 청도 출발</div>
+            <div class="d">에어부산 · 약 2시간 비행</div>
+          </div>
+          <div class="ev">
+            <div class="t">15:30</div>
+            <div class="l">김해국제공항 도착 · 해산</div>
+            <div class="d">수하물 수령 후 인솔자가 해산 인사 진행</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="two-col-img flight" style="height:380px">
+          <div class="badge">RETURN FLIGHT · BX322</div>
+          <div class="icon">🛬</div>
+          <div class="caption">3박 4일의 마무리 — 모두 안전하게 귀가하시길</div>
+        </div>
+
+        <div class="callout" style="margin-top:18px">
+          <strong>귀국 시 면세 한도</strong> · 1인당 미화 800달러까지.<br/>
+          술 1L · 2병, 담배 200개비, 향수 60ml 이내 별도.
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블 · DAY 04</div>
+    <div class="slide-num">16 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 17 — 포함 / 불포함
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">INCLUSIONS · 포함 / 불포함</span>
+        <div class="h1" style="margin-top:10px">상품 구성 내역</div>
+      </div>
+      <div class="day-chip">SCOPE</div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="h3" style="color:var(--emerald)">✓ 포함 사항</div>
+        <ul class="check" style="margin-top:14px">
+          <li>왕복 항공료 (BX321 / BX322)</li>
+          <li>유류할증료 + TAX (2월 기준 적용)</li>
+          <li>호텔 3박 — 청도 포포인츠 쉐라톤 또는 동급 (준 5성급)</li>
+          <li>그린피 36홀 (화산 CC + 영해 CC)</li>
+          <li>전용 차량 33인승 · 전 일정</li>
+          <li>호텔 조식 3회 · 석식 3회 (샤브샤브 · 양꼬치 · 삼겹살 무제한)</li>
+          <li>여행자 보험</li>
+          <li>캐디비 + 카트비 (2인 1카트 / 2인 1캐디)</li>
+          <li>미팅 & 샌딩 · 한국어 가이드</li>
+          <li>전신 마사지 60분 (1회, 2일차)</li>
+          <li>해천대하 전망대 · 5.4광장 야경</li>
+          <li>명월산해간 불야성 입장</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="h3" style="color:var(--rose)">✗ 불포함 사항</div>
+        <ul class="clean" style="margin-top:14px">
+          <li>캐디팁 · <strong>100위안 / 18홀 / 1인</strong> (관행)</li>
+          <li>클럽 중식 · <strong>$10–15 / 회 / 1인</strong></li>
+          <li>호텔 싱글차지 · <strong>12만원 / 3박 / 1인</strong></li>
+          <li>싱글카트 사용 시 추가요금</li>
+          <li>클럽 렌탈 · 개인 경비</li>
+          <li>매너 팁 · 가이드/기사 팁 (관행적 권장)</li>
+          <li>유류 변동분 (출발 시점 변동 시 차액 정산)</li>
+        </ul>
+
+        <div class="alert" style="margin-top:18px">
+          <strong>※ 불포함 안내</strong> · 위 비용은 현지에서 직접 결제하시는 항목이며,
+          액수는 청도 골프장·호텔 정책에 따라 변동될 수 있습니다.
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">17 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 18 — 원우회 지원사항 (PREMIUM HIGHLIGHT)
+       ======================================== -->
+  <section class="slide gift-slide">
+    <div class="header-row" style="border-color:rgba(201,161,74,.3)">
+      <div>
+        <span class="kicker">EXCLUSIVE BENEFITS</span>
+        <div class="h1" style="margin-top:10px;color:#fff">원우회 <span style="color:var(--gold-soft)">지원 사항</span></div>
+      </div>
+      <div class="ribbon">창원대 명품 30기 동문 전용</div>
+    </div>
+
+    <p class="body" style="color:#D9CAA8;font-size:17px;margin-bottom:8px;position:relative;z-index:2">
+      이번 투어에는 동문 여러분을 위해 <strong style="color:var(--gold-soft)">원우회 지원</strong>으로
+      아래 5가지 부가 혜택이 별도 포함됩니다.
+    </p>
+
+    <div class="gift-grid">
+      <div class="gift-card">
+        <div class="ic">🏌️</div>
+        <div class="ttl">캐디팁 지원</div>
+        <div class="sub">2일간의 라운딩 캐디팁을 원우회에서 부담합니다.</div>
+        <div class="price-tag">100위안 / 18홀 / 1인</div>
+      </div>
+
+      <div class="gift-card">
+        <div class="ic">🍱</div>
+        <div class="ttl">클럽 중식</div>
+        <div class="sub">화산 · 영해 CC 라운딩 중 클럽하우스 중식을 지원합니다.</div>
+        <div class="price-tag">$10–15 / 회 / 1인</div>
+      </div>
+
+      <div class="gift-card">
+        <div class="ic">💆</div>
+        <div class="ttl">발+전신 마사지 90분</div>
+        <div class="sub">2일차 포함 마사지 외, 90분 풀코스 마사지를 별도 지원.</div>
+        <div class="price-tag">$50 / 1인 / 90분</div>
+      </div>
+
+      <div class="gift-card">
+        <div class="ic">🌃</div>
+        <div class="ttl">해천대하 전망대 + 5.4광장 야경</div>
+        <div class="sub">81층 전망대 입장권 + 야경 코스를 원우회 지원으로 포함합니다.</div>
+        <div class="price-tag">$50 / 1인</div>
+      </div>
+
+      <div class="gift-card">
+        <div class="ic">🎇</div>
+        <div class="ttl">산해명월간 불야성</div>
+        <div class="sub">3일차 명월산해간 불야성 야경 투어를 원우회에서 지원합니다.</div>
+        <div class="price-tag">$35 / 1인</div>
+      </div>
+
+      <div class="gift-card" style="background:linear-gradient(180deg, rgba(201,161,74,.22), rgba(201,161,74,.06));border:1px solid var(--gold)">
+        <div class="ic">✨</div>
+        <div class="ttl" style="color:var(--gold-soft)">총 지원 가치</div>
+        <div class="sub" style="color:#F5E5C2">현지 결제 기준 환산 시 1인당 약 <strong style="color:var(--gold-soft)">USD 170 + 캐디팁 200위안</strong> 상당</div>
+        <div class="price-tag" style="background:rgba(201,161,74,.35);color:#fff">PRESENTED BY 원우회</div>
+      </div>
+    </div>
+
+    <div class="brand-mark" style="color:rgba(217,202,168,.6)">여소남 트래블 · 원우회 지원</div>
+    <div class="slide-num" style="color:rgba(217,202,168,.6)">18 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 19 — 선택 관광 / 식사
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">OPTIONAL · 선택 관광 & 식사 정리</span>
+        <div class="h1" style="margin-top:10px">옵션 및 식사 매트릭스</div>
+      </div>
+      <div class="day-chip">REFERENCE</div>
+    </div>
+
+    <div class="two-col" style="grid-template-columns:1fr 1fr">
+      <div>
+        <div class="h3" style="color:var(--navy)">선택 관광 (참고가)</div>
+        <table class="t" style="margin-top:12px">
+          <thead>
+            <tr><th>옵션</th><th>가격</th><th>비고</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>전신마사지</strong></td><td class="num">$30 / 60분</td><td>2일차 포함분</td></tr>
+            <tr><td><strong>발+전신마사지</strong></td><td class="num">$50 / 90분</td><td>원우회 지원</td></tr>
+            <tr><td>캐디팁</td><td class="num">100위안 / 18홀</td><td>원우회 지원</td></tr>
+            <tr><td>클럽 중식</td><td class="num">$10–15 / 회</td><td>원우회 지원</td></tr>
+            <tr><td>호텔 싱글차지</td><td class="num">120,000원 / 3박</td><td>1인 1실 사용 시</td></tr>
+          </tbody>
+        </table>
+        <p class="small" style="margin-top:10px">※ 환율 및 현지 사정에 따라 가격 변동 가능</p>
+      </div>
+
+      <div>
+        <div class="h3" style="color:var(--navy)">식사 일정</div>
+        <table class="t" style="margin-top:12px">
+          <thead>
+            <tr><th>날짜</th><th>조식</th><th>중식</th><th>석식</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">D1</td><td>호텔식</td><td>현지식</td><td><strong>샤브샤브 무제한</strong></td></tr>
+            <tr><td class="num">D2</td><td>호텔식</td><td>불포함</td><td><strong>양꼬치 무제한</strong></td></tr>
+            <tr><td class="num">D3</td><td>호텔식</td><td>불포함</td><td><strong>삼겹살 무제한</strong></td></tr>
+            <tr><td class="num">D4</td><td>호텔식</td><td>—</td><td>—</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout" style="margin-top:16px">
+          <strong>중식 안내</strong> · 2·3일차 중식은 골프장 클럽하우스에서 자율 식사 (원우회 지원으로 결제).
+          1일차 중식은 가이드 현지식으로 진행됩니다.
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">19 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 20 — 비자 안내
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">VISA · 비자 안내</span>
+        <div class="h1" style="margin-top:10px">중국 <span class="highlight-yellow">무비자 입국</span> 가능</div>
+      </div>
+      <div class="day-chip">2026.12.31까지</div>
+    </div>
+
+    <div class="callout" style="font-size:16px;margin-bottom:24px">
+      중국은 <strong>2026년 12월 31일까지</strong> 한국을 비롯한 9개국 일반여권 소지자 대상으로
+      <strong>비자면제 정책</strong>이 시행됩니다. 한국인이면 여권만 지니고 입국 가능합니다.
+    </div>
+
+    <div class="two-col" style="grid-template-columns:1fr 1fr">
+      <div>
+        <div class="h3" style="color:var(--emerald)">✓ 입국 절차</div>
+        <ul class="check" style="margin-top:14px">
+          <li>유효 여권만 지참 (별도 비자 발급 불필요)</li>
+          <li>입국 시 <strong>입국 신고서</strong>는 반드시 작성</li>
+          <li>입국 날짜로부터 <strong>30일 이내 무조건 귀국</strong></li>
+          <li>여권 유효기간 <strong>6개월 이상</strong> 남아 있어야 함</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="h3" style="color:var(--rose)">⚠ 입국 거부 가능 사유 (자진 신고 권장)</div>
+        <ul class="clean" style="margin-top:14px">
+          <li>과거 <strong>중국 입국 규제</strong>를 받은 적이 있는 분 — 무비자라도 입국 불가</li>
+          <li>중국 비자 신청 후 <strong>여러 번 거부</strong>당한 적이 있는 분 — 입국 불가</li>
+          <li>이미 단체 비자 발급받은 분은 단체 비자 원본 소지 및 명단 순서대로 입국 심사</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="alert" style="margin-top:24px">
+      <strong>※ 책임 고지</strong> · 현지 법무부 통과 시 입국 금지 경보가 발생할 수 있으며,
+      현지 도착 전 저희가 사전 확인이 불가합니다. 위 사유에 해당되시는 분은 반드시
+      <strong>출발 전 자진 신고</strong>해 주시기 바랍니다. 현지 도착 후 입국 금지된 경우
+      출입국 / 여행사의 책임이 없음을 알려드립니다.
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">20 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 21 — 중요 안내
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">IMPORTANT NOTES · 중요 안내</span>
+        <div class="h1" style="margin-top:10px">출발 전 꼭 확인해 주세요</div>
+      </div>
+      <div class="day-chip">MUST READ</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+      <div style="background:#FFF;border:1px solid var(--line);border-radius:10px;padding:24px">
+        <div style="font-size:36px;margin-bottom:8px">📘</div>
+        <h3 class="h3" style="color:var(--navy);font-size:20px">여권 유효기간</h3>
+        <p class="small" style="margin-top:8px">
+          여권 유효기간이 <strong>6개월 이상</strong> 남아 있어야 입국이 가능합니다.
+          출발 1주일 전 반드시 재확인.
+        </p>
+      </div>
+
+      <div style="background:#FFF;border:1px solid var(--line);border-radius:10px;padding:24px">
+        <div style="font-size:36px;margin-bottom:8px">⛈️</div>
+        <h3 class="h3" style="color:var(--navy);font-size:20px">기상 및 라운딩</h3>
+        <p class="small" style="margin-top:8px">
+          천재지변 · 기상악화 등으로 골프장이 클로징하지 않는 이상,
+          <strong>라운드 취소 및 일정 변경은 환불되지 않습니다</strong>.
+        </p>
+      </div>
+
+      <div style="background:#FFF;border:1px solid var(--line);border-radius:10px;padding:24px">
+        <div style="font-size:36px;margin-bottom:8px">👥</div>
+        <h3 class="h3" style="color:var(--navy);font-size:20px">최소 인원 조건</h3>
+        <p class="small" style="margin-top:8px">
+          <strong>인원수가 줄면 지상비가 인상</strong>됩니다.
+          출발 전 인원 변동이 있을 경우 즉시 알려주십시오 (리체크 필요).
+        </p>
+      </div>
+
+      <div style="background:#FFF;border:1px solid var(--line);border-radius:10px;padding:24px">
+        <div style="font-size:36px;margin-bottom:8px">💴</div>
+        <h3 class="h3" style="color:var(--navy);font-size:20px">현지 통화</h3>
+        <p class="small" style="margin-top:8px">
+          위안화(CNY) 사용. 캐디팁 등 현지 결제용으로
+          <strong>1인당 500–800위안</strong> 환전 권장 (위챗페이/알리페이 사용 시 카드 충분).
+        </p>
+      </div>
+
+      <div style="background:#FFF;border:1px solid var(--line);border-radius:10px;padding:24px">
+        <div style="font-size:36px;margin-bottom:8px">🌐</div>
+        <h3 class="h3" style="color:var(--navy);font-size:20px">통신 · 인터넷</h3>
+        <p class="small" style="margin-top:8px">
+          중국은 구글 · 카카오톡 · 인스타그램이 차단됩니다.
+          <strong>VPN 또는 중국 로밍/유심</strong>을 사전에 준비해 주십시오.
+        </p>
+      </div>
+
+      <div style="background:#FFF;border:1px solid var(--line);border-radius:10px;padding:24px">
+        <div style="font-size:36px;margin-bottom:8px">⏰</div>
+        <h3 class="h3" style="color:var(--navy);font-size:20px">시차</h3>
+        <p class="small" style="margin-top:8px">
+          한국이 청도보다 <strong>1시간 빠름</strong>.
+          출국 후 시계를 1시간 늦추고, 귀국 시 다시 1시간 빠르게 조정.
+        </p>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">21 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 22 — 준비물 체크리스트
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">PACKING CHECKLIST · 준비물</span>
+        <div class="h1" style="margin-top:10px">여행 가방 체크리스트</div>
+      </div>
+      <div class="day-chip">CHECKLIST</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:32px">
+      <div>
+        <div class="kicker">필수 휴대품</div>
+        <ul class="check" style="margin-top:14px">
+          <li>여권 (유효기간 6개월↑) + 사본 1부</li>
+          <li>항공권 e-티켓 출력본</li>
+          <li>여행자 보험 증서 (이미 가입됨)</li>
+          <li>중국 위안화 500–800위안</li>
+          <li>신용카드 (해외사용 가능)</li>
+          <li>스마트폰 + 보조배터리</li>
+          <li>110V 어댑터 (중국은 220V 겸용 多)</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="kicker">골프 용품</div>
+        <ul class="check" style="margin-top:14px">
+          <li>골프채 (위탁수하물 23kg 이내)</li>
+          <li>골프화 · 양말 · 글러브</li>
+          <li>모자 · 선글라스 · 선크림</li>
+          <li>골프복 (반팔/긴팔 각 2벌)</li>
+          <li>골프 우산 또는 우비</li>
+          <li>마커 · 티 · 볼 (예비 충분히)</li>
+          <li>거리측정기 (선택)</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="kicker">관광 · 야경</div>
+        <ul class="check" style="margin-top:14px">
+          <li>가벼운 운동화 (도시 산책용)</li>
+          <li>편안한 야간 외출복 (가디건)</li>
+          <li>방수 백팩 또는 슬링백</li>
+          <li>물병 (호텔에서 보충 가능)</li>
+          <li>VPN 앱 (출국 전 다운로드)</li>
+          <li>위챗 · 알리페이 사전 설치</li>
+          <li>개인 상비약 (감기·소화제·진통제)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:24px">
+      <strong>6월 청도 날씨</strong> · 평균 18–24℃, 해풍이 시원함. 낮에는 반팔, 저녁/라운딩 새벽엔 얇은 긴팔 점퍼.
+      비 가능성 있으니 골프 우비 권장.
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">22 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 23 — 비상 연락처
+       ======================================== -->
+  <section class="slide pad">
+    <div class="header-row">
+      <div>
+        <span class="kicker">EMERGENCY CONTACTS · 비상 연락</span>
+        <div class="h1" style="margin-top:10px">언제든 연락 주십시오</div>
+      </div>
+      <div class="day-chip">CONTACT</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px">
+      <div style="background:var(--navy);color:#fff;padding:32px;border-radius:10px">
+        <div class="kicker" style="color:var(--gold-soft)">YEOSONAM TRAVEL</div>
+        <h2 class="h2" style="color:#fff;margin-top:10px">여소남 트래블 본사</h2>
+        <div style="margin-top:20px;display:flex;flex-direction:column;gap:14px">
+          <div><div style="font-size:11px;letter-spacing:.18em;color:var(--gold-soft)">담당자</div><div style="font-size:20px;font-weight:800;margin-top:2px">담당 매니저</div></div>
+          <div><div style="font-size:11px;letter-spacing:.18em;color:var(--gold-soft)">대표 전화</div><div style="font-size:20px;font-weight:800;margin-top:2px">[본사 번호]</div></div>
+          <div><div style="font-size:11px;letter-spacing:.18em;color:var(--gold-soft)">24시간 비상 (해외)</div><div style="font-size:20px;font-weight:800;margin-top:2px">[24h 핫라인]</div></div>
+          <div><div style="font-size:11px;letter-spacing:.18em;color:var(--gold-soft)">이메일</div><div style="font-size:18px;font-weight:600;margin-top:2px">contact@yeosonam.travel</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="background:#fff;border:1px solid var(--line);padding:24px;border-radius:10px;margin-bottom:14px">
+          <div class="kicker">현지 인솔 가이드</div>
+          <div style="font-size:22px;font-weight:800;color:var(--navy);margin-top:8px">청도 현지 한국어 가이드</div>
+          <div class="small" style="margin-top:6px">청도 도착 후 미팅 시 연락처 안내드립니다.</div>
+        </div>
+
+        <div style="background:#fff;border:1px solid var(--line);padding:24px;border-radius:10px;margin-bottom:14px">
+          <div class="kicker">주 칭다오 한국 총영사관</div>
+          <div style="font-size:20px;font-weight:800;color:var(--navy);margin-top:8px">+86-532-8897-6001</div>
+          <div class="small" style="margin-top:6px">긴급 시 24시간 대응. 여권 분실 · 사고 발생 시 최우선 연락.</div>
+        </div>
+
+        <div style="background:#FEF3F2;border:1px solid #FECDD3;padding:24px;border-radius:10px">
+          <div class="kicker" style="color:var(--rose)">중국 비상 번호</div>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><div style="font-size:11px;color:var(--muted)">경찰</div><div style="font-size:18px;font-weight:800;color:var(--navy)">110</div></div>
+            <div><div style="font-size:11px;color:var(--muted)">구급차</div><div style="font-size:18px;font-weight:800;color:var(--navy)">120</div></div>
+            <div><div style="font-size:11px;color:var(--muted)">화재</div><div style="font-size:18px;font-weight:800;color:var(--navy)">119</div></div>
+            <div><div style="font-size:11px;color:var(--muted)">교통사고</div><div style="font-size:18px;font-weight:800;color:var(--navy)">122</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-mark">여소남 트래블</div>
+    <div class="slide-num">23 / 24</div>
+  </section>
+
+  <!-- ========================================
+       SLIDE 24 — 감사 인사
+       ======================================== -->
+  <section class="slide cover" style="background:linear-gradient(135deg, #0B1F3A 0%, #1B3463 50%, #2D4778 100%)">
+    <div class="cover-top">
+      <div class="cover-logo">
+        <div class="logo-dot">여</div>
+        <div>
+          <div style="font-size:11px;letter-spacing:.28em;color:var(--gold);font-weight:700">YEOSONAM TRAVEL</div>
+          <div style="font-size:13px;opacity:.7">Thank you for choosing us</div>
+        </div>
+      </div>
+      <div class="ribbon">THANK YOU · 끝까지 함께 합니다</div>
+    </div>
+
+    <div class="cover-mid" style="text-align:center;align-self:center;width:100%">
+      <div class="serif" style="font-size:24px;color:var(--gold-soft);font-weight:500;margin-bottom:12px">감사합니다</div>
+      <div class="display" style="font-size:96px">즐거운 여행 되시길<br/><span style="color:var(--gold-soft)">진심으로 바랍니다</span></div>
+      <div class="gold-line" style="margin:32px auto 28px"></div>
+      <p style="font-size:20px;line-height:1.7;max-width:780px;margin:0 auto;opacity:.85">
+        창원대학교 명품 30기 동문 여러분의 우정과 건강한 라운딩,<br/>
+        그리고 청도의 황해 바람 가득한 4일을 응원합니다.
+      </p>
+    </div>
+
+    <div class="cover-bottom" style="justify-content:center">
+      <div style="text-align:center">
+        <div style="font-size:11px;letter-spacing:.28em;color:var(--gold);font-weight:700">YEOSONAM TRAVEL · CHANGWON 30TH</div>
+        <div style="font-size:13px;opacity:.7;margin-top:6px">2026.06.11 — 2026.06.14</div>
+      </div>
+    </div>
+
+    <div class="slide-num" style="color:rgba(255,255,255,.5)">24 / 24</div>
+  </section>
+
+</div>
+
+<script>
+  // 키보드 네비게이션 (옵션) — 다음 슬라이드로 스크롤
+  document.addEventListener('keydown', (e) => {
+    const slides = document.querySelectorAll('.slide');
+    const idx = Array.from(slides).findIndex(s => {
+      const r = s.getBoundingClientRect();
+      return r.top >= -100 && r.top < window.innerHeight / 2;
+    });
+    if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      const next = slides[Math.min(idx + 1, slides.length - 1)];
+      next?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+      e.preventDefault();
+      const prev = slides[Math.max(idx - 1, 0)];
+      prev?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+</script>
+
+</body>
+</html>

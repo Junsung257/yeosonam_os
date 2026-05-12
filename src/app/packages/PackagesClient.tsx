@@ -1,18 +1,30 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
-import type { AttractionData } from '@/lib/attraction-matcher';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
+import GlobalNav from '@/components/customer/GlobalNav';
+import PackageCard from '@/components/customer/PackageCard';
+import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
+import { getConsultTelHref } from '@/lib/consult-escalation';
+import {
+  type DepartureHubId,
+  DEPARTURE_HUB_OPTIONS,
+  DEFAULT_DEPARTURE_HUB,
+  appendDepartureHubToSearchParams,
+} from '@/lib/departure-hub';
+const INITIAL_VISIBLE_COUNT = 18;
+const VISIBLE_STEP = 18;
 
 interface Package {
   id: string;
   title: string;
   destination?: string;
+  country?: string | null;
   duration?: number;
+  nights?: number | null;
   price?: number;
   price_tiers?: { period_label?: string; departure_dates?: string[]; adult_price?: number }[];
   price_dates?: { date: string; price: number; confirmed: boolean }[];
@@ -24,102 +36,116 @@ interface Package {
   itinerary_data?: any;
   is_airtel?: boolean;
   display_title?: string;
+  hero_tagline?: string | null;
+  hero_image_url?: string | null;
+  thumbnail_urls?: string[] | null;
+  avg_rating?: number | null;
+  review_count?: number | null;
   products?: { display_name?: string; internal_code?: string };
   seats_held?: number;
   seats_confirmed?: number;
 }
 
-interface AttractionInfo {
-  name: string; photos?: { src_medium: string; src_large: string }[];
-  country?: string; region?: string; mention_count?: number;
-}
+// 항공사 매핑 SSOT: getAirlineName() in @/lib/render-contract (CRC). 인라인 dict 제거.
+// 지역 매칭 SSOT: REGIONS in @/lib/regions. 인라인 정규식 제거.
 
-const AIRLINES: Record<string, string> = { BX: '에어부산', LJ: '진에어', OZ: '아시아나', KE: '대한항공', '7C': '제주항공', TW: '티웨이', VJ: '비엣젯', ZE: '이스타항공', CA: '중국국제항공', CZ: '중국남방항공', MU: '중국동방항공' };
-
-const FILTER_OPTIONS = ['전체', '중국', '일본', '동남아', '마카오/홍콩', '인천출발'] as const;
 const SORT_OPTIONS = [
   { label: '추천순', value: 'recommended' },
   { label: '가격 낮은순', value: 'price_asc' },
   { label: '가격 높은순', value: 'price_desc' },
 ] as const;
 
-const REGION_MAP: Record<string, (pkg: Package) => boolean> = {
-  '중국': (pkg) => /장가계|청도|서안|상해|연길|백두산|구채구|심천/.test(pkg.destination || ''),
-  '일본': (pkg) => /시즈오카|후쿠오카|오사카|도쿄|큐슈|토야마|후지노미야|나라|교토|이즈/.test(pkg.destination || ''),
-  '동남아': (pkg) => /나트랑|달랏|다낭|푸꾸옥|보홀|세부|치앙마이|치앙라이|코타키나발루|방콕|발리|마나도|호치민|하노이/.test(pkg.destination || ''),
-  '마카오/홍콩': (pkg) => /마카오|홍콩/.test(pkg.destination || ''),
-  '인천출발': (pkg) => /인천/.test(pkg.departure_airport || ''),
-};
+// 필터: 전체 + REGIONS (목적지 권역). 출발 공항은 상단 출발 허브 칩으로 분리.
+const REGION_FILTERS = REGIONS.filter(r => r.featuredCities.length > 0);
+const FILTER_OPTIONS = ['전체', ...REGION_FILTERS.map(r => r.label)] as const;
 
 function matchesFilter(pkg: Package, filter: string): boolean {
-  if (filter === '전체') return true;
-  const regionFn = REGION_MAP[filter];
-  if (regionFn) return regionFn(pkg);
+  const resolved = resolveLegacyFilterLabel(filter); // "마카오/홍콩" → "마카오·홍콩"
+  if (resolved === '전체') return true;
+  const region = REGION_FILTERS.find(r => r.label === resolved);
+  if (region) return matchesRegion(pkg as { country?: string | null; destination?: string | null }, region.slug);
   return false;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  honeymoon: '💍 허니문',
+  golf: '⛳ 해외골프',
+  cruise: '🚢 크루즈',
+  theme: '🎯 테마여행',
+};
+
 interface ClientProps {
   initialPackages: Package[];
-  initialAttractions: AttractionInfo[];
+  /** 서버에서 attractions 기반으로 미리 계산한 카드 이미지 (클라이언트에 attractions 배열 불필요) */
+  imageByPkgId: Record<string, string | null>;
   destination: string;
   filter: string;
+  hub: DepartureHubId;
   q?: string;
   month?: string;
+  priceMin?: string;
   priceMax?: string;
+  urgency?: string;
+  category?: string;
+  recommendedIds?: string[];
+  recommendedReasonMap?: Record<string, string[]>;
 }
 
-export default function PackagesClient({ initialPackages, initialAttractions, destination, filter, q = '', month = '', priceMax = '' }: ClientProps) {
+export default function PackagesClient({ initialPackages, imageByPkgId: imageByPkgIdProp, destination, filter, hub, q = '', month = '', priceMin = '', priceMax = '', urgency = '', category = '', recommendedIds = [], recommendedReasonMap = {} }: ClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
+  const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
+
+  const navigateWithHub = useCallback(
+    (nextHub: DepartureHubId) => {
+      const p = new URLSearchParams(searchParams.toString());
+      appendDepartureHubToSearchParams(p, nextHub);
+      p.delete('filter');
+      const qs = p.toString();
+      router.push(qs ? `/packages?${qs}` : '/packages');
+    },
+    [router, searchParams],
+  );
+
+  /** 마감특가·테마 칩 해제 시 출발 허브·검색어는 유지 */
+  const hrefPackagesClearUrgencyCategory = useMemo(() => {
+    const p = new URLSearchParams(searchParams.toString());
+    p.delete('urgency');
+    p.delete('category');
+    const qs = p.toString();
+    return qs ? `/packages?${qs}` : '/packages';
+  }, [searchParams]);
+
+  // 클릭 시그널 (LTR 학습 데이터) — silent fail
+  const trackClick = (packageId: string) => {
+    try {
+      fetch('/api/tracking/score-signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package_id: packageId,
+          signal_type: 'click',
+        }),
+        keepalive: true,
+      }).catch(() => { /* silent */ });
+    } catch { /* silent */ }
+  };
   const destParam = destination || q;
   const packages = initialPackages;
-  const attractions = initialAttractions;
-  const [activeFilter, setActiveFilter] = useState(filter || '전체');
+  const [activeFilter, setActiveFilter] = useState(resolveLegacyFilterLabel(filter || '전체'));
   const [sortBy, setSortBy] = useState('recommended');
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  const listTopRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [activeFilter, sortBy]);
+  const priceMinNum = priceMin ? Number(priceMin) : 0;
   const priceMaxNum = priceMax ? Number(priceMax) : 0;
+  const consultTelHref = getConsultTelHref();
 
-  // 상품의 대표 이미지 찾기 (상품별로 다른 사진 사용)
-  const usedImageUrls = new Set<string>();
-
-  function getProductImage(pkg: Package): string | null {
-    // 1차: itinerary에서 관광지 매칭
-    const days = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
-    for (const day of days) {
-      for (const item of (day.schedule || [])) {
-        // ERR-20260418-25 — 매칭 스킵 강화
-        if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
-        if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) continue;
-        const attr = matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null;
-        if (attr?.photos?.length) {
-          for (const photo of attr.photos) {
-            if (photo?.src_medium && !usedImageUrls.has(photo.src_medium)) {
-              usedImageUrls.add(photo.src_medium);
-              return photo.src_medium;
-            }
-          }
-        }
-      }
-    }
-
-    // 2차: 같은 목적지 관광지 중 아직 안 쓴 사진
-    const destParts = (pkg.destination || '').split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
-    const destAttractions = attractions
-      .filter(a => a.photos && a.photos.length > 0 && destParts.some(part =>
-        (a.region || '').includes(part) || (a.country || '').includes(part)
-      ))
-      .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
-
-    for (const attr of destAttractions) {
-      for (const photo of (attr.photos || [])) {
-        if (photo?.src_medium && !usedImageUrls.has(photo.src_medium)) {
-          usedImageUrls.add(photo.src_medium);
-          return photo.src_medium;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  // 최저가 계산
+  // 최저가 계산 (순수 함수 — useMemo 의존성 안에서만 호출)
   function getMinPrice(pkg: Package): number {
     if (pkg.price_dates?.length) {
       const min = getMinPriceFromDates(pkg.price_dates as any);
@@ -130,9 +156,14 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
     return all.length > 0 ? Math.min(...all) : 0;
   }
 
-  // 출발월 매칭: price_dates 또는 price_tiers.departure_dates에 해당 YYYY-MM 시작 날짜가 있는지
-  function matchesMonth(pkg: Package, ym: string): boolean {
-    if (!ym) return true;
+  const minPriceByPkgId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const pkg of packages) map.set(pkg.id, getMinPrice(pkg));
+    return map;
+  }, [packages]);
+
+  // 출발월 매칭: price_dates 또는 price_tiers.departure_dates에 해당 YYYY-MM 시작 날짜가 있는지 (콤마로 여러 월)
+  const matchesSingleMonth = useCallback((pkg: Package, ym: string): boolean => {
     if (pkg.price_dates?.length) {
       if (pkg.price_dates.some(d => typeof d.date === 'string' && d.date.startsWith(ym))) return true;
     }
@@ -142,206 +173,245 @@ export default function PackagesClient({ initialPackages, initialAttractions, de
       }
     }
     return false;
-  }
+  }, []);
+  const matchesMonth = useCallback((pkg: Package, monthParam: string): boolean => {
+    if (!monthParam) return true;
+    const yms = monthParam.split(',').map(s => s.trim()).filter(Boolean);
+    if (yms.length === 0) return true;
+    return yms.some(ym => matchesSingleMonth(pkg, ym));
+  }, [matchesSingleMonth]);
 
-  // 필터 + 정렬 (클라이언트 사이드)
+  // 필터 + 정렬 (클라이언트 사이드) — minPrice는 사전 계산된 맵에서 조회
   const filteredPackages = useMemo(() => {
+    const mp = (pkg: Package) => minPriceByPkgId.get(pkg.id) ?? 0;
     let result = packages.filter(pkg => matchesFilter(pkg, activeFilter));
     if (month) result = result.filter(pkg => matchesMonth(pkg, month));
-    if (priceMaxNum > 0) result = result.filter(pkg => {
-      const mp = getMinPrice(pkg);
-      return mp > 0 && mp <= priceMaxNum;
-    });
-    if (sortBy === 'price_asc') result = [...result].sort((a, b) => getMinPrice(a) - getMinPrice(b));
-    if (sortBy === 'price_desc') result = [...result].sort((a, b) => getMinPrice(b) - getMinPrice(a));
+    if (priceMinNum > 0 || priceMaxNum > 0) {
+      result = result.filter(pkg => {
+        const v = mp(pkg);
+        if (v <= 0) return false;
+        if (priceMinNum > 0 && v < priceMinNum) return false;
+        if (priceMaxNum > 0 && v > priceMaxNum) return false;
+        return true;
+      });
+    }
+    if (sortBy === 'price_asc') result = [...result].sort((a, b) => mp(a) - mp(b));
+    if (sortBy === 'price_desc') result = [...result].sort((a, b) => mp(b) - mp(a));
     return result;
-  }, [packages, activeFilter, sortBy, month, priceMaxNum]);
+  }, [packages, activeFilter, sortBy, month, priceMinNum, priceMaxNum, minPriceByPkgId, matchesMonth]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT);
+  }, [activeFilter, sortBy, month, priceMinNum, priceMaxNum, destination, q, urgency, category, hub]);
+
+  const visiblePackages = useMemo(
+    () => filteredPackages.slice(0, visibleCount),
+    [filteredPackages, visibleCount],
+  );
 
   return (
-    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
-      {/* 데스크톱 전용 상단 네비 */}
-      <nav className="hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-gray-100 px-8 py-4 items-center justify-between">
-        <Link href="/" className="text-xl font-black tracking-tight text-[#340897]">여소남</Link>
-        <div className="flex items-center gap-6 text-sm font-medium text-gray-700">
-          <Link href="/packages" className="text-[#340897]">전체 상품</Link>
-          <Link href="/blog" className="hover:text-[#340897] transition">여행 정보</Link>
-          <Link href="/group-inquiry" className="hover:text-[#340897] transition">단체 문의</Link>
-          <a href="tel:051-000-0000" className="text-gray-500 hover:text-gray-900 transition">📞 051-000-0000</a>
-          <a
-            href="https://pf.kakao.com/_xcFxkBG/chat"
-            target="_blank"
-            rel="noopener"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="bg-[#FEE500] text-[#3C1E1E] font-bold text-sm px-4 py-2 rounded-full hover:shadow-md transition"
-          >
-            💬 카카오톡 상담
-          </a>
+    <div className="min-h-screen bg-white w-full overflow-x-hidden max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
+      <GlobalNav />
+
+      {/* 통합 헤더 — 타이틀 + 출발 허브 + 검색 폼을 하나의 파란 존으로 */}
+      <div className="bg-gradient-to-b from-brand-light to-[#F5F9FF] border-b border-blue-200/50">
+        <div className="px-4 pt-5 pb-4 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:pt-8 md:pb-6">
+          {/* 페이지 타이틀 */}
+          <div className="mb-4">
+            <h1 className="text-h1 md:text-3xl lg:text-4xl font-bold text-text-primary tracking-[-0.03em]">
+              {destParam || '전체 상품'}
+            </h1>
+            <p className="text-[13px] text-text-body mt-1">{filteredPackages.length}개 상품</p>
+          </div>
+
+          {/* 출발 허브 — 가로 스크롤 pill 행 */}
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar mb-3 -mx-4 px-4 md:mx-0 md:px-0">
+            {DEPARTURE_HUB_OPTIONS.map(({ id, label }) => {
+              const isSelected =
+                id === 'all'
+                  ? hub === 'all'
+                  : id === DEFAULT_DEPARTURE_HUB
+                    ? hub === DEFAULT_DEPARTURE_HUB
+                    : hub === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => navigateWithHub(id)}
+                  className={`shrink-0 h-[34px] px-4 text-[13px] font-semibold rounded-full border transition-all card-touch ${
+                    isSelected
+                      ? 'bg-brand text-white border-brand shadow-sm'
+                      : 'bg-white text-text-body border-[#D1DCE8] hover:border-brand/60 hover:text-brand'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 검색 폼 */}
+          <SearchBar
+            variant="packages"
+            initialQ={q}
+            initialMonth={month}
+            initialPriceMin={priceMin}
+            initialPriceMax={priceMax}
+            initialDestination={destination}
+            hub={hub}
+            urgency={urgency}
+            category={category}
+          />
         </div>
-      </nav>
+      </div>
 
-      {/* 모바일 헤더 */}
-      <div className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
-          <span className="text-lg">←</span>
-        </Link>
-        <div>
-          <h1 className="text-base font-bold text-gray-900">{destParam || '전체 상품'}</h1>
-          <p className="text-xs text-gray-500">{filteredPackages.length}개 상품</p>
+      {/* 마감특가 / 카테고리 활성 배지 */}
+      {(urgency === '1' || category) && (
+        <div className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8">
+          <div className="flex items-center gap-2">
+            {urgency === '1' && (
+              <span className="inline-flex items-center gap-1.5 bg-danger-light text-danger text-[13px] font-semibold px-3 py-1.5 rounded-full">
+                🔥 마감특가 모아보기
+              </span>
+            )}
+            {category && CATEGORY_LABELS[category] && (
+              <span className="inline-flex items-center gap-1.5 bg-brand-light text-brand text-[13px] font-semibold px-3 py-1.5 rounded-full">
+                {CATEGORY_LABELS[category]}
+              </span>
+            )}
+            <Link href={hrefPackagesClearUrgencyCategory} className="text-micro text-text-secondary hover:text-brand transition ml-1">
+              전체 보기 →
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* 데스크톱 페이지 타이틀 */}
-      <div className="hidden md:block md:max-w-7xl md:mx-auto md:px-8 md:pt-10 md:pb-2">
-        <h1 className="text-3xl font-black text-gray-900">{destParam || '전체 상품'}</h1>
-        <p className="text-sm text-gray-500 mt-1">{filteredPackages.length}개 상품</p>
-      </div>
-
-      {/* 검색바 */}
-      <div className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8 md:pt-6">
-        <SearchBar initialQ={q} initialMonth={month} initialPriceMax={priceMax} initialDestination={destination} />
-      </div>
-
-      {/* 필터 + 정렬 */}
-      <div className="sticky top-[52px] md:top-[65px] z-20 bg-white border-b border-gray-100 px-4 py-2 md:max-w-7xl md:mx-auto md:px-8 md:py-4 md:bg-transparent md:border-b-0">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide md:flex-wrap md:gap-3">
-          <select
-            aria-label="정렬 순서"
-            className="flex-shrink-0 text-sm border border-gray-200 rounded-full px-3 py-1.5 md:px-4 md:py-2 bg-white text-gray-600 appearance-none"
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-          >
-            {SORT_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+      {/* 정렬 + 목적지 권역 — flat chip row (중첩 카드 제거) */}
+      <div className="sticky top-14 md:top-16 z-20 border-b border-[#EEF2F6] bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
+        <div className="max-w-7xl mx-auto px-4 py-2.5 md:px-8 w-full max-w-full min-w-0">
+          <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar">
+            <div className="relative shrink-0">
+              <select
+                aria-label="정렬 순서"
+                className="h-[34px] text-[13px] border border-[#E5E7EB] rounded-full pl-3 pr-7 bg-white text-text-primary appearance-none cursor-pointer font-medium"
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value)}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%238B95A1' d='M2 4l4 4 4-4'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 10px center',
+                }}
+              >
+                {SORT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-px h-4 bg-[#E5E7EB] shrink-0" />
+            {FILTER_OPTIONS.map(f => (
+              <button
+                key={f}
+                type="button"
+                className={`shrink-0 h-[34px] px-3.5 text-[13px] font-medium rounded-full border transition card-touch ${
+                  activeFilter === f
+                    ? 'bg-brand text-white border-brand shadow-sm'
+                    : 'bg-white text-text-body border-[#E5E7EB] hover:border-brand/40 hover:text-brand'
+                }`}
+                onClick={() => setActiveFilter(f)}
+              >
+                {f}
+              </button>
             ))}
-          </select>
-          {FILTER_OPTIONS.map(filter => (
-            <button
-              key={filter}
-              className={`flex-shrink-0 text-sm md:px-4 md:py-2 px-3 py-1.5 rounded-full border transition ${
-                activeFilter === filter
-                  ? 'bg-[#340897] text-white border-[#340897]'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'
-              }`}
-              onClick={() => setActiveFilter(filter)}
-            >
-              {filter}
-            </button>
-          ))}
+          </div>
         </div>
       </div>
 
       {/* 상품 카드 리스트 */}
+      <div ref={listTopRef} />
       {filteredPackages.length === 0 ? (
-        <div className="text-center py-20">
-          <p className="text-gray-500 text-base mb-2">{activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '상품이 없습니다'}</p>
-          {activeFilter !== '전체' ? (
-            <button onClick={() => setActiveFilter('전체')} className="text-violet-600 text-sm underline">전체 보기</button>
+        <div className="text-center py-20 px-6">
+          {urgency === '1' ? (
+            <>
+              <p className="text-[32px] mb-3">🔥</p>
+              <p className="text-text-primary font-bold text-[17px] mb-1">현재 마감특가 상품이 모두 매진되었습니다</p>
+              <p className="text-text-secondary text-body mb-6">아래 인기 패키지를 확인해 보세요</p>
+              <Link href={hrefPackagesClearUrgencyCategory} className="inline-block bg-brand text-white font-semibold text-body px-6 py-3 rounded-full hover:bg-[#1B64DA] transition">
+                전체 인기 패키지 보기
+              </Link>
+            </>
           ) : (
-            <Link href="/" className="text-violet-600 text-sm underline">홈으로</Link>
+            <div className="flex flex-col items-center gap-4 py-16 px-6">
+              <svg className="w-14 h-14 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 15.803z" />
+              </svg>
+              <div className="text-center space-y-1">
+                <p className="text-[15px] font-semibold text-text-primary">
+                  {activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '조건에 맞는 상품이 없습니다'}
+                </p>
+                <p className="text-[13px] text-text-secondary">필터를 초기화하거나 직접 문의해 보세요</p>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                {activeFilter !== '전체' && (
+                  <button
+                    onClick={() => setActiveFilter('전체')}
+                    className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
+                  >
+                    전체 보기
+                  </button>
+                )}
+                {consultTelHref && (
+                  <a
+                    href={consultTelHref}
+                    className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
+                  >
+                    📞 직접 문의
+                  </a>
+                )}
+              </div>
+            </div>
           )}
         </div>
       ) : (
-        <div className="px-4 py-4 space-y-3 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-          {filteredPackages.map(pkg => {
-            const minPrice = getMinPrice(pkg);
-            const image = getProductImage(pkg);
-            const airlineName = AIRLINES[pkg.airline || ''] || pkg.airline;
-
-            return (
-              <Link key={pkg.id} href={`/packages/${pkg.id}`} prefetch={true} className="md:block md:rounded-2xl md:overflow-hidden md:border md:border-gray-100 md:hover:border-violet-300 md:hover:shadow-lg md:transition-all">
-                <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-gray-100 last:border-b-0">
-                  {/* 이미지 — 항공사 배지 포함 */}
-                  <div className="relative flex-shrink-0 w-[110px] h-[88px] md:w-full md:h-52 lg:h-56 rounded-xl md:rounded-none overflow-hidden bg-gray-100">
-                    {image ? (
-                      <Image src={image} alt={pkg.title} fill className="object-cover md:hover:scale-105 md:transition-transform md:duration-300" sizes="(max-width: 768px) 110px, (max-width: 1024px) 50vw, 33vw" />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-2xl md:text-5xl">🌍</div>
-                    )}
-                    {airlineName && (
-                      <div className="absolute bottom-1.5 left-1.5 md:bottom-2.5 md:left-2.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-white/90 text-[#340897]">
-                        {airlineName}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 텍스트 영역 */}
-                  <div className="flex-1 min-w-0 md:p-4">
-                    {/* 배지 행 — 상품 타입 + 에어텔 */}
-                    <div className="flex gap-1 mb-1 flex-wrap">
-                      {pkg.product_type && (
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                          pkg.product_type.includes('실속') ? 'bg-orange-50 text-orange-700' :
-                          pkg.product_type.includes('프리미엄') || pkg.product_type.includes('고품격') ? 'bg-purple-50 text-purple-700' :
-                          pkg.product_type.includes('노팁') ? 'bg-emerald-50 text-emerald-700' :
-                          'bg-violet-50 text-violet-700'
-                        }`}>
-                          {pkg.product_type.split('|')[0]}
-                        </span>
-                      )}
-                      {pkg.is_airtel && (
-                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
-                          에어텔
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 상품명 — 2줄 클램프 */}
-                    <h2 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
-                      {pkg.display_title || pkg.products?.display_name || pkg.title}
-                    </h2>
-
-                    {/* 하이라이트 태그 */}
-                    {pkg.product_highlights && pkg.product_highlights.length > 0 && (
-                      <div className="flex gap-1 mt-1.5 flex-wrap">
-                        {pkg.product_highlights.slice(0, 3).map((tag, i) => (
-                          <span key={i} className="text-xs text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* 가격 + 잔여석 */}
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex items-baseline gap-0.5">
-                        {minPrice > 0 ? (
-                          <>
-                            <span className="text-lg font-bold text-gray-900">₩{minPrice.toLocaleString()}</span>
-                            <span className="text-sm text-gray-500">~</span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-gray-500">가격 문의</span>
-                        )}
-                      </div>
-                      {(() => {
-                        const remaining = (pkg.seats_held || 0) - (pkg.seats_confirmed || 0);
-                        if (pkg.seats_held && remaining === 0) {
-                          return <span className="text-xs font-semibold text-gray-400 line-through">예약 마감</span>;
-                        }
-                        if (pkg.seats_held && remaining > 0 && remaining <= 5) {
-                          return (
-                            <span className="text-xs font-bold text-red-600 animate-pulse">
-                              잔여 {remaining}석
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+        <div className="px-4 py-4 space-y-3 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
+          {visiblePackages.map(pkg => (
+            <PackageCard
+              key={pkg.id}
+              pkg={pkg as any}
+              variant="horizontal"
+              image={imageByPkgIdProp[pkg.id] ?? null}
+              precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
+              isRecommended={recommendedSet.has(pkg.id)}
+              recommendedReasons={recommendedReasonMap[pkg.id] ?? []}
+              isReasonOpen={activeReasonId === pkg.id}
+              onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
+              onClick={trackClick}
+            />
+          ))}
+        </div>
+      )}
+      {filteredPackages.length > visiblePackages.length && (
+        <div className="px-4 pb-6 md:max-w-7xl md:mx-auto md:px-8">
+          <button
+            type="button"
+            onClick={() => setVisibleCount(v => Math.min(v + VISIBLE_STEP, filteredPackages.length))}
+            className="w-full h-11 rounded-full border border-[#D1DCE8] bg-white text-[14px] font-semibold text-text-primary hover:border-brand/60 hover:text-brand transition"
+          >
+            상품 더 보기 ({visiblePackages.length}/{filteredPackages.length})
+          </button>
         </div>
       )}
 
-      {/* 플로팅 CTA — 모바일 전용 */}
+      {/* 플로팅 CTA — 모바일 전용 (전화는 NEXT_PUBLIC_CONSULT_PHONE 있을 때만) */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
         <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
-          <a href="tel:051-000-0000" className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0">
-            <span className="text-lg">📞</span>
-          </a>
+          {consultTelHref ? (
+            <a
+              href={consultTelHref}
+              className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0"
+            >
+              <span className="text-lg">📞</span>
+            </a>
+          ) : null}
           <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade"
             className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
             💬 카카오톡 상담

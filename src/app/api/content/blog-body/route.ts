@@ -11,6 +11,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import type { ContentBrief } from '@/lib/validators/content-brief';
+import { logError } from '@/lib/sentry-logger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ distribution_id, body: payload });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[blog-body] 실패:', msg);
+    logError('[api/content/blog-body] generation failed', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

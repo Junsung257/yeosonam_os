@@ -34,6 +34,7 @@ import { generateMetaAds } from '@/lib/content-pipeline/agents/meta-ads';
 import { generateGoogleAdsRSA } from '@/lib/content-pipeline/agents/google-ads-rsa';
 import { generateKakaoChannelMessage } from '@/lib/content-pipeline/agents/kakao-channel';
 import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
+import { logError } from '@/lib/sentry-logger';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 
 export const runtime = 'nodejs';
@@ -310,7 +311,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[generate-all] 실패:', msg);
+    logError('[api/content/generate-all] multi-platform generation failed', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

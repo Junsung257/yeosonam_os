@@ -1,3 +1,10 @@
+---
+name: validate-product
+description: 등록된 상품의 원문 ↔ DB ↔ A4 ↔ 모바일 4자 대조 검증. /register 이후 또는 기존 상품 회귀 검증. 발견된 이슈는 보고만 하고 사용자 승인 후 수정. 검증·validate·대조·audit 키워드에서 자동 활성화.
+argument-hint: [short_code 또는 package_id]
+allowed-tools: Read, Grep, Glob, Bash(node db/dump_package_result.js*), Bash(node db/audit_*), Bash(node db/cove_audit.js*), Bash(node db/post_register_audit.js*)
+---
+
 # 상품 검증 (원문 ↔ A4 ↔ 모바일 3자 대조)
 
 > **목적**: 등록된 상품의 원문/DB/렌더링 결과가 일치하는지 자동 검증.

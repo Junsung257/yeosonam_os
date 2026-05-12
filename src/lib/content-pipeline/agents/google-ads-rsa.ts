@@ -13,10 +13,10 @@
  *
  * 우리 출력: 15 headlines + 4 descriptions + 2 paths + final_url
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { ContentBrief } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
 
 export const GoogleAdsRSASchema = z.object({
@@ -51,35 +51,20 @@ export interface GoogleAdsRSAInput {
 }
 
 export async function generateGoogleAdsRSA(input: GoogleAdsRSAInput): Promise<GoogleAdsRSA> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return fallbackRSA(input);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.75, responseMimeType: 'application/json' },
-  });
+  if (!hasBlogApiKey()) return fallbackRSA(input);
 
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'google_ads_rsa');
   const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildRSAPrompt(input);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await model.generateContent(
-        prompt + (attempt > 0 ? '\n\n## 재시도 — headlines 15개 30자 이하, descriptions 4개 90자 이하, paths 2개 15자 이하 엄수.' : ''),
-      );
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = GoogleAdsRSASchema.safeParse(parsed);
-      if (checked.success) return checked.data;
-      console.warn('[google-ads-rsa] 검증 실패:', checked.error.errors.slice(0, 3));
-    } catch (err) {
-      console.warn(`[google-ads-rsa] 시도 ${attempt + 1} 실패:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const result = await callWithZodValidation({
+    label: 'google-ads-rsa',
+    schema: GoogleAdsRSASchema,
+    maxAttempts: 3,
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75, longCache: true }),
+  });
 
+  if (result.success) return result.value;
+  console.warn('[google-ads-rsa] callWithZodValidation 실패 → fallback');
   return fallbackRSA(input);
 }
 

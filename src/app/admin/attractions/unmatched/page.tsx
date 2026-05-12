@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 interface UnmatchedItem {
   id: string;
@@ -14,12 +14,59 @@ interface UnmatchedItem {
   created_at: string;
 }
 
+interface UnmatchedSummary {
+  counts: { pending: number; ignored: number; added: number; all: number };
+  pending_high_occurrence: number;
+  auto_alias_resolved_total: number;
+  manual_link_alias_total: number;
+  high_occurrence_threshold: number;
+  recent_auto_alias: Array<{
+    id: string;
+    activity: string;
+    resolved_at: string | null;
+    resolved_attraction_id: string | null;
+    occurrence_count: number | null;
+  }>;
+}
+
+interface BootstrapCandidate {
+  id: string;
+  activity: string;
+  occurrence_count: number | null;
+  region: string | null;
+  country: string | null;
+  suggestion: {
+    id: string;
+    name: string;
+    score: number;
+    matched_via: string;
+    matched_term: string;
+  } | null;
+}
+
 export default function UnmatchedPage() {
   const [items, setItems] = useState<UnmatchedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
+  const [summary, setSummary] = useState<UnmatchedSummary | null>(null);
+  const [highFreqOnly, setHighFreqOnly] = useState(false);
+  const [bootstrapOpen, setBootstrapOpen] = useState(false);
+  const [bootstrapLoading, setBootstrapLoading] = useState(false);
+  const [bootstrapCandidates, setBootstrapCandidates] = useState<BootstrapCandidate[]>([]);
+  const [bootstrapMeta, setBootstrapMeta] = useState<{
+    min_occurrences: number;
+    score_min: number;
+    score_max: number;
+  } | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [addForm, setAddForm] = useState({ short_desc: '', country: '', region: '', badge_type: 'tour', emoji: '📍' });
+
+  const occThreshold = summary?.high_occurrence_threshold ?? 3;
+
+  const displayedItems = useMemo(
+    () => (highFreqOnly ? items.filter(i => (i.occurrence_count ?? 0) >= occThreshold) : items),
+    [highFreqOnly, items, occThreshold],
+  );
 
   // 일괄 선택
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -31,8 +78,8 @@ export default function UnmatchedPage() {
     });
   };
   const toggleSelectAll = () => {
-    if (selectedIds.size === items.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(items.map(i => i.id)));
+    if (selectedIds.size === displayedItems.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(displayedItems.map(i => i.id)));
   };
 
   // 일괄 삭제 (ignored 처리)
@@ -52,7 +99,7 @@ export default function UnmatchedPage() {
 
   // CSV 다운로드 — attractions 업로드 형식 (name,short_desc,long_desc,country,region,badge_type,emoji)
   const downloadCSV = () => {
-    const targetItems = selectedIds.size > 0 ? items.filter(i => selectedIds.has(i.id)) : items;
+    const targetItems = selectedIds.size > 0 ? displayedItems.filter(i => selectedIds.has(i.id)) : displayedItems;
     // activity에서 관광지명 정리: ▶ 제거, 앞뒤 공백, 괄호 설명 유지
     const cleanName = (activity: string) => activity.replace(/^.*▶/, '').replace(/^☆\s*/, '').trim();
     const header = 'name,short_desc,long_desc,country,region,badge_type,emoji\n';
@@ -76,6 +123,47 @@ export default function UnmatchedPage() {
   const [linkResults, setLinkResults] = useState<{ id: string; name: string; country: string | null; region: string | null }[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
 
+  // 🤖 자동 추천 (suggest API) — Senzing/Tamr ER pattern
+  interface Suggestion {
+    id: string;
+    name: string;
+    aliases: string[];
+    region: string | null;
+    country: string | null;
+    category: string | null;
+    emoji: string | null;
+    short_desc: string | null;
+    score: number;
+    matched_via: string;
+    matched_term: string;
+  }
+  const [suggestingId, setSuggestingId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
+  const loadSuggestions = async (unmatchedId: string) => {
+    if (suggestingId === unmatchedId) {
+      setSuggestingId(null);
+      setSuggestions([]);
+      return;
+    }
+    setSuggestingId(unmatchedId);
+    setLinkingId(null);
+    setAddingId(null);
+    setSuggestLoading(true);
+    setSuggestions([]);
+    try {
+      const res = await fetch(`/api/unmatched/suggest?id=${encodeURIComponent(unmatchedId)}`);
+      const json = await res.json();
+      setSuggestions(Array.isArray(json.suggestions) ? json.suggestions : []);
+    } catch (err) {
+      console.error('자동 추천 실패', err);
+      setSuggestions([]);
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
   // 검색 debounce
   useEffect(() => {
     if (!linkSearch || linkSearch.length < 2) { setLinkResults([]); return; }
@@ -91,7 +179,7 @@ export default function UnmatchedPage() {
     return () => clearTimeout(timer);
   }, [linkSearch]);
 
-  const linkAlias = async (unmatchedId: string, attractionId: string) => {
+  const linkAlias = async (unmatchedId: string, attractionId: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/unmatched', {
         method: 'PATCH',
@@ -99,14 +187,56 @@ export default function UnmatchedPage() {
         body: JSON.stringify({ id: unmatchedId, action: 'link_alias', attractionId }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error); return; }
+      if (!res.ok) {
+        alert(data.error);
+        return false;
+      }
       alert(data.message);
       setLinkingId(null);
       setLinkSearch('');
       setLinkResults([]);
       load();
+      return true;
     } catch (err) {
       alert('연결 실패');
+      return false;
+    }
+  };
+
+  const loadSummary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/unmatched?summary=1');
+      const json = await res.json();
+      if (json.counts) {
+        setSummary({
+          ...json,
+          manual_link_alias_total: typeof json.manual_link_alias_total === 'number' ? json.manual_link_alias_total : 0,
+          high_occurrence_threshold: typeof json.high_occurrence_threshold === 'number' ? json.high_occurrence_threshold : 3,
+        } as UnmatchedSummary);
+      }
+    } catch {
+      setSummary(null);
+    }
+  }, []);
+
+  const loadBootstrap = async () => {
+    setBootstrapLoading(true);
+    setBootstrapOpen(true);
+    try {
+      const res = await fetch('/api/unmatched?bootstrap=1&limit=40');
+      const json = await res.json();
+      setBootstrapCandidates(Array.isArray(json.candidates) ? json.candidates : []);
+      if (typeof json.min_occurrences === 'number' && typeof json.score_min === 'number' && typeof json.score_max === 'number') {
+        setBootstrapMeta({
+          min_occurrences: json.min_occurrences,
+          score_min: json.score_min,
+          score_max: json.score_max,
+        });
+      }
+    } catch {
+      setBootstrapCandidates([]);
+    } finally {
+      setBootstrapLoading(false);
     }
   };
 
@@ -116,8 +246,11 @@ export default function UnmatchedPage() {
       const res = await fetch(`/api/unmatched?status=${statusFilter}`);
       const json = await res.json();
       setItems(json.items || []);
-    } finally { setLoading(false); }
-  }, [statusFilter]);
+    } finally {
+      setLoading(false);
+      void loadSummary();
+    }
+  }, [statusFilter, loadSummary]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -152,13 +285,21 @@ export default function UnmatchedPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">🔍 미매칭 관광지</h1>
-          <p className="text-sm text-slate-500 mt-1">랜딩페이지에서 DB에 매칭되지 않은 관광지 목록입니다.</p>
+          <h1 className="text-2xl font-bold text-admin-text-2">🔍 미매칭 관광지</h1>
+          <p className="text-sm text-admin-muted mt-1">랜딩페이지에서 DB에 매칭되지 않은 관광지 목록입니다.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <button
+            type="button"
+            onClick={() => void loadBootstrap()}
+            disabled={bootstrapLoading}
+            className="px-3 py-1.5 bg-amber-700 text-white text-sm rounded-lg hover:bg-amber-800 disabled:opacity-50"
+          >
+            {bootstrapLoading ? '후보 분석…' : '애매 후보(빈도≥3)'}
+          </button>
           <button onClick={downloadCSV}
             className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700">
-            CSV↓ {selectedIds.size > 0 ? `(${selectedIds.size}건)` : `(${items.length}건)`}
+            CSV↓ {selectedIds.size > 0 ? `(${selectedIds.size}건)` : `(${displayedItems.length}건)`}
           </button>
           {selectedIds.size > 0 && (
             <button onClick={bulkIgnore}
@@ -166,41 +307,147 @@ export default function UnmatchedPage() {
               일괄 무시 ({selectedIds.size}건)
             </button>
           )}
-          <a href="/admin/attractions" className="px-3 py-1.5 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">← 관광지 관리</a>
+          <a href="/admin/attractions" className="px-3 py-1.5 bg-admin-surface-2 text-admin-text-2 text-sm rounded-lg hover:bg-slate-200">← 관광지 관리</a>
         </div>
       </div>
 
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-center">
+            <div className="text-2xl font-bold text-admin-text-2">{summary.counts.pending}</div>
+            <div className="text-xs text-admin-muted">대기중</div>
+          </div>
+          <div className="bg-white border border-amber-200 rounded-admin-md p-3 text-center">
+            <div className="text-2xl font-bold text-amber-700">{summary.pending_high_occurrence}</div>
+            <div className="text-xs text-admin-muted">대기 · 등장 {summary.high_occurrence_threshold}회+</div>
+          </div>
+          <div className="bg-white border border-emerald-200 rounded-admin-md p-3 text-center">
+            <div className="flex justify-center gap-5 items-baseline">
+              <div>
+                <div className="text-xl font-bold text-emerald-700">{summary.auto_alias_resolved_total}</div>
+                <div className="text-[10px] text-admin-muted">자동(크론)</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-violet-700">{summary.manual_link_alias_total}</div>
+                <div className="text-[10px] text-admin-muted">수동(UI)</div>
+              </div>
+            </div>
+            <div className="text-xs text-admin-muted mt-1">누적 별칭 연결</div>
+          </div>
+          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-left text-xs text-admin-muted">
+            <div className="font-semibold text-admin-text-2 mb-1">최근 자동 처리</div>
+            {summary.recent_auto_alias.length === 0 ? (
+              <span className="text-admin-muted-2">아직 없음</span>
+            ) : (
+              <ul className="space-y-0.5 max-h-20 overflow-y-auto">
+                {summary.recent_auto_alias.map(r => (
+                  <li key={r.id} className="truncate" title={r.activity}>
+                    {r.activity.slice(0, 28)}
+                    {r.activity.length > 28 ? '…' : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {bootstrapOpen && (
+        <div className="mb-4 border border-amber-200 bg-amber-50/60 rounded-admin-md p-4">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-sm font-bold text-amber-900">
+              애매 매칭 후보 (빈도≥{bootstrapMeta?.min_occurrences ?? occThreshold}, 점수 {bootstrapMeta?.score_min ?? 75}~{bootstrapMeta?.score_max ?? 94})
+            </h2>
+            <button type="button" className="text-xs text-admin-muted hover:text-admin-text-2" onClick={() => setBootstrapOpen(false)}>닫기</button>
+          </div>
+          <p className="text-[11px] text-amber-800 mb-2">
+            크론 자동해결(기본 95점+)에 안 걸린 건입니다. Vercel 환경변수 <span className="font-mono">UNMATCHED_BOOTSTRAP_*</span>로 구간을 조정할 수 있습니다. 행의 「적용」으로 별칭을 한 번에 연결할 수 있습니다.
+          </p>
+          {bootstrapLoading ? (
+            <p className="text-xs text-amber-700 py-4 text-center">분석 중…</p>
+          ) : bootstrapCandidates.length === 0 ? (
+            <p className="text-xs text-admin-muted py-3 text-center">현재 조건에 맞는 후보가 없습니다.</p>
+          ) : (
+          <div className="max-h-56 overflow-y-auto space-y-1">
+            {bootstrapCandidates.map(c => (
+              <div key={c.id} className="flex flex-wrap items-center gap-2 bg-white border border-amber-100 rounded-lg px-2 py-1.5 text-xs">
+                <span className="font-medium text-admin-text-2 flex-1 min-w-[120px]">{c.activity}</span>
+                <span className="text-blue-600 font-bold">{c.occurrence_count ?? 0}회</span>
+                {c.suggestion ? (
+                  <>
+                    <span className="text-admin-muted">→ {c.suggestion.name}</span>
+                    <span className="text-amber-700 font-mono">{Math.round(c.suggestion.score)}점</span>
+                    <button
+                      type="button"
+                      className="ml-auto px-2 py-0.5 bg-violet-600 text-white rounded hover:bg-violet-700"
+                      onClick={async () => {
+                        const ok = await linkAlias(c.id, c.suggestion!.id);
+                        if (ok) setBootstrapCandidates(prev => prev.filter(x => x.id !== c.id));
+                      }}
+                    >
+                      적용
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-admin-muted-2">후보 없음</span>
+                )}
+              </div>
+            ))}
+          </div>
+          )}
+        </div>
+      )}
+
       {/* 필터 */}
-      <div className="flex gap-3 mb-4 items-center">
+      <div className="flex gap-3 mb-4 items-center flex-wrap">
         <label className="flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={selectedIds.size === items.length && items.length > 0}
+          <input type="checkbox" checked={selectedIds.size === displayedItems.length && displayedItems.length > 0}
             onChange={toggleSelectAll} className="rounded" />
-          <span className="text-xs text-slate-500">전체</span>
+          <span className="text-xs text-admin-muted">전체</span>
         </label>
+        {statusFilter === 'pending' && (
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-admin-muted">
+            <input type="checkbox" checked={highFreqOnly} onChange={e => { setHighFreqOnly(e.target.checked); setSelectedIds(new Set()); }} className="rounded" />
+            등장 {occThreshold}회 이상만
+          </label>
+        )}
         {['pending', 'ignored', 'added', 'all'].map(s => (
-          <button key={s} onClick={() => { setStatusFilter(s); setSelectedIds(new Set()); }}
-            className={`px-3 py-1.5 text-sm rounded-lg ${statusFilter === s ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+          <button key={s} onClick={() => { setStatusFilter(s); setSelectedIds(new Set()); setHighFreqOnly(false); }}
+            className={`px-3 py-1.5 text-sm rounded-lg ${statusFilter === s ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
             {s === 'pending' ? '대기중' : s === 'ignored' ? '무시됨' : s === 'added' ? '추가됨' : '전체'}
           </button>
         ))}
-        <span className="text-sm text-slate-500 self-center ml-auto">
-          {selectedIds.size > 0 ? `${selectedIds.size}건 선택 / ` : ''}총 {items.length}건
+        <span className="text-sm text-admin-muted self-center ml-auto">
+          {selectedIds.size > 0 ? `${selectedIds.size}건 선택 / ` : ''}표시 {displayedItems.length}건
+          {highFreqOnly ? ` (전체 ${items.length}건 중)` : ''}
         </span>
       </div>
 
-      {loading ? <p className="text-slate-400 py-10 text-center">로딩 중...</p> : items.length === 0 ? (
-        <p className="text-slate-400 py-10 text-center">미매칭 항목이 없습니다.</p>
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 flex items-center gap-3">
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-14" />
+            </div>
+          ))}
+        </div>
+      ) : displayedItems.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-14">
+          <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <p className="text-admin-sm font-medium text-admin-muted">미매칭 항목이 없습니다.</p>
+        </div>
       ) : (
         <div className="space-y-2">
-          {items.map(item => (
-            <div key={item.id} className={`bg-white border rounded-xl p-4 ${selectedIds.has(item.id) ? 'border-blue-400 bg-blue-50/30' : 'border-slate-200'}`}>
+          {displayedItems.map(item => (
+            <div key={item.id} className={`bg-white border rounded-admin-md p-4 ${selectedIds.has(item.id) ? 'border-blue-400 bg-blue-50/30' : 'border-admin-border-mid'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-start gap-3 flex-1">
                   <input type="checkbox" checked={selectedIds.has(item.id)}
                     onChange={() => toggleSelect(item.id)} className="rounded mt-1 flex-shrink-0" />
                   <div className="flex-1">
-                  <h3 className="font-bold text-slate-800">{item.activity}</h3>
-                  <div className="flex gap-3 mt-1 text-xs text-slate-400">
+                  <h3 className="font-bold text-admin-text-2">{item.activity}</h3>
+                  <div className="flex gap-3 mt-1 text-xs text-admin-muted-2">
                     {item.package_title && <span>📦 {item.package_title}</span>}
                     {item.day_number && <span>Day {item.day_number}</span>}
                     {item.country && <span>🌍 {item.country}</span>}
@@ -210,18 +457,73 @@ export default function UnmatchedPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setLinkingId(linkingId === item.id ? null : item.id); setAddingId(null); setLinkSearch(''); setLinkResults([]); }}
+                  <button onClick={() => loadSuggestions(item.id)}
+                    className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 font-medium">
+                    {suggestingId === item.id ? '접기' : '🤖 자동 추천'}
+                  </button>
+                  <button onClick={() => { setLinkingId(linkingId === item.id ? null : item.id); setAddingId(null); setSuggestingId(null); setLinkSearch(''); setLinkResults([]); }}
                     className="px-3 py-1.5 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700">
                     {linkingId === item.id ? '접기' : '별칭 연결'}
                   </button>
-                  <button onClick={() => { setAddingId(addingId === item.id ? null : item.id); setLinkingId(null); setAddForm(f => ({ ...f, country: item.country || '', region: item.region || '' })); }}
+                  <button onClick={() => { setAddingId(addingId === item.id ? null : item.id); setLinkingId(null); setSuggestingId(null); setAddForm(f => ({ ...f, country: item.country || '', region: item.region || '' })); }}
                     className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">
                     {addingId === item.id ? '접기' : 'DB 추가'}
                   </button>
                   <button onClick={() => changeStatus(item.id, 'ignored')}
-                    className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200">무시</button>
+                    className="px-3 py-1.5 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">무시</button>
                 </div>
               </div>
+
+              {/* 🤖 자동 추천 패널 */}
+              {suggestingId === item.id && (
+                <div className="mt-3 pt-3 border-t border-amber-100 bg-amber-50/50 rounded-lg p-3">
+                  <p className="text-xs text-amber-700 mb-2 font-medium">
+                    🤖 attractions DB 에서 유사 후보 자동 검색 — 클릭 한 번으로 alias 적립
+                  </p>
+                  {suggestLoading ? (
+                    <p className="text-xs text-amber-500">분석 중…</p>
+                  ) : suggestions.length === 0 ? (
+                    <p className="text-xs text-admin-muted">
+                      유사 후보 없음. <button onClick={() => { setSuggestingId(null); setLinkingId(item.id); }} className="text-violet-600 underline">수동 검색</button> 또는 <button onClick={() => { setSuggestingId(null); setAddingId(item.id); setAddForm(f => ({ ...f, country: item.country || '', region: item.region || '' })); }} className="text-blue-600 underline">신규 DB 추가</button>.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {suggestions.map(s => (
+                        <button key={s.id}
+                          onClick={() => linkAlias(item.id, s.id)}
+                          className="w-full text-left bg-white hover:bg-amber-50 border border-amber-200 rounded-lg p-3 transition flex items-center justify-between gap-3"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{s.emoji || '📍'}</span>
+                              <span className="font-bold text-admin-text-2">{s.name}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-mono">
+                                {s.matched_via} {Math.round(s.score)}점
+                              </span>
+                            </div>
+                            {s.short_desc && <p className="text-xs text-admin-muted mt-1 ml-6">{s.short_desc}</p>}
+                            <div className="flex gap-2 mt-1 ml-6 text-[10px] text-admin-muted-2">
+                              {s.country && <span>🌍 {s.country}</span>}
+                              {s.region && <span>📍 {s.region}</span>}
+                              {s.category && <span>·{s.category}</span>}
+                              {s.aliases.length > 0 && <span>· aliases {s.aliases.length}개</span>}
+                            </div>
+                            {s.matched_term !== s.name && (
+                              <p className="text-[10px] text-amber-600 mt-1 ml-6">
+                                ⤷ 매칭 근거: <span className="font-mono">"{s.matched_term}"</span>
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-amber-600 text-lg flex-shrink-0">→</span>
+                        </button>
+                      ))}
+                      <p className="text-[10px] text-admin-muted-2 text-center pt-1">
+                        클릭 → "{item.activity}" 가 해당 관광지의 alias 로 영구 적립됨 (다음 등록부터 자동 매칭)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 별칭 연결 패널 */}
               {linkingId === item.id && (
@@ -245,8 +547,8 @@ export default function UnmatchedPage() {
                           onClick={() => linkAlias(item.id, attr.id)}
                           className="w-full text-left px-3 py-2 hover:bg-violet-50 border-b border-violet-50 last:border-0 flex items-center justify-between"
                         >
-                          <span className="text-sm font-medium text-slate-800">{attr.name}</span>
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-sm font-medium text-admin-text-2">{attr.name}</span>
+                          <span className="text-[10px] text-admin-muted-2">
                             {attr.country || ''} {attr.region || ''}
                           </span>
                         </button>
@@ -254,14 +556,14 @@ export default function UnmatchedPage() {
                     </div>
                   )}
                   {linkSearch.length >= 2 && !linkLoading && linkResults.length === 0 && (
-                    <p className="text-xs text-slate-400 mt-2">검색 결과가 없습니다.</p>
+                    <p className="text-xs text-admin-muted-2 mt-2">검색 결과가 없습니다.</p>
                   )}
                 </div>
               )}
 
               {/* 추가 폼 */}
               {addingId === item.id && (
-                <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-6 gap-2">
+                <div className="mt-3 pt-3 border-t border-admin-border grid grid-cols-6 gap-2">
                   <input placeholder="설명" value={addForm.short_desc} onChange={e => setAddForm(f => ({ ...f, short_desc: e.target.value }))}
                     className="col-span-2 text-sm border rounded px-2 py-1.5" />
                   <input placeholder="국가" value={addForm.country} onChange={e => setAddForm(f => ({ ...f, country: e.target.value }))}

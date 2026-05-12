@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { fmtNum as fmt } from '@/lib/admin-utils';
+import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Download, Wallet, Coins, TrendingUp, Receipt, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface TaxBooking {
   id:                      string;
@@ -45,10 +49,6 @@ function getMonthOptions(): string[] {
   return months;
 }
 
-function fmt(n: number): string {
-  return n.toLocaleString('ko-KR');
-}
-
 const RECEIPT_LABEL: Record<string, string> = {
   ISSUED:       'O 발행',
   NOT_ISSUED:   'X 미발행',
@@ -58,7 +58,7 @@ const RECEIPT_LABEL: Record<string, string> = {
 const RECEIPT_COLOR: Record<string, string> = {
   ISSUED:       'text-green-700 bg-green-50',
   NOT_ISSUED:   'text-red-700 bg-red-50',
-  NOT_REQUIRED: 'text-slate-500 bg-slate-50',
+  NOT_REQUIRED: 'text-admin-muted bg-admin-bg',
 };
 
 export default function TaxPage() {
@@ -129,78 +129,81 @@ export default function TaxPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-[16px] font-semibold text-slate-800">세무 / 송금 관리</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">출발일(행사일) 기준 매출 인식 / 양방향 증빙 관리</p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="space-y-5">
+      <PageHeader
+        title="세무 / 송금 관리"
+        subtitle="출발일(행사일) 기준 매출 인식 / 양방향 증빙 관리"
+        actions={
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-500 font-medium">출발일 기준 월:</span>
+            <span className="text-admin-xs text-admin-muted font-medium">출발일 기준 월</span>
             <select
               value={month}
               onChange={e => setMonth(e.target.value)}
-              className="border border-slate-200 rounded px-3 py-2 text-[13px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
             >
               {monthOptions.map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+            <Button variant="primary" size="sm" onClick={downloadCSV}>
+              <Download size={14} />
+              세무사 제출용 엑셀
+            </Button>
           </div>
-          <button
-            onClick={downloadCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-[#001f3f] text-white rounded text-[13px] font-medium hover:bg-blue-900 transition"
-          >
-            세무사 제출용 엑셀 다운로드
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* KPI 카드 4개 */}
       {kpis && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <p className="text-[11px] text-slate-500 font-medium">총 입금액 (판매가)</p>
-            <p className="text-xl font-bold text-indigo-700 mt-1">₩{fmt(kpis.total_price)}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">출발일 기준</p>
-          </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <p className="text-[11px] text-slate-500 font-medium">총 송금액 (원가)</p>
-            <p className="text-xl font-bold text-orange-600 mt-1">₩{fmt(kpis.total_cost)}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">랜드사 지불 원가</p>
-          </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <p className="text-[11px] text-slate-500 font-medium">순매출</p>
-            <p className="text-xl font-bold text-green-600 mt-1">₩{fmt(kpis.net_sales)}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">판매가 - 원가</p>
-          </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <p className="text-[11px] text-slate-500 font-medium">예상 부가세 (10%)</p>
-            <p className="text-xl font-bold text-red-500 mt-1">₩{fmt(kpis.vat_estimate)}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">순매출 x 10% 절사</p>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard
+            label="총 입금액 (판매가)"
+            value={`₩${fmt(kpis.total_price)}`}
+            icon={Wallet}
+            tone="positive"
+            hint="출발일 기준"
+          />
+          <KpiCard
+            label="총 송금액 (원가)"
+            value={`₩${fmt(kpis.total_cost)}`}
+            icon={Coins}
+            tone="negative"
+            hint="랜드사 지불 원가"
+          />
+          <KpiCard
+            label="순매출"
+            value={`₩${fmt(kpis.net_sales)}`}
+            icon={TrendingUp}
+            tone="positive"
+            hint="판매가 − 원가"
+          />
+          <KpiCard
+            label="예상 부가세 (10%)"
+            value={`₩${fmt(kpis.vat_estimate)}`}
+            icon={Receipt}
+            hint="순매출 × 10% 절사"
+          />
         </div>
       )}
 
       {/* To-Do 경고 알림 */}
       {todos && (todos.pending_transfers.length > 0 || todos.not_issued_receipts.length > 0) && (
-        <div className="bg-white border border-red-200 rounded-lg p-4 space-y-3">
-          <h2 className="text-[13px] font-semibold text-red-700 flex items-center gap-2">
+        <div className="admin-card p-4 space-y-3 border-danger/30">
+          <h2 className="text-admin-base font-semibold text-danger flex items-center gap-2">
+            <AlertTriangle size={16} />
             처리 필요 항목 (To-Do)
           </h2>
           {todos.pending_transfers.length > 0 && (
             <div>
-              <p className="text-[11px] font-semibold text-red-600 mb-1.5">
-                랜드사 원가 미송금 {todos.pending_transfers.length}건
+              <p className="text-admin-xs font-semibold text-danger mb-2">
+                랜드사 원가 미송금 <span className="admin-num">{todos.pending_transfers.length}</span>건
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {todos.pending_transfers.map(b => (
                   <Link
                     key={b.id}
                     href={`/admin/bookings/${b.id}`}
-                    className="text-[11px] bg-white border border-red-200 text-red-700 rounded-full px-2.5 py-1 hover:bg-red-50 transition"
+                    className="text-admin-xs bg-admin-surface border border-danger/30 text-danger rounded-full px-2.5 py-1 hover:bg-danger-light transition-colors admin-num"
                   >
                     {b.booking_no} ({b.customers?.name ?? '?'}, ₩{fmt(b.total_cost)})
                   </Link>
@@ -210,15 +213,15 @@ export default function TaxPage() {
           )}
           {todos.not_issued_receipts.length > 0 && (
             <div>
-              <p className="text-[11px] font-semibold text-red-600 mb-1.5">
-                고객 현금영수증 미발행 {todos.not_issued_receipts.length}건
+              <p className="text-admin-xs font-semibold text-danger mb-2">
+                고객 현금영수증 미발행 <span className="admin-num">{todos.not_issued_receipts.length}</span>건
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {todos.not_issued_receipts.map(b => (
                   <Link
                     key={b.id}
                     href={`/admin/bookings/${b.id}`}
-                    className="text-[11px] bg-white border border-red-200 text-red-700 rounded-full px-2.5 py-1 hover:bg-red-50 transition"
+                    className="text-admin-xs bg-admin-surface border border-danger/30 text-danger rounded-full px-2.5 py-1 hover:bg-danger-light transition-colors admin-num"
                   >
                     {b.booking_no} ({b.customers?.name ?? '?'}, ₩{fmt(b.total_price)})
                   </Link>
@@ -233,36 +236,37 @@ export default function TaxPage() {
        todos.pending_transfers.length === 0 &&
        todos.not_issued_receipts.length === 0 &&
        bookings.length > 0 && (
-        <div className="bg-green-50 border border-slate-200 rounded-lg p-3 flex items-center gap-2">
-          <span className="text-green-600 text-[13px] font-medium">{month} 이 달 처리 필요 항목 없음</span>
+        <div className="bg-status-successBg border border-success/20 rounded-admin-sm p-3 flex items-center gap-2">
+          <CheckCircle2 size={16} className="text-status-successFg" />
+          <span className="text-status-successFg text-admin-sm font-medium admin-num">{month} 이 달 처리 필요 항목 없음</span>
         </div>
       )}
 
       {/* 예약 목록 테이블 */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-800 text-[14px]">
-            예약 목록 - {month} 출발 ({bookings.length}건)
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-admin-border flex items-center justify-between">
+          <h2 className="text-admin-h3 text-admin-text">
+            예약 목록 — <span className="admin-num">{month}</span> 출발 (<span className="admin-num">{bookings.length}</span>건)
           </h2>
-          {loading && <span className="text-[11px] text-slate-500 animate-pulse">로딩 중...</span>}
+          {loading && <span className="text-admin-xs text-admin-muted animate-pulse">로딩 중…</span>}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="admin-data-table">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
+              <tr>
                 {[
                   '출발일', '예약번호', '예약자', '판매가', '원가', '순매출',
                   '랜드사', '랜드사 송금', '세금계산서', '고객 영수증', '송금증',
                 ].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-slate-500 whitespace-nowrap">{h}</th>
+                  <th key={h} className="whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {bookings.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-slate-500 text-[13px]">
-                    {month}에 출발하는 예약이 없습니다.
+                  <td colSpan={11} className="px-3 py-10 text-center text-admin-muted text-admin-sm" style={{ height: 'auto' }}>
+                    <span className="admin-num">{month}</span>에 출발하는 예약이 없습니다.
                   </td>
                 </tr>
               ) : (
@@ -270,9 +274,9 @@ export default function TaxPage() {
                   const net = b.total_price - b.total_cost;
                   const isSaving = saving[b.id];
                   return (
-                    <tr key={b.id} className={`border-b border-slate-200 hover:bg-slate-50 ${isSaving ? 'opacity-60' : ''}`}>
+                    <tr key={b.id} className={`border-b border-admin-border-mid hover:bg-admin-bg ${isSaving ? 'opacity-60' : ''}`}>
                       {/* 출발일 */}
-                      <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
+                      <td className="px-3 py-2 font-medium text-admin-text-2 whitespace-nowrap">
                         {b.departure_date}
                       </td>
 
@@ -284,7 +288,7 @@ export default function TaxPage() {
                       </td>
 
                       {/* 예약자 */}
-                      <td className="px-3 py-2 whitespace-nowrap text-slate-800">
+                      <td className="px-3 py-2 whitespace-nowrap text-admin-text-2">
                         {b.customers?.name ?? '-'}
                       </td>
 
@@ -304,7 +308,7 @@ export default function TaxPage() {
                       </td>
 
                       {/* 랜드사 */}
-                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[100px] truncate">
+                      <td className="px-3 py-2 text-admin-muted whitespace-nowrap max-w-[100px] truncate">
                         {b.land_operator ?? '-'}
                       </td>
 
@@ -335,7 +339,7 @@ export default function TaxPage() {
                             onChange={e => updateField(b.id, { has_tax_invoice: e.target.checked })}
                             className="w-4 h-4 accent-blue-600"
                           />
-                          <span className={`text-[11px] font-medium ${b.has_tax_invoice ? 'text-green-600' : 'text-slate-500'}`}>
+                          <span className={`text-[11px] font-medium ${b.has_tax_invoice ? 'text-green-600' : 'text-admin-muted'}`}>
                             {b.has_tax_invoice ? 'O' : 'X'}
                           </span>
                         </label>
@@ -368,10 +372,10 @@ export default function TaxPage() {
                               보기
                             </a>
                           ) : (
-                            <span className="text-[11px] text-slate-500">없음</span>
+                            <span className="text-[11px] text-admin-muted">없음</span>
                           )}
                           <label className="cursor-pointer">
-                            <span className="text-[11px] text-slate-500 hover:text-blue-600 transition">
+                            <span className="text-[11px] text-admin-muted hover:text-blue-600 transition">
                               {b.transfer_receipt_url ? '교체' : '업로드'}
                             </span>
                             <input
@@ -397,14 +401,14 @@ export default function TaxPage() {
             {/* 합계 행 */}
             {bookings.length > 0 && kpis && (
               <tfoot>
-                <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-[13px]">
-                  <td className="px-3 py-2 text-slate-800" colSpan={3}>합계 ({bookings.length}건)</td>
+                <tr className="border-t-2 border-admin-border-mid bg-admin-bg font-bold text-admin-sm">
+                  <td className="px-3 py-2 text-admin-text-2" colSpan={3}>합계 ({bookings.length}건)</td>
                   <td className="px-3 py-2 text-right text-indigo-700">₩{fmt(kpis.total_price)}</td>
                   <td className="px-3 py-2 text-right text-orange-600">₩{fmt(kpis.total_cost)}</td>
                   <td className={`px-3 py-2 text-right ${kpis.net_sales >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                     ₩{fmt(kpis.net_sales)}
                   </td>
-                  <td colSpan={5} className="px-3 py-2 text-[11px] text-slate-500 font-normal">
+                  <td colSpan={5} className="px-3 py-2 text-[11px] text-admin-muted font-normal">
                     예상 부가세: ₩{fmt(kpis.vat_estimate)}
                   </td>
                 </tr>
@@ -415,7 +419,7 @@ export default function TaxPage() {
       </div>
 
       {/* 범례 */}
-      <div className="text-[11px] text-slate-500 flex flex-wrap gap-4">
+      <div className="text-[11px] text-admin-muted flex flex-wrap gap-4">
         <span>모든 금액은 출발일(행사일) 기준으로 집계됩니다.</span>
         <span>순매출 = 판매가 - 원가</span>
         <span>예상 부가세 = 순매출 x 10% (원 단위 절사)</span>

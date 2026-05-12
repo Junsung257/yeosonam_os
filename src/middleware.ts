@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
+import { getSecret } from '@/lib/secret-registry';
 
-// 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = [
+function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: string, isSecure: boolean) {
+  const maxAge = getAffiliateRefCookieMaxAgeSec(request);
+  res.cookies.set('aff_ref', value, {
+    httpOnly: false,
+    secure: isSecure,
+    sameSite: 'lax',
+    path: '/',
+    ...(maxAge !== undefined ? { maxAge } : {}),
+  });
+}
+
+// 정확히 일치하는 공개 경로 — O(1) Set 조회
+const PUBLIC_EXACT = new Set([
   '/',
   '/login',
   '/packages',
@@ -11,41 +26,40 @@ const PUBLIC_PATHS = [
   '/api/auth/refresh',
   '/m/admin/login',
   '/api/qa/chat',
+  '/api/qa/vision',
   '/api/sms/receive',
   '/api/notify/alimtalk',
   '/api/slack-webhook',
   '/api/exchange-rate',
+  // Programmatic SEO
+  '/things-to-do',
+  // Phase 1.5 IR 파이프 (Canary)
+  '/api/register-via-ir',
+  '/api/audit-pkg-to-ir',
+  '/api/register-via-assembler',
+  // 단체여행 RFQ
+  '/group-inquiry',
+  // Meta webhook
+  '/api/webhooks/instagram',
+  '/api/webhooks/threads',
+  // 카카오 웹훅
+  '/api/webhooks/kakao',
+  // 블로그
+  '/api/rss',
+  '/api/blog-engagement',
+  // ISR 캐시 무효화
+  '/api/revalidate',
+  // 크론 (서버-to-서버)
   '/api/cron/meta-optimize',
   '/api/cron/visual-baseline-monitor',
   '/api/cron/journey-scheduler',
   '/api/cron/rfq-timeout',
-  '/api/concierge/search',
-  '/api/concierge/cart',
-  '/api/concierge/checkout',
-  '/concierge',
-  '/tenant',
-  '/share',
-  '/api/share',
-  '/api/packages',
-  '/api/attractions',
-  // Phase 1.5 IR 파이프 (Canary) — 내부 admin CLI/Agent 호출용
-  '/api/register-via-ir',
-  '/api/audit-pkg-to-ir',
-  '/api/register-via-assembler',
-  // 단체여행 RFQ (고객 인터뷰 → 공고 → 채팅 → 계약)
-  '/group',
-  '/group-inquiry',
-  '/rfq',
-  '/api/rfq',
-  '/api/tenant/rfqs',
-  // 광고 트래킹 (비회원 이벤트 수집 필요)
-  '/api/tracking',
-  // 크론 (서버-to-서버 호출)
   '/api/cron/post-travel',
   '/api/cron/ad-optimizer',
   '/api/cron/settlement-auto',
   '/api/cron/sync-creative-performance',
   '/api/cron/auto-archive',
+  '/api/cron/resweep-unmatched',
   '/api/cron/embed-products',
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
@@ -59,55 +73,176 @@ const PUBLIC_PATHS = [
   '/api/cron/dlq-replay',
   '/api/cron/payment-heartbeat',
   '/api/cron/booking-tasks-runner',
-  // Meta webhook (GET verify + POST event). 서명 검증 내부에서 수행.
-  '/api/webhooks/instagram',
-  '/api/webhooks/threads',
-  // 인플루언서 포털 (자체 PIN 인증)
-  '/influencer',
-  '/api/influencer',
-  // 파트너 신청 (공개)
-  '/partner-apply',
-  '/api/partner-apply',
-  // 고객용 상품 페이지 (공개)
-  '/products',
-  // 추천 API (비회원도 사용)
-  '/api/recommendations',
-  // 카카오 웹훅 (외부 수신)
-  '/api/webhooks/kakao',
-  // 블로그 (공개 콘텐츠)
-  '/blog',
-  '/blog/destination',
-  '/api/blog',
-  '/api/rss',
-  '/api/blog-engagement',
-  // 여행지 허브 (공개 Pillar)
-  '/destinations',
-  // 리뷰 수집 + 조회 (고객용, booking_id 기반 인증)
-  '/review',
-  '/api/reviews',
-  // ISR 캐시 무효화 (시크릿 기반 인증)
-  '/api/revalidate',
+  '/api/cron/scoring-recompute',
+  '/api/cron/land-operator-reliability',
+  '/api/cron/payment-rules-learn',
+  '/api/cron/payment-stale-alert',
+  '/api/cron/refresh-seasonal',
+  '/api/cron/ltr-funnel-report',
+  '/api/cron/policy-ab-compare',
+  '/api/cron/rag-incremental',
+  '/api/cron/card-news-seasonal',
+  '/api/cron/free-travel-plan-housekeeping',
+  '/api/cron/unmatched-auto-resolve',
+  '/api/cron/mrt-revenue-sync',
+  '/api/cron/mrt-hotel-ranking',
+  '/api/cron/variant-winner-decide',
+  '/api/cron/setup-new-destinations',
+  '/api/cron/free-travel-retarget',
+  '/api/cron/affiliate-settlement-draft',
+  '/api/cron/affiliate-dormant',
+  '/api/cron/affiliate-anomaly-detect',
+  '/api/cron/affiliate-content-24h-report',
+  '/api/cron/affiliate-tier-rewards',
+  '/api/cron/affiliate-reactivation-campaign',
+  '/api/cron/affiliate-attribution-recalc',
+  '/api/cron/affiliate-live-celebration',
+  '/api/cron/affiliate-lifetime-commission',
+  '/api/cron/affiliate-sub-daily-rollup',
+  '/api/cron/affiliate-model-compare-rollup',
+  '/api/cron/trend-topic-miner',
+  '/api/cron/rank-tracking',
+  '/api/cron/topical-rebuild',
+  '/api/cron/blog-daily-summary',
+  '/api/cron/ledger-reconcile',
+  '/api/cron/fill-attraction-photos',
+  '/api/cron/agent-executor',
+  '/api/cron/booking-attribution-audit',
+  '/api/cron/marketing-rules',
+  '/api/cron/concierge-cart-retarget',
+  '/api/cron/hard-block-alert',
+  '/api/cron/dynamic-pricing',
+  '/api/cron/hitl-reminder',
+  '/api/cron/content-drift-detect',
+  '/api/cron/churn-detect',
+  '/api/cron/weather-upsell',
+  // concierge 개별 엔드포인트
+  '/api/concierge/search',
+  '/api/concierge/cart',
+  '/api/concierge/checkout',
+  // 기타
+  '/api/tenant/rfqs',
+  '/api/tracking/recommendation',
+  // 랜드사 파트너 포털 (Bearer 토큰 자체 인증)
+  '/api/partner/packages',
+  '/api/partner/bookings',
+  '/partner',
+  // Phase 2-F: 환율 스냅샷 크론
+  '/api/cron/fx-rate-sync',
+  // Phase 2-G: B2B 도매 API (자체 Bearer 인증)
+  '/api/b2b/packages',
+  // Phase 3-A: 동행자 온보딩
+  '/join',
+  // Phase 3-B: 귀국 후 릴스 크론
+  '/api/cron/post-travel-reels',
+  // Phase 3-B: 릴스 생성 API (booking_id 기반, 인증 불필요)
+  '/api/reels/create',
+  // Phase 3-E: 리뷰 감정 분석 크론
+  '/api/cron/review-sentiment',
+  // Phase 3-G: 여권 OCR (비로그인 고객용)
+  '/api/passport/ocr',
+  // Phase 3-H: 사기 탐지 크론
+  '/api/cron/fraud-detect',
+  // 멀티테넌트 OAuth 콜백 (인증 전 리다이렉트)
+  '/api/auth/google-oauth-start',
+  '/api/auth/google-callback',
+  '/api/auth/meta-oauth-start',
+  '/api/auth/meta-callback',
+  // 마케팅 자동화 파이프라인 크론
+  '/api/cron/daily-marketing',
+  // Inngest webhook (서버-to-서버, 자체 서명 검증)
+  '/api/inngest',
+  // Naver OAuth (Sprint 2-A)
+  '/api/auth/naver-oauth-start',
+  '/api/auth/naver-callback',
+  // TossPayments Webhook (Sprint 4-B) — 자체 서명 검증
+  '/api/billing/toss-webhook',
+]);
+
+// 하위 경로까지 공개가 필요한 prefix — 짧은 배열, 정확 일치 실패 시에만 검사
+const PUBLIC_PREFIXES = [
+  '/reels/',           // Phase 3-B: 릴스 공유 페이지 (share_token 기반)
+  '/api/reels/',       // Phase 3-B: 릴스 API
+  '/api/b2b/packages/',  // Phase 2-G: B2B 단건 상세 동적 경로
+  '/trip/',
+  '/api/booking-portal/',
+  '/api/booking-concierge/',
+  '/packages/',
+  '/lp/', // 광고·SNS 유입 마케팅 랜딩 (비로그인)
+  '/blog/',
+  '/api/blog/',
+  '/products/',
+  '/concierge/',
+  '/tenant/',
+  '/share/',
+  '/api/share/',
+  '/api/attractions/',
+  '/things-to-do/',
+  '/group/',
+  '/rfq/',
+  '/api/rfq/',
+  '/api/tracking/',
+  '/api/og/',
+  '/influencer/',
+  '/api/influencer/',
+  '/with/',
+  '/r/',
+  '/embed/',
+  '/partner-apply/',
+  '/api/partner-apply/',
+  '/api/recommendations/',
+  '/destinations/',
+  '/review/',
+  '/api/reviews/',
+  '/free-travel/',
+  '/api/free-travel/',
+  '/blog/destination/',
+  '/legal/',
+  // Phase 3-A: 동행자 온보딩
+  '/join/',
+  '/api/join/',
+  // Phase 3-E: package_reviews 공개 API
+  '/api/package-reviews/',
+  // Phase 3-G: 여권 OCR 고객 페이지
+  '/passport-assist/',
 ];
 
-function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'));
-}
+// 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
+const PUBLIC_EXACT_SHORT = new Set([
+  '/blog', '/api/blog', '/products', '/concierge', '/tenant', '/share',
+  '/api/share', '/api/attractions', '/group', '/rfq', '/api/rfq',
+  '/api/tracking', '/api/og',   '/influencer', '/api/influencer',
+  '/with', '/r', '/embed', '/partner-apply', '/api/partner-apply',
+  '/api/recommendations', '/destinations', '/review', '/api/reviews',
+  '/free-travel', '/api/free-travel', '/blog/destination',
+  '/api/package-reviews', '/passport-assist',
+]);
 
-// JWT 페이로드를 로컬에서 디코딩해 만료 여부 확인 (네트워크 콜 없음)
-function isTokenValid(token: string): boolean {
-  try {
-    const payloadBase64 = token.split('.')[1];
-    if (!payloadBase64) return false;
-    const payload = JSON.parse(atob(payloadBase64));
-    return typeof payload.exp === 'number' && payload.exp > Date.now() / 1000;
-  } catch {
-    return false;
+function isPublicPath(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // /api/packages는 GET 요청만 PUBLIC 허용
+  if (pathname === '/api/packages' || pathname.startsWith('/api/packages/')) {
+    return request.method === 'GET';
   }
+
+  // O(1) 정확 일치
+  if (PUBLIC_EXACT.has(pathname) || PUBLIC_EXACT_SHORT.has(pathname)) return true;
+
+  // prefix 매칭 (정확 일치 실패 시에만 실행, 배열 크기 ~27개)
+  return PUBLIC_PREFIXES.some(p => pathname.startsWith(p));
 }
 
-export function middleware(request: NextRequest) {
+async function accessTokenAllowsRequest(token: string): Promise<boolean> {
+  const v = await verifySupabaseAccessToken(token);
+  return v.ok;
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
+  const isDev = process.env.NODE_ENV !== 'production';
+  const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/m/admin');
 
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급
@@ -130,42 +265,115 @@ export function middleware(request: NextRequest) {
     });
   }
 
+  // ── 1-1. /admin/_dev/ui-kit 호환 경로 (Next private segment 우회) ─────────
+  // app 디렉터리에서 "_" 세그먼트는 private folder라 직접 라우팅되지 않는다.
+  // 기존 점검 URL 호환을 위해 공개 가능한 /admin/dev/ui-kit 으로 리라이트한다.
+  if (pathname === '/admin/_dev/ui-kit') {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = '/admin/dev/ui-kit';
+    return NextResponse.rewrite(rewriteUrl);
+  }
+
   // ── 2. 인플루언서/제휴 링크 추적 (?ref=CODE) ────────────────
-  // 리다이렉트 없이 쿠키만 설정 (URL 그대로 유지)
+  // 기본: aff_ref 30일. PIPA 대비: AFFILIATE_REF_STRICT_MARKETING_CONSENT=true + ys_marketing_consent 쿠키일 때만 30일.
   const ref = request.nextUrl.searchParams.get('ref');
   if (ref) {
+    const canon = normalizeAffiliateReferralCode(ref);
+    if (looksLikeReferralCode(canon)) {
+      const res = getResponse();
+      setAffiliateRefCookie(res, request, canon, isSecure);
+    }
+  }
+
+  // ── 2-1. 코브랜딩 랜딩 /with/[slug] → 추천 코드 쿠키 (?ref= 과 동일 정책) ──
+  const withMatch = pathname.match(/^\/with\/([^/]+)\/?$/);
+  if (withMatch) {
+    const slug = normalizeAffiliateReferralCode(decodeURIComponent(withMatch[1]));
+    if (looksLikeReferralCode(slug)) {
+      const res = getResponse();
+      setAffiliateRefCookie(res, request, slug, isSecure);
+    }
+  }
+
+  // ── 2-2. 임베드 위젯: iframe 허용 (외부 사이트 게재용) ─────
+  if (pathname.startsWith('/embed/')) {
     const res = getResponse();
-    res.cookies.set('aff_ref', ref, {
-      httpOnly: false,
-      secure: isSecure,
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7일
-      path: '/',
+    // X-Frame-Options 제거 (Next.js 기본값이 SAMEORIGIN 이라 외부 iframe 차단됨)
+    res.headers.delete('X-Frame-Options');
+    res.headers.set('Content-Security-Policy', "frame-ancestors *");
+  }
+
+  // ── 2-3. 개발 전용: 어드민 우회 토글 쿠키 발급/해제 (프로덕션 완전 차단) ──
+  if (isDev && pathname === '/api/debug/dev-admin-login') {
+    const mode = request.nextUrl.searchParams.get('mode') || 'on';
+    const res = NextResponse.json({
+      ok: true,
+      dev_admin_bypass: mode !== 'off',
+      message:
+        mode === 'off'
+          ? 'dev admin bypass disabled'
+          : 'dev admin bypass enabled',
     });
+    if (mode === 'off') {
+      res.cookies.set('ys-dev-admin', '', { path: '/', maxAge: 0 });
+    } else {
+      res.cookies.set('ys-dev-admin', '1', {
+        httpOnly: false,
+        secure: isSecure,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 4 * 60 * 60, // 4h
+      });
+    }
+    return res;
   }
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
-  if (isPublicPath(pathname)) {
+  if (isPublicPath(request)) {
     return response || NextResponse.next();
   }
 
-  // 디자인 미리보기 바이패스 (?preview=1)
-  if (request.nextUrl.searchParams.get('preview') === '1') {
+  // ── 3-1. 개발 전용: 어드민 페이지 + API 우회 쿠키 허용 (프로덕션 완전 차단) ──
+  // Dev에서 ys-dev-admin 쿠키가 있으면 어드민 페이지뿐 아니라 그 페이지가 호출하는 API도 통과시킴
+  // (admin 페이지 클라이언트 fetch가 /api/* 로 가기 때문)
+  if (isDev && request.cookies.get('ys-dev-admin')?.value === '1') {
     return response || NextResponse.next();
+  }
+
+  // ── 3-1. 정산 PDF GET — 라우트에서 어드민 세션 또는 파트너 PIN 헤더로 검증 (비로그인 파트너용)
+  if (request.method === 'GET' && /^\/api\/settlements\/[^/]+\/pdf$/.test(pathname)) {
+    return response || NextResponse.next();
+  }
+
+  // 개발 전용: 세션 진단 API — 인증 전 통과 (응답에 비밀·전체 JWT 미포함)
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (pathname === '/api/debug/auth-session' || pathname === '/api/debug/auth-session-edge')
+  ) {
+    return response || NextResponse.next();
+  }
+
+  // 디자인 미리보기: 프로덕션은 DESIGN_PREVIEW_SECRET 일치 시에만, 개발은 ?preview=1 만으로 허용
+  const previewOn = request.nextUrl.searchParams.get('preview') === '1';
+  if (previewOn) {
+    const secret = getSecret('DESIGN_PREVIEW_SECRET');
+    if (secret && request.nextUrl.searchParams.get('preview_secret') === secret) {
+      return response || NextResponse.next();
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      return response || NextResponse.next();
+    }
   }
 
   // ── 4. 인증 검사 (비공개 경로만) ───────────────────────────
   const token = request.cookies.get('sb-access-token')?.value;
   const refreshToken = request.cookies.get('sb-refresh-token')?.value;
 
-  // access token 이 유효하면 통과
-  if (token && isTokenValid(token)) {
+  if (token && (await accessTokenAllowsRequest(token))) {
     return response || NextResponse.next();
   }
 
-  // access token 이 만료되었더라도 refresh token 이 있으면 통과.
-  // 클라이언트 훅(useAutoRefreshSession) 이 백그라운드로 /api/auth/refresh 를 호출해 갱신한다.
-  // API 라우트 요청이라면 client-side 훅이 동작하지 않으므로 401 을 반환해 재시도 유도.
+  // access 만료 시에도 refresh 가 있으면 페이지는 통과(클라이언트가 /api/auth/refresh 로 갱신)
   if (refreshToken) {
     const isApi = pathname.startsWith('/api/');
     if (!isApi) {
@@ -184,7 +392,8 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 제외)
-    '/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map)).*)',
+    // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 + Next.js 데이터 fetch 제외)
+    // _next/data: 클라이언트 사이드 페이지 이동 시 Next.js가 자동 fetch — 미들웨어 통과 시 Edge Request 2배
+    '/((?!_next/static|_next/data|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map|txt)).*)',
   ],
 };

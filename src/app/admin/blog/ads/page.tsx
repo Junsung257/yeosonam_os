@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Plus, ArrowLeft } from 'lucide-react';
 
 interface Mapping {
   id: string;
@@ -120,32 +123,31 @@ export default function BlogAdsPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[18px] font-bold text-slate-800">블로그 광고 매핑</h1>
-          <p className="text-[12px] text-slate-400 mt-0.5">
-            광고 키워드 × 블로그 랜딩페이지 매핑 + UTM 자동 생성 + DKI 헤드라인
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/admin/blog" className="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-[12px] rounded-lg hover:bg-slate-50">
-            ← 블로그 목록
-          </Link>
-          <button
-            onClick={() => setFormOpen(!formOpen)}
-            className="px-4 py-2 bg-[#001f3f] text-white text-[13px] font-semibold rounded-lg hover:bg-blue-900"
-          >
-            + 매핑 추가
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="블로그 광고 매핑"
+        subtitle="광고 키워드 × 블로그 랜딩페이지 매핑 + UTM 자동 생성 + DKI 헤드라인"
+        actions={
+          <>
+            <Link href="/admin/blog">
+              <Button variant="secondary" size="sm">
+                <ArrowLeft size={14} />
+                블로그 목록
+              </Button>
+            </Link>
+            <Button variant="primary" size="sm" onClick={() => setFormOpen(!formOpen)}>
+              <Plus size={14} />
+              매핑 추가
+            </Button>
+          </>
+        }
+      />
 
       {/* 신규 매핑 폼 */}
       {formOpen && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 space-y-2">
+        <div className="admin-card border-brand/20 p-4 space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <select value={fBlog} onChange={e => setFBlog(e.target.value)} className="px-3 py-2 text-[12px] border rounded">
+            <select value={fBlog} onChange={e => setFBlog(e.target.value)} className="h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
               <option value="">블로그 선택</option>
               {blogs.map(b => (
                 <option key={b.id} value={b.id}>
@@ -153,7 +155,7 @@ export default function BlogAdsPage() {
                 </option>
               ))}
             </select>
-            <select value={fPlatform} onChange={e => setFPlatform(e.target.value)} className="px-3 py-2 text-[12px] border rounded">
+            <select value={fPlatform} onChange={e => setFPlatform(e.target.value)} className="h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
               {PLATFORMS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
             </select>
           </div>
@@ -162,41 +164,41 @@ export default function BlogAdsPage() {
               value={fKeyword}
               onChange={e => setFKeyword(e.target.value)}
               placeholder="광고 키워드 (예: 다낭 패키지)"
-              className="px-3 py-2 text-[12px] border rounded"
+              className="h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
             />
             <input
               value={fCampaignSlug}
               onChange={e => setFCampaignSlug(e.target.value)}
               placeholder="캠페인 슬러그 (선택, 미입력시 자동)"
-              className="px-3 py-2 text-[12px] border rounded"
+              className="h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
             />
           </div>
           <input
             value={fDkiHeadline}
             onChange={e => setFDkiHeadline(e.target.value)}
             placeholder="DKI 헤드라인 (선택) — 이 키워드로 들어오면 H1을 이걸로 교체"
-            className="w-full px-3 py-2 text-[12px] border rounded"
+            className="w-full h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           />
           <input
             value={fDkiSubtitle}
             onChange={e => setFDkiSubtitle(e.target.value)}
             placeholder="DKI 부제 (선택)"
-            className="w-full px-3 py-2 text-[12px] border rounded"
+            className="w-full h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           />
-          <button onClick={createMapping} className="w-full px-4 py-2 bg-indigo-600 text-white text-[13px] rounded font-semibold">
+          <Button variant="primary" onClick={createMapping} className="w-full">
             생성 + UTM URL 자동 발급
-          </button>
+          </Button>
         </div>
       )}
 
       {/* 필터 */}
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
         {['all', ...PLATFORMS.map(p => p.v)].map(v => (
           <button
             key={v}
             onClick={() => setFilterPlatform(v)}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md ${
-              filterPlatform === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+            className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors ${
+              filterPlatform === v ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'
             }`}
           >
             {v === 'all' ? '전체' : PLATFORMS.find(p => p.v === v)?.label || v}
@@ -206,65 +208,65 @@ export default function BlogAdsPage() {
 
       {/* 목록 */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">로딩...</div>
+        <div className="text-center py-12 text-admin-muted text-admin-sm">로딩…</div>
       ) : mappings.length === 0 ? (
-        <div className="text-center py-12 text-slate-400 text-[13px]">
+        <div className="text-center py-12 text-admin-muted text-admin-sm admin-card">
           매핑이 없습니다. "매핑 추가" 버튼으로 광고 키워드를 블로그에 연결하세요.
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <table className="w-full">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+          <table className="admin-data-table">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium w-16">플랫폼</th>
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium">키워드 / 랜딩 블로그</th>
-                <th className="text-left px-3 py-2 text-[11px] text-slate-500 font-medium w-48">DKI 헤드라인</th>
-                <th className="text-right px-3 py-2 text-[11px] text-slate-500 font-medium w-16">클릭</th>
-                <th className="text-right px-3 py-2 text-[11px] text-slate-500 font-medium w-16">전환</th>
-                <th className="text-center px-3 py-2 text-[11px] text-slate-500 font-medium w-20">활성</th>
-                <th className="w-28"></th>
+              <tr>
+                <th style={{ width: 64 }}>플랫폼</th>
+                <th>키워드 / 랜딩 블로그</th>
+                <th style={{ width: 192 }}>DKI 헤드라인</th>
+                <th className="text-right" style={{ width: 64 }}>클릭</th>
+                <th className="text-right" style={{ width: 64 }}>전환</th>
+                <th className="text-center" style={{ width: 80 }}>활성</th>
+                <th style={{ width: 112 }}></th>
               </tr>
             </thead>
             <tbody>
               {mappings.map(m => (
-                <tr key={m.id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-3 py-2.5">
-                    <span className={`px-1.5 py-0.5 text-[10px] rounded font-bold ${PLATFORM_COLOR[m.platform]}`}>
+                <tr key={m.id}>
+                  <td>
+                    <span className={`px-2 py-0.5 text-admin-2xs rounded-admin-xs font-bold ${PLATFORM_COLOR[m.platform]}`}>
                       {PLATFORMS.find(p => p.v === m.platform)?.label || m.platform}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5">
-                    <p className="text-[13px] font-semibold text-slate-800">{m.keyword}</p>
-                    <Link href={`/blog/${m.content_creatives?.slug}`} target="_blank" className="text-[11px] text-blue-600 hover:underline">
+                  <td>
+                    <p className="text-admin-sm font-semibold text-admin-text">{m.keyword}</p>
+                    <Link href={`/blog/${m.content_creatives?.slug}`} target="_blank" className="text-admin-xs text-brand hover:text-brand-dark hover:underline font-mono">
                       /blog/{m.content_creatives?.slug}
                     </Link>
                   </td>
-                  <td className="px-3 py-2.5 text-[11px] text-slate-600">
+                  <td className="text-admin-xs text-admin-muted">
                     {m.dki_headline ? (
-                      <span className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-800 rounded" title={m.dki_headline}>
-                        {m.dki_headline.slice(0, 30)}...
+                      <span className="inline-block px-1.5 py-0.5 bg-status-warningBg text-status-warningFg rounded-admin-xs" title={m.dki_headline}>
+                        {m.dki_headline.slice(0, 30)}…
                       </span>
                     ) : (
-                      <span className="text-slate-300">(기본 타이틀 사용)</span>
+                      <span className="text-admin-muted-2">(기본 타이틀)</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums font-semibold">{m.clicks.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums font-semibold text-emerald-600">{m.conversions.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 text-center">
+                  <td className="text-right text-admin-xs admin-num font-semibold">{m.clicks.toLocaleString()}</td>
+                  <td className="text-right text-admin-xs admin-num font-semibold text-success">{m.conversions.toLocaleString()}</td>
+                  <td className="text-center">
                     <button
                       onClick={() => toggleActive(m.id, m.active)}
-                      className={`px-2 py-0.5 text-[10px] rounded ${
-                        m.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      className={`px-2 py-0.5 text-admin-2xs rounded-admin-xs font-semibold transition-colors ${
+                        m.active ? 'bg-status-successBg text-status-successFg hover:opacity-80' : 'bg-admin-surface-2 text-admin-muted hover:bg-admin-border-mid'
                       }`}
                     >
                       {m.active ? '활성' : '비활성'}
                     </button>
                   </td>
-                  <td className="px-3 py-2.5 text-right space-x-2">
-                    <button onClick={() => copy(m.landing_url)} className="text-[11px] text-blue-600 hover:underline">
+                  <td className="text-right space-x-2">
+                    <button onClick={() => copy(m.landing_url)} className="text-admin-xs text-brand hover:text-brand-dark hover:underline font-medium">
                       URL복사
                     </button>
-                    <button onClick={() => remove(m.id)} className="text-[11px] text-rose-500 hover:underline">
+                    <button onClick={() => remove(m.id)} className="text-admin-xs text-danger hover:underline font-medium">
                       삭제
                     </button>
                   </td>

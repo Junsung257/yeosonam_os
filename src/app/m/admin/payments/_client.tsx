@@ -3,7 +3,7 @@
 import { Virtuoso } from 'react-virtuoso';
 import { useRouter } from 'next/navigation';
 import { MobileCard } from '@/components/admin/mobile/MobileCard';
-import { fmtK } from '@/lib/admin-utils';
+import { fmtK, fmtMonthDay } from '@/lib/admin-utils';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import type { MobilePaymentRow } from './page';
 
@@ -22,7 +22,7 @@ const MATCH_LABELS: Record<string, string> = {
 };
 
 function MatchBadge({ status }: { status: string }) {
-  const cls = MATCH_COLORS[status] ?? 'bg-slate-100 text-slate-600';
+  const cls = MATCH_COLORS[status] ?? 'bg-admin-surface-2 text-admin-muted';
   const label = MATCH_LABELS[status] ?? status;
   return (
     <span
@@ -42,10 +42,7 @@ function relTime(iso: string | null): string {
   if (hr < 24) return `${hr}시간 전`;
   const day = Math.round(hr / 24);
   if (day < 7) return `${day}일 전`;
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    month: 'numeric',
-    day: 'numeric',
-  });
+  return fmtMonthDay(iso); // MM-DD (locale-stable)
 }
 
 export default function PaymentsClient({
@@ -62,7 +59,7 @@ export default function PaymentsClient({
 
   if (rows.length === 0) {
     return (
-      <div className="px-4 py-16 text-center text-sm text-slate-400">
+      <div className="px-4 py-16 text-center text-sm text-admin-muted-2">
         표시할 입금 내역이 없습니다.
       </div>
     );

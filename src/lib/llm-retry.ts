@@ -101,11 +101,112 @@ function defaultShouldRetry(err: unknown): boolean {
 }
 
 /**
- * 여러 LLM 응답을 정리하는 헬퍼 — ```json``` 마크다운 / 앞뒤 공백 제거
+ * LLM 응답에서 JSON 본체를 안전하게 추출. 2026-05-10 BAML SAP 패턴 흡수.
+ *
+ * 처리 가능한 케이스:
+ *   1) `\`\`\`json\n{...}\n\`\`\`` — 코드펜스 (구버전 기능)
+ *   2) `여기 결과입니다: {...}` — 앞에 설명문
+ *   3) `{...} 위와 같습니다.` — 뒤에 설명문
+ *   4) `{"code": "\`\`\`python\\n...\`\`\`"}` — JSON 값 안에 코드펜스 임베드 (string 인식)
+ *   5) `{"a": "with \\"escaped\\" quotes"}` — 이스케이프된 따옴표
+ *   6) `[{"a":1},{"b":2}` (응답 잘림) — 누락된 close brace 복구 시도
+ *   7) `{"a": "unfinished` — 닫히지 않은 string 복구 시도
+ *
+ * 정상 JSON 입력은 그대로 반환 (하위호환).
  */
 export function stripMarkdownJson(raw: string): string {
-  return raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
+  if (!raw) return raw;
+
+  // 1) 코드펜스 제거 (앞·뒤 모두)
+  const s = raw
+    .replace(/^[\s﻿]*```(?:json)?\s*/i, '')
+    .replace(/\s*```[\s﻿]*$/i, '')
     .trim();
+
+  // 2) 첫 '{' 또는 '[' 위치 찾기 — 그 앞 prose 무시
+  const startIdx = findJsonStart(s);
+  if (startIdx === -1) return s; // JSON 시작점 못 찾으면 원본 반환
+
+  // 3) string-aware brace/bracket 균형 추적
+  const endIdx = findJsonEnd(s, startIdx);
+  if (endIdx !== -1) {
+    return s.slice(startIdx, endIdx + 1);
+  }
+
+  // 4) 균형 안 맞음(잘림 의심) → 최소 복구 시도
+  return repairTruncatedJson(s.slice(startIdx));
+}
+
+function findJsonStart(s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '{' || c === '[') return i;
+  }
+  return -1;
+}
+
+/**
+ * string 인식 brace 매칭. start 위치의 여는 괄호({ 또는 [)에 짝이 맞는 닫는 괄호 위치 반환.
+ * 균형 안 맞으면 -1.
+ */
+function findJsonEnd(s: string, start: number): number {
+  const open = s[start];
+  if (open !== '{' && open !== '[') return -1;
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (inString) {
+      if (c === '\\') { escapeNext = true; continue; }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === open) depth++;
+    else if (c === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 잘린 JSON 복구 — string 안 잘림 / trailing comma / 누락 close brace 처리.
+ * 완벽한 복구는 불가능 — 호출부의 JSON.parse 가 여전히 실패할 수 있고
+ * 그 경우 `callWithZodValidation` 재시도 루프가 잡는다.
+ */
+function repairTruncatedJson(s: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (inString) {
+      if (c === '\\') { escapeNext = true; continue; }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === '{') stack.push('}');
+    else if (c === '[') stack.push(']');
+    else if (c === '}' || c === ']') stack.pop();
+  }
+
+  let repaired = s;
+  // 닫히지 않은 string 종료
+  if (inString) repaired += '"';
+  // trailing comma/공백 제거 (배열·객체 마지막 원소 잘림 대응)
+  repaired = repaired.replace(/[,\s]+$/, '');
+  // 부족한 닫는 괄호 보충 (LIFO 순서)
+  while (stack.length > 0) {
+    repaired += stack.pop();
+  }
+  return repaired;
 }

@@ -10,7 +10,7 @@ interface Props {
 }
 
 const MODE_STYLES = {
-  air:   { icon: '✈️', accent: '#340897', textColor: '#340897' },
+  air:   { icon: '✈️', accent: '#3182F6', textColor: '#3182F6' },
   ship:  { icon: '🚢', accent: '#0e7490', textColor: '#0e7490' },
   train: { icon: '🚄', accent: '#b45309', textColor: '#b45309' },
 } as const;

@@ -95,7 +95,7 @@ export default function SlideCanvas({
                 suppressContentEditableWarning
                 onBlur={e => onUpdateHeadline?.(e.currentTarget.innerText || '')}
                 className={`font-bold leading-tight outline-none focus:bg-yellow-50/20 rounded ${
-                  slide.overlay_style === 'light' ? 'text-[#001f3f]' : 'text-white'
+                  slide.overlay_style === 'light' ? 'text-admin-text' : 'text-white'
                 } text-2xl mb-3`}
               >
                 {slide.headline}
@@ -105,8 +105,8 @@ export default function SlideCanvas({
                 suppressContentEditableWarning
                 onBlur={e => onUpdateBody?.(e.currentTarget.innerText || '')}
                 className={`leading-relaxed outline-none focus:bg-yellow-50/20 rounded ${
-                  slide.overlay_style === 'light' ? 'text-slate-700' : 'text-white/90'
-                } text-[14px]`}
+                  slide.overlay_style === 'light' ? 'text-admin-text-2' : 'text-white/90'
+                } text-admin-base`}
               >
                 {slide.body}
               </p>
@@ -114,12 +114,12 @@ export default function SlideCanvas({
           ) : (
             <>
               <p className={`font-bold leading-tight ${
-                slide.overlay_style === 'light' ? 'text-[#001f3f]' : 'text-white'
+                slide.overlay_style === 'light' ? 'text-admin-text' : 'text-white'
               } text-[7px] mb-0.5 line-clamp-2`}>
                 {slide.headline}
               </p>
               <p className={`${
-                slide.overlay_style === 'light' ? 'text-slate-600' : 'text-white/80'
+                slide.overlay_style === 'light' ? 'text-admin-muted' : 'text-white/80'
               } text-[5px] line-clamp-2`}>
                 {slide.body}
               </p>
@@ -130,7 +130,7 @@ export default function SlideCanvas({
         {/* 하단: 브랜딩 */}
         <div>
           <span className={`${
-            slide.overlay_style === 'light' ? 'text-slate-400' : 'text-white/40'
+            slide.overlay_style === 'light' ? 'text-admin-muted-2' : 'text-white/40'
           } ${isPreview ? 'text-[4px]' : 'text-[9px]'}`}>
             yeosonam.co.kr
           </span>

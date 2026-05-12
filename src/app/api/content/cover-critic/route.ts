@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { critiqueCover } from '@/lib/content-pipeline/agents/cover-critic';
 import { applyCritiqueToCover } from '@/lib/content-pipeline/apply-critique';
+import { logError } from '@/lib/sentry-logger';
 import type { SlideV2 } from '@/lib/card-news/v2/types';
 
 export const runtime = 'nodejs';
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (cn.package_id) {
       const { data: pkg } = await supabaseAdmin
         .from('travel_packages')
-        .select('title, destination, price, product_highlights')
+        .select('title, destination, price, nights, product_highlights')
         .eq('id', cn.package_id)
         .single();
       if (pkg) {
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest) {
           title: p.title as string,
           destination: p.destination as string | undefined,
           price: p.price as number | undefined,
+          nights: p.nights as number | undefined,
           key_selling_points: p.product_highlights as string[] | undefined,
         };
       }
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[cover-critic] 실패:', msg);
+    logError('[api/content/cover-critic] critique generation failed', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

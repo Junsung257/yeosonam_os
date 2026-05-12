@@ -7,6 +7,7 @@ import {
   type KeywordPerformance,
 } from '@/lib/supabase';
 import { calcRoas, classifyKeywordStatus } from '@/lib/ad-controller';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 // ── Mock 데이터 ───────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ function buildKeywordTable(keywords: KeywordPerformance[]) {
  *   ad_accounts: 플랫폼별 잔액 현황 + low_balance 경고 플래그
  *   keywords: { revenue_generating[], spending_only[], insufficient_data[], all[] }
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+const getDashboard = async (request: NextRequest): Promise<NextResponse> => {
   const { searchParams } = request.nextUrl;
   const dateParam     = searchParams.get('date');
   const platformParam = searchParams.get('platform') ?? undefined;
@@ -173,4 +174,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       active_filter: filterParam,
     },
   });
-}
+};
+
+export const GET = withAdminGuard(getDashboard);

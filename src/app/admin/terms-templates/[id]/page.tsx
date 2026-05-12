@@ -41,7 +41,7 @@ const ALL_TYPES = ['RESERVATION', 'PAYMENT', 'PASSPORT', 'LIABILITY', 'COMPLAINT
 const ALL_SURFACES: NoticeSurface[] = ['a4', 'mobile', 'booking_guide'];
 const ALL_SEVERITIES: NoticeSeverity[] = ['critical', 'standard', 'info'];
 
-export default function TermsTemplateEditPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TermsTemplateEditPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -61,7 +61,10 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
   });
 
   useEffect(() => {
-    params.then(({ id: pathId }) => {
+    // Next.js 14: params is plain object; 15+: Promise. Defensively support both.
+    const isPromise = params && typeof (params as { then?: unknown }).then === 'function';
+    const resolve = isPromise ? (params as Promise<{ id: string }>) : Promise.resolve(params as { id: string });
+    resolve.then(({ id: pathId }) => {
       setId(pathId);
       setIsNew(pathId === 'new');
     });
@@ -159,14 +162,26 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
     if (res.ok) { alert('비활성화 완료'); router.push('/admin/terms-templates'); }
   };
 
-  if (loading) return <div className="p-6 text-slate-400">로딩 중...</div>;
+  if (loading) return (
+    <div className="p-6 space-y-4 max-w-5xl mx-auto">
+      <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
+      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="space-y-1.5">
+            <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24" />
+            <div className="h-9 bg-admin-bg rounded-lg animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/admin/terms-templates" className="text-sm text-slate-500 hover:underline">← 목록</Link>
-          <h1 className="text-2xl font-extrabold text-slate-900 mt-1">
+          <Link href="/admin/terms-templates" className="text-sm text-admin-muted hover:underline">← 목록</Link>
+          <h1 className="text-2xl font-extrabold text-admin-text mt-1">
             {isNew ? '새 약관 템플릿' : '약관 템플릿 수정'}
           </h1>
         </div>
@@ -187,25 +202,25 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
       </div>
 
       {/* 기본 정보 */}
-      <section className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">기본 정보</h2>
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+        <h2 className="text-sm font-bold text-admin-text">기본 정보</h2>
         <div>
-          <label className="text-xs font-bold text-slate-600">이름 *</label>
+          <label className="text-xs font-bold text-admin-muted">이름 *</label>
           <input
             type="text"
             value={tpl.name}
             onChange={e => updateField('name', e.target.value)}
             placeholder="예: 랜드부산 골프 전용 약관"
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+            className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
           />
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-xs font-bold text-slate-600">Tier *</label>
+            <label className="text-xs font-bold text-admin-muted">Tier *</label>
             <select
               value={tpl.tier}
               onChange={e => handleTierChange(Number(e.target.value) as 1 | 2 | 3)}
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
             >
               <option value={1}>T1 플랫폼</option>
               <option value={2}>T2 랜드사 공통</option>
@@ -213,20 +228,20 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
             </select>
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-600">Priority</label>
+            <label className="text-xs font-bold text-admin-muted">Priority</label>
             <input
               type="number"
               value={tpl.priority}
               onChange={e => updateField('priority', Number(e.target.value))}
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-600">활성</label>
+            <label className="text-xs font-bold text-admin-muted">활성</label>
             <select
               value={tpl.is_active ? 'true' : 'false'}
               onChange={e => updateField('is_active', e.target.value === 'true')}
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
             >
               <option value="true">활성</option>
               <option value="false">비활성</option>
@@ -234,30 +249,30 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
           </div>
         </div>
         <div>
-          <label className="text-xs font-bold text-slate-600">메모</label>
+          <label className="text-xs font-bold text-admin-muted">메모</label>
           <input
             type="text"
             value={tpl.notes ?? ''}
             onChange={e => updateField('notes', e.target.value || null)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+            className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
             placeholder="용도·주의사항 메모"
           />
         </div>
       </section>
 
       {/* Scope */}
-      <section className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">Scope (적용 조건)</h2>
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+        <h2 className="text-sm font-bold text-admin-text">Scope (적용 조건)</h2>
         {tpl.tier === 1 && (
-          <p className="text-xs text-slate-500">Tier 1 은 모든 상품에 적용됩니다 ({`{"all": true}`}).</p>
+          <p className="text-xs text-admin-muted">Tier 1 은 모든 상품에 적용됩니다 ({`{"all": true}`}).</p>
         )}
         {(tpl.tier === 2 || tpl.tier === 3) && (
           <div>
-            <label className="text-xs font-bold text-slate-600">랜드사 *</label>
+            <label className="text-xs font-bold text-admin-muted">랜드사 *</label>
             <select
               value={(tpl.scope.land_operator_id ?? '') as string}
               onChange={e => updateScope('land_operator_id', e.target.value)}
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
             >
               <option value="">선택하세요</option>
               {operators.map(op => (
@@ -268,7 +283,7 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
         )}
         {tpl.tier === 3 && (
           <div>
-            <label className="text-xs font-bold text-slate-600">상품타입 키워드 * (쉼표로 구분, 예: 전세기, 골프, 하드블록)</label>
+            <label className="text-xs font-bold text-admin-muted">상품타입 키워드 * (쉼표로 구분, 예: 전세기, 골프, 하드블록)</label>
             <input
               type="text"
               value={(tpl.scope.product_type_keywords ?? []).join(', ')}
@@ -276,10 +291,10 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
                 'product_type_keywords',
                 e.target.value.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean),
               )}
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
               placeholder="전세기, 골프"
             />
-            <p className="text-[10px] text-slate-500 mt-1">
+            <p className="text-[10px] text-admin-muted mt-1">
               상품의 product_type 필드를 `|,/공백` 으로 토큰화하여 이 키워드와 매칭. 하나라도 일치하면 적용.
             </p>
           </div>
@@ -287,30 +302,30 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
       </section>
 
       {/* Notices */}
-      <section className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-900">Notice 블록 ({tpl.notices.length}개)</h2>
+          <h2 className="text-sm font-bold text-admin-text">Notice 블록 ({tpl.notices.length}개)</h2>
           <button
             onClick={addNotice}
-            className="text-xs px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold"
+            className="text-xs px-3 py-1 bg-admin-surface-2 hover:bg-slate-200 rounded font-bold"
           >
             + 블록 추가
           </button>
         </div>
         {tpl.notices.map((notice, idx) => (
-          <div key={idx} className="border border-slate-200 rounded p-3 space-y-2 bg-slate-50">
+          <div key={idx} className="border border-admin-border-mid rounded p-3 space-y-2 bg-admin-bg">
             <div className="grid grid-cols-3 gap-2">
               <select
                 value={notice.type}
                 onChange={e => updateNotice(idx, { type: e.target.value })}
-                className="border border-slate-300 rounded px-2 py-1 text-xs"
+                className="border border-admin-border-strong rounded px-2 py-1 text-xs"
               >
                 {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               <select
                 value={notice.severity ?? 'standard'}
                 onChange={e => updateNotice(idx, { severity: e.target.value as NoticeSeverity })}
-                className="border border-slate-300 rounded px-2 py-1 text-xs"
+                className="border border-admin-border-strong rounded px-2 py-1 text-xs"
               >
                 {ALL_SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -326,17 +341,17 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
               value={notice.title}
               onChange={e => updateNotice(idx, { title: e.target.value })}
               placeholder="제목 (예: 📋 예약 및 취소 규정)"
-              className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+              className="w-full border border-admin-border-strong rounded px-2 py-1 text-sm"
             />
             <textarea
               value={notice.text}
               onChange={e => updateNotice(idx, { text: e.target.value })}
               placeholder="본문 (불렛: • 항목1\n• 항목2)"
               rows={4}
-              className="w-full border border-slate-300 rounded px-2 py-1 text-xs font-mono"
+              className="w-full border border-admin-border-strong rounded px-2 py-1 text-xs font-mono"
             />
             <div className="flex items-center gap-3 text-xs">
-              <span className="font-bold text-slate-600">노출 surface:</span>
+              <span className="font-bold text-admin-muted">노출 surface:</span>
               {ALL_SURFACES.map(s => (
                 <label key={s} className="flex items-center gap-1">
                   <input
@@ -357,7 +372,7 @@ export default function TermsTemplateEditPage({ params }: { params: Promise<{ id
           </div>
         ))}
         {tpl.notices.length === 0 && (
-          <p className="text-xs text-slate-400 italic">블록이 없습니다. 상단 [+ 블록 추가] 버튼을 눌러 추가하세요.</p>
+          <p className="text-xs text-admin-muted-2 italic">블록이 없습니다. 상단 [+ 블록 추가] 버튼을 눌러 추가하세요.</p>
         )}
       </section>
 

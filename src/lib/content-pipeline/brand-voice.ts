@@ -15,6 +15,9 @@ interface VoiceSample {
   content: string;
   performance_score?: number;
   captured_at?: string;
+  hook_type?: string;                  // PR-4: hook_type별 분류 + retrieval
+  design_archetype_id?: string;        // PR-4: archetype 매칭
+  palette_category?: string;           // PR-4
 }
 
 interface BrandKit {
@@ -24,11 +27,14 @@ interface BrandKit {
 
 /**
  * brand_kits 에서 voice_guide + platform 일치하는 voice_samples 추출 → prompt block.
+ *
+ * PR-4: hookType 지정 시 동일 hook_type 샘플 우선 retrieval.
  */
 export async function getBrandVoiceBlock(
   brandCode: string,
   platform: string,
   maxSamples: number = 2,
+  options?: { hookType?: string; paletteCategory?: string },
 ): Promise<string> {
   if (!isSupabaseConfigured) return '';
 
@@ -50,24 +56,37 @@ export async function getBrandVoiceBlock(
     }
 
     if (kit.voice_samples && Array.isArray(kit.voice_samples) && kit.voice_samples.length > 0) {
-      // platform 일치하는 샘플 우선, 없으면 전체 중 performance_score 상위
-      const relevantSamples = kit.voice_samples
-        .filter((s) => s.platform === platform)
-        .sort((a, b) => (b.performance_score ?? 0) - (a.performance_score ?? 0))
-        .slice(0, maxSamples);
+      const all = kit.voice_samples;
+      const byScore = (a: VoiceSample, b: VoiceSample) =>
+        (b.performance_score ?? 0) - (a.performance_score ?? 0);
 
-      const fallbackSamples = relevantSamples.length < maxSamples
-        ? kit.voice_samples
-          .filter((s) => s.platform !== platform)
-          .sort((a, b) => (b.performance_score ?? 0) - (a.performance_score ?? 0))
-          .slice(0, maxSamples - relevantSamples.length)
+      // 우선순위: (1) platform + hook_type 동일 → (2) platform 동일 → (3) hook_type 동일 → (4) 나머지
+      // 다양성을 위해 hook_type 동일 N개 + 나머지 hook_type 1개 섞음
+      const samePlatformSameHook = options?.hookType
+        ? all.filter((s) => s.platform === platform && s.hook_type === options.hookType).sort(byScore)
         : [];
+      const samePlatform = all.filter((s) => s.platform === platform &&
+        (!options?.hookType || s.hook_type !== options.hookType)).sort(byScore);
+      const sameHookOther = options?.hookType
+        ? all.filter((s) => s.platform !== platform && s.hook_type === options.hookType).sort(byScore)
+        : [];
+      const others = all.filter((s) => s.platform !== platform &&
+        (!options?.hookType || s.hook_type !== options.hookType)).sort(byScore);
 
-      const combined = [...relevantSamples, ...fallbackSamples];
+      const ordered = [...samePlatformSameHook, ...samePlatform, ...sameHookOther, ...others];
+      const combined = ordered.slice(0, maxSamples);
 
       if (combined.length > 0) {
         const samplesBlock = combined
-          .map((s, i) => `### 샘플 ${i + 1} [${s.platform}] ${s.performance_score ? `(성과 ${s.performance_score})` : ''}\n${s.content}`)
+          .map((s, i) => {
+            const tags = [
+              s.platform,
+              s.hook_type ? `hook=${s.hook_type}` : '',
+              s.palette_category ? `palette=${s.palette_category}` : '',
+              s.performance_score ? `성과 ${s.performance_score}` : '',
+            ].filter(Boolean).join(' · ');
+            return `### 샘플 ${i + 1} [${tags}]\n${s.content}`;
+          })
           .join('\n\n');
         blocks.push(`## 브랜드 톤 샘플 (위 가이드에 정렬해 작성)\n${samplesBlock}`);
       }

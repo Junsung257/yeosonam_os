@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { classifySearchIntent, intentPriorityDelta } from '@/lib/blog-search-intent';
+import { computeSeasonalTargetPublishAt } from '@/lib/blog-season-publish';
+
+/** 서버에서 자기 호스트 크론 URL 호출 시 CRON_SECRET 전달 (프로덕션에서 발행자·트렌드 마이너 401 방지) */
+async function fetchCronEndpoint(path: string): Promise<Response> {
+  const base = (process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const headers: Record<string, string> = {};
+  const secret = getSecret('CRON_SECRET');
+  if (secret) headers.Authorization = `Bearer ${secret}`;
+  return fetch(`${base}${path}`, { headers });
+}
 
 /**
  * 블로그 자동 발행 큐 관리 API
@@ -60,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'run_publisher') {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/blog-publisher`);
+      const res = await fetchCronEndpoint('/api/cron/blog-publisher');
       const data = await res.json();
       return NextResponse.json({ triggered: 'publisher', result: data });
     }
@@ -69,6 +81,12 @@ export async function POST(request: NextRequest) {
       const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/blog-lifecycle`);
       const data = await res.json();
       return NextResponse.json({ triggered: 'lifecycle', result: data });
+    }
+
+    if (action === 'run_trend_miner') {
+      const res = await fetchCronEndpoint('/api/cron/trend-topic-miner');
+      const data = await res.json();
+      return NextResponse.json({ triggered: 'trend_miner', result: data });
     }
 
     // 카드뉴스로부터 블로그 큐에 투입 (linked_blog_id 없는 CONFIRMED 카드뉴스만)
@@ -111,17 +129,29 @@ export async function POST(request: NextRequest) {
 
     // 수동 토픽 추가
     if (action === 'add_topic') {
-      const { topic, destination, angle_type, category, target_publish_at, priority } = body;
+      const { topic, destination, angle_type, category, target_publish_at, priority, seasonal_month } = body;
       if (!topic) return NextResponse.json({ error: 'topic 필수' }, { status: 400 });
+
+      // 검색 의도 분류 → 우선순위 보정 (informational +5, commercial -2)
+      const intent = classifySearchIntent(topic + (destination ?? ''));
+      const basePriority = typeof priority === 'number' ? priority : 90;
+      const effectivePriority = Math.max(1, Math.min(100, basePriority + intentPriorityDelta(intent)));
+
+      // 시즌성 목표 발행 시각 (seasonal_month 있으면 D-60 계산, 없으면 수동 입력값 또는 null)
+      const resolvedPublishAt =
+        target_publish_at ??
+        computeSeasonalTargetPublishAt(seasonal_month) ??
+        null;
 
       const { data, error } = await supabaseAdmin.from('blog_topic_queue').insert({
         topic,
         source: 'user_seed',
-        priority: priority ?? 90,
+        priority: effectivePriority,
         destination: destination ?? null,
         angle_type: angle_type ?? null,
         category: category ?? null,
-        target_publish_at: target_publish_at ?? null,
+        target_publish_at: resolvedPublishAt,
+        search_intent: intent,
       }).select();
       if (error) throw error;
       return NextResponse.json({ item: data?.[0] });

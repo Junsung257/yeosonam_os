@@ -105,3 +105,91 @@ export function truncateBody(text: string, max: number = 50): string {
   if (!text) return '';
   return text.length <= max ? text : text.slice(0, max - 1) + '…';
 }
+
+/**
+ * Category-based palette suggestion (Annals of Tourism Research 2021 검증 기반)
+ *   - nature/scenic/architecture → blue 우세
+ *   - food/street/ambience       → warm red/orange
+ *   - data/info/listicle         → navy + 강한 contrast
+ *   - premium/luxury             → gold + black
+ *   - default                    → editorial neutrals
+ *
+ * 카테고리·키워드 추론은 caller (structure-designer, copywriter) 에서 1순위 카테고리 1개만 넘길 것.
+ */
+export type PaletteCategory =
+  | 'nature'
+  | 'architecture'
+  | 'food'
+  | 'street'
+  | 'data_story'
+  | 'premium'
+  | 'urgency'
+  | 'default';
+
+export function getPaletteForCategory(cat: PaletteCategory): {
+  primary: string;
+  accent: string;
+  bg: string;
+  rationale: string;
+} {
+  switch (cat) {
+    case 'nature':
+    case 'architecture':
+      return { primary: BRAND_COLORS.navy, accent: BRAND_COLORS.blue, bg: BRAND_COLORS.softBg, rationale: 'blue dominant lifts engagement for nature/scenery (Annals of Tourism Research 2021)' };
+    case 'food':
+    case 'street':
+      return { primary: BRAND_COLORS.orange, accent: BRAND_COLORS.red, bg: BRAND_COLORS.softBg, rationale: 'warm red/orange wins for street food + ambience' };
+    case 'data_story':
+      return { primary: BRAND_COLORS.navy, accent: BRAND_COLORS.red, bg: BRAND_COLORS.white, rationale: 'high contrast helps numeric callouts read in feed' };
+    case 'premium':
+      return { primary: BRAND_COLORS.black, accent: BRAND_COLORS.gold, bg: BRAND_COLORS.black, rationale: 'gold + black for honeymoon/luxury' };
+    case 'urgency':
+      return { primary: BRAND_COLORS.red, accent: BRAND_COLORS.navy, bg: BRAND_COLORS.white, rationale: 'red urgency for D-N / 선착순' };
+    case 'default':
+    default:
+      return { primary: BRAND_COLORS.navy, accent: BRAND_COLORS.blue, bg: BRAND_COLORS.softBg, rationale: 'editorial neutrals' };
+  }
+}
+
+/** carousel slide count sweet spot (Hootsuite/postnitro 2026) */
+export const CAROUSEL_SWEET_SPOT_MIN = 7;
+export const CAROUSEL_SWEET_SPOT_MAX = 10;
+
+/**
+ * Engagement-bait blacklist — Meta 2024-10 페널티 대상.
+ * Threads/IG 발행 직전 검사. 매칭 시 거부 또는 자동 재생성.
+ */
+export const ENGAGEMENT_BAIT_PATTERNS: RegExp[] = [
+  /follow\s+for\s+more/i,
+  /tag\s+\d+\s+friends?/i,
+  /친구\s*소환/,
+  /팔로우\s*해주세요/,
+  /쉐어\s*해주세요/,
+  /좋아요\s*눌러주세요/,
+  /공유\s*해주세요/,
+  /100%\s*후회\s*안/,
+  /무조건\s*가야/,
+  /절대\s*후회\s*없/,
+];
+
+export function detectEngagementBait(text: string): string | null {
+  for (const pat of ENGAGEMENT_BAIT_PATTERNS) {
+    if (pat.test(text)) return pat.source;
+  }
+  return null;
+}
+
+/**
+ * Threads hook 단어 수 검증 (Berman 10K hook analysis 2025).
+ *   - sweet spot 10~20 words
+ *   - 20 단어 초과 시 단어당 ~3% 성능 감소
+ */
+export function countWordsForThreadsHook(text: string): number {
+  // Korean: 어절(공백 분리). Mixed: 공백 단위로 동일 처리.
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export const THREADS_HOOK_MIN_WORDS = 6;
+export const THREADS_HOOK_MAX_WORDS = 20;
+export const THREADS_HOOK_SWEET_SPOT_MIN = 10;
+export const THREADS_HOOK_SWEET_SPOT_MAX = 20;

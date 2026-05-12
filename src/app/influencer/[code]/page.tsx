@@ -25,6 +25,23 @@ interface Booking {
   created_at: string;
 }
 
+interface ContentItem {
+  id: string;
+  product_id: string;
+  platform: string;
+  status: string;
+  generation_agent?: string;
+  created_at: string;
+  published_at?: string | null;
+}
+
+interface ContentRevenue {
+  content_id: string;
+  bookings: number;
+  revenue: number;
+  commission: number;
+}
+
 interface DashboardData {
   affiliate: {
     id: string; name: string; referral_code: string;
@@ -36,8 +53,39 @@ interface DashboardData {
     total_links: number; total_clicks: number;
     total_conversions: number; conversion_rate: string;
   };
+  funnel_30d?: {
+    clicks: number;
+    bookings: number;
+    settlements_krw: number;
+    click_to_booking_rate: number;
+  };
+  tier_progress?: {
+    current_tier: number;
+    current_label: string;
+    current_booking_count: number;
+    current_step: number;
+    next_step: number;
+    progress_pct: number;
+  };
+  reward_events?: Array<{
+    id: string;
+    event_type: string;
+    points: number;
+    reward_amount?: number | null;
+    created_at: string;
+  }>;
+  sub_id_stats?: Array<{
+    sub_id: string;
+    clicks_30d: number;
+    unique_sessions_30d: number;
+    touched_packages_30d: number;
+  }>;
   settlements: Settlement[];
   recent_bookings: Booking[];
+  contents?: ContentItem[];
+  content_revenue?: ContentRevenue[];
+  co_brand?: { path: string; full_url: string; landing_views_30d: number };
+  attribution_notice?: string;
 }
 
 // ── 등급 진행률 계산 ──
@@ -52,39 +100,92 @@ function getGradeProgress(grade: number, bookingCount: number) {
 export default function InfluencerDashboard() {
   const params = useParams();
   const code = params.code as string;
-  const { affiliate: authAffiliate, authenticated, setAuth } = useInfluencerAuth();
+  const { affiliate: authAffiliate, authenticated, setAuth, clearAuth } = useInfluencerAuth();
 
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [settlementPdfErr, setSettlementPdfErr] = useState('');
+  const [coBrandCopied, setCoBrandCopied] = useState(false);
 
   const fetchDashboard = useCallback(async (withPin?: string) => {
     setLoading(true);
     setPinError('');
+    let pinToSend = withPin;
+    if (pinToSend === undefined && typeof window !== 'undefined') {
+      try {
+        pinToSend = sessionStorage.getItem(`inf_pin_${code}`) ?? undefined;
+      } catch {
+        pinToSend = undefined;
+      }
+    }
     try {
       const res = await fetch('/api/influencer/dashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referral_code: code, pin: withPin || undefined }),
+        body: JSON.stringify({ referral_code: code, pin: pinToSend }),
       });
       const json = await res.json();
 
       if (!res.ok) {
+        if (res.status === 401) clearAuth();
         setPinError(json.error || '인증 실패');
         return;
       }
 
       setData(json);
-      if (withPin && json.affiliate) {
+      if (json.affiliate) {
         setAuth(json.affiliate);
+        if (pinToSend) {
+          try {
+            sessionStorage.setItem(`inf_pin_${code}`, pinToSend);
+          } catch {
+            /* ignore */
+          }
+        }
       }
     } catch {
       setPinError('서버 연결 실패');
     } finally {
       setLoading(false);
     }
-  }, [code, setAuth]);
+  }, [code, setAuth, clearAuth]);
+
+  const openSettlementPdf = useCallback(
+    async (settlementId: string, referralCode: string) => {
+      setSettlementPdfErr('');
+      const storedPin = (() => {
+        try {
+          return sessionStorage.getItem(`inf_pin_${referralCode}`) || pin || '';
+        } catch {
+          return pin || '';
+        }
+      })();
+      try {
+        const res = await fetch(`/api/settlements/${settlementId}/pdf`, {
+          headers: {
+            'x-referral-code': referralCode,
+            'x-pin': storedPin.replace(/\D/g, '').slice(0, 4),
+          },
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setSettlementPdfErr((j as { error?: string }).error || `열기 실패 (${res.status})`);
+          return;
+        }
+        const html = await res.text();
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!w) setSettlementPdfErr('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
+        else setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } catch {
+        setSettlementPdfErr('네트워크 오류');
+      }
+    },
+    [pin],
+  );
 
   // 인증 완료 상태면 자동 로드
   useEffect(() => {
@@ -149,8 +250,24 @@ export default function InfluencerDashboard() {
     );
   }
 
-  const { affiliate: aff, stats, settlements, recent_bookings } = data;
-  const progress = getGradeProgress(aff.grade, aff.booking_count);
+  const { affiliate: aff, stats, settlements, recent_bookings, contents, content_revenue, co_brand, attribution_notice } = data;
+  const PLATFORM_ICON: Record<string, string> = {
+    blog_body: '📝',
+    instagram_caption: '📷',
+    threads_post: '🧵',
+    meta_ads: '📣',
+    naver_blog: '🟢',
+  };
+  const PLATFORM_LABEL: Record<string, string> = {
+    blog_body: '블로그',
+    instagram_caption: '인스타',
+    threads_post: '스레드',
+    meta_ads: 'Meta',
+    naver_blog: '네이버',
+  };
+  const totalContentRevenue = (content_revenue || []).reduce((s, c) => s + (c.revenue || 0), 0);
+  const totalContentBookings = (content_revenue || []).reduce((s, c) => s + (c.bookings || 0), 0);
+  const progress = data.tier_progress?.progress_pct ?? getGradeProgress(aff.grade, aff.booking_count);
 
   const STATUS_MAP: Record<string, { label: string; color: string }> = {
     PENDING: { label: '이월', color: 'bg-yellow-100 text-yellow-700' },
@@ -158,6 +275,7 @@ export default function InfluencerDashboard() {
     HOLD: { label: '보류', color: 'bg-orange-100 text-orange-700' },
     COMPLETED: { label: '지급완료', color: 'bg-green-100 text-green-700' },
     VOID: { label: '무효', color: 'bg-gray-100 text-gray-500' },
+    CANCELLED: { label: '취소', color: 'bg-gray-100 text-gray-500' },
   };
 
   // 누적 이월 잔액 계산
@@ -170,6 +288,56 @@ export default function InfluencerDashboard() {
 
   return (
     <div className="space-y-6">
+      {attribution_notice && (
+        <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 leading-relaxed">
+          {attribution_notice}
+        </p>
+      )}
+
+      {/* 코브랜딩 랜딩 링크 (바이오용) */}
+      {co_brand && (
+        <div className="bg-gradient-to-r from-emerald-900 to-teal-900 rounded-xl p-5 text-white shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-lg">내 전용 랜딩</h2>
+              <p className="text-xs text-emerald-100 mt-1">SNS 프로필에 걸기 좋은 주소 · 최근 30일 방문 {co_brand.landing_views_30d}회</p>
+              <p className="text-[11px] font-mono mt-2 break-all opacity-90">{co_brand.full_url || co_brand.path}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const t = co_brand.full_url || (typeof window !== 'undefined' ? `${window.location.origin}${co_brand.path}` : co_brand.path);
+                  void navigator.clipboard.writeText(t).then(() => {
+                    setCoBrandCopied(true);
+                    window.setTimeout(() => setCoBrandCopied(false), 2500);
+                  }).catch(() => {});
+                }}
+                className="px-3 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium border border-white/30"
+              >
+                {coBrandCopied ? '복사됨 ✓' : 'URL 복사'}
+              </button>
+              <a
+                href={co_brand.full_url || co_brand.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 bg-white text-emerald-900 rounded-lg text-sm font-bold hover:bg-emerald-50"
+              >
+                미리보기
+              </a>
+              <a
+                href="/legal/partner-attribution"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 text-sm text-emerald-100 underline hover:text-white"
+              >
+                추적 안내
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── KPI 카드 4개 ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard label="총 예약 건수" value={`${aff.booking_count}건`} icon="📦" sub={`커미션율 ${aff.grade_rate}`} />
@@ -177,6 +345,30 @@ export default function InfluencerDashboard() {
         <KPICard label="생성 링크" value={`${stats.total_links}개`} icon="🔗" sub={`클릭 ${stats.total_clicks}회`} />
         <KPICard label="전환율" value={stats.conversion_rate} icon="📈" sub={`전환 ${stats.total_conversions}건`} />
       </div>
+
+      {/* ── 30일 퍼널 ── */}
+      {data.funnel_30d && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <h2 className="font-bold text-gray-900 mb-3">최근 30일 퍼널 (클릭 → 예약 → 정산)</h2>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-lg bg-gray-50 py-3">
+              <p className="text-xs text-gray-500">클릭</p>
+              <p className="text-lg font-bold text-gray-900">{data.funnel_30d.clicks.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 py-3">
+              <p className="text-xs text-gray-500">예약</p>
+              <p className="text-lg font-bold text-gray-900">{data.funnel_30d.bookings.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 py-3">
+              <p className="text-xs text-gray-500">정산액</p>
+              <p className="text-lg font-bold text-green-700">₩{data.funnel_30d.settlements_krw.toLocaleString()}</p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            클릭 대비 예약 전환율: <span className="font-semibold text-blue-700">{data.funnel_30d.click_to_booking_rate}%</span>
+          </p>
+        </div>
+      )}
 
       {/* ── 등급 & 진행률 ── */}
       <div className="bg-white rounded-xl p-5 shadow-sm">
@@ -199,6 +391,79 @@ export default function InfluencerDashboard() {
         <p className="text-xs text-gray-400 mt-1 text-right">{progress}%</p>
       </div>
 
+      {/* ── Sub-ID 성과 ── */}
+      {data.sub_id_stats && data.sub_id_stats.length > 0 && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <h2 className="font-bold text-gray-900 mb-3">채널(Sub-ID) 성과</h2>
+          <div className="space-y-2">
+            {data.sub_id_stats.slice(0, 8).map((s) => (
+              <div key={s.sub_id} className="flex items-center justify-between border-b border-gray-50 py-2 last:border-0">
+                <p className="text-sm font-medium text-gray-900">{s.sub_id}</p>
+                <p className="text-xs text-gray-500">
+                  클릭 {s.clicks_30d} · 유니크 {s.unique_sessions_30d} · 상품 {s.touched_packages_30d}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 리워드 이벤트 ── */}
+      {data.reward_events && data.reward_events.length > 0 && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <h2 className="font-bold text-gray-900 mb-3">최근 리워드/보상</h2>
+          <div className="space-y-2">
+            {data.reward_events.slice(0, 8).map((r) => (
+              <div key={r.id} className="flex items-center justify-between border-b border-gray-50 py-2 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{r.event_type}</p>
+                  <p className="text-[11px] text-gray-400">{r.created_at.slice(0, 10)}</p>
+                </div>
+                <p className="text-sm font-bold text-emerald-700">
+                  {r.reward_amount ? `₩${Number(r.reward_amount).toLocaleString()}` : `${r.points} pt`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 콘텐츠별 매출 기여도 ── */}
+      {contents && contents.length > 0 && (
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-bold text-gray-900">내가 만든 콘텐츠 성과</h2>
+              <p className="text-xs text-gray-500">총 {contents.length}개 콘텐츠 / {totalContentBookings}건 예약 / ₩{totalContentRevenue.toLocaleString()}</p>
+            </div>
+            <a href={`/influencer/${aff.referral_code}/create-content`} className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100">
+              + 새 콘텐츠
+            </a>
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {contents.slice(0, 10).map(c => {
+              const rev = (content_revenue || []).find(r => r.content_id === c.id);
+              return (
+                <div key={c.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <span className="text-lg">{PLATFORM_ICON[c.platform] || '📄'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {PLATFORM_LABEL[c.platform] || c.platform}
+                      <span className="ml-2 text-[10px] text-gray-400">{c.status}</span>
+                    </p>
+                    <p className="text-xs text-gray-400">{c.created_at?.slice(0, 10)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-green-600">+₩{(rev?.commission || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-gray-400">{rev?.bookings || 0}건 / 매출 ₩{(rev?.revenue || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── 월간 리더보드 (익명화) ── */}
       <Leaderboard anonymized title="이번달 TOP 인플루언서" />
 
@@ -207,7 +472,12 @@ export default function InfluencerDashboard() {
         {/* 정산 */}
         <div className="bg-white rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-gray-900">정산 내역</h2>
+            <div>
+              <h2 className="font-bold text-gray-900">정산 내역</h2>
+              {settlementPdfErr ? (
+                <p className="text-[11px] text-red-600 mt-1">{settlementPdfErr}</p>
+              ) : null}
+            </div>
             {(pendingBalance > 0 || readyBalance > 0) && (
               <div className="text-right">
                 {pendingBalance > 0 && (
@@ -231,8 +501,13 @@ export default function InfluencerDashboard() {
                       {STATUS_MAP[s.status]?.label || s.status}
                     </span>
                     {(s.status === 'COMPLETED' || s.status === 'READY') && (
-                      <a href={`/api/settlements/${s.id}/pdf`} target="_blank" rel="noopener noreferrer"
-                        className="ml-2 text-[10px] text-blue-500 hover:underline">내역서</a>
+                      <button
+                        type="button"
+                        onClick={() => openSettlementPdf(s.id, aff.referral_code)}
+                        className="ml-2 text-[10px] text-blue-500 hover:underline"
+                      >
+                        내역서
+                      </button>
                     )}
                   </div>
                   <span className="text-sm font-bold text-gray-900">₩{(s.net_payout || 0).toLocaleString()}</span>

@@ -1,10 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
+import type { CartItem } from './db/concierge';
+import { getSecret } from '@/lib/secret-registry';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+/** 목록·검색·자비스 도구 공통 — select('*') 대비 페이로드 절감 */
+const PACKAGE_LIST_SELECT = `
+  id, title, destination, category, product_type, trip_style,
+  departure_days, airline, min_participants, ticketing_deadline,
+  price, price_tiers, price_dates, excluded_dates, status, confidence, created_at,
+  duration, nights,
+  inclusions, excludes, guide_tip, single_supplement,
+  small_group_surcharge, optional_tours, itinerary, special_notes,
+  land_operator, product_tags, product_highlights, product_summary,
+  audit_status, internal_code
+`.replace(/\s+/g, ' ').trim();
 
-function isValidUrl(url?: string) {
+// Next.js 클라이언트 번들링: process.env.NEXT_PUBLIC_* 는 정적 참조여야 inline됨.
+// getSecret() 의 동적 인덱싱(process.env[key])은 client bundle 에서 undefined 가 되어
+// /m/admin/* 등 client 컴포넌트가 "Supabase가 구성되지 않았습니다" 로 크래시한다.
+// 정적 참조(↓) 를 우선 사용하고 server-only 키는 getSecret 으로 보강.
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  getSecret('SUPABASE_URL');
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  getSecret('SUPABASE_ANON_KEY');
+const supabaseServiceKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
+
+function isValidUrl(url?: string | null): url is string {
   return typeof url === 'string' && /^https?:\/\//.test(url);
 }
 
@@ -15,7 +37,11 @@ export const isSupabaseConfigured = Boolean(
 // Lazy initialization - 사용할 때만 클라이언트 생성
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 
-function getSupabase() {
+/**
+ * 익명 키 기반 Supabase 클라이언트 (lazy init).
+ * 환경 미설정 시 null. 도메인 분할 모듈(db/*)에서 직접 사용 가능하도록 export.
+ */
+export function getSupabase() {
   if (!supabaseClient) {
     if (!isSupabaseConfigured) {
       // 환경변수가 올바르게 설정되지 않으면 클라이언트 생성 안 함
@@ -35,7 +61,11 @@ function getSupabase() {
 // API 라우트에서 DB 직접 조작 시 사용
 let supabaseAdminClient: ReturnType<typeof createClient> | null = null;
 
-function getSupabaseAdmin() {
+/**
+ * 서비스 롤 키 기반 Admin 클라이언트 (lazy init).
+ * 환경 미설정 시 anon 클라이언트로 fallback. 도메인 분할 모듈(db/*)에서 직접 사용 가능하도록 export.
+ */
+export function getSupabaseAdmin() {
   if (!supabaseAdminClient) {
     if (!isValidUrl(supabaseUrl)) return getSupabase(); // fallback
     const key = supabaseServiceKey || supabaseKey;
@@ -242,17 +272,9 @@ export async function getPackages(filters?: {
     const limit = filters?.limit || 20;
     const from = (page - 1) * limit;
 
-    const LIST_FIELDS = `
-      id, title, destination, category, product_type, trip_style,
-      departure_days, airline, min_participants, ticketing_deadline,
-      price, price_tiers, status, confidence, created_at,
-      inclusions, excludes, guide_tip, single_supplement,
-      small_group_surcharge, optional_tours, itinerary, special_notes,
-      land_operator, product_tags, product_highlights, product_summary
-    `;
     let query = supabase
       .from('travel_packages')
-      .select(LIST_FIELDS, { count: 'exact' })
+      .select(PACKAGE_LIST_SELECT, { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, from + limit - 1);
 
@@ -269,71 +291,9 @@ export async function getPackages(filters?: {
   }
 }
 
-// 출발일 기준 가격 조회 헬퍼
-export function getPriceTierForDate(priceTiers: {
-  departure_dates?: string[];
-  date_range?: { start: string; end: string };
-  departure_day_of_week?: string;
-  adult_price?: number;
-  child_price?: number;
-  status?: string;
-  note?: string;
-  period_label?: string;
-}[], departureDate: string) {
-  if (!priceTiers || priceTiers.length === 0) return null;
-
-  const date = new Date(departureDate);
-  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  const dayOfWeek = dayNames[date.getDay()];
-
-  for (const tier of priceTiers) {
-    // 특정 날짜 배열 매칭
-    if (tier.departure_dates && tier.departure_dates.includes(departureDate)) {
-      return tier;
-    }
-    // 기간 범위 + 요일 매칭
-    if (tier.date_range) {
-      const start = new Date(tier.date_range.start);
-      const end = new Date(tier.date_range.end);
-      if (date >= start && date <= end) {
-        if (!tier.departure_day_of_week || tier.departure_day_of_week === dayOfWeek) {
-          return tier;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-// 써차지 계산 헬퍼 (해당 날짜에 적용되는 써차지 합산)
-export function getSurchargesForDate(surcharges: {
-  period: string;
-  amount_usd?: number;
-  amount_krw?: number;
-  note: string;
-}[], departureDate: string, usdToKrw = 1380): number {
-  if (!surcharges || surcharges.length === 0) return 0;
-  const date = new Date(departureDate);
-  const year = date.getFullYear();
-  let total = 0;
-
-  for (const s of surcharges) {
-    // 간단한 기간 파싱 (예: "7/9~7/15", "7/9~15")
-    const match = s.period.match(/(\d+)\/(\d+)\s*[~\-]\s*(?:(\d+)\/)?(\d+)/);
-    if (match) {
-      const startMonth = parseInt(match[1]);
-      const startDay = parseInt(match[2]);
-      const endMonth = match[3] ? parseInt(match[3]) : startMonth;
-      const endDay = parseInt(match[4]);
-      const start = new Date(year, startMonth - 1, startDay);
-      const end = new Date(year, endMonth - 1, endDay);
-      if (date >= start && date <= end) {
-        total += (s.amount_krw || 0) + (s.amount_usd || 0) * usdToKrw;
-      }
-    }
-  }
-  return total;
-}
+// god module 분할 — 순수 유틸은 @/lib/package-pricing 으로 이전.
+// 기존 import 호환을 위해 re-export 유지.
+export { getPriceTierForDate, getSurchargesForDate } from './package-pricing';
 
 // 여행 상품 조회 (승인된 것만, 감사 차단 제외)
 // audit_status === 'blocked'인 상품은 어드민이 승인하려 해도 API에서 차단되지만
@@ -342,7 +302,7 @@ export async function getApprovedPackages(destination?: string, keyword?: string
   try {
     let query = supabase
       .from('travel_packages')
-      .select('*')
+      .select(PACKAGE_LIST_SELECT)
       .eq('status', 'approved')
       .or('audit_status.is.null,audit_status.neq.blocked')
       .order('created_at', { ascending: false });
@@ -374,7 +334,7 @@ export async function getPendingPackages() {
   try {
     const { data, error } = await supabase
       .from('travel_packages')
-      .select('*')
+      .select(PACKAGE_LIST_SELECT)
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -409,116 +369,11 @@ export async function approvePackage(packageId: string) {
   }
 }
 
-// Q&A 저장
-export async function saveInquiry(data: {
-  question: string;
-  inquiryType: string;
-  relatedPackages?: string[];
-  customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
-}) {
-  try {
-    const { data: result, error } = await supabase
-      .from('qa_inquiries')
-      .insert([
-        {
-          question: data.question,
-          inquiry_type: data.inquiryType,
-          related_packages: data.relatedPackages || [],
-          customer_name: data.customerName,
-          customer_email: data.customerEmail,
-          customer_phone: data.customerPhone,
-          status: 'pending',
-        },
-      ])
-      .select();
+// Q&A Inquiry / AI Response — 본문은 ./db/inquiry.ts 로 분리
+export { saveInquiry, getInquiries, saveAIResponse } from './db/inquiry';
 
-    if (error) {
-      throw error;
-    }
-
-    return result?.[0];
-  } catch (error) {
-    console.error('문의 저장 실패:', error);
-    throw error;
-  }
-}
-
-// Q&A 조회
-export async function getInquiries(status?: string) {
-  try {
-    let query = supabase
-      .from('qa_inquiries')
-      .select(
-        `
-        *,
-        ai_responses (
-          id,
-          response_text,
-          ai_model,
-          created_at,
-          approved
-        )
-      `
-      )
-      .order('created_at', { ascending: false });
-
-    if (status) {
-      query = query.eq('status', status);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('문의 조회 실패:', error);
-    return [];
-  }
-}
-
-// AI 응답 저장
-export async function saveAIResponse(data: {
-  inquiryId: string;
-  responseText: string;
-  aiModel: string;
-  confidence: number;
-  usedPackages?: string[];
-}) {
-  try {
-    const { data: result, error } = await supabase
-      .from('ai_responses')
-      .insert([
-        {
-          inquiry_id: data.inquiryId,
-          response_text: data.responseText,
-          ai_model: data.aiModel,
-          confidence: data.confidence,
-          used_packages: data.usedPackages || [],
-        },
-      ])
-      .select();
-
-    if (error) {
-      throw error;
-    }
-
-    return result?.[0];
-  } catch (error) {
-    console.error('AI 응답 저장 실패:', error);
-    throw error;
-  }
-}
-
-// 글로벌 커미션 적용 (기본 9%)
-export function applyCommission(basePrice: number, rate?: number): number {
-  const r = rate ?? Number(process.env.DEFAULT_COMMISSION_RATE ?? 9);
-  return Math.round(basePrice * (1 + r / 100));
-}
+// god module 분할 — applyCommission 은 @/lib/package-pricing 로 이전.
+export { applyCommission } from './package-pricing';
 
 // 특정 패키지 단건 조회
 export async function getPackageById(id: string) {
@@ -601,7 +456,9 @@ export async function getCustomers(opts: {
     const to = from + limit - 1;
 
     const isJsSort = sortBy === 'bookingCount' || sortBy === 'totalSales';
-    let query = supabaseAdmin.from('customers').select('*', { count: 'exact' });
+    // 감사(2026-05-11 §10): 어드민 목록에서 쓰는 컬럼만 명시 — payload 축소.
+    const LIST_COLUMNS = 'id, name, phone, email, passport_no, passport_expiry, birth_date, mileage, grade, status, total_spent, cafe_sync_data, tags, memo, created_at, deleted_at';
+    let query = supabaseAdmin.from('customers').select(LIST_COLUMNS, { count: 'exact' });
 
     if (trashed) {
       query = query.not('deleted_at', 'is', null);
@@ -624,19 +481,29 @@ export async function getCustomers(opts: {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    // 예약 통계 집계
-    const { data: bStats } = await supabaseAdmin
-      .from('bookings')
-      .select('lead_customer_id, total_price')
-      .or('is_deleted.is.null,is_deleted.eq.false')
-      .neq('status', 'cancelled');
-
+    // 감사(2026-05-11 §10): customer_booking_stats 전체 fetch → 페이지 ids 만.
+    // JS sort/필터 시는 전체 필요. DB sort + 필터 없음일 때만 좁힘 (대다수 케이스).
+    const needsAllStats = isJsSort || minSales !== undefined || maxSales !== undefined
+      || minBookings !== undefined || maxBookings !== undefined;
+    const pageIds = (data || []).map((c: any) => c.id).filter(Boolean);
+    let statsQuery = supabaseAdmin
+      .from('customer_booking_stats')
+      .select('customer_id, booking_count, total_sales');
+    if (!needsAllStats && pageIds.length > 0) {
+      statsQuery = statsQuery.in('customer_id', pageIds);
+    }
+    const { data: statsRows, error: statsErr } = await statsQuery;
+    if (statsErr) {
+      console.warn('[getCustomers] customer_booking_stats 조회 실패 — 통계 0 처리:', statsErr.message);
+    }
     const statsMap = new Map<string, { count: number; totalSales: number }>();
-    for (const b of bStats || []) {
-      const cid = (b as any).lead_customer_id;
-      if (!cid) continue;
-      const prev = statsMap.get(cid) || { count: 0, totalSales: 0 };
-      statsMap.set(cid, { count: prev.count + 1, totalSales: prev.totalSales + ((b as any).total_price || 0) });
+    for (const row of statsRows || []) {
+      const r = row as { customer_id: string; booking_count: number | string; total_sales: number | string };
+      if (!r.customer_id) continue;
+      statsMap.set(r.customer_id, {
+        count: Number(r.booking_count),
+        totalSales: Number(r.total_sales),
+      });
     }
 
     let enriched = (data || []).map((c: any) => ({
@@ -688,12 +555,36 @@ export async function upsertCustomer(data: Record<string, unknown>) {
     for (const [k, v] of Object.entries(data)) {
       payload[k] = (NULLABLE.includes(k) && v === '') ? null : v;
     }
+    // 전화번호 DB 트리거와 동일한 010-XXXX-XXXX 형식으로 정규화
+    if (payload.phone != null) {
+      const digits = String(payload.phone).replace(/\D/g, '');
+      payload.phone = digits.length === 11
+        ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+        : null;
+    }
 
-    const { data: result, error } = data.id
-      ? await supabaseAdmin.from('customers').update(payload).eq('id', data.id as string).select()
-      : await supabaseAdmin.from('customers').insert([payload]).select();
-    if (error) throw error;
-    return result?.[0];
+    if (data.id) {
+      const { data: result, error } = await supabaseAdmin
+        .from('customers').update(payload).eq('id', data.id as string).select();
+      if (error) throw error;
+      return result?.[0];
+    }
+
+    const { data: result, error } = await supabaseAdmin
+      .from('customers').insert([payload]).select();
+    if (!error) return result?.[0];
+
+    // 23505: 전화번호 중복 → 기존 고객 반환 (병렬 등록 race 또는 재임포트 시)
+    if ((error as { code?: string }).code === '23505' && payload.phone) {
+      const { data: existing } = await supabaseAdmin
+        .from('customers')
+        .select('*')
+        .eq('phone', payload.phone as string)
+        .is('deleted_at', null)
+        .limit(1);
+      if (existing?.[0]) return existing[0];
+    }
+    throw error;
   } catch (error) { console.error('고객 저장 실패:', error); throw error; }
 }
 
@@ -704,12 +595,14 @@ export async function findOrCreateCustomerByPhone(
 ): Promise<string | null> {
   const digits = (rawPhone ?? '').replace(/\D/g, '');
   if (digits.length !== 11) return null;
+  // DB 트리거가 010-XXXX-XXXX 형식으로 저장하므로 동일 형식으로 조회
+  const dbPhone = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 
   // 1차 조회 (phone은 UNIQUE NULLABLE — 빈 문자열은 null로 정규화되어 저장됨)
   const existing = await supabaseAdmin
     .from('customers')
     .select('id')
-    .eq('phone', digits)
+    .eq('phone', dbPhone)
     .limit(1);
 
   if (existing.data?.[0]?.id) return existing.data[0].id as string;
@@ -728,7 +621,7 @@ export async function findOrCreateCustomerByPhone(
     const retry = await supabaseAdmin
       .from('customers')
       .select('id')
-      .eq('phone', digits)
+      .eq('phone', dbPhone)
       .limit(1);
     if (retry.data?.[0]?.id) return retry.data[0].id as string;
   }
@@ -746,15 +639,17 @@ export async function findDuplicateCustomers(input: { name?: string; phone?: str
   candidates: Array<{ id: string; name: string; phone: string | null; similarity: number }>;
 }> {
   const { normalizePhone, normalizeName, nameSimilarity, NAME_MATCH_THRESHOLD } = await import('./customer-name');
-  const phone = normalizePhone(input.phone);
+  const rawPhone = input.phone?.trim() ?? null;
+  const phone = normalizePhone(rawPhone);
   const name = input.name?.trim() ?? '';
 
-  // 1) 전화번호 정확 일치 우선
+  // 1) 전화번호 정확 일치 우선 — 정규화·비정규화 양쪽 모두 검색 (레거시 대시 포함 레코드 대응)
   if (phone) {
+    const phonesToSearch = Array.from(new Set([phone, ...(rawPhone && rawPhone !== phone ? [rawPhone] : [])]));
     const { data } = await supabaseAdmin
       .from('customers')
       .select('id, name, phone')
-      .eq('phone', phone)
+      .in('phone', phonesToSearch)
       .is('deleted_at', null)
       .limit(1);
     const row = data?.[0] as { id: string; name: string; phone: string | null } | undefined;
@@ -794,6 +689,25 @@ export async function restoreCustomer(id: string) {
 }
 
 // 예약 목록 조회
+// 감사(2026-05-11 §12): bookings 가 110+ 컬럼(jsonb 다수).
+// 어드민 목록·고객드로어에서 쓰는 컬럼만 명시한 lite set — 페이로드 50%+ 감소.
+const BOOKING_LITE_FIELDS = [
+  'id', 'booking_no', 'package_id', 'package_title', 'lead_customer_id',
+  'adult_count', 'child_count', 'child_n_count', 'child_e_count', 'infant_count', 'single_charge_count',
+  'adult_price', 'child_price', 'child_n_price', 'child_e_price', 'infant_price',
+  'fuel_surcharge', 'single_charge', 'total_price', 'total_cost',
+  'status', 'departure_date', 'return_date', 'booking_date', 'created_at', 'updated_at',
+  'cancelled_at', 'voided_at', 'refunded_at', 'payment_date',
+  'departure_region', 'departing_location_id', 'land_operator', 'land_operator_id', 'manager_name',
+  'paid_amount', 'total_paid_out', 'payment_status', 'payment_method',
+  'channel_source', 'utm_source', 'utm_medium', 'utm_campaign',
+  'referral_code', 'affiliate_id', 'booking_type', 'influencer_commission', 'commission_rate',
+  'is_deleted', 'is_ticketed', 'is_manifest_sent', 'has_sent_docs',
+  'transfer_status', 'customer_receipt_status', 'has_tax_invoice',
+  'dispute_flag', 'cancel_reason', 'notes',
+  'flight_out', 'flight_out_time', 'flight_in', 'flight_in_time',
+].join(', ');
+
 export async function getBookings(
   status?: string,
   customerId?: string,
@@ -801,13 +715,22 @@ export async function getBookings(
     departureFrom?: string;   // 출발일 시작 (YYYY-MM-DD)
     departureTo?: string;     // 출발일 종료 (YYYY-MM-DD)
     includeDeleted?: string;  // 'only' = 휴지통만, 'all' = 전체, 미지정 = 정상만
+    limit?: number;           // 페이지 크기 (기본 100)
+    offset?: number;          // 페이지 오프셋 (기본 0)
+    lite?: boolean;           // true = 어드민 목록용 컬럼만 (jsonb 등 제외)
   }
 ) {
   try {
+    const pageLimit = opts?.limit ?? 100;
+    const pageOffset = opts?.offset ?? 0;
+    const fields = opts?.lite
+      ? `${BOOKING_LITE_FIELDS}, customers!lead_customer_id(id,name,phone)`
+      : '*, customers!lead_customer_id(id,name,phone)';
     let query = supabaseAdmin
       .from('bookings')
-      .select('*, customers!lead_customer_id(id,name,phone)')
-      .order('created_at', { ascending: false });
+      .select(fields)
+      .order('created_at', { ascending: false })
+      .range(pageOffset, pageOffset + pageLimit - 1);
 
     // 소프트 삭제 필터
     if (opts?.includeDeleted === 'only') {
@@ -853,11 +776,30 @@ export async function createBooking(data: {
   status?: string;
   paidAmount?: number;
   affiliateId?: string; bookingType?: string;
+  // ── 어필리에이터 커미션 스냅샷 (가산식 정책 엔진 결과) ──
+  influencerCommission?: number;
+  appliedTotalCommissionRate?: number;
+  commissionBreakdown?: Record<string, unknown>;
+  // ── 콘텐츠 크리에이티브 어트리뷰션 (어떤 카드뉴스/블로그로 들어왔나) ──
+  contentCreativeId?: string;
+  // ── 멱등성: 클라이언트 발급 UUID v4. 동일 키 재시도 시 새 booking 생성 차단. ──
+  idempotencyKey?: string;
   conversationId?: string;
   companions?: { name: string; phone?: string; passport_no?: string; passport_expiry?: string }[];
   quickCreated?: boolean; quickCreatedTxId?: string;
+  /** 명시하지 않으면 BOOKING_AUTOMATION_TIER 에 따름 (assisted=true, full_auto=false) */
+  depositNoticeBlocked?: boolean;
+  /** 마케팅 귀속 (블로그·광고·제휴) — 예약 행에 스냅샷 저장 */
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  utm_attributed_campaign_id?: string | null;
+  referral_code?: string | null;
 }) {
   try {
+    const { initialDepositNoticeBlockedForNewBooking } = await import('./booking-automation-policy');
     let selfReferralFlag = false;
     let selfReferralReason: string | null = null;
     if (data.affiliateId) {
@@ -898,13 +840,67 @@ export async function createBooking(data: {
       paid_amount: data.paidAmount ?? 0,
       is_deleted: false,
       ...(data.affiliateId ? { affiliate_id: data.affiliateId, booking_type: 'AFFILIATE' } : {}),
-      ...(selfReferralFlag ? { self_referral_flag: true, self_referral_reason: selfReferralReason, influencer_commission: 0 } : {}),
+      // self-referral은 커미션 0 강제 (스냅샷도 0으로 — UI에서 "왜 0?" 명확히 답할 수 있도록)
+      ...(selfReferralFlag
+        ? {
+            self_referral_flag: true,
+            self_referral_reason: selfReferralReason,
+            influencer_commission: 0,
+            applied_total_commission_rate: 0,
+            commission_breakdown: {
+              base: 0,
+              tier: 0,
+              campaigns: [],
+              raw_total: 0,
+              cap: null,
+              cap_policy_name: null,
+              final_rate: 0,
+              capped: false,
+              self_referral: true,
+              self_referral_reason: selfReferralReason,
+              computed_at: new Date().toISOString(),
+            },
+          }
+        : {
+            ...(data.influencerCommission !== undefined ? { influencer_commission: data.influencerCommission } : {}),
+            ...(data.appliedTotalCommissionRate !== undefined ? { applied_total_commission_rate: data.appliedTotalCommissionRate } : {}),
+            ...(data.commissionBreakdown ? { commission_breakdown: data.commissionBreakdown } : {}),
+          }),
+      ...(data.contentCreativeId ? { content_creative_id: data.contentCreativeId } : {}),
+      ...(data.idempotencyKey ? { idempotency_key: data.idempotencyKey } : {}),
       ...(data.conversationId ? { conversation_id: data.conversationId } : {}),
       ...(data.quickCreated ? { quick_created: true } : {}),
       ...(data.quickCreatedTxId ? { quick_created_tx_id: data.quickCreatedTxId } : {}),
+      deposit_notice_blocked:
+        data.depositNoticeBlocked ?? initialDepositNoticeBlockedForNewBooking(),
+      ...(data.utm_source ? { utm_source: data.utm_source } : {}),
+      ...(data.utm_medium ? { utm_medium: data.utm_medium } : {}),
+      ...(data.utm_campaign ? { utm_campaign: data.utm_campaign } : {}),
+      ...(data.utm_term ? { utm_term: data.utm_term } : {}),
+      ...(data.utm_content ? { utm_content: data.utm_content } : {}),
+      ...(data.utm_attributed_campaign_id
+        ? { utm_attributed_campaign_id: data.utm_attributed_campaign_id }
+        : {}),
+      ...(data.referral_code ? { referral_code: data.referral_code } : {}),
     }] as never).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;
+
+    // Phase 2a — 신규 booking 이 paid_amount > 0 으로 시작하면 ledger seed entry 가 필요.
+    //   기본 0 인 경우 record_ledger_entry 가 0 amount 면 NULL 반환하므로 자동 skip.
+    if (bookingId && (data.paidAmount ?? 0) > 0) {
+      await supabaseAdmin.rpc('record_ledger_entry', {
+        p_booking_id: bookingId,
+        p_account: 'paid_amount',
+        p_entry_type: 'manual_adjust',
+        p_amount: data.paidAmount,
+        p_source: 'admin_manual_edit',
+        p_source_ref_id: bookingId,
+        p_idempotency_key: `create:${bookingId}:paid`,
+        p_memo: 'createBooking initial paid_amount',
+        p_created_by: 'admin',
+      });
+    }
 
     // companions 원시 데이터 → upsertCustomer → UUID 수집
     const companionUUIDs: string[] = [];
@@ -991,7 +987,8 @@ export async function updateBooking(id: string, data: {
     if (data.departureRegion !== undefined) payload.departure_region = data.departureRegion;
     if (data.landOperator !== undefined) payload.land_operator = data.landOperator;
     if (data.bookingDate !== undefined) payload.booking_date = data.bookingDate;
-    if (data.paidAmount !== undefined) payload.paid_amount = data.paidAmount;
+    // Phase 2a — paid_amount 는 record_manual_paid_amount_change RPC 경로로 분리 (ledger 이중쓰기 보장)
+    const hasPaidAmount = data.paidAmount !== undefined;
     if (data.notes !== undefined) payload.notes = data.notes;
     if (data.status !== undefined) {
       payload.status = data.status;
@@ -1000,6 +997,20 @@ export async function updateBooking(id: string, data: {
 
     const { data: booking, error } = await supabaseAdmin.from('bookings').update(payload).eq('id', id).select();
     if (error) throw error;
+
+    if (hasPaidAmount) {
+      const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
+        p_booking_id: id,
+        p_new_paid_amount: data.paidAmount as number,
+        p_new_total_paid_out: null,
+        p_source: 'admin_manual_edit',
+        p_source_ref_id: id,
+        p_idempotency_key: `manual:${id}:${Date.now()}`,
+        p_memo: 'updateBooking() paid_amount edit',
+        p_created_by: 'admin',
+      });
+      if (rpcErr) throw rpcErr;
+    }
 
     // 동행자 업데이트
     if (data.passengerIds !== undefined) {
@@ -1015,458 +1026,30 @@ export async function updateBooking(id: string, data: {
   } catch (error) { console.error('예약 수정 실패:', error); throw error; }
 }
 
-// 대시보드 통계
-export async function getDashboardStats() {
-  try {
-    const thisMonthStart = new Date();
-    thisMonthStart.setDate(1); thisMonthStart.setHours(0,0,0,0);
-
-    const [allBookingsRes, pendingRes, customersRes] = await Promise.all([
-      // 이번 달 출발일 기준 전체 예약 (삭제 안 된 것)
-      supabaseAdmin
-        .from('bookings')
-        .select('total_cost,total_price,paid_amount,status')
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .neq('status', 'cancelled')
-        .gte('departure_date', thisMonthStart.toISOString().split('T')[0]),
-      supabaseAdmin.from('bookings').select('id').in('status',['pending','confirmed']).or('is_deleted.is.null,is_deleted.eq.false').gte('departure_date', thisMonthStart.toISOString().split('T')[0]),
-      supabaseAdmin.from('customers').select('mileage,passport_expiry'),
-    ]);
-
-    const allBookings = allBookingsRes.data || [];
-    // 이번 달 총 판매가 (출발일 기준)
-    const totalSales = allBookings.reduce((s: number, b: any) => s + (b.total_price || 0), 0);
-    // 이번 달 원가 (결제완료 건만)
-    const completedBookings = allBookings.filter((b: any) => b.status === 'completed');
-    const totalCost = completedBookings.reduce((s: number, b: any) => s + (b.total_cost || 0), 0);
-    // 이번 달 총 입금액
-    const totalPaid = allBookings.reduce((s: number, b: any) => s + (b.paid_amount || 0), 0);
-    // 미수금 (잔금) = 총 판매가 - 입금액
-    const totalOutstanding = totalSales - totalPaid;
-
-    const customers = customersRes.data || [];
-    const totalMileage = customers.reduce((s: number, c: any) => s + (c.mileage || 0), 0);
-    const sixMonthsLater = new Date(); sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    const expiringPassports = customers.filter((c: any) =>
-      c.passport_expiry && new Date(c.passport_expiry) <= sixMonthsLater
-    ).length;
-
-    return {
-      totalSales,       // 이번 달 총 판매가
-      totalCost,        // 이번 달 원가 (결제완료)
-      totalPaid,        // 이번 달 입금 완료액
-      totalOutstanding, // 이번 달 미수금
-      margin: completedBookings.reduce((s: number, b: any) => s + ((b.total_price || 0) - (b.total_cost || 0)), 0),
-      activeBookings: pendingRes.data?.length || 0,
-      totalMonthBookings: allBookings.length,
-      totalMileage,
-      expiringPassports,
-    };
-  } catch (error) { console.error('대시보드 통계 실패:', error); return null; }
-}
+// 대시보드 V1 — 본문은 ./db/dashboard.ts 로 분리
+export { getDashboardStats } from './db/dashboard';
 
 // ────────────────────────────────────────────────────────────
-// 어필리에이트 ERP 함수들
+// 어필리에이트 ERP — 본문은 ./db/affiliate.ts 로 분리
 // ────────────────────────────────────────────────────────────
-
-export interface Affiliate {
-  id: string;
-  name: string;
-  phone?: string;
-  email?: string;
-  referral_code: string;
-  grade: number;
-  bonus_rate: number;
-  payout_type: 'PERSONAL' | 'BUSINESS';
-  booking_count: number;
-  total_commission: number;
-  memo?: string;
-}
-
-/** 어필리에이트 전체 목록 조회 */
-export async function getAffiliates(): Promise<Affiliate[]> {
-  try {
-    const { data, error } = await supabase
-      .from('affiliates')
-      .select('id, name, phone, email, referral_code, grade, bonus_rate, payout_type, booking_count, total_commission, memo')
-      .order('grade', { ascending: false });
-    if (error) throw error;
-    return (data || []) as Affiliate[];
-  } catch (error) {
-    console.error('어필리에이트 목록 조회 실패:', error);
-    return [];
-  }
-}
-
-/** 추천코드로 어필리에이트 단건 조회 */
-export async function getAffiliateByCode(referralCode: string): Promise<Affiliate | null> {
-  try {
-    const { data, error } = await supabase
-      .from('affiliates')
-      .select('*')
-      .eq('referral_code', referralCode)
-      .single();
-    if (error) throw error;
-    return data as Affiliate;
-  } catch {
-    return null;
-  }
-}
-
-export interface MonthlyChartData {
-  month: string;           // "2026-01"
-  direct_sales: number;
-  affiliate_sales: number;
-  direct_margin: number;
-  affiliate_margin: number;
-  total_commission: number;
-}
-
-/** 대시보드 차트용 월별 직판/인플 통계 (최근 N개월) */
-export async function getDashboardStatsV2(months = 6): Promise<MonthlyChartData[]> {
-  try {
-    const result: MonthlyChartData[] = [];
-    const now = new Date();
-
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-      const endDate = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
-      const monthLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('total_price, margin, influencer_commission, booking_type')
-        .gte('departure_date', start)
-        .lte('departure_date', end)
-        .neq('status', 'cancelled')
-        .or('is_deleted.is.null,is_deleted.eq.false');
-
-      const rows = bookings || [];
-      const direct = rows.filter((b: any) => b.booking_type !== 'AFFILIATE');
-      const affiliate = rows.filter((b: any) => b.booking_type === 'AFFILIATE');
-
-      result.push({
-        month: monthLabel,
-        direct_sales: direct.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        affiliate_sales: affiliate.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        direct_margin: direct.reduce((s: number, b: any) => s + (b.margin || 0), 0),
-        affiliate_margin: affiliate.reduce((s: number, b: any) => s + (b.margin || 0), 0),
-        total_commission: affiliate.reduce((s: number, b: any) => s + (b.influencer_commission || 0), 0),
-      });
-    }
-    return result;
-  } catch (error) {
-    console.error('차트 통계 조회 실패:', error);
-    return [];
-  }
-}
+export { getAffiliates, getAffiliateByCode, getDashboardStatsV2 } from './db/affiliate';
+export type { Affiliate, MonthlyChartData } from './db/affiliate';
 
 // ─────────────────────────────────────────────────────────────────
-// Meta Ads 헬퍼 함수
+// Meta Ads — 본문은 ./db/ads.ts 로 분리
 // ─────────────────────────────────────────────────────────────────
-
-import type { AdCampaign, AdCreative, AdPerformanceSnapshot, CampaignStatus } from '@/types/meta-ads';
-
-export async function getAdCampaigns(filters?: {
-  packageId?: string;
-  status?: CampaignStatus;
-  page?: number;
-  limit?: number;
-}): Promise<AdCampaign[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  let query = supabase
-    .from('ad_campaigns')
-    .select('*, travel_packages(title, destination)')
-    .order('created_at', { ascending: false });
-
-  if (filters?.packageId) query = query.eq('package_id', filters.packageId);
-  if (filters?.status) query = query.eq('status', filters.status);
-  if (filters?.limit) query = query.limit(filters.limit);
-  if (filters?.page && filters?.limit) {
-    query = query.range((filters.page - 1) * filters.limit, filters.page * filters.limit - 1);
-  }
-
-  const { data } = await query;
-  return (data ?? []).map((row: any) => ({
-    ...row,
-    package_title: row.travel_packages?.title,
-    package_destination: row.travel_packages?.destination,
-  }));
-}
-
-export async function upsertCampaign(data: Partial<AdCampaign> & { id?: string }): Promise<AdCampaign | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
-
-  const { data: result, error } = await supabase
-    .from('ad_campaigns')
-    .upsert({ ...data, updated_at: new Date().toISOString() } as never)
-    .select()
-    .single();
-
-  if (error) throw new Error(`캠페인 저장 실패: ${error.message}`);
-  return result as unknown as AdCampaign;
-}
-
-export async function saveCreatives(
-  creatives: Omit<AdCreative, 'id' | 'created_at'>[]
-): Promise<AdCreative[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  const { data, error } = await supabase
-    .from('ad_creatives')
-    .insert(creatives as never)
-    .select();
-
-  if (error) throw new Error(`소재 저장 실패: ${error.message}`);
-  return data ?? [];
-}
-
-export async function getAdCreatives(filters: {
-  packageId?: string;
-  campaignId?: string;
-  platform?: string;
-}): Promise<AdCreative[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  let query = supabase
-    .from('ad_creatives')
-    .select('*')
-    .order('platform')
-    .order('variant_index');
-
-  if (filters.packageId) query = query.eq('package_id', filters.packageId);
-  if (filters.campaignId) query = query.eq('campaign_id', filters.campaignId);
-  if (filters.platform) query = query.eq('platform', filters.platform);
-
-  const { data } = await query;
-  return data ?? [];
-}
-
-export async function upsertAdPerformanceSnapshot(
-  snapshot: Omit<AdPerformanceSnapshot, 'id' | 'created_at'>
-): Promise<void> {
-  const supabase = getSupabase();
-  if (!supabase) return;
-
-  await supabase.from('ad_performance_snapshots').upsert(snapshot as never, {
-    onConflict: 'campaign_id,snapshot_date',
-  });
-}
-
-export async function getAdPerformance(
-  campaignId: string,
-  dateFrom?: string,
-  dateTo?: string
-): Promise<AdPerformanceSnapshot[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  let query = supabase
-    .from('ad_performance_snapshots')
-    .select('*')
-    .eq('campaign_id', campaignId)
-    .order('snapshot_date', { ascending: false });
-
-  if (dateFrom) query = query.gte('snapshot_date', dateFrom);
-  if (dateTo) query = query.lte('snapshot_date', dateTo);
-
-  const { data } = await query;
-  return data ?? [];
-}
-
-export async function getTopCampaignsByRoas(limit = 3): Promise<AdCampaign[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  // 최근 7일 스냅샷에서 campaign별 ROAS 집계
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  const { data: snapshots } = await supabase
-    .from('ad_performance_snapshots')
-    .select('campaign_id, spend_krw, attributed_margin')
-    .gte('snapshot_date', sevenDaysAgo.toISOString().slice(0, 10));
-
-  const byId = new Map<string, { spend: number; margin: number }>();
-  for (const s of (snapshots ?? []) as { campaign_id: string; spend_krw: number; attributed_margin: number }[]) {
-    const existing = byId.get(s.campaign_id) ?? { spend: 0, margin: 0 };
-    byId.set(s.campaign_id, {
-      spend: existing.spend + s.spend_krw,
-      margin: existing.margin + s.attributed_margin,
-    });
-  }
-
-  const ranked = Array.from(byId.entries())
-    .map(([id, stats]) => ({
-      id,
-      roas: stats.spend > 0 ? (stats.margin / stats.spend) * 100 : 0,
-    }))
-    .sort((a, b) => b.roas - a.roas)
-    .slice(0, limit);
-
-  if (ranked.length === 0) return [];
-
-  const { data: campaigns } = await supabase
-    .from('ad_campaigns')
-    .select('*, travel_packages(title, destination)')
-    .in('id', ranked.map(r => r.id));
-
-  return (campaigns ?? []).map((c: any) => ({
-    ...c,
-    package_title: c.travel_packages?.title,
-    package_destination: c.travel_packages?.destination,
-    latest_roas: ranked.find(r => r.id === c.id)?.roas ?? 0,
-  }));
-}
-
-export async function getMetaCpcThreshold(): Promise<number> {
-  const supabase = getSupabase();
-  if (!supabase) return 2000;
-
-  const { data } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'meta_cpc_threshold')
-    .single();
-
-  const val = (data as { value?: string } | null)?.value;
-  return val ? parseInt(val, 10) : 2000;
-}
+export {
+  getAdCampaigns, upsertCampaign,
+  saveCreatives, getAdCreatives,
+  upsertAdPerformanceSnapshot, getAdPerformance,
+  getTopCampaignsByRoas, getMetaCpcThreshold,
+} from './db/ads';
 
 // ─────────────────────────────────────────────────────────────────
-// 카드뉴스 헬퍼 함수
+// 카드뉴스 — 본문은 ./db/card-news.ts 로 분리
 // ─────────────────────────────────────────────────────────────────
-
-export interface TextStyle {
-  fontFamily?: string;
-  fontSize?: number;
-  color?: string;
-  fontWeight?: 'normal' | 'bold';
-  textAlign?: 'left' | 'center' | 'right';
-}
-
-export interface CardNewsSlide {
-  id: string;
-  position: number;
-  headline: string;
-  body: string;
-  bg_image_url: string;
-  pexels_keyword: string;
-  overlay_style: 'dark' | 'light' | 'gradient-bottom' | 'gradient-top';
-  headline_style?: TextStyle;
-  body_style?: TextStyle;
-  // V1 디자인 시스템
-  template_id?: string;
-  role?: string;
-  badge?: string | null;
-  brief_section_position?: number;
-  // V2 슬롯 (Atom 기반 템플릿에서 사용)
-  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold';
-  template_version?: string;
-  eyebrow?: string | null;
-  tip?: string | null;
-  warning?: string | null;
-  price_chip?: string | null;
-  trust_row?: string[] | null;
-  accent_color?: string | null;
-  photo_hint?: string | null;
-}
-
-export interface CardNews {
-  id: string;
-  package_id: string | null;
-  campaign_id: string | null;
-  title: string;
-  status: 'DRAFT' | 'CONFIRMED' | 'LAUNCHED' | 'ARCHIVED';
-  slides: CardNewsSlide[];
-  meta_creative_id: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-  // 조인 필드
-  package_title?: string;
-  package_destination?: string;
-  // 블로그 생성 시 업로드된 슬라이드 PNG URL (from-card-news 라우트가 저장)
-  slide_image_urls?: string[] | null;
-  linked_blog_id?: string | null;
-  // 인스타그램 자동 발행 (20260414130000 migration)
-  ig_post_id?: string | null;
-  ig_published_at?: string | null;
-  ig_scheduled_for?: string | null;
-  ig_publish_status?: 'queued' | 'publishing' | 'published' | 'failed' | null;
-  ig_caption?: string | null;
-  ig_error?: string | null;
-  ig_slide_urls?: string[] | null;
-  // V2 컬럼 (20260423010000 migration)
-  template_family?: 'editorial' | 'cinematic' | 'premium' | 'bold' | null;
-  template_version?: string | null;
-  brand_kit_id?: string | null;
-  // brief 스냅샷 (LLM ContentBrief V2 원본)
-  generation_config?: { brief?: unknown } | null;
-  // 기타 메타
-  card_news_type?: 'product' | 'info';
-  topic?: string | null;
-  category_id?: string | null;
-}
-
-export async function getCardNewsList(filters?: {
-  status?: string;
-  packageId?: string;
-  limit?: number;
-}): Promise<CardNews[]> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return [];
-
-  let query = admin
-    .from('card_news')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (filters?.status) query = query.eq('status', filters.status);
-  if (filters?.packageId) query = query.eq('package_id', filters.packageId);
-  if (filters?.limit) query = query.limit(filters.limit);
-
-  const { data, error } = await query;
-  if (error) { console.error('getCardNewsList error:', error.message); return []; }
-  return (data ?? []) as unknown as CardNews[];
-}
-
-export async function getCardNewsById(id: string): Promise<CardNews | null> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return null;
-
-  const { data, error } = await admin
-    .from('card_news')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error || !data) return null;
-  return data as unknown as CardNews;
-}
-
-export async function upsertCardNews(
-  data: Partial<CardNews> & { title: string }
-): Promise<CardNews | null> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return null;
-
-  const { data: result, error } = await admin
-    .from('card_news')
-    .upsert({ ...data, updated_at: new Date().toISOString() } as never)
-    .select()
-    .single();
-
-  if (error) throw new Error(`카드뉴스 저장 실패: ${error.message}`);
-  return result as unknown as CardNews;
-}
+export { getCardNewsList, getCardNewsById, upsertCardNews } from './db/card-news';
+export type { CardNews, CardNewsSlide, TextStyle } from './db/card-news';
 
 // ─────────────────────────────────────────────────────────────────
 // Booking Void 연쇄 처리
@@ -1551,1761 +1134,117 @@ export async function voidBooking(bookingId: string, reason?: string): Promise<v
 }
 
 // ─────────────────────────────────────────────────────────────────
-// 통합 대시보드 V3 (광고비 + 순마진 포함)
+// Dashboard V3 (광고비+순마진) — 본문은 ./db/dashboard.ts 로 분리
 // ─────────────────────────────────────────────────────────────────
-
-export interface MonthlyChartDataV3 {
-  month: string;
-  direct_sales: number;
-  affiliate_sales: number;
-  direct_margin: number;
-  affiliate_margin: number;
-  total_commission: number;
-  ad_spend_krw: number;   // 신규
-  net_margin: number;     // 신규: margins - commission - ad_spend
-}
-
-export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV3[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  try {
-    // 전체 기간 계산 (단 2개 쿼리로 통합)
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-    const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const fromStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
-    const toStr = `${endMonth.getFullYear()}-${String(endMonth.getMonth() + 1).padStart(2, '0')}-${endMonth.getDate()}`;
-
-    // 2개 쿼리 병렬 실행 (기존 12개 → 2개)
-    const [{ data: bookings }, { data: snapshots }] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('departure_date, total_price, margin, influencer_commission, booking_type')
-        .gte('departure_date', fromStr)
-        .lte('departure_date', toStr)
-        .neq('status', 'cancelled')
-        .eq('is_deleted', false),
-      supabase
-        .from('ad_performance_snapshots')
-        .select('snapshot_date, spend_krw')
-        .gte('snapshot_date', fromStr)
-        .lte('snapshot_date', toStr),
-    ]);
-
-    // 월별로 그룹핑 (클라이언트 사이드)
-    const bookingList = bookings ?? [];
-    const snapshotList = snapshots ?? [];
-
-    const result: MonthlyChartDataV3[] = [];
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
-      const monthBookings = bookingList.filter((b: any) => (b.departure_date ?? '').slice(0, 7) === monthLabel);
-      const direct = monthBookings.filter((b: any) => b.booking_type !== 'AFFILIATE');
-      const affiliate = monthBookings.filter((b: any) => b.booking_type === 'AFFILIATE');
-
-      const directMargin = direct.reduce((s: number, b: any) => s + (b.margin || 0), 0);
-      const affiliateMargin = affiliate.reduce((s: number, b: any) => s + (b.margin || 0), 0);
-      const totalCommission = affiliate.reduce((s: number, b: any) => s + (b.influencer_commission || 0), 0);
-
-      const adSpend = snapshotList
-        .filter((r: any) => (r.snapshot_date ?? '').slice(0, 7) === monthLabel)
-        .reduce((s: number, r: any) => s + (r.spend_krw || 0), 0);
-
-      const netMargin = directMargin + affiliateMargin - totalCommission - adSpend;
-
-      result.push({
-        month: monthLabel,
-        direct_sales: direct.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        affiliate_sales: affiliate.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        direct_margin: directMargin,
-        affiliate_margin: affiliateMargin,
-        total_commission: totalCommission,
-        ad_spend_krw: adSpend,
-        net_margin: netMargin,
-      });
-    }
-
-    return result;
-  } catch (error) {
-    console.error('V3 차트 통계 조회 실패:', error);
-    return [];
-  }
-}
+export { getDashboardStatsV3 } from './db/dashboard';
+export type { MonthlyChartDataV3 } from './db/dashboard';
 
 // ─────────────────────────────────────────────────────────────────
-// 고객 여정 타임라인 — message_logs
+// Dashboard V4 (매출 인식 분리, IFRS 15/ASC 606) — 2026-04-28
 // ─────────────────────────────────────────────────────────────────
+export { getRecognizedRevenueMonthly, getNewBookingsMonthly, getBookingPaceAndCancellation, getAIUsageStats, getSettlementBalances, getOperatorTakeRates, getRepeatBookingStats, getDataQualityIssues } from './db/dashboard';
+export type { RecognizedRevenueMonth, NewBookingsMonth, BookingPaceBucket, PaceAndCancellation, AIUsageStats, SettlementBalances, OperatorTakeRate, RepeatBookingStats, DataQualityIssue, DataQualityIssueId, DataQualityReport } from './db/dashboard';
 
-export interface MessageLog {
-  id: string;
-  booking_id: string;
-  log_type: 'system' | 'kakao' | 'mock' | 'scheduler' | 'manual';
-  event_type: string;
-  title: string;
-  content?: string | null;
-  is_mock: boolean;
-  created_by: string;
-  created_at: string;
-}
-
-export async function getMessageLogs(bookingId: string): Promise<MessageLog[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data, error } = await sb
-    .from('message_logs')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: true });
-  if (error) {
-    // message_logs 테이블 미생성 시 조용히 빈 배열 반환 (PGRST205 방어)
-    console.warn('[message_logs] 조회 실패 (테이블 없음 가능성):', error.message);
-    return [];
-  }
-  return (data ?? []) as MessageLog[];
-}
-
-export async function createMessageLog(data: {
-  booking_id: string;
-  log_type: 'system' | 'kakao' | 'mock' | 'scheduler' | 'manual';
-  event_type: string;
-  title: string;
-  content?: string;
-  is_mock?: boolean;
-  created_by?: string;
-}): Promise<MessageLog | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('message_logs')
-    .insert({
-      booking_id: data.booking_id,
-      log_type:   data.log_type,
-      event_type: data.event_type,
-      title:      data.title,
-      content:    data.content ?? null,
-      is_mock:    data.is_mock ?? false,
-      created_by: data.created_by ?? 'system',
-    } as never)
-    .select()
-    .single();
-  if (error) {
-    // message_logs 테이블 미생성 시 null 반환 (앱 중단 없음)
-    console.warn('[message_logs] 생성 실패 (테이블 없음 가능성):', error.message);
-    return null;
-  }
-  return row as MessageLog;
-}
+// ─────────────────────────────────────────────────────────────────
+// MessageLog — 본문은 ./db/message-log.ts 로 분리
+// ─────────────────────────────────────────────────────────────────
+export { getMessageLogs, createMessageLog } from './db/message-log';
+export type { MessageLog } from './db/message-log';
 
 // ============================================================
 // AI 컨시어지 — Cart / Transaction / ApiOrder / MockConfig
 // ============================================================
-
-export interface CartItem {
-  product_id:       string;
-  product_name:     string;
-  api_name:         string;
-  product_type:     'HOTEL' | 'ACTIVITY' | 'CRUISE';
-  product_category: 'DYNAMIC' | 'FIXED';
-  cost:             number;
-  price:            number;
-  quantity:         number;
-  description:      string;
-  attrs?:           Record<string, unknown>;
-}
-
-/** 구버전 CartItem/ApiOrder에 product_category 없을 때 api_name으로 추론 */
-export function resolveProductCategory(
-  item: { product_category?: string; api_name?: string }
-): 'DYNAMIC' | 'FIXED' {
-  if (item.product_category === 'FIXED')   return 'FIXED';
-  if (item.product_category === 'DYNAMIC') return 'DYNAMIC';
-  return item.api_name === 'tenant_product' ? 'FIXED' : 'DYNAMIC';
-}
-
-export interface Cart {
-  id:         string;
-  session_id: string;
-  items:      CartItem[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Transaction {
-  id:               string;
-  idempotency_key:  string;
-  session_id:       string;
-  status:           'PENDING' | 'CUSTOMER_PAID' | 'API_PROCESSING' | 'COMPLETED' | 'PARTIAL_FAIL' | 'REFUNDED';
-  total_cost:       number;
-  total_price:      number;
-  net_margin:       number;
-  customer_name?:   string;
-  customer_phone?:  string;
-  customer_email?:  string;
-  saga_log:         SagaEvent[];
-  vouchers?:        VoucherItem[];
-  created_at:       string;
-  updated_at:       string;
-}
-
-export interface SagaEvent {
-  event:     string;
-  timestamp: string;
-  detail?:   string;
-}
-
-export interface VoucherItem {
-  code:         string;
-  product_name: string;
-  product_type: string;
-}
-
-export interface ApiOrder {
-  id:               string;
-  transaction_id:   string;
-  api_name:         string;
-  product_type:     'HOTEL' | 'ACTIVITY' | 'CRUISE';
-  product_category: 'DYNAMIC' | 'FIXED';
-  product_id:       string;
-  product_name:     string;
-  cost:             number;
-  price:            number;
-  quantity:         number;
-  status:           'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REFUNDED';
-  external_ref?:    string;
-  attrs?:           Record<string, unknown>;
-  created_at:       string;
-}
-
-export interface MockApiConfig {
-  id:        string;
-  api_name:  string;
-  mode:      'success' | 'fail' | 'timeout';
-  delay_ms:  number;
-  updated_at: string;
-}
-
-// ── Cart ────────────────────────────────────────────────────
-
-export async function getCart(sessionId: string): Promise<Cart | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('carts')
-    .select('*')
-    .eq('session_id', sessionId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-  return data as Cart | null;
-}
-
-export async function upsertCart(sessionId: string, items: CartItem[]): Promise<Cart | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const existing = await getCart(sessionId);
-  if (existing) {
-    const { data } = await sb
-      .from('carts')
-      .update({ items, updated_at: new Date().toISOString() } as never)
-      .eq('id', existing.id)
-      .select()
-      .single();
-    return data as Cart | null;
-  } else {
-    const { data } = await sb
-      .from('carts')
-      .insert({ session_id: sessionId, items } as never)
-      .select()
-      .single();
-    return data as Cart | null;
-  }
-}
-
-// ── Transaction ─────────────────────────────────────────────
-
-export async function createTransaction(data: {
-  idempotency_key: string;
-  session_id:      string;
-  total_cost:      number;
-  total_price:     number;
-  customer_name?:  string;
-  customer_phone?: string;
-  customer_email?: string;
-}): Promise<Transaction | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('transactions')
-    .insert({ ...data, status: 'PENDING', saga_log: [] } as never)
-    .select()
-    .single();
-  if (error) {
-    console.error('트랜잭션 생성 실패:', error);
-    return null;
-  }
-  return row as Transaction;
-}
-
-export async function updateTransaction(
-  id: string,
-  updates: Partial<Pick<Transaction, 'status' | 'saga_log' | 'vouchers'>> & { tenant_cost_breakdown?: Record<string, number> }
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb
-    .from('transactions')
-    .update({ ...updates, updated_at: new Date().toISOString() } as never)
-    .eq('id', id);
-}
-
-export async function getTransaction(
-  id: string
-): Promise<(Transaction & { api_orders: ApiOrder[] }) | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('transactions')
-    .select('*, api_orders(*)')
-    .eq('id', id)
-    .single();
-  return data as (Transaction & { api_orders: ApiOrder[] }) | null;
-}
-
-export async function listTransactions(limit = 50): Promise<Transaction[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('transactions')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  return (data ?? []) as Transaction[];
-}
-
-export async function getTransactionByIdempotencyKey(
-  key: string
-): Promise<Transaction | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('transactions')
-    .select('*')
-    .eq('idempotency_key', key)
-    .single();
-  return data as Transaction | null;
-}
-
-// ── ApiOrder ────────────────────────────────────────────────
-
-export async function createApiOrder(data: {
-  transaction_id:   string;
-  api_name:         string;
-  product_type:     'HOTEL' | 'ACTIVITY' | 'CRUISE';
-  product_category: 'DYNAMIC' | 'FIXED';
-  product_id:       string;
-  product_name:     string;
-  cost:             number;
-  price:            number;
-  quantity:         number;
-  attrs?:           Record<string, unknown>;
-}): Promise<ApiOrder | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('api_orders')
-    .insert({ ...data, status: 'PENDING' } as never)
-    .select()
-    .single();
-  if (error) {
-    console.error('api_order 생성 실패:', error);
-    return null;
-  }
-  return row as ApiOrder;
-}
-
-export async function updateApiOrder(
-  id: string,
-  updates: Partial<Pick<ApiOrder, 'status' | 'external_ref'>>
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('api_orders').update(updates as never).eq('id', id);
-}
-
-export async function getApiOrdersByTransaction(transactionId: string): Promise<ApiOrder[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('api_orders')
-    .select('*')
-    .eq('transaction_id', transactionId)
-    .order('created_at', { ascending: true });
-  return (data ?? []) as ApiOrder[];
-}
-
-// ── MockApiConfig ────────────────────────────────────────────
-
-export async function listMockConfigs(): Promise<MockApiConfig[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('mock_api_configs')
-    .select('*')
-    .order('api_name');
-  return (data ?? []) as MockApiConfig[];
-}
-
-export async function updateMockConfig(
-  apiName: string,
-  updates: Partial<Pick<MockApiConfig, 'mode' | 'delay_ms'>>
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb
-    .from('mock_api_configs')
-    .update({ ...updates, updated_at: new Date().toISOString() } as never)
-    .eq('api_name', apiName);
-}
+// 본문은 ./db/concierge.ts 로 분리 (god 모듈 분할 2026-04-27).
+// 기존 import 호환을 위해 re-export — 호출자는 변경 불필요.
+export {
+  resolveProductCategory,
+  getCart, upsertCart,
+  createTransaction, updateTransaction, getTransaction,
+  listTransactions, getTransactionByIdempotencyKey,
+  createApiOrder, updateApiOrder, getApiOrdersByTransaction,
+  listMockConfigs, updateMockConfig,
+} from './db/concierge';
+export type {
+  CartItem, Cart,
+  Transaction, SagaEvent, VoucherItem,
+  ApiOrder,
+  MockApiConfig,
+} from './db/concierge';
 
 // ============================================================
-// SaaS Marketplace — Tenants / Inventory / Cross-Search / Ledger
+// SaaS Marketplace — Tenants / Inventory / Cross-Search / Ledger / Settlements
 // ============================================================
+// 본문은 ./db/tenant.ts 로 분리 (god 모듈 분할 2026-04-27).
+export {
+  listTenants, getTenant, createTenant, updateTenant,
+  getTenantProducts, upsertTenantProduct,
+  getInventoryBlocks, getInventoryByTenant, upsertInventoryBlock, deductInventory,
+  searchTenantProducts,
+  getMasterLedger,
+  getTenantSettlements,
+  updateTenantReliability,
+} from './db/tenant';
+export type {
+  Tenant, TenantProduct, InventoryBlock, CrossSearchResult,
+  LedgerEntry, TenantSettlementRow,
+} from './db/tenant';
 
-export interface Tenant {
-  id:                string;
-  name:              string;
-  contact_name?:     string;
-  contact_phone?:    string;
-  contact_email?:    string;
-  commission_rate:   number;
-  status:            'active' | 'inactive' | 'suspended';
-  description?:      string;
-  tier:              'GOLD' | 'SILVER' | 'BRONZE';
-  reliability_score: number;
-  created_at:        string;
-  updated_at:        string;
-}
-
-export interface TenantProduct {
-  id:              string;
-  tenant_id:       string;
-  title:           string;
-  destination?:    string;
-  category?:       string;
-  product_type?:   string;
-  cost_price:      number;
-  price:           number;
-  min_participants?: number;
-  status:          string;
-  land_operator?:  string;
-  notes?:          string;
-  created_at:      string;
-  updated_at:      string;
-}
-
-export interface InventoryBlock {
-  id:              string;
-  tenant_id:       string;
-  product_id:      string;
-  date:            string;
-  total_seats:     number;
-  booked_seats:    number;
-  available_seats: number;
-  price_override?: number;
-  status:          'OPEN' | 'CLOSED' | 'SOLDOUT';
-  created_at:      string;
-  updated_at:      string;
-}
-
-export interface CrossSearchResult {
-  product_id:   string;
-  product_name: string;
-  tenant_id:    string;
-  tenant_name:  string;
-  product_type: string;
-  category?:    string;
-  cost_price:   number;
-  effective_price: number;
-  price:        number;
-  margin:       number;
-  destination?: string;
-  available_seats: number;
-  date:         string;
-  price_override?: number;
-  attrs?:       Record<string, unknown>;
-}
-
-// ── Tenant CRUD ─────────────────────────────────────────────
-
-export async function listTenants(): Promise<Tenant[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('tenants')
-    .select('*')
-    .order('name');
-  return (data ?? []) as Tenant[];
-}
-
-export async function getTenant(id: string): Promise<Tenant | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('tenants')
-    .select('*')
-    .eq('id', id)
-    .single();
-  return data as Tenant | null;
-}
-
-export async function createTenant(data: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>): Promise<Tenant | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('tenants')
-    .insert(data as never)
-    .select()
-    .single();
-  if (error) { console.error('테넌트 생성 실패:', error); return null; }
-  return row as Tenant;
-}
-
-export async function updateTenant(id: string, data: Partial<Omit<Tenant, 'id' | 'created_at'>>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('tenants').update({ ...data, updated_at: new Date().toISOString() } as never).eq('id', id);
-}
-
-// ── Tenant Products ─────────────────────────────────────────
-
-export async function getTenantProducts(tenantId: string): Promise<TenantProduct[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('travel_packages')
-    .select('id, tenant_id, title, destination, category, product_type, cost_price, price, min_participants, status, land_operator, notes, created_at, updated_at')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
-  return (data ?? []) as TenantProduct[];
-}
-
-export async function upsertTenantProduct(data: {
-  id?: string;
-  tenant_id: string;
-  title: string;
-  destination?: string;
-  category?: string;
-  product_type?: string;
-  cost_price: number;
-  price: number;
-  min_participants?: number;
-  notes?: string;
-}): Promise<TenantProduct | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const payload = { ...data, status: 'approved', updated_at: new Date().toISOString() };
-  let query;
-  if (data.id) {
-    query = sb.from('travel_packages').update(payload as never).eq('id', data.id).select().single();
-  } else {
-    query = sb.from('travel_packages').insert(payload as never).select().single();
-  }
-  const { data: row, error } = await query;
-  if (error) { console.error('테넌트 상품 저장 실패:', error); return null; }
-  return row as TenantProduct;
-}
-
-// ── Inventory Blocks ─────────────────────────────────────────
-
-export async function getInventoryBlocks(
-  productId: string,
-  from: string,
-  to: string
-): Promise<InventoryBlock[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('inventory_blocks')
-    .select('*')
-    .eq('product_id', productId)
-    .gte('date', from)
-    .lte('date', to)
-    .order('date');
-  return (data ?? []) as InventoryBlock[];
-}
-
-export async function getInventoryByTenant(
-  tenantId: string,
-  from: string,
-  to: string
-): Promise<InventoryBlock[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('inventory_blocks')
-    .select('*, travel_packages!product_id(title, destination, category)')
-    .eq('tenant_id', tenantId)
-    .gte('date', from)
-    .lte('date', to)
-    .order('date');
-  return (data ?? []) as InventoryBlock[];
-}
-
-export async function upsertInventoryBlock(data: {
-  tenant_id:      string;
-  product_id:     string;
-  date:           string;
-  total_seats:    number;
-  booked_seats?:  number;
-  price_override?: number;
-  status?:        'OPEN' | 'CLOSED' | 'SOLDOUT';
-}): Promise<InventoryBlock | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const payload = {
-    ...data,
-    booked_seats: data.booked_seats ?? 0,
-    status: data.status ?? 'OPEN',
-    updated_at: new Date().toISOString(),
-  };
-  const { data: row, error } = await sb
-    .from('inventory_blocks')
-    .upsert(payload as never, { onConflict: 'product_id,date' })
-    .select()
-    .single();
-  if (error) { console.error('재고 저장 실패:', error); return null; }
-  return row as InventoryBlock;
-}
-
-export async function deductInventory(
-  productId: string,
-  date: string,
-  quantity: number
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  // 현재 booked_seats 조회 후 증가
-  const { data: current } = await sb
-    .from('inventory_blocks')
-    .select('booked_seats, total_seats')
-    .eq('product_id', productId)
-    .eq('date', date)
-    .single();
-  if (!current) return;
-  const cur = current as unknown as { booked_seats: number; total_seats: number };
-
-  const newBooked = cur.booked_seats + quantity;
-  const isSoldOut = newBooked >= cur.total_seats;
-
-  await sb
-    .from('inventory_blocks')
-    .update({
-      booked_seats: newBooked,
-      status: isSoldOut ? 'SOLDOUT' : 'OPEN',
-      updated_at: new Date().toISOString(),
-    } as never)
-    .eq('product_id', productId)
-    .eq('date', date);
-}
-
-// ── Cross-Tenant AI Search ───────────────────────────────────
-
-export async function searchTenantProducts(opts: {
-  destination?: string;
-  category?:    string;
-  date?:        string;
-  persons?:     number;
-}): Promise<CrossSearchResult[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-
-  const minPersons = opts.persons ?? 1;
-
-  let query = sb
-    .from('inventory_blocks')
-    .select(`
-      id, date, available_seats, price_override, status,
-      tenant_id,
-      travel_packages!product_id(
-        id, title, destination, category, product_type,
-        cost_price, price, min_participants
-      ),
-      tenants!tenant_id(id, name)
-    `)
-    .gt('available_seats', 0)
-    .eq('status', 'OPEN');
-
-  if (opts.date) {
-    query = query.eq('date', opts.date);
-  } else {
-    // 오늘 이후 날짜만
-    query = query.gte('date', new Date().toISOString().slice(0, 10));
-  }
-
-  const { data } = await query.limit(50);
-  if (!data) return [];
-
-  type RawRow = {
-    id: string;
-    date: string;
-    available_seats: number;
-    price_override: number | null;
-    status: string;
-    tenant_id: string;
-    travel_packages: { id: string; title: string; destination?: string; category?: string; product_type?: string; cost_price: number; price: number; min_participants?: number } | null;
-    tenants: { id: string; name: string } | null;
-  };
-
-  let results: CrossSearchResult[] = (data as RawRow[])
-    .filter(row => {
-      if (!row.travel_packages || !row.tenants) return false;
-      if (row.available_seats < minPersons) return false;
-      const pkg = row.travel_packages;
-      if (opts.destination && pkg.destination) {
-        const dest = opts.destination.toLowerCase();
-        if (!pkg.destination.toLowerCase().includes(dest) && !pkg.title?.toLowerCase().includes(dest)) return false;
-      }
-      if (opts.category && pkg.category !== opts.category) return false;
-      return true;
-    })
-    .map(row => {
-      const pkg = row.travel_packages!;
-      const tenant = row.tenants!;
-      const effectivePrice = row.price_override ?? pkg.price;
-      const margin = effectivePrice - pkg.cost_price;
-      return {
-        product_id:   pkg.id,
-        product_name: pkg.title,
-        tenant_id:    tenant.id,
-        tenant_name:  tenant.name,
-        product_type: pkg.category?.toUpperCase() ?? 'PACKAGE',
-        category:     pkg.category,
-        cost_price:   pkg.cost_price,
-        effective_price: effectivePrice,
-        price:        effectivePrice,
-        margin,
-        destination:  pkg.destination,
-        available_seats: row.available_seats,
-        date:         row.date,
-        price_override: row.price_override ?? undefined,
-        attrs: { category: pkg.category, min_participants: pkg.min_participants },
-      };
-    });
-
-  // 마진 높은 순 정렬 (AI 추천 1순위)
-  results = results.sort((a, b) => b.margin - a.margin);
-  return results;
-}
-
-// ── Master Ledger ────────────────────────────────────────────
-
-export interface LedgerEntry {
-  tenant_id:        string | null;
-  tenant_name:      string;
-  order_count:      number;
-  total_cost:       number;
-  total_price:      number;
-  platform_fee:     number;
-  product_category: 'DYNAMIC' | 'FIXED' | 'MIXED';
-}
-
-export async function getMasterLedger(month: string, category?: 'DYNAMIC' | 'FIXED'): Promise<{
-  entries: LedgerEntry[];
-  kpis: { total_price: number; total_cost: number; platform_fee: number; tx_count: number; dynamic_price: number; fixed_price: number };
-}> {
-  const sb = getSupabase();
-  const emptyKpis = { total_price: 0, total_cost: 0, platform_fee: 0, tx_count: 0, dynamic_price: 0, fixed_price: 0 };
-  if (!sb) return { entries: [], kpis: emptyKpis };
-
-  const [y, m] = month.split('-').map(Number);
-  const from = `${y}-${String(m).padStart(2, '0')}-01`;
-  const lastDay = new Date(y, m, 0).getDate();
-  const to = `${y}-${String(m).padStart(2, '0')}-${lastDay}T23:59:59Z`;
-
-  // api_orders JOIN transactions(COMPLETED) JOIN tenants
-  const { data: orders } = await sb
-    .from('api_orders')
-    .select(`
-      id, api_name, product_category, cost, price, quantity, tenant_id,
-      transactions!transaction_id(id, status, created_at),
-      tenants!tenant_id(id, name)
-    `)
-    .gte('created_at', from)
-    .lte('created_at', to);
-
-  if (!orders) return { entries: [], kpis: emptyKpis };
-
-  type OrderRow = {
-    api_name: string; product_category: string | null;
-    cost: number; price: number; quantity: number; tenant_id: string | null;
-    transactions: { status: string; created_at: string } | null;
-    tenants: { id: string; name: string } | null;
-  };
-
-  const allCompleted = (orders as OrderRow[]).filter(o => o.transactions?.status === 'COMPLETED');
-
-  // product_category 없는 구버전 rows: api_name 기반 추론
-  const resolveCategory = (o: OrderRow): 'DYNAMIC' | 'FIXED' => {
-    if (o.product_category === 'FIXED')   return 'FIXED';
-    if (o.product_category === 'DYNAMIC') return 'DYNAMIC';
-    return o.api_name === 'tenant_product' ? 'FIXED' : 'DYNAMIC';
-  };
-
-  // 카테고리 필터 (옵션)
-  const completed = category
-    ? allCompleted.filter(o => resolveCategory(o) === category)
-    : allCompleted;
-
-  // 테넌트별 집계
-  const map = new Map<string, LedgerEntry>();
-
-  for (const o of completed) {
-    const key  = o.tenant_id ?? 'mock';
-    const name = o.tenants?.name ?? 'Mock API (자체 상품)';
-    const cat  = resolveCategory(o);
-    if (!map.has(key)) {
-      map.set(key, { tenant_id: o.tenant_id, tenant_name: name, order_count: 0, total_cost: 0, total_price: 0, platform_fee: 0, product_category: cat });
-    }
-    const entry = map.get(key)!;
-    entry.order_count += 1;
-    entry.total_cost  += o.cost  * o.quantity;
-    entry.total_price += o.price * o.quantity;
-    // MIXED 판정
-    if (entry.product_category !== cat) entry.product_category = 'MIXED';
-  }
-
-  const entries = Array.from(map.values()).map(e => ({
-    ...e,
-    platform_fee: e.total_price - e.total_cost,
-  })).sort((a, b) => b.total_cost - a.total_cost);
-
-  // KPI 집계 (DYNAMIC/FIXED 분리)
-  let dynamic_price = 0, fixed_price = 0;
-  for (const o of allCompleted) {
-    const v = o.price * o.quantity;
-    if (resolveCategory(o) === 'FIXED') fixed_price += v; else dynamic_price += v;
-  }
-
-  const kpis = entries.reduce(
-    (s, e) => ({
-      total_price:  s.total_price  + e.total_price,
-      total_cost:   s.total_cost   + e.total_cost,
-      platform_fee: s.platform_fee + e.platform_fee,
-      tx_count:     s.tx_count     + e.order_count,
-      dynamic_price,
-      fixed_price,
-    }),
-    { total_price: 0, total_cost: 0, platform_fee: 0, tx_count: 0, dynamic_price, fixed_price }
-  );
-
-  return { entries, kpis };
-}
-
-// ── Tenant Settlements ───────────────────────────────────────
-
-export interface TenantSettlementRow {
-  order_id:     string;
-  product_name: string;
-  date:         string;
-  quantity:     number;
-  cost:         number;   // 정산 원가 (판매가/마진은 제공 안 함)
-}
-
-export async function getTenantSettlements(
-  tenantId: string,
-  month: string
-): Promise<{ rows: TenantSettlementRow[]; total_cost: number }> {
-  const sb = getSupabase();
-  if (!sb) return { rows: [], total_cost: 0 };
-
-  const [y, m] = month.split('-').map(Number);
-  const from = `${y}-${String(m).padStart(2, '0')}-01`;
-  const lastDay = new Date(y, m, 0).getDate();
-  const to = `${y}-${String(m).padStart(2, '0')}-${lastDay}T23:59:59Z`;
-
-  const { data } = await sb
-    .from('api_orders')
-    .select('id, product_name, created_at, quantity, cost, transactions!transaction_id(status)')
-    .eq('tenant_id', tenantId)
-    .gte('created_at', from)
-    .lte('created_at', to);
-
-  if (!data) return { rows: [], total_cost: 0 };
-
-  type Row = { id: string; product_name: string; created_at: string; quantity: number; cost: number; transactions: { status: string } | null };
-
-  const rows: TenantSettlementRow[] = (data as Row[])
-    .filter(o => o.transactions?.status === 'COMPLETED')
-    .map(o => ({
-      order_id:     o.id,
-      product_name: o.product_name,
-      date:         o.created_at.slice(0, 10),
-      quantity:     o.quantity,
-      cost:         o.cost * o.quantity,
-    }));
-
-  const total_cost = rows.reduce((s, r) => s + r.cost, 0);
-  return { rows, total_cost };
-}
 
 // ============================================================
-// 공유 일정 (shared_itineraries)
 // ============================================================
-
-export interface SharedItinerary {
-  id:            string;
-  share_code:    string;
-  share_type:    'DYNAMIC' | 'FIXED';
-  // DYNAMIC
-  items?:        CartItem[];
-  search_query?: string;
-  // FIXED
-  product_id?:   string;
-  product_name?: string;
-  review_text?:  string;
-  // 공통
-  creator_name:  string;
-  view_count:    number;
-  expires_at:    string;
-  created_at:    string;
-}
-
-function generateShareCode(): string {
-  const part = () => Math.random().toString(36).slice(2, 6).toUpperCase();
-  return part() + part();
-}
-
-export async function createSharedItinerary(
-  data: Omit<SharedItinerary, 'id' | 'share_code' | 'view_count' | 'created_at' | 'expires_at'>
-): Promise<SharedItinerary | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const share_code = generateShareCode();
-  const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: row, error } = await sb
-    .from('shared_itineraries')
-    .insert([{ ...data, share_code, expires_at }] as never)
-    .select()
-    .single();
-  if (error) { console.error('공유 일정 생성 실패:', error); return null; }
-  return row as SharedItinerary;
-}
-
-export async function getSharedItinerary(code: string): Promise<SharedItinerary | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row } = await sb
-    .from('shared_itineraries')
-    .select('*')
-    .eq('share_code', code)
-    .gt('expires_at', new Date().toISOString())
-    .single();
-  if (!row) return null;
-  // view_count 증가 (fire-and-forget)
-  sb.from('shared_itineraries')
-    .update({ view_count: (row as SharedItinerary).view_count + 1 } as never)
-    .eq('share_code', code)
-    .then(() => {});
-  return row as SharedItinerary;
-}
+// 공유 일정 (shared_itineraries) — 본문은 ./db/shared-itinerary.ts
+// ============================================================
+export { createSharedItinerary, getSharedItinerary } from './db/shared-itinerary';
+export type { SharedItinerary } from './db/shared-itinerary';
 
 // ============================================================
 // Group RFQ — AI 단체여행 무인 중개 & 선착순 입찰 엔진
 // ============================================================
-
-export interface GroupRfq {
-  id:                   string;
-  rfq_code:             string;
-  customer_id?:         string;
-  customer_name:        string;
-  customer_phone?:      string;
-  destination:          string;
-  departure_date_from?: string;
-  departure_date_to?:   string;
-  duration_nights?:     number;
-  adult_count:          number;
-  child_count:          number;
-  budget_per_person?:   number;
-  total_budget?:        number;
-  hotel_grade?:         string;
-  meal_plan?:           string;
-  transportation?:      string;
-  special_requests?:    string;
-  custom_requirements?: Record<string, unknown>;
-  status:               'draft'|'published'|'bidding'|'analyzing'|'awaiting_selection'|'contracted'|'completed'|'cancelled';
-  published_at?:        string;
-  gold_unlock_at?:      string;
-  silver_unlock_at?:    string;
-  bronze_unlock_at?:    string;
-  bid_deadline?:        string;
-  max_proposals:        number;
-  selected_proposal_id?: string;
-  ai_interview_log?:    unknown[];
-  created_at:           string;
-  updated_at:           string;
-}
-
-export interface RfqBid {
-  id:              string;
-  rfq_id:          string;
-  tenant_id:       string;
-  tenant_name?:    string;   // JOIN용
-  status:          'locked'|'submitted'|'selected'|'rejected'|'timeout'|'withdrawn';
-  locked_at:       string;
-  submit_deadline: string;
-  submitted_at?:   string;
-  is_penalized:    boolean;
-  penalty_reason?: string;
-}
-
-export interface ChecklistItem {
-  included: boolean;
-  amount:   number | null;
-  note:     string;
-}
-
-export interface ProposalChecklist {
-  guide_fee:      ChecklistItem;
-  driver_tip:     ChecklistItem;
-  fuel_surcharge: ChecklistItem;
-  local_tax:      ChecklistItem;
-  water_cost:     ChecklistItem;
-  inclusions:     string[];
-  exclusions:     string[];
-  optional_tours: { name: string; price: number }[];
-  hotel_info:     { grade: string; name: string; notes: string };
-  meal_plan:      string;
-  transportation: string;
-}
-
-export interface RfqProposal {
-  id:                   string;
-  rfq_id:               string;
-  bid_id:               string;
-  tenant_id:            string;
-  tenant_name?:         string;   // JOIN용
-  proposal_title?:      string;
-  itinerary_summary?:   string;
-  total_cost:           number;
-  total_selling_price:  number;
-  hidden_cost_estimate: number;
-  real_total_price?:    number;
-  checklist:            Partial<ProposalChecklist>;
-  checklist_completed:  boolean;
-  ai_review?:           { score: number; issues: string[]; suggestions: string[]; fact_check: string[] };
-  ai_reviewed_at?:      string;
-  rank?:                number;
-  status:               'draft'|'submitted'|'reviewing'|'approved'|'selected'|'rejected';
-  submitted_at?:        string;
-  created_at:           string;
-  updated_at:           string;
-}
-
-export interface RfqMessage {
-  id:                     string;
-  rfq_id:                 string;
-  proposal_id?:           string;
-  sender_type:            'customer'|'tenant'|'ai'|'system';
-  sender_id?:             string;
-  raw_content:            string;
-  processed_content?:     string;
-  pii_detected:           boolean;
-  pii_blocked:            boolean;
-  recipient_type:         'customer'|'tenant'|'admin';
-  is_visible_to_customer: boolean;
-  is_visible_to_tenant:   boolean;
-  created_at:             string;
-}
-
-// RFQ 채번 헬퍼
-function generateRfqCode(): string {
-  return `GRP-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-}
-
-// ── GroupRfq CRUD ────────────────────────────────────────────
-
-export async function createGroupRfq(
-  data: Omit<GroupRfq, 'id' | 'rfq_code' | 'created_at' | 'updated_at'>
-): Promise<GroupRfq | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('group_rfqs')
-    .insert([{ ...data, rfq_code: generateRfqCode() }] as never)
-    .select()
-    .single();
-  if (error) { console.error('RFQ 생성 실패:', error); return null; }
-  return row as GroupRfq;
-}
-
-export async function getGroupRfq(id: string): Promise<GroupRfq | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('group_rfqs')
-    .select('*')
-    .eq('id', id)
-    .single();
-  return data as GroupRfq | null;
-}
-
-export async function listGroupRfqs(status?: string, limit = 50): Promise<GroupRfq[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  let q = sb.from('group_rfqs').select('*').order('created_at', { ascending: false }).limit(limit);
-  if (status) q = q.eq('status', status);
-  const { data } = await q;
-  return (data ?? []) as GroupRfq[];
-}
-
-export async function updateGroupRfq(id: string, patch: Partial<GroupRfq>): Promise<GroupRfq | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data, error } = await sb
-    .from('group_rfqs')
-    .update({ ...patch, updated_at: new Date().toISOString() } as never)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) { console.error('RFQ 업데이트 실패:', error); return null; }
-  return data as GroupRfq;
-}
-
-// ── RfqBid CRUD ──────────────────────────────────────────────
-
-export async function claimRfqBid(rfqId: string, tenantId: string): Promise<RfqBid | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const timeoutMin = parseInt(process.env.RFQ_BID_TIMEOUT_MINUTES ?? '180');
-  const submit_deadline = new Date(Date.now() + timeoutMin * 60 * 1000).toISOString();
-  const { data, error } = await sb
-    .from('rfq_bids')
-    .insert([{ rfq_id: rfqId, tenant_id: tenantId, submit_deadline }] as never)
-    .select()
-    .single();
-  if (error) { console.error('입찰 확정 실패:', error); return null; }
-  return data as RfqBid;
-}
-
-export async function getRfqBids(rfqId: string): Promise<RfqBid[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('rfq_bids')
-    .select('*, tenants(name)')
-    .eq('rfq_id', rfqId)
-    .order('locked_at', { ascending: true });
-  return ((data ?? []) as unknown[]).map((r: unknown) => {
-    const row = r as RfqBid & { tenants?: { name?: string } };
-    return { ...row, tenant_name: row.tenants?.name } as RfqBid;
-  });
-}
-
-export async function updateRfqBid(id: string, patch: Partial<RfqBid>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('rfq_bids').update(patch as never).eq('id', id);
-}
-
-export async function getExpiredBids(): Promise<RfqBid[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('rfq_bids')
-    .select('*')
-    .eq('status', 'locked')
-    .lt('submit_deadline', new Date().toISOString());
-  return (data ?? []) as RfqBid[];
-}
-
-// ── RfqProposal CRUD ─────────────────────────────────────────
-
-export async function createRfqProposal(
-  data: Omit<RfqProposal, 'id' | 'created_at' | 'updated_at'>
-): Promise<RfqProposal | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('rfq_proposals')
-    .insert([data] as never)
-    .select()
-    .single();
-  if (error) { console.error('제안서 생성 실패:', error); return null; }
-  return row as RfqProposal;
-}
-
-export async function getRfqProposals(rfqId: string): Promise<RfqProposal[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('rfq_proposals')
-    .select('*, tenants(name)')
-    .eq('rfq_id', rfqId)
-    .order('rank', { ascending: true, nullsFirst: false });
-  return ((data ?? []) as unknown[]).map((r: unknown) => {
-    const row = r as RfqProposal & { tenants?: { name?: string } };
-    return { ...row, tenant_name: row.tenants?.name } as RfqProposal;
-  });
-}
-
-export async function getRfqProposal(id: string): Promise<RfqProposal | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb.from('rfq_proposals').select('*').eq('id', id).single();
-  return data as RfqProposal | null;
-}
-
-export async function updateRfqProposal(
-  id: string, patch: Partial<RfqProposal>
-): Promise<RfqProposal | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data, error } = await sb
-    .from('rfq_proposals')
-    .update({ ...patch, updated_at: new Date().toISOString() } as never)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) { console.error('제안서 업데이트 실패:', error); return null; }
-  return data as RfqProposal;
-}
-
-// ── RfqMessage CRUD ──────────────────────────────────────────
-
-export async function createRfqMessage(
-  data: Omit<RfqMessage, 'id' | 'created_at'>
-): Promise<RfqMessage | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('rfq_messages')
-    .insert([data] as never)
-    .select()
-    .single();
-  if (error) { console.error('RFQ 메시지 생성 실패:', error); return null; }
-  return row as RfqMessage;
-}
-
-export async function getRfqMessages(
-  rfqId: string,
-  viewAs: 'customer' | 'tenant' | 'admin',
-  proposalId?: string
-): Promise<RfqMessage[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  let q = sb.from('rfq_messages').select('*').eq('rfq_id', rfqId);
-  if (proposalId) q = q.eq('proposal_id', proposalId);
-  if (viewAs === 'customer') q = q.eq('is_visible_to_customer', true);
-  else if (viewAs === 'tenant') q = q.eq('is_visible_to_tenant', true);
-  const { data } = await q.order('created_at', { ascending: true });
-  return (data ?? []) as RfqMessage[];
-}
-
-// ── Tenant 신뢰도 점수 ───────────────────────────────────────
-
-export async function updateTenantReliability(tenantId: string, delta: number): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  // reliability_score = GREATEST(0, LEAST(100, current + delta))
-  const { data: t } = await sb.from('tenants').select('reliability_score').eq('id', tenantId).single();
-  if (!t) return;
-  const newScore = Math.max(0, Math.min(100, (t as { reliability_score: number }).reliability_score + delta));
-  await sb.from('tenants').update({ reliability_score: newScore } as never).eq('id', tenantId);
-}
+// 본문은 ./db/rfq.ts 로 분리 (god 모듈 분할 2026-04-27).
+export {
+  createGroupRfq, getGroupRfq, listGroupRfqs, updateGroupRfq,
+  claimRfqBid, getRfqBids, updateRfqBid, getExpiredBids,
+  createRfqProposal, getRfqProposals, getRfqProposal, updateRfqProposal,
+  createRfqMessage, getRfqMessages,
+} from './db/rfq';
+export type {
+  GroupRfq, RfqBid, ChecklistItem, ProposalChecklist, RfqProposal, RfqMessage,
+} from './db/rfq';
 
 // ═══════════════════════════════════════════════════════════════
-// 3대 광고 통합 데이터 댐 — TrafficLog / SearchLog / EngagementLog / ConversionLog
+// 3대 광고 통합 데이터 댐 — 본문은 ./db/ads.ts 로 분리
 // ═══════════════════════════════════════════════════════════════
-
-export interface AdTrafficLog {
-  id: string;
-  session_id: string;
-  user_id?: string | null;
-  source?: string | null;
-  medium?: string | null;
-  campaign_name?: string | null;
-  keyword?: string | null;
-  gclid?: string | null;
-  fbclid?: string | null;
-  n_keyword?: string | null;
-  current_cpc?: number | null;
-  consent_agreed: boolean;
-  landing_page?: string | null;
-  content_creative_id?: string | null;
-  created_at: string;
-}
-
-export interface AdSearchLog {
-  id: string;
-  session_id: string;
-  user_id?: string | null;
-  search_query?: string | null;
-  search_category?: string | null;
-  result_count?: number;
-  lead_time_days?: number | null;
-  created_at: string;
-}
-
-export interface AdEngagementLog {
-  id: string;
-  session_id: string;
-  user_id?: string | null;
-  event_type: 'page_view' | 'product_view' | 'cart_added' | 'checkout_start';
-  product_id?: string | null;
-  product_name?: string | null;
-  cart_added: boolean;
-  page_url?: string | null;
-  lead_time_days?: number | null;
-  created_at: string;
-}
-
-export interface AdConversionLog {
-  id: string;
-  session_id: string;
-  user_id?: string | null;
-  final_booking_id?: string | null;
-  final_sales_price: number;
-  base_cost: number;
-  allocated_ad_spend: number;
-  net_profit: number; // GENERATED ALWAYS
-  attributed_source?: string | null;
-  attributed_gclid?: string | null;
-  attributed_fbclid?: string | null;
-  // First-touch 어트리뷰션
-  first_touch_source?: string | null;
-  first_touch_keyword?: string | null;
-  first_touch_landing_page?: string | null;
-  first_touch_creative_id?: string | null;
-  first_touch_at?: string | null;
-  content_creative_id?: string | null;
-  created_at: string;
-}
-
-// ── INSERT 헬퍼 ──────────────────────────────────────────────
-
-export async function insertTrafficLog(data: Omit<AdTrafficLog, 'id' | 'created_at'>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_traffic_logs').insert(data as never);
-}
-
-export async function insertSearchLog(data: Omit<AdSearchLog, 'id' | 'created_at'>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_search_logs').insert(data as never);
-}
-
-export async function insertEngagementLog(data: Omit<AdEngagementLog, 'id' | 'created_at'>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_engagement_logs').insert(data as never);
-}
-
-export async function insertConversionLog(
-  data: Omit<AdConversionLog, 'id' | 'net_profit' | 'created_at'>
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  // net_profit는 GENERATED ALWAYS 컬럼 — INSERT payload에서 제외
-  await sb.from('ad_conversion_logs').insert(data as never);
-}
-
-// ── QUERY 헬퍼 ───────────────────────────────────────────────
-
-export async function getLatestTrafficBySession(session_id: string): Promise<AdTrafficLog | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('ad_traffic_logs')
-    .select('*')
-    .eq('session_id', session_id)
-    .order('created_at', { ascending: false })
-    .limit(1);
-  return (data && data.length > 0) ? (data[0] as unknown as AdTrafficLog) : null;
-}
-
-/** First-touch: 해당 세션의 가장 첫 번째 유입 기록 */
-export async function getFirstTrafficBySession(session_id: string): Promise<AdTrafficLog | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('ad_traffic_logs')
-    .select('*')
-    .eq('session_id', session_id)
-    .order('created_at', { ascending: true })
-    .limit(1);
-  return (data && data.length > 0) ? (data[0] as unknown as AdTrafficLog) : null;
-}
-
-export async function mergeSessionToUser(session_id: string, user_id: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  // 3개 테이블의 session_id 행에 user_id 채우기 (user_id가 NULL인 행만)
-  await Promise.all([
-    sb.from('ad_traffic_logs')
-      .update({ user_id } as never)
-      .eq('session_id', session_id)
-      .is('user_id', null),
-    sb.from('ad_search_logs')
-      .update({ user_id } as never)
-      .eq('session_id', session_id)
-      .is('user_id', null),
-    sb.from('ad_engagement_logs')
-      .update({ user_id } as never)
-      .eq('session_id', session_id)
-      .is('user_id', null),
-  ]);
-}
+export {
+  insertTrafficLog, insertSearchLog, insertEngagementLog, insertConversionLog,
+  getLatestTrafficBySession, getFirstTrafficBySession, mergeSessionToUser,
+} from './db/ads';
+export type {
+  AdTrafficLog, AdSearchLog, AdEngagementLog, AdConversionLog,
+} from './db/ads';
 
 // ═══════════════════════════════════════════════════════════════
-// 안심 중개 채팅 (SecureChat) & 여소남 표준 확정서 (Voucher)
+// SecureChat / Voucher — 본문은 ./db/voucher.ts 로 분리
 // ═══════════════════════════════════════════════════════════════
-
-import type { VoucherData } from './voucher-generator';
-
-export interface SecureChat {
-  id: string;
-  booking_id?: string | null;
-  rfq_id?: string | null;
-  sender_type: 'customer' | 'land_agency' | 'system';
-  sender_id: string;
-  receiver_type: 'customer' | 'land_agency' | 'admin';
-  raw_message: string;
-  masked_message: string;
-  is_filtered: boolean;
-  filter_detail?: string | null;
-  is_unmasked: boolean;
-  unmasked_at?: string | null;
-  created_at: string;
-}
-
-export interface Voucher {
-  id: string;
-  booking_id?: string | null;
-  rfq_id?: string | null;
-  customer_id?: string | null;
-  land_agency_id?: string | null;
-  parsed_data: VoucherData;
-  upsell_data: unknown[];
-  pdf_url?: string | null;
-  status: 'draft' | 'issued' | 'sent' | 'cancelled';
-  issued_at?: string | null;
-  sent_at?: string | null;
-  end_date?: string | null;
-  review_notified: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-// ── SecureChat CRUD ─────────────────────────────────────────────
-
-export async function createSecureChat(
-  data: Omit<SecureChat, 'id' | 'created_at'>
-): Promise<SecureChat | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('secure_chats')
-    .insert(data as never)
-    .select()
-    .single();
-  if (error) { console.error('createSecureChat', error); return null; }
-  return row as SecureChat;
-}
-
-export async function getSecureChats(params: {
-  bookingId?: string;
-  rfqId?: string;
-  receiverType: 'customer' | 'land_agency' | 'admin';
-}): Promise<SecureChat[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  let q = sb
-    .from('secure_chats')
-    .select('*')
-    .eq('receiver_type', params.receiverType);
-  if (params.bookingId) q = q.eq('booking_id', params.bookingId);
-  if (params.rfqId)     q = q.eq('rfq_id', params.rfqId);
-  const { data } = await q.order('created_at', { ascending: true });
-  return (data ?? []) as SecureChat[];
-}
-
-/** 결제 완료 후 해당 booking의 채팅 마스킹 일괄 해제 */
-export async function unmaskChatsForBooking(bookingId: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb
-    .from('secure_chats')
-    .update({ is_unmasked: true, unmasked_at: new Date().toISOString() } as never)
-    .eq('booking_id', bookingId)
-    .eq('is_unmasked', false);
-}
-
-// ── Voucher CRUD ────────────────────────────────────────────────
-
-export async function createVoucher(
-  data: Omit<Voucher, 'id' | 'created_at' | 'updated_at'>
-): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('vouchers')
-    .insert({ ...data, updated_at: new Date().toISOString() } as never)
-    .select()
-    .single();
-  if (error) { console.error('createVoucher', error); return null; }
-  return row as Voucher;
-}
-
-export async function getVoucher(id: string): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb.from('vouchers').select('*').eq('id', id).single();
-  return data ? (data as unknown as Voucher) : null;
-}
-
-export async function getVoucherByBooking(bookingId: string): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from('vouchers')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-  return data ? (data as unknown as Voucher) : null;
-}
-
-export async function updateVoucher(
-  id: string,
-  patch: Partial<Omit<Voucher, 'id' | 'created_at'>>
-): Promise<Voucher | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data, error } = await sb
-    .from('vouchers')
-    .update({ ...patch, updated_at: new Date().toISOString() } as never)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) { console.error('updateVoucher', error); return null; }
-  return data as Voucher;
-}
-
-/** 여행 종료일 +1일이 지났고 만족도 조사를 아직 보내지 않은 확정서 목록 */
-export async function getVouchersForReviewNotification(): Promise<Voucher[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const { data } = await sb
-    .from('vouchers')
-    .select('*')
-    .eq('status', 'sent')
-    .eq('review_notified', false)
-    .lte('end_date', yesterday.toISOString().slice(0, 10));
-  return (data ?? []) as Voucher[];
-}
+export {
+  createSecureChat, getSecureChats, unmaskChatsForBooking,
+  createVoucher, getVoucher, getVoucherByBooking, updateVoucher,
+  getVouchersForReviewNotification,
+} from './db/voucher';
+export type { SecureChat, Voucher } from './db/voucher';
 
 // ═══════════════════════════════════════════════════════════════
-// AI 마케팅 관제소 — AdAccount / KeywordPerformance / Mileage
+// AdAccount / KeywordPerformance — 본문은 ./db/ads.ts 로 분리
 // ═══════════════════════════════════════════════════════════════
+export {
+  getAdAccounts, updateAdAccountBalance,
+  getKeywordPerformances, updateKeywordStatus, updateKeywordBid, upsertKeywordPerformance,
+  getAdDashboardStats,
+} from './db/ads';
+export type { AdAccount, KeywordPerformance } from './db/ads';
 
-export interface AdAccount {
-  id: string;
-  platform: 'naver' | 'google' | 'meta';
-  account_name: string;
-  current_balance: number;
-  daily_budget: number;
-  low_balance_threshold: number;
-  is_active: boolean;
-  last_synced_at?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface KeywordPerformance {
-  id: string;
-  platform: 'naver' | 'google' | 'meta';
-  keyword: string;
-  ad_account_id?: string | null;
-  total_spend: number;
-  total_revenue: number;
-  total_cost: number;
-  net_profit: number;   // GENERATED ALWAYS
-  roas_pct: number;     // GENERATED ALWAYS
-  status: 'ACTIVE' | 'PAUSED' | 'FLAGGED_UP';
-  current_bid: number;
-  clicks: number;
-  impressions: number;
-  conversions: number;
-  is_longtail: boolean;
-  discovered_at?: string | null;
-  period_start?: string | null;
-  period_end?: string | null;
-  updated_at: string;
-}
-
-export interface MileageTransaction {
-  id: string;
-  user_id: string;
-  booking_id?: string | null;
-  amount: number;
-  type: 'EARNED' | 'USED' | 'CLAWBACK';
-  margin_impact: number;
-  base_net_profit: number;
-  mileage_rate: number;
-  memo?: string | null;
-  ref_transaction_id?: string | null;
-  created_at: string;
-}
-
-// ── AdAccount CRUD ──────────────────────────────────────────────
-
-export async function getAdAccounts(): Promise<AdAccount[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb.from('ad_accounts').select('*').eq('is_active', true);
-  return (data ?? []) as AdAccount[];
-}
-
-export async function updateAdAccountBalance(
-  id: string,
-  balance: number
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_accounts').update({
-    current_balance: balance,
-    last_synced_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  } as never).eq('id', id);
-}
-
-// ── KeywordPerformance CRUD ─────────────────────────────────────
-
-export async function getKeywordPerformances(params?: {
-  platform?: string;
-  status?: string;
-  periodStart?: string;
-  periodEnd?: string;
-}): Promise<KeywordPerformance[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  let q = sb.from('keyword_performances').select('*');
-  if (params?.platform) q = q.eq('platform', params.platform);
-  if (params?.status)   q = q.eq('status', params.status);
-  if (params?.periodStart) q = q.gte('period_start', params.periodStart);
-  if (params?.periodEnd)   q = q.lte('period_end', params.periodEnd);
-  const { data } = await q.order('net_profit', { ascending: false });
-  return (data ?? []) as KeywordPerformance[];
-}
-
-export async function updateKeywordStatus(
-  id: string,
-  status: 'ACTIVE' | 'PAUSED' | 'FLAGGED_UP'
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('keyword_performances').update({
-    status,
-    updated_at: new Date().toISOString(),
-  } as never).eq('id', id);
-}
-
-export async function upsertKeywordPerformance(
-  data: Omit<KeywordPerformance, 'id' | 'net_profit' | 'roas_pct' | 'updated_at'>
-): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('keyword_performances').upsert(
-    { ...data, updated_at: new Date().toISOString() } as never,
-    { onConflict: 'platform,keyword' }
-  );
-}
-
-/** 오늘 날짜 기준 총 광고 지출 및 전환 매출 집계 */
-export async function getAdDashboardStats(date?: string): Promise<{
-  total_spend: number;
-  total_revenue: number;
-  total_cost: number;
-  total_net_profit: number;
-}> {
-  const sb = getSupabase();
-  if (!sb) return { total_spend: 0, total_revenue: 0, total_cost: 0, total_net_profit: 0 };
-  const today = date ?? new Date().toISOString().slice(0, 10);
-  const { data } = await sb
-    .from('keyword_performances')
-    .select('total_spend, total_revenue, total_cost, net_profit')
-    .eq('period_start', today);
-  const rows = (data ?? []) as Pick<KeywordPerformance, 'total_spend' | 'total_revenue' | 'total_cost' | 'net_profit'>[];
-  return {
-    total_spend:      rows.reduce((s, r) => s + r.total_spend, 0),
-    total_revenue:    rows.reduce((s, r) => s + r.total_revenue, 0),
-    total_cost:       rows.reduce((s, r) => s + r.total_cost, 0),
-    total_net_profit: rows.reduce((s, r) => s + r.net_profit, 0),
-  };
-}
-
-// ── Mileage CRUD ────────────────────────────────────────────────
-
-export async function createMileageTransaction(
-  data: Omit<MileageTransaction, 'id' | 'created_at'>
-): Promise<MileageTransaction | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('mileage_transactions')
-    .insert(data as never)
-    .select()
-    .single();
-  if (error) { console.error('createMileageTransaction', error); return null; }
-  return row as MileageTransaction;
-}
-
-/** 고객 마일리지 잔액 (SUM of amount) */
-export async function getMileageBalance(userId: string): Promise<number> {
-  const sb = getSupabase();
-  if (!sb) return 0;
-  // customer_mileage_balances View 사용
-  const { data } = await sb
-    .from('customer_mileage_balances')
-    .select('balance')
-    .eq('user_id', userId)
-    .single();
-  return (data as { balance: number } | null)?.balance ?? 0;
-}
-
-/** booking_id 기준 EARNED 트랜잭션 조회 (CLAWBACK 대상 확인용) */
-export async function getEarnedMileageByBooking(
-  bookingId: string
-): Promise<MileageTransaction[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('mileage_transactions')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .eq('type', 'EARNED');
-  return (data ?? []) as MileageTransaction[];
-}
-
-/** 고객 마일리지 거래 내역 */
-export async function getMileageHistory(
-  userId: string,
-  limit = 20
-): Promise<MileageTransaction[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data } = await sb
-    .from('mileage_transactions')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  return (data ?? []) as MileageTransaction[];
-}
+// ── Mileage CRUD — 본문은 ./db/mileage-tx.ts 로 분리 ────────────
+export {
+  createMileageTransaction, getMileageBalance,
+  getEarnedMileageByBooking, getMileageHistory,
+} from './db/mileage-tx';
+export type { MileageTransaction } from './db/mileage-tx';

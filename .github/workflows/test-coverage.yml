@@ -1,0 +1,101 @@
+name: Test Coverage Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        timeout-minutes: 10
+
+      - name: Run tests with coverage
+        run: npm run test -- --coverage --run
+        continue-on-error: false
+
+      - name: Generate coverage badge
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coveragePath = 'coverage/coverage-summary.json';
+
+            if (fs.existsSync(coveragePath)) {
+              const summary = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+              const global = summary.total;
+
+              let comment = '## 📊 Test Coverage Report\n\n';
+              comment += '| Metric | Coverage | Status |\n';
+              comment += '|--------|----------|--------|\n';
+
+              const metrics = {
+                lines: '📝 Lines',
+                statements: '📋 Statements',
+                functions: '🔧 Functions',
+                branches: '🔀 Branches',
+              };
+
+              for (const [key, label] of Object.entries(metrics)) {
+                const coverage = global[key]?.pct || 0;
+                const emoji = coverage >= 80 ? '🟢' : coverage >= 70 ? '🟡' : '🔴';
+                const status = coverage >= 80 ? 'PASS' : coverage >= 70 ? 'WARN' : 'FAIL';
+                comment += `| ${label} | ${coverage.toFixed(2)}% | ${emoji} ${status} |\n`;
+              }
+
+              comment += '\n**Threshold Status:**\n';
+              comment += `- Lines: ${global.lines?.pct >= 80 ? '✅' : '❌'} (threshold: 80%)\n`;
+              comment += `- Statements: ${global.statements?.pct >= 80 ? '✅' : '❌'} (threshold: 80%)\n`;
+              comment += `- Functions: ${global.functions?.pct >= 80 ? '✅' : '❌'} (threshold: 80%)\n`;
+              comment += `- Branches: ${global.branches?.pct >= 75 ? '✅' : '❌'} (threshold: 75%)\n`;
+
+              if (context.eventName === 'pull_request') {
+                github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  body: comment,
+                  event: 'COMMENT',
+                });
+              }
+            }
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Comment PR if coverage drops
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: '❌ **Test Coverage Below Threshold**\n\nPlease add more tests to maintain coverage standards. See uploaded coverage report for details.',
+              event: 'REQUEST_CHANGES',
+            });

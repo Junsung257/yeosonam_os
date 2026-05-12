@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
+import { withCronGuard } from '@/lib/cron-auth';
+import { logError, logWarning } from '@/lib/sentry-logger';
+
+// 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
+export const dynamic = 'force-dynamic';
 
 /**
  * 블로그 자기학습 크론 — 매주 일요일 23시 실행 (KST 월요일 스케줄러 직전)
@@ -10,7 +15,7 @@ import { revalidatePath } from 'next/cache';
  *   B) prompt-optimizer 호출 — 성과 분석 → agent_actions 제안 등록
  *   C) (옵션) AUTO_APPROVE_LEARNING=true → prompt_versions 자동 활성화
  */
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
@@ -65,13 +70,20 @@ export async function GET() {
       result.featured_rotated = { count: 0, reason: '30일 내 발행글 없음' };
     }
   } catch (err) {
-    console.warn('[blog-learn] featured 재선정 실패:', err);
+    logWarning('[cron/blog-learn] featured reselection failed', err);
     result.featured_error = err instanceof Error ? err.message : 'unknown';
   }
 
   // ── B) Prompt optimizer ────────────────────────────────────
   try {
     const optRes = await fetch(`${baseUrl}/api/agent/prompt-optimizer`, { method: 'POST' });
+    // 5xx 또는 비-JSON 응답(빌드 타임 self-fetch 실패 등) 방어.
+    const ct = optRes.headers.get('content-type') || '';
+    if (!optRes.ok || !ct.includes('application/json')) {
+      const body = await optRes.text();
+      result.prompt_learning = { step: 'analysis', status: 'unreachable', http_status: optRes.status, body: body.slice(0, 200) };
+      return NextResponse.json(result);
+    }
     const optData = await optRes.json();
 
     if (optData.status !== 'suggestion_created') {
@@ -124,8 +136,10 @@ export async function GET() {
 
     return NextResponse.json(result);
   } catch (err) {
-    console.error('[blog-learn] 오류:', err);
+    logError('[cron/blog-learn] learning failed', err);
     result.prompt_learning = { error: err instanceof Error ? err.message : '학습 실패' };
     return NextResponse.json(result, { status: 500 });
   }
 }
+
+export const GET = withCronGuard(getHandler);

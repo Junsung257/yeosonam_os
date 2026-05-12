@@ -76,7 +76,11 @@ export function normalizeName(raw: string | null | undefined): string {
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const digits = String(raw).replace(/\D/g, '');
-  return digits.length === 11 ? digits : null;
+  // DB 트리거(format_phone_number)가 010-XXXX-XXXX 형식으로 저장하므로 쿼리도 동일 형식 사용
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+  return null;
 }
 
 // ── 이름 유사도 (Levenshtein 기반) ──────────────────────────────────────────

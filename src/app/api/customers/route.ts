@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/customer-name';
+import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -10,16 +12,29 @@ export async function GET(request: NextRequest) {
   const id    = searchParams.get('id');
   const phone = searchParams.get('phone');
 
-  // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용)
+  // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용 — public)
   if (phone) {
+    const safePhone = escapePostgrestFilterValue(phone);
     const normalized = phone.replace(/[^0-9]/g, '');
+    if (!safePhone && !normalized) {
+      return NextResponse.json({ customers: [] });
+    }
     const { data } = await supabaseAdmin
       .from('customers')
       .select('id, name, phone, grade, mileage')
-      .or(`phone.eq.${phone},phone.eq.${normalized}`)
+      .or(`phone.eq.${safePhone || normalized},phone.eq.${normalized}`)
       .is('deleted_at', null)
       .limit(1);
     return NextResponse.json({ customers: data || [] });
+  }
+
+  // 상세 조회 + 목록 조회 — admin only
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다' },
+      { status: 401 }
+    );
   }
 
   if (id) {
@@ -45,6 +60,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다' },
+      { status: 401 }
+    );
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
@@ -58,15 +81,30 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === 'bulk_tag') {
+      // 감사(2026-05-11): 기존 N+1 (SELECT+UPDATE × N) → 단일 RPC 1 round-trip.
+      // 마이그레이션: 20260518010000_admin_perf_customers_bulk_rpcs.sql
       const { ids, tag } = body as { ids: string[]; tag: string };
       if (!ids?.length || !tag) return NextResponse.json({ error: 'ids, tag 필요' }, { status: 400 });
-      for (const id of ids) {
-        const { data: cur } = await supabaseAdmin.from('customers').select('tags').eq('id', id).single();
-        const existing: string[] = (cur as any)?.tags || [];
-        const merged = Array.from(new Set([...existing, tag]));
-        await supabaseAdmin.from('customers').update({ tags: merged, updated_at: new Date().toISOString() }).eq('id', id);
-      }
-      return NextResponse.json({ ok: true });
+      const { data: updated, error } = await supabaseAdmin.rpc('merge_customer_tags', {
+        p_ids: ids,
+        p_tag: tag,
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, updated: updated ?? 0 });
+    }
+
+    if (body.action === 'bulk_field') {
+      // 동일 필드 일괄 변경 (예: 마일리지 리셋). 클라이언트 N PATCH → 1 UPDATE.
+      const { ids, field, value } = body as { ids: string[]; field: string; value: unknown };
+      const allowed = ['mileage', 'grade', 'status'];
+      if (!ids?.length) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      if (!allowed.includes(field)) return NextResponse.json({ error: '허용되지 않은 필드' }, { status: 400 });
+      const { error } = await supabaseAdmin
+        .from('customers')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, updated: ids.length });
     }
 
     if (!body.name?.trim()) {
@@ -76,8 +114,8 @@ export async function POST(request: NextRequest) {
     // ── 중복 감지 (신규 생성 시에만 — body.id 없을 때) ──────────────────────
     // skipDedup: true 시 스킵 (병합 승인 후 강제 신규 생성 등 예외 경로)
     if (!body.id && !body.skipDedup) {
-      const phone = normalizePhone(body.phone);
-      const dup = await findDuplicateCustomers({ name: body.name, phone: phone ?? undefined });
+      // rawPhone 원본(대시 포함 가능) 그대로 전달 → findDuplicateCustomers 내부에서 양쪽 형식 모두 검색
+      const dup = await findDuplicateCustomers({ name: body.name, phone: body.phone ?? undefined });
 
       // 전화번호 정확 일치 → 기존 고객 재사용 (자동 병합)
       if (dup.exact) {

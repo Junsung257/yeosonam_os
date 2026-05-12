@@ -40,6 +40,7 @@ export async function embedText(
           taskType,
           outputDimensionality: EMBED_DIM,
         }),
+        signal: AbortSignal.timeout(10_000),
       },
     );
     if (!res.ok) {
@@ -75,6 +76,7 @@ export async function embedBatch(
             outputDimensionality: EMBED_DIM,
           })),
         }),
+        signal: AbortSignal.timeout(20_000),
       },
     );
     if (!res.ok) {

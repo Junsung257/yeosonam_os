@@ -7,20 +7,20 @@ export const metadata = {
 
 export default function OfflinePage() {
   return (
-    <main className="min-h-[100dvh] bg-slate-50 flex items-center justify-center px-6">
+    <main className="min-h-[100dvh] bg-admin-bg flex items-center justify-center px-6">
       <div className="text-center space-y-4 max-w-xs">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-200 text-slate-500">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-200 text-admin-muted">
           <WifiOff size={28} />
         </div>
-        <h1 className="text-lg font-semibold text-slate-900">오프라인입니다</h1>
-        <p className="text-sm text-slate-500 leading-relaxed">
+        <h1 className="text-lg font-semibold text-admin-text">오프라인입니다</h1>
+        <p className="text-sm text-admin-muted leading-relaxed">
           네트워크 연결이 끊어졌습니다.
           <br />
           연결이 복구되면 자동으로 최신 데이터를 불러옵니다.
         </p>
         <Link
           href="/m/admin"
-          className="inline-block bg-slate-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl active:scale-95 transition"
+          className="inline-block bg-slate-900 text-white text-sm font-medium px-5 py-2.5 rounded-admin-md active:scale-95 transition"
         >
           다시 시도
         </Link>

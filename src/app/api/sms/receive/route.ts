@@ -15,14 +15,17 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { parseShinhanSMS } from '@/lib/sms-parser';
 import { matchPaymentToBookings, classifyMatch, BookingCandidate } from '@/lib/payment-matcher';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export async function POST(request: NextRequest) {
   // 웹훅 시크릿 검증
   const secret = request.headers.get('x-webhook-secret');
-  if (!process.env.SMS_WEBHOOK_SECRET || secret !== process.env.SMS_WEBHOOK_SECRET) {
+  const expected = getSecret('SMS_WEBHOOK_SECRET');
+  if (!expected || !safeEqualString(secret, expected)) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 
@@ -105,29 +108,24 @@ export async function POST(request: NextRequest) {
     // 테이블 없어도 매칭 결과는 반환
   }
 
-  // 자동 매칭 (신뢰도 90%↑) → paid_amount 누적 + payment_status + 완납 시 completed
+  // 자동 매칭 (신뢰도 90%↑) → Phase 2a update_booking_ledger RPC 로 atomic + ledger 이중쓰기
   if (matchClass === 'auto' && bestMatch && parsed.amount) {
-    const { data: currentBooking } = await supabase
-      .from('bookings')
-      .select('paid_amount, total_price')
-      .eq('id', bestMatch.booking.id)
-      .single();
-
-    const newPaidAmount = ((currentBooking as any)?.paid_amount || 0) + parsed.amount;
-    const totalPrice = (currentBooking as any)?.total_price || 0;
-    const isFullyPaid = totalPrice > 0 && newPaidAmount >= totalPrice;
-
-    await supabase
-      .from('bookings')
-      .update({
-        paid_amount: newPaidAmount,
-        payment_status: isFullyPaid ? '완납' : '일부입금',
-        ...(isFullyPaid ? { status: 'completed' } : {}),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', bestMatch.booking.id);
-
-    console.log(`[SMS 자동매칭] 예약 ${bestMatch.booking.booking_no} — ${parsed.amount.toLocaleString()}원 입금, 누계 ${newPaidAmount.toLocaleString()}원, ${isFullyPaid ? '완납' : '일부입금'} (신뢰도 ${Math.round(confidence * 100)}%)`);
+    const idem = payment?.id ? `sms:${payment.id}` : `sms:${bestMatch.booking.id}:${parsed.receivedAt.toISOString()}`;
+    const { error: rpcErr } = await supabase.rpc('update_booking_ledger', {
+      p_booking_id: bestMatch.booking.id,
+      p_paid_delta: parsed.amount,
+      p_payout_delta: 0,
+      p_source: 'sms_payment',
+      p_source_ref_id: payment?.id ?? null,
+      p_idempotency_key: idem,
+      p_memo: `SMS auto-match ${parsed.senderName} (${Math.round(confidence * 100)}%)`,
+      p_created_by: 'sms',
+    });
+    if (rpcErr) {
+      console.error('[SMS 자동매칭] update_booking_ledger 실패:', rpcErr.message);
+    } else {
+      console.log(`[SMS 자동매칭] 예약 ${bestMatch.booking.booking_no?.slice(0, 4)}**** 연결 완료 (신뢰도 ${Math.round(confidence * 100)}%)`);
+    }
   }
 
   return NextResponse.json({

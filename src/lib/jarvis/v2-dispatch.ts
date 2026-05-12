@@ -3,8 +3,8 @@
  *
  * 역할:
  *   1) routeMessage() 로 agent type 결정
- *   2) agent type 에 맞는 GeminiAgentV2Config 조립 (tool 정의·executeTool·systemPrompt)
- *   3) runGeminiAgentLoopV2() 호출
+ *   2) agent type 에 맞는 DeepSeekAgentV2Config 조립 (tool 정의·executeTool·systemPrompt)
+ *   3) runDeepSeekAgentLoopV2() 호출
  *
  * 구현 상태 (Phase 2 초기):
  *   ✅ operations — 완전 V2 연결
@@ -14,10 +14,11 @@
  */
 
 import { routeMessage } from './claude-router'
-import type { GeminiAgentV2Config, V2RunParams } from './gemini-agent-loop-v2'
-import { runGeminiAgentLoopV2 } from './gemini-agent-loop-v2'
+import type { DeepSeekAgentV2Config, V2RunParams } from './deepseek-agent-loop-v2'
+import { runDeepSeekAgentLoopV2 } from './deepseek-agent-loop-v2'
 import type { StreamEvent } from './stream-encoder'
 import type { AgentRunResult, AgentType, JarvisContext } from './types'
+import { resolveSpecialist, type SpecialistPick } from './orchestration'
 
 // agent 공유 export (V1·V2 공용)
 import {
@@ -31,12 +32,12 @@ import { MARKETING_TOOLS, executeMarketingTool } from './agents/marketing'
 import { SALES_TOOLS, executeSalesTool } from './agents/sales'
 import { SYSTEM_TOOLS, executeSystemTool } from './agents/system'
 import {
-  OPERATIONS_PROMPT,
-  PRODUCTS_PROMPT,
-  FINANCE_PROMPT,
-  MARKETING_PROMPT,
-  SALES_PROMPT,
-  SYSTEM_PROMPT_AGENT,
+  getOperationsPrompt,
+  getProductsPrompt,
+  getFinancePrompt,
+  getMarketingPrompt,
+  getSalesPrompt,
+  getSystemPrompt,
 } from './prompts'
 
 // concierge agent (Phase 4 — RAG 기반 고객 상담)
@@ -55,12 +56,12 @@ import {
  *       · surface='customer' → concierge (RAG 상품 검색 + 고객 톤)
  *       · surface='admin'    → products agent (관리자용 상품 CRUD)
  */
-function buildConfig(agentType: AgentType, ctx: JarvisContext): GeminiAgentV2Config | null {
+async function buildConfig(agentType: AgentType, ctx: JarvisContext): Promise<DeepSeekAgentV2Config | null> {
   switch (agentType) {
     case 'operations':
       return {
         agentType: 'operations',
-        systemPrompt: OPERATIONS_PROMPT,
+        systemPrompt: await getOperationsPrompt(),
         tools: OPERATIONS_TOOLS,
         executeTool: (name, args) => executeOperationsTool(name, args),
         contextExtractor: OPERATIONS_CONTEXT_EXTRACTOR,
@@ -76,35 +77,35 @@ function buildConfig(agentType: AgentType, ctx: JarvisContext): GeminiAgentV2Con
       }
       return {
         agentType: 'products',
-        systemPrompt: PRODUCTS_PROMPT,
+        systemPrompt: await getProductsPrompt(),
         tools: PRODUCTS_TOOLS,
         executeTool: (name, args) => executeProductsTool(name, args),
       }
     case 'finance':
       return {
         agentType: 'finance',
-        systemPrompt: FINANCE_PROMPT,
+        systemPrompt: await getFinancePrompt(),
         tools: FINANCE_TOOLS,
         executeTool: (name, args) => executeFinanceTool(name, args),
       }
     case 'marketing':
       return {
         agentType: 'marketing',
-        systemPrompt: MARKETING_PROMPT,
+        systemPrompt: await getMarketingPrompt(),
         tools: MARKETING_TOOLS,
         executeTool: (name, args) => executeMarketingTool(name, args),
       }
     case 'sales':
       return {
         agentType: 'sales',
-        systemPrompt: SALES_PROMPT,
+        systemPrompt: await getSalesPrompt(),
         tools: SALES_TOOLS,
         executeTool: (name, args) => executeSalesTool(name, args),
       }
     case 'system':
       return {
         agentType: 'system',
-        systemPrompt: SYSTEM_PROMPT_AGENT,
+        systemPrompt: await getSystemPrompt(),
         tools: SYSTEM_TOOLS,
         executeTool: (name, args) => executeSystemTool(name, args),
       }
@@ -121,27 +122,30 @@ export interface DispatchResult {
   agentType: AgentType
   routerConfidence: number
   supported: boolean            // false = V1 폴백 필요
-  config: GeminiAgentV2Config | null
+  config: DeepSeekAgentV2Config | null
+  /** 2단 오케스트레이션 — 도메인 내 서브 팀 (로그·UI·추후 프롬프트 분기) */
+  specialistPick: SpecialistPick
 }
 
 /** 라우팅 + config 조립만 먼저 반환 (SSE 라우트가 agent_picked 이벤트 먼저 보낼 수 있게) */
 export async function prepareDispatch(input: DispatchInput): Promise<DispatchResult> {
   const routerResult = await routeMessage(input.message, input.session?.context ?? {})
   const agentType = routerResult.agent
-  const config = buildConfig(agentType, input.ctx)
+  const config = await buildConfig(agentType, input.ctx)
+  const specialistPick = resolveSpecialist(agentType, input.message, input.ctx)
   return {
     agentType,
     routerConfidence: routerResult.confidence,
     supported: !!config,
     config,
+    specialistPick,
   }
 }
 
-/** dispatch 후 실제 agent loop 실행 (stream generator 반환) */
 export async function* runV2(
   dispatch: DispatchResult,
   params: V2RunParams,
 ): AsyncGenerator<StreamEvent, AgentRunResult | null> {
   if (!dispatch.supported || !dispatch.config) return null
-  return yield* runGeminiAgentLoopV2(dispatch.config, params)
+  return yield* runDeepSeekAgentLoopV2(dispatch.config, params)
 }

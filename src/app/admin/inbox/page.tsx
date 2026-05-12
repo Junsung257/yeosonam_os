@@ -16,6 +16,9 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BookingDrawer from '@/components/BookingDrawer';
+import { PageHeader } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { RefreshCw, Inbox as InboxIcon } from 'lucide-react';
 import {
   PRIORITY_BADGE_CLASS,
   PRIORITY_LABEL,
@@ -244,103 +247,96 @@ export default function InboxPage() {
   const { health, bank_health } = data;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* 상단 헤더 */}
-      <header className="sticky top-0 z-10 bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">📥 Inbox — 예약 액션 큐</h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                지금 처리해야 할 건만 보여줍니다 · 30초마다 자동 갱신
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={runNow}
-                disabled={running}
-                className="px-3 py-1.5 text-sm rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
-                title="룰 러너 즉시 실행 (테스트/디버깅)"
-              >
-                {running ? '⏳ 실행 중…' : '🔄 지금 검사'}
-              </button>
-            </div>
-          </div>
+    <div>
+      <PageHeader
+        title="Inbox — 예약 액션 큐"
+        subtitle="지금 처리해야 할 건만 · 30초마다 자동 갱신"
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={runNow}
+            disabled={running}
+            title="룰 러너 즉시 실행 (테스트/디버깅)"
+          >
+            <RefreshCw size={14} className={running ? 'animate-spin' : ''} />
+            {running ? '실행 중…' : '지금 검사'}
+          </Button>
+        }
+      />
 
-          {/* 헬스 요약 */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {health && (
-              <>
-                <span className="px-2 py-1 rounded bg-slate-100 text-slate-700">
-                  총 <b className="text-slate-900">{health.total_open}</b>건
-                </span>
-                {health.urgent_open > 0 && (
-                  <span className="px-2 py-1 rounded bg-red-100 text-red-700 font-semibold">
-                    🔴 긴급 {health.urgent_open}
-                  </span>
-                )}
-                {health.stale_over_48h > 0 && (
-                  <span className="px-2 py-1 rounded bg-orange-100 text-orange-700">
-                    ⏱️ 48h 경과 {health.stale_over_48h}
-                  </span>
-                )}
-                {health.snoozed_count > 0 && (
-                  <span className="px-2 py-1 rounded bg-indigo-50 text-indigo-700">
-                    💤 스누즈 {health.snoozed_count}
-                  </span>
-                )}
-                <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700">
-                  ✓ 24h 자동종결 {health.auto_resolved_last_24h}
-                </span>
-              </>
+      {/* 헬스 요약 칩 */}
+      <div className="flex flex-wrap items-center gap-1.5 text-admin-xs mb-4">
+        {health && (
+          <>
+            <span className="px-2 py-1 rounded-admin-xs bg-admin-surface-2 text-admin-text-2">
+              총 <b className="text-admin-text admin-num">{health.total_open}</b>건
+            </span>
+            {health.urgent_open > 0 && (
+              <span className="px-2 py-1 rounded-admin-xs bg-status-dangerBg text-status-dangerFg font-semibold">
+                🔴 긴급 {health.urgent_open}
+              </span>
             )}
-            {bank_health && bank_health.unmatched_count + bank_health.review_count > 0 && (
-              <a
-                href="/admin/payments"
-                className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
-                title="미매칭 입금 건수 (booking_tasks 와 별도)"
-              >
-                🏦 입금 매칭 대기 {bank_health.unmatched_count + bank_health.review_count}
-              </a>
+            {health.stale_over_48h > 0 && (
+              <span className="px-2 py-1 rounded-admin-xs bg-status-warningBg text-status-warningFg">
+                ⏱️ 48h 경과 {health.stale_over_48h}
+              </span>
             )}
-          </div>
+            {health.snoozed_count > 0 && (
+              <span className="px-2 py-1 rounded-admin-xs bg-status-infoBg text-status-infoFg">
+                💤 스누즈 {health.snoozed_count}
+              </span>
+            )}
+            <span className="px-2 py-1 rounded-admin-xs bg-status-successBg text-status-successFg">
+              ✓ 24h 자동종결 {health.auto_resolved_last_24h}
+            </span>
+          </>
+        )}
+        {bank_health && bank_health.unmatched_count + bank_health.review_count > 0 && (
+          <a
+            href="/admin/payments"
+            className="px-2 py-1 rounded-admin-xs bg-status-warningBg text-status-warningFg hover:opacity-80 transition-opacity"
+            title="미매칭 입금 건수 (booking_tasks 와 별도)"
+          >
+            🏦 입금 매칭 대기 {bank_health.unmatched_count + bank_health.review_count}
+          </a>
+        )}
+      </div>
 
-          {/* 우선순위 탭 */}
-          <div className="flex gap-1 mt-3 border-b border-slate-200 -mb-4">
-            {PRIORITY_TABS.map(tab => {
-              const count = tab.key === 'all'
-                ? data.tasks.length
-                : data.tasks.filter(t => t.priority === tab.key).length;
-              const active = priorityFilter === tab.key;
-              return (
-                <button
-                  key={String(tab.key)}
-                  onClick={() => setPriorityFilter(tab.key)}
-                  className={`px-3 py-2 text-sm border-b-2 -mb-[2px] ${
-                    active
-                      ? 'border-slate-900 text-slate-900 font-semibold'
-                      : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {tab.label} <span className="text-xs text-slate-400">({count})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </header>
+      {/* 우선순위 탭 */}
+      <div className="flex gap-1 mb-4 border-b border-admin-border-mid">
+        {PRIORITY_TABS.map(tab => {
+          const count = tab.key === 'all'
+            ? data.tasks.length
+            : data.tasks.filter(t => t.priority === tab.key).length;
+          const active = priorityFilter === tab.key;
+          return (
+            <button
+              key={String(tab.key)}
+              onClick={() => setPriorityFilter(tab.key)}
+              className={`px-3 py-2 text-admin-sm border-b-2 -mb-px transition-colors ${
+                active
+                  ? 'border-brand text-admin-text font-semibold'
+                  : 'border-transparent text-admin-muted hover:text-admin-text-2'
+              }`}
+            >
+              {tab.label} <span className="text-admin-xs text-admin-muted-2 admin-num">({count})</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* 본문 */}
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <main>
         {/* 룰 타입 필터 칩 */}
         {Object.keys(typeCounts).length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
             <button
               onClick={() => setTypeFilter('all')}
-              className={`px-2 py-1 text-xs rounded-full ${
+              className={`px-2 py-1 text-admin-xs rounded-full transition-colors ${
                 typeFilter === 'all'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-admin-text text-white'
+                  : 'bg-admin-surface border border-admin-border-mid text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text-2'
               }`}
             >
               모든 룰
@@ -349,13 +345,13 @@ export default function InboxPage() {
               <button
                 key={type}
                 onClick={() => setTypeFilter(type)}
-                className={`px-2 py-1 text-xs rounded-full ${
+                className={`px-2 py-1 text-admin-xs rounded-full transition-colors ${
                   typeFilter === type
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-admin-text text-white'
+                    : 'bg-admin-surface border border-admin-border-mid text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text-2'
                 }`}
               >
-                {formatTaskType(type)} ({n})
+                {formatTaskType(type)} <span className="admin-num">({n})</span>
               </button>
             ))}
           </div>
@@ -363,14 +359,27 @@ export default function InboxPage() {
 
         {/* 카드 리스트 */}
         {loading ? (
-          <div className="text-center py-16 text-slate-400">불러오는 중…</div>
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="admin-card p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-20" />
+                  <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-36" />
+                </div>
+                <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-full" />
+                <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-3/4" />
+              </div>
+            ))}
+          </div>
         ) : filteredTasks.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-6xl mb-3">🎉</div>
-            <div className="text-lg font-semibold text-slate-900">Inbox Zero 달성!</div>
-            <div className="text-sm text-slate-500 mt-1">
-              처리해야 할 건이 없습니다. 잠시 쉬었다 오세요.
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-12 h-12 rounded-full bg-admin-surface-2 flex items-center justify-center text-admin-muted mb-4">
+              <InboxIcon size={20} strokeWidth={1.75} />
             </div>
+            <h3 className="text-admin-base font-semibold text-admin-text">Inbox Zero 달성</h3>
+            <p className="text-admin-sm text-admin-muted mt-1 max-w-sm">
+              처리해야 할 건이 없습니다. 잠시 쉬었다 오세요.
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -405,10 +414,10 @@ export default function InboxPage() {
       {/* 토스트 */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 px-4 py-2 rounded-lg shadow-lg text-sm ${
+          className={`fixed bottom-6 right-6 px-4 py-2 rounded-admin-sm shadow-admin-md text-admin-sm font-medium ${
             toast.type === 'ok'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-red-600 text-white'
+              ? 'bg-success text-white'
+              : 'bg-danger text-white'
           }`}
         >
           {toast.msg}
@@ -445,18 +454,18 @@ function TaskCard({
 
   return (
     <div
-      className={`bg-white rounded-lg border transition cursor-pointer ${
+      className={`bg-admin-surface rounded-admin-sm border transition-all duration-160 cursor-pointer ${
         active
-          ? 'border-slate-900 shadow-md'
+          ? 'border-brand shadow-admin-sm'
           : task.priority === 0
-          ? 'border-red-300 hover:border-red-400'
-          : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+          ? 'border-danger/30 hover:border-danger/50'
+          : 'border-admin-border-mid hover:border-admin-border-strong hover:shadow-admin-xs'
       }`}
     >
       <div className="p-4 flex items-start gap-4" onClick={onOpen}>
         {/* Priority pill */}
         <div className="pt-0.5">
-          <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-bold ${PRIORITY_BADGE_CLASS[task.priority]}`}>
+          <span className={`inline-block px-2 py-0.5 text-[10px] rounded-admin-xs font-bold ${PRIORITY_BADGE_CLASS[task.priority]}`}>
             {PRIORITY_LABEL[task.priority]}
           </span>
         </div>
@@ -464,25 +473,25 @@ function TaskCard({
         {/* Body */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+            <span className="text-admin-xs px-1.5 py-0.5 rounded-admin-xs bg-admin-surface-2 text-admin-muted">
               {formatTaskType(task.task_type)}
             </span>
-            <span className="text-xs text-slate-400">{formatRelative(task.created_at)}</span>
+            <span className="text-admin-xs text-admin-muted-2">{formatRelative(task.created_at)}</span>
           </div>
-          <div className="font-medium text-slate-900 mb-1 truncate">{task.title}</div>
-          <div className="text-xs text-slate-500 truncate">
+          <div className="font-medium text-admin-text mb-1 truncate">{task.title}</div>
+          <div className="text-admin-xs text-admin-muted truncate">
             <b>{bookingNo}</b> · {customerName} · {packageTitle}
             {task.departure_date && (
-              <span className="ml-1 text-slate-400">(출발 {task.departure_date})</span>
+              <span className="ml-1 text-admin-muted-2">(출발 {task.departure_date})</span>
             )}
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
           <button
             onClick={onResolve}
-            className="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700"
+            className="h-8 px-3 text-admin-sm rounded-admin-sm bg-success text-white hover:opacity-90 transition-opacity font-medium"
             title="이 Task 를 수동으로 종결합니다"
           >
             ✓ 완료
@@ -491,18 +500,18 @@ function TaskCard({
           <div className="relative">
             <button
               onClick={onToggleSnoozeMenu}
-              className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+              className="h-8 px-3 text-admin-sm rounded-admin-sm border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong transition-colors font-medium"
               title="나중에 다시 알림"
             >
               ⏰ 나중에
             </button>
             {snoozeMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg z-20 min-w-[120px]">
+              <div className="absolute right-0 top-full mt-1 bg-admin-surface border border-admin-border-mid rounded-admin-sm shadow-admin-md z-20 min-w-[120px] overflow-hidden">
                 {SNOOZE_PRESETS.map(preset => (
                   <button
                     key={preset.label}
                     onClick={() => onSnooze(preset.hours)}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100"
+                    className="w-full text-left px-3 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 hover:text-admin-text transition-colors"
                   >
                     {preset.label}
                   </button>

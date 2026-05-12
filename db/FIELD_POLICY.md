@@ -42,22 +42,41 @@
 
 ## ⚠️ 경계 필드 (Conditional)
 
-**맥락에 따라 내부/외부 판단**. 주의 사용.
+## 🆕 2026-04-27 — `special_notes` deprecation + customer/internal 분리
 
-| 필드 | 원래 용도 | ⚠️ 주의 |
-|------|---------|-------|
-| `special_notes` | (과거) 자유 메모 | **A4 템플릿이 쇼핑 fallback으로 사용** — 커미션/내부 메모 절대 금지. null 권장. |
+| 필드 | 노출 | 용도 |
+|------|------|------|
+| `customer_notes` | 🟢 고객 OK | 고객 노출 자유 텍스트. CRC `resolveShopping` fallback 출처. W21 키워드 검증. |
+| `internal_notes` | 🔒 운영 전용 | 커미션·정산·랜드사 협의·운영 메모. 어떤 텍스트도 OK. 어드민에서만 표시. |
+| `special_notes` | ⚠️ DEPRECATED | LLM 컨텍스트(card-news, content-brief 등)·어드민 호환용. **고객 fallback 경로 모두 제거됨.** 신규 등록은 customer/internal 사용. |
 
-**special_notes 올바른 사용**:
-- ✅ "쇼핑센터 3회 (차/실크/진주)"
-- ✅ "룸타입은 개런티 불가"
-- ❌ "랜드부산 10만원 커미션 고정" ← **고객 노출됨!**
-- ❌ "commission_rate=0 저장 제약" ← **고객 노출됨!**
+**커미션이 10만원 고정 같은 특수 케이스** (P1 #5, 2026-04-27 적용):
+- ✅ `commission_fixed_amount` (정액 KRW/USD/JPY/CNY) + `commission_currency` 사용
+- 정액 모드일 때 `commission_rate = 0` 자동 설정 (상호배타)
+- `internal_notes` 에는 운영 메모만 — 정액 정보는 컬럼에 명시
+- ❌ `customer_notes` 에 마진 정보 절대 금지 (W21 차단)
 
-**커미션이 10만원 고정 같은 특수 케이스**:
-- 1순위: `commission_rate = 0` + 정산 시 운영팀 별도 처리
-- 2순위: 신규 DB 컬럼 `commission_fixed_amount` 추가 (향후)
-- **절대 special_notes 사용 금지**
+**랜드부산 정액 마진 적용 사례**:
+- LB-FUK-03-01/02 → 100,000원/건 정액
+- LB-TAO-03-01, 04-01 → 90,000원/건 정액
+
+**createInserter 사용**:
+```js
+const inserter = createInserter({
+  landOperator: '랜드부산',
+  commissionFixedAmount: 90000,  // 정액 (commissionRate 무시됨)
+  commissionCurrency: 'KRW',
+  ticketingDeadline: '2026-04-29',
+  destCode: 'TAO',
+});
+// 또는 % 마진:
+const inserter = createInserter({
+  landOperator: '투어폰',
+  commissionRate: 9,             // %
+  ticketingDeadline: '2026-04-15',
+  destCode: 'NHA',
+});
+```
 
 ---
 

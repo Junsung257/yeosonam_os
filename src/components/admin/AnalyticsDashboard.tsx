@@ -58,7 +58,7 @@ const SOURCE_META: Record<string, { label: string; color: string; bg: string; do
   insta:   { label: '인스타그램', color: 'text-pink-700',   bg: 'bg-pink-50',   dot: 'bg-pink-500' },
   kakao:   { label: '카카오톡',   color: 'text-yellow-700', bg: 'bg-yellow-50', dot: 'bg-yellow-500' },
   blog:    { label: '블로그',     color: 'text-green-700',  bg: 'bg-green-50',  dot: 'bg-green-500' },
-  offline: { label: '오프라인',   color: 'text-gray-700',   bg: 'bg-gray-100',  dot: 'bg-gray-500' },
+  offline: { label: '오프라인',   color: 'text-admin-text-2',   bg: 'bg-admin-surface-2',  dot: 'bg-gray-500' },
   youtube: { label: '유튜브',     color: 'text-red-700',    bg: 'bg-red-50',    dot: 'bg-red-500' },
   naver:   { label: '네이버',     color: 'text-emerald-700',bg: 'bg-emerald-50',dot: 'bg-emerald-500' },
 };
@@ -148,10 +148,10 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* ── 채널별 성과 비교 ──────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+      <div className="bg-white rounded-admin-lg border border-admin-border-mid p-6">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-gray-900">채널별 유입 성과 비교</h3>
-          <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full font-medium">
+          <h3 className="text-lg font-bold text-admin-text">채널별 유입 성과 비교</h3>
+          <span className="text-xs text-admin-muted-2 bg-admin-surface-2 px-2.5 py-1 rounded-full font-medium">
             클릭 수 기준
           </span>
         </div>
@@ -164,17 +164,17 @@ export default function AnalyticsDashboard() {
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
-                    <span className="text-sm font-semibold text-gray-800">{meta.label}</span>
+                    <span className="text-sm font-semibold text-admin-text-2">{meta.label}</span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${meta.bg} ${meta.color}`}>
                       CVR {chCvr}%
                     </span>
                   </div>
-                  <div className="text-sm font-bold text-gray-700 tabular-nums">
+                  <div className="text-sm font-bold text-admin-text-2 tabular-nums">
                     {ch.clicks.toLocaleString()} 클릭 · {ch.leads.toLocaleString()} 리드
                   </div>
                 </div>
                 {/* 더블 프로그레스 바 */}
-                <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className="relative h-3 bg-admin-surface-2 rounded-full overflow-hidden">
                   <div
                     className={`absolute left-0 top-0 h-full rounded-full transition-all duration-700 ${meta.dot}`}
                     style={{ width: `${ch.pct}%`, opacity: 0.25 }}
@@ -185,8 +185,8 @@ export default function AnalyticsDashboard() {
                   />
                 </div>
                 <div className="flex justify-between mt-0.5">
-                  <span className="text-xs text-gray-400">클릭 (연하게)</span>
-                  <span className="text-xs text-gray-400">리드 전환 (진하게)</span>
+                  <span className="text-xs text-admin-muted-2">클릭 (연하게)</span>
+                  <span className="text-xs text-admin-muted-2">리드 전환 (진하게)</span>
                 </div>
               </div>
             );
@@ -195,16 +195,16 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* ── 캠페인 링크 테이블 ──────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">생성된 캠페인 링크</h3>
-          <span className="text-sm text-gray-400">{links.length}개</span>
+      <div className="bg-white rounded-admin-lg border border-admin-border-mid overflow-hidden">
+        <div className="px-6 py-5 border-b border-admin-border flex items-center justify-between">
+          <h3 className="text-lg font-bold text-admin-text">생성된 캠페인 링크</h3>
+          <span className="text-sm text-admin-muted-2">{links.length}개</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
             <thead>
-              <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+              <tr className="bg-admin-bg text-xs text-admin-muted uppercase tracking-wide">
                 <th className="px-6 py-4 text-left font-semibold">캠페인명</th>
                 <th className="px-6 py-4 text-left font-semibold">채널</th>
                 <th className="px-6 py-4 text-right font-semibold">클릭</th>
@@ -219,10 +219,10 @@ export default function AnalyticsDashboard() {
                 const meta = SOURCE_META[link.source] ?? SOURCE_META.offline;
                 const linkCvr = cvr(link.clicks, link.leads);
                 return (
-                  <tr key={link.id} className="hover:bg-gray-50 transition group">
+                  <tr key={link.id} className="hover:bg-admin-bg transition group">
                     <td className="px-6 py-5">
-                      <p className="text-base font-semibold text-gray-900 leading-snug">{link.name}</p>
-                      <p className="text-sm text-gray-400 mt-0.5">{link.productLabel}</p>
+                      <p className="text-base font-semibold text-admin-text leading-snug">{link.name}</p>
+                      <p className="text-sm text-admin-muted-2 mt-0.5">{link.productLabel}</p>
                     </td>
                     <td className="px-6 py-5">
                       <span className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full ${meta.bg} ${meta.color}`}>
@@ -230,17 +230,17 @@ export default function AnalyticsDashboard() {
                         {meta.label}
                       </span>
                     </td>
-                    <td className="px-6 py-5 text-right text-lg font-bold text-gray-800 tabular-nums">
+                    <td className="px-6 py-5 text-right text-lg font-bold text-admin-text-2 tabular-nums">
                       {link.clicks.toLocaleString()}
                     </td>
-                    <td className="px-6 py-5 text-right text-lg font-bold text-gray-800 tabular-nums">
+                    <td className="px-6 py-5 text-right text-lg font-bold text-admin-text-2 tabular-nums">
                       {link.leads.toLocaleString()}
                     </td>
                     <td className="px-6 py-5 text-right">
                       <span className={`text-lg font-bold tabular-nums ${
                         parseFloat(linkCvr) >= 5 ? 'text-emerald-600'
                           : parseFloat(linkCvr) >= 3 ? 'text-blue-600'
-                          : 'text-gray-500'
+                          : 'text-admin-muted'
                       }`}>
                         {linkCvr}%
                       </span>
@@ -257,7 +257,7 @@ export default function AnalyticsDashboard() {
                         </span>
                       )}
                       {link.trend === 'flat' && (
-                        <span className="text-sm text-gray-400">—</span>
+                        <span className="text-sm text-admin-muted-2">—</span>
                       )}
                     </td>
                     <td className="px-6 py-5">
@@ -274,7 +274,7 @@ export default function AnalyticsDashboard() {
                           label={copiedId === link.id ? '복사됨' : '복사'}
                           icon={<Copy size={15} />}
                           onClick={() => handleCopy(link)}
-                          color={copiedId === link.id ? 'bg-green-50 text-green-600' : 'hover:bg-gray-100 hover:text-gray-700'}
+                          color={copiedId === link.id ? 'bg-green-50 text-green-600' : 'hover:bg-admin-surface-2 hover:text-admin-text-2'}
                         />
                         {/* 더보기 메뉴 */}
                         <div className="relative">
@@ -282,10 +282,10 @@ export default function AnalyticsDashboard() {
                             label=""
                             icon={<MoreVertical size={15} />}
                             onClick={() => setMenuId(menuId === link.id ? null : link.id)}
-                            color="hover:bg-gray-100"
+                            color="hover:bg-admin-surface-2"
                           />
                           {menuId === link.id && (
-                            <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-xl py-1 w-32">
+                            <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-admin-border-mid rounded-admin-md shadow-admin-lg py-1 w-32">
                               <button
                                 onClick={() => handleDelete(link.id)}
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition"
@@ -305,7 +305,7 @@ export default function AnalyticsDashboard() {
         </div>
 
         {links.length === 0 && (
-          <div className="py-16 text-center text-gray-400">
+          <div className="py-16 text-center text-admin-muted-2">
             <p className="text-lg">아직 생성된 캠페인 링크가 없습니다.</p>
             <p className="text-sm mt-1">우측 상단 [새 링크 만들기] 버튼을 눌러 시작하세요.</p>
           </div>
@@ -322,12 +322,12 @@ function KpiCard({ icon, bg, label, value, sub, highlight }: {
   value: string; sub: string; highlight: string;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-6 flex items-start gap-4">
-      <div className={`${bg} rounded-xl p-3 shrink-0`}>{icon}</div>
+    <div className="bg-white rounded-admin-lg border border-admin-border-mid p-6 flex items-start gap-4">
+      <div className={`${bg} rounded-admin-md p-3 shrink-0`}>{icon}</div>
       <div>
-        <p className="text-sm text-gray-500 font-medium">{label}</p>
+        <p className="text-sm text-admin-muted font-medium">{label}</p>
         <p className={`text-3xl font-extrabold mt-0.5 tabular-nums ${highlight}`}>{value}</p>
-        <p className="text-xs text-gray-400 mt-1">{sub}</p>
+        <p className="text-xs text-admin-muted-2 mt-1">{sub}</p>
       </div>
     </div>
   );
@@ -340,7 +340,7 @@ function ActionBtn({ label, icon, onClick, color }: {
     <button
       onClick={onClick}
       title={label}
-      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 transition ${color}`}
+      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-admin-muted transition ${color}`}
     >
       {icon}
       {label && <span className="hidden sm:inline">{label}</span>}

@@ -5,7 +5,26 @@
 > **사용법**:
 > - 오류 발견 → 아래 포맷으로 새 엔트리 append (ID는 `ERR-YYYYMMDD-NN`)
 > - 오류 해결 → `상태: FIXED` + 방지 메커니즘 명시
-> - `/register` 실행 시 Agent가 최근 10건 체크리스트로 self-check
+> - `/register` 실행 시 Agent가 아래 ACTIVE CHECKLIST(최근 10건) self-check
+
+---
+
+## 🔴 ACTIVE CHECKLIST — 최근 10건 (self-check 대상)
+
+> **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
+
+1. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
+2. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
+3. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.
+4. **ERR-HSN-render-bundle@2026-04-21** (line 676) — 황산 송백CC 2건 렌더링 6가지 오류. → flight 1 activity + `→` 토큰, inclusions 콤마 없는 개별 토큰, 호텔 activity 고정 문구.
+5. **ERR-date-confusion** (line 582) — 원문 날짜 의미 혼동 (배포일 vs 발권기한). → `ticketing_deadline` 명시적 라벨 매칭.
+6. **ERR-FUK-customer-leaks** (line 554) — 내부 메모 고객 화면 노출 + 숫자 콤마 split + 항공편 파싱 실패 (복합 4건). → `internal_notes` vs `customer_notes` 분리 강제.
+7. **ERR-KUL-safe-replace** (line 537) — 중복 감지 시 자동 아카이브의 사일런트 사고. → 중복 감지 후 사용자 확인 분기.
+8. **ERR-KUL-05** (line 516) — 렌더링 계약 분리 구조 (패턴 A 재발). → `renderPackage()` view.* 만 소비, pkg 직접 파싱 금지.
+9. **ERR-KUL-04** (line 495) — `optional_tours` "(싱가포르)" 지역 라벨 A4/모바일 불일치. → `normalizeOptionalTourName()` 공통 사용.
+10. **ERR-KUL-03** (line 481) — 4박6일 DAY 1 "쿠알라 야경투어" 오삽입 (교차 오염). → DAY-별 컨텍스트 격리.
+
+> **신규 ERR 추가 시**: 가장 오래된 항목(현재 #10)을 체크리스트에서 제거하고 새 항목을 #1로 prepend. 본문은 그대로 유지(append-only).
 
 ---
 
@@ -96,6 +115,29 @@
 
 ---
 
+### ERR-W-FINAL-2026-04-21: W-final 통합 패스 — 6개 구조적 강화 (Agent self-audit · CRC 확장 · Rule Zero hard-enforce · API hard-block · drift 감사)
+
+- **발견일**: 2026-04-21 (Gemini 제언 + 사장님 지시 통합)
+- **카테고리**: 아키텍처 (최종 디벨롭)
+- **배경**: W1(CRC)·W3(instructor+CoVe) 완료 후에도 유료 API 의존·pkg 직접 접근 잔재·Rule Zero 미강제·신규 DB 컬럼 drift 가능성이 남음. 사장님 지시 "잔오류 근본 끊기 + 비용 0".
+- **적용된 6가지 강화**:
+  - **F1** Agent Self-Audit 프로토콜 — Gemini 자동 트리거 **제거**, `/register` Step 6.5 에서 Claude Code 본인이 Reflection + CoT 로 claim 검증 (확증 편향 방지: raw_text verbatim 인용 강제). Gemini E5/E6 는 `--ai` opt-in 으로 완전 복귀. 결과는 `travel_packages.agent_audit_report` JSONB 에 영속.
+  - **F2** CRC 확장 — `parseFlightActivity` / `parseCityFromActivity` / `formatFlightLabel` 을 DetailClient 에서 `render-contract.ts` 로 이관. A4/Mobile 항공 파싱 단일 출처.
+  - **F3** Rule Zero hard-enforce — `raw_text < 50자` 또는 `raw_text_hash` 불일치 시 INSERT **차단 (ERROR 승격)**. `parser_version` 컬럼 추가로 파서/프롬프트 버전 추적. Migration: `20260421000000_add_parser_version_and_enforce_hash.sql`.
+  - **F4** `/api/packages` POST Zod hard-block — 기본 ON 으로 승격 (이전: `STRICT_VALIDATION=true` 필요). 프론트/외부 API 에서 들어온 데이터도 동일 검증. 실패 시 HTTP 400. 우회는 `STRICT_VALIDATION=false` (비권장).
+  - **F5** API 필드 drift 감사 — `npm run audit:api-drift:ci` 가 DB 실제 컬럼 ↔ `PACKAGE_LIST_FIELDS` 동기화 검증. ERR-20260418-10(surcharges 사일런트 누락) 재발 방지.
+  - **F6** ESLint 가드 유지 + 통합 검증 — CRC 위반 빌드 차단 (이미 W1 에 도입됨).
+- **상태**: FIXED (2026-04-21)
+- **재발 방지 체크리스트**:
+  - [ ] Gemini 호출은 반드시 `--ai` 명시 시에만 (월 캡 5000원)
+  - [ ] INSERT 전 Agent self-audit 의 `overall_verdict` 확인, CRITICAL 불일치 시 재파싱
+  - [ ] `raw_text_hash` 미기재 시 자동 계산 저장 (hash mismatch 는 hard block)
+  - [ ] 신규 DB 컬럼 추가 시 `npm run audit:api-drift` 실행
+  - [ ] 외부 API 나 프론트에서 `/api/packages` POST 시 Zod 통과 필수
+- **관련 파일**: `db/post_register_audit.js`, `db/templates/insert-template.js`, `src/app/api/packages/route.ts`, `src/lib/render-contract.ts`, `.claude/skills/register/SKILL.md`, `db/audit_api_field_drift.js`
+
+---
+
 ### ERR-20260418-01: min_participants 10명 → 4명 조작
 
 - **발견일**: 2026-04-18
@@ -103,13 +145,15 @@
 - **원문 vs 결과**: 원문 "성인 10명 이상 출발 가능" → DB `min_participants: 4`
 - **카테고리**: AI 파싱
 - **근본 원인**: Sonnet Agent가 insert-template의 템플릿 기본값(4)을 원문 대신 사용. 원문 명시 값이 있어도 덮어씀.
-- **해결책**:
+- **해결책 (W3 2026-04-21 구조적 완료)**:
   - 즉시: DB UPDATE `min_participants = 10`
   - 구조적 1: `/register` 커맨드에 Zero-Hallucination 프로토콜 추가 — "숫자는 1:1 매핑, 템플릿 기본값 금지"
   - 구조적 2: `validatePackage` W13 추가 — 원문에서 "N명 이상" 추출 → min_participants 대조
-- **검증 규칙**: W13
-- **상태**: IN_PROGRESS (P1 + P3 + P4에서 해결)
-- **재발 방지**: W13 + Zero-Hallucination 체크리스트
+  - 구조적 3 (W3): **CoVe E6** `extractClaims` 에 `min_participants` claim 자동 포함. Gemini가 원문 대조하여 근거 없으면 `audit_status='warnings'` 승격
+  - 구조적 4 (W3): `llm-validate-retry.ts` 의 `callWithZodValidation` — Zod 검증 실패 시 피드백을 담아 재프롬프트 (LLM 자기수정 유도)
+- **검증 규칙**: W13 + E6 (CoVe)
+- **상태**: FIXED (2026-04-21, W3 Pivot C)
+- **재발 방지**: W13 + Zero-Hallucination 체크리스트 + E6 CoVe claim 검증
 
 ---
 
@@ -120,13 +164,15 @@
 - **원문 vs 결과**: 원문 "(라면스프, 소세지/햄, 육포, 소고기고추장볶음(튜브형 포함), 육류가 들어간 면 종류, 베이컨 등)" → DB "위반 시 벌금"으로 축약
 - **카테고리**: AI 파싱
 - **근본 원인**: Sonnet Agent가 "보기 좋게 정리"하려는 경향으로 구체 예시 5개를 한 단어로 압축. 대만은 라면스프 하나만 걸려도 수백만 원 벌금이 나오는 법적 리스크 직결.
-- **해결책**:
+- **해결책 (W3 2026-04-21 구조적 완료)**:
   - 즉시: DB UPDATE — notices_parsed[0].text에 원문 예시 복원
   - 구조적 1: `/register` 커맨드에 "예시 목록 축약 금지" 규칙
   - 구조적 2: `validatePackage` W14 — 원문 비고 길이 대비 notices_parsed 길이 비율 체크
-- **검증 규칙**: W14
-- **상태**: IN_PROGRESS (P1 + P3 + P4)
-- **재발 방지**: W14 + Zero-Hallucination
+  - 구조적 3 (W3): **E5 자동 트리거** — `notices_parsed.length >= 6` 시 AI cross-check 자동 ON. 축약/왜곡 발견 시 warnings 승격
+  - 구조적 4 (W3): **E6 CoVe** — PAYMENT 타입 notices는 claim 검증 대상으로 포함 (원문 근거 확인)
+- **검증 규칙**: W14 + E5 + E6
+- **상태**: FIXED (2026-04-21, W3 Pivot C)
+- **재발 방지**: W14 + Zero-Hallucination + E5 자동 AI 감사 + E6 CoVe
 
 ---
 
@@ -493,13 +539,17 @@
 - **이력 패턴**: ERR-20260418-03 (surcharges), -04/09 (optional_tours price), -08 (중복 렌더), -10 (PACKAGE_LIST_FIELDS), -14 (Union 병합) — **10건 이상 누적**
 - **카테고리**: 아키텍처 (렌더링 계약)
 - **근본 원인**: 단일 진실 공급원 부재. 데이터 해석이 렌더러 내부에서 각자 이루어짐.
-- **해결책 (부분)**:
-  - 구조적 1: `src/lib/itinerary-render.ts` 공통 헬퍼 모듈 도입 (Layer 3)
-  - 구조적 2: `normalizeOptionalTourName`, `formatDepartureDays` 등 **좁은 범위의 shared helper**부터 도입 (거대한 어댑터 한 번에 만들지 않음)
-  - 구조적 3: `.claude/commands/validate-product.md` 신규 — 등록 후 3자 대조 검증 단계 공식화
-  - 향후: 일정 타임라인, 관광지 매칭, 미매칭 수집도 점진적으로 이관
-- **상태**: IN_PROGRESS (2026-04-18 Layer 3 착수)
-- **재발 방지**: "렌더러가 pkg 필드를 직접 해석하지 않는다. 공통 헬퍼/어댑터 출력만 소비한다." 원칙. 새 렌더링 로직은 `src/lib/itinerary-render.ts` 에 추가.
+- **해결책 (W1 CRC — 2026-04-21)**:
+  - 구조적 1: `src/lib/render-contract.ts` 신규 — Canonical Render Contract v1 (`renderPackage(pkg) → CanonicalView`)
+  - 구조적 2: 4 섹션을 CRC로 이관 — airlineHeader / optionalTours / surchargesMerged / excludes.basic / shopping (내부키워드 차단)
+  - 구조적 3: A4·Mobile의 `classifyExcludes` / `formatSurchargeObject` / `SurchargeObject` / `AIRLINES` / `getAirlineName` 지역 복사본 **완전 제거** → render-contract.ts 단일 출처
+  - 구조적 4: `.eslintrc.json` 에 `no-restricted-syntax` 가드 — 렌더러가 `pkg.excludes`·`pkg.surcharges` 직접 접근하면 **빌드 차단**
+  - 구조적 5: CLAUDE.md 도메인 진입점 갱신 — "A4/모바일 렌더링 로직 추가·수정 → `render-contract.ts`"
+- **상태**: FIXED (2026-04-21, W1 Pivot A 완료)
+- **재발 방지**:
+  - "렌더러는 `view.*` 만 소비. `pkg` 필드 직접 파싱 금지." ← ESLint가 AST 레벨에서 강제
+  - 새 렌더 로직은 `render-contract.ts` 의 `renderPackage()` 출력에 필드 추가 후 view 소비
+  - W2 예정: 일정 타임라인 / 관광지 매칭 / 미매칭 수집도 CRC로 단계 이관
 
 ---
 
@@ -565,6 +615,135 @@
   - 프롬프트 규칙: register.md에 "원문에 '발권' 키워드 없으면 ticketing_deadline=null" 명시
 - **상태**: FIXED (2026-04-18)
 - **재발 방지**: W20 validator + 프롬프트 명시
+
+---
+
+### PHASE-1.5-COMPLETE@2026-04-21: 3엔진 지원 + Admin UI + 역변환 감사 (50/50 pass) 완료
+
+- **완료 내역 (오늘 세션 최종)**:
+  1. `/api/register-via-ir` 에 **engine 3종** (`direct`·`gemini`·`claude`) 지원
+     - `direct`: Claude Code 세션이 직접 IR JSON 작성 → LLM 호출 0원
+     - `gemini`: Google Gemini 2.5 Flash (GEMINI_API_KEY 활용, ~0.003$/건)
+     - `claude`: Anthropic Sonnet 4.6 (ANTHROPIC_API_KEY 필요, ~0.03$/건)
+  2. `src/lib/normalize-with-llm.ts` — Claude tool use + Gemini responseSchema 분리 함수
+  3. `db/register_via_ir.js` — `--engine=direct|gemini|claude` + `--ir=<file>` CLI 옵션
+  4. `src/app/admin/ir-preview/page.tsx` + `IrPreviewClient.tsx` — HITL 승인/거절/diff UI (Phase 1.5-C)
+  5. `src/lib/pkg-to-ir.ts` — pkg → NormalizedIntake 역변환기 (Phase 1.5-γ 기반)
+  6. `src/app/api/audit-pkg-to-ir/route.ts` — 감사 배치 API
+  7. `db/audit_legacy_pkg_to_ir.js` — 전수 감사 스크립트
+  8. `.claude/skills/register/references/region-and-ir-pipe.md` — 3엔진 비교표 + Direct 워크플로우
+- **감사 결과**: 레거시 50개 샘플 → **100% Pass** (pkg-to-ir Zod 검증). 주요 경고는 raw_text 미보존(34건) · price_tiers 누락(14건) 등 **데이터 품질 이슈**이지 스키마 불일치 아님.
+- **Phase 1 잔업 처리 방침**: DetailClient/A4 완전 view.* 전환은 **Phase 2 로 정식 이관**. 현재 CRC 확장 + ERR-HSN 데이터·정규식 패치로 방어 완료. Golden Master 57/59 베이스라인 미세팅 + 회귀 위험으로 지금 강행 비추천.
+- **Phase 1.5-β (어셈블러 어댑터)**: **현 시점 스킵**. 어셈블러 3개(XIY/TAO/DAD) 정상 작동 중. IR 파이프는 신규 지역/미어셈블러 대상.
+- **사장님 운용법** (최종):
+  ```
+  기본:       /register <원문>  →  내(Claude Code 세션)가 IR 작성 → --engine=direct → 0원, 95%+ 품질
+  자동화:     --engine=gemini (CLI 또는 외부)  → ~0.003$/건
+  고품질:     --engine=claude (ANTHROPIC_API_KEY 갱신 후)
+  감사:       node db/audit_legacy_pkg_to_ir.js --limit=N
+  HITL 검토:  /admin/ir-preview
+  신규 지역:  node db/bootstrap_attractions_from_assemblers.js --region=<지역> --insert
+  ```
+- **미완 (사장님 선택 사항)**:
+  - `.env.local` ANTHROPIC_API_KEY 갱신 (claude engine 쓸 때만)
+  - `npm run test:visual:update` 1회 실행 (Golden Master 57/59)
+  - Phase 2: DetailClient/A4 완전 view.* 전환 (다음 큰 오류 발생 시)
+
+---
+
+### PHASE-1.5-IR-intake@2026-04-21: Intake Normalizer (IR) 레이어 도입 — 원문·pkg 사이 구조적 경계 확립
+
+- **상태**: IMPLEMENTED (Canary 파일럿)
+- **범위**: ERR-HSN-render-bundle · ERR-FUK-insurance-injection · ERR-KUL-02/03 · ERR-20260418-01/02/03 의 **구조적 근본 해결**
+- **배경**: Phase 1 CRC (view 계약) 만으로는 "원문→pkg" 단계의 LLM 환각·축약·조작을 막지 못함. 매번 등록마다 사장님 육안 대조 → 땜질 루프. **"상수(관광지)와 변수(상품)를 분리하고 Zod 구조 강제 + HITL confirm"** 패러다임 전환.
+- **구현 5개 파일 + 1 migration + 1 route**:
+  1. `src/lib/intake-normalizer.ts` — NormalizedIntakeSchema (Zod). 7-kind segment(attraction/transit/note/special/meal/hotel-check/misc). SurchargeSchema 확장·priceGroups 3방식·rawLabel/rawDescription/canonicalLabel 3단 분리 (블로그 판매력 유지).
+  2. `src/lib/normalize-with-llm.ts` — Anthropic Claude Sonnet 4.6 + tool use (input_schema = Zod JSON Schema). 환각 방지 10개 규칙 프롬프트 R1~R10. Zod 실패 시 재시도 루프.
+  3. `src/lib/ir-to-package.ts` — IR → pkg 기계 변환 (LLM 호출 없음). attraction lookup (매칭 실패 허용·rawDescription fallback). terms-library auto 약관 병합.
+  4. `src/lib/terms-library.ts` — 하드코딩 8룰 + DB terms_templates 4-level 동적 resolver. ctx {country, productType, airline, flightCodes, departureDate} 기반 자동 조립.
+  5. `src/app/api/register-via-ir/route.ts` — Normalizer → normalized_intakes 저장 → ir-to-package → travel_packages INSERT → unmatched_activities 큐잉. `dryRun` 플래그로 LLM 호출만 검증 가능.
+  6. Migration `20260421100000_phase1_5_ir_tables.sql` — normalized_intakes 신설 + unmatched_activities 9개 컬럼 확장. Supabase 적용 완료.
+  7. `db/register_via_ir.js` — CLI 래퍼 (`/api/register-via-ir` POST).
+  8. `db/bootstrap_attractions_from_assemblers.js` — 신규 지역 부트스트랩 (어셈블러 BLOCKS → attractions 시드, ERR-20260418-33 자동시드 금지 준수 — 이름·keyword 만).
+- **해결 메커니즘 vs 기존 ERR**:
+  - ERR-HSN W26 (콤마 inclusions) — Zod `inclusions: z.array(z.string())` 에 프롬프트 R4 제약 + ir-to-package 에서 그대로 패스
+  - ERR-HSN W27 (하루 1 flight) — IR `days[].flight: FlightSegment | null` 단일 타입. 2개 분리 구조적 불가
+  - ERR-HSN W28 (체크인/투숙 변형) — IR `hotel-check` kind 의 text 를 렌더러에 그대로 전달. 하드코딩 헤더 제거
+  - ERR-FUK-insurance-injection — 프롬프트 R7 + rawText 원본 보존 + Rule Zero hash 강제
+  - ERR-KUL-02/03 — 프롬프트 R6 "regions 원문 지역 컬럼 1:1"
+  - ERR-20260418-01 — 프롬프트 R2 "minParticipants 원문 1:1 매핑"
+- **Canary 정책**:
+  - 신규 상품: `/api/register-via-ir` 사용 권장
+  - 기존 362개 상품: 레거시 경로 유지 (lossless 역변환 검증 후 일괄 전환)
+  - 어셈블러 3개 (XIY/TAO/DAD): 추후 IR 어댑터로 포팅 예정 (Phase 1.5-β)
+- **미완 (사장님 Next Action)**:
+  - [ ] `.env.local` 의 `ANTHROPIC_API_KEY` 유효성 확인 (현재 401 invalid x-api-key)
+  - [ ] 신규 지역 추가 시 `node db/bootstrap_attractions_from_assemblers.js --region=<region> --insert` 1회 실행
+  - [ ] 시드된 관광지 `long_desc`·사진은 `/admin/attractions` 에서 보완 (자동 생성 금지 원칙 유지)
+  - [ ] Admin `/admin/ir-preview` diff 뷰 UI (Phase 1.5-C 예정)
+  - [ ] Golden Master 베이스라인 57개 재촬영 (`npm run test:visual:update`)
+- **하이브리드 전략 이행 체크**:
+  - L0 (유사 상품 RAG): 미도입 (상품 50+ 누적 후)
+  - ✅ L1 (IR Normalizer): 완료
+  - L2 (Gemini Judge): `POST_AUDIT_AI=1` 켜면 post-audit 에서 자동 적용 (Phase 1 에서 이미 구축)
+  - L3 (HITL Admin diff): Phase 1.5-C 로 지연
+  - ✅ L4 (ir-to-package): 완료
+  - L5 (Golden Master): 프레임워크 존재 (`tests/visual/`), 베이스라인 2/59 → 사장님 1회 실행 필요
+
+---
+
+### ERR-HSN-render-bundle@2026-04-21: 황산 송백CC 2건 렌더링 6가지 오류 한 번에 (데이터 컨벤션 + 렌더러 과포용 정규식)
+
+- **발견일**: 2026-04-21 (사장님이 A4/모바일 실제 렌더 결과 직접 대조하여 지적)
+- **발생 상품**: BA-TXN-04-01 / BA-TXN-05-01
+- **카테고리**: 데이터 컨벤션 + 렌더링 (복합)
+- **6가지 증상 및 근본 원인**:
+  1. **A4 "포함 사항" 5개가 ✅로 묶임** (`택스, 한국어 가능한 상주직원, 무제한 그린피, 김해공항 샌딩, 중국연휴 서차지`): `getInclusionIcon()` regex(`/항공|TAX|유류/`)가 한국어 "택스" 미대응 + inclusions 배열에 `"항공료, 택스, 유류세"` 가 한 문자열로 들어감 → 분리 후에도 아이콘 매칭 실패.
+  2. **모바일 히어로 도착 시간 "—"**: `parseFlightActivity()` 는 `→` 토큰이 있는 단일 activity 를 기대. 내가 Day1 에 `flight('10:30','부산 김해 국제공항 출발',...)` + `flight('11:50','황산 툰시 국제공항 도착',...)` 2개로 분리 등록 → 출발 activity 에서 arrTime 추출 시도 → null.
+  3. **모바일 DAY1/DAY_last flight 이중 렌더**: DetailClient 스킵 조건 (DetailClient.tsx:718-724) 이 `item.type !== 'flight'` 이면서 "도착" 포함인 경우만 스킵 → **분리 등록된 도착-flight 는 스킵 대상에서 누락** → 두 번째 carousel 행으로 그대로 나옴 (도착 시간 자리에 `—`).
+  4. **"호텔 체크인 및 휴식" → "호텔 투숙 및 휴식" 강제 치환**: DetailClient.tsx:851 이 호텔 카드 헤더를 **하드코딩 `<h3>호텔 투숙 및 휴식</h3>`** 으로 렌더. 원문 무시.
+  5. **"라운드 후 석식 및 호텔 투숙" → "호텔 투숙 및 휴식" (앞 구간 소실)**: DetailClient.tsx:728 정규식 `/호텔.*투숙|호텔.*휴식|투숙.*휴식/` 이 매칭 시 **activity 전체를 스킵** + 복구는 `*(.+)$` 별표 시작만 → "라운드 후 석식" 부분 영구 손실.
+  6. **"발권후(출발21일전**(2026.04.24)**) 취소시"**: standard-terms.ts:284 `formatCancellationDates` regex `/(\d+)일\s*전/g` 가 **"출발21일전" 의 21 도 매칭**하여 날짜 자동 주입 → raw_text 에 없는 토큰이 렌더 HTML 에 주입 (Zero-Hallucination 정면 위반).
+- **기존 ERR 과의 관계**:
+  - 재발: 2/3/5 — ERR-FUK-customer-leaks / ERR-20260418-22·25 (flight 파싱 계열) + ERR-20260418-07 (하단 잘림·정보 손실 계열)
+  - 신규: 1/4/6 — 한국어 키워드 regex 누락 / 하드코딩된 렌더 헤더 / 자동 날짜 주입의 부작용
+  - 메타: ERR-KUL-05 (렌더 계약 분리) 의 연장. CRC 는 surcharges/excludes/shopping/airlineHeader 4섹션만 통합했고 **schedule/flight 파싱·호텔 activity 스킵·notices 치환은 아직 CRC 밖**.
+- **해결책 (2026-04-21 적용 완료)**:
+  - 즉시 (데이터): `db/patch_huangshan_render_fix_20260421.js` — 인클루전 11개로 분리 / flight 출발·도착 단일 activity `"A 출발 → B 도착 HH:MM"` 병합 / "호텔 체크인 및 휴식" → "호텔 투숙 및 휴식" / "라운드 후 석식 및 호텔 투숙" → "라운드 후 석식"
+  - 구조적 1: `src/lib/standard-terms.ts:284` regex 에 negative lookbehind `(?<!출발\s?)` 추가 → "출발N일전" 은 자동 치환 제외
+  - 구조적 2: `src/app/packages/[id]/DetailClient.tsx:718` 스킵 로직에 `isArrivalFlightItem` 추가 (flight type 이면서 "도착" 만 있는 2번째 flight 스킵) — 레거시 데이터 방어
+  - 신규 validator W26/W27/W28 예정: register.md 체크리스트에 기록
+- **검증 규칙**: W26 (inclusions 내 콤마 포함 → split 경고), W27 (하루 flight activity 2개 초과 → 통합 경고), W28 (activity 에 "체크인" 사용 → "투숙" 통일 경고)
+- **상태**: PARTIAL-FIXED (2026-04-21) — 데이터 + 기본 코드 수정 완료. validator 3건은 insert-template.js 에 추가 예정 (다음 등록 시 재발 방지). DetailClient.tsx:851 하드코딩 헤더 구조적 리팩토링은 별도 작업 필요 (다른 상품 영향 테스트 후).
+- **재발 방지**:
+  - [ ] register.md Step 6 self-check 에 "flight 는 하루 최대 1개 activity + `→` 토큰 포함" 명시
+  - [ ] register.md Step 6 self-check 에 "inclusions 는 콤마 없는 개별 토큰" 명시
+  - [ ] register.md Step 6 self-check 에 "호텔 activity 는 `호텔 투숙 및 휴식` 고정 (변형 금지)" 명시
+  - [ ] render-contract.ts 에 `parseFlightDepArrPair(dep, arr)` 추가 — 레거시 2-flight 데이터도 통합 파싱 가능하도록 (구조적 fix)
+
+---
+
+### ERR-process-violation-auto-approve@2026-04-21: /register CLEAN 상품 자동 승인·결과값 도출 누락
+
+- **발견일**: 2026-04-21 (황산 송백CC 골프 2건 등록 후 사장님 지적)
+- **증상**: audit_status=clean 으로 감사 통과한 BA-TXN-04-01 / BA-TXN-05-01 을 Agent 가 status=pending 상태로 두고 "어드민 가서 승인하세요 / http://localhost:3000/admin/packages?status=pending" 로 수동 단계 넘김. 사장님이 "업무 끝나고 바로 등록하고 결과값도출" 반복 지시했음에도 매번 누락.
+- **카테고리**: 프로세스 위반 (메타)
+- **근본 원인**: register.md Step 7 체크리스트 마지막 항목이 **"사용자에게 '마지막 수동 단계' 안내 (어드민 status 변경 URL) 제공했는가?"** 로 되어 있어 Agent 가 "여기서 책임이 사용자에게 넘어간다"고 해석. CLEAN 상품을 수동 승인 대상으로 오판.
+- **피해**:
+  - 사장님이 매 등록마다 어드민에 접속해 승인 클릭해야 하는 반복 노동
+  - `/register` 의 본래 목적(원문 붙여넣기만으로 고객 노출까지) 무효화
+  - 동일 지적 수 회 반복 → 신뢰 손상
+- **해결책**:
+  - 구조적 1: `register.md` 메타 규칙 강화 — "CLEAN 상품은 Agent 가 직접 `PATCH /api/packages/[id]/approve` 호출해 `status='active'` 활성화. '마지막 수동 단계' 금지"
+  - 구조적 2: `register.md` Step 7 에 **7-A (자동 승인)** + **7-B (결과값 조회)** + **7-C (한 화면 리포트)** 3단 분리 추가
+  - 구조적 3: self-check 체크리스트 2개 항목 신규 — `[필수] approve API 호출`, `[필수] 활성화 후 최종 결과값 조회·출력`
+  - 구조적 4: warnings 상품만 사장님에게 `force=true` 여부 1회 질문. blocked 는 수정·재감사.
+- **검증 규칙**: Agent self-check (제출 전 "approve API 호출 + 최종 결과값 출력했는가?" 확인)
+- **상태**: FIXED (2026-04-21)
+- **재발 방지**:
+  - register.md Step 7 메타 규칙이 "등록-감사-승인-결과값 전부 Agent 책임" 으로 명시됨
+  - 자동 승인 실패 감지: 최종 리포트에 `status: active` 문자열이 없으면 Agent 가 자체 self-check 실패로 간주하고 다시 승인 시도
+  - feedback 메모리 `feedback_register_full_autocomplete.md` 로 영속
 
 ---
 
@@ -640,3 +819,76 @@
 - [ ] **ERR-FUK-clause-duplication@2026-04-19** (E4): 특약 상품(notices_parsed에 PAYMENT 블록)에 표준약관 '30일 전까지 취소'가 같이 렌더되지 않는가? `mergeNotices()` 헬퍼 사용 필수.
 - [ ] **ERR-FUK-ai-cross-check@2026-04-19** (E5): AI 의미 감사(Gemini 2.5 Flash)가 `post_register_audit.js`에 통합됨. CRITICAL/HIGH → audit_status 'warnings' 승격. E1~E4가 못 잡는 "송영비 경고 증발", "클럽식 조건부 포함 누락", "특약→표준약관 왜곡" 같은 축약형 오류 자동 탐지. `audit_report.ai.missing_from_render / distorted_in_render / hallucinated_in_render` 참조.
 - [ ] **ERR-FUK-audit-gate@2026-04-19** (Gate): `travel_packages.audit_status` 컬럼으로 감사 결과 게이트 구축. blocked 상품은 `/api/packages/[id]/approve` 가 409 반환 + 고객 노출 쿼리 이중 가드(`audit_status.neq.blocked`). warnings는 `force=true` 로 수동 승인 필요.
+- [ ] **ERR-LB-DAD-keyword-spillover@2026-04-20** (matcher): `attraction-matcher.ts`의 6단계 keyword split 매칭에서 도시명 단독("호이안")이 attraction 이름의 키워드로 분리될 때 stop-words가 아니면 모든 동일 도시 activity에 잘못 매칭됨. 증상: "호이안 야경 감상" / "호이안 특산 못주스" → "호이안 바구니배" 카드 5번 등장. 해결: MATCH_STOP_WORDS에 호이안·나트랑·달랏·하롱·치앙마이·쿠알라 등 추가. 신규 지역 attraction 등록 시 도시명도 stop-words에 동시 등록 필수.
+- [ ] **ERR-LB-DAD-displayprice@2026-04-20** (render): `DetailClient.tsx` displayPrice가 `selectedDateInfo?.price`를 minPrice보다 우선 → 디폴트 selectedDate가 자동 설정되면 "최저가" 카드 자리에 임의 출발일 가격 표시. 증상: 카드 상단 "판매가 ₩1,309,000" 표시 (실제 최저가 1,099,000). 해결: `selectedDate`가 명시적으로 있을 때만 selectedDateInfo 사용, 그 외엔 항상 minPrice.
+- [ ] **ERR-LB-DAD-isr-stale-cancel@2026-04-20** (ISR): 등록 후 ISR 캐시가 "자동수정 전 첫 출발일" 사용 → 취소수수료 자동 날짜가 잘못된 기준일로 계산. 증상: 출발일 4/20인데 화면에 "(2026.03.25)까지" (4/1 기준). 해결: `REVALIDATE_SECRET` 환경변수 설정 + post_register_audit가 자동수정 후 무조건 ISR 무효화 호출. dev mode는 첫 fetch 시 자동 빌드되지만 production은 명시 호출 필요.
+- [ ] **ERR-LB-DAD-cancel-14day@2026-04-20** (notices): `formatCancellationDates` 정규식 `(\d+)일\s*전`은 "14일 ~ 7일 전" 형식에서 "7일 전"만 매칭 → "14일 전" 절대일 누락. 영향: 14일 전 마감일 안내가 빠짐. 해결: 정규식을 `(\d+)일\s*(?:~\s*\d+일\s*)?전` 으로 확장하거나 notices_parsed text를 "출발일 14일 전 ~ 7일 전" 형식으로 통일.
+- [ ] **ERR-process-violation-auto-approve@2026-04-21** (메타): audit_status=clean 상품을 Agent 가 자동으로 `PATCH /api/packages/[id]/approve` 호출해 `status='active'` 로 활성화했는가? "어드민 가서 수동 승인하세요" 안내 금지. CLEAN → 자동 승인 → 결과값(판매 URL · 최저가 · 출발일 · 항공편) 조회 후 한 화면 리포트. warnings 만 force=true 여부 1회 질문. (사장님 반복 지시 불필요를 목표로 함)
+- [ ] **ERR-HSN-render-bundle@2026-04-21** (데이터 컨벤션): ① `inclusions` 배열이 콤마 포함 문자열(`"항공료, 택스, 유류세"`) 없이 **항목별 1개 토큰**으로 분리되었는가? ② 하루 flight activity 가 **1개** 이면서 `"A 출발 → B 도착 HH:MM"` 단일 문장인가? (2개 분리 금지 — 모바일 히어로 도착시간 "—", DAY 타임라인 이중 렌더) ③ 호텔 activity 는 `"호텔 투숙 및 휴식"` 고정 문구인가? (체크인/라운드 후 석식 같은 앞 절 붙이기 금지 — DetailClient 가 전체 스킵해 정보 손실) ④ notices_parsed PAYMENT 타입에 "출발21일전" 같은 **"출발" 접두 + N일전** 표현이 있으면 standard-terms 가 날짜 자동 주입하지 않는지 확인 (negative lookbehind 적용됨, 레거시 데이터는 원문 편집 권장)
+- [ ] **ERR-pexels-korean-search@2026-04-21** (한글 키워드 → 오매칭 사진): Pexels API 가 한글 쿼리를 이해 못 해 `total=8000` generic "travel" 사진만 fallback 반환. 증거: `"노산 travel"` → 제주도/크루즈 사진 / `"왕소군묘 travel"` → 경복궁/대만 사진 / `"빈그랜드월드 travel"` → 산/캠핑 사진. 영어 쿼리는 정확: `"Wang Zhaojun Tomb Inner Mongolia"` → 몽골 게르/중국 사찰. 해결 (2단 자동 실행, 2026-04-22 01:00 예약): ① [db/translate_attractions_to_english.js](./db/translate_attractions_to_english.js) — Gemini 2.5 Flash 로 1,175건 공식 영어명 생성 → `aliases[0]` 에 저장 (배치 30건, ~5분, ~$0.06). ② [db/rematch_pexels_photos.js](./db/rematch_pexels_photos.js) — 영어 alias 우선 Pexels 재검색 → `photos` 교체 (18초/req, ~6시간). ③ [src/app/api/attractions/photos/route.ts](./src/app/api/attractions/photos/route.ts) POST — `attractionId` 파라미터 지원, 서버가 aliases 에서 영어명 자동 선택. ④ [src/app/admin/attractions/page.tsx](./src/app/admin/attractions/page.tsx) autoGeneratePhotos + 수동 검색 기본 키워드 모두 영어 alias 우선. 실행: Windows Task Scheduler `YeosonamPexelsRematch` (2026-04-22 01:00 one-shot). 체크포인트(JSON) 로 중단·재개 가능. 재발 방지: 신규 관광지는 CSV 업로드 시 Gemini 자동 번역을 옵션으로 제공 예정 (Phase 2).
+- [ ] **ERR-attractions-emoji-label-merged@2026-04-21** (이모지 컬럼 레이블 오염): 관광지 CSV 업로드 후 관리자 화면에 `"📍 관광 노산"`, `"💎 선택관광 트라이쇼"` 처럼 name 앞에 배지 라벨이 붙어 보이는 증상. 진단 결과 DB `name` 은 정상(`"노산"`, `"트라이쇼"`) 이지만 **`emoji` 컬럼에 `"📍 관광"` / `"💎 선택관광"` / `"🛍️ 쇼핑"` / `"⛳ 골프"` 같은 이모지+label 복합값**이 **142건** 저장됨 (패턴 분포: 📍관광 113 / 💎선택관광 11 / 🛍️쇼핑 10 / ⛳골프 8). UI 가 `<h3>{a.emoji} {a.name}</h3>` 렌더라서 복합 emoji + name 이 자연스럽게 `"📍 관광 노산"` 한 줄로 읽힘. 원인: 사장님이 외부 엑셀/AI 로 만든 CSV 의 emoji 칸에 표시용 복합값을 입력한 것으로 추정 (unmatched CSV 다운로드는 emoji=`""` 빈 값). 해결: ① [db/patch_attractions_emoji_pollution_20260421.js](./db/patch_attractions_emoji_pollution_20260421.js) 로 142건 즉시 정리 (첫 공백 앞까지만 유지 → "📍 관광" → "📍"). ② [src/app/api/attractions/route.ts](./src/app/api/attractions/route.ts) PUT·POST 에 `sanitizeEmoji()` + `sanitizeName()` 추가 — 업로드 시 자동 정제. ③ bullet 기호(▶·☆·-·•) 제거 + label prefix 제거도 함께. 재발 방지: CSV 업로드 API 는 모든 표시 필드(name·emoji) 에 sanitize 함수를 반드시 적용.
+- [ ] **ERR-attractions-csv-badge-check@2026-04-21** (CSV 업로드 0건 반영): 사장님 CSV 업로드 시 "0건 반영 (총 146건)" 침묵 실패. 서버 로그: `[Attractions CSV] 배치 upsert 오류: new row for relation "attractions" violates check constraint "attractions_badge_type_check"`. 원인: DB `attractions.badge_type` CHECK 제약이 `[tour, special, shopping, meal, optional, hotel, restaurant, golf, activity, onsen]` 만 허용하는데, 엑셀 편집 과정에서 badge_type 칸이 **빈 문자열("")**, **한글 label ("관광"/"특전")**, **대소문자 변형("Tour")** 으로 들어가면 전체 배치 거부. 기존 API 코드 `(i.badge_type as string) || 'tour'` 는 빈 문자열이면 'tour' fallback 이지만 **엑셀에서 "관광" 같은 label 로 바뀐 경우 그대로 통과** → CHECK 실패. 추가로 API 는 배치 전체 실패를 "0건 반영" 으로만 반환해 사장님이 원인 파악 불가. 해결: ① [src/app/api/attractions/route.ts](./src/app/api/attractions/route.ts) PUT 에 `normalizeBadgeType()` 추가 — 한글 label → value 매핑(관광→tour, 특전→special 등) + 대소문자 무시 + unknown → 'tour' fallback. ② 배치 실패 시 **단건 fallback 루프**로 성공 건 최대화 + 실패 row 식별. ③ 응답에 `errors[]` + `totalErrors` + `skippedDuplicates` 포함. ④ [admin/attractions/page.tsx](./src/app/admin/attractions/page.tsx) alert 에 실패 상세(name + 사유) 상위 5건 노출. ⑤ 배치 내 name 중복 자동 제거 (ON CONFLICT DO UPDATE 2회 금지 사고 방지). 재발 방지: CSV 업로드 API 는 항상 ① 관대한 정규화 ② 단건 fallback ③ 응답에 per-row error 배열 — 3대 원칙.
+- [ ] **ERR-unmatched-queue-middleware-401@2026-04-21** (대형 누락): 2026-04-10 ~ 2026-04-21 사이 등록된 **16개 상품 전체의 unmatched_activities 자동 큐잉이 침묵 실패**. 원인: `src/app/packages/[id]/page.tsx` SSR 에서 `fetch('https://yeosonam.com/api/unmatched', ...)` self-call 을 했으나 `/api/unmatched` 가 `src/middleware.ts` `PUBLIC_PATHS` 에 **없어서** middleware 가 `/login?redirect=%2Fapi%2Funmatched` 로 301 리다이렉트 → `.catch(() => {})` 로 실패 삼킴 → 침묵 누락. 영향: **142건의 미매칭 activity 가 관리자 UI 에서 영원히 사라짐** (호화호특 11개·칭다오 13개·북해도 15개·다낭 16개 등). 증상: `/admin/attractions/unmatched` "미매칭 200건" 이 실제 필요분 대비 과소 표시. 해결: ① `page.tsx` 의 fetch self-call 을 **`supabaseAdmin.upsert` 직접 호출**로 교체 (middleware 독립 — HTTP 오버헤드 + baseUrl 분기 + 인증 모두 제거). ② `db/backfill_unmatched_20260421.js` 로 누락 142건 일괄 백필 (중복 제거 → 96건 upsert → pending 203 → 294 증가). 재발 방지: ① **SSR → 내부 API self-call 패턴 금지**. 같은 서버 안에서는 supabaseAdmin 직접 사용. ② 신규 API route 추가 시 `PUBLIC_PATHS` 반영 규칙 재강조. ③ `.catch(() => {})` 로 에러 삼키는 패턴은 **로그라도 남기기** (`console.error`).
+- [ ] **ERR-unmatched-limit-200@2026-04-21** (관리 API 하드코딩 LIMIT 잔재): `/admin/attractions/unmatched` 에 "미매칭 200건" 으로 고정 표시되지만 실제 `unmatched_activities` 테이블에는 **pending 203건 + ignored 4건 = 총 207건** 존재. 원인: [src/app/api/unmatched/route.ts](./src/app/api/unmatched/route.ts) GET 에 하드코딩된 `.limit(200)` 이 남아 있음 (초기 MVP 값이 그대로 배포). 해결: attractions 와 동일하게 1000 건 페이지네이션 루프. 영향: 3건 침묵 누락 + `bulkIgnore`·`downloadCSV` 일괄 작업이 누락 건을 못 처리. 재발 방지: 관리자 전용 API 전반에 하드코딩 LIMIT 검출 audit 필요 (다음 `grep '\.limit\([0-9]\+\)'` 으로 전수 조사).
+- [ ] **ERR-attractions-limit-1000@2026-04-21** (PostgREST max-rows 침묵 cap): `/admin/attractions` 헤더에 "총 1000개"로 표시되지만 실제 DB에는 **1097건** 등록됨. 원인: `/api/attractions` GET 이 `.limit(5000)` 을 호출해도 Supabase PostgREST 기본 max-rows=1000 에서 서버 측 cut. UI 는 받은 배열 length 를 신뢰하므로 97건 침묵 누락 + "사진 미등록" 통계도 왜곡. 해결: [src/app/api/attractions/route.ts](./src/app/api/attractions/route.ts) GET 에 **1000 건 단위 페이지네이션 루프** 추가 (`range(from, from+999)` 반복, data.length<1000 일 때 종료). 검증: `curl /api/attractions` → attractions.length 1097 확인됨. 재발 방지: 다른 대용량 테이블 (bookings/customers) GET API 도 동일 패턴 검토 필요. 일반 원칙 — **PostgREST 기본 max-rows 초과 가능성이 있으면 반드시 `.range()` 루프 또는 `count: 'exact'` 헤더로 전체 수 비교**.
+- [ ] **ERR-HET-render-over-split@2026-04-21** (splitScheduleItems 과다 분리): ▶+`,` activity 를 괄호 안까지 split 하는 로직이 **체험 리스트/부연 설명/연혁**을 **개별 ▶ 관광지**로 승격시키는 버그. 증상 (TT-HET-05-01/02): "▶유목민 생활 체험 (초원 오토바이, 활쏘기, ...)" → ▶초원 오토바이·▶활쏘기·▶밀크티 맛보기 6개로 분리 / "▶춘쿤산 관광 (2340M 높이의 구름 속 초원이라 불리는...)" → ▶2340M 높이의 구름 속 초원 개별 ▶ / "▶샹사완 사막 액티비티 (써핑카트, 낙타, ...)" → ▶써핑카트·▶사막낙타체험 4개 / "▶오탑사 (五塔寺, 460년 역사)" → ▶五塔寺·▶460년 역사 분리 / "▶왕소군묘 (2000년 역사, 중국 4대 미인...)" → ▶2000년 역사·▶중국 4대 미인 분리 / "▶내몽고민속용품공장 (중국 4A급, 명량관광)" → ▶명량관광 분리. 총 17개 ▶가짜 관광지 발생. 근본원인: ERR-LB-DAD-paren-split@2026-04-20 방어 로직 (괄호 안 CSV 분리)이 **지명 리스트 ↔ 설명/체험 리스트 구분 없이** 무차별 분리. 해결: `splitScheduleItems()` 에 **W30 휴리스틱** 추가 — 괄호 뒤 suffix 가 비어 있거나 괄호 안에 서술 키워드(년 역사/M 높이/체험/관람/상징/불리는 등)가 있으면 분리 skip. 호이안 케이스("▶호이안 구시가지 (풍흥의 집, 일본내원교, ...) 유네스코 지정 전통거리 관광")는 suffix "유네스코..." 가 있어서 기존 동작 유지. Agent 는 **애초에 괄호 안 콤마를 `·` 로 변환** 하여 INSERT 하는 것이 가장 안전. 재발 방지: ① [register skill W30](./.claude/skills/register/references/zero-hallucination-policy.md) 체크리스트 ② [insert-template.js:splitScheduleItems](./db/templates/insert-template.js) heuristic ③ Gemini E5 `--ai` ON 고려 (렌더 HTML ↔ 원문 의미 대조).
+- [ ] **ERR-HET-single-charge-misclass@2026-04-22** (싱글차지 "기간별 추가요금" 오분류): TT-HET-05-01/02 렌더에서 원문 `불포함: ..., 싱글차지(200,000원/인/전일정), ...` 이 모바일 "💲 기간별 추가 요금 • 싱글차지..." + "※ 위 기간 출발 시 1박당 해당 금액이 추가됩니다." 로 노출됨. 근본원인: [render-contract.ts:295](./src/lib/render-contract.ts) `SURCHARGE_RE = /...싱글차지.../` 패턴이 excludes 의 "싱글차지" 항목을 자동 써차지로 승격시키고, [DetailClient.tsx:624](./src/app/packages/[id]/DetailClient.tsx) 에 "1박당 해당 금액" 안내문구가 하드코딩 되어 있어서 싱글차지에 얹혀 오표기. 싱글차지는 기간 기반 써차지가 아니라 룸타입 기반 요금 → 고객 오해. 해결: ① SURCHARGE_RE 에서 "싱글차지"·"싱글비용"·"싱글발생" 제거 → excludes.basic 으로 유지 ② DetailClient 써차지 섹션을 `structured.start` 유무로 분기 — 기간 있으면 "기간별 추가 요금" + 안내문구, 없으면 "추가 요금" 만 표시. 재발 방지: `SURCHARGE_RE` 에 "room-based" 키워드 추가 금지 — 기간 기반만 허용.
+- [ ] **ERR-HET-attraction-day-duplicate@2026-04-22** (DAY 내 관광지 카드 5중복): TT-HET-05-02 DAY1 에서 "시라무런 초원" 관광지 사진+설명 카드가 5번 연달아 렌더 (승마·유목민 체험·일몰·캠프파이어·별자리 감상 activity 각각에 매칭). 모바일 스크롤 5화면 분량 중복. 근본원인: [DetailClient.tsx:675+](./src/app/packages/[id]/DetailClient.tsx) `schedule.map()` 루프 내에서 매 activity 마다 `matchAttractions()` 호출 후 **dedup 없이** 카드 렌더. 해결: 각 DAY 시작 시 `seenAttractionIds = new Set<string>()` 선언, 첫 매칭 시 `add()`, 이후 같은 id 매칭 시 카드 skip 하고 activity 텍스트만 출력. 재발 방지: 동일 패턴의 선택관광/쇼핑 카드 루프도 dedup 검증 필요.
+- [ ] **ERR-HET-price-table-desc-order@2026-04-22** (A4 가격표 월 내 날짜 역순): TT-HET-05-02 8월 가격표가 `8/26→8/19→8/12→8/5` 로 원문(8/5→8/26) 과 반대 순서. 근본원인: [price-dates.ts:220](./src/lib/price-dates.ts) `rows.sort((a, b) => a.price - b.price || ...)` 가 가격 오름차순 우선. 8월은 가격이 1,599→1,199 하락세라 날짜도 역순이 됨. 7월은 가격·날짜가 같이 증가해서 정상처럼 보임. 해결: 정렬 키를 **날짜 오름차순 우선 → 가격 tie-break** 으로 변경. 최저가는 `isLowest` 뱃지로 별도 강조되므로 시각 가이드 상실 없음. 재발 방지: 같은 월 내 복수 가격 라인이 있으면 원문 날짜 순서 유지.
+- [ ] **ERR-HET-hotel-ger-star@2026-04-22** (게르에 성급 임의 부여): TT-HET-05-01/02 DAY1 호텔 "비즈니스 게르" / "궁전 게르" 에 ★★★★ 4개 별 자동 부여. 원문에 게르 등급 표기 없음 → Zero-Hallucination 위반. 근본원인: [DetailClient.tsx:880](./src/app/packages/[id]/DetailClient.tsx) `parseInt(card.grade) || 4` fallback 이 "게르" 처럼 숫자 없는 등급에서 4 를 강제. 해결: `grade.match(/(\d+)\s*성/)` 로 명시적 숫자 추출, 없으면 별 대신 라벨 배지(`<span>게르</span>`) + 아이콘도 🏨 → 🛖 로 차별화. "준5성급" 은 숫자 5 추출 + "준" 작은 글자 병기. 재발 방지: 숫자 포함 등급만 별 표기, 그 외는 텍스트 배지 — 임의 숫자 fallback 금지.
+- [ ] **ERR-HET-cancel-date-pollution-double-paren@2026-04-22** (취소일 괄호 중복): 모바일 품격 취소약관에 `여행개시 45일전(2026.05.24)(~45)까지 통보시` 처럼 괄호 두 개 연속 붙어 어색. 근본원인: [standard-terms.ts:287](./src/lib/standard-terms.ts) `formatCancellationDates` 정규식 `(?<!출발\s?)(\d+)일\s*전` 이 매칭 위치 뒤에 독립 괄호 `(YYYY.MM.DD)` 를 삽입. 원문 `45일전(~45)까지 통보시` 에는 이미 `(~45)` 가 있으므로 중복. 해결: 정규식에 optional capture `(\s*\(([^)]*)\))?` 추가 — 기존 괄호가 있으면 그 **안쪽 끝** 에 `, YYYY.MM.DD까지` 병합 (`(~45, 2026.05.24까지)`), 없으면 기존대로 신규 괄호 삽입. 재발 방지: notices_parsed 텍스트에 날짜 자동 주입 규칙 추가 시 **주변 구두점 맥락 확인 필수**.
+- [ ] **ERR-HET-attraction-global-dedup@2026-04-22** (관광지 카드 DAY 경계 중복): 시라무런 초원이 DAY1 숙박 + DAY2 아침 일출감상 둘 다에서 매칭돼 **같은 관광지 사진+설명 카드가 2일 연속 노출**. 1차 수정(ERR-HET-attraction-day-duplicate) 은 DAY 내 dedup 만 해서 연속 DAY 는 해결 못 했음. 해결: [DetailClient.tsx:663+](./src/app/packages/[id]/DetailClient.tsx) `seenAttractionIds = new Set<string>()` 를 **days.map 바깥** 으로 이동 — 전체 일정에서 첫 번째 매칭된 activity 에만 카드, 이후 같은 attraction 은 텍스트만. 추가 수정: [page.tsx:112](./src/app/packages/[id]/page.tsx) attractions select 에 `id` 필드가 빠져 있어서 dedup 키 (`attr.id`) 가 undefined → dedup 완전 실패 → `candidateKey = attr.id || attr.name` 폴백 추가 + select 에 id 추가. 재발 방지: 상품 SSR 에서 attraction lookup 데이터는 항상 id 포함 select.
+- [ ] **ERR-HET-hotel-grade-ambiguity@2026-04-22** (호텔 별만 보고 정/준5 구분 불가): 모바일 호텔 카드가 ★★★★★ 5개만 보여줘서 "정5성급" 인지 "준5성급" 인지 고객이 혼동. 해결: [DetailClient.tsx:875+](./src/app/packages/[id]/DetailClient.tsx) 별 옆에 grade 원본 텍스트(`5성급`/`준5성급`/`4성급`) 를 작은 라벨로 병기. 숫자 없는 등급("게르") 은 별 대신 텍스트 배지 + 🛖 아이콘으로 완전 차별화. 재발 방지: 별 표시는 "숫자+성" 패턴이 있는 등급만, 그 외는 명시적 텍스트 라벨.
+- [ ] **ERR-HET-activity-desc-duplicate@2026-04-22** (A4 괄호 내용 2번 노출): `"▶춘쿤산 관광 (2340M...전망대관람 포함)"` 이 A4 포스터에서 **전체 activity 한 줄 + 괄호 부연 또 한 줄** 총 2줄로 중복 노출. 근본원인: [YeosonamA4Template.tsx:1482+](./src/components/admin/YeosonamA4Template.tsx) `displayName = item.activity`(괄호 포함 전체) + `displayDesc = splitPoi(item.activity).poiDesc`(괄호 부분) 둘 다 렌더. attractions 매칭 실패한 경우 활동에서 발동. 해결: attr/특전이면 displayName 에 전체 쓰고 displayDesc=null, 일반 ▶관광지(매칭 실패)면 displayName=poiName(괄호 앞), displayDesc=poiDesc(괄호 안) 로 **중복 없이** 이름·설명 분리. 재발 방지: splitPoi 쓸 때 displayName 과 displayDesc 가 동일 소스에서 나오면 한 쪽만 남길 것.
+- [ ] **ERR-HET-activity-badge-paren-leak@2026-04-22** (A4 괄호 내 키워드로 특전 오판): `"▶춘쿤산 관광 (2340M 높이의 구름 속 초원...전통카트왕복 및 **전망대**관람 포함)"` 에서 괄호 안 "전망대" 키워드 때문에 `getActivityBadge()` 가 "특전" 배지를 반환. 춘쿤산은 attractions 매칭 성공해야 하지만 A4 렌더 컨텍스트에서는 attr=null 이라 fallback 로직이 돌아 오판정. 해결: [YeosonamA4Template.tsx:1352+](./src/components/admin/YeosonamA4Template.tsx) 활동 텍스트에서 **괄호 안 부연을 제거한 core 텍스트에서만** "루프탑/크루즈/요트/스파/전망대/쇼" 특전 키워드 검사. 재발 방지: 특전 판정 키워드는 항상 괄호 제외 core 에서만 매치.
+- [ ] **ERR-HET-mobile-shopping-missing@2026-04-22** (모바일에 쇼핑센터 섹션 누락): A4 포스터에는 `🛍️ 쇼핑센터 / 쇼핑 3회 (침향·찻집·캐시미어 등)` 가 잘 나오지만 **모바일 상세페이지에는 쇼핑센터 섹션 자체가 없음** → 품격 상품에서 고객이 쇼핑 3회 정보를 못 봄. 해결: [DetailClient.tsx:605+](./src/app/packages/[id]/DetailClient.tsx) 써차지 섹션 다음에 `view.shopping.text` 를 소비하는 섹션 추가 (노쇼핑 표기는 숨김). 재발 방지: A4·Mobile 이 `renderPackage()` 의 모든 view.* 필드를 동일하게 소비해야 함 — CRC 필드별 렌더 커버리지 체크리스트 필요.
+- [ ] **ERR-HET-a4-shortdesc-duplicate@2026-04-22** (A4 attraction short_desc 반복 노출): A4 DAY1 에서 시라무런 초원 매칭된 5개 activity(승마·유목민·마상공연·일몰·캠프파이어·별자리) 모두에 `— 광활한 초원 산책과 승마 체험` 가 반복 노출. 근본원인: [YeosonamA4Template.tsx:1503](./src/components/admin/YeosonamA4Template.tsx) `{attr?.short_desc && <span>— {attr.short_desc}</span>}` 가 dedup 없이 매 activity 마다 렌더. 모바일은 이미 글로벌 dedup 적용했지만 A4 는 누락. 해결: `DailyItinerary` 함수 최상단에 `seenAttractionIdsForDesc = new Set<string>()` 선언, short_desc 렌더 시 attr.name 기준으로 첫 매칭에만 노출. 재발 방지: CRC 필드별 A4·Mobile 렌더 커버리지 체크리스트에 "관광지 dedup" 항목 추가.
+- [ ] **ERR-process-violation-dump-after-approve@2026-04-22** (메타, 반복 사고): `insert-template.js` Step 7 흐름이 **감사 → auto-approve(Step 7-A) → dump(Step 7-C) → baseline(Step 7-D)** 순차 실행인데, `audit_status=warnings` 인 상품은 7-A 에서 skip 되어 `status=pending` 유지. 그 뒤 Agent 가 `approve --force` 를 호출해도 **재덤프 훅이 없어서** pending 시점 덤프만 사장님에게 보여지고 active 상태는 확인 안 됨. 보홀 솔레아 TC-BHO-05-01~06-02 등록 시 "force 승인했다" 한 줄만 보고하고 끝. 사장님: "등록완료했는데 또 결과값 도출 안함. 여러번 명령했음에도 계속 반복. 심각한오류발생". 해결: ① [db/approve_package.js](./db/approve_package.js) 끝에 `promoted[]` 배열 수집 + 성공 id 에 대해 `dump_package_result.js` 자동 spawn (`SKIP_DUMP_RESULT=1` 로만 우회 가능). 이제 `approve --force` 한 줄이 `active UPDATE + 풀덤프` 를 원자적으로 수행. ② register.md Step 7 체크리스트에 "warnings 상품 force 승인 후 dump 재실행" 명시적 요구. ③ feedback 메모리 `feedback_register_full_autocomplete.md` 에 "활성화 후 재덤프 필수" 보강. 재발 방지: approve 와 dump 는 한 스크립트에서 체이닝. Agent 가 dump 재실행을 "기억" 해야 하는 구조 자체가 취약 — 자동화로 제거.
+
+- [ ] **ERR-special-notes-leak@2026-04-27** (구조적 — 컬럼 책임 분리 안됨): special_notes 한 컬럼이 **운영 메모 ↔ 고객 노출 fallback** 역할을 동시에 수행. CRC `resolveShopping()` 이 highlights.shopping 비어 있으면 special_notes 를 쇼핑센터 fallback 으로 노출. 캐슬렉스 GOLF 등록 시 운영성 메모(좌석조건/그린피 특가/캐디팁 등)가 모바일 🛍️ 쇼핑센터 섹션에 통째 노출됨. W21 키워드 검증은 "커미션·정산·스키마" 만 잡아 회색지대 텍스트 통과. **해결** (P0 #1): ① migration `20260427200000_split_customer_internal_notes.sql` — `customer_notes` (고객 OK) + `internal_notes` (운영 전용) 신규 컬럼 추가 + 기존 special_notes 데이터를 internal_notes 로 보수적 이관. ② [render-contract.ts](./src/lib/render-contract.ts) `resolveShopping()` fallback 출처를 `customer_notes` 로 교체, special_notes 경로 완전 제거. ③ [DetailClient.tsx](./src/app/packages/[id]/DetailClient.tsx) + [YeosonamA4Template.tsx](./src/components/admin/YeosonamA4Template.tsx) 의 special_notes fallback 렌더 모두 customer_notes 로 변경. ④ [insert-template.js](./db/templates/insert-template.js) W21 검증을 customer_notes 대상으로 강화. ⑤ `db/FIELD_POLICY.md` + `register.md` 에 신규 컬럼 사용 정책 명시. **재발 방지**: 컬럼이 두 책임을 동시에 갖는 패턴 금지. 신규 컬럼 추가 시 "이 컬럼은 고객 노출되는가?" 를 frontmatter 로 명시.
+- [ ] **ERR-audit-severity-flat@2026-04-27** (UX — info ↔ warnings 혼동): post-audit 의 audit_status 가 `clean / warnings / blocked` 3단계라서 **W12 같은 안내성 경고**(splitScheduleItems 자동 분리 알림 — 데이터 무결성 영향 없음)가 환각·축약 의심(W14 등 진짜 위험)과 동일한 `warnings` 로 분류됨. 결과: clean 상품인데 `--force` 가 매번 필요 → 사장님 등록 마찰 + Agent 가 매번 사장님께 force 여부 질문. **해결** (P0 #2): ① [post_register_audit.js](./db/post_register_audit.js) `INFO_RULES = new Set(['W12'])` + `isInfoOnly()` 헬퍼로 안내성 W-code 만 있으면 audit_status='info' 분류. ② [approve_package.js](./db/approve_package.js) 가 `info` 는 자동 승인 (warnings 만 force 필요). ③ register.md Step 7 안내 4단계로 갱신. **재발 방지**: 신규 W-code 추가 시 INFO_RULES 분류 검토 — "데이터 무결성 영향 있는가?" 를 명시.
+- [ ] **ERR-priceLabel-currency-prefix@2026-04-27** (UX — KRW prefix 어색 표기): CRC `mergeSurcharge` 의 priceLabel 생성 시 `${currency}${amount}` 패턴이 KRW 면 `KRW30000` 처럼 통화 코드 prefix 가 그대로 노출됨 (USD 만 `$` 변환). 캐슬렉스 GOLF 캡처에서 "💲 추가 요금 • 싱글차지: KRW30000/박/인" 으로 표시. **해결** (P0 #3): [render-contract.ts](./src/lib/render-contract.ts) priceLabel 포맷팅을 통화별 한국어 친화 표기로 교체 — KRW: `30,000원`, USD: `$30`, JPY: `¥3000`, CNY: `30元`, 기타: `${cur} ${amount}`. **재발 방지**: 통화 표기 정책은 render-contract 단일 출처 (renderer 별 자체 포맷 금지).
+- [ ] **ERR-dump-string-toLocaleString@2026-04-27** (UX — 단위 충돌): `dump_package_result.js:51` 이 `(p.single_supplement || 0).toLocaleString()` + 강제 `원` suffix 호출. single_supplement 가 string("평일 30,000원/박/인 · 금토 40,000원/박/인") 일 때 `.toLocaleString()` 은 string 그대로 반환 → 끝에 `원` 붙어 "박/인" + "원" → `박/인원` 충돌. **해결** (P0 #3): typeof 분기 — string 이면 그대로, number 면 toLocaleString + `원`. **재발 방지**: 자유 텍스트 + 숫자 양쪽이 가능한 컬럼은 항상 type 분기.
+- [ ] **ERR-calendar-price-round-up@2026-04-27** (UX — 가격 부풀림): `DepartureCalendar.tsx:153` 이 `Math.round(price/10000)만` 으로 표시 → 579,000원이 "58만" 으로 반올림 표기. 고객이 실제 가격보다 1,000원 비싸다고 인지하는 미세한 신뢰 손상. **해결** (P0 #3): floor + 1자리 정밀도 (`Math.floor(v*10)/10` → "57.9만" / 정수면 "57만"). **재발 방지**: 가격 표기는 항상 floor 또는 정확 표기 — round 금지.
+- [ ] **ERR-meal-empty-render@2026-04-27** (UX — 귀국일 식사 섹션 잡음): DAY 마지막날(귀국일) 에 meals 객체가 모두 false + note 빈 상태로 저장되면 "조식 불포함 / 중식 불포함 / 석식 불포함" 3개 칸이 그대로 노출되어 시각 잡음. **해결** (P0 #3): [DetailClient.tsx](./src/app/packages/[id]/DetailClient.tsx) 식사 섹션 렌더 가드에 `hasAny = breakfast || lunch || dinner || any note` 조건 추가 — 모두 빈 경우 섹션 자체 숨김. **재발 방지**: 자동 렌더 섹션은 "내용 있을 때만" 표시 — 빈 상태에서 "불포함 ×3" 같은 정보 없는 표시 금지.
+- [ ] **ERR-isr-revalidate-manual@2026-04-27** (UX — DB 직접 수정 후 production 캐시 stale): `db/approve_package.js` / 직접 supabase update 후 모바일 production ISR 캐시가 1시간 만료까지 stale 상태 유지. `/api/revalidate` 엔드포인트는 있지만 호출이 수동. .env.local 의 REVALIDATE_SECRET 이 placeholder 일 때 사장님 안내도 부재. **해결** (P1 #6): ① [db/_revalidate.js](./db/_revalidate.js) 헬퍼 추가 — placeholder 감지 + production·localhost 양쪽 best-effort 호출 + graceful skip. ② [approve_package.js](./db/approve_package.js) 가 active 승격 후 자동 호출. ③ skip 시 사장님께 1줄 안내(REVALIDATE_SECRET 미설정). **재발 방지**: 모든 DB 직접 수정 도구가 `_revalidate.js` 호출 — 매번 사장님이 "왜 화면 안 바뀌지?" 묻는 패턴 제거.
+- [ ] **ERR-arrival-line-overmatch@2026-04-27** (UX — DAY 일정 행 누락): `DetailClient.tsx` schedule 렌더에서 `/공항 도착/.test(activity)` 정규식이 "**청도공항 도착 후 가이드 미팅 (미팅보드 \"캐슬렉스 골프\")**" 같이 도착 뒤에 추가 활동이 이어지는 행까지 잡아 `return null` → 가이드 미팅 정보가 화면에서 통째로 사라짐. 캐슬렉스 GOLF 등록 시 DAY1 [2] 행 누락 의심으로 발견. **해결** (P2): isSimpleArrival 가드 — 텍스트가 정확히 "X공항 도착" 으로 끝날 때만 skip, "도착 후 ...", "도착 - 가이드 미팅" 같은 추가 활동이 있으면 보존. `청도도착/가이드미팅` 슬래시 단일 행 케이스(기존 ERR-LB-DAD)는 호환 유지. **재발 방지**: schedule 행 skip 정규식은 항상 **anchor(`^...$`)** 또는 **negative lookahead** 사용 — 부분 매치로 텍스트 삼키기 금지. 회귀 테스트 — TBD.
+- [ ] **ERR-notice-card-flat-tone@2026-04-27** (UX — type 차별화 부재): 유의사항 카드가 모두 동일한 회색 박스로 렌더되어 `[CRITICAL] 필수 확인` 과 `[INFO] 시즌 추가요금 안내` 가 시각적으로 구분 안 됨. 도트 컬러는 type 별이지만 작은 점이라 구분 약함. **해결** (P2): standard-terms.ts 에 `NOTICE_CARD_TONE` 추가 — type 별 좌측 4px border + 살짝 입힌 배경 색상. CRITICAL=red-50/border-l-red-500, PAYMENT=orange, POLICY=blue, INFO=white 등. 아코디언 닫혀 있어도 한눈에 우선순위 인지. DetailClient.tsx 적용. **재발 방지**: 신규 notice type 추가 시 NOTICE_CARD_TONE 에도 항목 추가 필수.
+- [ ] **ERR-calendar-month-discoverability@2026-04-27** (UX — 다음 달 출발일 인지 부재): DepartureCalendar 가 가장 빠른 출발월에 자동 진입하지만, 그 이후 다음 달에 더 많은 출발일이 있어도 사장님/고객이 "다음 달" 버튼을 눌러야만 인지. 캐슬렉스 케이스(5월 3건 + 6월 6건)에서 5월 화면만 보고 6월 더 많다는 걸 못 봄. **해결** (P2): 캘린더 상단에 출발 가능 월 chip row 추가 — `5월(3) | 6월(6)` 같이 클릭 한 번에 점프. 2개월 이상 분포가 있을 때만 표시. **재발 방지**: 시간 분포 데이터는 항상 "현재 뷰 + 분포 미리보기" 동시 노출.
+- [ ] **ERR-fixed-commission-column@2026-04-27** (구조적 — 정액 마진 워크어라운드 정리): 랜드부산(9만원/건) · 후쿠오카(10만원/건) 등 정액 마진 랜드사 정산 시 `commission_rate=0` + `special_notes`/`internal_notes` 메모 워크어라운드 사용. 메모 텍스트 누출 위험(ERR-special-notes-leak 트리거) + 정산 자동 합산 불가. **해결** (P1 #5, 사장님 명시 승인 후): ① migration `commission_fixed_amount` (NUMERIC) + `commission_currency` (TEXT default KRW) 추가. ② 기존 정액 4건(LB-FUK 2 + LB-TAO 2) 백필 — FUK 100,000원, TAO 90,000원. ③ `createInserter()` 에 `commissionFixedAmount`/`commissionCurrency` 파라미터 추가, 정액 모드 시 `commission_rate=0` 자동. ④ `dump_package_result.js` 가 정액일 때 "commission: 90,000원/건 정액" 통화별 한국어 표기. ⑤ FIELD_POLICY + register.md 사용 가이드 갱신. **재발 방지**: 신규 등록에서 정액 마진은 항상 컬럼에 명시 — `internal_notes` 에 메모 중복 기재 불필요. 회귀 — TBD.
+- [ ] **ERR-bootstrap-manual-toil@2026-04-27** (구조적 — 어셈블러 신규지역 수기 생성): 신규 지역의 3번째 등록 시점에 Agent 가 수기로 어셈블러를 생성(BLOCKS 추출 + TEMPLATES + parseRawText 작성)해야 했음. 매번 60~120분 토큰·시간 소비 + Agent 가 BLOCKS 누락하거나 keywords 단순화로 향후 매칭 정밀도 손상. **해결** (P3 #1): [db/auto_bootstrap_assembler.js](./db/auto_bootstrap_assembler.js) 추가 — 등록된 N개 상품의 `itinerary_data` 에서 `▶...` 마커 활동 빈도 추출 → BLOCKS 자동 생성, accommodations → hotel_pool, airline → AIRLINES, 절반 이상 등장 inclusions/excludes → 공통 패턴. 출력은 `assembler_<slug>.stub.js` (덮어쓰기 방지) 로, Agent/사장님이 keywords 정제 + TEMPLATES 작성 + parseRawText 구현 후 `.js` 로 rename. register.md B-2 에 호출 명시. **검증**: 장가계 (DYG, 6건) 로 테스트 → BLOCKS 20개 / 호텔 3개 / 항공사 1개 / 공통 inclusions 8개 / excludes 2개 자동 추출 성공. **재발 방지**: 신규 지역 N>=3 도달 시 항상 부트스트랩 스크립트 우선 사용 — 처음부터 수기 작성 금지.
+- [ ] **ERR-self-audit-gate-bypass@2026-04-27** (구조적 — Agent 자가감사 INSERT 차단 부재): `agent_audit_report` 가 `pkg` 에 첨부되어 INSERT 후 post-audit 단계에서 warnings 추가됐지만, INSERT 자체는 verdict=blocked / unsupported_critical>=1 이어도 그대로 진행됨. 환각·축약 의심 상품이 일단 DB에 들어간 후 사장님이 archive 해야 하는 단방향 흐름. **해결** (P3 #2): [insert-template.js](./db/templates/insert-template.js) `validatePackage` 호출 직후 게이트 추가 — `verdict=='blocked'` 또는 `unsupported_critical>=1` 면 `validationErrors` 에 추가해 기존 skip 로직으로 차단. `unsupported_high>=3` 은 기본 warnings, `STRICT_AUDIT=true` 시 차단. report 누락은 STRICT_AUDIT 시에만 차단(기본 통과). 회귀 테스트 — `tests/regression/cases/ERR-self-audit-gate-bypass.test.js` 8개 케이스. **재발 방지**: pre-INSERT 게이트가 SSOT — post-audit 의 warnings 승격은 그 이후 단계 보조 검증으로만 활용.
+- [ ] **ERR-graybox-existing-data@2026-04-27** (구조적 — 정책 변화 이전 등록분 회색지대): customer_notes/internal_notes 분리, commission_fixed_amount, FIELD_POLICY 강화 등 P0~P2 정책 도입 이전에 등록된 112개 상품의 회색지대 데이터 식별 부재. 사장님이 "어떤 상품이 위험한지" 일괄 파악 불가. **해결** (P3 #3): [db/audit_existing_packages.js](./db/audit_existing_packages.js) 추가 — 7개 룰 점검(SPLIT-NOTES / CUSTOMER-LEAK / FIXED-COMMISSION-MISSING / SHOPPING-NOT-SPECIFIED / AUDIT-STATUS-NULL / NOTICES-EMPTY / NUMBER-COMMA-RESIDUE) + 한 화면 리포트(심각도/코드별 분포) + JSON 출력(작업 큐) + `--fix-split-notes` 안전 자동 수정. **결과** (2026-04-27 1차 실행): 112건 중 17건 clean, 95건 이슈 — high 0건 / medium 69건(SHOPPING 미설정 레거시) / low 95건(AUDIT-STATUS null 레거시). 즉시 위험 없음 확인. **재발 방지**: 정책 변경 시 기존 데이터 점검 스크립트를 함께 만들어 회색지대 가시화 — 구조 변경 후 "보이지 않는 잔여 위험" 패턴 차단.
+- [ ] **ERR-regression-coverage-gap@2026-04-27** (인프라 — 회귀 fixture 커버리지 가시화 부재): error-registry.md 에 67개 ERR 누적되어 있으나 회귀 fixture 가 어느 ERR 를 보호하는지 / 어느 ERR 가 변환 후보인지 가시화 불가. 사장님/Agent 가 "다음 fixture 작성 우선순위" 판단 어려움. **해결** (P3 #4): ① [tests/regression/err-coverage.js](./tests/regression/err-coverage.js) 추가 — error-registry.md 파싱 + fixture `@case` 헤더 추출 + 매칭 + 카테고리별 변환 후보 추천 (UX/구조적/데이터 적합도 휴리스틱). ② 5건 신규 fixture 추가 (ERR-arrival-line-overmatch / ERR-meal-empty-render / ERR-dump-string-toLocaleString / ERR-fixed-commission-format / ERR-W21-internal-keywords) — 70개 테스트로 확장. ③ npm scripts: `test:regression:coverage`, `test:regression:uncovered`. **결과** (2026-04-27): 커버리지 0% → 12% (8/67) + 7건 다음 후보 식별. **재발 방지**: 신규 fixture 작성 시 `@case` 헤더 명시 + ERR 코드는 registry 와 동일 — coverage 스크립트가 자동 매칭.
+- [ ] **ERR-regression-coverage-batch2@2026-04-27** (인프라 — 회귀 커버리지 21% 도약): P3 #4 1차(12%) 후 사장님 "한번 싹 다" 지시로 변환 후보 6건 일괄 추가. **해결**: 6건 신규 fixture (ERR-HSN-render-bundle / ERR-isr-revalidate-manual / ERR-notice-card-flat-tone / ERR-calendar-month-discoverability / ERR-fixed-commission-column / ERR-bootstrap-manual-toil) — 125개 테스트. ERR-graybox-existing-data 는 **사장님 지시로 제외** (등록 상품 데이터 의존, 곧 일괄 아카이브 예정이라 의미 없음). **결과** (2026-04-27 batch2): 커버리지 12% → **21%** (14/68) + 회귀 테스트 70 → **125개**. **재발 방지**: 코드 안전망(데이터 의존 X) 우선 변환 — 데이터 의존 ERR 은 fixture 화 부적합으로 명시적으로 제외.
+- [ ] **ERR-windows-prerender-chunk@2026-04-26** (인프라 — Next.js 14.0.4 Windows chunk race 빌드 실패): `feature/card-news-v2` 브랜치 `npm run build` 가 12개 client component page (`/login`, `/admin/*`, `/`) 에 대해 `Cannot read properties of undefined (reading 'call')` / `Cannot find module './chunks/vendor-chunks/next.js'` 로 prerender 실패. 원인: Next.js 14.0.4 + Windows + 한글 경로(`여소남OS`) 환경에서 webpack pack 파일 rename race + 'use client' page 의 `export const dynamic` 무시 버그 결합. **해결** (2026-04-26): ① cover-critic.ts `product_context.nights?: number` 타입 추가 + caller select 동기화. ② API drift 5건 — `avg_rating, review_count` PACKAGE_LIST_FIELDS 추가, `*_md` 3건 INTERNAL_ONLY 분류. ③ `src/app/admin/layout.tsx` 에 `export const dynamic = 'force-dynamic'` — 12개 admin 자식 페이지 일괄 처리. ④ `src/app/login/page.tsx` 를 server wrapper 로 변환, client 로직을 `LoginForm.tsx` 분리(Next.js 14.0.4 의 'use client' page dynamic export 무시 버그 회피). ⑤ `src/app/page.tsx` 는 `process.platform === 'win32'` 분기로 Windows 로컬은 force-dynamic, Vercel(Linux) 는 ISR 5분 유지. ⑥ `import dynamic from 'next/dynamic'` 사용 페이지 2개에서 `nextDynamic` 으로 alias (export 충돌 방지). **검증** (2026-04-26): `npm run build` EXIT 0, 234/234 페이지 생성, regression 125/125 PASS. **재발 방지**: 신규 admin client page 추가 시 layout 의 force-dynamic 자동 propagate — 페이지 자체에 `export const dynamic` 직접 선언 금지(`import dynamic from 'next/dynamic'` 와 충돌). client page 가 server-only 처리 필요할 때 server wrapper 패턴 (login 참고).
+- [ ] **ERR-lint-cleanup-batch@2026-04-26** (인프라 — lint 30 Error / 32 Warning → 0 일괄 처리): typescript-eslint plugin 정식 설치 후 surfaced 된 30 error + 32 warning 일괄 정리. **해결**: ① `react-hooks/rules-of-hooks` 14건 (실제 코드 버그) — `ChatWidget`, `JarvisFloatingWidget`, `lp/[id]/page` 의 hooks 호출 순서 정정 (early return 을 hooks 뒤로 이동). ② `prefer-const` 6건 — `let → const`. ③ `react/no-unescaped-entities` 10건 + `@next/next/no-img-element` 19건 — 노이즈 룰 disable (`.eslintrc.json` 의 rules). ④ `react-hooks/exhaustive-deps` 12건 — inline `// eslint-disable-next-line` + 의도 코멘트 (mount/id-trigger-only intentional). ⑤ `@typescript-eslint/eslint-plugin@^7` + `parser@^7` 설치 (legacy-peer-deps). **검증**: lint 0건, build EXIT 0, regression 125/125. **재발 방지**: lint 룰 변경 시 영향 범위를 `.eslintrc.json` 의 `rules` 객체로 명시적 관리 — 노이즈 룰은 disable, 실제 버그 룰은 유지.
+- [ ] **ERR-nextjs-14.2-upgrade@2026-04-26** (인프라 — Next.js 14.0.4 → 14.2.20 minor upgrade): Windows chunk race 영구 해결 시도. **결과**: ✅ 빌드 통과 (retry 1회 후), regression 125/125 PASS, lint 0건. ⚠️ Windows chunk race 는 14.2 에서도 동일 (Next.js 14.x 시리즈 전체 한계). Vercel(Linux) 영향 없음 — production 배포 시 chunk race 미발생. ⚠️ 14.2 신규 메시지: `request.headers` 사용 cron routes (publish-scheduled, sync-engagement, agent-executor) 가 Dynamic Server Usage 로그 출력 — 정상 동작. **재발 방지**: Windows chunk race 영구 해결은 Next.js 15.x 업그레이드 필요. 14.x 시리즈에서는 retry + cache wipe 워크어라운드 유지.
+- [ ] **ERR-hotel-grade-roomtype-mixed@2026-04-27** (구조적 — 컬럼 책임 분리 안 됨): `itinerary_data.days[].hotel.grade` 컬럼 한 개에 **호텔 등급 + 룸타입 + 호텔종류 + 호텔명 + 숙박정보** 가 섞여 저장됨. 사장님이 "디럭스룸/슈페리어룸은 룸타입이지 호텔등급이 아님" 지적. DB 분포 조사 (710건 기준): ✅ 진짜 등급 629건(13종 표기 변동: 5성/5성급/5+/정5성 등 → 정형화 필요) / 🛏️ 룸타입 35건(디럭스룸 21·슈페리어룸 14) / ❓ 비표준 숙박 28건(게르·크루즈·선실·"비지니스급"·"시외4성급") / 🏨 호텔종류 18건("리조트" 단독). 추가로 grade 에 호텔명("Vansana LPQ"·"Grand riverside")·숙박정보("3박"·"2인1실"·"5성급, 2인1실")까지 들어감. 영향: ① 모바일 별 표시 오작동 (ERR-HET-hotel-grade-ambiguity@2026-04-22 / ERR-HET-hotel-ger-star@2026-04-22 와 같은 패턴 — 별 4개 vs 5개 차이로 고객 혼동) ② 등급 필터/검색 결과 왜곡 ③ 신규 등록 시 어떤 값을 넣을지 컨벤션 부재 → AI 추측 → 환각. **해결**: ① register.md `Step 1.5-E` 에 표준 매핑 표 신설 — `hotel.grade` (3성·준3성·4성·준4성·5성·준5성·null 7종) / `hotel.room_type` (디럭스룸·슈페리어룸·스위트·가든뷰·시티뷰·오션뷰 — 신규 필드, 임시 note) / `hotel.facility_type` (resort·ger·cruise·cabin — 신규 필드). 비표준 숙박은 grade=null + facility_type. ② 원문 표기 정형화 매핑: "5성특급/5성+/정5성/5+/5성급" → "5성", "4.5성/준5성급" → "준5성", "시외4성급/비지니스급" → "4성"+note. ③ 결정 이력에 사장님 정책 명문화. ④ 백필 백로그: `db/backfill_hotel_grade_split.js` — 81건 분리 + 629건 정형화 (사장님 명시 승인 후). **재발 방지**: ① 신규 등록부터 Step 1.5-E 룰 자동 적용 (Agent self-check) ② 컬럼이 두 책임을 동시에 갖는 패턴은 ERR-special-notes-leak 와 같이 분리 필수 ③ 신규 컬럼 추가 시 "이 컬럼은 어떤 의미만 받는가?" frontmatter 명시.
+- [ ] **ERR-W32-verbatim-substring-gate@2026-04-29** (예방 — 환각 변환·보강 INSERT 전 사전 검출): ERR-FUK-camellia-overcorrect@2026-04-28 의 6건 사고 중 4건 (schedule "다자이후→태재부" 변환 + inclusions "왕복 훼리비 (카멜리아)" 보강 + notices "쇼핑센터 1회 (면세점)" 보강 + D3 "안녕히→해산" 의역) 가 모두 Agent self-audit verdict='clean' 통과. claim 검증이 "원문에 있는가" 만 확인하고 "원문 그대로인가" 는 검증 안 함 → fix_verbatim 사후 처리로 해결할 수밖에 없었음. **해결** (2026-04-29): [insert-template.js:381+](./db/templates/insert-template.js) `validatePackage` 의 W32 룰 추가 — schedule activity (▶ 마커) + inclusions 의 normalize(공백제거) substring 이 raw_text normalize 의 substring 이 아니면 warnings 추가. notices_parsed 는 의역 허용 (검증 제외 — false-positive 회피). 회귀 검증: 정상 4건 (TB-FUK-03-01/02/04-01/04-02) 모두 W32 0건 (false-positive 없음), 사고 시뮬레이션 데이터 (다자이후+왕복훼리비카멜리아) 정확히 2건 검출. 이제 같은 사고 발생 시 INSERT 시점에 audit_status='warnings' 로 분류 → 사장님 검토 후 force 또는 수정. **재발 방지**: schedule + inclusions 텍스트 변형은 INSERT 전 자동 차단. notices_parsed 는 사장님 의역 정책 (REMARK 통합·정제) 존중하되 별도 룰 (P3) 검토 필요.
+
+- [ ] **ERR-unmatched-stale-auto-trigger@2026-04-29** (인프라 — alias 적립 후 자동 sweep 자동화): ERR-unmatched-stale-after-alias@2026-04-29 의 sweep 스크립트가 사장님 수동 실행 의존. alias 적립할 때마다 사장님이 `node db/resweep_unmatched_activities.js` 실행해야 → 부담. **해결** (2026-04-29): ① [src/lib/unmatched-resweep.ts](./src/lib/unmatched-resweep.ts) 신규 — `resweepUnmatchedActivities(attractionIds?)` 헬퍼. attractionIds 명시 시 좁은 sweep (해당 attraction(s) 만 매칭, ~50ms), 미명시 시 전체 sweep. ② [PATCH /api/attractions](./src/app/api/attractions/route.ts) hook — name/aliases 변경 시 즉시 좁은 sweep 자동 트리거. 응답에 `sweep` 필드 포함 (matched 카운트). ③ [POST /api/attractions](./src/app/api/attractions/route.ts) hook — 신규 attraction 추가 시 같은 sweep. ④ [GET /api/cron/resweep-unmatched](./src/app/api/cron/resweep-unmatched/route.ts) 신규 cron — 매일 01:30 UTC 전체 안전망 sweep (Supabase 대시보드 직접 편집·hook 실패 케이스 보강). [vercel.json](./vercel.json) crons 등록 + [middleware.ts](./src/middleware.ts) PUBLIC_PATHS 등록. ⑤ [db/resweep_unmatched_activities.js](./db/resweep_unmatched_activities.js) 수동 CLI 도 유지 (긴급 정리용). **재발 방지**: ① alias 적립 → 자동 sweep → 사장님 수동 단계 0 ② Supabase 대시보드 직접 편집은 cron 이 일일 catch-up ③ TS 모듈로 추출 → 신규 호출처 (예: 어드민 일괄 alias import) 도 동일 함수 재사용. type check 통과.
+- [ ] **ERR-DAD-excludes-dot-separator@2026-05-01** (W32 위반 — excludes 구분자 원문 불일치): TB-DAD-05-04~07 (투어비 다낭 4건) 의 `excludes[1]` 가 `마사지팁 60분 $2·90분 $3·120분 $4` 로 중간점(`·`) 사용. 원문은 `마사지팁 60분 $2, 90분 $3, 120분 $4` (쉼표+공백). W32 는 schedule·inclusions 를 검사하지만 **excludes 는 대상 외** 라서 자동 감지 안 됨. 원문 대조 수동 감사에서 발견. **근본 원인**: 작성 시 콤마 구분 항목을 W26(depth-0 콤마 금지)을 의식해 `·` 로 변환했으나 이 항목은 단일 텍스트이므로 변환 불필요 + 비verbatim. **해결**: ① DB 즉시 수정 — `array_replace(excludes, '마사지팁 60분 $2·90분 $3·120분 $4', '마사지팁 60분 $2, 90분 $3, 120분 $4')` 4건. ② [db/insert_DAD_투어비_신라메리어트_2026.js](./db/insert_DAD_투어비_신라메리어트_2026.js) `EXCLUDES[1]` 원문 verbatim 으로 수정. **재발 방지**: W26(depth-0 콤마 금지) 은 배열 **분리 기준**이 되는 콤마만 금지. 단일 항목 내 설명용 콤마(`60분 $2, 90분 $3`)는 허용. 혼동 방지 — excludes/notices 작성 시 "이 쉼표가 항목을 나누는가?"를 체크. 추후 W32 를 excludes 까지 확장 검토.
+- [ ] **ERR-DAD-highlights-inclusions-hardcode@2026-05-01** (구조적 — itinerary highlights 호텔별 특전 누락): `makeItinerary()` 팩토리 함수가 `highlights.inclusions` 를 항상 `INCLUSIONS_BASE` (22개 공통 항목만)로 하드코딩. 호텔별 특전 (`신라모노그램 망고빙수·미니바` / `메리어트 4인+ 풀빌라 업그레이드`) 이 `highlights` 에 포함 안 됨 → 모바일 핵심 노출 섹션에 호텔 차별화 포인트 누락. DB 는 `jsonb_set` 사후 수정으로 이미 보정됨. **근본 원인**: 팩토리가 "호텔 비종속 공통 정보" 만 반환하도록 설계됐으나 `highlights.inclusions` 가 마케팅 노출 SSOT 이므로 호텔별 전체 목록이 필요. **해결**: ① `makeItinerary()` 에 `highlightsInclusions` 파라미터 추가 — 미전달 시 `INCLUSIONS_BASE` fallback. ② 4개 call site 에 각각 `INCLUSIONS_신라`/`INCLUSIONS_메리어트` 전달. **재발 방지**: 복수 상품을 생성하는 팩토리 함수는 "상품별 가변 데이터를 파라미터로 명시 수신" 원칙. highlights 같은 마케팅 노출 필드는 절대 공통 BASE 하드코딩 금지.
+
+- [ ] **ERR-unmatched-stale-after-alias@2026-04-29** (인프라 — alias 적립 후 기존 unmatched 큐 stale): 사장님이 attractions.aliases 적립 또는 신규 attraction 등록해도 그 이전에 적재된 unmatched_activities 항목은 stale 상태로 남음. 다자이후텐만구 aliases 8개 추가 후에도 시내 패키지 등록 시 적재된 "▶학문의 신을 모신 다자이후 천만궁" 이 unmatched 큐에 그대로. 사장님이 어드민 unmatched 페이지에서 "이미 처리된 항목" 을 또 보게 됨. **해결** (2026-04-29): ① [db/resweep_unmatched_activities.js](./db/resweep_unmatched_activities.js) 추가 — resolved_at IS NULL 인 unmatched 전체 fetch + Step 7-F 와 동일한 매칭 로직으로 재매칭 + 매칭 성공 항목 resolved_at/resolved_kind='auto_resweep'/resolved_attraction_id set. ② attractions 전수 fetch (Supabase 기본 limit 1000 우회 — range pagination 으로 1187개 모두). ③ status 컬럼은 그대로 유지 (check constraint 호환 — 'pending'/'ignored' 만 허용). 어드민 페이지가 resolved_at IS NULL 로 필터링하므로 처리 큐에서 자동 제외. ④ DRY_RUN=1 옵션 — 미리보기 가능. **결과** (2026-04-29 1차): 454건 → 275건 (39% 일괄 정리 / 179건 매칭 성공). 카멜리아 4건 미매칭은 29 → 23 (7건 정리, 잔량 19건은 attractions 테이블에 없는 신규 명소 — 사장님 어드민 처리 대상). **재발 방지**: ① alias 적립 후 sweep 자동 트리거 (PATCH /api/attractions 에 hook 추가, P3) ② 또는 cron 으로 일일 sweep 자동화 (현재는 수동 실행). 자동 시드는 안 함 (ERR-20260418-33 정책 준수).
+
+- [ ] **ERR-PackageCard-ferry-airline@2026-04-29** (UX — 페리 패키지 카드에 "선박" 만 노출): [getAirlineName](./src/lib/render-contract.ts#L287) 가 "카멜리아 (선박)" 입력 시 AIRLINE_MAP 매칭 실패 (카멜리아 미등록) → parenMatch fallback 으로 괄호 안 텍스트 "선박" 반환. PackageCard 가 항공사 자리에 "선박" 만 표시 (회사명 누락). 4건 카멜리아 후쿠오카 패키지 등록 후 사장님이 PackageCard.tsx 를 IDE 로 열어 확인 → 잠재 이슈 발견. **해결** (2026-04-29): [render-contract.ts:271](./src/lib/render-contract.ts) AIRLINE_MAP 에 페리 회사 3개 추가 — `'카멜리아': '카멜리아', '부관훼리': '부관훼리', '뉴카멜리아': '뉴카멜리아'`. 검증: "카멜리아 (선박)" / "카멜리아" / "카멜리아 페리" 모두 "카멜리아" 정상 매핑, 기존 BX781 (에어부산) 회귀 통과. **재발 방지**: 신규 운항 회사(페리·기차·전세버스) 추가 시 AIRLINE_MAP 등록 — 한글 키 허용. parenMatch fallback 은 정말 필요한 case 외엔 신뢰하지 말 것 (괄호 안에 "선박" 같은 일반명사가 자주 들어감).
+
+- [ ] **ERR-FUK-render-audit-falsepos@2026-04-28** (UX — 신규 등록 직후 production ISR 미완료가 audit 실패로 오인): post-audit 가 yeosonam.com production HTML 을 fetch 해 "최저가 표시" / "호텔명 표시" / "항공편 표시" 검사. 신규 등록 직후엔 production ISR 가 on-demand 빌드 전이라 폴백 HTML(2~3KB)로 응답 → "❌ 최저가 표시" 경고가 사장님께 잘못된 신호 전달. 데이터 자체는 정상이나 환경 의존 false-positive. TB-FUK-04-02 (소도시+후쿠오카) 등록 시 발견 — 이전 3건 (TB-FUK-03-01/02, 04-01) 도 동일 패턴이었으나 우연히 ISR 시점 통과. **해결** (2026-04-28): [post_register_audit.js:601+](./db/post_register_audit.js) HTML 길이 < 5000 bytes 면 "⏳ 렌더 검증 SKIP — production ISR 빌드 미완료로 추정 (신규 등록 직후) / 5~30초 후 정상 노출. 데이터 자체는 정상." 친화적 메시지로 출력. errors/warnings 추가 안 함 (이미 그러했으나 표시만 잘못 — "❌" 가 시각적으로 BLOCKED 처럼 보임). **재발 방지**: production HTML 검증은 항상 페이지 빌드 시점 의존성을 인지 — 짧은 HTML 은 audit fail 이 아니라 "검증 미실시" 로 분류. 정확한 검증은 ISR revalidate 후 retry 또는 dev 서버에서만.
+
+- [ ] **ERR-W11-warning-misclass@2026-04-28** (분류 — 안내성 콤마 경고가 warnings 로 분류돼 자동 승인 막힘): validatePackage W11 ("콤마 포함 ▶ activity 감지 → splitScheduleItems 자동 분리") 메시지가 `[W11]` 접두사 없이 텍스트만 푸시됨. post-audit 의 INFO_RULES 정규식 `/\[(W\d+)/` 매칭 실패 → audit_status='warnings' 분류 → 자동 승인 차단 → 매번 force 필요. TB-FUK-04-02 등록 시 발견. ERR-audit-severity-flat@2026-04-27 의 INFO_RULES 도입 의도와 어긋남. **해결** (2026-04-28): ① [insert-template.js:367](./db/templates/insert-template.js) W11 메시지에 `[W11]` 접두사 추가 + 메시지 정확화 ("splitScheduleItems 자동 분리 또는 W31 휴리스틱이 단일 명소로 보호 — 안내성"). ② [post_register_audit.js:462](./db/post_register_audit.js) INFO_RULES 에 W11 추가 (W12 와 함께). ③ [post_register_audit.js:559+](./db/post_register_audit.js) audit_status 출력 배지에 'info' 케이스 추가 (`⚪ INFO (안내성 경고만 — 자동 승인 OK)`) — 기존엔 info 도 BLOCKED 로 잘못 표시. ④ [dump_package_result.js:103](./db/dump_package_result.js) notices_parsed 출력에 `n.text` 폴백 추가 (기존엔 `n.title` 만 봐서 "[INFO] undefined" 표시). **재발 방지**: 신규 W-code 추가 시 ① 메시지 `[Wnn]` 접두사 강제 ② INFO_RULES 분류 검토 ("데이터 무결성 영향 있는가?") ③ register.md 의 self-check 목록에 추가.
+
+- [ ] **ERR-FUK-camellia-overcorrect@2026-04-28** (verbatim — Agent self-audit 통과한 6건 회색지대 수정): 투어비 카멜리아 후쿠오카 시내숙박 2박3일 (TB-FUK-03-01) 등록 후 사장님 원문 재대조에서 6건 회색지대 발견. ① **schedule SSOT 정상화 위반** — 원문 "▶학문의 신을 모신 태재부 천만궁" 을 "다자이후 천만궁" 으로 자의 변환. register.md 3-4 절 "schedule = 원문 verbatim, attractions aliases 가 흡수" 정책 위반. ② **W30 휴리스틱 부족** — splitScheduleItems 가 괄호 없는 단일 명소 서술문("▶높이 234M, 8000장의 유리로 단장한 후쿠오카 타워 관광") 의 콤마를 분리할 위험. Agent 가 사전 방어로 "·" 변환 → 원문 verbatim 손실. ③ **regions 오인** — D1 의 "지역" 컬럼은 "부산", "교통편" 컬럼이 "카멜리아" 인데 둘 다 regions 에 포함시킴. ④ **inclusions 환각 보강** — 원문 "왕복훼리비" → "왕복 훼리비 (카멜리아)" (괄호 추가). ⑤ **notices_parsed 환각 보강** — 원문 "쇼핑센터 1회" → "쇼핑센터 1회 (면세점)". ⑥ **D3 의역** — 원문 "안녕히~" → "해산". Agent self-audit 11 claims 가 모두 supported=true 로 통과 (verdict=clean) — claim 이 "원문에 있는가" 만 검증하고 "원문 그대로인가" 는 검증 안 함. **해결** (2026-04-28): ① 6건 즉시 DB UPDATE (`db/fix_tourbi_fuk_camellia_verbatim.js`). ② attractions "다자이후텐만구" aliases 에 ["다자이후 천만궁","태재부 천만궁","태재부 텐만구","태재부","다자이후","학문의 신","Dazaifu Tenmangu","太宰府天満宮"] 8개 적립 — 다음 등록부터 자동 매칭. ③ **시스템 보강 — splitScheduleItems W31 룰 추가** — 괄호 없는 일반 콤마 case 에서도 DESCRIPTIVE_KW 검사 적용 (단장한·모신·자리잡은·위치한·유명한·꽃놀이·명소·풍경 키워드 + 콤마 직전 서술 어미 한/된/는/의 검출). 6/6 회귀 테스트 통과 (후쿠오카 타워·미야지다케·마이즈루·태재부 보호 + 오타루 콤마 분리·하카타 단일 정상). ④ register.md self-check 에 W31 항목 추가 (별도 문단). **재발 방지**: ① schedule activity 의 ▶ 명사는 raw_text substring 으로 verbatim 검증 — Agent self-audit claim 에 `evidence_is_verbatim_substring: true/false` 필드 추가 검토 (P3). ② regions 정의 명문화 — register.md 에 "지역 컬럼만 regions, 교통편 컬럼은 schedule[].transport" 명시 (P2). ③ "단어 추가 (괄호 보강)" 패턴은 Agent self-audit 에서 별도 룰로 검출 — 원문 substring 비교 후 추가 토큰 발견 시 supported=false 강제 (P2).
+
+- [ ] **ERR-LEDGER-drift@2026-04-30** (재무 정합성 — Phase 2a 이중쓰기 drift 발생 시 응급 절차): `bookings.paid_amount / total_paid_out` 와 `SUM(ledger_entries.amount)` 가 일치해야 함 (Phase 2a 이중쓰기 보장). 일치하지 않으면 = ledger 우회 경로가 있다는 뜻 → 모든 매칭·환불·정산 신뢰도 붕괴. **검출**: ① 매일 03:30 UTC `/api/cron/ledger-reconcile` cron — drift > 0 발견 시 어드민 푸시 + Slack alert (SLACK_ALERT_WEBHOOK_URL) 동시 발송. ② `/admin/payments` 헤더 `LedgerStatusChip` (60s 폴링) 빨간 펄스 표시. ③ `/admin/payments/reconcile` 페이지에서 booking 단위 drift 즉시 조회. **응급 절차**: ① `/admin/payments/reconcile` 진입 → drift sample 20건 확인 → 어떤 source 누락 인지 BookingDrawer "📒 원장 보기" 로 ledger 시간순 비교. ② drift 원인이 ledger 우회 코드 경로(직접 UPDATE bookings.paid_amount 발견)면 **즉시 push 차단** + 핫픽스. ③ 영향 booking 들에 대해 `record_manual_paid_amount_change` RPC 로 ledger entry 보정 (memo 에 ERR-LEDGER-drift 인시던트 ID 명시). ④ 또는 어드민 "입금 재동기화" (resync_paid_amounts_with_ledger RPC) 로 일괄 보정 entry 자동 생성. **재발 방지**: ① bookings.paid_amount / total_paid_out 직접 UPDATE 코드를 추가하면 안 됨 — 모든 변경은 RPC (update_booking_ledger / record_manual_paid_amount_change / confirm_payment_match / create_land_settlement / reverse_land_settlement / resync_paid_amounts_with_ledger) 경유. ② 새 매칭/정산 경로 추가 시 idempotency_key 컨벤션 준수 (`<source>:<external_id>` 패턴). ③ ledger_entries 는 RLS service_role-only — 클라이언트 코드에서 anon key 로 조회 불가. ④ Phase 2b (읽기 경로 view 전환) 진입 전 drift 0건 연속 7일 검증 필수.
+
+- [ ] **ERR-NHA-multi-airline-catalog@2026-04-27** (절차 — 원문 내부 모순 사전 검출 부재): 사장님 W투어 나트랑 카탈로그 등록 시도 중, 한 원문에 **두 항공편 옵션(BX-에어부산 BX781/782 + 베트젯 VJ919/918)이 동시 묘사** 되고 가격표가 1개만 있는 케이스 발견. 헤더 타이틀은 `[BX-에어부산]`, 본문 가격표 위는 BX781(19:30 출발) 명시, 본문 가격표 아래는 `[VJ]` 헤더 + 일정표는 VJ919(10:55 출발)/VJ918(03:10 출발) 사용. 출발시간이 BX 19:30 vs VJ 10:55 로 완전 다르고 도착시간도 BX 06:20+1 vs VJ 09:50 로 다름 → **가격표가 어느 항공 기준인지 모호**. 추가 모순 5종: ① 호텔 등급 표기 변동 (`(5성특급)` vs `5성)`) ② 유류할증료 "(4월)" 만 포함 → 5~8월 출발 시 별도 청구 여부 불명 ③ 인원 조건 (헤더 "최대투숙인원 성인3+아동1" vs 본문 "2명부터 출발 가능") 동시 명시 ④ "4/29 발권조건" 헤더 vs 가격표에 4/29 출발 + 5~8월 출발 다수 존재 → 발권기한 4/29 의 적용 범위 모호 ⑤ "매너 팁" 불포함 + "가이드" 불포함 동시 명시 → 가이드 없는데 누구에게 팁? 추가로 랜드사 "W투어" 가 `db/land-operators.json` 미등록 (23개 등록 중 W로 시작하는 곳 없음). 영향: 기존 register.md 절차에는 **원문 자체의 내부 모순을 INSERT 전 검출하는 단계가 없음**. Step 6.5 self-audit 은 "DB 필드 vs 원문" 대조라 원문 내부 모순(다항공/다호텔/다기간)은 잡지 못함. 사장님이 먼저 발견하지 않으면 한쪽 항공 임의 선택 → 환각 등록 위험. **해결**: ① register.md `Step 1.5: 카탈로그 일관성 사전 검증` 신규 섹션 추가 — A. 항공편 정체성 충돌 (단일/다중시간/다중항공사 분류) / B. 가격표 출처 검증 (가격표 인접 8줄 항공·호텔 라벨 일관성) / C. 신규 랜드사 검출 (`land-operators.json` lookup → 미등록 시 사장님 명시 Y 후만 INSERT) / D. 적용기간 ↔ 발권기한 모순 / E. 호텔 등급 표기 변동. 1개라도 실패 시 등록 중단 + 사장님 4개 질문 (가격표 어느 항공 기준? 어느 항공 등록? 일정표는 한 쪽 기준이면 다른 쪽은 시간만 교체? 발권기한 항공별 다른가?). ② 향후 `db/audit_raw_text_consistency.js` 자동 검증기 P3 추가 예정 — 현재는 Agent self-check. **재발 방지**: ① 다항공 카탈로그는 항상 STOP → 사장님 결정 후만 진행. 임의 선택 금지. ② 신규 랜드사 발견 시 자동 INSERT 금지 — 정산·세금 마스터 누락 방지. ③ 원문 내부 모순 검출은 IR 파이프 진입 전에 끝내야 함 (LLM 호출 비용 절감 + 사장님 의사결정 빠른 우회).
+
+- [ ] **ERR-BHO-TB-01@2026-04-30** (verbatim — inclusions 항목 AI 자동 변환): 투어비 보홀 10개 패키지 INSERT 시 inclusions 두 항목이 원문 verbatim이 아닌 AI 재표현으로 저장됨. ① `유류할증료(5월기준)` → `유류할증료(2026-05-31 발권 기준)` (발권기한 날짜로 대체). ② `한국인 매니저 안내(상시 카톡연결-현지맛집, 차량렌탈, 마사지샵, 해양스포츠 등 예약대행)` → `한국인 매니저 안내(상시 카톡연결)` (뒷 절 절단). 두 항목 모두 W32 verbatim 게이트에서 `audit_status=warnings` 로 정상 탐지됨. **해결**: 등록 후 Supabase MCP SQL `array_replace()` 로 10개 패키지 일괄 수정. **근본 원인**: AI가 inclusions 작성 시 "자연스럽게 의미를 보완"하는 패턴 — 발권기한과 유류할증료 적용 시점을 혼동, 긴 텍스트를 축약. **재발 방지**: ① `register.md Step 1-b` 신규 섹션에 금지 변환 예시 표 추가 (2026-04-30). ② BHO 어셈블러(`assembler_bho.js`) 사용 시 activityNote + inclusions 를 원문 verbatim으로 전달하는 패턴 강제. ③ W32 게이트가 INSERT 전 차단하므로 자동 탐지는 보장됨.
+
+- [ ] **ERR-BHO-TB-02@2026-04-30** (코드 — insert-template.js helpers 잘못된 import 패턴): `flight`, `normal`, `optional` 등 helpers 함수를 `require('./templates/insert-template')` 에서 module-level export 로 구조분해 시도. 해당 함수들은 `createInserter()` 가 반환하는 객체 내부에만 존재함 (`{ run, helpers: { flight, normal, ... } }`). **해결**: `const { helpers: { flight, normal } } = inserter;` 패턴 사용. **재발 방지**: ① `register.md Step 1-b` 에 올바른 helpers destructuring 예시 추가. ② BHO 어셈블러가 내부에서 `inserter.helpers` 를 받으므로 랜드사 스크립트에서 직접 접근 불필요 (어셈블러가 캡슐화).
+
+- [ ] **ERR-BHO-TB-03@2026-04-30** (코드 — computeRawHash module.exports 미포함): `insert-template.js` 에 `computeRawHash` 함수가 정의되어 있으나 `module.exports` 에 포함되지 않아 `require()` 로 import 불가. 매 스크립트마다 `crypto` 로 중복 정의 필요. **해결**: `module.exports` 에 `computeRawHash` 추가 (2026-04-30). BHO 어셈블러는 `rawText` 를 받아 내부에서 hash 자동 계산하므로 외부 노출 불필요. **재발 방지**: insert-template.js 신규 유틸 함수 추가 시 반드시 exports 동반.
+
+- [ ] **ERR-BHO-TB-04@2026-04-30** (데이터 — 원문 날짜 표기 OCR/인쇄 오류로 월 잘못 기재): 투어비 보홀 원문 가격표의 `8/2,3,9,10,16 수목` 행이 실제로는 **9월** 날짜 (2026-09-02=수, 09-03=목 ... 확인). 원문에 "8"로 인쇄되어 있으나 2026년 8월 2일=일요일로 수요일과 불일치. 요일 대조 결과 9월로 교정. **해결**: 날짜-요일 불일치 탐지 후 인접 월 탐색으로 교정. 9월로 정정하여 PRICES_3D5 행렬 구성. **재발 방지**: `db/lib/parse-price-table.js` 신규 유틸 — `parsePriceRows()` 가 날짜-요일 불일치 자동 탐지 + 인접 월 교정 + anomaly 보고 (2026-04-30). 앞으로 BHO 어셈블러 가격표 파싱 시 이 유틸 사용 권장.

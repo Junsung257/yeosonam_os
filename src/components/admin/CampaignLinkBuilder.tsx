@@ -130,17 +130,17 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
           ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* ── 헤더 ── */}
-        <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between px-7 py-5 border-b border-admin-border shrink-0">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-admin-text flex items-center gap-2">
               <Link2 className="w-5 h-5 text-blue-600" />
               캠페인 링크 빌더
             </h2>
-            <p className="text-sm text-gray-500 mt-0.5">3초 만에 UTM 링크 & QR 코드 생성</p>
+            <p className="text-sm text-admin-muted mt-0.5">3초 만에 UTM 링크 & QR 코드 생성</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition text-gray-400 hover:text-gray-700"
+            className="p-2 rounded-lg hover:bg-admin-surface-2 transition text-admin-muted-2 hover:text-admin-text-2"
           >
             <X size={20} />
           </button>
@@ -150,32 +150,32 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-7 py-6 space-y-6">
 
           {/* 1. 연결 상품 */}
-          <FormField icon={<Tag className="w-4 h-4 text-gray-400" />} label="연결 랜딩페이지 상품">
+          <FormField icon={<Tag className="w-4 h-4 text-admin-muted-2" />} label="연결 랜딩페이지 상품">
             <div className="relative">
               <select
                 value={productId}
                 onChange={e => setProductId(e.target.value)}
-                className="w-full appearance-none border-2 border-gray-200 rounded-xl px-4 py-3 text-base text-gray-800 focus:outline-none focus:border-blue-500 transition pr-10 bg-white"
+                className="w-full appearance-none border-2 border-admin-border-mid rounded-admin-md px-4 py-3 text-base text-admin-text-2 focus:outline-none focus:border-blue-500 transition pr-10 bg-white"
               >
                 {PRODUCTS.map(p => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-admin-muted-2 pointer-events-none" />
             </div>
           </FormField>
 
           {/* 2. 유입 소스 */}
-          <FormField icon={<Megaphone className="w-4 h-4 text-gray-400" />} label="유입 소스 (Source)">
+          <FormField icon={<Megaphone className="w-4 h-4 text-admin-muted-2" />} label="유입 소스 (Source)">
             <div className="grid grid-cols-3 gap-2">
               {SOURCES.map(s => (
                 <button
                   key={s.value}
                   onClick={() => setSource(s.value)}
-                  className={`py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                  className={`py-2.5 px-3 rounded-admin-md text-sm font-medium border-2 transition-all ${
                     source === s.value
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-admin-border-mid text-admin-muted hover:border-admin-border-strong hover:bg-admin-bg'
                   }`}
                 >
                   {s.label}
@@ -185,30 +185,30 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
           </FormField>
 
           {/* 3. 캠페인 이름 */}
-          <FormField icon={<Megaphone className="w-4 h-4 text-gray-400" />} label="캠페인 이름 (utm_campaign)">
+          <FormField icon={<Megaphone className="w-4 h-4 text-admin-muted-2" />} label="캠페인 이름 (utm_campaign)">
             <input
               type="text"
               value={campaign}
               onChange={e => setCampaign(e.target.value)}
               placeholder="예: summer_sale_2026"
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-blue-500 transition"
+              className="w-full border-2 border-admin-border-mid rounded-admin-md px-4 py-3 text-base focus:outline-none focus:border-blue-500 transition"
             />
           </FormField>
 
           {/* 4. 파트너 코드 */}
-          <FormField icon={<Users2 className="w-4 h-4 text-gray-400" />} label="파트너/어필리에이터 코드 (ref)">
+          <FormField icon={<Users2 className="w-4 h-4 text-admin-muted-2" />} label="파트너/어필리에이터 코드 (ref)">
             <input
               type="text"
               value={ref}
               onChange={e => setRef(e.target.value)}
               placeholder="예: partner_001"
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-blue-500 transition"
+              className="w-full border-2 border-admin-border-mid rounded-admin-md px-4 py-3 text-base focus:outline-none focus:border-blue-500 transition"
             />
           </FormField>
 
           {/* ── 생성된 URL 프리뷰 ── */}
-          <div className="rounded-2xl bg-gray-950 p-5 space-y-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">생성된 URL</p>
+          <div className="rounded-admin-lg bg-gray-950 p-5 space-y-4">
+            <p className="text-xs font-semibold text-admin-muted uppercase tracking-widest">생성된 URL</p>
             <p className="text-sm text-green-400 font-mono break-all leading-relaxed select-all">
               {finalUrl}
             </p>
@@ -217,7 +217,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={handleCopy}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-admin-md font-semibold text-sm transition-all ${
                   copied
                     ? 'bg-green-500 text-white'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -230,7 +230,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
               </button>
               <button
                 onClick={() => setShowQr(v => !v)}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm bg-white/10 hover:bg-white/20 text-white transition"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-admin-md font-semibold text-sm bg-white/10 hover:bg-white/20 text-white transition"
               >
                 <Download size={16} />
                 {showQr ? 'QR 숨기기' : 'QR 코드 생성'}
@@ -240,22 +240,22 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
 
           {/* ── QR 코드 ── */}
           {showQr && (
-            <div className="flex flex-col items-center gap-4 p-6 bg-white border-2 border-dashed border-gray-200 rounded-2xl">
-              <div ref={qrRef} className="bg-white p-3 rounded-xl shadow-md">
+            <div className="flex flex-col items-center gap-4 p-6 bg-white border-2 border-dashed border-admin-border-mid rounded-admin-lg">
+              <div ref={qrRef} className="bg-white p-3 rounded-admin-md shadow-admin-sm">
                 <QRCode value={finalUrl} size={200} />
               </div>
               <div className="text-center">
-                <p className="text-sm font-semibold text-gray-700">
+                <p className="text-sm font-semibold text-admin-text-2">
                   {PRODUCTS.find(p => p.id === productId)?.label}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-admin-muted-2 mt-0.5">
                   {SOURCES.find(s => s.value === source)?.label} 채널
                   {ref && ` · ${ref}`}
                 </p>
               </div>
               <button
                 onClick={handleQrDownload}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition"
+                className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-admin-md text-sm font-semibold hover:bg-gray-800 transition"
               >
                 <Download size={15} />
                 PNG 다운로드 (A4 인쇄용)
@@ -264,7 +264,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
           )}
 
           {/* ── 사용 팁 ── */}
-          <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3.5 text-sm text-amber-800 space-y-1">
+          <div className="rounded-admin-md bg-amber-50 border border-amber-200 px-4 py-3.5 text-sm text-amber-800 space-y-1">
             <p className="font-semibold">💡 사용 팁</p>
             <ul className="list-disc list-inside space-y-0.5 text-amber-700 text-xs leading-relaxed">
               <li>인스타/카카오 광고 링크는 반드시 소스를 구분해서 성과를 추적하세요</li>
@@ -283,7 +283,7 @@ function FormField({ icon, label, children }: {
 }) {
   return (
     <div className="space-y-2">
-      <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
+      <label className="flex items-center gap-1.5 text-sm font-semibold text-admin-text-2">
         {icon}
         {label}
       </label>

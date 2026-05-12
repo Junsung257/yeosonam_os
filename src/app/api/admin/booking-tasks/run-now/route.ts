@@ -8,10 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { runAllRules } from '@/lib/booking-tasks/runner';
 import { ALL_RULES } from '@/lib/booking-tasks/rules';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const maxDuration = 60;
 
-export async function POST(_request: NextRequest) {
+const postHandler = async (_request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -26,3 +27,5 @@ export async function POST(_request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

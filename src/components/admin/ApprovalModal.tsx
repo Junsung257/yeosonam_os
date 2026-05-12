@@ -141,20 +141,20 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="bg-white rounded-admin-lg shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
 
           {/* ── 헤더 ──────────────────────────────────────────────────── */}
-          <div className="flex items-start justify-between px-7 py-5 border-b border-gray-100 shrink-0">
+          <div className="flex items-start justify-between px-7 py-5 border-b border-admin-border shrink-0">
             <div>
-              <h2 className="text-xl font-bold text-gray-900">마케팅 카피 검수 및 배포</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <h2 className="text-xl font-bold text-admin-text">마케팅 카피 검수 및 배포</h2>
+              <p className="text-sm text-admin-muted mt-0.5">
                 {pkg.destination ?? ''}
                 {pkg.price ? ` · ${pkg.price.toLocaleString('ko-KR')}원~/인` : ''}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+              className="p-2 rounded-lg text-admin-muted-2 hover:text-admin-text-2 hover:bg-admin-surface-2 transition"
             >
               <X size={20} />
             </button>
@@ -166,7 +166,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
             {/* ── 섹션 1: AI 카피 카드 ──────────────────────────────── */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                <h3 className="text-sm font-bold text-admin-text-2 uppercase tracking-wide">
                   AI 제안 카피 · 3종
                 </h3>
                 <button
@@ -180,7 +180,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
               </div>
 
               {noCopies ? (
-                <div className="rounded-xl border-2 border-dashed border-gray-200 py-10 text-center text-gray-400">
+                <div className="rounded-admin-md border-2 border-dashed border-admin-border-mid py-10 text-center text-admin-muted-2">
                   <p className="text-sm">AI 카피가 없습니다.</p>
                   <p className="text-xs mt-1">위 "AI 다시 생성" 버튼을 눌러 생성하세요.</p>
                 </div>
@@ -193,8 +193,8 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                       <button
                         key={copy.type}
                         onClick={() => selectCopy(copy)}
-                        className={`relative text-left p-4 rounded-xl border-2 transition-all duration-150 cursor-pointer ${
-                          isSelected ? meta.cardSelected : `border-gray-200 bg-white ${meta.cardHover}`
+                        className={`relative text-left p-4 rounded-admin-md border-2 transition-all duration-150 cursor-pointer ${
+                          isSelected ? meta.cardSelected : `border-admin-border-mid bg-white ${meta.cardHover}`
                         }`}
                       >
                         {isSelected && (
@@ -207,10 +207,10 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                           {meta.icon}
                           {copy.type}
                         </span>
-                        <p className="text-sm font-bold text-gray-900 leading-snug mb-1.5 line-clamp-2">
+                        <p className="text-sm font-bold text-admin-text leading-snug mb-1.5 line-clamp-2">
                           {copy.title}
                         </p>
-                        <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">
+                        <p className="text-xs text-admin-muted leading-relaxed line-clamp-3">
                           {copy.summary}
                         </p>
                       </button>
@@ -222,9 +222,9 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
             {/* ── 섹션 2: 직접 편집 ─────────────────────────────────── */}
             <div className="space-y-4">
-              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+              <h3 className="text-sm font-bold text-admin-text-2 uppercase tracking-wide">
                 최종 편집 {selectedType && (
-                  <span className="ml-1.5 text-xs font-normal text-gray-400 normal-case">
+                  <span className="ml-1.5 text-xs font-normal text-admin-muted-2 normal-case">
                     — {selectedType} 기반
                   </span>
                 )}
@@ -232,7 +232,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
               {/* 상품명 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
                   상품명 (고객 노출용)
                 </label>
                 <input
@@ -240,15 +240,15 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                   value={editTitle}
                   onChange={e => setEditTitle(e.target.value)}
                   maxLength={TITLE_MAX + 5}
-                  className={`w-full border-2 rounded-xl px-4 py-3 text-base focus:outline-none transition ${
+                  className={`w-full border-2 rounded-admin-md px-4 py-3 text-base focus:outline-none transition ${
                     titleLen > TITLE_MAX
                       ? 'border-red-400 focus:border-red-500 bg-red-50'
-                      : 'border-gray-200 focus:border-blue-500'
+                      : 'border-admin-border-mid focus:border-blue-500'
                   }`}
                 />
                 <div className="flex justify-between mt-1">
-                  <span className="text-xs text-gray-400">고객에게 노출되는 상품 헤드라인</span>
-                  <span className={`text-xs tabular-nums font-medium ${titleLen > TITLE_MAX ? 'text-red-500' : 'text-gray-400'}`}>
+                  <span className="text-xs text-admin-muted-2">고객에게 노출되는 상품 헤드라인</span>
+                  <span className={`text-xs tabular-nums font-medium ${titleLen > TITLE_MAX ? 'text-red-500' : 'text-admin-muted-2'}`}>
                     {titleLen}/{TITLE_MAX}자
                   </span>
                 </div>
@@ -256,7 +256,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
               {/* 요약 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
                   상품 요약 (B2C 노출용)
                 </label>
                 <textarea
@@ -264,15 +264,15 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                   onChange={e => setEditSummary(e.target.value)}
                   maxLength={SUMMARY_MAX + 10}
                   rows={3}
-                  className={`w-full border-2 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none transition leading-relaxed ${
+                  className={`w-full border-2 rounded-admin-md px-4 py-3 text-sm resize-none focus:outline-none transition leading-relaxed ${
                     summaryLen > SUMMARY_MAX
                       ? 'border-red-400 focus:border-red-500 bg-red-50'
-                      : 'border-gray-200 focus:border-blue-500'
+                      : 'border-admin-border-mid focus:border-blue-500'
                   }`}
                 />
                 <div className="flex justify-between mt-1">
-                  <span className="text-xs text-gray-400">랜딩페이지 및 카드뉴스 서브카피</span>
-                  <span className={`text-xs tabular-nums font-medium ${summaryLen > SUMMARY_MAX ? 'text-red-500' : 'text-gray-400'}`}>
+                  <span className="text-xs text-admin-muted-2">랜딩페이지 및 카드뉴스 서브카피</span>
+                  <span className={`text-xs tabular-nums font-medium ${summaryLen > SUMMARY_MAX ? 'text-red-500' : 'text-admin-muted-2'}`}>
                     {summaryLen}/{SUMMARY_MAX}자
                   </span>
                 </div>
@@ -280,7 +280,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
             </div>
 
             {/* 브랜드 안전 알림 */}
-            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+            <div className="rounded-admin-md bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800 leading-relaxed">
               <span className="font-semibold">⚠️ 브랜드 안전 체크리스트:</span>{' '}
               배포 전 카피에 랜드사명·공급사명·'원가' 단어가 없는지 확인하세요.
               여소남 브랜드로 고정되어야 합니다.
@@ -288,10 +288,10 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
           </div>
 
           {/* ── 하단 버튼 ────────────────────────────────────────────── */}
-          <div className="px-7 py-4 border-t border-gray-100 flex items-center justify-between gap-3 shrink-0 bg-gray-50/50">
+          <div className="px-7 py-4 border-t border-admin-border flex items-center justify-between gap-3 shrink-0 bg-admin-bg/50">
             <button
               onClick={() => pkg && onReject(pkg.id)}
-              className="px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 text-sm font-semibold hover:border-gray-300 hover:bg-gray-100 transition"
+              className="px-5 py-2.5 rounded-admin-md border-2 border-admin-border-mid text-admin-muted text-sm font-semibold hover:border-admin-border-strong hover:bg-admin-surface-2 transition"
             >
               반려 (Draft)
             </button>
@@ -305,7 +305,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
               <button
                 onClick={handleApprove}
                 disabled={!canPublish}
-                className="px-6 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center gap-2"
+                className="px-6 py-2.5 rounded-admin-md bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center gap-2"
               >
                 <CheckCircle2 size={16} />
                 최종 승인 및 배포
