@@ -1405,7 +1405,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     // trash: API가 include_deleted=only로 이미 필터링
 
     // ── 스마트 필터 (진행 중 탭 내 세부 필터) ──────────────────────────────
-    if (activeTab === 'unpaid_risk')    list = list.filter(b => { const d = dDiffFn(b.departure_date); return ['pending','confirmed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && (b.total_price||0)-(b.paid_amount||0) > 0; });
+    if (activeTab === 'unpaid_risk')    list = list.filter(b => { const d = dDiffFn(b.departure_date); return ['pending','confirmed'].includes(b.status) && !b.settlement_confirmed_at && d !== null && d >= 0 && d <= 7 && (b.total_price||0)-(b.paid_amount||0) > 0; });
     else if (activeTab === 'missing_info')  list = list.filter(b => !['cancelled','completed'].includes(b.status) && (!b.customers?.phone || !b.departure_date || !b.departure_region));
     else if (activeTab === 'land_bomb')  list = list.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; });
     else if (activeTab === 'prep_docs')  list = list.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; });
@@ -1649,7 +1649,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <code className="text-[11px] bg-amber-100 px-1 py-0.5 rounded">{dqFilter}</code>
               {' '}예약만 표시 중
             </span>
-            <a href="/admin/bookings" className="text-[11px] text-amber-700 hover:text-amber-900 underline">필터 해제</a>
+            <Link href="/admin/bookings" className="text-[11px] text-amber-700 hover:text-amber-900 underline">필터 해제</Link>
           </div>
         )}
         {([
@@ -2152,6 +2152,15 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           <div className="text-[10px] text-admin-muted-2 mt-0.5">
                             입 {(b.paid_amount ?? 0).toLocaleString()} / 출 {(b.total_paid_out ?? 0).toLocaleString()}
                           </div>
+                        </div>
+                      ) : isSettled ? (
+                        <div>
+                          <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full font-bold text-admin-sm">정산완료</span>
+                          {balance > 0 && (
+                            <div className="text-[10px] text-admin-muted-2 mt-1">
+                              미수 {balance.toLocaleString()} 손비
+                            </div>
+                          )}
                         </div>
                       ) : isPaid ? (
                         <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full font-bold text-admin-sm">완납</span>
