@@ -1,26 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
-}
-
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
 
 const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
 // GET: 정산 목록 조회
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
   const { searchParams } = new URL(request.url);
   const affiliateId = searchParams.get('affiliateId');
   const period = searchParams.get('period'); // "2026-03"
 
-  const supabase = getSupabase();
+  const supabase = supabaseAdmin;
 
   try {
+    // UUID 형식 사전 검증 — 잘못된 affiliateId 는 빈 결과 반환 (500 회피)
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (affiliateId && !UUID_RE.test(affiliateId)) {
+      return NextResponse.json({ settlements: [] });
+    }
+
     let query = supabase
       .from('settlements')
       .select('*, affiliates(id, name, referral_code, grade, payout_type)')
@@ -40,7 +42,13 @@ export async function GET(request: NextRequest) {
 
 // POST: 월간 정산 마감 실행
 export async function POST(request: NextRequest) {
-  const supabase = getSupabase();
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();
@@ -75,11 +83,19 @@ export async function POST(request: NextRequest) {
 
     if (bErr) throw bErr;
 
-    const qualifiedBookings = (bookings || []).filter(b =>
-      b.return_date && b.return_date <= today && !b.dispute_flag
+    type BookingRow = {
+      return_date?: string | null;
+      dispute_flag?: boolean | null;
+      influencer_commission?: number | null;
+    };
+    const qualifiedBookings = ((bookings ?? []) as BookingRow[]).filter(
+      (b) => b.return_date && b.return_date <= today && !b.dispute_flag,
     );
     const qualifiedCount = qualifiedBookings.length;
-    const totalAmount = qualifiedBookings.reduce((s, b) => s + (b.influencer_commission || 0), 0);
+    const totalAmount = qualifiedBookings.reduce(
+      (s: number, b: BookingRow) => s + (b.influencer_commission || 0),
+      0,
+    );
 
     // ③ 이전 달 이월 잔액 조회
     const prevYear = month === 1 ? year - 1 : year;
@@ -178,7 +194,13 @@ export async function POST(request: NextRequest) {
 
 // PATCH: 정산 상태 수동 변경 (COMPLETED, VOID + 원복)
 export async function PATCH(request: NextRequest) {
-  const supabase = getSupabase();
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();

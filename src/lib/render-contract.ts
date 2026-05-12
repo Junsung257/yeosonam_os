@@ -71,7 +71,8 @@ export interface MealInfo {
 /** HotelInfo — day.hotel 원본 */
 export interface HotelInfo {
   name?: string | null;
-  grade?: string | null;
+  /** JSON/DB 에서 숫자(5)로 들어오는 케이스 있음 — 렌더 전 문자열로 정규화 */
+  grade?: string | number | null;
   note?: string | null;
 }
 
@@ -92,7 +93,12 @@ export interface RenderPackageInput {
   excludes?: string[] | null;
   surcharges?: SurchargeObject[] | null;
   optional_tours?: OptionalTourInput[] | null;
+  /** @deprecated 2026-04-27 — 고객 노출 fallback 경로에서 제거됨. customer_notes 또는 internal_notes 사용. */
   special_notes?: string | null;
+  /** 고객 노출 OK 자유 텍스트. 운영성 키워드는 W21 검증에서 차단. */
+  customer_notes?: string | null;
+  /** 운영 전용 메모. 고객 노출 차단 (어드민 전용). */
+  internal_notes?: string | null;
   inclusions?: string[] | null;
   itinerary_data?: {
     meta?: {
@@ -149,7 +155,7 @@ export interface CanonicalShopping {
   /** 고객 노출용 텍스트. null이면 섹션 숨김. */
   text: string | null;
   /** 출처 (감사/디버깅용) */
-  source: 'highlights' | 'special_notes' | null;
+  source: 'highlights' | 'customer_notes' | null;
   /** 내부 키워드(커미션/정산) 감지로 차단된 경우 true (FIELD_POLICY) */
   blocked: boolean;
 }
@@ -186,6 +192,10 @@ export interface CanonicalFlight {
   arrTime: string | null;        // "11:50"
   /** 렌더 라벨: "부산 김해 출발 → 황산 툰시 도착 11:50" */
   label: string;
+  /** MRT 실시간 스케줄 (getFlightSchedule 결과 주입 시 채워짐 — 우선 표시) */
+  realtimeDepTime?: string;
+  realtimeArrTime?: string;
+  realtimeDate?:    string;
 }
 
 /** 호텔 카드 — 하드코딩 헤더 제거용 구조화 출력 */
@@ -196,6 +206,9 @@ export interface CanonicalHotelCard {
   note: string | null;     // 호텔 note + activity에서 추출한 추가 메모(* 로 시작)
   /** activity에서 호텔 블록으로 흡수된 원문 (감사/복구용) */
   absorbedActivities: string[];
+  /** MRT 리뷰 데이터 — attractions 테이블 mrt_rating/mrt_review_count 기반 (선택) */
+  mrtRating?:       number;
+  mrtReviewCount?:  number;
 }
 
 /** 정규화된 단일 일차 */
@@ -211,9 +224,26 @@ export interface CanonicalDay {
   meals: MealInfo | null;
 }
 
+/**
+ * 헤더용 flight 한 쌍 (출발편 / 귀국편).
+ * outbound = 첫 날 항공편 (한국 → 도착지)
+ * inbound  = 마지막 날 항공편 (도착지 → 한국). 마지막 날에 없으면 마지막-1일에서 fallback.
+ *
+ * 렌더 위치: A4 포스터 상단 항공 카드 + 모바일 일정 카드 헤더.
+ * 사용자 코드는 view.flightHeader 만 소비하고, view.days[i].schedule 재파싱 금지.
+ */
+export interface FlightHeader {
+  outbound: CanonicalFlight | null;
+  inbound: CanonicalFlight | null;
+}
+
 export interface CanonicalView {
   airlineHeader: AirlineHeader;
+  /** 출발/귀국 항공편 헤더 (Phase 2 확장 — ERR-KUL-05 후속) */
+  flightHeader: FlightHeader;
   optionalTours: CanonicalOptionalTours;
+  /** optionalTours.groups 단축 — 렌더러 직접 소비용 (CRC v1 마이그레이션 보조) */
+  optionalToursByRegion: OptionalTourGroup[];
   surchargesMerged: MergedSurcharge[];
   excludes: CanonicalExcludes;
   shopping: CanonicalShopping;
@@ -221,6 +251,26 @@ export interface CanonicalView {
   inclusions: CanonicalInclusions;
   /** 일차별 정규화 — flight 병합·호텔 카드 분리 (Phase 1 확장) */
   days: CanonicalDay[];
+  /** Co-branding 메타: 어필리에이터가 발행한 콘텐츠일 때만 채워짐.
+   *   null = 일반 여소남 콘텐츠 (단독 브랜드).
+   *   객체 = 어필리에이터 + 여소남 동시 노출 + 광고 표시 자동 삽입.
+   *   렌더러는 이 슬롯을 소비해서 카드뉴스 마지막 슬라이드 / 블로그 footer / A4 하단에
+   *   "발행: {affiliate.name} × 여소남" + ad_disclosure 를 출력한다. */
+  affiliateView: AffiliateCoBrand | null;
+}
+
+/** 어필리에이터 + 여소남 Co-branding 메타. content_distributions.payload._cobrand 와 동일. */
+export interface AffiliateCoBrand {
+  affiliate_id: string;
+  affiliate_name: string;
+  affiliate_handle: string;       // referral_code (= 짧은 도메인 핸들)
+  affiliate_logo_url: string | null;
+  affiliate_channel_url: string | null;
+  brand_name: string;             // '여소남'
+  brand_url: string;
+  share_url: string;              // /packages/{id}?ref={code}
+  ad_disclosure: string;          // 공정위 표시지침 워터마크
+  generated_at: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -235,15 +285,22 @@ const AIRLINE_MAP: Record<string, string> = {
   MU: '중국동방항공', CA: '중국국제항공', CZ: '중국남방항공',
   D7: '에어아시아', OD: '바틱에어', '5J': '세부퍼시픽', VN: '베트남항공',
   SC: '산동항공',
+  // 페리 (선박) — 카멜리아·부관훼리 등
+  // ERR-PackageCard-ferry-airline@2026-04-29: 카멜리아 패키지 카드에 "선박" 만 노출되던 버그 방어.
+  // getAirlineName("카멜리아 (선박)") → 이전: "선박" (parenMatch fallback) / 이후: "카멜리아"
+  '카멜리아': '카멜리아', '부관훼리': '부관훼리', '뉴카멜리아': '뉴카멜리아',
 };
 
 /**
  * 항공 코드/원문에서 항공사 한글명 추출.
  * ERR-20260418-17 — "BX(에어부산)" / "BX793" / "BX | 부산..." 모두 안전하게 처리.
+ *
+ * digit-prefix IATA 코드(7C 제주, 5J 세부퍼시픽) 보존:
+ *   trailing 숫자(편명)만 strip 하고 prefix 숫자는 유지.
  */
 export function getAirlineName(flightCode?: string | null): string | null {
   if (!flightCode) return null;
-  const code = flightCode.split(/[\s|(]/)[0].replace(/[0-9]/g, '').toUpperCase().trim();
+  const code = flightCode.split(/[\s|(]/)[0].replace(/\d+$/, '').toUpperCase().trim();
   if (AIRLINE_MAP[code]) return AIRLINE_MAP[code];
   const parenMatch = flightCode.match(/\(([^)]+)\)/);
   if (parenMatch && /[가-힣]/.test(parenMatch[1])) return parenMatch[1].trim();
@@ -261,7 +318,7 @@ function airportToDepCity(ap?: string | null): string | null {
   return stripped || null;
 }
 
-function resolveAirlineHeader(pkg: RenderPackageInput): AirlineHeader {
+export function resolveAirlineHeader(pkg: RenderPackageInput): AirlineHeader {
   const meta = pkg.itinerary_data?.meta ?? null;
   const flightNumber = meta?.flight_out?.trim() || null;
   const airlineRaw = pkg.airline || meta?.airline || null;
@@ -369,13 +426,24 @@ function formatSurchargeObject(s: SurchargeObject): MergedSurcharge {
         .replace(/^\d{4}-0?(\d+)-0?(\d+)\s*~\s*\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2 ~ $3/$4')
         .replace(/^\d{4}-0?(\d+)-0?(\d+)$/, '$1/$2')
     : null;
-  const currency = s.currency === 'USD' ? '$' : (s.currency || '');
-  const priceLabel = s.amount != null ? `${currency}${s.amount}${s.unit ? `/${s.unit}` : ''}` : null;
+  // P0 #3 (2026-04-27): 통화별 한국어 친화 표기. KRW 는 천단위 콤마 + "원" suffix.
+  // 외화는 코드 prefix 유지 (USD→$, JPY→¥, CNY→元).
+  const fmtAmount = (() => {
+    if (s.amount == null) return null;
+    const cur = (s.currency || 'KRW').toUpperCase();
+    const num = Number(s.amount);
+    if (cur === 'KRW') return `${num.toLocaleString('ko-KR')}원`;
+    if (cur === 'USD') return `$${num.toLocaleString('en-US')}`;
+    if (cur === 'JPY') return `¥${num.toLocaleString('ja-JP')}`;
+    if (cur === 'CNY') return `${num.toLocaleString('zh-CN')}元`;
+    return `${cur} ${num.toLocaleString('ko-KR')}`;
+  })();
+  const priceLabel = fmtAmount ? `${fmtAmount}${s.unit ? `/${s.unit}` : ''}` : null;
   const label = `${name}${period ? ` (${period})` : ''}${priceLabel ? `: ${priceLabel}` : ''}`;
   return { label, structured: s, raw: null, name, period, priceLabel };
 }
 
-function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
+export function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
   merged: MergedSurcharge[];
   excludes: CanonicalExcludes;
 } {
@@ -404,16 +472,23 @@ function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  쇼핑 출처 결정 (FIELD_POLICY.md, ERR-FUK-customer-leaks)
+//  쇼핑 출처 결정 (FIELD_POLICY.md, ERR-FUK-customer-leaks, ERR-special-notes-leak@2026-04-27)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * special_notes에 들어가면 안 되는 내부 메모 키워드.
- * 이게 감지되면 쇼핑 섹션을 차단 — 고객 화면에 커미션/정산 정보 노출 금지.
+ * 고객 노출 텍스트에 절대 들어가면 안 되는 내부 메모 키워드.
+ * customer_notes 검증의 마지막 안전망 — Pre-INSERT(W21)에서 1차 차단되지만
+ * 회색지대 통과를 대비한 렌더 시점 2중 가드.
  */
 const INTERNAL_KEYWORDS = /커미션|commission_rate|정산|LAND_OPERATOR|스키마\s*제약|랜드사\s*메모|랜드사\s*커미션/i;
 
-function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
+/**
+ * 쇼핑 섹션 출처 우선순위:
+ *   1) itinerary_data.highlights.shopping (가장 명시적)
+ *   2) customer_notes (고객 노출 OK 검증 통과 자유 텍스트)
+ *   3) special_notes는 더 이상 fallback 출처가 아님 (ERR-special-notes-leak 차단)
+ */
+export function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
   const fromHighlights = pkg.itinerary_data?.highlights?.shopping?.trim();
   if (fromHighlights) {
     return {
@@ -422,16 +497,16 @@ function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
       blocked: false,
     };
   }
-  const fallback = pkg.special_notes?.trim();
+  const fallback = pkg.customer_notes?.trim();
   if (!fallback) return { text: null, source: null, blocked: false };
 
-  // 내부 키워드 감지 시 차단 — 고객 노출 절대 금지
+  // 내부 키워드 감지 시 차단 — 렌더 시점 2중 가드
   if (INTERNAL_KEYWORDS.test(fallback)) {
-    return { text: null, source: 'special_notes', blocked: true };
+    return { text: null, source: 'customer_notes', blocked: true };
   }
   return {
     text: fallback.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null,
-    source: 'special_notes',
+    source: 'customer_notes',
     blocked: false,
   };
 }
@@ -440,7 +515,7 @@ function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
 //  선택관광 정규화
 // ═══════════════════════════════════════════════════════════════════════════
 
-function resolveOptionalTours(pkg: RenderPackageInput): CanonicalOptionalTours {
+export function resolveOptionalTours(pkg: RenderPackageInput): CanonicalOptionalTours {
   const tours = pkg.optional_tours ?? [];
   const flat = tours.map(normalizeOptionalTour);
   const groups = groupOptionalToursByRegion(tours);
@@ -622,12 +697,18 @@ function extractHotelCard(schedule: ScheduleItem[], hotel: HotelInfo | null | un
   const title = hotelTitle || '호텔 투숙 및 휴식';
   const note = [hotel.note, ...extras].filter(Boolean).join(' · ') || null;
 
+  const rawGrade = hotel.grade;
+  const gradeStr =
+    rawGrade != null && rawGrade !== ''
+      ? String(rawGrade).trim()
+      : null;
+
   return {
     schedule: out,
     hotelCard: {
       title,
       name: hotel.name || null,
-      grade: hotel.grade || null,
+      grade: gradeStr,
       note,
       absorbedActivities: absorbed,
     },
@@ -694,17 +775,38 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
  * `pkg.special_notes`·`pkg.airline`·`pkg.inclusions`·`pkg.itinerary_data.days[].schedule` 를
  * 렌더러 내부에서 다시 파싱하지 말 것 (ERR-KUL-05, ERR-HSN-render-bundle).
  */
-export function renderPackage(pkg: RenderPackageInput): CanonicalView {
+export function renderPackage(
+  pkg: RenderPackageInput,
+  options?: { affiliate?: AffiliateCoBrand | null },
+): CanonicalView {
   const { merged, excludes } = resolveSurchargesAndExcludes(pkg);
+  const days = resolveDays(pkg);
+  const optionalTours = resolveOptionalTours(pkg);
   return {
     airlineHeader: resolveAirlineHeader(pkg),
-    optionalTours: resolveOptionalTours(pkg),
+    flightHeader: resolveFlightHeader(days),
+    optionalTours,
+    optionalToursByRegion: optionalTours.groups,
     surchargesMerged: merged,
     excludes,
     shopping: resolveShopping(pkg),
     inclusions: resolveInclusions(pkg),
-    days: resolveDays(pkg),
+    days,
+    affiliateView: options?.affiliate ?? null,
   };
+}
+
+/**
+ * 출발편/귀국편 헤더 추출. days[0].flight = outbound,
+ * 귀국편은 마지막 날 우선, 없으면 마지막-1일 fallback (마지막 날이 도착-only 인 경우).
+ */
+function resolveFlightHeader(days: CanonicalDay[]): FlightHeader {
+  if (days.length === 0) return { outbound: null, inbound: null };
+  const outbound = days[0]?.flight ?? null;
+  const last = days[days.length - 1];
+  const beforeLast = days.length >= 2 ? days[days.length - 2] : null;
+  const inbound = last?.flight ?? beforeLast?.flight ?? null;
+  return { outbound, inbound };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -725,6 +827,12 @@ export function parseCityFromActivity(activity?: string | null): string | null {
  * flight 타입 activity 문자열 파싱.
  * 입력 예 1: "BX792 타이페이 출발 → 부산(김해) 도착 19:55"
  * 입력 예 2: "BX148 김해국제공항 출발 → 후쿠오카국제공항 08:25 도착"
+ *
+ * 매칭 전략 — 2단 (strict → loose) 폴백:
+ *   1) "공항" 키워드 포함: "김해국제공항 출발" → depCity="김해" (capture non-greedy)
+ *   2) "공항" 없는 평문: "타이페이 출발" → depCity="타이페이"
+ * 이전 단일 정규식 `공항?` 는 "공" 만 필수로 인식해서 (a) "타이페이 출발" 은 매칭 실패,
+ * (b) "후쿠오카국제공항" 도착은 "후쿠오카국제" 까지 over-capture 되던 한계가 있었음.
  */
 export function parseFlightActivity(activity?: string | null): {
   depCity: string | null;
@@ -736,11 +844,21 @@ export function parseFlightActivity(activity?: string | null): {
   if (arrowIdx < 0) return { depCity: null, arrCity: null, arrTime: null };
   const before = activity.slice(0, arrowIdx);
   const after = activity.slice(arrowIdx + 1);
-  // 출발: "BX792 타이페이 출발" → "타이페이" / "김해국제공항 출발" → "김해"
-  const depMatch = before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()\s]+?)\s*(?:국제)?공항?\s*출발/)
-    || before.match(/([가-힣A-Za-z()]+)\s*(?:국제)?공항?\s*출발/);
-  // 도착: "후쿠오카국제공항 08:25 도착" / "부산(김해) 도착 19:55"
-  const arrMatch = after.match(/^\s*([가-힣A-Za-z()]+(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항?\s*(?:\d{1,2}:\d{2}\s*)?도착/);
+
+  // 출발: 공항 키워드 strict 매칭 → 없으면 평문 매칭
+  const depMatch =
+    // "BX148 김해국제공항 출발" / "김해국제공항 출발" → "김해"
+    before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항\s*출발/)
+    // "BX792 타이페이 출발" / "타이페이 출발" → "타이페이"
+    || before.match(/(?:^|[A-Z0-9]+\s+)([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*출발/);
+
+  // 도착: 동일 2단 폴백
+  const arrMatch =
+    // "후쿠오카국제공항 08:25 도착" → "후쿠오카"
+    after.match(/^\s*([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*(?:국제)?공항\s*(?:\d{1,2}:\d{2}\s*)?도착/)
+    // "부산(김해) 도착 19:55" → "부산(김해)"
+    || after.match(/^\s*([가-힣A-Za-z()]+?(?:\s[가-힣A-Za-z()]+)?)\s*(?:\d{1,2}:\d{2}\s*)?도착/);
+
   // 도착 시간: "도착 HH:MM" 또는 "HH:MM 도착" 양방향 지원
   const arrTimeMatch = after.match(/도착\s+(\d{1,2}:\d{2})/) || after.match(/(\d{1,2}:\d{2})\s*도착/);
   return {

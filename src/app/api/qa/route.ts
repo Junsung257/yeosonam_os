@@ -14,8 +14,12 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
+    const inquiryTypesRaw = searchParams.get('inquiryTypes');
+    const inquiryTypes = inquiryTypesRaw
+      ? inquiryTypesRaw.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined;
 
-    const inquiries = await getInquiries(status || undefined);
+    const inquiries = await getInquiries(status || undefined, inquiryTypes);
 
     return NextResponse.json({
       inquiries,

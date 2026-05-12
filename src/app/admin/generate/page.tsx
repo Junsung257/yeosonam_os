@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { PageHeader, FormRow } from '@/components/admin/patterns';
+import Button from '@/components/ui/Button';
+import { Sparkles, GitCompare } from 'lucide-react';
 
 // AI 모델 타입
 type AIModel = 'openai' | 'claude' | 'gemini';
@@ -177,110 +180,102 @@ export default function GeneratePage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 */}
-      <div>
-        <h1 className="text-[16px] font-bold text-slate-800">AI 콘텐츠 생성</h1>
-        <p className="text-[13px] text-slate-500 mt-1">여행 상품을 선택하고 AI로 자동 콘텐츠를 생성하세요</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="AI 콘텐츠 생성"
+        subtitle="여행 상품을 선택하고 AI로 자동 콘텐츠를 생성하세요"
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 설정 패널 */}
-        <div className="bg-white border border-slate-200 rounded-lg p-5">
-          <h2 className="text-[16px] font-semibold text-slate-800 mb-5">생성 설정</h2>
+        <div className="admin-card p-5">
+          <h2 className="text-admin-h3 text-admin-text mb-5">생성 설정</h2>
 
-          {/* 여행 상품 선택 */}
-          <div className="mb-5">
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
-              여행 상품 선택
-            </label>
-            <select
-              value={selectedPackage?.id || ''}
-              onChange={(e) => {
-                const pkg = packages.find(p => p.id === e.target.value);
-                setSelectedPackage(pkg || null);
-              }}
-              className="w-full px-3 py-2 text-[14px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            >
-              <option value="">상품을 선택하세요</option>
-              {packages.map(pkg => (
-                <option key={pkg.id} value={pkg.id}>
-                  {pkg.title} - {pkg.price.toLocaleString()}원
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="space-y-4 mb-5">
+            <FormRow label="여행 상품 선택">
+              <select
+                value={selectedPackage?.id || ''}
+                onChange={(e) => {
+                  const pkg = packages.find(p => p.id === e.target.value);
+                  setSelectedPackage(pkg || null);
+                }}
+                className="w-full h-9 px-3 text-admin-base border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+              >
+                <option value="">상품을 선택하세요</option>
+                {packages.map(pkg => (
+                  <option key={pkg.id} value={pkg.id}>
+                    {pkg.title} — {pkg.price.toLocaleString()}원
+                  </option>
+                ))}
+              </select>
+            </FormRow>
 
-          {/* 콘텐츠 타입 선택 */}
-          <div className="mb-5">
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
-              콘텐츠 타입
-            </label>
-            <select
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-              className="w-full px-3 py-2 text-[14px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            >
-              {contentTypeOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+            <FormRow label="콘텐츠 타입">
+              <select
+                value={contentType}
+                onChange={(e) => setContentType(e.target.value)}
+                className="w-full h-9 px-3 text-admin-base border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+              >
+                {contentTypeOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </FormRow>
 
-          {/* AI 모델 선택 */}
-          <div className="mb-5">
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
-              AI 모델
-            </label>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value as AIModel)}
-              className="w-full px-3 py-2 text-[14px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            >
-              {modelOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <FormRow label="AI 모델">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value as AIModel)}
+                className="w-full h-9 px-3 text-admin-base border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
+              >
+                {modelOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </FormRow>
           </div>
 
           {/* 버튼들 */}
-          <div className="flex gap-3">
-            <button
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
               onClick={handleGenerate}
               disabled={isLoading || !selectedPackage}
-              className="flex-1 bg-[#001f3f] text-white py-2 px-4 rounded-lg text-[14px] font-medium hover:bg-blue-900 disabled:bg-slate-300 disabled:cursor-not-allowed transition"
+              className="flex-1"
             >
-              {isLoading ? '생성 중...' : '콘텐츠 생성'}
-            </button>
-
-            <button
+              <Sparkles size={14} />
+              {isLoading ? '생성 중…' : '콘텐츠 생성'}
+            </Button>
+            <Button
+              variant="secondary"
               onClick={handleCompare}
               disabled={isComparing || !selectedPackage}
-              className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 px-4 rounded-lg text-[14px] font-medium hover:bg-slate-50 disabled:bg-slate-100 disabled:cursor-not-allowed transition"
+              className="flex-1"
             >
-              {isComparing ? '비교 중...' : '모델 비교'}
-            </button>
+              <GitCompare size={14} />
+              {isComparing ? '비교 중…' : '모델 비교'}
+            </Button>
           </div>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-[13px]">
+            <div className="mt-4 p-3 bg-danger-light border border-danger/20 text-danger rounded-admin-sm text-admin-sm">
               {error}
             </div>
           )}
         </div>
 
         {/* 결과 패널 */}
-        <div className="bg-white border border-slate-200 rounded-lg p-5">
-          <h2 className="text-[16px] font-semibold text-slate-800 mb-5">생성 결과</h2>
+        <div className="admin-card p-5">
+          <h2 className="text-admin-h3 text-admin-text mb-5">생성 결과</h2>
 
           {generatedContent && (
             <div className="mb-5">
-              <h3 className="text-[14px] font-medium text-slate-800 mb-2">생성된 콘텐츠</h3>
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg whitespace-pre-wrap text-[13px] text-slate-800">
+              <h3 className="text-admin-base font-medium text-admin-text-2 mb-2">생성된 콘텐츠</h3>
+              <div className="p-4 bg-admin-surface-2 border border-admin-border-mid rounded-admin-sm whitespace-pre-wrap text-admin-sm text-admin-text-2 leading-relaxed">
                 {generatedContent}
               </div>
             </div>
@@ -288,16 +283,16 @@ export default function GeneratePage() {
 
           {comparisonResults && (
             <div>
-              <h3 className="text-[14px] font-medium text-slate-800 mb-2">모델 비교 결과</h3>
-              <div className="space-y-3">
+              <h3 className="text-admin-base font-medium text-admin-text-2 mb-2">모델 비교 결과</h3>
+              <div className="space-y-2">
                 {Object.entries(comparisonResults).map(([model, content]) => (
-                  <div key={model} className="border border-slate-200 rounded-lg p-4">
-                    <h4 className="font-medium text-slate-800 text-[13px] mb-2">
+                  <div key={model} className="border border-admin-border-mid rounded-admin-sm p-4 bg-admin-surface-2">
+                    <h4 className="font-semibold text-brand text-admin-xs mb-2 uppercase tracking-wider">
                       {model === 'openai' ? 'OpenAI GPT-4' :
                        model === 'claude' ? 'Anthropic Claude' :
                        'Google Gemini'}
                     </h4>
-                    <div className="text-slate-700 whitespace-pre-wrap text-[13px]">
+                    <div className="text-admin-text-2 whitespace-pre-wrap text-admin-sm leading-relaxed">
                       {content}
                     </div>
                   </div>
@@ -307,7 +302,7 @@ export default function GeneratePage() {
           )}
 
           {!generatedContent && !comparisonResults && (
-            <div className="text-center text-slate-500 py-12 text-[14px]">
+            <div className="text-center text-admin-muted py-12 text-admin-base">
               생성된 콘텐츠가 여기에 표시됩니다
             </div>
           )}
@@ -316,21 +311,21 @@ export default function GeneratePage() {
 
       {/* 선택된 상품 정보 */}
       {selectedPackage && (
-        <div className="bg-white border border-slate-200 rounded-lg p-5">
-          <h2 className="text-[16px] font-semibold text-slate-800 mb-4">선택된 상품 정보</h2>
+        <div className="admin-card p-5">
+          <h2 className="text-admin-h3 text-admin-text mb-4">선택된 상품 정보</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <h3 className="font-medium text-slate-800 text-[14px]">{selectedPackage.title}</h3>
-              <p className="text-slate-500 text-[13px]">{selectedPackage.destination} - {selectedPackage.duration}일</p>
-              <p className="text-[14px] font-semibold text-slate-800 mt-1">{selectedPackage.price.toLocaleString()}원</p>
+              <h3 className="font-medium text-admin-text text-admin-base">{selectedPackage.title}</h3>
+              <p className="text-admin-muted text-admin-sm">{selectedPackage.destination} · <span className="admin-num">{selectedPackage.duration}</span>일</p>
+              <p className="text-admin-base font-semibold text-brand mt-1 admin-num">{selectedPackage.price.toLocaleString()}원</p>
             </div>
             {selectedPackage.parsedData && (
               <div>
-                <h4 className="font-medium text-slate-800 text-[14px] mb-2">파싱된 데이터</h4>
-                <div className="text-[13px] text-slate-500 space-y-1">
+                <h4 className="font-medium text-admin-text text-admin-base mb-2">파싱된 데이터</h4>
+                <div className="text-admin-sm text-admin-muted space-y-1">
                   {Object.entries(selectedPackage.parsedData).map(([key, value]) => (
                     <div key={key}>
-                      <span className="font-medium text-slate-700">{key}:</span> {value}
+                      <span className="font-medium text-admin-text-2">{key}:</span> {value}
                     </div>
                   ))}
                 </div>

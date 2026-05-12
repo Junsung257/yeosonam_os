@@ -7,15 +7,22 @@
  * executor의 approve_monthly_settlement 핸들러가 settlements를 READY로 UPSERT.
  */
 import { NextResponse } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logError } from '@/lib/sentry-logger';
+import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 import {
   resolvePreviousPeriod,
   calculateDraftForAffiliate,
 } from '@/lib/affiliate/settlement-calc';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+export async function GET(request: Request) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  }
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   try {
@@ -34,7 +41,11 @@ export async function GET() {
     const skipped: string[] = [];
     const carried: string[] = [];
 
-    for (const aff of affiliates) {
+    // 어필리에이트별 처리 — Supabase RPC/INSERT 부하를 고려해 chunk=10 동시성.
+    // 각 어필리에이트 작업은 서로 독립 (같은 affiliate_id 중복 호출 없음).
+    // calculateDraftForAffiliate 가 외부 API 호출을 포함하지 않으므로 병렬 안전.
+    const CHUNK = 10;
+    async function processAffiliate(aff: typeof affiliates[number]) {
       const { data: existingAction } = await supabaseAdmin
         .from('agent_actions')
         .select('id')
@@ -44,7 +55,7 @@ export async function GET() {
         .maybeSingle();
       if (existingAction) {
         skipped.push(aff.name);
-        continue;
+        return;
       }
 
       const draft = await calculateDraftForAffiliate(
@@ -56,7 +67,7 @@ export async function GET() {
       );
       if (!draft) {
         skipped.push(aff.name);
-        continue;
+        return;
       }
 
       const summary = draft.qualified
@@ -76,6 +87,11 @@ export async function GET() {
       else carried.push(draft.affiliate_name);
     }
 
+    for (let i = 0; i < affiliates.length; i += CHUNK) {
+      const batch = affiliates.slice(i, i + CHUNK);
+      await Promise.allSettled(batch.map(processAffiliate));
+    }
+
     await supabaseAdmin.from('audit_logs').insert({
       action: 'AFFILIATE_SETTLEMENT_DRAFT',
       target_type: 'settlement',
@@ -83,6 +99,12 @@ export async function GET() {
       after_value: { period, drafted, carried, skipped } as any,
     }).then(() => {}).catch(() => {});
 
+    await reportAffiliateCronSuccess('affiliate-settlement-draft', {
+      period,
+      drafted: drafted.length,
+      carried: carried.length,
+      skipped: skipped.length,
+    });
     return NextResponse.json({
       period,
       drafted: drafted.length,
@@ -91,7 +113,8 @@ export async function GET() {
       details: { drafted, carried, skipped },
     });
   } catch (err) {
-    console.error('[정산 기안 크론 실패]', err);
+    logError('[cron/affiliate-settlement-draft] settlement draft failed', err);
+    await reportAffiliateCronFailure('affiliate-settlement-draft', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '정산 기안 크론 실패' },
       { status: 500 },

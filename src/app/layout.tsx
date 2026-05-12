@@ -1,10 +1,59 @@
 import type { Metadata, Viewport } from 'next';
+import dynamic from 'next/dynamic';
+import localFont from 'next/font/local';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
+import PartytownInit from '@/components/PartytownInit';
 import MetaPixel from '@/components/MetaPixel';
+import KakaoMomentPixel from '@/components/KakaoMomentPixel';
+import MsClarity from '@/components/MsClarity';
+import TrackerBootstrap from '@/components/TrackerBootstrap';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
-import ConsentBanner from '@/components/ConsentBanner';
+import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
+const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'), { ssr: false });
+// ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
+// PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
+
+const pretendard = localFont({
+  src: [
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Light.woff2',
+      weight: '300',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Medium.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-SemiBold.woff2',
+      weight: '600',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Bold.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-ExtraBold.woff2',
+      weight: '800',
+      style: 'normal',
+    },
+  ],
+  display: 'swap',
+  variable: '--font-pretendard',
+});
+
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
@@ -82,14 +131,14 @@ export const viewport: Viewport = {
   maximumScale: 5,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#001f3f' },
-    { media: '(prefers-color-scheme: dark)', color: '#001f3f' },
+    { media: '(prefers-color-scheme: light)', color: '#2563eb' },
+    { media: '(prefers-color-scheme: dark)', color: '#1e3a8a' },
   ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko">
+    <html lang="ko" className={pretendard.variable}>
       <head>
         <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="anonymous" />
@@ -117,11 +166,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="bg-gray-50 antialiased">
+      <body className={`${pretendard.className} bg-gray-50 antialiased`}>
+        <PartytownInit />
+        <TrackerBootstrap />
         <MetaPixel />
+        <KakaoMomentPixel />
+        <MsClarity />
+        <AffiliateAttributionBanner />
         {children}
+        <BottomTabBar />
+        <ChatWidget />
         <JarvisFloatingWidget />
-        <ConsentBanner />
+        <SpeedInsights />
       </body>
     </html>
   );

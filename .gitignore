@@ -9,6 +9,12 @@ node_modules
 /.next/
 /out/
 
+# Partytown — `postinstall` / `npm run partytown:copy` 가 node_modules 에서 복사 (원본은 커밋 안 함)
+/public/~partytown/
+
+# Partytown — postinstall(`copy-partytown-lib.cjs`)로 생성, 레포에 커밋하지 않음
+public/~partytown/
+
 # Production
 /build
 
@@ -23,6 +29,14 @@ yarn-error.log*
 
 # Local env files
 .env*.local
+
+# Google Service Account 키 / 기타 cloud credentials — 절대 git에 들어가면 안 됨
+*-service-account*.json
+service-account*.json
+gen-lang-client-*.json
+google-credentials*.json
+*credentials*.json
+*.serviceaccount.json
 
 # Vercel
 .vercel
@@ -44,3 +58,51 @@ temp_qingdao.txt
 
 # Supabase CLI 자동생성
 supabase/.temp/
+
+# 스크래치/실험 폴더 (LLM 출력 덤프, 실험 HTML, 임시 로그)
+scratch/
+
+# Playwright 실패 덤프 (재현용)
+test-results/
+
+# Claude Code 런타임 산출물
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# 외부 사이트 클립 / 임시 텍스트
+여행약관.txt
+
+# Local logs/reports generated during audits/dev
+.ai_rewrite.log
+.next-dev.log
+.pipeline.log
+.pipeline2.log
+.sync_all.log
+.sync_expand.log
+.tsc.log
+lint_output.txt
+.cursor-home-fetch.html
+
+# Local temporary audit/export artifacts
+tmp-*.json
+tmp-*.txt
+tmp-*.html
+
+# Lighthouse 로컬 분석 산출물
+.tmp-lh-*.json
+
+# Serwist/next-pwa 빌드 산출물 (빌드 시 자동 생성)
+/public/sw.js
+/public/swe-worker-*.js
+
+# Lazyweb 디자인 리포트 (로컬 분석 전용)
+.lazyweb/
+
+# Page audit 산출물 (test infra만 commit, 결과 + 인증 상태는 로컬 전용)
+tests/audit/results*.ndjson
+tests/audit/results*.json
+tests/audit/run.log
+tests/audit/auth.json
+
+# 임시 디버그 텍스트 dump
+.tmp-detail-html.txt

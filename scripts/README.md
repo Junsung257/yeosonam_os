@@ -16,6 +16,7 @@
 
 | 파일 | 용도 | 사용 시점 |
 |------|------|---------|
+| `verify-blog-publisher-bridge.mjs` | 카드뉴스 `publisher_bridge` 검증(DB에서 카드·살아 있는 BASE_URL 자동) | `npm run verify:blog-bridge` (옵션: `BRIDGE_VERIFY_BASE_URL`) |
 | `refresh-baselines.js` | baseline 큐 처리 | 자동 (GitHub Action) / 수동 옵션 |
 | `refresh-baselines.ps1` | Windows PowerShell 래퍼 | 로컬 수동 실행 |
 

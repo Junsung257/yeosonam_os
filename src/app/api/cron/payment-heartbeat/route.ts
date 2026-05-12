@@ -24,7 +24,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sendSlackAlert } from '@/lib/slack-alert';
+import { logError } from '@/lib/sentry-logger';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
@@ -48,24 +52,9 @@ function isBusinessHours(): boolean {
   return h >= 9 && h < 20 && !isKSTWeekend();
 }
 
-async function sendSlackAlert(message: string): Promise<void> {
-  const url = process.env.SLACK_ALERT_WEBHOOK_URL;
-  if (!url) return;
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: message }),
-    });
-  } catch (e) {
-    console.warn('[payment-heartbeat] Slack alert 실패:', e);
-  }
-}
-
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
@@ -111,7 +100,7 @@ export async function GET(request: NextRequest) {
     const staleRows = (stale || []) as Array<{ id: string; amount: number; counterparty_name: string; hours_stale: number; match_status: string }>;
 
     summary.stale_count = staleRows.length;
-    summary.stale_total_amount = staleRows.reduce((s, r) => s + (r.amount || 0), 0);
+    summary.stale_total_amount = staleRows.reduce((s: number, r: Record<string, unknown>) => s + (Number(r.amount) || 0), 0);
 
     // 매일 1회만 알림 (매 실행마다 보내면 스팸) — KST 09:30~10:00 범위에서만
     const h = getKSTHour();
@@ -168,7 +157,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ok: true, ...summary, alerts });
   } catch (e: any) {
-    console.error('[payment-heartbeat] 최상위 예외:', e?.message ?? String(e));
+    logError('[cron/payment-heartbeat] heartbeat failed', e);
     return NextResponse.json({ error: e?.message ?? 'heartbeat 실패' }, { status: 500 });
   }
 }

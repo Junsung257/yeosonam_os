@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { trackContentView } from '@/lib/tracker';
+import { hasAnalyticsConsent } from '@/lib/consent';
 
 /**
  * 블로그 글 조회 추적 컴포넌트 (자가발전 AI용 데이터 수집)
@@ -12,11 +13,41 @@ import { trackContentView } from '@/lib/tracker';
  *   - 최대 스크롤 깊이
  *   - 상품 CTA 클릭 여부 (a[href*="/packages/"] 클릭 감지)
  */
+// last-touch 콘텐츠 어트리뷰션 (예약 시점 booking.content_creative_id 매칭용)
+const LAST_CONTENT_KEY = 'ys_last_content_creative_id';
+const LAST_CONTENT_TS_KEY = 'ys_last_content_creative_ts';
+const ATTRIBUTION_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+
+/** 어트리뷰션 윈도우 내 마지막으로 본 콘텐츠 ID (만료 자동 처리). 예약 페이지에서 호출. */
+export function readLastContentCreativeId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const id = sessionStorage.getItem(LAST_CONTENT_KEY) || localStorage.getItem(LAST_CONTENT_KEY);
+    const ts = Number(sessionStorage.getItem(LAST_CONTENT_TS_KEY) || localStorage.getItem(LAST_CONTENT_TS_KEY));
+    if (!id || !ts) return null;
+    if (Date.now() - ts > ATTRIBUTION_WINDOW_MS) return null;
+    return id;
+  } catch {
+    return null;
+  }
+}
+
 export default function BlogTracker({ contentCreativeId }: { contentCreativeId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // PIPA: First-touch 콘텐츠 어트리뷰션은 동의 후에만 기록.
+    // 익명 engagement (체류시간/스크롤)은 비식별 통계 — 그대로 진행.
+    if (hasAnalyticsConsent()) {
+      trackContentView(contentCreativeId);
+    }
 
-    trackContentView(contentCreativeId);
+    // last-touch attribution: 예약 시 booking.content_creative_id 매칭용 24h 캐시
+    try {
+      sessionStorage.setItem(LAST_CONTENT_KEY, contentCreativeId);
+      sessionStorage.setItem(LAST_CONTENT_TS_KEY, String(Date.now()));
+      localStorage.setItem(LAST_CONTENT_KEY, contentCreativeId);
+      localStorage.setItem(LAST_CONTENT_TS_KEY, String(Date.now()));
+    } catch { /* private mode 등 */ }
 
     const startedAt = Date.now();
     let maxScrollPct = 0;

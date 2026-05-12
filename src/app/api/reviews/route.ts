@@ -29,23 +29,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '전체 평점 1~5 필수' }, { status: 400 });
     }
 
-    // booking 유효성 + product_id/customer_id 조회
-    const { data: booking } = await supabaseAdmin
-      .from('bookings')
-      .select('id, product_id, lead_customer_id, status')
-      .eq('id', booking_id)
-      .limit(1);
+    // booking 유효성 + 중복 후기 체크 병렬 (둘 다 booking_id에만 의존, 독립)
+    const [bookingRes, existingRes] = await Promise.all([
+      supabaseAdmin
+        .from('bookings')
+        .select('id, product_id, lead_customer_id, status')
+        .eq('id', booking_id)
+        .limit(1),
+      supabaseAdmin
+        .from('post_trip_reviews')
+        .select('id')
+        .eq('booking_id', booking_id)
+        .limit(1),
+    ]);
 
-    if (!booking?.[0]) return NextResponse.json({ error: '예약 없음' }, { status: 404 });
-    const b = booking[0] as { id: string; product_id: string | null; lead_customer_id: string | null; status: string };
+    if (!bookingRes.data?.[0]) return NextResponse.json({ error: '예약 없음' }, { status: 404 });
+    const b = bookingRes.data[0] as { id: string; product_id: string | null; lead_customer_id: string | null; status: string };
 
-    // 중복 제출 방지
-    const { data: existing } = await supabaseAdmin
-      .from('post_trip_reviews')
-      .select('id')
-      .eq('booking_id', booking_id)
-      .limit(1);
-    if (existing && existing.length > 0) {
+    if (existingRes.data && existingRes.data.length > 0) {
       return NextResponse.json({ error: '이미 후기를 작성하셨습니다.' }, { status: 409 });
     }
 

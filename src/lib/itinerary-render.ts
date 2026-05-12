@@ -11,47 +11,9 @@
  * - 추후 일정 타임라인/미매칭 매칭 결과도 이 파일로 이관 예정.
  */
 
-// ── optional_tours.region 정규화 ─────────────────────────────────────────────
+import { REGION_KEYWORD_MAP } from './constants/regions';
 
-/**
- * 국가/지역 키워드 매핑 — 선택관광 이름에서 자동 추출할 때 사용
- * (단, 등록 시 region 필드를 직접 채우는 것이 우선)
- */
-const REGION_ALIAS: Record<string, string> = {
-  '말레이시아': '말레이시아',
-  '쿠알라': '말레이시아',
-  '말라카': '말레이시아',
-  '겐팅': '말레이시아',
-  '싱가포르': '싱가포르',
-  '태국': '태국',
-  '방콕': '태국',
-  '파타야': '태국',
-  '푸켓': '태국',
-  '베트남': '베트남',
-  '다낭': '베트남',
-  '하노이': '베트남',
-  '나트랑': '베트남',
-  '대만': '대만',
-  '타이페이': '대만',
-  '타이베이': '대만',
-  '일본': '일본',
-  '후쿠오카': '일본',
-  '오사카': '일본',
-  '홋카이도': '일본',
-  '중국': '중국',
-  '서안': '중국',
-  '북경': '중국',
-  '상해': '중국',
-  '장가계': '중국',
-  '칭다오': '중국',
-  '라오스': '라오스',
-  '몽골': '몽골',
-  '필리핀': '필리핀',
-  '보홀': '필리핀',
-  '세부': '필리핀',
-  '인도네시아': '인도네시아',
-  '발리': '인도네시아',
-};
+// ── optional_tours.region 정규화 ─────────────────────────────────────────────
 
 export interface OptionalTourInput {
   name: string;
@@ -80,12 +42,12 @@ function inferRegion(name: string, explicit?: string | null): string | null {
   const parenMatch = name.match(/\(([^)]+)\)/);
   if (parenMatch) {
     const inside = parenMatch[1];
-    for (const [keyword, region] of Object.entries(REGION_ALIAS)) {
+    for (const [keyword, region] of Object.entries(REGION_KEYWORD_MAP)) {
       if (inside.includes(keyword)) return region;
     }
   }
   // 본문 내 region 키워드 탐색: "쿠알라 야경투어"
-  for (const [keyword, region] of Object.entries(REGION_ALIAS)) {
+  for (const [keyword, region] of Object.entries(REGION_KEYWORD_MAP)) {
     if (name.includes(keyword)) return region;
   }
   return null;
@@ -100,7 +62,7 @@ function stripRegionFromName(name: string): string {
   const parenMatch = name.match(/\s*\(([^)]+)\)\s*$/);
   if (parenMatch) {
     const inside = parenMatch[1];
-    const hasRegionKw = Object.keys(REGION_ALIAS).some(kw => inside.includes(kw));
+    const hasRegionKw = Object.keys(REGION_KEYWORD_MAP).some(kw => inside.includes(kw));
     if (hasRegionKw) return name.replace(/\s*\([^)]+\)\s*$/, '').trim();
   }
   return name.trim();

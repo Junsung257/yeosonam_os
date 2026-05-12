@@ -1,0 +1,15 @@
+/admin/affiliates/[id]
+/admin/attractions/unmatched
+/admin/blog/[id]
+/admin/blog/queue
+/admin/competitor-prices
+/admin/packages/[id]/reviews
+/admin/prompts/[key]
+/admin/tax
+/admin/tenants/[tenantId]/bot
+/admin/terms-templates/[id]
+/auth/callback
+/m/admin/bookings
+/m/admin/notifications
+/m/admin/payments
+/m/admin/timeline/[bookingId]

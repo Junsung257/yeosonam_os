@@ -28,6 +28,18 @@ interface Link {
   created_at: string;
 }
 
+interface PromoCode {
+  id: string;
+  code: string;
+  discount_type: 'percent' | 'fixed';
+  discount_value: number;
+  is_active: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  max_uses?: number | null;
+  uses_count: number;
+}
+
 export default function InfluencerProducts() {
   const params = useParams();
   const code = params.code as string;
@@ -41,20 +53,34 @@ export default function InfluencerProducts() {
   const [creating, setCreating] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [subId, setSubId] = useState('');
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
+  const [newPromo, setNewPromo] = useState({ code: '', discount_type: 'percent', discount_value: '5', max_uses: '' });
+  const [savingPromo, setSavingPromo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [pkgRes, linkRes] = await Promise.all([
+      let pinHeader: Record<string, string> = {};
+      try {
+        const p = sessionStorage.getItem(`inf_pin_${code}`);
+        if (p) pinHeader = { 'x-influencer-pin': p };
+      } catch {
+        /* ignore */
+      }
+      const [pkgRes, linkRes, promoRes] = await Promise.all([
         fetch('/api/packages'),
-        fetch(`/api/influencer/links?code=${code}`),
+        fetch(`/api/influencer/links?code=${encodeURIComponent(code)}`, { headers: pinHeader }),
+        fetch(`/api/influencer/promo-codes?code=${encodeURIComponent(code)}`, { headers: pinHeader }),
       ]);
       const pkgJson = await pkgRes.json();
       const linkJson = await linkRes.json();
+      const promoJson = await promoRes.json();
 
       // approved 상태만 표시
       setPackages((pkgJson.packages || []).filter((p: Package) => p.status === 'approved'));
       setLinks(linkJson.links || []);
+      setPromoCodes(promoJson.promo_codes || []);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -66,6 +92,12 @@ export default function InfluencerProducts() {
   const createLink = async (pkg: Package) => {
     setCreating(pkg.id);
     try {
+      let pin = '';
+      try {
+        pin = sessionStorage.getItem(`inf_pin_${code}`) || '';
+      } catch {
+        pin = '';
+      }
       const res = await fetch('/api/influencer/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,6 +105,8 @@ export default function InfluencerProducts() {
           referral_code: code,
           package_id: pkg.id,
           package_title: pkg.title,
+          pin,
+          sub_id: subId || undefined,
         }),
       });
       const json = await res.json();
@@ -89,6 +123,37 @@ export default function InfluencerProducts() {
       setTimeout(() => setToast(''), 3000);
     } finally {
       setCreating(null);
+    }
+  };
+
+  const savePromo = async () => {
+    if (!newPromo.code.trim()) return;
+    setSavingPromo(true);
+    try {
+      const pin = sessionStorage.getItem(`inf_pin_${code}`) || '';
+      const res = await fetch('/api/influencer/promo-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(pin ? { 'x-influencer-pin': pin } : {}) },
+        body: JSON.stringify({
+          referral_code: code,
+          pin,
+          code: newPromo.code,
+          discount_type: newPromo.discount_type,
+          discount_value: Number(newPromo.discount_value || 0),
+          max_uses: newPromo.max_uses ? Number(newPromo.max_uses) : null,
+          is_active: true,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '저장 실패');
+      setToast('프로모코드가 저장되었습니다');
+      setNewPromo({ code: '', discount_type: 'percent', discount_value: '5', max_uses: '' });
+      await load();
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '프로모코드 저장 실패');
+    } finally {
+      setSavingPromo(false);
+      setTimeout(() => setToast(''), 2500);
     }
   };
 
@@ -159,9 +224,69 @@ export default function InfluencerProducts() {
             {d}
           </button>
         ))}
+        <input
+          type="text"
+          value={subId}
+          onChange={(e) => setSubId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase().slice(0, 40))}
+          placeholder="채널 태그 (예: insta, yt, blog)"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm min-w-[220px] focus:ring-2 focus:ring-blue-500 outline-none"
+        />
       </div>
 
       {/* 상품 목록 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <h2 className="font-bold text-gray-900 mb-2">프로모 코드 관리</h2>
+        <p className="text-xs text-gray-500 mb-3">링크 없이 결제창에서 코드 입력만으로 내 실적으로 귀속됩니다.</p>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-3">
+          <input
+            value={newPromo.code}
+            onChange={(e) => setNewPromo((p) => ({ ...p, code: e.target.value.replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase() }))}
+            placeholder="코드 (예: HEIZE2026)"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          />
+          <select
+            value={newPromo.discount_type}
+            onChange={(e) => setNewPromo((p) => ({ ...p, discount_type: e.target.value }))}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          >
+            <option value="percent">퍼센트(%)</option>
+            <option value="fixed">정액(원)</option>
+          </select>
+          <input
+            value={newPromo.discount_value}
+            onChange={(e) => setNewPromo((p) => ({ ...p, discount_value: e.target.value.replace(/[^\d.]/g, '') }))}
+            placeholder="할인값"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          />
+          <input
+            value={newPromo.max_uses}
+            onChange={(e) => setNewPromo((p) => ({ ...p, max_uses: e.target.value.replace(/\D/g, '') }))}
+            placeholder="최대 사용(선택)"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => void savePromo()}
+            disabled={savingPromo}
+            className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:bg-gray-300"
+          >
+            {savingPromo ? '저장중...' : '코드 저장'}
+          </button>
+        </div>
+        <div className="space-y-1">
+          {promoCodes.slice(0, 8).map((p) => (
+            <div key={p.id} className="flex items-center justify-between text-xs border-b border-gray-50 py-1.5">
+              <span className="font-mono font-semibold text-gray-700">{p.code}</span>
+              <span className="text-gray-500">
+                {p.discount_type === 'percent' ? `${p.discount_value}%` : `${Number(p.discount_value).toLocaleString()}원`} · 사용 {p.uses_count}
+                {typeof p.max_uses === 'number' ? `/${p.max_uses}` : ''}
+              </span>
+            </div>
+          ))}
+          {promoCodes.length === 0 ? <p className="text-xs text-gray-400">등록된 코드가 없습니다.</p> : null}
+        </div>
+      </div>
+
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map(i => (
@@ -214,7 +339,7 @@ export default function InfluencerProducts() {
                 {/* 링크 영역 */}
                 {existingLink ? (
                   <div className="space-y-2">
-                    {/* 기존 링크 표시 */}
+                    {/* 기존 링크 표시 (정식 URL) */}
                     <div className="bg-gray-50 rounded-lg px-3 py-2 flex items-center gap-2">
                       <span className="text-xs text-gray-400 truncate flex-1 font-mono">{existingLink.short_url}</span>
                       <button
@@ -226,6 +351,34 @@ export default function InfluencerProducts() {
                         {isCopied ? '복사됨 ✓' : '복사'}
                       </button>
                     </div>
+
+                    {/* 추가 공유 옵션 — 단축링크 / 임베드 코드 */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => {
+                          const baseUrl = window.location.origin;
+                          const short = `${baseUrl}/r/${code}/${pkg.id}`;
+                          copyLink(short, pkg.id);
+                        }}
+                        className="px-2 py-1.5 bg-amber-50 text-amber-800 rounded text-[11px] font-medium hover:bg-amber-100 transition-colors"
+                        title="카톡/페북 공유 시 어필리에이터+여소남 OG 이미지 자동 노출"
+                      >
+                        🔗 단축링크 + OG
+                      </button>
+                      <button
+                        onClick={() => {
+                          const baseUrl = window.location.origin;
+                          const embed = `<iframe src="${baseUrl}/embed/pkg/${pkg.id}?ref=${code}" width="100%" height="300" frameborder="0" loading="lazy" style="border:0;border-radius:12px;"></iframe>`;
+                          copyLink(embed, pkg.id);
+                          setToast('임베드 코드가 복사되었습니다 (블로그 HTML에 붙여넣기)');
+                        }}
+                        className="px-2 py-1.5 bg-purple-50 text-purple-800 rounded text-[11px] font-medium hover:bg-purple-100 transition-colors"
+                        title="티스토리/네이버 블로그 HTML에 붙여넣어 상품 카드 임베드"
+                      >
+                        📋 임베드 코드
+                      </button>
+                    </div>
+
                     {/* 클릭/전환 통계 */}
                     <div className="flex gap-3 text-xs text-gray-400">
                       <span>클릭 <b className="text-gray-600">{existingLink.click_count}</b></span>

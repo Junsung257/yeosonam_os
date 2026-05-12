@@ -1,8 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { SALES_PROMPT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
-import { runGeminiAgentLoop } from '../gemini-agent-loop'
-import { convertTools } from '../gemini-tool-format'
+import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 
 const SALES_TOOLS_RAW = [
   {
@@ -84,7 +83,7 @@ const SALES_TOOLS_RAW = [
   },
 ]
 
-const SALES_TOOLS = convertTools(SALES_TOOLS_RAW)
+const SALES_TOOLS = SALES_TOOLS_RAW as any
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -154,7 +153,7 @@ export { SALES_TOOLS, SALES_TOOLS_RAW }
 export { executeTool as executeSalesTool }
 
 export async function runSalesAgent(params: AgentRunParams): Promise<AgentRunResult> {
-  return runGeminiAgentLoop({
+  return runDeepSeekAgentLoop({
     agentType: 'sales',
     systemPrompt: SALES_PROMPT,
     tools: SALES_TOOLS,

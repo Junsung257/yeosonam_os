@@ -20,14 +20,19 @@ export interface AttractionData {
 }
 
 // 매칭 제외 키워드 (일반 이동/휴식 활동)
+// ⚠️ 키워드 추가 시 ERR-LB-DAD-keyword-spillover 같은 단어 단독 매칭 사고 방지가 핵심.
+//    "호이안 바구니배" 같은 '도시명+활동' 어트랙션이 도시명 키워드만으로 모든 activity에 매칭되는 사고가
+//    2026-04-20 LB-DAD-05-01에서 발생 — 호이안 야경/못주스 등 모든 호이안 activity에 "호이안 바구니배"가 잘못 붙음.
 const MATCH_STOP_WORDS = new Set([
   // 도시/지역명 (2~3글자 오매칭 방지)
-  '호텔', '방콕', '파타야', '부산', '청도', '보홀', '다낭', '하노이',
+  '호텔', '방콕', '파타야', '부산', '청도', '보홀', '다낭', '하노이', '호이안', '후에',
   '타이페이', '후쿠오카', '나가사키', '오사카', '교토', '나라', '도쿄',
   '서안', '북경', '상해', '울란바토르', '알마티', '세부', '푸켓', '발리',
   '제주', '인천', '김포', '나하', '제남', '곤명', '연길', '정주', '심천',
   '위해', '연태', '마카오', '홍콩', '광저우', '사가', '벳부', '아소',
   '도문', '용정', '양삭', '계림', '여강', '황산', '임주', '카라콜',
+  '나트랑', '달랏', '판랑', '캄란', '푸꾸옥', '하롱', '닌빈', '치앙마이',
+  '방비엥', '비엔티엔', '루앙프라방', '쿠알라', '말라카', '겐팅',
   // 일반 활동 키워드
   '조식', '중식', '석식', '이동', '출발', '도착', '귀환', '관광',
   '체크인', '체크아웃', '휴식', '투숙', '공항', '미팅', '가이드',
@@ -276,11 +281,32 @@ export function matchAllActivities(
 /**
  * itinerary_data 듀얼 포맷 정규화 헬퍼
  * DB에 { days: [...] } 객체 또는 [...] 배열이 혼재 → 항상 배열 반환
+ * - JSON 문자열로 저장된 레거시/중간 산출물
+ * - LLM이 day_list 등 비표준 키로 반환한 경우
  */
+/** itinerary_data 루트 — 표준 days 외 LLM/레거시 키 허용 */
+export type NormalizeDaysInput<T> =
+  | T[]
+  | { days?: T[]; day_list?: T[]; itinerary_days?: T[]; schedule?: unknown }
+  | null
+  | undefined
+  | string;
+
 export function normalizeDays<T = Record<string, unknown>>(
-  itineraryData: T[] | { days?: T[] } | null | undefined,
+  itineraryData: NormalizeDaysInput<T>,
 ): T[] {
-  if (!itineraryData) return [];
+  if (itineraryData == null || itineraryData === '') return [];
+  if (typeof itineraryData === 'string') {
+    try {
+      return normalizeDays(JSON.parse(itineraryData) as NormalizeDaysInput<T>);
+    } catch {
+      return [];
+    }
+  }
   if (Array.isArray(itineraryData)) return itineraryData;
-  return (itineraryData as { days?: T[] }).days || [];
+  const obj = itineraryData as { days?: T[] } & Record<string, unknown>;
+  if (Array.isArray(obj.days)) return obj.days;
+  const alt = obj.day_list ?? obj.itinerary_days ?? obj.schedule;
+  if (Array.isArray(alt)) return alt as T[];
+  return [];
 }

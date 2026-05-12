@@ -94,6 +94,7 @@ async function embedDocument(text, apiKey) {
       body: JSON.stringify({
         content: { parts: [{ text }] },
         taskType: 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: 1536,  // v4 fix: DB schema 와 일치 (default 3072)
       }),
     })
     if (!res.ok) return null

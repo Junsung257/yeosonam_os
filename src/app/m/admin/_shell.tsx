@@ -20,7 +20,7 @@ export default function MobileShell({
 
   return (
     <div
-      className="min-h-[100dvh] bg-slate-50 text-slate-900"
+      className="min-h-[100dvh] bg-admin-bg text-admin-text"
       style={{ paddingBottom: hideTabs ? 0 : 'calc(3.5rem + env(safe-area-inset-bottom))' }}
     >
       {children}

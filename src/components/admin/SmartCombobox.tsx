@@ -87,11 +87,11 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
         onChange={e => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="이름, 상품명, 출발일 검색..."
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      <ul ref={listRef} className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+      <ul ref={listRef} className="max-h-56 overflow-y-auto border border-admin-border-mid rounded-lg divide-y divide-gray-100">
         {filtered.length === 0 && (
-          <li className="px-3 py-3 text-sm text-gray-400 text-center">검색 결과 없음</li>
+          <li className="px-3 py-3 text-sm text-admin-muted-2 text-center">검색 결과 없음</li>
         )}
         {filtered.map((b, i) => {
           const rec = isRecommended(b);
@@ -113,21 +113,21 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
                 <div className="flex items-center gap-2">
                   {multiMode && (
                     <input type="checkbox" readOnly checked={isChecked}
-                      className="rounded border-gray-300 text-blue-600" />
+                      className="rounded border-admin-border-strong text-blue-600" />
                   )}
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-gray-400">[출발 {fmtDate(b.departure_date)}]</span>
-                      <span className="font-medium text-gray-900">{b.customers?.name || '이름 없음'}</span>
-                      {b.package_title && <span className="text-gray-500">· {b.package_title}</span>}
+                      <span className="text-xs text-admin-muted-2">[출발 {fmtDate(b.departure_date)}]</span>
+                      <span className="font-medium text-admin-text">{b.customers?.name || '이름 없음'}</span>
+                      {b.package_title && <span className="text-admin-muted">· {b.package_title}</span>}
                       {rec && <span className="text-xs px-1.5 py-0.5 bg-emerald-200 text-emerald-800 rounded-full font-semibold">✨ 추천</span>}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-admin-muted mt-0.5">
                       💰 판매가: {fmt만(b.total_price || 0)} / 미수금: {fmt만(bal)}
                     </div>
                   </div>
                 </div>
-                {b.booking_no && <span className="text-xs text-gray-400 shrink-0">{b.booking_no}</span>}
+                {b.booking_no && <span className="text-xs text-admin-muted-2 shrink-0">{b.booking_no}</span>}
               </div>
             </li>
           );

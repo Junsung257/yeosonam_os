@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCronBearer } from '@/lib/cron-auth'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { executeAction } from '@/lib/agent-action-executor'
 import { isValidTransition } from '@/lib/agent-action-machine'
@@ -10,6 +11,7 @@ import {
   checkPublishingLimit,
 } from '@/lib/instagram-publisher'
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const startAt = Date.now()
   const log: string[] = []
@@ -17,15 +19,10 @@ export async function GET(request: NextRequest) {
 
   push('=== 에이전트 액션 실행기 시작 ===')
 
-  // 인증: CRON_SECRET 또는 force=true
+  const authErr = requireCronBearer(request)
+  if (authErr) return authErr
+
   const isForce = request.nextUrl.searchParams.get('force') === 'true'
-  if (!isForce) {
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
 
   if (!isSupabaseConfigured) {
     push('Supabase 미설정 — 스킵')
@@ -33,6 +30,7 @@ export async function GET(request: NextRequest) {
   }
 
   const processed = { executed: 0, failed: 0, expired: 0, errors: [] as string[] }
+  const tasking = { approvals_expired: 0, tasks_expired: 0 }
 
   // ── 1. approved 액션 실행 ─────────────────────────────────────────
   try {
@@ -122,6 +120,49 @@ export async function GET(request: NextRequest) {
     push(`만료 처리 실패: ${e instanceof Error ? e.message : String(e)}`)
   }
 
+  // ── 2-1. MAS 승인/작업 만료 처리: pending approvals + frozen tasks ───────
+  try {
+    const now = new Date().toISOString()
+    const { data: expiredApprovals, error: apErr } = await supabaseAdmin
+      .from('agent_approvals')
+      .select('id, task_id')
+      .eq('status', 'pending')
+      .not('expires_at', 'is', null)
+      .lt('expires_at', now)
+      .limit(100)
+
+    if (apErr) throw apErr
+
+    if (expiredApprovals && expiredApprovals.length > 0) {
+      const approvalIds = expiredApprovals.map((a: any) => a.id)
+      const taskIds = expiredApprovals.map((a: any) => a.task_id).filter(Boolean)
+
+      await supabaseAdmin
+        .from('agent_approvals')
+        .update({ status: 'expired', reviewed_at: now, reviewed_by: 'system:agent-executor' })
+        .in('id', approvalIds)
+
+      if (taskIds.length > 0) {
+        await supabaseAdmin
+          .from('agent_tasks')
+          .update({
+            status: 'expired',
+            last_error: 'approval_expired',
+            completed_at: now,
+            updated_at: now,
+          })
+          .in('id', taskIds)
+          .eq('status', 'frozen')
+      }
+
+      tasking.approvals_expired = approvalIds.length
+      tasking.tasks_expired = taskIds.length
+      push(`MAS 만료 처리: approvals=${approvalIds.length}, tasks=${taskIds.length}`)
+    }
+  } catch (e) {
+    push(`MAS 만료 처리 실패: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
   // ── 3. Google Search Console 데이터 수집 ────────────────────────────
   const gscStats = { pages_processed: 0, rows_inserted: 0, skipped: false as boolean | string }
   try {
@@ -172,24 +213,40 @@ export async function GET(request: NextRequest) {
           .in('slug', slugs)
           .eq('channel', 'naver_blog')
 
+        // 단건 upsert N회 → bulk upsert 1회 (round-trip N→1)
+        const upsertRows: Array<{
+          content_creative_id: string
+          date: string
+          impressions: number
+          clicks: number
+          ctr: number
+          avg_position: number
+          top_query: string | null
+        }> = []
         for (const cc of (creatives ?? []) as { id: string; slug: string }[]) {
           const m = slugToMetrics.get(cc.slug)
           if (!m) continue
           const avgPosition = m.impressions > 0 ? m.position / m.impressions : 0
           const ctr = m.impressions > 0 ? m.clicks / m.impressions : 0
-
-          await supabaseAdmin
+          upsertRows.push({
+            content_creative_id: cc.id,
+            date: dateStr,
+            impressions: m.impressions,
+            clicks: m.clicks,
+            ctr: Number(ctr.toFixed(4)),
+            avg_position: Number(avgPosition.toFixed(2)),
+            top_query: m.topQuery || null,
+          })
+        }
+        if (upsertRows.length > 0) {
+          const { error: bulkErr } = await supabaseAdmin
             .from('blog_search_metrics')
-            .upsert({
-              content_creative_id: cc.id,
-              date: dateStr,
-              impressions: m.impressions,
-              clicks: m.clicks,
-              ctr: Number(ctr.toFixed(4)),
-              avg_position: Number(avgPosition.toFixed(2)),
-              top_query: m.topQuery || null,
-            }, { onConflict: 'content_creative_id,date' })
-          gscStats.rows_inserted++
+            .upsert(upsertRows, { onConflict: 'content_creative_id,date' })
+          if (bulkErr) {
+            push(`  GSC bulk upsert 실패: ${bulkErr.message}`)
+          } else {
+            gscStats.rows_inserted = upsertRows.length
+          }
         }
         gscStats.pages_processed = creatives?.length ?? 0
       }
@@ -207,7 +264,11 @@ export async function GET(request: NextRequest) {
       push('IG 예약 스킵 — META_ACCESS_TOKEN 또는 META_IG_USER_ID 미설정')
       igStats.quota_reason = 'not_configured'
     } else {
-      const cfg = getInstagramConfig()!
+      const cfg = await getInstagramConfig()
+      if (!cfg) {
+        push('IG 예약 스킵 — 토큰 해석 실패 (env+DB)')
+        igStats.quota_reason = 'token_unresolved'
+      } else {
       const quota = await checkPublishingLimit(cfg.igUserId, cfg.accessToken)
       if (quota && quota.quotaUsed >= quota.quotaLimit - 5) {
         push(`IG 예약 스킵 — quota ${quota.quotaUsed}/${quota.quotaLimit} (5건 미만 잔여)`)
@@ -273,6 +334,7 @@ export async function GET(request: NextRequest) {
           }
         }
       }
+      } // close else (cfg ok)
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -286,6 +348,7 @@ export async function GET(request: NextRequest) {
     is_force: isForce,
     elapsed_ms: Date.now() - startAt,
     processed,
+    tasking,
     gsc: gscStats,
     ig: igStats,
     log,

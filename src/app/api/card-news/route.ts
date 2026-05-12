@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, getCardNewsList, upsertCardNews } from '@/lib/supabase';
+import { isAdminRequest } from '@/lib/admin-guard';
+import { updateFactoryJobStep } from '@/lib/content-factory-step';
 import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured, getBrandPlaceholder } from '@/lib/pexels';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import { pickMarketingPrice } from '@/lib/marketing-price';
+import { getSecret } from '@/lib/secret-registry';
+import { logError, logWarning } from '@/lib/sentry-logger';
 
 export async function GET(request: NextRequest) {
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ card_news: [] });
   }
@@ -22,6 +30,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -106,6 +117,11 @@ export async function POST(request: NextRequest) {
 
       const title = customTitle ?? briefAny.h1 ?? (briefAny.mode === 'info' ? `${briefAny.h1} — 카드뉴스` : `카드뉴스`);
 
+      // PR-7: ContentBrief → card_news 영구 메타 추출 (critic gate / bandit 연결)
+      // brief 자체의 sections h2 + key_selling_points + h1 만으로 추론 (별도 product 조회 불필요)
+      const { extractCardNewsMetadata } = await import('@/lib/content-pipeline/content-brief');
+      const meta = extractCardNewsMetadata(brief as any);
+
       const insertData: Record<string, unknown> = {
         title,
         status: 'DRAFT',
@@ -114,6 +130,9 @@ export async function POST(request: NextRequest) {
         template_family: templateFamily,
         template_version: 'v2',
         generation_config: { brief },
+        // PR-7: critic / bandit 학습 신호
+        hook_type: meta.hook_type,
+        palette_category: meta.palette_category,
       };
       if (resolvedMode === 'product' && package_id) insertData.package_id = package_id;
       if (resolvedMode === 'info' && topic) insertData.topic = topic;
@@ -121,9 +140,20 @@ export async function POST(request: NextRequest) {
 
       const cardNews = await upsertCardNews(insertData as any);
 
+      // ── content_factory_jobs 생성 (Content Hub 폴링용) ──────
+      if (cardNews?.id) {
+        const { supabaseAdmin: supa } = await import('@/lib/supabase');
+        supa.from('content_factory_jobs').insert({
+          card_news_id: cardNews.id,
+          product_id: (resolvedMode === 'product' && package_id) ? package_id : null,
+          status: 'pending',
+        }).then().catch(() => {});
+      }
+
       // ── 자동 Cover Critic + Apply (환경변수로 끄기 가능) ──
       //    DISABLE_COVER_CRITIC=1 면 스킵. 기본 활성.
       //    80점 이상이면 적용 스킵, 60~79 는 minor_polish 로 rewritten_cover 있으면 적용, 59 이하면 regenerate.
+      //    재시도는 최대 2회(초기 1회 + regenerate 1회)로 제한 — 무한 루프 방지.
       let coverCritique: unknown = null;
       let coverApply: unknown = null;
       if (cardNews?.id && process.env.DISABLE_COVER_CRITIC !== '1') {
@@ -141,12 +171,72 @@ export async function POST(request: NextRequest) {
             },
           });
           coverCritique = critique;
+          const critiqueScore = (critique as { score?: number }).score ?? null;
+          const critiqueVerdict = (critique as { verdict?: string }).verdict ?? null;
+          const appUrlForCritic = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+          const kickRenderAfterCritic = () => {
+            fetch(`${appUrlForCritic}/api/card-news/render-v2`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ card_news_id: cardNews.id, formats: ['1x1'] }),
+            }).catch(() => {});
+          };
+
+          let critiqueAttempts = 1;
+          let rewritten = false;
+
           if (critique.verdict !== 'ship_as_is' && critique.rewritten_cover) {
+            // minor_polish 또는 regenerate: rewritten_cover 적용 후 재렌더
             coverApply = await applyCritiqueToCover(cardNews.id, critique);
+            if ((coverApply as { applied?: boolean })?.applied) {
+              rewritten = true;
+              kickRenderAfterCritic();
+            }
+          } else if (critique.verdict === 'regenerate' && !critique.rewritten_cover) {
+            // score<60 + rewritten_cover 없음: 카피 전체 재생성 후 재렌더 (최대 1회 — 총 2회 제한)
+            critiqueAttempts = 2;
+            try {
+              const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
+              const newCopySlides = await generateCardCopy(briefAny as never);
+              const mergedSlides = newCopySlides.map((s, i) => ({
+                ...slides[i],
+                headline: s.headline,
+                body: s.body,
+                eyebrow: s.eyebrow ?? slides[i]?.eyebrow ?? null,
+                tip: s.tip ?? slides[i]?.tip ?? null,
+                warning: s.warning ?? slides[i]?.warning ?? null,
+                price_chip: s.price_chip ?? slides[i]?.price_chip ?? null,
+                trust_row: s.trust_row ?? slides[i]?.trust_row ?? null,
+              }));
+              const { supabaseAdmin: supa } = await import('@/lib/supabase');
+              await supa.from('card_news').update({ slides: mergedSlides }).eq('id', cardNews.id);
+              rewritten = true;
+              kickRenderAfterCritic();
+            } catch (regenErr) {
+              logWarning('[api/card-news] regenerate failed (non-blocking)', regenErr);
+            }
           }
+          // cover_critic 스텝 완료 마킹 + critique 결과 기록
+          updateFactoryJobStep(cardNews.id, 'cover_critic', 'done', null, {
+            score: critiqueScore,
+            verdict: critiqueVerdict,
+            attempts: critiqueAttempts,
+            rewritten,
+          });
         } catch (err) {
-          console.warn('[card-news POST] 자동 cover critic 실패(무시):', err instanceof Error ? err.message : err);
+          logWarning('[api/card-news] cover critic failed (non-blocking)', err);
+          updateFactoryJobStep(cardNews.id, 'cover_critic', 'failed', err instanceof Error ? err.message : '알 수 없는 오류');
         }
+      }
+
+      // ── 최종 Satori 자동 렌더 (fire-and-forget) ─────────────
+      if (cardNews?.id && process.env.DISABLE_AUTO_RENDER !== '1') {
+        const appUrl = getSecret('NEXT_PUBLIC_APP_URL') ?? `https://${process.env.VERCEL_URL ?? 'localhost:3000'}`;
+        fetch(`${appUrl}/api/card-news/render-v2`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ card_news_id: cardNews.id, formats: ['1x1'] }),
+        }).catch(e => logWarning('[api/card-news] auto render failed (non-blocking)', e));
       }
 
       return NextResponse.json({
@@ -219,7 +309,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ card_news: cardNews }, { status: 201 });
   } catch (error) {
-    console.error('카드뉴스 생성 실패:', error);
+    logError('[api/card-news] POST failed', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '생성 실패' },
       { status: 500 }
@@ -251,23 +341,17 @@ async function buildAutoSlides(
   if (/마사지|맛사지|massage/i.test(summaryText)) sellingPoints.push('마사지 체험');
   if (/품격|프리미엄|럭셔리/i.test(summaryText)) sellingPoints.push('품격 여행');
 
-  // ── Step 1: Gemini AI로 슬라이드 카피 생성 ────────────────
+  // ── Step 1: AI 슬라이드 카피 생성 ────────────────
   let aiSlides: { headline: string; body: string; pexels_keyword: string }[] = [];
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (apiKey) {
+  if (hasBlogApiKey()) {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: { temperature: 0.8 },
-      });
 
       const inclusions = inclusionsList.slice(0, 6).join(', ');
       const excludes = (pkg.excludes ?? []).slice(0, 3).join(', ');
       const itinerary = (pkg.itinerary ?? []).slice(0, 4).join(' / ');
       const highlights = highlightsList.slice(0, 5).join(', ');
-      const priceStr = (pkg.price ?? 0).toLocaleString();
+      const priceStr = pickMarketingPrice(pkg).toLocaleString();
       const spStr = sellingPoints.length > 0 ? sellingPoints.join(', ') : '정보 없음';
 
       const toneMap: Record<string, string> = {
@@ -313,39 +397,33 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
 반드시 아래 JSON 배열만 출력. 마크다운 코드블록 없이:
 [{"headline":"...","body":"...","pexels_keyword":"..."}]`;
 
-      const result = await model.generateContent(prompt);
-      const rawText = result.response.text()
+      const rawText = (await generateBlogJSON(prompt, { temperature: 0.8 }))
         .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
-      // 1차 시도: 직접 파싱
       let parsed: any = null;
       try {
         parsed = JSON.parse(rawText);
       } catch {
-        // 2차 시도: trailing comma 제거 + JSON 배열 추출
         try {
           const cleaned = rawText.replace(/,\s*([}\]])/g, '$1');
           const arrMatch = cleaned.match(/\[[\s\S]*\]/);
-          if (arrMatch) {
-            parsed = JSON.parse(arrMatch[0]);
-          }
+          if (arrMatch) parsed = JSON.parse(arrMatch[0]);
         } catch {
-          console.warn('[Card News] JSON 복구 실패, fallback 사용');
+          logWarning('[api/card-news] JSON recovery failed, using fallback', null);
         }
       }
 
       if (Array.isArray(parsed) && parsed.length > 0) {
         aiSlides = parsed.slice(0, slideCount);
-        console.log('[Card News] Gemini AI 카피 생성 성공:', aiSlides.length, '장');
       }
     } catch (err) {
-      console.warn('[Card News] Gemini AI 실패, fallback 사용:', err instanceof Error ? err.message : err);
+      logWarning('[api/card-news] AI copy failed, using fallback', err);
     }
   }
 
   // ── Step 2: AI 실패 시 fallback (상품정보 기반 템플릿) ────────
   if (aiSlides.length === 0) {
-    const priceStr = (pkg.price ?? 0).toLocaleString();
+    const priceStr = pickMarketingPrice(pkg).toLocaleString();
     const spText = sellingPoints.length > 0 ? sellingPoints.join(' · ') : '완벽 포함 패키지';
 
     aiSlides = [
@@ -366,7 +444,7 @@ ${toneDesc} 톤으로 작성. 브랜드명은 '여소남'. ${extraPrompt ? `추�
         const photos = await searchPexelsPhotos(keyword, 5);
         if (photos[0]?.src?.large2x) return photos[0].src.large2x;
       } catch (e) {
-        console.warn('[Card News] Pexels 검색 실패:', keyword, e instanceof Error ? e.message : e);
+        logWarning('[api/card-news] Pexels search failed', { keyword, error: e });
       }
     }
     // 2차: 키워드 단순화 후 재시도
@@ -422,14 +500,8 @@ async function buildInfoSlides(
 
   let aiSlides: { headline: string; body: string; pexels_keyword: string }[] = [];
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (apiKey) {
+  if (hasBlogApiKey()) {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: { temperature: 0.8 },
-      });
 
       const toneMap: Record<string, string> = {
         professional: '신뢰감 있고 전문적인',
@@ -462,8 +534,7 @@ ${toneDesc} 톤. 브랜드: 여소남. ${extraPrompt}
 반드시 아래 JSON 배열만 출력. 마크다운 코드블록 없이:
 [{"headline":"...","body":"...","pexels_keyword":"..."}]`;
 
-      const result = await model.generateContent(prompt);
-      const rawText = result.response.text()
+      const rawText = (await generateBlogJSON(prompt, { temperature: 0.8 }))
         .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
       let parsed: any = null;
@@ -480,7 +551,7 @@ ${toneDesc} 톤. 브랜드: 여소남. ${extraPrompt}
         aiSlides = parsed.slice(0, slideCount);
       }
     } catch (err) {
-      console.warn('[Info Card News] Gemini 실패:', err instanceof Error ? err.message : err);
+      logWarning('[api/card-news] info card AI copy failed', err);
     }
   }
 

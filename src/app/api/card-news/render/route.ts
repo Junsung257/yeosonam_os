@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { buildSatoriElement, isSatoriSupported } from '@/lib/card-news/satori-templates';
+import { logError, logWarning } from '@/lib/sentry-logger';
 import { TemplateId } from '@/lib/card-news/tokens';
 
 export const runtime = 'nodejs'; // Satori/ImageResponse는 edge/node 모두 OK, 명시.
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       fontBold = bold.buffer.slice(bold.byteOffset, bold.byteOffset + bold.byteLength) as ArrayBuffer;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[render] 폰트 로드 실패:', msg);
+      logError('[api/card-news/render] font loading failed', err);
       errors.push(`폰트 로드 실패: ${msg}`);
       // 폰트 없으면 전체 실패 (null 배열 반환 → 클라이언트 html-to-image fallback)
       return NextResponse.json({ urls: slides.map(() => null), errors });
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
 
       if (!isSatoriSupported(templateId)) {
         // TEMPLATE_META.satoriReady=false 인 경우만 여기 도달 (현재는 없음)
-        console.warn(`[render] slide ${i + 1} template=${templateId} → satoriReady=false, null 반환`);
+        logWarning(`[api/card-news/render] unsupported template`, new Error(`slide ${i + 1} template=${templateId}`));
         errors.push(`slide ${i + 1}: 알 수 없는 템플릿 ${templateId}`);
         urls.push(null);
         continue;
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
         console.log(`[render] slide ${i + 1} template=${templateId} → Satori OK`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[render] slide ${i + 1} 실패:`, msg);
+        logError(`[api/card-news/render] slide ${i + 1} render failed`, err, { templateId, slideIndex: i + 1 });
         errors.push(`slide ${i + 1} (${templateId}): ${msg}`);
         urls.push(null);
       }
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ urls, errors });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[render] 전체 실패:', msg);
+    logError('[api/card-news/render] overall render process failed', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

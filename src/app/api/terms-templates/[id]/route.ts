@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { invalidateTermsCache } from '@/lib/standard-terms';
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   if (!isSupabaseConfigured) return NextResponse.json({ data: null });
   try {
-    const { id } = await params;
+    const { id } = params;
     const { data, error } = await supabaseAdmin
       .from('terms_templates')
       .select('*')
@@ -21,10 +21,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   try {
-    const { id } = await params;
+    const { id } = params;
     const body = await request.json();
     const allowed = ['name', 'scope', 'notices', 'priority', 'is_active', 'starts_at', 'ends_at', 'notes'];
     const updates: Record<string, unknown> = {};
@@ -48,10 +48,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   try {
-    const { id } = await params;
+    const { id } = params;
     // soft delete: is_active=false + is_current=false (완전 삭제 금지 — 예약 스냅샷 참조 유지)
     const { error } = await supabaseAdmin
       .from('terms_templates')

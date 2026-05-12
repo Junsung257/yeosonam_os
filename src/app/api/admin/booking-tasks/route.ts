@@ -9,8 +9,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ tasks: [], health: null }, { status: 200 });
   }
@@ -21,25 +22,26 @@ export async function GET(request: NextRequest) {
     const limit       = Math.min(200, Math.max(1, Number(searchParams.get('limit') ?? '100')));
     const offset      = Math.max(0, Number(searchParams.get('offset') ?? '0'));
 
-    // Inbox 목록
-    const { data: tasks, error: taskErr } = await supabaseAdmin.rpc('get_inbox_tasks', {
-      p_priority_max: priorityMax,
-      p_limit: limit,
-      p_offset: offset,
-    });
-    if (taskErr) throw taskErr;
-
-    // 헬스 요약
-    const { data: healthRows } = await supabaseAdmin
-      .from('booking_tasks_health')
-      .select('*')
-      .limit(1);
-
-    // 미매칭 입금 배너 (booking_tasks 와 별도 소스)
-    const { data: bankHealth } = await supabaseAdmin
-      .from('bank_tx_health')
-      .select('unmatched_count, review_count, error_count, stale_over_24h')
-      .limit(1);
+    // Inbox + 헬스 + 입금 배너 병렬 조회 (서로 독립)
+    const [tasksRes, healthRes, bankRes] = await Promise.all([
+      supabaseAdmin.rpc('get_inbox_tasks', {
+        p_priority_max: priorityMax,
+        p_limit: limit,
+        p_offset: offset,
+      }),
+      supabaseAdmin
+        .from('booking_tasks_health')
+        .select('*')
+        .limit(1),
+      supabaseAdmin
+        .from('bank_tx_health')
+        .select('unmatched_count, review_count, error_count, stale_over_24h')
+        .limit(1),
+    ]);
+    if (tasksRes.error) throw tasksRes.error;
+    const tasks = tasksRes.data;
+    const healthRows = healthRes.data;
+    const bankHealth = bankRes.data;
 
     return NextResponse.json({
       tasks: tasks ?? [],
@@ -52,4 +54,6 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);

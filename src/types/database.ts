@@ -260,12 +260,68 @@ export interface DocumentHash {
   file_hash: string;
   /** 원본 파일명 */
   file_name: string;
+  /** 정규화 본문 SHA-256 — 띄어쓰기만 다른 동일 카탈로그 차단 */
+  normalized_hash?: string | null;
   /** 이 파일로 생성된 상품 코드 (있으면) */
   product_id?: string | null;
   created_at: string;
 }
 
 export type DocumentHashInsert = Omit<DocumentHash, 'created_at'>;
+
+
+// ─── Phase 2a Append-only Ledger ───────────────────────────────────────────
+
+export type LedgerAccount = 'paid_amount' | 'total_paid_out';
+
+export type LedgerEntryType =
+  | 'deposit'         // 고객 입금 → paid_amount +
+  | 'refund'          // 고객 환불 → paid_amount -
+  | 'payout'          // 랜드사 송금 → total_paid_out +
+  | 'payout_reverse'  // 랜드사 송금 취소 → total_paid_out -
+  | 'manual_adjust'   // 어드민 수동 보정 (양/음)
+  | 'seed_backfill';  // Phase 2a 초기 시드 (1회성)
+
+export type LedgerSource =
+  | 'slack_ingest'
+  | 'payment_match_confirm'
+  | 'land_settlement_create'
+  | 'land_settlement_reverse'
+  | 'admin_manual_edit'
+  | 'booking_create_softmatch'
+  | 'bank_tx_manual_match'
+  | 'sms_payment'
+  | 'cron_resync'
+  | 'seed_phase2a';
+
+/**
+ * Append-only 원장. UPDATE/DELETE 차단 (Postgres RULE).
+ * SUM(ledger_entries.amount per booking, account) === bookings.<account>
+ * 가 일일 reconcile 의 정합 기준.
+ */
+export interface LedgerEntry {
+  id: string;
+  booking_id: string;
+  account: LedgerAccount;
+  entry_type: LedgerEntryType;
+  amount: number;            // signed (KRW). +면 잔액 증가, -면 감소. 0 entry 는 거부됨.
+  currency: string;          // 기본 'KRW'
+  source: LedgerSource;
+  source_ref_id: string | null;     // bank_transactions.id, settlement_id, sms_payments.id 등
+  idempotency_key: string | null;   // 멱등성 — UNIQUE
+  memo: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** reconcile_ledger() RPC 반환 행 — drift 발생 booking 만 */
+export interface LedgerReconcileRow {
+  booking_id: string;
+  account: LedgerAccount;
+  bookings_balance: number;
+  ledger_sum: number;
+  drift: number;       // bookings - ledger. 0 이어야 정상.
+}
 
 
 // ─── 유틸리티 타입 ──────────────────────────────────────────────────────────

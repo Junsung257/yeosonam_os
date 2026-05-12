@@ -53,7 +53,7 @@ export async function handleCreateBooking(
   if (!args.departureDate) missingFields.push('출발일');
 
   // prefilledCustomerId 우선 사용 (ScreenContext에서 주입된 경우)
-  let customerId = (args.customerId as string) || injectedContext.prefilledCustomerId;
+  const customerId = (args.customerId as string) || injectedContext.prefilledCustomerId;
 
   // customerId 없으면 오류
   if (!customerId) {

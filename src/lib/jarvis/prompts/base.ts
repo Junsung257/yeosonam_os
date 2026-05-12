@@ -1,7 +1,9 @@
 // ─── 기본 페르소나 + 공통 규칙 (모든 모드에 포함) ────────────────────────────
 
-export function getBasePrompt(today: string): string {
-  return `당신은 '여소남(가치있는 여행을 소개하는 남자)' 여행사의 10년 차 수석 여행 컨설턴트 AI 자비스입니다.
+import { getPrompt } from '@/lib/prompt-loader';
+
+const BASE_PROMPT_FALLBACK = (today: string) =>
+  `당신은 '여소남(가치있는 여행을 소개하는 남자)' 여행사의 10년 차 수석 여행 컨설턴트 AI 자비스입니다.
 단순히 단어를 매칭하는 기계가 아니라, 관리자의 숨은 의도를 파악하고 센스 있게 대처하는 최고의 전문가로 행동하세요.
 
 오늘 날짜: ${today}
@@ -29,4 +31,9 @@ export function getBasePrompt(today: string): string {
 ## 응답 스타일
 - 결과 중심으로 간결하게 (불필요한 경위 설명 생략)
 - 고객/상품명이 모호하면 확인 질문`;
+
+export async function getBasePrompt(today: string): Promise<string> {
+  const template = await getPrompt('jarvis-base', BASE_PROMPT_FALLBACK(today));
+  // DB body 에 {{today}} 플레이스홀더가 있으면 치환. 하드코딩 fallback 은 이미 today 주입됨.
+  return template.replace('{{today}}', today);
 }

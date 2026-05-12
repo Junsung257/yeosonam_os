@@ -1,0 +1,107 @@
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [24]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        timeout-minutes: 10
+
+      - name: Build project
+        run: npm run build
+        timeout-minutes: 10
+
+      - name: Start development server
+        run: |
+          npm run dev > /tmp/dev.log 2>&1 &
+          sleep 10
+          curl -f http://localhost:3000 || (cat /tmp/dev.log && exit 1)
+        timeout-minutes: 5
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v11
+        with:
+          configPath: './lighthouserc.js'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+        continue-on-error: false
+
+      - name: Comment Lighthouse scores on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const resultsPath = '.lighthouseci/results.json';
+
+            if (fs.existsSync(resultsPath)) {
+              try {
+                const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+                const latest = results[0];
+                const scores = latest.summary;
+
+                let comment = '## 📊 Lighthouse Performance Report\n\n';
+                comment += '| Metric | Score | Status |\n';
+                comment += '|--------|-------|--------|\n';
+
+                const metrics = {
+                  performance: '⚡ Performance',
+                  accessibility: '♿ Accessibility',
+                  'best-practices': '✅ Best Practices',
+                  seo: '🔍 SEO',
+                };
+
+                for (const [key, label] of Object.entries(metrics)) {
+                  const score = Math.round((scores[key] || 0) * 100);
+                  const emoji = score >= 90 ? '🟢' : score >= 75 ? '🟡' : '🔴';
+                  comment += `| ${label} | ${score} | ${emoji} |\n`;
+                }
+
+                comment += '\n**Web Vitals:**\n';
+                comment += `- **LCP** (Largest Contentful Paint): ${latest.audits['largest-contentful-paint']?.displayValue || 'N/A'}\n`;
+                comment += `- **CLS** (Cumulative Layout Shift): ${latest.audits['cumulative-layout-shift']?.displayValue || 'N/A'}\n`;
+                comment += `- **INP** (Interaction to Next Paint): ${latest.audits['interaction-to-next-paint']?.displayValue || 'N/A'}\n`;
+
+                github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  body: comment,
+                  event: 'COMMENT',
+                });
+              } catch (error) {
+                console.log('Could not parse results:', error);
+              }
+            }
+
+      - name: Upload results to artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
+import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { logWarning } from '@/lib/sentry-logger';
 
 // GET: 파트너 신청 목록
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ applications: [] });
 
   const { searchParams } = request.nextUrl;
@@ -16,13 +21,13 @@ export async function GET(request: NextRequest) {
   if (status) query = query.eq('status', status);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
 
   return NextResponse.json({ applications: data || [] });
 }
 
 // POST: 승인 또는 거절
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -52,14 +57,17 @@ export async function POST(request: NextRequest) {
       let code = '';
       for (let attempt = 0; attempt < 10; attempt++) {
         const suffix = Array.from({ length: 6 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
-        const candidate = `${app.name.replace(/[^a-zA-Z가-힣]/g, '').slice(0, 4).toUpperCase()}_${suffix}`;
+        const candidate = normalizeAffiliateReferralCode(
+          `${app.name.replace(/[^a-zA-Z가-힣]/g, '').slice(0, 4).toUpperCase()}_${suffix}`,
+        );
         const { count } = await supabaseAdmin
           .from('affiliates')
           .select('*', { count: 'exact', head: true })
           .eq('referral_code', candidate);
         if (!count || count === 0) { code = candidate; break; }
       }
-      if (!code) code = `YSN_${Date.now().toString(36).toUpperCase().slice(-6)}`;
+      if (!code) code = normalizeAffiliateReferralCode(`YSN_${Date.now().toString(36).toUpperCase().slice(-6)}`);
+      else code = normalizeAffiliateReferralCode(code);
 
       // affiliates 테이블에 생성
       const { data: affiliate, error: affErr } = await supabaseAdmin
@@ -71,7 +79,7 @@ export async function POST(request: NextRequest) {
           pin,
           payout_type: app.business_type === 'business' ? 'BUSINESS' : 'PERSONAL',
           business_number: app.business_number || null,
-          commission_rate: 0.09,
+          commission_rate: getDefaultAffiliateCommissionRate(),
           is_active: true,
           memo: `채널: ${app.channel_type} / ${app.channel_url}${app.intro ? ` / ${app.intro}` : ''}`,
         })
@@ -103,7 +111,7 @@ export async function POST(request: NextRequest) {
           customerPhone: app.phone,
         });
       } catch (notifyErr) {
-        console.warn('[Applications] 승인 알림 발송 실패:', notifyErr);
+        logWarning('[admin/applications] approval notification failed', notifyErr);
       }
 
       return NextResponse.json({ affiliate, message: '승인 완료' });
@@ -123,10 +131,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'action은 approve 또는 reject' }, { status: 400 });
   } catch (error) {
-    console.error('[Applications]', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리 실패' },
+      { error: logAndSanitize('admin-applications', error, '처리 실패') },
       { status: 500 }
     );
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+
+export const POST = withAdminGuard(postHandler);

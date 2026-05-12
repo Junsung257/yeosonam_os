@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, getAdCampaigns, upsertCampaign } from '@/lib/supabase';
 import { pauseAd, activateAd, updateAdsetBudget, isMetaConfigured, krwToMetaCents } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function GET(
   _request: NextRequest,
@@ -16,8 +17,8 @@ export async function GET(
     // 단건 조회는 supabase 직접 사용
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
     const { data } = await sb
       .from('ad_campaigns')
@@ -48,8 +49,8 @@ export async function PATCH(
     // 현재 캠페인 조회
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
     const { data: currentCampaign } = await sb
       .from('ad_campaigns')

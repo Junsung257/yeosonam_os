@@ -1,4 +1,6 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-04-01 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-03 기준)
+
+> AI·코파일럿 진입 요약: 루트 **`AGENTS.md`** → (심층) `.claude/CLAUDE.md`.
 
 ---
 
@@ -32,6 +34,7 @@
 | **제휴/인플루언서** | `/admin/affiliates` | 제휴 관리, 등급(Bronze→Diamond), 커미션율, 지급유형(개인/사업자), 추천코드 생성, 상세(`/[id]` — 정산내역·커미션 이력·등급 진행) |
 | **제휴 분석** | `/admin/affiliate-analytics` | 퍼널 분석(클릭→전환→매출→커미션), 월간 트렌드, 파트너 성과 랭킹 |
 | **파트너 신청** | `/admin/applications` | 신청 심사 워크플로(PENDING/APPROVED/REJECTED), 자동 제휴 생성, 거절 사유 |
+| **파트너 프론트 미리보기** | `/admin/partner-preview` | `/partner-apply`, `/with/[코드]`, `/influencer/[코드]` 새 탭 열기·추천코드 로컬 저장; 제휴 상세에서 `?code=` 링크 |
 | **단체 RFQ** | `/admin/rfqs` | 단체 견적 관리, 상태(draft→contracted), KPI 카드, 입찰 추적, 상세(`/[id]` — 체크리스트·입찰·제안서·상태전이) |
 | **컨시어지** | `/admin/concierge` | Mock API 설정(Agoda/Klook/Cruise), 트랜잭션 상태(PENDING→COMPLETED), SAGA 이벤트 로그, 바우처, 환불 처리 |
 | **테넌트 관리** | `/admin/tenants` | 테넌트 CRUD, 커미션율, 상태(active/inactive/suspended), 월간 정산 통계 |
@@ -58,16 +61,17 @@
 
 | 메뉴 | 경로 | 세부 기능 |
 |------|------|-----------|
-| **자비스 AI** | `/admin/jarvis` | AI 대화형 운영 인터페이스, 빠른 명령(예약현황·상품추천·고객조회), 액션카드(예약/고객 생성·수정) |
+| **자비스 AI** | `/admin/jarvis` | AI 대화형 운영 인터페이스, 빠른 명령(예약현황·상품추천·고객조회), 액션카드(예약/고객 생성·수정). 스트림 API는 전문가 라우팅(`resolveSpecialist`) 후 `agent_picked` 이벤트 전송 — 상세는 `docs/jarvis-orchestration.md` |
 | **AI 생성** | `/admin/generate` | OpenAI/Claude/Gemini 콘텐츠 생성(설명·제목·혜택 추출·모델 비교) |
-| **Q&A 챗봇** | `/admin/qa` | 고객 Q&A 챗봇, 패키지 추천, 상담원 에스컬레이션 |
+| **Q&A 챗봇** | `/admin/qa` | 고객 Q&A 챗봇, 패키지 추천, NDJSON 스트림·우측 **고객 여정** 패널. `POST /api/qa/chat`이 `conversations.affiliate_id`·`journey` 갱신, `x-affiliate-id`·바디 `affiliateRef`로 제휴 스코프 해석 |
+| **AI 플라이휠** | `/admin/platform-learning` | `platform_learning_events` 적재 내역 조회(`qa_chat`, `qa_escalation_cta` 전화·카톡 버튼, 자비스 V1·V2 스트림). 원문 대신 SHA·payload 기본, `PLATFORM_LEARNING_STORE_REDACTED_MESSAGE` 시 마스킹 전문 — `docs/env-variables-reference.md`, `docs/platform-ai-roadmap.md` |
 
 ### 1-7. 시스템 (System)
 
 | 메뉴 | 경로 | 세부 기능 |
 |------|------|-----------|
 | **OS 관제탑** | `/admin/control-tower` | 비즈니스 정책 엔진(9개 카테고리: pricing/mileage/booking/notification/display/product/operations/marketing/saas), 트리거/액션 설정, 우선순위 |
-| **에스컬레이션** | `/admin/escalations` | AI 미해결 문의 관리, 문의 유형 분류, 해결 워크플로 |
+| **에스컬레이션** | `/admin/escalations` | `qa_inquiries` 대기 건 — 유형 `escalation`·`critic_blocked`·`escalation_cta`(전화·카톡 버튼, 고객 발화 요약 첨부). 필터: 파이프라인 전체 / CTA만 |
 
 ### 1-8. 공개(비로그인) 페이지
 
@@ -78,10 +82,12 @@
 | `/influencer/[code]` | 인플루언서 전용 랜딩 (PIN 인증) |
 | `/itinerary/[id]`, `/itinerary/[id]/print` | 일정표 뷰·인쇄 |
 | `/lp/[id]` | 랜딩페이지 |
+| `/with/[code]`, `/r/[code]/[slug]` | 제휴 코브랜딩 랜딩·단축 유입 링크 |
 | `/concierge` | 컨시어지 (Agoda/Klook/Cruise) |
 | `/group-inquiry`, `/rfq` | 단체문의·RFQ |
 | `/tenant` | 테넌트 입점 |
 | `/share` | 공유 일정표 |
+| `/legal/partner-attribution` | 제휴 유입·쿠키 정책 안내 |
 
 ---
 
@@ -195,18 +201,19 @@
 
 | # | 테이블 | 주요 컬럼 | 설명 |
 |---|--------|-----------|------|
-| 55 | **conversations** | `id`, `customer_id`(FK), `channel`(default 'web'), `source`, `messages`(JSONB) | 고객 대화 세션 |
+| 55 | **conversations** | `id`, `customer_id`(FK), `affiliate_id`(FK→affiliates, nullable), `journey`(JSONB), `channel`(default 'web'), `source`, `messages`(JSONB) | 고객 대화 세션 — 제휴 유입 스코프·여정 스냅샷(`src/lib/affiliate-scope.ts`, `customer-journey.ts`) |
 | 56 | **intents** | `id`, `conversation_id`(FK), `destination`, `travel_dates`(DATERANGE), `party_size`, `budget_range`(INT4RANGE), `priorities`(TEXT[]), `booking_stage` | 대화에서 추출한 여행 의도 |
 | 57 | **qa_inquiries** | `id`, `question`, `inquiry_type`(product_recommendation/price_comparison/general_consultation), `related_packages`(UUID[]), `customer_name/email/phone`, `status`(pending/answered/closed) | Q&A 문의 |
 | 58 | **ai_responses** | `id`, `inquiry_id`(FK→qa_inquiries), `response_text`, `ai_model`(openai/claude/gemini), `confidence`, `used_packages`(UUID[]), `approved` | AI 응답 |
+| 59 | **platform_learning_events** | `source`(qa_chat/jarvis_v1/jarvis_v2_stream 등), `session_id`, `tenant_id`, `affiliate_id`, `message_sha256`, `message_redacted`, `payload`, `consent_flags` | 플랫폼 AI 평가·라우팅 분석용 이벤트(원문 비저장 기본). 마이그레이션: `20260502160000_*`, `20260502170000_*` |
 
 ### 시스템 / 감사
 
 | # | 테이블 | 주요 컬럼 | 설명 |
 |---|--------|-----------|------|
-| 59 | **os_policies** | `id`, `category`(9종), `name`, `trigger_type`(condition/schedule/event/cron/always), `trigger_config`(JSONB), `action_type`, `action_config`(JSONB), `target_scope`(JSONB), `is_active`, `priority` | 비즈니스 정책 엔진 |
-| 60 | **audit_logs** | `id`, `user_id`, `action`, `target_type/id`, `before_value/after_value`(JSONB) | 감사 로그 |
-| 61 | **pin_attempts** | `id`, `identifier`(referral_code_ip), `attempted_at` | PIN 브루트포스 방어 |
+| 60 | **os_policies** | `id`, `category`(9종), `name`, `trigger_type`(condition/schedule/event/cron/always), `trigger_config`(JSONB), `action_type`, `action_config`(JSONB), `target_scope`(JSONB), `is_active`, `priority` | 비즈니스 정책 엔진 |
+| 61 | **audit_logs** | `id`, `user_id`, `action`, `target_type/id`, `before_value/after_value`(JSONB) | 감사 로그 |
+| 62 | **pin_attempts** | `id`, `identifier`(referral_code_ip), `attempted_at` | PIN 브루트포스 방어 |
 
 ### 기타 테이블
 
@@ -234,6 +241,8 @@
 CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id UUID REFERENCES customers(id),
+  affiliate_id UUID REFERENCES affiliates(id) ON DELETE SET NULL,  -- 마이그레이션 20260502120500
+  journey JSONB DEFAULT '{}'::jsonb,  -- 마이그레이션 20260502140000 — stage·checklist_preview 등
   channel TEXT DEFAULT 'web',
   source TEXT,
   messages JSONB DEFAULT '[]',
@@ -242,11 +251,13 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 CREATE INDEX idx_conversations_customer ON conversations(customer_id);
 CREATE INDEX idx_conversations_created ON conversations(created_at);
+CREATE INDEX idx_conversations_affiliate_id ON conversations(affiliate_id);
 ```
 
 **사용처:**
-- `POST /api/qa/chat` — 대화 저장·메시지 히스토리 누적
+- `POST /api/qa/chat` — 대화 저장·메시지 히스토리 누적, 제휴 스코프·여정 갱신, `recordPlatformLearningEvent`
 - `POST /api/bookings` — 예약 생성 시 session → customer_id 연결
+- 공개 위젯 `ChatWidget` — `affiliateRef`(리퍼러) 전달; 에스컬레이션 시 `tel:`(`NEXT_PUBLIC_CONSULT_PHONE`)·`openKakaoChannel`, `POST /api/qa/escalation-cta`로 플라이휠·`qa_inquiries` 적재
 
 ### 3-2. intents (대화에서 추출한 여행 의도)
 
@@ -356,7 +367,27 @@ CREATE TABLE ai_responses (
 );
 ```
 
-### 3-6. rfq_messages (RFQ AI 중개 메시지)
+### 3-6. platform_learning_events (플랫폼 AI 플라이휠)
+
+비식별 신호만 적재. 운영 조회: `GET /api/admin/platform-learning`, 어드민 `/admin/platform-learning`.
+
+```sql
+-- 요약 — 전체는 supabase/migrations/20260502160000_platform_learning_events.sql 등 참고
+CREATE TABLE platform_learning_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  source TEXT NOT NULL,
+  session_id UUID,
+  affiliate_id UUID REFERENCES affiliates(id) ON DELETE SET NULL,
+  message_sha256 CHAR(64),
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  tenant_id UUID,
+  message_redacted TEXT,
+  consent_flags JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+```
+
+### 3-7. rfq_messages (RFQ AI 중개 메시지)
 
 ```sql
 CREATE TABLE IF NOT EXISTS rfq_messages (
@@ -382,7 +413,7 @@ CREATE TABLE IF NOT EXISTS rfq_messages (
 
 | 영역 | 기술 |
 |------|------|
-| **프레임워크** | Next.js 15 (App Router) |
+| **프레임워크** | Next.js 14.2.20 (App Router) |
 | **언어** | TypeScript |
 | **DB** | Supabase (PostgreSQL) + RLS |
 | **인증** | JWT 로컬 검증 (middleware.ts) |
@@ -407,3 +438,6 @@ CREATE TABLE IF NOT EXISTS rfq_messages (
 | **정책 엔진** | os_policies — 40+ 비즈니스 룰 (가격/마일리지/알림/디스플레이 등) |
 | **AI Fallback** | API 키 미설정 시 dummy 콘텐츠 반환, 전체 파이프라인 중단 금지 |
 | **알림 이중화** | KakaoNotificationAdapter(알림톡+DB) / MockNotificationAdapter(DB만) |
+| **자비스 오케스트레이션** | `resolveSpecialist` + 레지스트리(`src/lib/jarvis/orchestration/`), V2 `v2-dispatch.ts`, SSE `agent_picked` — 문서 `docs/jarvis-orchestration.md` |
+| **AI 학습 축 분리** | 업무 DB(예약·고객 PII)와 별도로 `platform_learning_events`에 라우팅·여정 신호만 적재 |
+| **에이전트 컨텍스트 규칙** | `.cursor/rules/yeosonam-context.mdc` — 사업·DB 작업 시 `CLAUDE.md`/`CURRENT_STATUS.md` 선행, 단순 수정 생략 |

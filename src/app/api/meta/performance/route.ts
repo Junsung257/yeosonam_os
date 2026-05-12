@@ -3,6 +3,8 @@ import { isSupabaseConfigured, getAdPerformance, upsertAdPerformanceSnapshot } f
 import { fetchCampaignInsights, isMetaConfigured } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { getMonthlyAdStats } from '@/lib/roas-calculator';
+import { parseBasis, getBasisMeta } from '@/lib/kpi-basis';
+import { getSecret } from '@/lib/secret-registry';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -18,8 +20,10 @@ export async function GET(request: NextRequest) {
   try {
     if (type === 'monthly') {
       const months = parseInt(searchParams.get('months') ?? '6');
-      const stats = await getMonthlyAdStats(months);
-      return NextResponse.json({ stats });
+      // marketing 페이지의 default 는 accounting (snapshot 기반, 기존 동작 유지)
+      const basis = parseBasis(searchParams.get('basis') ?? 'accounting');
+      const stats = await getMonthlyAdStats(months, basis);
+      return NextResponse.json({ stats, basis, basisMeta: getBasisMeta(basis) });
     }
 
     if (!campaignId) {
@@ -47,8 +51,8 @@ export async function POST(request: NextRequest) {
     // 캠페인 조회
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
     );
     const { data: campaign } = await sb
       .from('ad_campaigns')

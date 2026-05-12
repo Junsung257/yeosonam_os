@@ -7,6 +7,7 @@ import {
   krwToMetaCents,
 } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
+import { logError } from '@/lib/sentry-logger';
 import type { CreateCampaignRequest } from '@/types/meta-ads';
 
 export async function GET(request: NextRequest) {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     const campaigns = await getAdCampaigns({ packageId, status, page, limit });
     return NextResponse.json({ campaigns });
   } catch (error) {
-    console.error('캠페인 목록 조회 실패:', error);
+    logError('[api/meta/campaigns] GET campaign list failed', error);
     return NextResponse.json({ error: '조회 실패' }, { status: 500 });
   }
 }
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ campaign, meta_created: false }, { status: 201 });
   } catch (error) {
-    console.error('캠페인 생성 실패:', error);
+    logError('[api/meta/campaigns] POST campaign creation failed', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '캠페인 생성 실패' },
       { status: 500 }

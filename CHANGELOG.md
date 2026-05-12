@@ -4,6 +4,29 @@
 
 자비스 전면 개편. 설계 문서 `db/JARVIS_V2_DESIGN.md` 참조.
 
+### Added (2026-05 maintenance)
+
+- 제휴/코브랜딩 유입 추적 고도화: `/with/[code]`, 추천코드 대문자 정규화, 랜딩/가이드북 이벤트 적재 경로 확장
+- `conversations` 고객 여정(`journey`)·제휴 스코프(`affiliate_id`) 확장과 플랫폼 학습 이벤트(`platform_learning_events`) 운영 조회 경로 추가
+- MRT/숙소 동기화 파이프라인 및 검색 인덱스 보강 마이그레이션 추가 (`20260503*`)
+
+**Phase A — 보안·안전성 패치 (2026-05-03)**
+- RFQ XSS 방어: `sanitizeText` + DOMPurify 적용 (3파일)
+- bookings 상태머신 가드: 잘못된 전이 시 400 반환
+- attractions 소프트 삭제: `DELETE` → `is_active=false` 전환
+- `api/tracking` 논블로킹: 추적 실패가 API 응답을 막지 않도록
+- 어드민 쓰기 라우트 인증 강화 (5개 라우트)
+- `getAirlineName()` SSOT: `render-contract.ts` 단일 출처로 통합
+- 블로그 스케줄러 배치 INSERT로 교체 (N+1 제거)
+- `callWithZodValidation` LLM 에이전트 9개 전체 적용
+- `register-via-ir` / `audit-pkg-to-ir` Bearer 인증 추가
+- `lib/status-colors.ts` 생성 + 어드민 3파일 마이그레이션
+
+**Phase B — 코드 품질 리팩 (2026-05-03)**
+- `lib/admin-utils.ts` 확장: `fmtNum`, `fmtDateISO`, `fmtDateTime` 추가
+- 어드민 7개 파일(`payments`, `rfqs`, `tax`, `tenants`, `scoring`, `land-settlements`, `AdminPageClient`) 인라인 포맷 함수 → `admin-utils` import로 통합
+- `render-contract.ts` CanonicalView에 `optionalToursByRegion` 단축 필드 추가 (CRC v1 완전 적용)
+
 ### Added
 
 **Phase 0·1 — 설계 + 저위험 패치** (6e2c1a9)

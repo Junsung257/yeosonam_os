@@ -6,6 +6,7 @@
  */
 
 import webpush from 'web-push';
+import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
 
 export interface PushPayload {
@@ -17,9 +18,9 @@ export interface PushPayload {
   extra?: Record<string, unknown>;
 }
 
-const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@yeosonam.com';
+const VAPID_PUBLIC = getSecret('NEXT_PUBLIC_VAPID_PUBLIC_KEY');
+const VAPID_PRIVATE = getSecret('VAPID_PRIVATE_KEY');
+const VAPID_SUBJECT = getSecret('VAPID_SUBJECT') || 'mailto:admin@yeosonam.com';
 
 let vapidReady = false;
 function ensureVapid(): boolean {

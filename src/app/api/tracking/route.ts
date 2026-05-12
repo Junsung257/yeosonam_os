@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSecret } from '@/lib/secret-registry';
 import {
+  supabaseAdmin,
   isSupabaseConfigured,
   insertTrafficLog,
   insertSearchLog,
@@ -28,6 +30,13 @@ type TrackingPayload =
       current_cpc?: number;
       landing_page?: string;
       content_creative_id?: string;
+      visitor_uid?: string;
+      is_returning?: boolean;
+      device_type?: string;
+      device_os?: string;
+      browser_name?: string;
+      viewport_w?: number;
+      viewport_h?: number;
     }
   | {
       type: 'search';
@@ -37,17 +46,30 @@ type TrackingPayload =
       search_category?: string;
       result_count?: number;
       lead_time_days?: number;
+      visitor_uid?: string;
     }
   | {
       type: 'engagement';
       session_id: string;
       user_id?: string;
+      /** page_view, scroll_25 … 등 — DB는 text 컬럼 */
       event_type: string;
       product_id?: string;
       product_name?: string;
       page_url?: string;
       cart_added?: boolean;
       lead_time_days?: number;
+      visitor_uid?: string;
+      time_on_page_ms?: number;
+      max_scroll_pct?: number;
+      interaction_count?: number;
+      /** 콘텐츠 어트리뷰션: 카드뉴스·블로그 방문/클릭 이벤트 */
+      content_id?: string;
+      content_type?: 'card_news' | 'blog' | 'email';
+      tenant_id?: string;
+      utm_source?: string;
+      utm_medium?: string;
+      utm_campaign?: string;
     }
   | {
       type: 'conversion';
@@ -101,7 +123,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         consent_agreed: consent,
         landing_page: body.landing_page ?? null,
         content_creative_id: body.content_creative_id ?? null,
+        visitor_uid: body.visitor_uid ?? null,
+        is_returning: body.is_returning ?? null,
+        device_type: body.device_type ?? null,
+        device_os: body.device_os ?? null,
+        browser_name: body.browser_name ?? null,
+        viewport_w: body.viewport_w ?? null,
+        viewport_h: body.viewport_h ?? null,
       });
+      // 내부 조회수 원자적 증가 (어드민 대시보드 용)
+      if (body.content_creative_id) {
+        const creativeId = body.content_creative_id as string;
+        supabaseAdmin.rpc('increment_content_view_count', {
+          p_creative_id: creativeId,
+        }).then(async (res: { error: unknown }) => {
+          if (res.error) {
+            // RPC 없으면 fallback: 현재값 +1 (race condition 허용 — 통계 용도)
+            const { data } = await supabaseAdmin
+              .from('content_creatives')
+              .select('view_count')
+              .eq('id', creativeId)
+              .limit(1);
+            const current = ((data?.[0] as { view_count?: number } | undefined)?.view_count) ?? 0;
+            await supabaseAdmin
+              .from('content_creatives')
+              .update({ view_count: current + 1 })
+              .eq('id', creativeId);
+          }
+        });
+      }
       return NextResponse.json({ ok: true }, { status: 202 });
     }
 
@@ -114,6 +164,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         search_category: body.search_category ?? null,
         result_count: body.result_count ?? 0,
         lead_time_days: body.lead_time_days ?? null,
+        visitor_uid: body.visitor_uid ?? null,
       });
       return NextResponse.json({ ok: true }, { status: 202 });
     }
@@ -123,13 +174,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       void insertEngagementLog({
         session_id: body.session_id,
         user_id: body.user_id ?? null,
-        event_type: body.event_type as 'page_view' | 'product_view' | 'cart_added' | 'checkout_start',
+        event_type: body.event_type,
         product_id: body.product_id ?? null,
         product_name: body.product_name ?? null,
         cart_added: body.cart_added ?? false,
         page_url: body.page_url ?? null,
         lead_time_days: body.lead_time_days ?? null,
+        visitor_uid: body.visitor_uid ?? null,
+        time_on_page_ms: body.time_on_page_ms ?? null,
+        max_scroll_pct: body.max_scroll_pct ?? null,
+        interaction_count: body.interaction_count ?? null,
       });
+      // 콘텐츠 어트리뷰션: view/click 이벤트만 기록
+      if (
+        body.content_id &&
+        body.content_type &&
+        (body.event_type === 'view' || body.event_type === 'click' || body.event_type === 'inquiry')
+      ) {
+        const attrEventType =
+          body.event_type === 'inquiry' ? 'inquiry' :
+          body.event_type === 'click' ? 'click' : 'view';
+        void supabaseAdmin.from('content_attribution_events').insert({
+          tenant_id: body.tenant_id ?? null,
+          content_id: body.content_id,
+          content_type: body.content_type,
+          session_id: body.session_id,
+          utm_source: body.utm_source ?? null,
+          utm_medium: body.utm_medium ?? null,
+          utm_campaign: body.utm_campaign ?? null,
+          event_type: attrEventType,
+        });
+      }
       return NextResponse.json({ ok: true }, { status: 202 });
     }
 
@@ -190,36 +265,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         content_creative_id,
       });
 
-      // ── Postback ──────────────────────────────────────
-      // Google Ads 전환 Postback
-      if (attributed_gclid && process.env.GOOGLE_CONVERSION_ID) {
-        try {
-          await fetch(
-            `https://www.googleadservices.com/pagead/conversion/${process.env.GOOGLE_CONVERSION_ID}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`
-          );
-          console.log(`[Postback] Google Ads 전환: gclid=${attributed_gclid}, value=${final_sales_price}`);
-        } catch (e) {
-          console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e);
-        }
+      // ── Postback (fire-and-forget) ──────────────────────
+      // 외부 광고 플랫폼 전환 통보. await 차단으로 응답 지연 방지 — 실패해도 Conversion DB 기록은 이미 적재됨.
+      // Google Ads 전환 Postback (5s timeout — fire-and-forget이지만 행 시 lambda 점유 방어)
+      if (attributed_gclid && getSecret('GOOGLE_CONVERSION_ID')) {
+        fetch(
+          `https://www.googleadservices.com/pagead/conversion/${getSecret('GOOGLE_CONVERSION_ID')}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`,
+          { signal: AbortSignal.timeout(5000) },
+        )
+          .then(() => console.log('[Postback] Google Ads 전환 완료'))
+          .catch(e => console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e));
       }
 
       // Meta Conversions API Postback
-      if (attributed_fbclid && process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
-        try {
-          await fetch(`https://graph.facebook.com/v18.0/${process.env.META_PIXEL_ID}/events`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
-                user_data: { fbclid: attributed_fbclid },
-                custom_data: { value: final_sales_price, currency: 'KRW' } }],
-              access_token: process.env.META_ACCESS_TOKEN,
-            }),
-          });
-          console.log(`[Postback] Meta CAPI 전환: fbclid=${attributed_fbclid}, value=${final_sales_price}`);
-        } catch (e) {
-          console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e);
-        }
+      const metaPixelId = getSecret('META_PIXEL_ID');
+      const metaAccessToken = getSecret('META_ACCESS_TOKEN');
+      if (attributed_fbclid && metaPixelId && metaAccessToken) {
+        fetch(`https://graph.facebook.com/v18.0/${metaPixelId}/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            data: [{ event_name: 'Purchase', event_time: Math.floor(Date.now() / 1000),
+              user_data: { fbclid: attributed_fbclid },
+              custom_data: { value: final_sales_price, currency: 'KRW' } }],
+            access_token: metaAccessToken,
+          }),
+          signal: AbortSignal.timeout(5000),
+        })
+          .then(() => console.log('[Postback] Meta CAPI 전환 완료'))
+          .catch(e => console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e));
+      }
+
+      // 콘텐츠 → 예약 어트리뷰션 기록
+      if (content_creative_id) {
+        void supabaseAdmin.from('content_attribution_events').insert({
+          content_id: content_creative_id,
+          content_type: 'blog',
+          session_id,
+          event_type: 'booking',
+          utm_source: attributed_source,
+        });
       }
 
       const net_profit = final_sales_price - base_cost - allocated_ad_spend;

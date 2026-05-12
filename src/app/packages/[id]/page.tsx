@@ -1,20 +1,26 @@
 import type React from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
+import { supabaseAdmin } from '@/lib/supabase';
 import DetailClient from './DetailClient';
+import ReviewsSection from '@/components/reviews/ReviewsSection';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
+import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 
-export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음)
+export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음) // refreshed 2026-04-22
+const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-}
+const DETAIL_FIELDS = `
+  id, title, destination, duration, nights, price, airline, departure_airport, departure_days,
+  min_participants, min_people, ticketing_deadline, product_type,
+  price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
+  product_highlights, customer_notes, internal_notes, notices_parsed, itinerary_data,
+  display_title, hero_tagline, product_summary, thumbnail_urls, is_airtel,
+  land_operator_id, audit_status,
+  products(internal_code, display_name, departure_region)
+`;
 
 // SEO: 동적 메타데이터
 export async function generateMetadata({
@@ -23,7 +29,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const sb = getSupabase();
+  const sb = supabaseAdmin;
   const { data } = await sb
     .from('travel_packages')
     .select('title, destination, price, product_summary')
@@ -48,12 +54,12 @@ export default async function PackageDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const sb = getSupabase();
+  const sb = supabaseAdmin;
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
   const pkgResult = await sb.from('travel_packages')
-    .select('*, products(internal_code, display_name, departure_region)')
+    .select(DETAIL_FIELDS)
     .eq('id', id)
     .single();
 
@@ -81,7 +87,7 @@ export default async function PackageDetailPage({
     matchQuery = matchQuery.or(`${regionClauses},${destCountryClause},${countryClauses}`);
   }
 
-  const matchResult = await matchQuery.limit(3000);
+  const matchResult = await matchQuery.limit(1200);
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
@@ -109,7 +115,7 @@ export default async function PackageDetailPage({
   let relevantAttractions: AttractionData[] = [];
   if (matchedNames.size > 0) {
     const { data: detail } = await sb.from('attractions')
-      .select('name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category')
+      .select('id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category')
       .in('name', Array.from(matchedNames));
     relevantAttractions = (detail ?? []) as unknown as AttractionData[];
   }
@@ -148,10 +154,19 @@ export default async function PackageDetailPage({
 
     relatedBlogPosts = (productScoped.data ?? []) as typeof relatedBlogPosts;
 
-    // 중복 slug 제거 + 상위 4개
+    // 중복 slug 제거 + 정보성 글만 + 상위 4개
+    // ERR-LB-DAD-editor-section@2026-04-20:
+    //   "여소남 에디터의 가이드" 섹션은 destination이 같은 다른 상품의 콘텐츠를 노출하는데,
+    //   angle_type='value' (가성비/가격형) 글은 다른 상품의 가격(73만원 등)을 우리 상품(110만)
+    //   페이지에서 광고하는 꼴이 되어 부적절. 정보성(가이드/날씨/준비물) 글만 노출.
+    const FORBIDDEN_ANGLES = ['value', 'price', 'sale', 'deal', 'discount', 'promotion', 'comparison'];
+    const PRICE_PATTERN = /\d+만원|\d+,\d{3},?\d*\s*원|\₩\s*\d|\d+만\s*~|특가|최저가/;
     const seenSlugs = new Set(relatedBlogPosts.map(p => p.slug));
     destinationBlogPosts = ((destinationScoped.data ?? []) as typeof destinationBlogPosts)
       .filter(p => !seenSlugs.has(p.slug))
+      .filter(p => !FORBIDDEN_ANGLES.includes(p.angle_type))
+      .filter(p => !PRICE_PATTERN.test(p.seo_title || ''))
+      .filter(p => !PRICE_PATTERN.test(p.seo_description || ''))
       .slice(0, 4);
   }
 
@@ -170,13 +185,191 @@ export default async function PackageDetailPage({
       });
     }
     if (unmatchedItems.length > 0) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
-      fetch(`${baseUrl}/api/unmatched`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: unmatchedItems }) }).catch(() => {});
+      // ERR-unmatched-queue-middleware-401@2026-04-21:
+      //   기존: fetch('https://yeosonam.com/api/unmatched') 로 self-call → middleware PUBLIC_PATHS 미등록
+      //         → 401 리다이렉트 → .catch(() => {}) 로 침묵 실패 → 2026-04-10 ~ 04-21 사이 등록된
+      //         16개 상품 전부 unmatched 자동 큐잉 누락.
+      //   해결: supabaseAdmin 으로 직접 upsert (middleware 독립).
+      const sbAdmin = supabaseAdmin;
+      const upsertPayload = unmatchedItems.map(it => ({
+        activity: it.activity,
+        package_id: it.package_id,
+        package_title: it.package_title,
+        day_number: it.day_number,
+        country: it.country || null,
+        region: null,
+        occurrence_count: 1,
+        status: 'pending',
+      }));
+      sbAdmin
+        .from('unmatched_activities')
+        .upsert(upsertPayload, { onConflict: 'activity' })
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) console.error('[unmatched upsert 실패]', error.message);
+        });
     }
   }
 
   // 서버에서 매칭된 관광지(photos/short_desc 포함)만 전달
   const attractionsForClient = (attrResult.data ?? []) as React.ComponentProps<typeof DetailClient>['initialAttractions'];
+
+  // ── destination_climate 조인 (여행 적합도 + 시차 카드용) ────────────────
+  // pkg.destination 텍스트로 매칭 (build_climate.js 의 시드와 1:1)
+  let climateData: {
+    destination: string; primary_city: string; country: string | null;
+    lat: number; lon: number; timezone: string; utc_offset_minutes: number;
+    monthly_normals: unknown; fitness_scores: unknown; seasonal_signals: unknown;
+  } | null = null;
+  let representativeMonth = new Date().getMonth() + 1;
+  let departureDistribution: Record<number, number> = {};
+  if (pkg?.destination) {
+    const { data: cli } = await sb.from('destination_climate')
+      .select('destination, primary_city, country, lat, lon, timezone, utc_offset_minutes, monthly_normals, fitness_scores, seasonal_signals')
+      .eq('destination', pkg.destination)
+      .maybeSingle();
+    if (cli) climateData = cli as unknown as typeof climateData;
+
+    // 출발일 평균월 산출 — price_dates 우선, 없으면 price_tiers.departure_dates
+    const dates: string[] = [];
+    const pd = (pkg as { price_dates?: { date: string }[] }).price_dates ?? [];
+    for (const d of pd) if (d?.date) dates.push(d.date);
+    const pt = (pkg as { price_tiers?: { departure_dates?: string[] }[] }).price_tiers ?? [];
+    for (const t of pt) for (const d of (t.departure_dates ?? [])) if (d) dates.push(d);
+    if (dates.length > 0) {
+      const r = pickRepresentativeMonths(dates);
+      representativeMonth = r.primary;
+      departureDistribution = r.distribution;
+    }
+  }
+
+  // ── package_scores 조인 (모바일 추천 카드용) ───────────────────────
+  // 활성 정책 1건만. group_size>=2 일 때만 의미 있음 (단일 그룹은 비교 불가)
+  // ── package_scores 출발일별 row N개 fetch (v3 옵션 A) ──────────────
+  type ScoreRow = {
+    departure_date: string | null;
+    rank_in_group: number;
+    group_size: number;
+    effective_price: number;
+    list_price: number | null;
+    shopping_count: number | null;
+    hotel_avg_grade: number | null;
+    meal_count: number | null;
+    free_option_count: number | null;
+    is_direct_flight: boolean | null;
+    breakdown: {
+      list_price?: number;
+      why?: string[];
+      deductions?: {
+        hotel_premium?: number;
+        flight_premium?: number;
+        shopping_avoidance?: number;
+        free_options?: number;
+        cold_start_boost?: number;
+      };
+    } | null;
+  };
+  let scoreRows: ScoreRow[] = [];
+  {
+    const { data: sc } = await sb
+      .from('package_scores')
+      .select('departure_date, rank_in_group, group_size, effective_price, list_price, shopping_count, hotel_avg_grade, meal_count, free_option_count, is_direct_flight, breakdown')
+      .eq('package_id', id)
+      .order('departure_date', { ascending: true });
+    if (sc) scoreRows = sc as ScoreRow[];
+  }
+
+  // ── pairwise rivals: 같은 날 그룹의 다른 패키지 1~2개 ──────────────
+  // 추천 카드에서 "다른 옵션과 비교" UI로 사용
+  type Rival = {
+    package_id: string; title: string; departure_date: string | null;
+    list_price: number; effective_price: number; rank_in_group: number;
+    hotel_avg_grade: number | null; shopping_count: number | null;
+    free_option_count: number | null; is_direct_flight: boolean | null;
+    breakdown: ScoreRow['breakdown'];
+  };
+  const rivalsByDate: Record<string, Rival[]> = {};
+  {
+    const groupKeys = scoreRows
+      .filter(r => r.group_size >= 2 && r.departure_date)
+      .map(r => `${pkg?.destination ?? ''}|${r.departure_date}`);
+    if (groupKeys.length > 0) {
+      const { data } = await sb
+        .from('package_scores')
+        .select(`departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)`)
+        .in('group_key', groupKeys)
+        .neq('package_id', id);
+      for (const r of data ?? []) {
+        const row = r as unknown as { departure_date: string; travel_packages: { title: string } | { title: string }[] } & Rival;
+        const t = Array.isArray(row.travel_packages) ? row.travel_packages[0]?.title : row.travel_packages?.title;
+        if (!row.departure_date) continue;
+        if (!rivalsByDate[row.departure_date]) rivalsByDate[row.departure_date] = [];
+        rivalsByDate[row.departure_date].push({ ...row, title: t ?? '' });
+      }
+      // 각 날짜별 rank 순 정렬, 최대 2개
+      for (const date of Object.keys(rivalsByDate)) {
+        rivalsByDate[date].sort((a, b) => a.rank_in_group - b.rank_in_group);
+        rivalsByDate[date] = rivalsByDate[date].slice(0, 2);
+      }
+    }
+  }
+
+  // ── 사회적 증거 카운트 (Cialdini Principle 4) ───────────────────────
+  // destination 단위 30일 인기도 + 오늘 조회수 + 다음 출발일 예약 현황
+  let socialProof: {
+    bookings: number;
+    interest: number;
+    todayViews: number;
+    nextDepartureBookings: number;
+    nextDepartureDate: string | null;
+  } = { bookings: 0, interest: 0, todayViews: 0, nextDepartureBookings: 0, nextDepartureDate: null };
+
+  if (pkg?.destination) {
+    const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
+    const since24h = new Date(Date.now() - 86400000).toISOString();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const destPkgIds = (await sb.from('travel_packages').select('id').eq('destination', pkg.destination))
+      .data?.map((p: { id: string }) => p.id) ?? [];
+
+    // 가장 가까운 미래 출발일 탐색 (price_dates 또는 price_tiers에서)
+    const pd = (pkg as { price_dates?: { date: string }[] }).price_dates ?? [];
+    const pt = (pkg as { price_tiers?: { departure_dates?: string[] }[] }).price_tiers ?? [];
+    const allDates: string[] = [];
+    for (const d of pd) if (d?.date) allDates.push(d.date);
+    for (const t of pt) for (const d of (t.departure_dates ?? [])) if (d) allDates.push(d);
+    const nextDate = allDates.filter(d => d >= todayStr).sort()[0] ?? null;
+
+    const [bk, sg, tv, nb] = await Promise.all([
+      // 30일 예약 (destination 단위)
+      sb.from('bookings').select('id', { count: 'exact', head: true })
+        .in('status', ['confirmed', 'waiting_balance', 'fully_paid'])
+        .gte('created_at', since30d)
+        .in('package_id', destPkgIds),
+      // 30일 조회 신호
+      sb.from('package_score_signals').select('id', { count: 'exact', head: true })
+        .gte('created_at', since30d)
+        .in('package_id', destPkgIds),
+      // 오늘 이 상품 조회수 (24h)
+      sb.from('package_score_signals').select('id', { count: 'exact', head: true })
+        .gte('created_at', since24h)
+        .eq('package_id', id),
+      // 다음 출발일 현재 예약자 수
+      nextDate
+        ? sb.from('bookings').select('id', { count: 'exact', head: true })
+            .eq('package_id', id)
+            .eq('departure_date', nextDate)
+            .in('status', ['confirmed', 'deposit_paid', 'waiting_balance', 'fully_paid'])
+        : Promise.resolve({ count: 0 }),
+    ]);
+
+    socialProof = {
+      bookings: bk.count ?? 0,
+      interest: sg.count ?? 0,
+      todayViews: tv.count ?? 0,
+      nextDepartureBookings: (nb as { count: number | null }).count ?? 0,
+      nextDepartureDate: nextDate,
+    };
+  }
 
   // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기
   let initialNotices: NoticeBlock[] = [];
@@ -196,13 +389,25 @@ export default async function PackageDetailPage({
   }
 
   return (
-    <DetailClient
-      initialPackage={normalizedPkg}
-      initialAttractions={attractionsForClient}
-      packageId={id}
-      relatedBlogPosts={relatedBlogPosts}
-      destinationBlogPosts={destinationBlogPosts}
-      initialNotices={initialNotices}
-    />
+    <>
+      <DetailClient
+        initialPackage={normalizedPkg}
+        initialAttractions={attractionsForClient}
+        packageId={id}
+        relatedBlogPosts={relatedBlogPosts}
+        destinationBlogPosts={destinationBlogPosts}
+        initialNotices={initialNotices}
+        climateData={climateData}
+        representativeMonth={representativeMonth}
+        departureDistribution={departureDistribution}
+        scoreRows={scoreRows}
+        rivalsByDate={rivalsByDate}
+        socialProof={socialProof}
+      />
+      {/* 고객 후기 (approved 리뷰 있을 때만 렌더) */}
+      <div className="mx-auto max-w-4xl px-4">
+        <ReviewsSection packageId={id} limit={5} />
+      </div>
+    </>
   );
 }

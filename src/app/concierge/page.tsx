@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { trackEngagement } from '@/lib/tracker';
 
 interface MockSearchResult {
   product_id:       string;
@@ -72,6 +73,28 @@ export default function ConciergePage() {
 
   const sessionId = getOrCreateSessionId();
 
+  // 장바구니 상태에서 페이지 이탈 시 이탈 신호를 남겨 후속 리마케팅에 활용
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (cart.length === 0) return;
+      try {
+        navigator.sendBeacon(
+          '/api/tracking',
+          JSON.stringify({
+            type: 'engagement',
+            session_id: sessionId,
+            event_type: 'cart_abandon_exit',
+            page_url: '/concierge',
+          }),
+        );
+      } catch {
+        // noop
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [cart.length, sessionId]);
+
   // 페이지 로드 시 장바구니 복원
   useEffect(() => {
     if (!sessionId) return;
@@ -81,9 +104,9 @@ export default function ConciergePage() {
       .catch(() => {});
   }, [sessionId]);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  async function performSearch(rawQuery: string) {
+    const normalized = rawQuery.trim();
+    if (!normalized) return;
     setLoading(true);
     setResults([]);
     setErrorMsg('');
@@ -91,7 +114,7 @@ export default function ConciergePage() {
       const res = await fetch('/api/concierge/search', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ query }),
+        body:    JSON.stringify({ query: normalized }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -101,6 +124,11 @@ export default function ConciergePage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    await performSearch(query);
   }
 
   async function addToCart(item: MockSearchResult) {
@@ -117,6 +145,12 @@ export default function ConciergePage() {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ session_id: sessionId, item: newItem }),
+    });
+    trackEngagement({
+      event_type: 'cart_added',
+      product_id: item.product_id,
+      product_name: item.product_name,
+      page_url: typeof window !== 'undefined' ? window.location.pathname : '/concierge',
     });
   }
 
@@ -197,8 +231,8 @@ export default function ConciergePage() {
         <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-8">
           <div className="text-center mb-6">
             <div className="text-5xl mb-3">🎉</div>
-            <h2 className="text-2xl font-bold text-gray-900">결제 완료!</h2>
-            <p className="text-gray-500 text-sm mt-1">아래 바우처를 저장하세요.</p>
+            <h2 className="text-2xl font-bold text-slate-900">결제 완료!</h2>
+            <p className="text-slate-500 text-sm mt-1">아래 바우처를 저장하세요.</p>
           </div>
           <div className="space-y-3">
             {vouchers.map((v, i) => (
@@ -214,14 +248,14 @@ export default function ConciergePage() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-medium text-gray-500">
+                    <span className="text-xs font-medium text-slate-500">
                       {PRODUCT_TYPE_LABELS[v.product_type] ?? v.product_type}
                     </span>
-                    <p className="font-semibold text-gray-900 mt-0.5">{v.product_name}</p>
+                    <p className="font-semibold text-slate-900 mt-0.5">{v.product_name}</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">바우처 코드</span>
-                    <p className="font-mono font-bold text-lg tracking-widest text-indigo-700">{v.code}</p>
+                    <span className="text-xs text-slate-500">바우처 코드</span>
+                    <p className="font-mono font-bold text-lg tracking-widest text-[#1B64DA]">{v.code}</p>
                   </div>
                 </div>
                 {v.product_type === 'CRUISE' && (
@@ -234,7 +268,7 @@ export default function ConciergePage() {
           </div>
           <button
             onClick={() => { setVouchers(null); setResults([]); setQuery(''); }}
-            className="mt-6 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700"
+            className="mt-6 w-full bg-brand text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA]"
           >
             새 여행 계획하기
           </button>
@@ -244,14 +278,14 @@ export default function ConciergePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* 헤더 */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
         <Link href="/" className="flex items-center gap-2">
           <span className="text-2xl">✈️</span>
-          <span className="font-bold text-lg text-gray-900">여소남 AI 컨시어지</span>
+          <span className="font-bold text-lg text-slate-900">여소남 AI 컨시어지</span>
         </Link>
-        <span className="text-sm text-gray-500">자유여행 · 크루즈 · 액티비티 통합 예약</span>
+        <span className="text-sm text-slate-500">자유여행 · 크루즈 · 액티비티 통합 예약</span>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -260,8 +294,8 @@ export default function ConciergePage() {
           {/* 검색창 */}
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">어디로 떠나실까요? 🧳</h1>
-              <p className="text-gray-500">자연어로 말씀해 주세요. AI가 맞춤 상품을 찾아드립니다.</p>
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">어디로 떠나실까요? 🧳</h1>
+              <p className="text-slate-500">자연어로 말씀해 주세요. AI가 맞춤 상품을 찾아드립니다.</p>
             </div>
             <form onSubmit={handleSearch} className="flex gap-2">
               <input
@@ -270,12 +304,12 @@ export default function ConciergePage() {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="예: 방콕 3박 4일 호텔이랑 투어 추천해줘"
-                className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="flex-1 border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
               />
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 transition"
+                className="bg-brand text-white px-6 py-3 rounded-xl font-semibold hover:bg-[#1B64DA] disabled:opacity-50 transition"
               >
                 {loading ? '검색 중...' : '검색'}
               </button>
@@ -292,8 +326,9 @@ export default function ConciergePage() {
                 ].map(s => (
                   <button
                     key={s}
-                    onClick={() => { setQuery(s); setTimeout(() => inputRef.current?.form?.requestSubmit(), 50); }}
-                    className="text-sm bg-white border border-gray-200 rounded-full px-3 py-1.5 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 transition"
+                    type="button"
+                    onClick={() => { setQuery(s); void performSearch(s); }}
+                    className="text-sm bg-white border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 hover:bg-brand-light hover:border-blue-200 transition"
                   >
                     {s}
                   </button>
@@ -311,14 +346,14 @@ export default function ConciergePage() {
           {/* 검색 결과 */}
           {results.length > 0 && (
             <div className="max-w-4xl mx-auto mt-8">
-              <h2 className="text-lg font-semibold text-gray-700 mb-4">
+              <h2 className="text-lg font-semibold text-slate-700 mb-4">
                 검색 결과 {results.length}건
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {results.map(item => (
                   <div key={item.product_id} className="bg-white rounded-xl border shadow-sm p-4 flex flex-col">
                     <div className="flex items-center gap-1 flex-wrap mb-2">
-                      <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                      <span className="text-xs font-medium text-brand bg-brand-light px-2 py-0.5 rounded-full">
                         {PRODUCT_TYPE_LABELS[item.product_type] ?? item.product_type}
                       </span>
                       {resolveCategory(item) === 'DYNAMIC' ? (
@@ -326,10 +361,10 @@ export default function ConciergePage() {
                       ) : (
                         <span className="text-xs font-medium text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">고정패키지</span>
                       )}
-                      <span className="text-xs text-gray-400 ml-auto">{API_LABELS[item.api_name] ?? item.api_name}</span>
+                      <span className="text-xs text-slate-400 ml-auto">{API_LABELS[item.api_name] ?? item.api_name}</span>
                     </div>
-                    <h3 className="font-semibold text-gray-900 text-base mb-1">{item.product_name}</h3>
-                    <p className="text-sm text-gray-500 flex-1 mb-3">{item.description}</p>
+                    <h3 className="font-semibold text-slate-900 text-base mb-1">{item.product_name}</h3>
+                    <p className="text-sm text-slate-500 flex-1 mb-3">{item.description}</p>
 
                     {/* 크루즈 상세 attrs */}
                     {item.product_type === 'CRUISE' && item.attrs && (
@@ -343,16 +378,16 @@ export default function ConciergePage() {
 
                     <div className="flex items-end justify-between mt-auto">
                       <div>
-                        <span className="text-xs text-gray-400 line-through">
+                        <span className="text-xs text-slate-400 line-through">
                           ₩{item.cost.toLocaleString()}
                         </span>
-                        <div className="text-base font-bold text-indigo-700">
+                        <div className="text-base font-bold text-[#1B64DA]">
                           ₩{item.price.toLocaleString()}
                         </div>
                       </div>
                       <button
                         onClick={() => addToCart(item)}
-                        className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition"
+                        className="bg-brand text-white text-xs px-3 py-1.5 rounded-lg hover:bg-[#1B64DA] transition"
                       >
                         + 담기
                       </button>
@@ -364,7 +399,7 @@ export default function ConciergePage() {
           )}
 
           {loading && (
-            <div className="max-w-2xl mx-auto mt-12 text-center text-gray-400">
+            <div className="max-w-2xl mx-auto mt-12 text-center text-slate-400">
               <div className="text-4xl mb-3 animate-bounce">🔍</div>
               <p>AI가 최적의 상품을 검색하고 있습니다...</p>
             </div>
@@ -374,32 +409,32 @@ export default function ConciergePage() {
         {/* 장바구니 사이드바 */}
         <aside className="w-80 bg-white border-l flex flex-col">
           <div className="p-4 border-b">
-            <h2 className="font-bold text-gray-900">🛒 장바구니 {cart.length > 0 && `(${cart.length})`}</h2>
+            <h2 className="font-bold text-slate-900">🛒 장바구니 {cart.length > 0 && `(${cart.length})`}</h2>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {cart.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center mt-8">
+              <p className="text-sm text-slate-400 text-center mt-8">
                 상품을 담아보세요!
               </p>
             ) : (() => {
               const dynamicItems = cart.filter(i => resolveCategory(i) === 'DYNAMIC');
               const fixedItems   = cart.filter(i => resolveCategory(i) === 'FIXED');
               const renderCard   = (item: CartItem) => (
-                <div key={item.product_id} className="bg-gray-50 rounded-lg p-3">
+                <div key={item.product_id} className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <span className="text-xs text-indigo-600">
+                      <span className="text-xs text-brand">
                         {PRODUCT_TYPE_LABELS[item.product_type]}
                       </span>
-                      <p className="text-sm font-medium text-gray-800 leading-snug">{item.product_name}</p>
-                      <p className="text-sm font-bold text-indigo-700 mt-1">
+                      <p className="text-sm font-medium text-slate-800 leading-snug">{item.product_name}</p>
+                      <p className="text-sm font-bold text-[#1B64DA] mt-1">
                         ₩{(item.price * item.quantity).toLocaleString()}
                       </p>
                     </div>
                     <button
                       onClick={() => removeFromCart(item.product_id)}
-                      className="text-gray-300 hover:text-red-400 text-lg leading-none mt-0.5"
+                      className="text-slate-300 hover:text-red-400 text-lg leading-none mt-0.5"
                     >
                       ×
                     </button>
@@ -415,7 +450,7 @@ export default function ConciergePage() {
                     </div>
                   )}
                   {dynamicItems.length > 0 && fixedItems.length > 0 && (
-                    <hr className="border-dashed border-gray-300" />
+                    <hr className="border-dashed border-slate-300" />
                   )}
                   {fixedItems.length > 0 && (
                     <div>
@@ -431,19 +466,25 @@ export default function ConciergePage() {
           {cart.length > 0 && (
             <div className="p-4 border-t space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">합계</span>
-                <span className="font-bold text-gray-900">₩{cartTotal.toLocaleString()}</span>
+                <span className="text-slate-500">합계</span>
+                <span className="font-bold text-slate-900">₩{cartTotal.toLocaleString()}</span>
               </div>
               <button
-                onClick={() => setCheckoutOpen(true)}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition"
+                onClick={() => {
+                  setCheckoutOpen(true);
+                  trackEngagement({
+                    event_type: 'checkout_start',
+                    page_url: typeof window !== 'undefined' ? window.location.pathname : '/concierge',
+                  });
+                }}
+                className="w-full bg-brand text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition"
               >
                 결제하기
               </button>
               <button
                 onClick={handleShare}
                 disabled={sharing}
-                className="w-full py-2 text-sm border border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition disabled:opacity-50"
+                className="w-full py-2 text-sm border border-blue-200 text-brand rounded-xl hover:bg-brand-light transition disabled:opacity-50"
               >
                 {sharing ? '링크 생성 중...' : '이 구성 공유하기 🔗'}
               </button>
@@ -456,46 +497,46 @@ export default function ConciergePage() {
       {checkoutOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">고객 정보 입력</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-4">고객 정보 입력</h3>
             <form onSubmit={handleCheckout} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">이름 *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">이름 *</label>
                 <input
                   type="text"
                   required
                   value={customer.name}
                   onChange={e => setCustomer(c => ({ ...c, name: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
                   placeholder="홍길동"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">연락처</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">연락처</label>
                 <input
                   type="tel"
                   value={customer.phone}
                   onChange={e => setCustomer(c => ({ ...c, phone: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
                   placeholder="010-0000-0000"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">이메일</label>
                 <input
                   type="email"
                   value={customer.email}
                   onChange={e => setCustomer(c => ({ ...c, email: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
                   placeholder="example@email.com"
                 />
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+              <div className="bg-slate-50 rounded-lg p-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">결제 금액</span>
+                  <span className="text-slate-500">결제 금액</span>
                   <span className="font-bold">₩{cartTotal.toLocaleString()}</span>
                 </div>
-                <div className="text-xs text-gray-400 mt-1">{cart.length}개 상품</div>
+                <div className="text-xs text-slate-400 mt-1">{cart.length}개 상품</div>
               </div>
 
               {errorMsg && (
@@ -508,14 +549,14 @@ export default function ConciergePage() {
                 <button
                   type="button"
                   onClick={() => { setCheckoutOpen(false); setErrorMsg(''); }}
-                  className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-xl text-sm hover:bg-gray-50"
+                  className="flex-1 border border-slate-300 text-slate-700 py-2 rounded-xl text-sm hover:bg-slate-50"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={paying}
-                  className="flex-1 bg-indigo-600 text-white py-2 rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex-1 bg-brand text-white py-2 rounded-xl font-semibold text-sm hover:bg-[#1B64DA] disabled:opacity-50"
                 >
                   {paying ? '처리 중...' : '결제 완료'}
                 </button>
@@ -527,7 +568,7 @@ export default function ConciergePage() {
 
       {/* 공유 토스트 */}
       {shareToast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg z-50 animate-fade-in">
+        <div className="fixed bottom-6 right-6 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg z-50 animate-fade-in">
           {shareToast}
         </div>
       )}

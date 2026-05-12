@@ -11,10 +11,11 @@
  */
 
 import type { GroupRfq, RfqProposal } from './supabase';
+import { getSecret } from '@/lib/secret-registry';
 
 // ── 공통 설정 ────────────────────────────────────────────────
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const GEMINI_API_KEY = getSecret('GEMINI_API_KEY') ?? '';
 const GEMINI_MODEL   = 'gemini-2.5-flash';
 const USE_MOCK       = process.env.MOCK_RFQ_AI === 'true' || !GEMINI_API_KEY;
 

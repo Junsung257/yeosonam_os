@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { fmtMonthDay } from '@/lib/admin-utils';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',
@@ -118,8 +119,8 @@ export default function ContentAnalyticsPage() {
     <div className="space-y-4">
       {/* 헤더 */}
       <div>
-        <h1 className="text-[16px] font-semibold text-slate-800">콘텐츠 성과</h1>
-        <p className="text-[11px] text-slate-500 mt-0.5">블로그 글별 유입 → 전환 → 매출 어트리뷰션 (First-touch + Last-touch)</p>
+        <h1 className="text-admin-lg font-semibold text-admin-text-2">콘텐츠 성과</h1>
+        <p className="text-[11px] text-admin-muted mt-0.5">블로그 글별 유입 → 전환 → 매출 어트리뷰션 (First-touch + Last-touch)</p>
       </div>
 
       {/* 자가학습 엔진 상태 */}
@@ -127,7 +128,7 @@ export default function ContentAnalyticsPage() {
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h2 className="text-[13px] font-semibold text-indigo-900 flex items-center gap-1.5">
+              <h2 className="text-admin-sm font-semibold text-indigo-900 flex items-center gap-1.5">
                 🧠 자비스 블로그 학습 엔진
                 {learningStatus.ready ? (
                   <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">학습 가능</span>
@@ -135,14 +136,14 @@ export default function ContentAnalyticsPage() {
                   <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">데이터 수집 중</span>
                 )}
               </h2>
-              <p className="text-[11px] text-slate-600 mt-0.5">
+              <p className="text-[11px] text-admin-muted mt-0.5">
                 상위 vs 하위 성과 글 비교 분석 → 프롬프트 개선안 자동 제안 (결재함에 등록)
               </p>
             </div>
             <button
               onClick={runOptimizer}
               disabled={!learningStatus.ready || optimizing}
-              className="px-3 py-1.5 bg-indigo-600 text-white text-[12px] font-medium rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs font-medium rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
               title={learningStatus.ready ? '학습 실행' : '데이터가 더 필요합니다'}
             >
               {optimizing ? '분석 중...' : '학습 실행'}
@@ -151,7 +152,7 @@ export default function ContentAnalyticsPage() {
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] text-slate-500">발행된 블로그</span>
+                <span className="text-[10px] text-admin-muted">발행된 블로그</span>
                 <span className="text-[11px] font-semibold tabular-nums">{learningStatus.stats.published_blogs} / {learningStatus.thresholds.min_posts}</span>
               </div>
               <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -161,7 +162,7 @@ export default function ContentAnalyticsPage() {
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] text-slate-500">Engagement 로그</span>
+                <span className="text-[10px] text-admin-muted">Engagement 로그</span>
                 <span className="text-[11px] font-semibold tabular-nums">{learningStatus.stats.total_engagement} / {learningStatus.thresholds.min_engagement}</span>
               </div>
               <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -171,7 +172,7 @@ export default function ContentAnalyticsPage() {
             </div>
           </div>
           {optimizeResult && (
-            <div className="mt-3 px-2.5 py-2 bg-white/80 rounded text-[11px] text-slate-700 border border-slate-200">
+            <div className="mt-3 px-2.5 py-2 bg-white/80 rounded text-[11px] text-admin-text-2 border border-admin-border-mid">
               {optimizeResult}
             </div>
           )}
@@ -182,15 +183,15 @@ export default function ContentAnalyticsPage() {
       {kpi && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { label: '발행 글', value: `${kpi.total_published}편`, color: 'text-slate-800' },
+            { label: '발행 글', value: `${kpi.total_published}편`, color: 'text-admin-text-2' },
             { label: '총 유입', value: `${kpi.total_traffic.toLocaleString()}회`, color: 'text-blue-600' },
             { label: 'First-touch 전환', value: `${kpi.total_first_touch_conversions}건`, color: 'text-green-600' },
             { label: '전환율', value: `${kpi.avg_conversion_rate}%`, color: 'text-orange-600' },
             { label: '매출', value: fmtKRW(kpi.total_revenue), color: 'text-indigo-600' },
             { label: '순이익', value: fmtKRW(kpi.total_profit), color: kpi.total_profit > 0 ? 'text-green-600' : 'text-red-500' },
           ].map((card, i) => (
-            <div key={i} className="bg-white border border-slate-200 rounded-lg p-3">
-              <p className="text-[10px] text-slate-400 uppercase">{card.label}</p>
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+              <p className="text-[10px] text-admin-muted-2 uppercase">{card.label}</p>
               <p className={`text-[18px] font-bold ${card.color} mt-0.5`}>{card.value}</p>
             </div>
           ))}
@@ -199,32 +200,32 @@ export default function ContentAnalyticsPage() {
 
       {/* 앵글×목적지 매트릭스 */}
       {matrixDests.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h2 className="text-[13px] font-semibold text-slate-700 mb-3">앵글 × 목적지 전환 매트릭스</h2>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+          <h2 className="text-admin-sm font-semibold text-admin-text-2 mb-3">앵글 × 목적지 전환 매트릭스</h2>
           <div className="overflow-x-auto">
             <table className="text-[11px] w-full">
               <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-2 py-1.5 text-left text-slate-500 font-medium">목적지</th>
+                <tr className="bg-admin-bg">
+                  <th className="px-2 py-1.5 text-left text-admin-muted font-medium">목적지</th>
                   {angleKeys.map(a => (
-                    <th key={a} className="px-2 py-1.5 text-center text-slate-500 font-medium">{ANGLE_LABELS[a]}</th>
+                    <th key={a} className="px-2 py-1.5 text-center text-admin-muted font-medium">{ANGLE_LABELS[a]}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {matrixDests.map(dest => (
-                  <tr key={dest} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 font-medium text-slate-700">{dest}</td>
+                  <tr key={dest} className="hover:bg-admin-bg">
+                    <td className="px-2 py-1.5 font-medium text-admin-text-2">{dest}</td>
                     {angleKeys.map(a => {
                       const cell = matrix.get(dest)?.get(a);
-                      if (!cell || cell.traffic === 0) return <td key={a} className="px-2 py-1.5 text-center text-slate-200">-</td>;
+                      if (!cell || cell.traffic === 0) return <td key={a} className="px-2 py-1.5 text-center text-admin-border-mid">-</td>;
                       const cvr = ((cell.conversions / cell.traffic) * 100).toFixed(1);
                       return (
                         <td key={a} className={`px-2 py-1.5 text-center font-medium ${
-                          cell.conversions > 0 ? 'text-green-600' : 'text-slate-500'
+                          cell.conversions > 0 ? 'text-green-600' : 'text-admin-muted'
                         }`}>
                           {cvr}%
-                          <span className="block text-[9px] text-slate-400">{cell.traffic}유입</span>
+                          <span className="block text-[9px] text-admin-muted-2">{cell.traffic}유입</span>
                         </td>
                       );
                     })}
@@ -233,7 +234,7 @@ export default function ContentAnalyticsPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-[9px] text-slate-400 mt-2">셀 = First-touch 전환율 (유입 → 예약). 높은 전환율 앵글 우선 생산 권장</p>
+          <p className="text-[9px] text-admin-muted-2 mt-2">셀 = First-touch 전환율 (유입 → 예약). 높은 전환율 앵글 우선 생산 권장</p>
         </div>
       )}
 
@@ -246,8 +247,8 @@ export default function ContentAnalyticsPage() {
           { key: 'profit' as const, label: '순이익순' },
         ]).map(t => (
           <button key={t.key} onClick={() => setSortBy(t.key)}
-            className={`px-3 py-1.5 rounded text-[12px] font-medium transition ${
-              sortBy === t.key ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
+              sortBy === t.key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
             }`}>
             {t.label}
           </button>
@@ -256,14 +257,26 @@ export default function ContentAnalyticsPage() {
 
       {/* 테이블 */}
       {loading ? (
-        <p className="py-10 text-center text-[13px] text-slate-400">로딩 중...</p>
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-3">
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-16" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-16" />
+              <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-20" />
+            </div>
+          ))}
+        </div>
       ) : sorted.length === 0 ? (
-        <p className="py-10 text-center text-[13px] text-slate-400">발행된 블로그 글이 없습니다</p>
+        <div className="flex flex-col items-center gap-3 py-14">
+          <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+          <p className="text-admin-sm font-medium text-admin-muted">발행된 블로그 글이 없습니다</p>
+        </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <table className="w-full text-[12px]">
+        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <table className="w-full text-admin-xs">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-left">
+              <tr className="bg-admin-bg text-admin-muted text-left">
                 <th className="px-3 py-2.5 font-medium">글</th>
                 <th className="px-3 py-2.5 font-medium">목적지</th>
                 <th className="px-3 py-2.5 font-medium text-right">유입</th>
@@ -286,39 +299,39 @@ export default function ContentAnalyticsPage() {
                   : '-';
 
                 return (
-                  <tr key={row.creative_id} className="hover:bg-slate-50 transition">
+                  <tr key={row.creative_id} className="hover:bg-admin-bg transition">
                     <td className="px-3 py-2.5">
                       <div className="max-w-xs">
                         <Link href={`/blog/${row.slug}`} target="_blank"
-                          className="text-[12px] font-medium text-slate-800 hover:text-indigo-600 line-clamp-1">
+                          className="text-admin-xs font-medium text-admin-text-2 hover:text-indigo-600 line-clamp-1">
                           {row.seo_title || '제목 없음'}
                         </Link>
-                        <span className="ml-1.5 rounded bg-gray-50 px-1 py-0.5 text-[9px] text-gray-400">
+                        <span className="ml-1.5 rounded bg-admin-bg px-1 py-0.5 text-[9px] text-admin-muted-2">
                           {ANGLE_LABELS[row.angle_type] || row.angle_type}
                         </span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-slate-500">{row.destination || '-'}</td>
+                    <td className="px-3 py-2.5 text-admin-muted">{row.destination || '-'}</td>
                     <td className="px-3 py-2.5 text-right font-medium text-blue-600">
                       {row.traffic_count.toLocaleString()}
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium text-green-600">
                       {row.first_touch_conversions || '-'}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-slate-500">
+                    <td className="px-3 py-2.5 text-right text-admin-muted">
                       {row.last_touch_conversions || '-'}
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium text-indigo-600">
                       {row.first_touch_revenue ? fmtKRW(row.first_touch_revenue) : '-'}
                     </td>
-                    <td className={`px-3 py-2.5 text-right font-medium ${row.first_touch_profit > 0 ? 'text-green-600' : row.first_touch_profit < 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                    <td className={`px-3 py-2.5 text-right font-medium ${row.first_touch_profit > 0 ? 'text-green-600' : row.first_touch_profit < 0 ? 'text-red-500' : 'text-admin-muted-2'}`}>
                       {row.first_touch_profit ? fmtKRW(row.first_touch_profit) : '-'}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-slate-500">
+                    <td className="px-3 py-2.5 text-right text-admin-muted">
                       {cvr === '-' ? '-' : `${cvr}%`}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-400">
-                      {row.published_at ? new Date(row.published_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : '-'}
+                    <td className="px-3 py-2.5 text-admin-muted-2">
+                      {row.published_at ? fmtMonthDay(row.published_at) : '-'}
                     </td>
                   </tr>
                 );
@@ -329,7 +342,7 @@ export default function ContentAnalyticsPage() {
       )}
 
       {/* 범례 */}
-      <div className="text-[10px] text-slate-400 space-y-0.5">
+      <div className="text-[10px] text-admin-muted-2 space-y-0.5">
         <p><strong>FT (First-touch)</strong>: 고객이 처음 유입된 콘텐츠 기준 전환 귀속</p>
         <p><strong>LT (Last-touch)</strong>: 전환 직전 마지막으로 접촉한 콘텐츠 기준 귀속</p>
         <p>데이터는 블로그 글을 통해 유입 → 예약 전환된 세션만 집계합니다</p>

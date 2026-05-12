@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { updateFactoryJobStep } from '@/lib/content-factory-step';
+import { generateBlogJSON, generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, ANGLE_PRESETS } from '@/lib/content-generator';
 import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
 import { calculateSeoScore } from '@/lib/seo-scorer';
@@ -9,8 +10,21 @@ import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/p
 import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { ContentBrief } from '@/lib/validators/content-brief';
+import { pickMarketingPrice } from '@/lib/marketing-price';
+import { getSecret } from '@/lib/secret-registry';
+import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/blog-review-quotes';
+import { safeEqualString } from '@/lib/timing-safe';
 
-export const maxDuration = 60;
+/** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
+export const maxDuration = 240;
+
+/** blog-publisher 크론만: 본문 생성만 하고 DB INSERT는 호출자(멱등 단일 커밋)가 담당 */
+function isPublisherBridge(request: NextRequest, body: { publisher_bridge?: boolean }): boolean {
+  if (!body.publisher_bridge) return false;
+  const secret = getSecret('CRON_SECRET');
+  if (!secret) return false;
+  return safeEqualString(request.headers.get('authorization'), `Bearer ${secret}`);
+}
 
 /**
  * 카드뉴스를 기반으로 블로그 자동 생성 (하이브리드 이미지)
@@ -18,24 +32,33 @@ export const maxDuration = 60;
  * 입력:
  *   - card_news_id: 기준 카드뉴스 ID
  *   - slide_image_urls: 클라이언트에서 캡처해 Storage에 업로드한 PNG URLs (길이 = 슬라이드 수)
+ *   - publisher_bridge: true + Authorization: Bearer CRON_SECRET → 생성 결과만 반환 (INSERT 없음, blog-publisher 전용)
  *
  * 흐름:
  *   1. 카드뉴스 조회 (mode, topic, category, package 또는 주제)
  *   2. 상품 모드: 기존 generateBlogPost + attractions 사진
  *   3. 정보성 모드: AI가 주제 기반 블로그 생성 + Pexels 맥락 이미지
  *   4. 카드뉴스 PNG를 주요 섹션에, Pexels/attractions는 관광지/맥락 섹션에 배치
- *   5. content_creatives 신규 INSERT (draft)
- *   6. card_news.linked_blog_id 업데이트
+ *   5. content_creatives 신규 INSERT (draft) — publisher_bridge 시 생략
+ *   6. card_news.linked_blog_id 업데이트 — publisher_bridge 시 생략
  */
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
-    const { card_news_id, slide_image_urls } = body as {
+    const { card_news_id, slide_image_urls, publisher_bridge } = body as {
       card_news_id: string;
       slide_image_urls?: string[];
+      publisher_bridge?: boolean;
     };
+
+    if (publisher_bridge && !isPublisherBridge(request, body)) {
+      return NextResponse.json(
+        { error: 'publisher_bridge는 CRON_SECRET Bearer 인증이 있을 때만 허용됩니다.' },
+        { status: 403 },
+      );
+    }
 
     if (!card_news_id) {
       return NextResponse.json({ error: 'card_news_id 필수' }, { status: 400 });
@@ -56,8 +79,7 @@ export async function POST(request: NextRequest) {
       ? slide_image_urls
       : [];
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
+    if (!hasBlogApiKey()) {
       return NextResponse.json({ error: 'AI API 키 미설정' }, { status: 503 });
     }
 
@@ -151,6 +173,15 @@ export async function POST(request: NextRequest) {
         }
 
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+        let reviewQuotesMarkdown: string | null = null;
+        if (productData) {
+          const snips = await fetchApprovedReviewSnippets({
+            packageId: productData.id,
+            destination: productData.destination,
+            limit: 4,
+          });
+          reviewQuotesMarkdown = formatReviewQuotesForPrompt(snips) || null;
+        }
         blogHtml = await generateBlogBody({
           brief,
           slideImageMap,
@@ -168,55 +199,18 @@ export async function POST(request: NextRequest) {
             product_id: productData.id,
           } : undefined,
           baseUrl,
+          reviewQuotesMarkdown,
         });
 
         slug = `${brief.seo.slug_suggestion}-cn`;
         seoTitle = brief.seo.title;
         seoDesc = brief.seo.description;
       } catch (err) {
-        console.warn('[from-card-news] generateBlogBody 실패, legacy fallback 사용:', err instanceof Error ? err.message : err);
-        brief = null;  // legacy fallback 트리거
-      }
-    }
-
-    // ── Legacy Fallback (Brief 생성 자체가 실패한 경우만) ──
-    if (!brief && !blogHtml) {
-      if (cardMode === 'product' && productData) {
-        const destParts = (productData.destination || '').split(/[\/\s]+/).filter(Boolean);
-        const orFilters = destParts
-          .flatMap((part: string) => [`region.ilike.%${part}%`, `country.ilike.%${part}%`])
-          .join(',');
-        const { data: attrData } = await supabaseAdmin
-          .from('attractions')
-          .select('name, short_desc, photos, country, region, badge_type, emoji, aliases, category')
-          .or(orFilters || 'region.ilike.%xxx%')
-          .limit(500);
-        const attractions: any[] = attrData || [];
-        const baseBlog = generateBlogPost(productData, angleType as any, attractions);
-        blogHtml = await geminiRewriteWithHybridImages({
-          baseBlog, cardNewsImages, pkg: productData, angle: angleType, apiKey, isProduct: true,
-        });
-        const seo = generateBlogSeo(productData, angleType as any);
-        slug = seo.slug + '-cn';
-        seoTitle = seo.seoTitle;
-        seoDesc = seo.seoDescription;
-      } else {
-        const topic = cn.topic || cn.title || '여행 정보';
-        let categoryLabel = '';
-        if (categoryId) {
-          const { data: cat } = await supabaseAdmin
-            .from('blog_categories')
-            .select('label')
-            .eq('id', categoryId)
-            .limit(1);
-          if (cat?.[0]) categoryLabel = cat[0].label;
-        }
-        blogHtml = await generateInfoBlog({ topic, categoryLabel, cardNewsImages, apiKey });
-        const slugBase = topic.toLowerCase().replace(/[^a-z0-9가-힣\s]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
-        slug = `${slugBase}-cn`;
-        const year = new Date().getFullYear();
-        seoTitle = `${topic} | ${year} 여소남 가이드`.substring(0, 60);
-        seoDesc = `${topic} 완벽 가이드. 실용 정보와 팁을 여소남에서 확인하세요.`.substring(0, 160);
+        console.error('[from-card-news] generateBlogBody 실패:', err instanceof Error ? err.message : err);
+        return NextResponse.json(
+          { error: 'Brief 생성 실패 — 재시도 크론이 자동 처리합니다.', retryable: true },
+          { status: 500 },
+        );
       }
     }
 
@@ -235,6 +229,27 @@ export async function POST(request: NextRequest) {
       metaTitle: seoTitle,
       metaDescription: seoDesc,
     });
+
+    // blog-publisher: 생성만 반환 — 단일 INSERT·품질 게이트·색인은 퍼블리셔가 처리 (중복 draft / 큐 stuck 방지)
+    if (publisher_bridge) {
+      return NextResponse.json(
+        {
+          publisher_bridge: true,
+          blog_html: blogHtml,
+          slug: finalSlug,
+          seo_title: seoTitle,
+          seo_description: seoDesc,
+          og_image_url: ogImage,
+          angle_type: angleType,
+          category: cardMode === 'product' ? 'product_intro' : 'info',
+          category_id: categoryId,
+          product_id: productId,
+          seo_score: seoScore,
+          card_news_id,
+        },
+        { status: 200 },
+      );
+    }
 
     // content_creatives에 저장 (draft)
     const insertData: Record<string, unknown> = {
@@ -280,11 +295,23 @@ export async function POST(request: NextRequest) {
 
     revalidatePath('/blog');
 
-    return NextResponse.json({
-      blog: creative,
-      seo_score: seoScore,
-      card_news_id,
-    }, { status: 201 });
+    // blog_generate 스텝 완료 마킹 (fire-and-forget)
+    updateFactoryJobStep(card_news_id, 'blog_generate', 'done');
+
+    return NextResponse.json(
+      {
+        blog: creative,
+        blog_id: (creative as { id: string }).id,
+        blog_html: blogHtml,
+        slug: finalSlug,
+        seo_title: seoTitle,
+        seo_description: seoDesc,
+        og_image_url: ogImage,
+        seo_score: seoScore,
+        card_news_id,
+      },
+      { status: 201 },
+    );
   } catch (err) {
     console.error('[blog/from-card-news] 오류:', err);
     return NextResponse.json(
@@ -300,21 +327,16 @@ async function geminiRewriteWithHybridImages(opts: {
   cardNewsImages: string[];
   pkg: any;
   angle: string;
-  apiKey: string;
   isProduct: boolean;
 }): Promise<string> {
-  const { baseBlog, cardNewsImages, pkg, angle, apiKey } = opts;
+  const { baseBlog, cardNewsImages, pkg, angle } = opts;
   const angleLabel = (ANGLE_PRESETS as any)[angle]?.label || angle;
   const dest = pkg.destination || '여행지';
   const nightsVal = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
   const dur = pkg.duration ? `${nightsVal}박${pkg.duration}일` : '';
-  const price = pkg.price ? `${pkg.price.toLocaleString()}원` : '';
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: BLOG_AI_TEMPERATURE },
-  });
+  // v3.2 마케팅 단일가격 fix
+  const marketingPrice = pickMarketingPrice(pkg);
+  const price = marketingPrice ? `${marketingPrice.toLocaleString()}원` : '';
 
   const cardImgList = cardNewsImages.map((u, i) => `  슬라이드${i+1}: ${u}`).join('\n');
 
@@ -357,8 +379,7 @@ ${baseBlog.substring(0, 3500)}
 - 상품 예약 URL 변경 금지`;
 
   try {
-    const result = await model.generateContent(prompt);
-    let aiText = result.response.text()
+    let aiText = (await generateBlogText(prompt, { temperature: BLOG_AI_TEMPERATURE }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     // 이미지 URL 오타 자동 복구
@@ -394,15 +415,8 @@ async function generateInfoBlog(opts: {
   topic: string;
   categoryLabel: string;
   cardNewsImages: string[];
-  apiKey: string;
 }): Promise<string> {
-  const { topic, categoryLabel, cardNewsImages, apiKey } = opts;
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: BLOG_AI_TEMPERATURE },
-  });
+  const { topic, categoryLabel, cardNewsImages } = opts;
 
   const cardImgList = cardNewsImages.map((u, i) => `  슬라이드${i+1}: ${u}`).join('\n');
 
@@ -426,8 +440,7 @@ ${categoryLabel || '여행 정보'}
 
   let outline: { h2: string; pexels_keyword: string }[] = [];
   try {
-    const outlineResult = await model.generateContent(outlinePrompt);
-    const outlineText = outlineResult.response.text()
+    const outlineText = (await generateBlogJSON(outlinePrompt, { temperature: BLOG_AI_TEMPERATURE }))
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
     try {
       outline = JSON.parse(outlineText);
@@ -531,8 +544,7 @@ ${lastImage && lastImage !== h1Image ? `![${topic} 여소남](${lastImage})` : '
 - 브랜드명: 여소남 (여행 플랫폼)`;
 
   try {
-    const result = await model.generateContent(bodyPrompt);
-    let aiText = result.response.text()
+    let aiText = (await generateBlogText(bodyPrompt, { temperature: BLOG_AI_TEMPERATURE }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
     aiText = aiText
@@ -583,18 +595,19 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
     .replace(/[^a-z0-9가-힣-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-    .substring(0, 180);
+    .substring(0, 180) || 'article';
 
   const { data } = await supabaseAdmin
     .from('content_creatives')
     .select('slug')
     .like('slug', `${sanitized}%`)
-    .not('slug', 'is', null);
+    .not('slug', 'is', null)
+    .limit(1000);
 
   const existing = new Set((data || []).map((r: { slug: string }) => r.slug));
   if (!existing.has(sanitized)) return sanitized;
 
   let i = 2;
-  while (existing.has(`${sanitized}-${i}`)) i++;
+  while (existing.has(`${sanitized}-${i}`) && i < 1000) i++;
   return `${sanitized}-${i}`;
 }

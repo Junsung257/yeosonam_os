@@ -86,9 +86,9 @@ const MOCK_PROPOSALS: RfqProposal[] = [
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: rfqId } = await params;
+  const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
     const proposals = MOCK_PROPOSALS.filter(p => p.rfq_id === rfqId || rfqId.startsWith('mock'));

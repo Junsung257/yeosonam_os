@@ -7,5 +7,8 @@
   "베스트아시아": { "uuid": "cd55c45d-69bd-4add-8e07-44f022e35c1c", "code": "BA" },
   "투어코코넛": { "uuid": "ca9eba2f-203c-41a8-ad25-3d3416851b30", "code": "TC" },
   "티트레블":   { "uuid": "7b89ad15-c22a-45aa-8d80-ad367d1e0d33", "code": "TI" },
-  "하나투어":   { "uuid": "875a1cd2-8eeb-43b2-b099-2f75e30e160d", "code": "HN" }
+  "하나투어":   { "uuid": "875a1cd2-8eeb-43b2-b099-2f75e30e160d", "code": "HN" },
+  "투어라운지": { "uuid": "b816d836-ac3e-4689-aaf8-d5541005017b", "code": "TL" },
+  "아이디투어": { "uuid": "b7848b1a-25de-4ff3-8238-a968b481480b", "code": "ID" },
+  "W투어":     { "uuid": "1299d67b-62c7-4d61-804c-1a036a0c2559", "code": "WT" }
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withCronGuard } from '@/lib/cron-auth';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * 블로그 라이프사이클 크론 — 매일 1:30 KST 실행
@@ -15,7 +17,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  *   상품 블로그는 상품 수명과 함께 죽는다.
  *   정보성 블로그(product_id IS NULL)는 절대 건드리지 않는다 (영구 SEO 자산).
  */
-export async function GET() {
+export const dynamic = 'force-dynamic';
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
   }
@@ -84,10 +87,12 @@ export async function GET() {
     console.log(`[blog-lifecycle] ${archivedCount}개 블로그 아카이브`);
     return NextResponse.json({ archivedCount, archived, checkedAt: new Date().toISOString() });
   } catch (err) {
-    console.error('[blog-lifecycle] 오류:', err);
+    logError('[cron/blog-lifecycle] lifecycle processing failed', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '라이프사이클 처리 실패' },
       { status: 500 },
     );
   }
 }
+
+export const GET = withCronGuard(getHandler);

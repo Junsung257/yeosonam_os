@@ -8,6 +8,7 @@ export interface TrackingData {
   utmMedium: string | null;
   utmCampaign: string | null;
   utmContent: string | null;
+  utmTerm: string | null;
   referrer: string;
   landingUrl: string;
   scrollDepthReached: number; // 최대 도달 스크롤 깊이 (25/50/90)
@@ -41,6 +42,7 @@ function parseUtm(search: string) {
     utmMedium: p.get('utm_medium'),
     utmCampaign: p.get('utm_campaign'),
     utmContent: p.get('utm_content'),
+    utmTerm: p.get('utm_term'),
   };
 }
 
@@ -49,7 +51,13 @@ export function useTracking() {
   const [scrollDepth, setScrollDepth] = useState(0);
   const [itineraryViewed, setItineraryViewed] = useState(false);
   const sessionIdRef = useRef<string>('');
-  const utmRef = useRef<ReturnType<typeof parseUtm>>({ utmSource: null, utmMedium: null, utmCampaign: null, utmContent: null });
+  const utmRef = useRef<ReturnType<typeof parseUtm>>({
+    utmSource: null,
+    utmMedium: null,
+    utmCampaign: null,
+    utmContent: null,
+    utmTerm: null,
+  });
 
   useEffect(() => {
     sessionIdRef.current = getOrCreateSessionId();
@@ -88,15 +96,22 @@ export function useTracking() {
     return () => observer.disconnect();
   }, []);
 
-  const getSnapshot = useCallback((): TrackingData => ({
-    sessionId: sessionIdRef.current,
-    ...utmRef.current,
-    referrer: typeof document !== 'undefined' ? document.referrer : '',
-    landingUrl: typeof window !== 'undefined' ? window.location.href : '',
-    scrollDepthReached: scrollDepth,
-    timeOnPageSeconds: Math.round((Date.now() - startTimeRef.current) / 1000),
-    itineraryViewed,
-  }), [scrollDepth, itineraryViewed]);
+  const getSnapshot = useCallback((): TrackingData => {
+    const u = utmRef.current;
+    return {
+      sessionId: sessionIdRef.current,
+      utmSource: u.utmSource,
+      utmMedium: u.utmMedium,
+      utmCampaign: u.utmCampaign,
+      utmContent: u.utmContent,
+      utmTerm: u.utmTerm,
+      referrer: typeof document !== 'undefined' ? document.referrer : '',
+      landingUrl: typeof window !== 'undefined' ? window.location.href : '',
+      scrollDepthReached: scrollDepth,
+      timeOnPageSeconds: Math.round((Date.now() - startTimeRef.current) / 1000),
+      itineraryViewed,
+    };
+  }, [scrollDepth, itineraryViewed]);
 
   return {
     itineraryViewed,

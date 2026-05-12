@@ -1,6 +1,6 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +62,7 @@ function buildFeed(posts: any[]): string {
     <language>ko</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${BASE_URL}/api/rss" rel="self" type="application/rss+xml" />
+    <atom:link rel="hub" href="https://pubsubhubbub.appspot.com" />
 ${items.join('\n')}
   </channel>
 </rss>`;

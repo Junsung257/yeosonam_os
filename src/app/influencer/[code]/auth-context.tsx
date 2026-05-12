@@ -16,12 +16,14 @@ interface AuthCtx {
   affiliate: AffiliateInfo | null;
   authenticated: boolean;
   setAuth: (a: AffiliateInfo) => void;
+  clearAuth: () => void;
 }
 
 export const InfluencerAuthContext = createContext<AuthCtx>({
   affiliate: null,
   authenticated: false,
   setAuth: () => {},
+  clearAuth: () => {},
 });
 
 export const useInfluencerAuth = () => useContext(InfluencerAuthContext);

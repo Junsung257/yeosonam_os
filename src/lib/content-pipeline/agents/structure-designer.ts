@@ -15,11 +15,11 @@
  *   - Structure 결정 (AIDA 배치, hook type) 은 논리적 작업. 카피 감성 작업과 분리.
  *   - 향후 critic 에이전트가 stage 별 검증 가능.
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { TEMPLATE_IDS, TEMPLATE_META } from '@/lib/card-news/tokens';
 import { SlideRoleEnum, TemplateFamilyEnum, HookTypeEnum } from '@/lib/validators/content-brief';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 
 export interface StructureInput {
   mode: 'product' | 'info';
@@ -178,45 +178,22 @@ function deriveFallbackHookType(p: NonNullable<StructureInput['product']>): 'urg
  * Structure Designer — Gemini 1회 호출 (재시도 1회)
  */
 export async function designBriefStructure(input: StructureInput): Promise<StructureOutput> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[structure-designer] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[structure-designer] AI API 키 없음 → fallback');
     return fallbackStructure(input);
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.6, responseMimeType: 'application/json' },
-  });
-
   const prompt = buildDesignerPrompt(input);
 
-  const tryGenerate = async (extra = ''): Promise<StructureOutput | null> => {
-    try {
-      const result = await model.generateContent(prompt + extra);
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = StructureOutputSchema.safeParse(parsed);
-      if (!checked.success) {
-        console.warn('[structure-designer] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-        return null;
-      }
-      return checked.data;
-    } catch (err) {
-      console.warn('[structure-designer] 호출/파싱 실패:', err instanceof Error ? err.message : err);
-      return null;
-    }
-  };
+  const result = await callWithZodValidation({
+    label: 'structure-designer',
+    schema: StructureOutputSchema,
+    maxAttempts: 3,
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.6, longCache: true }),
+  });
 
-  const first = await tryGenerate();
-  if (first) return first;
-
-  const retry = await tryGenerate(`\n\n## 재시도 — 반드시 JSON 스키마 엄수. 필수 필드 누락 금지. h2 정확히 ${input.slideCount - 1}개.`);
-  if (retry) return retry;
-
+  if (result.success) return result.value;
+  console.warn('[structure-designer] callWithZodValidation 실패 → fallback');
   return fallbackStructure(input);
 }
 
@@ -250,20 +227,44 @@ function buildDesignerPrompt(input: StructureInput): string {
   const templateList = TEMPLATE_IDS.map(id => `  - ${id}: ${TEMPLATE_META[id].label}`).join('\n');
 
   return `너는 카드뉴스 기획 전문가다. **카피는 쓰지 말고** Brief 의 구조 설계만 한다.
+
+## 🚨 출처 제약 (Faithfulness — 최상위 규칙)
+- blog_paragraph_seed / h2 / key_selling_points 등 모든 텍스트 출력은 **입력 productContext / topic 에 명시된 사실에서만** 추출한다.
+- 입력에 없는 시설(수영장, 라이브공연 등), 수치(만족도·재구매율·인기도), 운영조건(연령제한, 할인조건 등)을 임의로 만들지 마라.
+- 모르면 적지 마라. 추측보다 빈칸이 낫다.
+- 위반 시 전체 재작성.
 (다음 에이전트가 카피를 쓸 것이므로, 너는 role/배치/메타만 결정)
 ${contextBlock}
 
 ## 출력 스펙
 - 슬라이드 ${slideCount}장 = ${contentCount}개 섹션 + 1 CTA
-- AIDA 배치: 1=hook / 2~3=benefit·tourist_spot / 4~5=detail·inclusion / 중간=tip/warning
-- hook 섹션의 hook_type 은 'urgency'|'question'|'number'|'fomo'|'story' 중 1개
+- **carousel sweet spot 7~10장 (Hootsuite/postnitro 2026)** — 알고리즘 1순위 신호는 swipe-through ≥65%, completion ≥55%
+- AIDA + PAS 혼합 배치 권장 (10-slide 표준 구조):
+  · 1: hook (주목, headline ≤ 6 단어)
+  · 2: objection (반론 예측+해소) — 상품 모드일 때 "비싼 거 아냐?" "노옵션 진짜?" 같은 의심 해소
+  · 3~4: benefit·tourist_spot·inclusion (혜택·구체 근거)
+  · 중간 (5~7): tip / warning / detail (심화 정보)
+  · **8: save_hook** (체크리스트 형식) — IG 알고리즘 '저장(Save)' 최고 가중치
+  · **9: contrarian/반전** (저장률 1순위 신호) — "현지인이 진짜 많이 가는 곳", "패키지 ☓ 자유여행이 더 비싼 이유"
+  · 마지막: cta (DM 유도)
+- hook 섹션의 hook_type 6종:
   · 특가·마감 → urgency
   · 가성비·정보 → question/number
   · 프리미엄·신혼 → story
   · 재고 한정 → fomo
+  · 통념 파괴 → contrarian ("보홀은 비싸다는 거짓말") — 글로벌 상위 1% 마케터가 가장 많이 쓰는 hook
+- role enum 전체: hook|benefit|detail|tip|warning|tourist_spot|inclusion|objection|save_hook|cta
 - template_family_suggestion: editorial|cinematic|premium|bold 중 상품 성격 1개
 - h2 는 블로그 목차 — 간결/명확
 - pexels_keyword 는 영문 명사 1~2개
+
+## 🎨 Palette 카테고리 (Annals of Tourism Research 2021)
+blog_paragraph_seed 또는 h2 에 다음 카테고리 시그널 1개를 자연스럽게 포함:
+- 자연·풍경·해변·건축 → blue 우세 → pexels_keyword 에 "scenic", "ocean", "architecture" 같은 자연 톤
+- 음식·거리·야시장·분위기 → warm 톤 → pexels_keyword 에 "street food", "market", "night"
+- 가격 비교·통계·D-N → navy 강한 contrast → pexels_keyword 에 "graph", "calendar"
+- 허니문·5성급·럭셔리 → gold + black → pexels_keyword 에 "luxury suite", "gold sunset"
+- 특가·마감·선착순 → red dominant → pexels_keyword 에 "hourglass", "deal"
 
 ## JSON 스키마 (반드시 이 형식)
 {
@@ -276,7 +277,7 @@ ${contextBlock}
   "sections": [
     {
       "position": 1,
-      "role": "hook|benefit|detail|tip|warning|tourist_spot|inclusion",
+      "role": "hook|benefit|detail|tip|warning|tourist_spot|inclusion|objection|save_hook",
       "h2": "블로그 H2 (2~50자)",
       "blog_paragraph_seed": "본문 씨앗 (10~500자)",
       "hook_type": "hook 섹션이면 urgency|question|number|fomo|story 중 1개, 아니면 null",

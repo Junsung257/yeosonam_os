@@ -45,14 +45,15 @@ const A4_USABLE_H = 1055; // 1123px - 34px*2 padding
 const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
 export function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + n));
+  return date.toISOString().split('T')[0];
 }
 
 export function formatKoDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return `${d.getMonth() + 1}/${d.getDate()}(${DAYS_KO[d.getDay()]})`;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return `${m}/${d}(${DAYS_KO[date.getUTCDay()]})`;
 }
 
 function renderBold(text: string): React.ReactNode {
@@ -78,7 +79,7 @@ export function estimateHeights(
   const { meta, highlights } = itinerary;
 
   // Header
-  let headerH = 68;
+  const headerH = 68;
 
   // Price block
   let priceH = 8;
@@ -393,6 +394,14 @@ export function PosterPrice({
    ═══════════════════════════════════════════════════════ */
 
 export function PosterInfo({ highlights }: { highlights: ItineraryHighlights }) {
+  const clampList = (items: string[], max = 8): string[] => {
+    if (items.length <= max) return items;
+    return [...items.slice(0, max), `외 ${items.length - max}건`];
+  };
+  const includes = clampList(highlights.inclusions || [], 10);
+  const excludes = clampList(highlights.excludes || [], 10);
+  const remarks = clampList(highlights.remarks || [], 5);
+
   const labelS: React.CSSProperties = {
     fontSize: '9.5px', fontWeight: 700, padding: '3px 6px', whiteSpace: 'nowrap',
     width: '58px', textAlign: 'center', background: '#f3f4f6', color: '#1f2937',
@@ -409,21 +418,21 @@ export function PosterInfo({ highlights }: { highlights: ItineraryHighlights }) 
         <tbody>
           <tr>
             <td style={labelS}>포함사항</td>
-            <td style={valS}>{highlights.inclusions.map(s => renderBold(s)).reduce((acc: React.ReactNode[], cur, i) => i === 0 ? [cur] : [...acc, ', ', cur], [])}</td>
+            <td style={valS}>{includes.map(s => renderBold(s)).reduce((acc: React.ReactNode[], cur, i) => i === 0 ? [cur] : [...acc, ', ', cur], [])}</td>
           </tr>
           <tr>
             <td style={labelS}>불포함사항</td>
             <td style={valS}>
-              {highlights.excludes.map(s => renderBold(s)).reduce((acc: React.ReactNode[], cur, i) => i === 0 ? [cur] : [...acc, ', ', cur], [])}
+              {excludes.map(s => renderBold(s)).reduce((acc: React.ReactNode[], cur, i) => i === 0 ? [cur] : [...acc, ', ', cur], [])}
               {highlights.shopping && <span> / 쇼핑: {renderBold(highlights.shopping)}</span>}
             </td>
           </tr>
-          {(highlights.remarks?.length ?? 0) > 0 && (
+          {(remarks.length ?? 0) > 0 && (
             <tr>
               <td style={labelS}>비 고</td>
               <td style={valS}>
-                {highlights.remarks.map((r, i) => (
-                  <div key={i} style={{ marginBottom: i < highlights.remarks.length - 1 ? '1px' : 0 }}>
+                {remarks.map((r, i) => (
+                  <div key={i} style={{ marginBottom: i < remarks.length - 1 ? '1px' : 0 }}>
                     * {renderBold(r)}
                   </div>
                 ))}
@@ -432,6 +441,42 @@ export function PosterInfo({ highlights }: { highlights: ItineraryHighlights }) 
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+export function PosterLegalNotice({
+  notices = [],
+}: {
+  notices?: string[];
+}) {
+  const lines = notices.filter(Boolean).slice(0, 3);
+  return (
+    <div
+      style={{
+        border: `1px solid ${BORDER}`,
+        background: '#fff7ed',
+        borderRadius: '4px',
+        minHeight: '72px',
+        padding: '6px 8px',
+        marginTop: '6px',
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ fontSize: '9px', fontWeight: 700, color: '#9a3412', marginBottom: '3px' }}>
+        특별약관 및 취소수수료 안내
+      </div>
+      <div style={{ fontSize: '8.5px', color: '#7c2d12', lineHeight: '1.4' }}>
+        {lines.length > 0 ? lines.map((line, idx) => (
+          <div key={idx}>• {line}</div>
+        )) : (
+          <>
+            <div>• 예약 확정 후 취소 시 출발일 기준 특별약관에 따른 수수료가 적용될 수 있습니다.</div>
+            <div>• 항공/현지 사정 및 기상 악화 등 불가항력 상황에서는 일정이 조정될 수 있습니다.</div>
+            <div>• 상세 환불 기준은 결제 시점 약관을 기준으로 적용됩니다.</div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

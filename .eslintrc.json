@@ -1,0 +1,105 @@
+{
+  "extends": ["next/core-web-vitals", "plugin:@typescript-eslint/recommended"],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "off",
+    "@typescript-eslint/no-empty-function": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
+    "react/no-unescaped-entities": "off",
+    "@next/next/no-img-element": "off",
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "CallExpression[callee.object.type='NewExpression'][callee.object.callee.name='Date'][callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+        "message": "Hydration mismatch 위험 (ERR-blog-queue-locale-hydration@2026-05-10). 서버(en-US)와 클라이언트(ko-KR) 가 다르게 렌더링됨. @/lib/admin-utils 의 fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime 사용."
+      },
+      {
+        "selector": "CallExpression[callee.name='getSecret'] > Literal[value=/^NEXT_PUBLIC_/]",
+        "message": "client bundle 에서 getSecret('NEXT_PUBLIC_*') 는 항상 null 반환 (process.env[key] 동적 인덱싱 webpack inline 불가). process.env.NEXT_PUBLIC_X 정적 참조 사용 (ERR-secret-registry-client-bundle@2026-05-10)."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/app/api/**/*.{ts,tsx}",
+        "src/middleware.ts",
+        "src/app/admin/blog/BlogDataFetcher.tsx",
+        "src/app/admin/packages/**/review/page.tsx",
+        "src/app/admin/scoring/funnel/page.tsx",
+        "src/app/blog/**/page.tsx",
+        "src/app/m/admin/page.tsx",
+        "src/components/reviews/**/*.{ts,tsx}",
+        "src/lib/content-pipeline/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+        "src/lib/**/*.{ts,tsx}",
+        "src/app/itinerary/**/print/page.tsx"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "warn",
+          {
+            "selector": "CallExpression[callee.object.type='NewExpression'][callee.object.callee.name='Date'][callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+            "message": "Hydration mismatch 위험 (ERR-blog-queue-locale-hydration@2026-05-10). 서버(en-US)와 클라이언트(ko-KR) 가 다르게 렌더링됨. @/lib/admin-utils 의 fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime 사용."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/app/admin/**/page.tsx"
+      ],
+      "excludedFiles": [
+        "src/app/admin/_dev/**"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "JSXOpeningElement[name.name='AdminLayout']",
+            "message": "이중 wrap 안티패턴 (ERR-admin-perf-2026-05-11): src/app/admin/layout.tsx 가 이미 AdminLayout 으로 wrap 합니다. page.tsx 에서 또 wrap 하면 사이드바·SWR·badge fetch 가 2번 마운트됩니다. 페이지 컨텐츠를 <>...</> 로 감싸세요."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/components/admin/YeosonamA4Template.tsx",
+        "src/app/packages/[id]/DetailClient.tsx"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "MemberExpression[object.name='pkg'][property.name='excludes']",
+            "message": "W1 CRC (ERR-KUL-05): 렌더러 내부에서 pkg.excludes 직접 접근 금지. view.excludes.basic / view.surchargesMerged 를 소비하세요 (@/lib/render-contract)."
+          },
+          {
+            "selector": "MemberExpression[object.name='pkg'][property.name='surcharges']",
+            "message": "W1 CRC (ERR-KUL-05): pkg.surcharges 직접 접근 금지. view.surchargesMerged 를 소비하세요."
+          },
+          {
+            "selector": "MemberExpression[object.name='pkg'][property.name='inclusions']",
+            "message": "Phase1 CRC (ERR-HSN-render-bundle): pkg.inclusions 직접 접근 금지. view.inclusions.basic (IconizedInclusion[]) / view.inclusions.program 를 소비하세요 (@/lib/render-contract)."
+          },
+          {
+            "selector": "CallExpression[callee.name='getInclusionIcon']",
+            "message": "Phase1 CRC: 렌더러에서 getInclusionIcon 직접 호출 금지. view.inclusions.basic[i].icon 를 소비하세요 (CRC가 이미 매칭 완료)."
+          },
+          {
+            "selector": "CallExpression[callee.name='classifyInclusions']",
+            "message": "Phase1 CRC: 렌더러에서 classifyInclusions 직접 호출 금지. view.inclusions 를 소비하세요."
+          }
+        ]
+      }
+    }
+  ]
+}

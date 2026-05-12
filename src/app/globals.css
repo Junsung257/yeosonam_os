@@ -2,24 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pretendard: next/font/local (layout.tsx) — CDN @font-face 제거로 레이아웃 시프트·외부 의존 감소 */
+
 /* ──────────────────────────────────────────────────────────
- * Pretendard — 카드뉴스 Satori 서버렌더와 동일 폰트로 통일
- * public/fonts/*.otf 를 @font-face로 선언해 브라우저 미리보기와
- * 서버 렌더 PNG가 자간/행간까지 일치하도록 한다.
+ * 디자인 토큰 (Toss Blue 기반 통합 팔레트)
+ * 공개사이트: Toss 톤 (rounded 16/12, soft shadow)
+ * 어드민:     Linear/Stripe 톤 (rounded 6/8, crisp hairline)
  * ────────────────────────────────────────────────────────── */
-@font-face {
-  font-family: 'Pretendard';
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-  src: url('/fonts/Pretendard-Regular.otf') format('opentype');
+:root {
+  /* ── 브랜드 (공통) ── */
+  --brand:        #3182F6;
+  --brand-light:  #EBF3FE;
+  --brand-dark:   #1B64DA;
+
+  /* ── 공개사이트 토큰 (유지) ── */
+  --bg-page:      #FFFFFF;
+  --bg-section:   #F2F4F6;
+  --text-primary: #191F28;
+  --text-body:    #4E5968;
+  --text-muted:   #8B95A1;
+  --border:       #F2F4F6;
+  --border-mid:   #E5E7EB;
+  --danger:       #F04452;
+  --danger-light: #FFF1F2;
+  --success:      #04C584;
+  --success-light:#E9FAF4;
+  --warning:      #F59E0B;
+
+  /* ── 어드민 토큰 (Linear/Stripe 톤) ── */
+  /* 표면 */
+  --admin-bg:           #F8FAFC;
+  --admin-surface:      #FFFFFF;
+  --admin-surface-2:    #F1F5F9;
+  /* 경계선 (3단계) */
+  --admin-border:       #EEF2F6;
+  --admin-border-mid:   #E5E7EB;
+  --admin-border-strong:#CBD5E1;
+  /* 텍스트 (5단계) */
+  --admin-text:         #0F172A;
+  --admin-text-2:       #334155;
+  --admin-muted:        #64748B;
+  --admin-muted-2:      #94A3B8;
+  /* 회계 (한국 주식 관행) */
+  --admin-profit:       #F04452;
+  --admin-loss:         #3182F6;
+  /* 상태 */
+  --admin-success:      #04C584;
+  --admin-warning:      #F59E0B;
+  --admin-danger:       #F04452;
+  --admin-info:         #3182F6;
+
+  /* Alias for component usage */
+  --color-primary:    var(--brand);
+  --color-primary-bg: var(--brand-light);
+  --color-dark:       var(--text-primary);
 }
-@font-face {
-  font-family: 'Pretendard';
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-  src: url('/fonts/Pretendard-Bold.otf') format('opentype');
+
+/* 다크모드 — 어드민 토큰만 (공개사이트는 라이트 온리 유지) */
+[data-theme="dark"] .admin-scope {
+  --admin-bg:           #0B1220;
+  --admin-surface:      #111827;
+  --admin-surface-2:    #1F2937;
+  --admin-border:       #1F2937;
+  --admin-border-mid:   #334155;
+  --admin-border-strong:#475569;
+  --admin-text:         #F1F5F9;
+  --admin-text-2:       #CBD5E1;
+  --admin-muted:        #94A3B8;
+  --admin-muted-2:      #64748B;
 }
 
 * {
@@ -33,12 +83,227 @@ html {
 }
 
 body {
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  /* font-family: next/font local (layout.tsx body className) */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.02em;
+  color: #191F28;
+  background-color: #FFFFFF;
 }
+
+/* 텍스트 선택 — 브랜드 블루 하이라이트 */
+::selection {
+  background-color: var(--brand-light);
+  color: var(--brand-dark);
+}
+
+/* 키보드 포커스 링 — 접근성 + 브랜드 일관성 */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * 유틸리티 클래스
+ * ────────────────────────────────────────────────────────── */
+
+/* 가로 스크롤 (스크롤바 숨김) */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-x::-webkit-scrollbar { display: none; }
+
+/* 스크롤바 완전 숨김 유틸 (카테고리 아이콘 가로 스크롤 등) */
+.scrollbar-hide,
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* 페이지 스크롤바 — 얇고 브랜드 톤으로 (webkit only, 데스크탑) */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+}
+
+/* iOS 홈 인디케이터 safe-area 패딩 (모바일 탭바) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 하단 탭바가 마운트된 페이지 — 콘텐츠가 탭바에 가리지 않도록 자동 여백 */
+@media (max-width: 767px) {
+  body:has(.bottom-tab-bar) {
+    padding-bottom: 72px;
+  }
+}
+
+/* 이미지 skeleton shimmer 애니메이션 */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.animate-shimmer {
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* 카드 터치 피드백 (scale 0.98) — touch-action으로 모바일 300ms 탭 지연 완화 */
+.card-touch {
+  touch-action: manipulation;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+.card-touch:active { transform: scale(0.98); }
+
+/* 전역 tabular-nums (가격/수량 덜덜떨림 방지) */
+td, th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * Admin scope — Linear/Stripe 톤 ERP 가독성 토큰
+ *   기본:        comfortable (14px / 행 48px)
+ *   compact:     13px / 행 40px (데이터 밀도 ↑)
+ *   roomy:       15px / 행 56px (모바일·터치)
+ * ────────────────────────────────────────────────────────── */
+.admin-scope {
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--admin-text);
+  background-color: var(--admin-bg);
+  --admin-row-h: 48px;
+  --admin-cell-px: 14px;
+  font-feature-settings: 'cv11', 'ss01';
+}
+.admin-scope[data-density="compact"] {
+  font-size: 13px;
+  line-height: 1.4;
+  --admin-row-h: 40px;
+  --admin-cell-px: 12px;
+}
+.admin-scope[data-density="roomy"] {
+  font-size: 15px;
+  line-height: 1.5;
+  --admin-row-h: 56px;
+  --admin-cell-px: 16px;
+}
+
+/* ── 표 — Linear/Stripe 정석 (hairline + tabular nums) ── */
+.admin-scope table.admin-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.admin-scope table.admin-data-table thead th {
+  height: 36px;
+  padding: 0 var(--admin-cell-px);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--admin-muted);
+  background-color: var(--admin-surface);
+  border-bottom: 1px solid var(--admin-border-mid);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.admin-scope table.admin-data-table tbody tr {
+  height: var(--admin-row-h);
+}
+.admin-scope table.admin-data-table tbody td {
+  padding: 0 var(--admin-cell-px);
+  border-bottom: 1px solid var(--admin-border);
+  background-color: var(--admin-surface);
+  vertical-align: middle;
+}
+.admin-scope table.admin-data-table tbody tr:hover td {
+  background-color: var(--admin-surface-2);
+}
+.admin-scope table.admin-data-table tbody tr.admin-zebra td {
+  background-color: rgba(241, 245, 249, 0.4);
+}
+.admin-scope table.admin-data-table tbody tr.admin-zebra:hover td {
+  background-color: var(--admin-surface-2);
+}
+.admin-scope table.admin-data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── 우선순위 컬럼 (반응형 노출) ── */
+.admin-scope .admin-col-priority-2 { display: table-cell; }
+.admin-scope .admin-col-priority-3 { display: table-cell; }
+@media (max-width: 1024px) {
+  .admin-scope .admin-col-priority-3 { display: none; }
+}
+@media (max-width: 768px) {
+  .admin-scope .admin-col-priority-2 { display: none; }
+}
+
+/* ── 카드/패널 — crisp hairline ── */
+.admin-scope .admin-card {
+  background-color: var(--admin-surface);
+  border: 1px solid var(--admin-border-mid);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* ── 본문 영역 헤더 ── */
+.admin-scope .admin-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--admin-muted);
+}
+
+/* ── 키보드 단축키 표시 (kbd 스타일) ── */
+.admin-scope kbd,
+.admin-scope .admin-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--admin-text-2);
+  background-color: var(--admin-surface);
+  border: 1px solid var(--admin-border-mid);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+/* ── 포커스 링 (어드민 전용 — 더 부드러운 ring) ── */
+.admin-scope *:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
+  border-radius: 6px;
+}
+
+/* ── tabular nums — 어드민 안의 숫자/금액은 모두 격자 정렬 ── */
+.admin-scope .admin-num,
+.admin-scope td.admin-num,
+.admin-scope .admin-amount {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ── 회계 색상 유틸 ── */
+.admin-scope .admin-profit { color: var(--admin-profit); }
+.admin-scope .admin-loss   { color: var(--admin-loss); }
+.admin-scope .admin-muted-text { color: var(--admin-muted); }
+.admin-scope .admin-muted-text-2 { color: var(--admin-muted-2); }
 
 /* ──────────────────────────────────────────────────────────
  * Blog body typography (prose-blog)
@@ -60,88 +325,157 @@ body {
   }
 }
 
+/* h2 — 브랜드 번호 뱃지 + 굵은 제목 (CSS counter, JS 불필요) */
+.prose-blog {
+  counter-reset: h2-counter;
+}
+
 .prose-blog h2 {
-  margin-top: 3rem;
-  margin-bottom: 1rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid #f3f4f6;
-  font-size: 1.35rem;
+  margin-top: 3.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0;
+  border-left: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.5rem;
   font-weight: 800;
-  line-height: 1.4;
-  letter-spacing: -0.015em;
-  color: #111827;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.prose-blog h2::before {
+  counter-increment: h2-counter;
+  content: counter(h2-counter, decimal-leading-zero);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  background: var(--brand);
+  color: white;
+  border-radius: 0.375rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (min-width: 768px) {
   .prose-blog h2 {
-    font-size: 1.6rem;
+    font-size: 1.875rem;
+    margin-top: 4.5rem;
+  }
+  .prose-blog h2::before {
+    min-width: 2rem;
+    height: 2rem;
+    font-size: 0.78rem;
   }
 }
 
 .prose-blog h3 {
-  margin-top: 2.25rem;
-  margin-bottom: 0.75rem;
-  font-size: 1.15rem;
+  margin-top: 2.5rem;
+  margin-bottom: 0.85rem;
+  font-size: 1.2rem;
   font-weight: 700;
   line-height: 1.45;
-  color: #111827;
+  letter-spacing: -0.015em;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.prose-blog h3::before {
+  content: '';
+  display: inline-block;
+  width: 0.3rem;
+  height: 1.1em;
+  background: var(--brand);
+  border-radius: 2px;
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 @media (min-width: 768px) {
   .prose-blog h3 {
-    font-size: 1.3rem;
+    font-size: 1.4rem;
   }
 }
 
 .prose-blog p {
-  margin-top: 1.1em;
-  margin-bottom: 1.1em;
+  margin-top: 1.2em;
+  margin-bottom: 1.2em;
 }
 
+/* 링크 — 단일 슬레이트 톤 + 하단 밑줄 (지원노트 스타일) */
 .prose-blog a {
-  color: #4f46e5;
-  font-weight: 500;
+  color: #0f172a;
+  font-weight: 600;
   text-decoration: underline;
-  text-decoration-color: rgba(79, 70, 229, 0.35);
-  text-underline-offset: 3px;
-  transition: color 0.15s, text-decoration-color 0.15s;
+  text-decoration-color: #0f172a;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: opacity 0.15s;
 }
 .prose-blog a:hover {
-  color: #4338ca;
-  text-decoration-color: #4338ca;
+  opacity: 0.6;
 }
 
 .prose-blog img {
-  width: 100%;
-  max-height: 520px;
-  object-fit: cover;
-  border-radius: 0.875rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
-  margin-top: 1.75rem;
-  margin-bottom: 1.75rem;
+  /* 자연 비율 보존. Jiwonnote 스타일: 얕은 radius + shadow 최소화 */
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
   background-color: #f3f4f6;
+}
+
+/* 카드뉴스 슬라이드: 첨부 시 alt 가 "[카드뉴스] ..." 로 시작.
+   1080×1080 / 1080×1350 / 1080×1920 모두 자연 비율로 보이되, 데스크톱에서 너무 커지지 않게
+   max-width 를 모바일 폭(~440px) 으로 제한하고 가운데 정렬. */
+.prose-blog img[alt^="카드뉴스슬라이드::"] {
+  max-width: 440px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 1rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* 모바일에선 화면 폭 안에서 가능한 크게 보이도록 가로 여백만 살짝 줘서 안 잘리게. */
+@media (max-width: 640px) {
+  .prose-blog img[alt^="카드뉴스슬라이드::"] {
+    max-width: 100%;
+  }
 }
 
 .prose-blog ul > li::marker,
 .prose-blog ol > li::marker {
-  color: #6366f1;
+  color: #475569;
 }
 
 .prose-blog ul > li,
 .prose-blog ol > li {
-  margin-top: 0.35em;
-  margin-bottom: 0.35em;
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
   padding-left: 0.25rem;
 }
 
 .prose-blog blockquote {
   border-left-width: 4px;
-  border-left-color: #818cf8;
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.05), rgba(168, 85, 247, 0.03));
-  padding: 0.85rem 1.25rem;
+  border-left-color: var(--brand);
+  background-color: var(--brand-light);
+  padding: 0.75rem 1.25rem;
   border-radius: 0 0.5rem 0.5rem 0;
   font-style: normal;
-  color: #374151;
+  color: #1E3A5F;
   quotes: none;
 }
 .prose-blog blockquote::before,
@@ -217,16 +551,58 @@ body {
   padding: 0.15em 0.4em;
   border-radius: 0.3rem;
   font-size: 0.9em;
+  font-family: 'Pretendard', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .prose-blog code::before,
 .prose-blog code::after {
   content: '';
 }
 
-/* H2/H3 앵커 스크롤 여백 (sticky 네비 높이 보정) */
+.prose-blog pre {
+  margin: 1.75rem 0;
+  padding: 1.25rem 1.5rem;
+  background: #0f172a;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  border-left: 4px solid var(--brand);
+  line-height: 1.7;
+}
+.prose-blog pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.875em;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.prose-blog hr {
+  margin: 3rem 0;
+  border: none;
+  border-top: 2px solid #f1f5f9;
+  position: relative;
+}
+.prose-blog hr::after {
+  content: '✈';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  padding: 0 0.75rem;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+/* H2/H3 앵커 스크롤 여백 — GlobalNav(56px) + breadcrumb(44px) 합산 보정 */
 .prose-blog h2,
 .prose-blog h3 {
-  scroll-margin-top: 88px;
+  scroll-margin-top: 110px;
+}
+@media (min-width: 768px) {
+  .prose-blog h2,
+  .prose-blog h3 {
+    scroll-margin-top: 120px;
+  }
 }
 
 /* 이미지 바로 다음 캡션 스타일 (마크다운 'alt 텍스트'가 렌더 실패해 p로 남은 경우 방어) */
@@ -240,3 +616,45 @@ body {
   margin-bottom: 1.5rem;
   font-style: normal;
 }
+
+/* ──────────────────────────────────────────────────────────
+ * 4번째 강조색: <aside class="warn"> — 오렌지 경고박스
+ *   용도: 주의사항·사기 주의·놓치면 손해·필수 확인사항
+ * ────────────────────────────────────────────────────────── */
+.prose-blog aside.warn {
+  margin: 1.75rem 0;
+  padding: 1rem 1.25rem 1rem 1.5rem;
+  background-color: #FFF7ED;
+  border-left: 4px solid #F97316;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #7C2D12;
+  font-size: 0.97em;
+  line-height: 1.75;
+}
+.prose-blog aside.warn p:first-child { margin-top: 0; }
+.prose-blog aside.warn p:last-child  { margin-bottom: 0; }
+.prose-blog aside.warn strong        { color: #C2410C; }
+
+/* ──────────────────────────────────────────────────────────
+ * 스크롤 reveal 애니메이션 (ScrollReveal 컴포넌트와 연동)
+ * ────────────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.scroll-reveal {
+  opacity: 0;
+}
+
+.scroll-reveal.is-visible {
+  animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 스태거 딜레이 (목록 카드 순서별 딜레이) */
+.scroll-reveal[data-delay="1"] { animation-delay: 0.05s; }
+.scroll-reveal[data-delay="2"] { animation-delay: 0.1s; }
+.scroll-reveal[data-delay="3"] { animation-delay: 0.15s; }
+.scroll-reveal[data-delay="4"] { animation-delay: 0.2s; }
+.scroll-reveal[data-delay="5"] { animation-delay: 0.25s; }
+.scroll-reveal[data-delay="6"] { animation-delay: 0.3s; }

@@ -1,3 +1,9 @@
+---
+name: manage-attractions
+description: 관광지(attractions) DB·매칭·시딩 관련 작업의 유일한 진입점. 자동 시드 금지·기존 파이프라인 우선 등 ERR-20260418-33 재발 방지 규칙 박제. 관광지·attraction·매칭·시딩 키워드에서 자동 활성화.
+allowed-tools: Read, Grep, Glob, Edit, Bash(node db/seed_attractions*)
+---
+
 # 🗺️ 관광지(Attractions) 관리 가이드
 
 > **⚠️ [필독] 이 파일은 관광지 관련 작업의 유일한 진입점입니다.**

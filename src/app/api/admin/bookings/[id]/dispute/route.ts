@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { logAndSanitize } from '@/lib/error-sanitizer';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { logError } from '@/lib/sentry-logger';
 
 // POST: 분쟁 플래그 토글
-export async function POST(
+const postHandler = async (
   request: NextRequest,
   { params }: { params: { id: string } }
-) {
+) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -41,10 +44,12 @@ export async function POST(
 
     return NextResponse.json({ booking: data });
   } catch (error) {
-    console.error('[Dispute]', error);
+    logError('[admin/bookings/dispute] flag toggle failed', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리 실패' },
+      { error: logAndSanitize('admin-bookings-dispute', error, '처리 실패') },
       { status: 500 }
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

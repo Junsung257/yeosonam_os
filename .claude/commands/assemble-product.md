@@ -1,3 +1,11 @@
+---
+name: assemble-product
+description: 어셈블러 상품 등록 — 서안·장가계·나트랑 등 블록 정의 지역에서 dry-run으로 조립 → 검증 → INSERT. 부수효과 큼, 사용자 명시 호출만.
+argument-hint: [원문 텍스트]
+model: claude-sonnet-4-6
+disable-model-invocation: true
+---
+
 # 서안 어셈블러 상품 등록 프로세스
 
 사용자가 원문 텍스트를 제공하면 어셈블러로 상품을 등록합니다.
@@ -99,3 +107,13 @@ price_dates: prices.map(p => ({ date: p.date, price: p.price, confirmed: false }
 ```
 XIY: 서안
 ```
+
+---
+
+## 결정 이력
+
+> 이 섹션은 **Claude가 작업 중 결정을 포착할 때마다 자동 append** 합니다 (승인 구하지 않음).
+> 포맷: `- **YYYY-MM-DD** | 확정/번복/금지패턴 | 내용 — 근거`
+> 번복 시 기존 엔트리 삭제 금지. 새 엔트리 추가로 이력 유지.
+
+- **2026-04-22** | 확정 | 결정 이력 자동 기록 도입 — Claude가 결정 신호 포착 시 승인 없이 이 섹션에 append, 응답에 한 줄 알림. 번복·반려 케이스는 필수 기록. (feedback_auto_decision_logging.md / feedback_decision_reversal_priority.md)

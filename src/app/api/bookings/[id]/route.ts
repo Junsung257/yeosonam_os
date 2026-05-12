@@ -126,12 +126,58 @@ export async function PATCH(
   // updated_at 항상 갱신
   updateFields.updated_at = new Date().toISOString();
 
+  // Phase 2a — paid_amount 직접 수정은 record_manual_paid_amount_change RPC 로 분기
+  //   이유: bookings.paid_amount UPDATE 와 ledger_entries INSERT 를 같은 트랜잭션에서 보장.
+  //   다른 필드들은 그대로 일반 UPDATE 로 처리 후, paid_amount 만 RPC 로 후처리.
+  const hasManualPaidAmount = Object.prototype.hasOwnProperty.call(updateFields, 'paid_amount');
+  const newPaidAmount = hasManualPaidAmount ? Number(updateFields.paid_amount ?? 0) : null;
+  if (hasManualPaidAmount) {
+    delete updateFields.paid_amount;
+  }
+
   // supabaseAdmin (service role key) — RLS 우회 보장
+  // 다른 필드 먼저 UPDATE
+  if (Object.keys(updateFields).length > 1) {
+    // updated_at 외 다른 필드가 있으면 일반 UPDATE
+    const { error: bulkErr } = await supabaseAdmin
+      .from('bookings')
+      .update(updateFields)
+      .eq('id', id);
+    if (bulkErr) {
+      console.error(`[bookings/${id} PATCH] Supabase 에러:`, bulkErr);
+      return NextResponse.json(
+        { error: bulkErr.message, code: bulkErr.code, details: bulkErr.details ?? null, hint: bulkErr.hint ?? null },
+        { status: 500 },
+      );
+    }
+  }
+
+  // paid_amount 만 RPC 경로 — ledger 이중쓰기 보장
+  if (hasManualPaidAmount && Number.isFinite(newPaidAmount)) {
+    const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
+      p_booking_id: id,
+      p_new_paid_amount: newPaidAmount,
+      p_new_total_paid_out: null,
+      p_source: 'admin_manual_edit',
+      p_source_ref_id: id,
+      p_idempotency_key: `manual:${id}:${Date.now()}`,    // 같은 booking 의 동일 호출은 시간으로 분리
+      p_memo: 'admin manual paid_amount edit',
+      p_created_by: 'admin',
+    });
+    if (rpcErr) {
+      console.error(`[bookings/${id} PATCH] manual paid_amount RPC 실패:`, rpcErr);
+      return NextResponse.json(
+        { error: rpcErr.message, code: rpcErr.code },
+        { status: 500 },
+      );
+    }
+  }
+
+  // 최종 booking 조회 후 반환 (ledger RPC 가 payment_status 도 자동 갱신하지만 여긴 일반 UPDATE 후라 단순 SELECT)
   const { data, error } = await supabaseAdmin
     .from('bookings')
-    .update(updateFields)
-    .eq('id', id)
     .select('*, customers!lead_customer_id(id, name, phone)')
+    .eq('id', id)
     .single();
 
   if (error) {

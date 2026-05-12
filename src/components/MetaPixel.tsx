@@ -1,20 +1,25 @@
 'use client';
 
 import Script from 'next/script';
+import { useAnalyticsConsent } from '@/lib/consent';
+import { thirdPartyScriptType } from '@/lib/third-party-script-type';
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
 /**
  * Meta 픽셀 초기화 + PageView 자동 추적
  * NEXT_PUBLIC_META_PIXEL_ID 없으면 렌더링 안 함
+ * PIPA: 사용자 분석 동의 전엔 발화 안 함 (`@/lib/consent`)
  */
 export default function MetaPixel() {
-  if (!PIXEL_ID) return null;
+  const consent = useAnalyticsConsent();
+  if (!PIXEL_ID || !consent) return null;
 
   return (
     <>
       <Script
         id="meta-pixel-init"
+        type={thirdPartyScriptType()}
         strategy="lazyOnload"
         dangerouslySetInnerHTML={{
           __html: `
@@ -45,36 +50,60 @@ export default function MetaPixel() {
   );
 }
 
+// 동의 게이트 — 외부에서 import 시 사용
+import { hasAnalyticsConsent } from '@/lib/consent';
+
 /**
- * ViewContent 이벤트 (상품 상세 페이지)
+ * ViewContent 이벤트 (상품 상세·LP 등)
+ * `content_ids` 는 카탈로그·전환 최적화용으로 Meta 권장 필드.
+ * 동의 없으면 noop.
  */
 export function trackViewContent(params: {
   content_name: string;
   content_category: string;
   value: number;
+  /** 패키지 UUID·SKU 등 — 있으면 content_type 과 함께 전송 */
+  content_ids?: string[];
+  /** 기본 product (Meta 카탈로그 관례) */
+  content_type?: string;
 }) {
+  if (!hasAnalyticsConsent()) return;
   if (typeof window !== 'undefined' && (window as any).fbq) {
-    (window as any).fbq('track', 'ViewContent', {
+    const payload: Record<string, unknown> = {
       content_name: params.content_name,
       content_category: params.content_category,
       value: params.value,
       currency: 'KRW',
-    });
+    };
+    if (params.content_ids?.length) {
+      payload.content_ids = params.content_ids;
+      payload.content_type = params.content_type ?? 'product';
+    }
+    (window as any).fbq('track', 'ViewContent', payload);
   }
 }
 
 /**
- * Lead 이벤트 (문의 버튼 클릭)
+ * Lead 이벤트 (문의·리드 제출)
+ * 동의 없으면 noop.
  */
 export function trackLead(params: {
   content_name: string;
   value: number;
+  content_ids?: string[];
+  content_type?: string;
 }) {
+  if (!hasAnalyticsConsent()) return;
   if (typeof window !== 'undefined' && (window as any).fbq) {
-    (window as any).fbq('track', 'Lead', {
+    const payload: Record<string, unknown> = {
       content_name: params.content_name,
       value: params.value,
       currency: 'KRW',
-    });
+    };
+    if (params.content_ids?.length) {
+      payload.content_ids = params.content_ids;
+      payload.content_type = params.content_type ?? 'product';
+    }
+    (window as any).fbq('track', 'Lead', payload);
   }
 }

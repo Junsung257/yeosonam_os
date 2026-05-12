@@ -8,12 +8,14 @@
  * - Constitutional AI (Bai et al., 2022): 원칙 기반 비평 + 리비전
  *
  * 설계 원칙:
- * 1. 생성기(Gemini Flash Lite)와 검증기(Gemini Flash)를 분리 — 같은 모델이 자기 답을 검증하면 blind spot
+ * 1. 호출: llm-gateway — DeepSeek Flash primary, Gemini fallback (고객 QA 생성과 동일 스택)
  * 2. 짧은 답변(<50자)은 검증 스킵 — ROI 낮고 latency만 증가
  * 3. severity 3단계: ok/warn/block — block은 폴백 + 에스컬레이션, warn은 수정본 사용
  * 4. 검증 실패 시 원본 사용 (fail-open) — 검증기 장애가 전체 채팅을 막으면 안 됨
  * 5. env DISABLE_RESPONSE_CRITIC=true 로 런타임 OFF 가능 (비상 스위치)
  */
+
+import { llmCall } from '@/lib/llm-gateway';
 
 export type CritiqueSeverity = 'ok' | 'warn' | 'block';
 
@@ -24,8 +26,6 @@ export type CritiqueResult = {
 };
 
 const SAFE_FALLBACK: CritiqueResult = { severity: 'ok', issues: [], correctedReply: null };
-
-const GEMINI_CRITIC_MODEL = 'gemini-2.5-flash';
 
 const CRITIC_PROMPT = `당신은 여행사 AI 상담원의 답변을 검증하는 품질 관리자입니다. 공정하고 보수적으로 평가하세요.
 
@@ -112,15 +112,13 @@ export async function critiqueReply(params: {
   reply: string;
   recommendedPackageIds: string[];
   validPackageIds: string[];
-  apiKey: string;
 }): Promise<CritiqueResult> {
   if (process.env.DISABLE_RESPONSE_CRITIC === 'true') return SAFE_FALLBACK;
-  if (!params.apiKey) return SAFE_FALLBACK;
 
   // V2 확장 휴리스틱 — 근거 검증할 claim 이 없거나 위험도 0 이면 스킵
   if (shouldSkipCritic(params)) return SAFE_FALLBACK;
 
-  const prompt = CRITIC_PROMPT
+  const userPrompt = CRITIC_PROMPT
     .replace('{USER_QUESTION}', params.userQuestion.slice(0, 1000))
     .replace('{PACKAGE_CONTEXT}', params.packageContext.slice(0, 3000))
     .replace('{RECOMMENDED_IDS}', (params.recommendedPackageIds ?? []).join(', ') || '(없음)')
@@ -128,27 +126,34 @@ export async function critiqueReply(params: {
     .replace('{AI_REPLY}', params.reply);
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_CRITIC_MODEL}:generateContent?key=${params.apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
-        }),
-      },
-    );
+    const res = await llmCall({
+      task: 'response-critic',
+      systemPrompt:
+        '당신은 품질 관리자입니다. 사용자 메시지의 지시만 따르고, 지정된 JSON 객체 한 개만 출력하세요. 다른 텍스트는 금지입니다.',
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 1200,
+      autoEscalate: false,
+    });
 
-    if (!res.ok) {
-      console.warn('[Critic] Gemini HTTP', res.status, '— fail-open');
+    if (!res.success || !res.rawText?.trim()) {
+      console.warn('[Critic] llm 실패 — fail-open:', res.errors?.join('; '));
       return SAFE_FALLBACK;
     }
 
-    const json = await res.json();
-    const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const cleaned = res.rawText
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    } catch {
+      console.warn('[Critic] JSON 파싱 실패 — fail-open');
+      return SAFE_FALLBACK;
+    }
 
     const severity: CritiqueSeverity =
       parsed?.severity === 'block' || parsed?.severity === 'warn' ? parsed.severity : 'ok';

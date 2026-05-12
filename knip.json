@@ -1,0 +1,70 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/page.{ts,tsx}",
+    "src/app/**/layout.{ts,tsx}",
+    "src/app/**/loading.{ts,tsx}",
+    "src/app/**/error.{ts,tsx}",
+    "src/app/**/not-found.{ts,tsx}",
+    "src/app/**/route.{ts,tsx}",
+    "src/app/**/opengraph-image.{ts,tsx}",
+    "src/app/sw.ts",
+    "src/middleware.ts",
+    "src/instrumentation.ts",
+    "src/env.ts",
+    "src/inngest/**/*.ts",
+    "scripts/**/*.{js,mjs,cjs,ts}",
+    "db/**/*.{js,mjs,cjs}",
+    "tests/**/*.{ts,js}",
+    "next.config.js",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "playwright.e2e.config.ts",
+    "sentry.client.config.ts",
+    "sentry.server.config.ts",
+    "sentry.edge.config.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,js,jsx}",
+    "scripts/**/*.{js,mjs,cjs}",
+    "db/**/*.{js,mjs,cjs}",
+    "tests/**/*.{ts,js}"
+  ],
+  "ignore": [
+    "src/app/sw.ts",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "ignoreDependencies": [
+    "autoprefixer",
+    "postcss",
+    "tailwindcss",
+    "@tailwindcss/typography",
+    "eslint",
+    "eslint-config-next",
+    "@typescript-eslint/eslint-plugin",
+    "@typescript-eslint/parser",
+    "@types/node",
+    "@types/react",
+    "@types/react-dom",
+    "@types/papaparse",
+    "@types/web-push",
+    "typescript",
+    "@vitest/coverage-v8",
+    "@vercel/og",
+    "pretendard",
+    "serwist",
+    "@serwist/next",
+    "@sentry/nextjs"
+  ],
+  "ignoreBinaries": [
+    "powershell"
+  ],
+  "next": {
+    "entry": [
+      "src/app/**/route.{ts,tsx}",
+      "src/app/**/page.{ts,tsx}",
+      "next.config.js"
+    ]
+  }
+}

@@ -32,6 +32,8 @@ function todayYMD(): string {
 }
 
 export default function DepartureCalendar({ priceDates, selectedDate, onSelect, initialMonth }: Props) {
+  const [pastToast, setPastToast] = useState<string | null>(null);
+
   const dateMap = useMemo(() => {
     const m = new Map<string, PriceDate>();
     (priceDates || []).forEach(d => { if (d?.date) m.set(d.date, d); });
@@ -64,23 +66,61 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
 
   const [y, m] = viewMonth.split('-').map(Number);
 
+  // P2 #3 (2026-04-27): 출발 가능 월 chip row.
+  // 사장님 화면에서 5월만 보고 6월 출발일 존재 인지 못하는 케이스 방어 — 한눈에 모든 가능 월 노출.
+  const availableMonths = useMemo(() => {
+    const today = todayYMD();
+    const buckets = new Map<string, number>();
+    [...dateMap.entries()].forEach(([ymd, pd]) => {
+      if (ymd < today) return;
+      if (!pd || pd.price <= 0) return;
+      const ym = ymd.slice(0, 7);
+      buckets.set(ym, (buckets.get(ym) || 0) + 1);
+    });
+    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [dateMap]);
+
   return (
     <div className="w-full">
+      {/* 출발 가능 월 chip row (2개월 이상 출발일이 있을 때만) */}
+      {availableMonths.length >= 2 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {availableMonths.map(([ym, count]) => {
+            const [yy, mm] = ym.split('-').map(Number);
+            const isActive = ym === viewMonth;
+            return (
+              <button
+                key={ym}
+                type="button"
+                onClick={() => setViewMonth(ym)}
+                className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
+                  isActive
+                    ? 'bg-brand text-white border-brand font-bold shadow-sm'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-brand hover:bg-brand-light'
+                }`}
+              >
+                {mm}월 <span className={isActive ? 'text-white/70' : 'text-slate-400'}>({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* 월 네비 */}
       <div className="flex items-center justify-between mb-3">
         <button
           type="button"
           onClick={() => shiftMonth(-1)}
-          className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+          className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center transition"
           aria-label="이전 달"
         >
           <ChevronLeft size={18} />
         </button>
-        <div className="text-base font-bold text-gray-900">{y}년 {m}월</div>
+        <div className="text-base font-bold text-slate-900">{y}년 {m}월</div>
         <button
           type="button"
           onClick={() => shiftMonth(1)}
-          className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+          className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center transition"
           aria-label="다음 달"
         >
           <ChevronRight size={18} />
@@ -93,7 +133,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           <div
             key={d}
             className={`text-xs font-medium text-center py-1 ${
-              i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'
+              i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-slate-500'
             }`}
           >
             {d}
@@ -115,25 +155,25 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           const dow = cell.dow;
 
           const baseTextColor = isPast
-            ? 'text-gray-300'
+            ? 'text-slate-300'
             : dow === 0
               ? 'text-red-500'
               : dow === 6
                 ? 'text-blue-500'
-                : 'text-gray-800';
+                : 'text-slate-800';
 
           let bg = '';
           let border = 'border border-transparent';
           if (isSelected) {
-            bg = 'bg-[#340897] text-white';
-            border = 'border border-[#340897]';
+            bg = 'bg-brand text-white';
+            border = 'border border-brand';
           } else if (isAvailable && !isPast) {
             if (isConfirmed) {
               bg = 'bg-emerald-50 hover:bg-emerald-100';
               border = 'border border-emerald-300';
             } else {
-              bg = 'bg-violet-50 hover:bg-violet-100';
-              border = 'border border-violet-200';
+              bg = 'bg-brand-light hover:bg-blue-100';
+              border = 'border border-brand/30';
             }
           }
 
@@ -141,16 +181,30 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
             <button
               key={i}
               type="button"
-              disabled={!isAvailable || isPast}
-              onClick={() => onSelect(ymd)}
+              onClick={() => {
+                if (isPast) {
+                  setPastToast(ymd);
+                  setTimeout(() => setPastToast(null), 1800);
+                } else if (isAvailable) {
+                  onSelect(ymd);
+                }
+              }}
               className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs transition relative ${bg} ${border} ${!isAvailable || isPast ? 'cursor-default' : 'cursor-pointer'}`}
             >
               <span className={`text-sm font-semibold ${isSelected ? 'text-white' : baseTextColor}`}>
                 {cell.day}
               </span>
               {pd && !isPast && (
-                <span className={`text-[9px] leading-tight font-medium ${isSelected ? 'text-white/90' : 'text-gray-600'}`}>
-                  {pd.price > 0 ? `${Math.round(pd.price / 10000)}만` : ''}
+                <span className={`text-[9px] leading-tight font-medium ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                  {pd.price > 0
+                    ? (() => {
+                        // P0 #3 (2026-04-27): 반올림 시 579,000 → "58만" 으로 부풀려져 가격 사기 인상.
+                        // 항상 floor + 1자리 정밀도. 정수면 소수점 생략.
+                        const v = pd.price / 10000;
+                        const s = (Math.floor(v * 10) / 10).toFixed(1);
+                        return `${s.endsWith('.0') ? s.slice(0, -2) : s}만`;
+                      })()
+                    : ''}
                 </span>
               )}
               {isLowest && !isSelected && !isPast && (
@@ -169,11 +223,18 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
       </div>
 
       {/* 범례 */}
-      <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-gray-500">
+      <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-slate-500">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 border border-emerald-300 inline-block" /> 출발확정</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-violet-50 border border-violet-200 inline-block" /> 선택가능</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-brand-light border border-brand/30 inline-block" /> 선택가능</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" /> 최저가</span>
       </div>
+
+      {/* 과거 날짜 탭 시 토스트 */}
+      {pastToast && (
+        <div className="mt-2 text-center text-xs text-slate-400 animate-pulse">
+          이미 지난 날짜입니다
+        </div>
+      )}
     </div>
   );
 }

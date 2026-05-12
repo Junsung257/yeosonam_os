@@ -3,6 +3,22 @@
  * payments/page.tsx, bookings/page.tsx, ledger/page.tsx 에서 공유
  */
 
+/** 숫자 → 천단위 콤마 (예: 1234567 → "1,234,567") */
+export function fmtNum(n: number): string {
+  return n.toLocaleString('ko-KR');
+}
+
+/** ISO 날짜 → YYYY-MM-DD 10자리 (예: "2024-12-25T..." → "2024-12-25") */
+export function fmtDateISO(d?: string | null): string {
+  return d ? d.slice(0, 10) : '';
+}
+
+/** ISO 날짜 → YYYY-MM-DD HH:mm (예: "2024-12-25T13:30:00" → "2024-12-25 13:30") */
+export function fmtDateTime(d?: string | null): string {
+  if (!d) return '';
+  return d.slice(0, 16).replace('T', ' ');
+}
+
 /** 원화 정수 → 만원 단위 문자열 (예: 1230000 → "123.0만") */
 export function fmt만(n: number): string {
   return `${(n / 10000).toFixed(1)}만`;
@@ -19,6 +35,31 @@ export function fmtK(n: number): string {
 export function fmtDate(d?: string): string {
   return d ? d.slice(2, 10).replace(/-/g, '-') : '';
 }
+
+/** ISO 날짜 → MM-DD (예: "2024-12-25T..." → "12-25") */
+export function fmtMonthDay(d?: string | null): string {
+  return d ? d.slice(5, 10) : '';
+}
+
+/** ISO 날짜 → MM-DD HH:mm (예: "2024-12-25T13:30:00" → "12-25 13:30") */
+export function fmtMonthDayTime(d?: string | null): string {
+  if (!d) return '';
+  return d.slice(5, 16).replace('T', ' ');
+}
+
+/**
+ * ⚠️ Hydration 안전 가이드라인
+ *
+ * Client 컴포넌트(`'use client'`)에서 `new Date(x).toLocaleString('ko-KR', ...)`,
+ * `toLocaleDateString`, `toLocaleTimeString` 직접 사용 금지.
+ *
+ * 이유: 서버(en-US Locale)와 클라이언트(ko-KR) 가 다르게 렌더되어 hydration mismatch
+ * 콘솔 경고를 띄우고 SSR 콘텐츠를 폐기 후 client-only 재렌더 → LCP 영향.
+ *
+ * 사례: ERR-blog-queue-locale-hydration@2026-05-10 (page-audit-2026-05-10 P0)
+ *
+ * 정답: 위 fmtDate / fmtMonthDay 계열 함수 사용 (단순 ISO 슬라이싱, locale-stable)
+ */
 
 /**
  * departure_days 정규화 — 저장 포맷 혼재(JSON string / array / plain string) 방어

@@ -94,7 +94,7 @@ export default async function MobileBookingsPage({
         }
       />
       <div
-        className="sticky z-30 bg-slate-50 border-b border-slate-200"
+        className="sticky z-30 bg-admin-bg border-b border-admin-border-mid"
         style={{ top: 'calc(3.5rem + env(safe-area-inset-top))' }}
       >
         <nav className="px-3 py-2 overflow-x-auto">
@@ -113,7 +113,7 @@ export default async function MobileBookingsPage({
                     className={`inline-block text-xs font-medium px-3 py-1.5 rounded-full transition ${
                       active
                         ? 'bg-slate-900 text-white'
-                        : 'bg-white text-slate-600 border border-slate-200'
+                        : 'bg-white text-admin-muted border border-admin-border-mid'
                     }`}
                   >
                     {t.label}

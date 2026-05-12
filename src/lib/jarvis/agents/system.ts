@@ -1,8 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { SYSTEM_PROMPT_AGENT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
-import { runGeminiAgentLoop } from '../gemini-agent-loop'
-import { convertTools } from '../gemini-tool-format'
+import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 
 const SYSTEM_TOOLS_RAW = [
   {
@@ -57,7 +56,7 @@ const SYSTEM_TOOLS_RAW = [
   },
 ]
 
-const SYSTEM_TOOLS = convertTools(SYSTEM_TOOLS_RAW)
+const SYSTEM_TOOLS = SYSTEM_TOOLS_RAW as any
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -108,7 +107,7 @@ export { SYSTEM_TOOLS, SYSTEM_TOOLS_RAW }
 export { executeTool as executeSystemTool }
 
 export async function runSystemAgent(params: AgentRunParams): Promise<AgentRunResult> {
-  return runGeminiAgentLoop({
+  return runDeepSeekAgentLoop({
     agentType: 'system',
     systemPrompt: SYSTEM_PROMPT_AGENT,
     tools: SYSTEM_TOOLS,

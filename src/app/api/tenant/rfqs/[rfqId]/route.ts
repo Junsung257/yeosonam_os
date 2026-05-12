@@ -9,9 +9,9 @@ import {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ rfqId: string }> }
+  { params }: { params: { rfqId: string } }
 ) {
-  const { rfqId } = await params;
+  const { rfqId } = params;
   const { searchParams } = new URL(request.url);
   const tenantId = searchParams.get('tenant_id');
 

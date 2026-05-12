@@ -28,7 +28,7 @@ const RATIO_SIZES: Record<AspectRatio, { w: number; h: number; label: string; cl
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-500',
+  DRAFT: 'bg-admin-surface-2 text-admin-muted',
   CONFIRMED: 'bg-blue-50 text-blue-700',
   LAUNCHED: 'bg-emerald-50 text-emerald-700',
   ARCHIVED: 'bg-red-50 text-red-500',
@@ -228,8 +228,8 @@ export default function CardNewsEditorPage() {
     if (needsDomCapture) {
       const htmlToImage = await import('html-to-image');
       const { createClient } = await import('@supabase/supabase-js');
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? null;
+      const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? null;
       if (!supabaseUrl || !supabaseAnon) throw new Error('Supabase 환경변수 미설정');
       supabase = createClient(supabaseUrl, supabaseAnon);
       toPng = htmlToImage.toPng;
@@ -336,7 +336,19 @@ export default function CardNewsEditorPage() {
   };
 
   if (!cardNews) {
-    return <div className="p-10 text-center text-[13px] text-slate-400">불러오는 중...</div>;
+    return (
+      <div className="p-6 space-y-4">
+        <div className="h-8 bg-admin-surface-2 rounded animate-pulse w-56" />
+        <div className="flex gap-4">
+          <div className="flex-1 bg-admin-surface-2 rounded-admin-md aspect-[9/16] animate-pulse" />
+          <div className="w-64 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-9 bg-admin-surface-2 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const ratio = RATIO_SIZES[aspectRatio];
@@ -344,16 +356,16 @@ export default function CardNewsEditorPage() {
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col -mx-4 lg:-mx-6 -my-4">
       {/* ── 상단 툴바 ──────────────────────────────── */}
-      <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
+      <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/admin/marketing/card-news')}
-            className="text-slate-400 hover:text-slate-600 transition p-1">
+            className="text-admin-muted-2 hover:text-admin-muted transition p-1">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
           <input
             value={cardNews.title}
             onChange={e => setCardNews(cn => cn ? { ...cn, title: e.target.value } : cn)}
-            className="text-[15px] font-semibold text-slate-800 bg-transparent border-none outline-none w-64"
+            className="text-admin-md font-semibold text-admin-text-2 bg-transparent border-none outline-none w-64"
           />
           <span className={`text-[11px] font-medium px-2 py-0.5 rounded ${STATUS_BADGE[cardNews.status]}`}>
             {STATUS_LABELS[cardNews.status]}
@@ -369,38 +381,43 @@ export default function CardNewsEditorPage() {
         </div>
         <div className="flex items-center gap-2">
           {/* 비율 선택 */}
-          <div className="flex border border-slate-200 rounded overflow-hidden">
+          <div className="flex border border-admin-border-mid rounded overflow-hidden">
             {(Object.keys(RATIO_SIZES) as AspectRatio[]).map(r => (
               <button key={r} onClick={() => setAspectRatio(r)}
-                className={`px-2.5 py-1 text-[11px] transition ${aspectRatio === r ? 'bg-[#001f3f] text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                className={`px-2.5 py-1 text-[11px] transition ${aspectRatio === r ? 'bg-slate-800 text-white' : 'bg-white text-admin-muted hover:bg-admin-bg'}`}>
                 {r}
               </button>
             ))}
           </div>
           {/* 일예산 */}
-          <div className="flex items-center gap-1 border border-slate-200 rounded px-2 py-1">
-            <span className="text-[10px] text-slate-400">일예산</span>
+          <div className="flex items-center gap-1 border border-admin-border-mid rounded px-2 py-1">
+            <span className="text-[10px] text-admin-muted-2">일예산</span>
             <input type="number" value={budgetKrw} onChange={e => setBudgetKrw(parseInt(e.target.value) || 50000)}
-              step={10000} min={10000} className="w-20 border-none text-[12px] text-slate-800 text-right focus:ring-0 bg-transparent p-0" />
-            <span className="text-[10px] text-slate-400">원</span>
+              step={10000} min={10000} className="w-20 border-none text-admin-xs text-admin-text-2 text-right focus:ring-0 bg-transparent p-0" />
+            <span className="text-[10px] text-admin-muted-2">원</span>
           </div>
           <button onClick={handleSave} disabled={saving}
-            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[12px] rounded hover:bg-slate-50 disabled:opacity-50 transition">
+            className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {saving ? '...' : '저장'}
           </button>
           <button onClick={handleExport} disabled={exporting}
-            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-[12px] rounded hover:bg-slate-50 disabled:opacity-50 transition">
+            className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {exporting ? '생성 중...' : 'JPG 내보내기'}
           </button>
           <button onClick={handleConfirmAndGenerateBlog} disabled={blogGenerating}
-            className="px-3 py-1.5 bg-indigo-600 text-white text-[12px] rounded hover:bg-indigo-700 disabled:opacity-50 transition font-medium"
+            className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs rounded hover:bg-blue-700 disabled:opacity-50 transition font-medium"
             title="카드뉴스를 이미지로 저장하고 블로그를 자동 생성합니다">
             {blogGenerating ? '블로그 생성 중...' : '✨ 확정 + 블로그 생성'}
           </button>
           <button
             onClick={() => setIgModalOpen(true)}
             disabled={!cardNews.slide_image_urls || cardNews.slide_image_urls.length < 2}
-            className="px-3 py-1.5 bg-pink-600 text-white text-[12px] rounded hover:bg-pink-700 disabled:opacity-50 transition font-medium"
+            className={`px-3 py-1.5 text-white text-admin-xs rounded disabled:opacity-50 transition font-medium ${
+              cardNews.ig_publish_status === 'published' ? 'bg-emerald-600 hover:bg-emerald-700'
+              : cardNews.ig_publish_status === 'queued' ? 'bg-amber-500 hover:bg-amber-600'
+              : cardNews.ig_publish_status === 'failed' ? 'bg-red-600 hover:bg-red-700'
+              : 'bg-rose-500 hover:bg-rose-600'
+            }`}
             title={cardNews.slide_image_urls?.length ? '인스타 캐러셀 발행' : '"확정+블로그" 먼저 실행 (슬라이드 PNG 업로드 필요)'}
           >
             {cardNews.ig_publish_status === 'published'
@@ -412,14 +429,14 @@ export default function CardNewsEditorPage() {
                   : '📷 인스타 발행'}
           </button>
           <button onClick={handleLaunch} disabled={launching || cardNews.status === 'LAUNCHED'}
-            className="px-3 py-1.5 bg-[#001f3f] text-white text-[12px] rounded hover:bg-blue-900 disabled:opacity-50 transition font-medium">
+            className="px-3 py-1.5 bg-slate-900 text-white text-admin-xs rounded hover:bg-slate-800 disabled:opacity-50 transition font-medium">
             {launching ? '배포 중...' : cardNews.status === 'LAUNCHED' ? '런치됨' : '컨펌 & 런치'}
           </button>
         </div>
       </div>
 
       {launchResult && (
-        <div className={`px-4 py-2 text-[12px] ${launchResult.includes('완료') || launchResult.includes('CONFIRMED') ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+        <div className={`px-4 py-2 text-admin-xs ${launchResult.includes('완료') || launchResult.includes('CONFIRMED') ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
           {launchResult}
         </div>
       )}
@@ -427,37 +444,37 @@ export default function CardNewsEditorPage() {
       {/* ── 메인 영역 ──────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* 좌측: 슬라이드 목록 */}
-        <div className="w-40 bg-slate-50 border-r border-slate-200 flex flex-col overflow-y-auto flex-shrink-0">
-          <div className="p-2 text-[11px] font-medium text-slate-400 border-b border-slate-200">
+        <div className="w-40 bg-admin-bg border-r border-admin-border-mid flex flex-col overflow-y-auto flex-shrink-0">
+          <div className="p-2 text-[11px] font-medium text-admin-muted-2 border-b border-admin-border-mid">
             슬라이드 ({slides.length}장)
           </div>
           {slides.map((s, idx) => (
             <button key={s.id} onClick={() => setActiveIdx(idx)}
-              className={`relative group text-left p-1.5 border-b border-slate-100 hover:bg-blue-50/50 transition ${activeIdx === idx ? 'bg-blue-50 border-l-2 border-l-[#005d90]' : ''}`}>
+              className={`relative group text-left p-1.5 border-b border-admin-border hover:bg-blue-50/50 transition ${activeIdx === idx ? 'bg-blue-50 border-l-2 border-l-[#005d90]' : ''}`}>
               <div className={`w-full ${ratio.cls} rounded overflow-hidden bg-slate-200`}
                 style={s.bg_image_url ? { backgroundImage: `url(${s.bg_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
                 {!s.bg_image_url && <div className="w-full h-full flex items-center justify-center text-orange-400 text-[10px]">🖼 이미지 필요</div>}
               </div>
-              <p className="text-[10px] text-slate-600 truncate mt-1">{s.headline || `슬라이드 ${idx + 1}`}</p>
+              <p className="text-[10px] text-admin-muted truncate mt-1">{s.headline || `슬라이드 ${idx + 1}`}</p>
               <div className="absolute top-0.5 right-0.5 hidden group-hover:flex gap-0.5">
-                {idx > 0 && <button onClick={e => { e.stopPropagation(); moveSlide(idx, 'up'); }} className="w-4 h-4 bg-white rounded text-slate-400 text-[9px] hover:bg-slate-100 border border-slate-200">↑</button>}
-                {idx < slides.length - 1 && <button onClick={e => { e.stopPropagation(); moveSlide(idx, 'down'); }} className="w-4 h-4 bg-white rounded text-slate-400 text-[9px] hover:bg-slate-100 border border-slate-200">↓</button>}
-                <button onClick={e => { e.stopPropagation(); duplicateSlide(idx); }} className="w-4 h-4 bg-white rounded text-slate-400 text-[9px] hover:bg-slate-100 border border-slate-200">+</button>
+                {idx > 0 && <button onClick={e => { e.stopPropagation(); moveSlide(idx, 'up'); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">↑</button>}
+                {idx < slides.length - 1 && <button onClick={e => { e.stopPropagation(); moveSlide(idx, 'down'); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">↓</button>}
+                <button onClick={e => { e.stopPropagation(); duplicateSlide(idx); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">+</button>
                 <button onClick={e => { e.stopPropagation(); deleteSlide(idx); }} className="w-4 h-4 bg-red-50 rounded text-red-400 text-[9px] hover:bg-red-100 border border-red-200">x</button>
               </div>
             </button>
           ))}
-          <button onClick={addSlide} className="m-2 py-2 text-[11px] text-slate-400 border border-dashed border-slate-300 rounded hover:border-slate-400 hover:text-slate-500 transition">
+          <button onClick={addSlide} className="m-2 py-2 text-[11px] text-admin-muted-2 border border-dashed border-admin-border-strong rounded hover:border-slate-400 hover:text-admin-muted transition">
             + 추가
           </button>
         </div>
 
         {/* 중앙: 메인 캔버스 */}
-        <div className="flex-1 bg-slate-100 overflow-auto flex items-start justify-center p-6">
+        <div className="flex-1 bg-admin-surface-2 overflow-auto flex items-start justify-center p-6">
           {activeSlide ? (
-            <div className="card-news-export-slide relative rounded-lg overflow-hidden shadow-lg"
+            <div className="card-news-export-slide relative rounded-lg overflow-hidden shadow-admin-md"
               style={{ width: `${ratio.w}px`, height: `${ratio.h}px`,
-                background: activeSlide.bg_image_url ? undefined : 'linear-gradient(135deg, #001f3f, #005d90)',
+                background: activeSlide.bg_image_url ? undefined : 'linear-gradient(135deg, #1e3a8a, #2563eb)',
                 backgroundImage: activeSlide.bg_image_url ? `url(${activeSlide.bg_image_url})` : undefined,
                 backgroundSize: 'cover', backgroundPosition: 'center' }}>
               <div className={`absolute inset-0 ${OVERLAY_CLASSES[activeSlide.overlay_style] ?? OVERLAY_CLASSES.dark}`} />
@@ -499,12 +516,12 @@ export default function CardNewsEditorPage() {
               </div>
             </div>
           ) : (
-            <p className="text-slate-400 text-[13px]">슬라이드를 선택하세요</p>
+            <p className="text-admin-muted-2 text-admin-sm">슬라이드를 선택하세요</p>
           )}
         </div>
 
         {/* 우측: 속성 패널 */}
-        <div className="w-60 bg-white border-l border-slate-200 overflow-y-auto p-3 space-y-4 flex-shrink-0">
+        <div className="w-60 bg-white border-l border-admin-border-mid overflow-y-auto p-3 space-y-4 flex-shrink-0">
           {activeSlide ? (
             <>
               {/* 디자인 템플릿 선택 (전체 슬라이드 일괄 적용 옵션) */}
@@ -516,7 +533,7 @@ export default function CardNewsEditorPage() {
                     const tplId = e.target.value || undefined;
                     updateActiveSlide({ template_id: tplId } as any);
                   }}
-                  className="w-full border border-indigo-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-indigo-400 bg-white"
+                  className="w-full border border-indigo-200 rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-indigo-400 bg-white"
                 >
                   <option value="">기본 (V1 스타일)</option>
                   <option value="dark_cinematic">🌃 다크 시네마틱</option>
@@ -533,7 +550,7 @@ export default function CardNewsEditorPage() {
                     setSlides(prev => prev.map(s => ({ ...s, template_id: tplId } as any)));
                     showToast('전체 슬라이드 적용 완료');
                   }}
-                  className="w-full mt-1.5 px-2 py-1 bg-indigo-600 text-white text-[10px] rounded hover:bg-indigo-700"
+                  className="w-full mt-1.5 px-2 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700"
                 >
                   전체 슬라이드에 적용
                 </button>
@@ -541,22 +558,22 @@ export default function CardNewsEditorPage() {
 
               {/* 배지 (옵셔널) */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">배지 (옵션)</label>
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block mb-1.5">배지 (옵션)</label>
                 <input
                   value={(activeSlide as any).badge || ''}
                   onChange={e => updateActiveSlide({ badge: e.target.value || null } as any)}
                   placeholder="예: 핵심 / TIP / 01"
                   maxLength={10}
-                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90]"
+                  className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90]"
                 />
               </div>
 
               {/* 오버레이 (V1 호환용 — 템플릿 미선택 시 적용) */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">오버레이 (V1 전용)</label>
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block mb-1.5">오버레이 (V1 전용)</label>
                 <select value={activeSlide.overlay_style}
                   onChange={e => updateActiveSlide({ overlay_style: e.target.value as OverlayStyle })}
-                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90]"
+                  className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90]"
                   disabled={!!(activeSlide as any).template_id}
                   title={(activeSlide as any).template_id ? '템플릿 사용 시 무효' : ''}>
                   {(Object.keys(OVERLAY_LABELS) as OverlayStyle[]).map(k => (
@@ -567,35 +584,35 @@ export default function CardNewsEditorPage() {
 
               {/* 텍스트 */}
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">제목</label>
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block mb-1.5">제목</label>
                 <input value={activeSlide.headline} onChange={e => updateActiveSlide({ headline: e.target.value })}
-                  className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90]" />
+                  className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90]" />
               </div>
               <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block mb-1.5">본문</label>
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block mb-1.5">본문</label>
                 <textarea value={activeSlide.body} onChange={e => updateActiveSlide({ body: e.target.value })}
-                  rows={4} className="w-full border border-slate-200 rounded px-2 py-1.5 text-[12px] focus:ring-1 focus:ring-[#005d90] resize-none" />
+                  rows={4} className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90] resize-none" />
               </div>
 
               {/* 제목 스타일링 */}
-              <div className="border border-slate-200 rounded-lg p-2.5 space-y-2">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block">제목 스타일</label>
+              <div className="border border-admin-border-mid rounded-lg p-2.5 space-y-2">
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block">제목 스타일</label>
                 <select value={(activeSlide as any).headline_style?.fontFamily || 'Pretendard'}
                   onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, fontFamily: e.target.value } } as any)}
-                  className="w-full border border-slate-200 rounded px-2 py-1 text-[11px]">
+                  className="w-full border border-admin-border-mid rounded px-2 py-1 text-[11px]">
                   {['Pretendard', 'Noto Sans KR', 'Gothic A1'].map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-slate-400 w-6">크기</span>
+                  <span className="text-[9px] text-admin-muted-2 w-6">크기</span>
                   <input type="range" min={16} max={72} value={(activeSlide as any).headline_style?.fontSize || 32}
                     onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, fontSize: parseInt(e.target.value) } } as any)}
-                    className="flex-1 accent-[#001f3f]" />
-                  <span className="text-[10px] text-slate-500 w-8 text-right">{(activeSlide as any).headline_style?.fontSize || 32}px</span>
+                    className="flex-1 accent-blue-600" />
+                  <span className="text-[10px] text-admin-muted w-8 text-right">{(activeSlide as any).headline_style?.fontSize || 32}px</span>
                 </div>
                 <div className="flex gap-1">
                   {['#ffffff','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => (
                     <button key={c} onClick={() => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, color: c } } as any)}
-                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).headline_style?.color === c ? 'border-[#001f3f] scale-110' : 'border-slate-200'}`}
+                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).headline_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                       style={{ backgroundColor: c }} />
                   ))}
                   <input type="color" value={(activeSlide as any).headline_style?.color || '#ffffff'}
@@ -610,7 +627,7 @@ export default function CardNewsEditorPage() {
                     { k: 'textAlign', v: 'right', label: '우', active: (activeSlide as any).headline_style?.textAlign === 'right' },
                   ].map((btn, i) => (
                     <button key={i} onClick={() => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, [btn.k]: btn.active && btn.k === 'fontWeight' ? 'normal' : btn.v } } as any)}
-                      className={`flex-1 py-1 rounded text-[10px] font-bold transition ${btn.active ? 'bg-[#001f3f] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      className={`flex-1 py-1 rounded text-[10px] font-bold transition ${btn.active ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                       {btn.label}
                     </button>
                   ))}
@@ -618,27 +635,27 @@ export default function CardNewsEditorPage() {
               </div>
 
               {/* 본문 스타일링 */}
-              <div className="border border-slate-200 rounded-lg p-2.5 space-y-2">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block">본문 스타일</label>
+              <div className="border border-admin-border-mid rounded-lg p-2.5 space-y-2">
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block">본문 스타일</label>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-slate-400 w-6">크기</span>
+                  <span className="text-[9px] text-admin-muted-2 w-6">크기</span>
                   <input type="range" min={10} max={36} value={(activeSlide as any).body_style?.fontSize || 18}
                     onChange={e => updateActiveSlide({ body_style: { ...(activeSlide as any).body_style, fontSize: parseInt(e.target.value) } } as any)}
-                    className="flex-1 accent-[#001f3f]" />
-                  <span className="text-[10px] text-slate-500 w-8 text-right">{(activeSlide as any).body_style?.fontSize || 18}px</span>
+                    className="flex-1 accent-blue-600" />
+                  <span className="text-[10px] text-admin-muted w-8 text-right">{(activeSlide as any).body_style?.fontSize || 18}px</span>
                 </div>
                 <div className="flex gap-1">
                   {['#ffffff','#e0e0e0','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6'].map(c => (
                     <button key={c} onClick={() => updateActiveSlide({ body_style: { ...(activeSlide as any).body_style, color: c } } as any)}
-                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).body_style?.color === c ? 'border-[#001f3f] scale-110' : 'border-slate-200'}`}
+                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).body_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                       style={{ backgroundColor: c }} />
                   ))}
                 </div>
               </div>
 
               {/* 배경 이미지 */}
-              <div className="border border-slate-200 rounded-lg p-2.5 space-y-2">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase block">배경 이미지</label>
+              <div className="border border-admin-border-mid rounded-lg p-2.5 space-y-2">
+                <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block">배경 이미지</label>
                 {activeSlide.bg_image_url ? (
                   <div className="flex items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -653,9 +670,9 @@ export default function CardNewsEditorPage() {
                 <div className="flex gap-1">
                   <input value={pexelsKeyword} onChange={e => setPexelsKeyword(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && searchPexels()}
-                    placeholder="키워드 (영문)" className="flex-1 border border-slate-200 rounded px-2 py-1 text-[11px] focus:ring-1 focus:ring-[#005d90]" />
+                    placeholder="키워드 (영문)" className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-[11px] focus:ring-1 focus:ring-[#005d90]" />
                   <button onClick={() => searchPexels(activeSlide.pexels_keyword || pexelsKeyword)} disabled={pexelsLoading}
-                    className="px-2 py-1 bg-[#001f3f] text-white text-[10px] rounded hover:bg-blue-900 disabled:bg-slate-300">
+                    className="px-2 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700 disabled:bg-slate-300">
                     {pexelsLoading ? '...' : '검색'}
                   </button>
                 </div>
@@ -679,10 +696,10 @@ export default function CardNewsEditorPage() {
                     </div>
                     <div className="flex justify-between mt-1.5">
                       <button onClick={() => searchPexels(undefined, Math.max(1, pexelsPage - 1))} disabled={pexelsPage <= 1}
-                        className="text-[10px] text-slate-400 hover:text-slate-600 disabled:opacity-30">이전</button>
-                      <span className="text-[10px] text-slate-400">{pexelsPage}p</span>
+                        className="text-[10px] text-admin-muted-2 hover:text-admin-muted disabled:opacity-30">이전</button>
+                      <span className="text-[10px] text-admin-muted-2">{pexelsPage}p</span>
                       <button onClick={() => searchPexels(undefined, pexelsPage + 1)}
-                        className="text-[10px] text-slate-400 hover:text-slate-600">다음</button>
+                        className="text-[10px] text-admin-muted-2 hover:text-admin-muted">다음</button>
                     </div>
                   </div>
                 )}
@@ -691,24 +708,24 @@ export default function CardNewsEditorPage() {
               {/* 순서 조작 */}
               <div className="flex gap-1">
                 <button onClick={() => moveSlide(activeIdx, 'up')} disabled={activeIdx === 0}
-                  className="flex-1 text-[10px] py-1.5 border border-slate-200 rounded text-slate-500 hover:bg-slate-50 disabled:opacity-30">위로</button>
+                  className="flex-1 text-[10px] py-1.5 border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg disabled:opacity-30">위로</button>
                 <button onClick={() => duplicateSlide(activeIdx)}
-                  className="flex-1 text-[10px] py-1.5 border border-slate-200 rounded text-slate-500 hover:bg-slate-50">복제</button>
+                  className="flex-1 text-[10px] py-1.5 border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg">복제</button>
                 <button onClick={() => moveSlide(activeIdx, 'down')} disabled={activeIdx === slides.length - 1}
-                  className="flex-1 text-[10px] py-1.5 border border-slate-200 rounded text-slate-500 hover:bg-slate-50 disabled:opacity-30">아래로</button>
+                  className="flex-1 text-[10px] py-1.5 border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg disabled:opacity-30">아래로</button>
                 <button onClick={() => deleteSlide(activeIdx)} disabled={slides.length <= 1}
                   className="px-2 py-1.5 border border-red-200 text-red-400 text-[10px] rounded hover:bg-red-50 disabled:opacity-30">삭제</button>
               </div>
             </>
           ) : (
-            <p className="text-slate-400 text-[12px] text-center py-8">슬라이드를 선택하세요</p>
+            <p className="text-admin-muted-2 text-admin-xs text-center py-8">슬라이드를 선택하세요</p>
           )}
         </div>
       </div>
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#001f3f] text-white px-5 py-3 rounded-lg text-[13px] shadow-lg">
+        <div className="fixed bottom-6 right-6 z-50 bg-blue-600 text-white px-5 py-3 rounded-lg text-admin-sm shadow-admin-md">
           {toast}
         </div>
       )}

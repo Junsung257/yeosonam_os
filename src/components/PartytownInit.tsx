@@ -1,0 +1,29 @@
+import Script from 'next/script';
+
+const PT_ENABLED = process.env.NEXT_PUBLIC_PARTYTOWN === '1';
+
+/**
+ * Partytown 런타임 + forward 설정. 루트 레이아웃 최상단(body 직후)에 둔다.
+ * public/~partytown 은 `npm run partytown:copy`(postinstall)로 채운다.
+ * 서버 컴포넌트: 불필요한 클라이언트 번들 없이 beforeInteractive 스크립트만 주입.
+ */
+export default function PartytownInit() {
+  if (!PT_ENABLED) return null;
+
+  // Partytown 은 다른 모든 스크립트 전에 초기화돼야 forward 가 동작 (Next.js 14 App Router 에서는 안전).
+  // 룰 경고는 pages router 시대 가이드라인이라 본 케이스엔 부적합.
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
+      <Script
+        id="partytown-config"
+        strategy="beforeInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `partytown={lib:'/~partytown/',forward:['fbq','_fbq','kakaoPixel','clarity']};`,
+        }}
+      />
+      {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
+      <Script id="partytown-lib" src="/~partytown/partytown.js" strategy="beforeInteractive" />
+    </>
+  );
+}

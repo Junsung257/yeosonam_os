@@ -7,12 +7,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { pkgToIntake } from '@/lib/pkg-to-ir';
 import { validateIntake } from '@/lib/intake-normalizer';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
+  }
   let body: { pkg?: unknown };
   try {
     body = await req.json();

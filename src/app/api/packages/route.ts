@@ -9,12 +9,35 @@ import {
   isSupabaseConfigured,
   supabaseAdmin,
 } from '@/lib/supabase';
+import { logError, logWarning } from '@/lib/sentry-logger';
 import {
   runSanitizePipeline,
   buildFullTextForValidation,
 } from '@/lib/text-sanitizer';
 import { tiersToDatePrices } from '@/lib/price-dates';
 import { embedText } from '@/lib/embeddings';
+import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
+import {
+  revalidateLandingPagesForPackage,
+  revalidateLandingPagesForPackageIds,
+} from '@/lib/revalidate-lp-package';
+import { invalidateQaChatPackageCache } from '@/lib/qa-chat-packages';
+import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
+import { getSecret } from '@/lib/secret-registry';
+import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+
+function collectAttractionIds(itineraryData: unknown): string[] {
+  const ids = new Set<string>();
+  const root = itineraryData as { days?: { schedule?: { attraction_ids?: (string | null)[] }[] }[] } | null;
+  for (const day of root?.days ?? []) {
+    for (const item of day.schedule ?? []) {
+      for (const id of item.attraction_ids ?? []) {
+        if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+      }
+    }
+  }
+  return [...ids];
+}
 
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
 const DEPARTURE_CODES: Record<string, string> = {
@@ -96,18 +119,30 @@ async function generatePackageCode(
 
 // ── 상품 목록 JOIN 필드 (products ERP 데이터 포함) ─────────────────────────
 // ERR-20260418-10 — PACKAGE_LIST_FIELDS에 surcharges 누락 → A4 포스터 써차지 기간 증발
-// country, nights, accommodations도 함께 포함 (렌더링에 필요)
+// W-final F5 (2026-04-21) — drift 감사로 duration / cancellation_policy / normalized_surcharges 3건 추가 감지
 const PACKAGE_LIST_FIELDS = `
   id, title, destination, country, category, product_type, trip_style,
-  departure_days, departure_airport, airline, min_participants, ticketing_deadline,
+  duration, departure_days, departure_airport, airline, min_participants, ticketing_deadline,
   price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
-  inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges,
-  optional_tours, itinerary, special_notes, notices_parsed, land_operator, commission_rate,
+  inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges, normalized_surcharges,
+  optional_tours, itinerary, special_notes, customer_notes, internal_notes, notices_parsed, land_operator, commission_rate, affiliate_commission_rate, commission_fixed_amount, commission_currency,
   product_tags, product_highlights, product_summary, itinerary_data,
-  marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title,
-  seats_held, seats_confirmed, nights, accommodations,
+  marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
+  data_completeness, field_confidences, is_stub, stub_source,
+  seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
+  avg_rating, review_count,
   audit_status, audit_report, audit_checked_at,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
+`;
+
+const PACKAGE_LIST_FIELDS_LITE = `
+  id, title, destination, country, category, product_type, trip_style,
+  duration, departure_days, departure_airport, airline, min_participants, ticketing_deadline,
+  price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
+  land_operator, commission_rate, product_tags, product_highlights, product_summary,
+  itinerary,
+  internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
+  audit_status, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
@@ -122,6 +157,9 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category') || undefined;
   const q        = (searchParams.get('q') || '').trim();
   const destFilter = searchParams.get('destination') || '';
+  const landOperatorFilter = searchParams.get('land_operator') || '';
+  const lite = searchParams.get('lite') === '1';
+  const sort = searchParams.get('sort') || 'created_desc';
   const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const limit    = Math.min(500, parseInt(searchParams.get('limit') || '100'));
   const from     = (page - 1) * limit;
@@ -130,6 +168,17 @@ export async function GET(request: NextRequest) {
     // 목적지별 집계 — 홈페이지용
     const aggregate = searchParams.get('aggregate');
     if (aggregate === 'destination') {
+      // 1. mv_destination_aggregates → RPC 우선 (사전 집계, O(distinct destinations))
+      //    마이그레이션: supabase/migrations/20260513000000_destination_aggregate_mv.sql
+      //    nightly cron (KST 09:10) 으로 갱신. 즉시성 필요 시 SELECT public.refresh_mv_destination_aggregates();
+      const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('get_destinations_aggregate');
+      if (!rpcErr && Array.isArray(rpcData)) {
+        return NextResponse.json({ destinations: rpcData });
+      }
+
+      // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
+      //    travel_packages 가 수만 건으로 늘어나면 메모리 위험. RPC 정상화 우선.
+      logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
         .select('destination, price, price_tiers, price_dates, country')
@@ -172,34 +221,101 @@ export async function GET(request: NextRequest) {
         .eq(col, id)
         .single();
       if (pkgErr || !pkg) return NextResponse.json({ error: '패키지를 찾을 수 없습니다.' }, { status: 404 });
-      return NextResponse.json({ package: pkg });
+
+      let lp_hero_image_url: string | null = null;
+      if (supabaseAdmin) {
+        try {
+          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
+        } catch (e) {
+          logWarning('[api/packages] GET lp hero resolve failed', e);
+        }
+      }
+
+      const attraction_ids = collectAttractionIds(pkg.itinerary_data);
+      return NextResponse.json(
+        {
+          package: pkg,
+          lp_hero_image_url,
+          attraction_ids,
+          attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
+        },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          },
+        },
+      );
     }
 
     // 목록 조회 — products JOIN 포함
     let query = supabaseAdmin
       .from('travel_packages')
-      .select(PACKAGE_LIST_FIELDS, { count: 'exact' })
-      .order('created_at', { ascending: false })
+      .select(lite ? PACKAGE_LIST_FIELDS_LITE : PACKAGE_LIST_FIELDS, { count: 'exact' })
       .range(from, from + limit - 1);
 
-    if (status && status !== 'all') query = query.eq('status', status);
+    // 서버 정렬 (가격은 구조상 로컬 보조 정렬 유지 가능)
+    switch (sort) {
+      case 'created_asc': query = query.order('created_at', { ascending: true }); break;
+      case 'title_asc': query = query.order('title', { ascending: true }); break;
+      case 'title_desc': query = query.order('title', { ascending: false }); break;
+      case 'land_operator_asc': query = query.order('land_operator', { ascending: true }); break;
+      case 'land_operator_desc': query = query.order('land_operator', { ascending: false }); break;
+      case 'commission_rate_asc': query = query.order('commission_rate', { ascending: true }); break;
+      case 'commission_rate_desc': query = query.order('commission_rate', { ascending: false }); break;
+      case 'destination_asc': query = query.order('destination', { ascending: true }); break;
+      case 'destination_desc': query = query.order('destination', { ascending: false }); break;
+      case 'deadline_asc': query = query.order('ticketing_deadline', { ascending: true }); break;
+      case 'deadline_desc': query = query.order('ticketing_deadline', { ascending: false }); break;
+      case 'status_asc': query = query.order('status', { ascending: true }); break;
+      case 'status_desc': query = query.order('status', { ascending: false }); break;
+      case 'created_desc':
+      default:
+        query = query.order('created_at', { ascending: false });
+        break;
+    }
+
+    if (status && status !== 'all') {
+      // 관리자 탭 상태(semantic) 호환
+      if (status === 'selling') {
+        query = query.in('status', ['approved', 'active']);
+      } else if (status === 'pending') {
+        query = query.in('status', ['pending', 'pending_review', 'draft']);
+      } else if (status === 'archived') {
+        query = query.in('status', ['archived', 'INACTIVE']);
+      } else {
+        query = query.eq('status', status);
+      }
+    }
     if (category)                   query = query.eq('category', category);
     if (destFilter)                 query = query.eq('destination', destFilter);
+    if (landOperatorFilter)         query = query.eq('land_operator', landOperatorFilter);
 
-    // 검색: title OR internal_code (departure_region은 JS-side 후필터)
+    // 검색: title/internal_code/short_code/destination/land_operator
     if (q) {
-      query = query.or(`title.ilike.%${q}%,internal_code.ilike.%${q}%`);
+      const safeQ = escapePostgrestIlikeValue(q);
+      if (safeQ) {
+        query = query.or(
+          `title.ilike.%${safeQ}%,internal_code.ilike.%${safeQ}%,short_code.ilike.%${safeQ}%,destination.ilike.%${safeQ}%,land_operator.ilike.%${safeQ}%`,
+        );
+      }
     }
 
     const { data, error, count } = await query;
     if (error) throw error;
 
+    const enrichedData = (data ?? []).map((row: any) => ({
+      ...row,
+      has_itinerary_data:
+        !!row.itinerary_data?.days?.length ||
+        (Array.isArray(row.itinerary) && row.itinerary.length > 0),
+      attraction_preview_names: getAttractionPreviewNamesFromItinerary(row.itinerary_data, 4),
+    }));
     const totalPages = Math.ceil((count ?? 0) / limit);
-    return NextResponse.json({ data: data ?? [], count: count ?? 0, totalPages }, {
+    return NextResponse.json({ data: enrichedData, count: count ?? 0, totalPages }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (error) {
-    console.error('패키지 조회 오류:', error);
+    logError('[api/packages] GET query failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '조회 실패' }, { status: 500 });
   }
 }
@@ -217,11 +333,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '상품명(title)이 필요합니다.' }, { status: 400 });
     }
 
-    // ── ACL 정규화 → Zod 검증 (STRICT_VALIDATION=true일 때만 강제) ──
-    // 평상시: warning으로 유지 (기존 호환). STRICT 모드: 실패 시 draft 또는 400 반환.
-    if (process.env.STRICT_VALIDATION === 'true') {
+    // ── W-final F4: Zod Hard-Block (default ON, 2026-04-21) ──
+    // 이전: STRICT_VALIDATION 플래그 필요. 변경: **기본 ON**. 이제 POST 로 들어오는 모든 데이터가
+    //   ACL 정규화 → PackageCoreSchema 검증을 거친다. 실패 시 HTTP 400 (draft 저장 옵션은 유지).
+    //
+    //   우회는 `STRICT_VALIDATION=false` 환경변수로만 (개발/마이그레이션 용도, 프로덕션 금지).
+    //   `ALLOW_DRAFT=true` 시 검증 실패해도 draft 로 저장하고 validation_errors 에 기록.
+    //
+    //   Rule Zero 강제: raw_text 50자 미만이면 검증 이전에 400 반환.
+    const STRICT_OFF = process.env.STRICT_VALIDATION === 'false';
+    if (!body.raw_text || typeof body.raw_text !== 'string' || body.raw_text.length < 50) {
+      if (!STRICT_OFF) {
+        return NextResponse.json({
+          error: '[RuleZero] raw_text 누락 또는 의심스럽게 짧음. 원문 원본(50자 이상) 필수.',
+          field: 'raw_text',
+          length: body.raw_text?.length || 0,
+        }, { status: 400 });
+      }
+    }
+    if (!STRICT_OFF) {
       try {
-        // 동적 import로 bundle 영향 최소화
         const { normalizePackage } = await import('@/lib/package-acl');
         const { validatePackageLoose, formatZodErrors } = await import('@/lib/package-schema');
         const normalized = normalizePackage(body);
@@ -229,18 +360,26 @@ export async function POST(request: NextRequest) {
         if (!result.success && result.errors) {
           const errMsgs = formatZodErrors(result.errors);
           if (process.env.ALLOW_DRAFT === 'true') {
-            // draft로 저장하고 에러는 validation_errors 필드에 기록
+            // draft 로 저장하고 에러는 validation_errors 필드에 기록 — 어드민이 수동 수정
             body.status = 'draft';
             body.validation_errors = errMsgs;
+            logWarning(`[api/packages] POST draft saved with validation errors`, new Error(`${errMsgs.length} violations`));
           } else {
+            // Hard block — 어떤 프론트엔드/외부 API 도 불량 데이터 INSERT 불가
             return NextResponse.json({
-              error: 'Zod 검증 실패',
+              error: 'Zod 검증 실패 (W-final F4 hard-block)',
               issues: errMsgs,
+              hint: '프론트엔드에서 오는 데이터라도 동일 검증 적용. 임시 우회는 STRICT_VALIDATION=false (비권장).',
             }, { status: 400 });
           }
         }
       } catch (e) {
-        console.warn('[POST /api/packages] Zod validation 스킵:', e instanceof Error ? e.message : e);
+        // ACL/Zod 모듈 import 자체 실패 — 이건 심각 (스키마 파일 결실)
+        logError('[api/packages] POST Zod module load failed', e);
+        return NextResponse.json({
+          error: 'Zod 검증기 로드 실패 — 서버 설정 오류',
+          detail: e instanceof Error ? e.message : String(e),
+        }, { status: 500 });
       }
     }
 
@@ -248,7 +387,7 @@ export async function POST(request: NextRequest) {
     // ?force=true 쿼리로 우회 가능 (VA가 "새 상품으로 등록" 선택 시)
     const { searchParams: postParams } = new URL(request.url);
     const forceDuplicate = postParams.get('force') === 'true';
-    if (!forceDuplicate && supabaseAdmin && process.env.GOOGLE_AI_API_KEY) {
+    if (!forceDuplicate && supabaseAdmin && getSecret('GOOGLE_AI_API_KEY')) {
       try {
         const embedSource = [
           body.title,
@@ -258,7 +397,7 @@ export async function POST(request: NextRequest) {
           (body.rawText ?? body.raw_text ?? '').slice(0, 1000),
         ].filter(Boolean).join(' ');
 
-        const vec = await embedText(embedSource, process.env.GOOGLE_AI_API_KEY, 'SEMANTIC_SIMILARITY');
+        const vec = await embedText(embedSource, getSecret('GOOGLE_AI_API_KEY')!, 'SEMANTIC_SIMILARITY');
         if (vec && vec.length > 0) {
           const { data: similar, error: simErr } = await supabaseAdmin.rpc('match_travel_packages_duplicate', {
             query_embedding: vec,
@@ -275,7 +414,7 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (e) {
-        console.warn('[packages] 중복 감지 실패 (무시하고 진행):', e);
+        logWarning('[api/packages] POST duplicate detection failed (ignored)', e);
       }
     }
 
@@ -328,10 +467,10 @@ export async function POST(request: NextRequest) {
           console.log(`[Sanitizer] ${body.title}: ${sanitizeCorrections.length}건 교정`, sanitizeCorrections);
         }
         if (sanitizeWarnings.length > 0) {
-          console.warn(`[Sanitizer] ${body.title}: ${sanitizeWarnings.length}건 경고`, sanitizeWarnings.map(w => w.rule));
+          logWarning(`[api/packages] POST text sanitizer warnings`, new Error(`${sanitizeWarnings.length} violations for "${body.title}"`));
         }
       } catch (e) {
-        console.error('[Sanitizer] 정제 실패 (무시하고 진행):', e);
+        logError('[api/packages] POST text sanitizer pipeline failed', e);
       }
     }
 
@@ -395,7 +534,7 @@ export async function POST(request: NextRequest) {
           .from('travel_packages')
           .update(patch)
           .eq('id', result.id);
-        if (patchErr) console.error('[packages] 후처리 update 실패:', patchErr, patch);
+        if (patchErr) logError('[api/packages] POST post-processing update failed', new Error(patchErr.message));
       }
     }
 
@@ -408,7 +547,7 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
-    console.error('패키지 저장 오류:', error);
+    logError('[api/packages] POST save failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '저장 실패' }, { status: 500 });
   }
 }
@@ -443,11 +582,15 @@ export async function PATCH(request: NextRequest) {
       // ERR-KUL-ISR — 변경된 각 상품의 ISR 캐시 즉시 무효화 (최대 1시간 대기 방지)
       // 캐시 무효화 실패가 DB 성공 응답까지 막지 않도록 격리.
       try {
+        const { revalidateTag } = await import('next/cache');
         for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
         revalidatePath('/packages');
+        revalidateTag('packages'); // Task 4: Tag-based Invalidation 적용
+        revalidateLandingPagesForPackageIds(packageIds);
       } catch (e) {
-        console.warn('[packages] revalidatePath 실패 (무시):', e);
+        logWarning('[api/packages] PATCH revalidate paths failed (ignored)', e);
       }
+      invalidateQaChatPackageCache();
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -462,8 +605,17 @@ export async function PATCH(request: NextRequest) {
         .update({ status: 'archived', updated_at: new Date().toISOString() })
         .in('id', packageIds);
       if (error) throw error;
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages(packageIds, 'bulk_archive_package');
+      } catch (e) {
+        logWarning('[api/packages] PATCH blog_topic_queue skip on bulk_archive', e);
+      }
+      const { revalidateTag } = await import('next/cache');
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
+      revalidateTag('packages');
+      revalidateLandingPagesForPackageIds(packageIds);
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -480,6 +632,7 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error;
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
+      revalidateLandingPagesForPackageIds(packageIds);
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -492,13 +645,23 @@ export async function PATCH(request: NextRequest) {
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (fields.land_operator !== undefined) updateData.land_operator = fields.land_operator;
       if (fields.commission_rate !== undefined) updateData.commission_rate = Number(fields.commission_rate);
+      if (fields.affiliate_commission_rate !== undefined) {
+        // 0~30% 범위 강제 (DB CHECK 제약과 동일)
+        const r = Number(fields.affiliate_commission_rate);
+        if (Number.isFinite(r) && r >= 0 && r <= 0.30) {
+          updateData.affiliate_commission_rate = r;
+        }
+      }
       const { error } = await supabaseAdmin
         .from('travel_packages')
         .update(updateData)
         .in('id', packageIds);
       if (error) throw error;
+      const { revalidateTag } = await import('next/cache');
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
+      revalidateTag('packages');
+      revalidateLandingPagesForPackageIds(packageIds);
       return NextResponse.json({ success: true, count: packageIds.length });
     }
 
@@ -516,6 +679,11 @@ export async function PATCH(request: NextRequest) {
         .eq('id', packageId);
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
+      revalidateLandingPagesForPackage(
+        packageId,
+        (result as { short_code?: string | null })?.short_code ?? null,
+      );
+      invalidateQaChatPackageCache();
       return NextResponse.json({ success: true, package: result });
     }
 
@@ -526,8 +694,18 @@ export async function PATCH(request: NextRequest) {
         .eq('id', packageId)
         .select();
       if (error) throw error;
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages([packageId], 'package_rejected');
+      } catch (e) {
+        logWarning('[api/packages] PATCH blog_topic_queue skip on reject', e);
+      }
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
+      revalidateLandingPagesForPackage(
+        packageId,
+        (data?.[0] as { short_code?: string | null } | undefined)?.short_code ?? null,
+      );
       return NextResponse.json({ success: true, package: data?.[0] });
     }
 
@@ -542,7 +720,7 @@ export async function PATCH(request: NextRequest) {
       'optional_tours', 'cancellation_policy', 'category_attrs',
       'inclusions', 'excludes', 'special_notes', 'notices_parsed',
       'itinerary', 'itinerary_data', 'raw_text',
-      'land_operator', 'land_operator_id', 'commission_rate',
+      'land_operator', 'land_operator_id', 'commission_rate', 'affiliate_commission_rate',
       'product_tags', 'product_highlights', 'product_summary',
       'marketing_copies', 'internal_code', 'confidence',
       'country', 'nights', 'accommodations',
@@ -556,6 +734,37 @@ export async function PATCH(request: NextRequest) {
       sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as any[]);
     }
 
+    // ─── Reflexion 자동 추적용: 변경 전 값 보존 ─────────────────────
+    //   사장님 인라인 편집 = AI 정정 → extractions_corrections 자동 INSERT 로 영구 학습 자료化
+    //   (Shinn et al. NeurIPS 2023 episodic memory 패턴)
+    const REFLEXION_TRACKED_FIELDS = [
+      'inclusions', 'excludes', 'notices_parsed', 'optional_tours',
+      'product_summary', 'product_highlights',
+      'itinerary_data', 'accommodations',
+      'min_participants', 'ticketing_deadline', 'price',
+      'surcharges', 'excluded_dates',
+    ] as const;
+    const trackedKeysChanged = (Object.keys(sanitized) as string[]).filter(k =>
+      (REFLEXION_TRACKED_FIELDS as readonly string[]).includes(k)
+    );
+    let beforeSnapshot: Record<string, unknown> | null = null;
+    let beforePkgMeta: { land_operator_id: string | null; destination: string | null; raw_text: string | null } | null = null;
+    if (trackedKeysChanged.length > 0) {
+      const { data: beforeRow } = await supabaseAdmin
+        .from('travel_packages')
+        .select(`id, land_operator_id, destination, raw_text, ${trackedKeysChanged.join(', ')}`)
+        .eq('id', packageId)
+        .single();
+      if (beforeRow) {
+        beforeSnapshot = beforeRow as Record<string, unknown>;
+        beforePkgMeta = {
+          land_operator_id: (beforeRow as { land_operator_id?: string | null }).land_operator_id ?? null,
+          destination: (beforeRow as { destination?: string | null }).destination ?? null,
+          raw_text: (beforeRow as { raw_text?: string | null }).raw_text ?? null,
+        };
+      }
+    }
+
     const { data: result, error: updateErr } = await supabaseAdmin
       .from('travel_packages')
       .update(sanitized)
@@ -563,6 +772,75 @@ export async function PATCH(request: NextRequest) {
       .select()
       .single();
     if (updateErr) throw updateErr;
+
+    const resolvedPkgStatus = (result as { status?: string } | null)?.status;
+    if (resolvedPkgStatus === 'archived' || resolvedPkgStatus === 'rejected') {
+      try {
+        const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
+        await skipBlogQueueForPackages([packageId], `package_${resolvedPkgStatus}`);
+      } catch (e) {
+        logWarning('[api/packages] PATCH blog_topic_queue skip on status change', e);
+      }
+    }
+
+    // ─── Reflexion 자동 INSERT (best-effort, 실패해도 PATCH 응답 막지 않음) ───
+    if (beforeSnapshot && beforePkgMeta && trackedKeysChanged.length > 0) {
+      try {
+        // severity 자동 분류
+        const SEVERITY_MAP: Record<string, 'critical' | 'high' | 'medium' | 'low'> = {
+          min_participants: 'critical',
+          ticketing_deadline: 'critical',
+          price: 'critical',
+          inclusions: 'high',
+          excludes: 'high',
+          surcharges: 'high',
+          excluded_dates: 'high',
+          notices_parsed: 'high',
+          itinerary_data: 'high',
+          optional_tours: 'medium',
+          accommodations: 'medium',
+          product_summary: 'medium',
+          product_highlights: 'low',
+        };
+
+        const correctionRows: Array<Record<string, unknown>> = [];
+        for (const key of trackedKeysChanged) {
+          const before = beforeSnapshot[key];
+          const after = sanitized[key];
+          // 동일 값 (deep) 이면 정정 아님
+          if (JSON.stringify(before) === JSON.stringify(after)) continue;
+          // 빈 → 빈 변형 무시
+          if ((before === null || before === undefined) && (after === null || after === undefined)) continue;
+
+          correctionRows.push({
+            package_id: packageId,
+            land_operator_id: beforePkgMeta.land_operator_id,
+            destination: beforePkgMeta.destination,
+            field_path: key,
+            before_value: before ?? null,
+            after_value: after ?? null,
+            reflection: null, // 자동 추적은 reflection 텍스트 없음 — 사장님이 PATCH 로 추가 가능
+            raw_text_excerpt: beforePkgMeta.raw_text ? String(beforePkgMeta.raw_text).slice(0, 500) : null,
+            severity: SEVERITY_MAP[key] || 'medium',
+            category: 'manual-correction',
+            created_by: 'admin-inline-edit',
+          });
+        }
+
+        if (correctionRows.length > 0) {
+          const { error: corrErr } = await supabaseAdmin
+            .from('extractions_corrections')
+            .insert(correctionRows);
+          if (corrErr) {
+            logWarning('[api/packages] PATCH reflexion auto-track insert failed', corrErr);
+          } else {
+            console.log(`[Reflexion auto-track] ${correctionRows.length}건 정정 자동 적립 (package=${packageId})`);
+          }
+        }
+      } catch (e) {
+        logWarning('[api/packages] PATCH reflexion auto-track exception', e);
+      }
+    }
 
     // 품절/기간만료 상태 변경 시 연결된 Meta 광고 자동 일시정지
     const newStatus = updateData.status as string | undefined;
@@ -572,7 +850,6 @@ export async function PATCH(request: NextRequest) {
         try {
           const { getAdCampaigns, upsertCampaign } = await import('@/lib/supabase');
           const { pauseAd, isMetaConfigured } = await import('@/lib/meta-api');
-          const { createClient } = await import('@supabase/supabase-js');
 
           const activeCampaigns = await getAdCampaigns({ packageId, status: 'ACTIVE' });
           if (activeCampaigns.length === 0) return;
@@ -589,12 +866,8 @@ export async function PATCH(request: NextRequest) {
                   auto_pause_reason: `패키지 상태: ${newStatus}`,
                 });
 
-                // audit_logs 기록
-                const sb = createClient(
-                  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-                );
-                await sb.from('audit_logs').insert({
+                // audit_logs 기록 (RLS 대비: service_role 클라이언트)
+                await supabaseAdmin.from('audit_logs').insert({
                   action: 'META_AUTO_PAUSE',
                   target_type: 'campaign',
                   target_id: campaign.id,
@@ -603,21 +876,25 @@ export async function PATCH(request: NextRequest) {
                   after_value: { status: 'PAUSED', reason: `패키지 상태: ${newStatus}` },
                 });
               } catch (err) {
-                console.warn(`캠페인 ${campaign.id} 자동 일시정지 실패:`, err);
+                logWarning('[api/packages] PATCH campaign auto-pause failed', err, { campaignId: campaign.id });
               }
             })
           );
         } catch (err) {
-          console.warn('품절/기간만료 자동 일시정지 사이드이펙트 실패:', err);
+          logWarning('[api/packages] PATCH auto-pause campaign side-effect failed', err);
         }
       })();
     }
 
     revalidatePath(`/packages/${packageId}`);
     revalidatePath('/packages');
+    revalidateLandingPagesForPackage(
+      packageId,
+      (result as { short_code?: string | null })?.short_code ?? null,
+    );
     return NextResponse.json({ success: true, package: result });
   } catch (error) {
-    console.error('패키지 수정 오류:', error);
+    logError('[api/packages] PATCH update failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '처리 실패' }, { status: 500 });
   }
 }
@@ -635,9 +912,10 @@ export async function DELETE(request: NextRequest) {
 
   try {
     await deletePackage(id);
+    revalidateLandingPagesForPackage(id, null);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('패키지 삭제 오류:', error);
+    logError('[api/packages] DELETE failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '삭제 실패' }, { status: 500 });
   }
 }

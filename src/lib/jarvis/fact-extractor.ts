@@ -8,13 +8,14 @@
  * - Reflexion (Shinn+, NeurIPS 2023): 실패 루프 자기성찰 → 팩트화 (P2에서 확장 예정)
  *
  * 핵심 설계:
- * 1. 추출 시 기존 팩트를 프롬프트에 노출 → Gemini가 ADD/UPDATE/NOOP 직접 결정
+ * 1. 추출 시 기존 팩트를 프롬프트에 노출 → LLM이 ADD/UPDATE/NOOP 직접 결정 (llm-gateway: DeepSeek → Gemini)
  * 2. UPDATE면 기존 팩트를 superseded_by로 마킹 (감사추적 유지)
  * 3. importance는 0~1, 카테고리 기본값 × LLM 가중치로 산출
  * 4. 회수는 importance × recency × access_count 가중치로 TOP-N만 주입
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { llmCall } from '@/lib/llm-gateway';
 
 export type FactCategory =
   | 'mobility' | 'dietary' | 'budget' | 'destination_interest'
@@ -59,9 +60,10 @@ type ExistingFact = {
 
 type ChatMsg = { role: string; content: string };
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const FACT_EXTRACT_SYSTEM =
+  '당신은 여행사 CRM의 고객 메모리 관리자입니다. 사용자 메시지의 지시만 따르고, JSON 배열만 출력하세요. 다른 설명 텍스트는 금지입니다.';
 
-const EXTRACTION_PROMPT = `당신은 여행사 CRM의 고객 메모리 관리자입니다. 대화에서 **재방문 시 기억할 가치가 있는 팩트**를 추출하되, 기존 기억과 충돌/중복을 판단해 적절한 액션을 선택합니다.
+const EXTRACTION_PROMPT = `대화에서 **재방문 시 기억할 가치가 있는 팩트**를 추출하되, 기존 기억과 충돌/중복을 판단해 적절한 액션을 선택합니다.
 
 ## 오늘 날짜: {TODAY}
 
@@ -167,14 +169,13 @@ export async function extractAndStoreFacts(params: {
   customerId?: string | null;
   tenantId?: string | null;
   recentMessages: ChatMsg[];
-  apiKey: string;
   sourceMessageIdx?: number;
 }): Promise<{ added: number; updated: number; noop: number }> {
   const zero = { added: 0, updated: 0, noop: 0 };
   if (!isSupabaseConfigured) return zero;
 
-  const { conversationId, customerId = null, tenantId = null, recentMessages, apiKey, sourceMessageIdx } = params;
-  if (!apiKey || recentMessages.length < 2) return zero;
+  const { conversationId, customerId = null, tenantId = null, recentMessages, sourceMessageIdx } = params;
+  if (recentMessages.length < 2) return zero;
 
   // 1) 기존 팩트 로드 (Mem0 의사결정용)
   const existing = await loadExistingForExtraction({ conversationId, customerId, tenantId });
@@ -189,27 +190,26 @@ export async function extractAndStoreFacts(params: {
     .replace('{EXISTING_FACTS}', formatExistingFacts(existing))
     .replace('{CONVERSATION}', conversationText);
 
-  // 3) Gemini 호출
+  // 3) LLM 호출 (DeepSeek primary, Gemini fallback)
   let facts: ExtractedFact[];
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
-        }),
-      },
-    );
-    if (!res.ok) {
-      console.warn('[FactExtractor] Gemini HTTP', res.status);
+    const res = await llmCall({
+      task: 'customer-fact-extract',
+      systemPrompt: FACT_EXTRACT_SYSTEM,
+      userPrompt: prompt,
+      temperature: 0.1,
+      maxTokens: 2000,
+      autoEscalate: false,
+    });
+    if (!res.success || !res.rawText?.trim()) {
+      console.warn('[FactExtractor] LLM 실패:', res.errors?.join('; '));
       return zero;
     }
-    const json = await res.json();
-    const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    const cleaned = res.rawText
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
     facts = JSON.parse(cleaned);
   } catch (e) {
     console.warn('[FactExtractor] 호출/파싱 실패:', e);

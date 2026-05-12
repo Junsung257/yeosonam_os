@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 interface TermsTemplate {
   id: string;
@@ -27,7 +28,7 @@ const TIER_LABELS: Record<number, string> = {
 };
 
 const TIER_COLORS: Record<number, string> = {
-  1: 'bg-slate-100 text-slate-700',
+  1: 'bg-admin-surface-2 text-admin-text-2',
   2: 'bg-blue-100 text-blue-700',
   3: 'bg-purple-100 text-purple-700',
 };
@@ -55,8 +56,8 @@ export default function TermsTemplatesPage() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">약관 템플릿 관리</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-extrabold text-admin-text">약관 템플릿 관리</h1>
+          <p className="text-sm text-admin-muted mt-1">
             4-level 우선순위: 플랫폼(1) → 랜드사 공통(2) → 랜드사 × 상품타입(3) → 상품 특약(notices_parsed, 최우선)
           </p>
         </div>
@@ -68,7 +69,7 @@ export default function TermsTemplatesPage() {
         </Link>
       </div>
 
-      <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 rounded-lg">
+      <div className="flex items-center gap-3 mb-4 p-3 bg-admin-bg rounded-lg">
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -80,7 +81,7 @@ export default function TermsTemplatesPage() {
         <select
           value={filterTier ?? ''}
           onChange={e => setFilterTier(e.target.value ? Number(e.target.value) : null)}
-          className="text-sm border border-slate-300 rounded px-2 py-1"
+          className="text-sm border border-admin-border-strong rounded px-2 py-1"
         >
           <option value="">모든 tier</option>
           <option value="1">Tier 1 (플랫폼)</option>
@@ -90,16 +91,23 @@ export default function TermsTemplatesPage() {
       </div>
 
       {loading ? (
-        <p className="text-slate-400">로딩 중...</p>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
+              <div className="h-4 bg-admin-surface-2 rounded animate-pulse w-48" />
+              <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-full" />
+            </div>
+          ))}
+        </div>
       ) : templates.length === 0 ? (
-        <p className="text-slate-400">약관 템플릿이 없습니다.</p>
+        <p className="text-admin-muted-2">약관 템플릿이 없습니다.</p>
       ) : (
         <div className="space-y-3">
           {templates.map(t => (
             <Link
               key={t.id}
               href={`/admin/terms-templates/${t.id}`}
-              className="block bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-400 transition"
+              className="block bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 hover:border-slate-400 transition"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -108,18 +116,18 @@ export default function TermsTemplatesPage() {
                       T{t.tier} · {TIER_LABELS[t.tier]}
                     </span>
                     {!t.is_active && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-500">비활성</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-admin-muted">비활성</span>
                     )}
-                    <span className="text-[10px] text-slate-400">v{t.version} · priority {t.priority}</span>
+                    <span className="text-[10px] text-admin-muted-2">v{t.version} · priority {t.priority}</span>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 truncate">{t.name}</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h3 className="text-base font-bold text-admin-text truncate">{t.name}</h3>
+                  <p className="text-xs text-admin-muted mt-0.5">
                     blocks {t.notices.length}개 · scope {JSON.stringify(t.scope).slice(0, 80)}
                   </p>
-                  {t.notes && <p className="text-xs text-slate-400 mt-1 italic">{t.notes}</p>}
+                  {t.notes && <p className="text-xs text-admin-muted-2 mt-1 italic">{t.notes}</p>}
                 </div>
-                <span className="text-xs text-slate-400 shrink-0">
-                  {new Date(t.updated_at).toLocaleDateString('ko-KR')}
+                <span className="text-xs text-admin-muted-2 shrink-0">
+                  {fmtDateISO(t.updated_at)}
                 </span>
               </div>
             </Link>

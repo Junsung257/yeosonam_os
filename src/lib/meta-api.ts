@@ -6,13 +6,14 @@
  */
 
 import type { MetaApiResponse, MetaInsightData } from '@/types/meta-ads';
+import { getSecret, hasSecrets } from '@/lib/secret-registry';
 
 const BASE_URL = 'https://graph.facebook.com/v18.0';
 
 function getCredentials() {
-  const accessToken = process.env.META_ACCESS_TOKEN;
-  const adAccountId = process.env.META_AD_ACCOUNT_ID; // "act_XXXXXXXXX" 형식
-  const pageId = process.env.META_PAGE_ID;
+  const accessToken = getSecret('META_ACCESS_TOKEN');
+  const adAccountId = getSecret('META_AD_ACCOUNT_ID'); // "act_XXXXXXXXX" 형식
+  const pageId = getSecret('META_PAGE_ID');
 
   if (!accessToken || !adAccountId) {
     throw new Error('META_ACCESS_TOKEN 또는 META_AD_ACCOUNT_ID 환경변수가 설정되지 않았습니다.');
@@ -266,8 +267,30 @@ export function krwToMetaCents(krw: number, usdKrwRate: number): number {
 // 10. Meta API 설정 여부 확인
 // ─────────────────────────────────────────────
 export function isMetaConfigured(): boolean {
-  return !!(
-    process.env.META_ACCESS_TOKEN &&
-    process.env.META_AD_ACCOUNT_ID
-  );
+  return hasSecrets(['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID']);
+}
+
+export interface MetaAdAccountFields {
+  name: string;
+  account_status?: number;
+  balance?: string;
+  amount_spent?: string;
+  spend_cap?: string;
+  currency?: string;
+}
+
+/**
+ * 광고계정 스냅샷 (잔액·지출) — AdController 잔액 동기화용.
+ * balance / amount_spent 는 통화 단위가 계정 설정에 따름.
+ */
+export async function fetchAdAccountSnapshot(): Promise<MetaAdAccountFields> {
+  const { accessToken, adAccountId } = getCredentials();
+  const params = new URLSearchParams({
+    fields: 'name,account_status,balance,amount_spent,spend_cap,currency',
+    access_token: accessToken,
+  });
+  const res = await fetch(`${BASE_URL}/${adAccountId}?${params.toString()}`);
+  const json = (await res.json()) as MetaApiResponse<MetaAdAccountFields> & Partial<MetaAdAccountFields>;
+  if (json.error) handleMetaError(json, 'fetchAdAccountSnapshot');
+  return json as MetaAdAccountFields;
 }

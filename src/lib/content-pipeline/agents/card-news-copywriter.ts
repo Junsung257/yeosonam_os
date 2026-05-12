@@ -13,11 +13,11 @@
  *   - trust_row, price_chip, social_proof, tip, warning
  *   - 토스 CTR + AIDA + Senior 7대 원칙 내재화
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { CardSlideV2Schema } from '@/lib/validators/content-brief';
 import { TEMPLATE_IDS } from '@/lib/card-news/tokens';
-import { BLOG_AI_MODEL } from '@/lib/prompt-version';
+import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import type { StructureOutput, StructureInput } from './structure-designer';
 
 /** Copywriter 출력: section 별 card_slide + cta_slide */
@@ -38,45 +38,26 @@ export async function writeCardCopy(
   structure: StructureOutput,
   input: StructureInput,
 ): Promise<CardCopyOutput> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[card-copy] GOOGLE_AI_API_KEY 없음 → fallback');
+  if (!hasBlogApiKey()) {
+    console.warn('[card-copy] AI API 키 없음 → fallback');
     return fallbackCopy(structure, input);
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: BLOG_AI_MODEL,
-    generationConfig: { temperature: 0.75, responseMimeType: 'application/json' },
-  });
-
   const prompt = buildCopywriterPrompt(structure, input);
 
-  const tryGenerate = async (extra = ''): Promise<CardCopyOutput | null> => {
-    try {
-      const result = await model.generateContent(prompt + extra);
-      const text = result.response.text().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const jsonStr = match ? match[0] : text;
-      const parsed = JSON.parse(jsonStr);
-      const checked = CardCopyOutputSchema.safeParse(parsed);
-      if (!checked.success) {
-        console.warn('[card-copy] 스키마 검증 실패:', checked.error.errors.slice(0, 3));
-        return null;
-      }
-      return checked.data;
-    } catch (err) {
-      console.warn('[card-copy] 호출/파싱 실패:', err instanceof Error ? err.message : err);
-      return null;
-    }
-  };
+  const result = await callWithZodValidation({
+    label: 'card-news-copywriter',
+    schema: CardCopyOutputSchema,
+    maxAttempts: 3,
+    fn: (feedback) => generateBlogJSON(prompt + (feedback ?? ''), { temperature: 0.75, longCache: true }),
+  });
 
-  const first = await tryGenerate();
-  if (first) return first;
+  if (result.success) return result.value;
 
-  const retry = await tryGenerate(`\n\n## 재시도 — 글자수 엄수. headline 15자 이하, body 40자 이하.`);
-  if (retry) return retry;
-
+  console.warn(
+    '[card-copy] callWithZodValidation 최종 실패 → fallback:',
+    'attemptErrors' in result ? result.attemptErrors.length : 'unknown'
+  );
   return fallbackCopy(structure, input);
 }
 
@@ -93,6 +74,12 @@ function buildCopywriterPrompt(structure: StructureOutput, input: StructureInput
   }).join('\n');
 
   return `너는 **인스타그램 카드뉴스 성과형 카피라이터 10년차**다. 구조는 이미 확정됐다. **슬라이드 카피만** 작성한다.
+
+## 🚨 출처 제약 (Faithfulness — 가장 중요한 규칙)
+- **입력에 명시되지 않은 사실을 절대 만들지 마라.** 연령 제한, 할인 조건, 운영 시간, 거리·소요 시간, 인증/면허, 포함 식사 종류, 좌석 수, 객실 등급, 특정 통계(재구매율·만족도·인기도 N위 등)는 입력에 명시된 경우에만 사용한다.
+- 모르거나 입력에 없으면 **차라리 적지 마라.** 빈칸 두는 게 거짓 사실보다 낫다.
+- "최고", "최대", "유일한" 같은 절대 표현은 입력에 명시 근거가 있을 때만 허용.
+- 위반 시 전체 재작성.
 
 ## 상품 정보
 ${input.product ? `- 상품명: ${input.product.title}
@@ -117,29 +104,98 @@ ${sectionBrief}
 - 구체성: "바나산" → "[구름 위 판타지] 바나산"
 
 ### B. hook_type 별 헤드라인 규칙
-- urgency:  eyebrow=[선착순 N석] / headline=간결 상품+기간 / price_chip 필수
-- question: eyebrow=진짜 최저가? / headline="목적지 N박, 얼마?" / body="답은 마지막에"
-- number:   eyebrow=TOP N / headline="목적지 N박 꿀팁 N가지"
-- fomo:     eyebrow=[이번 주만] / headline=한정 재고 강조
-- story:    eyebrow=REAL STORY / headline=1인칭 스토리 시작
+- urgency:    eyebrow=[선착순 N석] / headline=간결 상품+기간 / price_chip 필수
+- question:   eyebrow=진짜 최저가? / headline="목적지 N박, 얼마?" / body="답은 마지막에"
+- number:     eyebrow=TOP N / headline="목적지 N박 꿀팁 N가지"
+- fomo:       eyebrow=[이번 주만] / headline=한정 재고 강조
+- story:      eyebrow=REAL STORY / headline=1인칭 스토리 시작
+- contrarian: eyebrow=[반전] 또는 [실화] / headline=상식 정면 반박 ("보홀은 비싸다는 거짓말") / body=근거 1줄
 
 ### C. 슬라이드 유형별 카피
-- benefit: "이 가격에 이게 다?" 놀람 프레이밍 + trust_row 3~4개
+- benefit: "이 가격에 이게 다?" 놀람 프레이밍 + trust_row 3~4개. **반드시 FAB 변환** — 단순 특징 나열 X, "고객이 얻는 것"으로 (예: ❌"올인클루시브" → ✅"4박 지갑 0회")
 - tourist_spot: "[감성 수식어] 장소명" (시간·온도·색 중 1개) 예: "해질녘 팡라오 해변"
 - inclusion: "[0원] 포함" + 아이템 쉼표 나열
 - detail: 호텔/항공/주의/차량 중 1개 subtype 고정
 - tip: eyebrow=PRO TIP, tip 필드에 80자 팁
 - warning: eyebrow=WATCH OUT, warning 필드에 80자 주의
-- cta: eyebrow=[오늘만] 긴급성, body=DM 유도 (예: "댓글 '예약' 남기세요, ${priceChip || '특가'} DM 발송")
+- objection (V4): eyebrow=[의심 해소] / headline=고객 속내 ("이거 싼 게 비지떡?") / body=약관·포함사항 근거 1줄 방어
+- save_hook (V4): eyebrow=[체크리스트] / headline="저장해두고 보는 OOO N" / body=4~5개 항목 쉼표 나열 / badge="SAVE"
+- price_anchor (NEW): role=benefit 또는 objection 에서 **시중가 대비 절감액**이 명시 가능할 때만 사용. eyebrow="[직접 잡으면]" / headline 예시: "단품 70만원" / body 예시: "패키지 50만원, 20만원 차이". 실제 N·M·차이 자리에 입력 데이터에서 계산한 숫자를 직접 채워 넣어야 한다 (placeholder 문자나 변수 표기 금지). 절감액 계산 근거를 입력에서 찾을 수 없으면 절대 만들지 말고 다른 슬라이드 유형 사용.
+- cta: eyebrow=[오늘만] 긴급성, body=**DM 마이크로 커밋먼트** (결제 강요 금지. "댓글 'O' 남기면 일정표 DM" 형식)
 
 ### D. 작성 제약
 - headline ≤ 15자
 - body ≤ 40자
 - eyebrow ≤ 20자 (대괄호 포함)
-- trust_row 각 ≤ 12자, 배열 3~4개 (benefit/inclusion 섹션 필수)
+- trust_row 각 ≤ 12자, 배열 3~4개 (benefit/inclusion 섹션 필수). **항목은 입력 inclusions/highlights 에서 추출만 — "노팁/노옵션/5성급" 등 입력에 근거 없으면 빈 배열**
 - price_chip = "${priceChip}" (hook/benefit/cta 필수, 나머지 null)
-- social_proof = "★ 4.9 · 예약 N건" 같은 수치 (benefit/detail 에 추천)
+- social_proof = **입력에 명시된 수치만 사용** ("★ 4.9", "예약 N건" 등). 임의 별점·예약수 창작 시 전체 재작성. 근거 없으면 null.
 - photo_hint 한국어 1줄 (100자)
+
+### E. V4 글로벌 베스트프랙티스 (필수 준수)
+
+**1. Open-loop (스와이프 강제)**
+각 슬라이드 body 끝을 마침표로 끝내지 말고 **"…"** 로 끊어 다음 장으로 유도.
+예: 1장 "호구 안 잡히려면…" → 2장 "이 3가지만 기억"
+마지막 슬라이드(cta)만 예외.
+
+**2. 금지어 리스트 (네거티브 프롬프팅)**
+다음 단어·표현 절대 사용 금지 — AI 티 나는 진부한 표현:
+- 형용사: "매력적인 / 아름다운 / 특별한 / 완벽한 / 잊지 못할 / 환상적인 / 놀라운 / 인상적인"
+- 문구: "놓치지 마세요 / 지금 바로 / 절대 후회 없는"
+- 거짓 경험: "다녀왔는데 / 가봤어요 / 직접 체크했어요"
+대신: **숫자, 구체적 장소명, 감각 묘사(온도·색·시간·소리)** 만 사용.
+
+**3. 1 슬라이드 1 아이디어**
+한 슬라이드에 핵심 메시지 1개만. 혜택 3개면 슬라이드 3개로 쪼갤 것.
+
+**4. Bionic reading 힌트 (photo_hint 활용)**
+photo_hint 필드 맨 끝에 "BOLD:단어1,단어2" 형식으로 1~2개 강조할 단어 표기.
+예: photo_hint="팡라오 일몰, 투명한 에메랄드빛 / BOLD:일몰,에메랄드빛"
+
+**5. 쉬운 단어만**
+한자어·업계용어 금지 ("체크아웃" OK / "이용료 정산" 금지). 초등 5학년이 1초 만에 이해 수준. 한 문장 어절 8개 이하.
+
+**6. CTA 마이크로 커밋먼트 고정**
+마지막 cta 슬라이드는 반드시 **DM 유도** (결제 압박 금지). badge="DM 받기" 고정.
+body 템플릿: "댓글 '[키워드]' → DM 발송" (결제/예약 링크 금지)
+
+### F. 리서치 검증 룰 (2025-2026 데이터 박제)
+
+**1. 슬라이드당 단일 감정 (arXiv 2508.21650)**
+한 슬라이드에 한 가지 감정만 박을 것 — awe / curiosity / amusement / fear / anger / relief 중 1개.
+복수 감정 섞으면 메시지 흐림 → 같은 슬라이드 내 색상·문구·아이콘 모두 한 감정으로 통일.
+
+**2. 텍스트 면적 ≤ 20% (Hootsuite/postnitro 2026)**
+슬라이드 면적의 20% 초과 텍스트 금지. headline + body + eyebrow 전부 합쳐 짧게.
+- headline ≤ 12 단어 (한국어 기준 ≤ 15자)
+- 슬라이드당 단어 합계 ≤ 12 단어 (cover 슬라이드는 ≤ 6 단어 헤드라인)
+
+**3. Cover hook 6단어 이내 + 숫자 우선**
+cover 슬라이드 headline은 한국어 ≤ 6단어 / ≤ 10자.
+구체 숫자 > 둥근 숫자: "7가지" > "여러 가지", "★4.9 (예약 1,247건)" > "인기 많음"
+"발리 가서 안 하면 후회하는 7가지 (4번이 진짜 충격)" 같은 정보-갭 + 의외성 콜아웃 패턴 권장.
+
+**4. 9번째 슬라이드는 contrarian/반전 (saves drive↑)**
+10-slide 표준에서 슬라이드 9는 반드시 통념 파괴/반전/현지인 시점 — 저장률 1순위 신호.
+예: "정작 현지인이 가장 많이 가는 곳", "패키지 ☓ 자유여행이 더 비싼 진짜 이유"
+
+**5. 색상 카테고리 룰 (Annals of Tourism Research 2021 검증)**
+photo_hint 끝에 palette 카테고리 명시 (BOLD: 다음 줄에):
+- 자연·풍경·해변·건축 → "PALETTE:nature" → blue 우세
+- 음식·거리·야시장·분위기 → "PALETTE:food" → warm red/orange
+- 가격 비교·통계·D-N → "PALETTE:data_story" → navy + 강한 contrast
+- 허니문·5성급·럭셔리 → "PALETTE:premium" → gold + black
+- 특가·마감·선착순 → "PALETTE:urgency" → red dominant
+
+**6. data_story 슬라이드 (Skyscanner 2025 모델)**
+가능하면 슬라이드 1~2개를 데이터 스토리로 — "다낭 검색량 +508%", "11월 발리 평균 기온 27℃" 같은 구체 숫자 1개로만 채움. body는 출처 또는 구체 비교만 (≤ 8 단어).
+
+**7. 인게이지먼트-베이트 금지 (Meta 2024-10 알고리즘 페널티 대상)**
+다음 표현 절대 사용 금지 — 도달률 강제 감소:
+"follow for more", "tag 3 friends", "친구 소환", "팔로우 해주세요", "쉐어 해주세요",
+"좋아요 눌러주세요", "공유 해주세요", "100% 후회 안 함", "무조건 가야", "절대 후회 없는"
+대신: 가치 제안 + 저장 가치 (체크리스트·비교표·일정표)로 saves 유도.
 
 ## 출력 JSON (정확히 이 형식)
 {

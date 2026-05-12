@@ -40,7 +40,7 @@ export default function NotificationsClient({ rows }: { rows: NotifRow[] }) {
 
   if (rows.length === 0) {
     return (
-      <div className="px-4 py-20 text-center text-sm text-slate-400">
+      <div className="px-4 py-20 text-center text-sm text-admin-muted-2">
         아직 받은 알림이 없습니다.
       </div>
     );
@@ -51,18 +51,18 @@ export default function NotificationsClient({ rows }: { rows: NotifRow[] }) {
       {rows.map(n => {
         const unread = !n.read_at;
         const body = (
-          <div className={`px-4 py-3 ${unread ? 'bg-white' : 'bg-slate-50'}`}>
+          <div className={`px-4 py-3 ${unread ? 'bg-white' : 'bg-admin-bg'}`}>
             <div className="flex items-center gap-2 mb-0.5">
               {n.kind && KIND_LABEL[n.kind] && (
                 <span
                   className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                    KIND_COLOR[n.kind] ?? 'bg-slate-100 text-slate-600'
+                    KIND_COLOR[n.kind] ?? 'bg-admin-surface-2 text-admin-muted'
                   }`}
                 >
                   {KIND_LABEL[n.kind]}
                 </span>
               )}
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-admin-muted-2">
                 {relTime(n.created_at)}
               </span>
               {unread && (
@@ -70,12 +70,12 @@ export default function NotificationsClient({ rows }: { rows: NotifRow[] }) {
               )}
             </div>
             <div
-              className={`text-sm ${unread ? 'font-semibold text-slate-900' : 'text-slate-700'}`}
+              className={`text-sm ${unread ? 'font-semibold text-admin-text' : 'text-admin-text-2'}`}
             >
               {n.title}
             </div>
             {n.body && (
-              <div className="text-xs text-slate-500 mt-0.5 truncate">
+              <div className="text-xs text-admin-muted mt-0.5 truncate">
                 {n.body}
               </div>
             )}
@@ -86,7 +86,7 @@ export default function NotificationsClient({ rows }: { rows: NotifRow[] }) {
             {n.deep_link ? (
               <Link
                 href={n.deep_link}
-                className="block active:bg-slate-100"
+                className="block active:bg-admin-surface-2"
               >
                 {body}
               </Link>

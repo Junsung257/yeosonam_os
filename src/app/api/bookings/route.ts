@@ -3,6 +3,10 @@ import { getBookings, getBookingById, createBooking, updateBookingStatus, update
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { checkSelfReferral } from '@/lib/affiliate/self-referral';
+import { getSecret } from '@/lib/secret-registry';
+import { ADMIN_CACHE } from '@/lib/admin-cache';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -46,8 +50,12 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
     actual_payer_name: actualPayerName,
   }];
 
-  let totalMatchedAmount = 0;
+  // 감사(2026-05-11 Phase 4-C): 직렬 N+1 (UPDATE + RPC × N) → bounded concurrency 병렬.
+  // 메모리 매칭 계산은 동기로 다 끝낸 뒤, DB 작업만 CONCURRENCY=5 chunk 로 발사.
+  // update_booking_ledger 는 idempotency_key + per-tx ledger entry 라 동시성 안전.
 
+  // 1) 메모리 매칭 — 동기, 빠름
+  const matchedTxs: Array<{ tx: { id: string; amount: number; counterparty_name: string | null; transaction_type: string }; confidence: number }> = [];
   for (const tx of unmatched) {
     const candidates = matchPaymentToBookings({
       amount:     tx.amount,
@@ -57,27 +65,50 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
     const guarded   = applyDuplicateNameGuard(candidates);
     const best      = guarded[0];
     if (!best) continue;
+    if (classifyMatch(best.confidence) !== 'auto') continue;
+    matchedTxs.push({ tx, confidence: best.confidence });
+  }
 
-    const matchClass = classifyMatch(best.confidence);
-    if (matchClass !== 'auto') continue;
-
-    // 매칭 성공 → bank_transactions 업데이트
+  let totalMatchedAmount = 0;
+  // 2) DB 적용 — bounded concurrency 5
+  const RETRO_CONCURRENCY = 5;
+  const nowIso = new Date().toISOString();
+  const applyOne = async ({ tx, confidence }: typeof matchedTxs[number]) => {
+    // 한 tx 의 UPDATE + RPC 는 직렬 (atomic 그룹), tx 들 간만 병렬.
     await supabase
       .from('bank_transactions')
       .update({
         booking_id:       bookingId,
         match_status:     'auto',
-        match_confidence: best.confidence,
+        match_confidence: confidence,
         matched_by:       'retroactive',
-        matched_at:       new Date().toISOString(),
+        matched_at:       nowIso,
       })
       .eq('id', tx.id);
-
-    totalMatchedAmount += tx.amount;
+    await supabaseAdmin.rpc('update_booking_ledger', {
+      p_booking_id: bookingId,
+      p_paid_delta: tx.amount,
+      p_payout_delta: 0,
+      p_source: 'booking_create_softmatch',
+      p_source_ref_id: tx.id,
+      p_idempotency_key: `retroactive:${bookingId}:${tx.id}`,
+      p_memo: `retroactive softmatch ${confidence.toFixed(2)}`,
+      p_created_by: 'retroactive',
+    });
+    return tx.amount;
+  };
+  for (let i = 0; i < matchedTxs.length; i += RETRO_CONCURRENCY) {
+    const chunk = matchedTxs.slice(i, i + RETRO_CONCURRENCY);
+    const results = await Promise.allSettled(chunk.map(applyOne));
+    for (const r of results) {
+      if (r.status === 'fulfilled') totalMatchedAmount += r.value;
+      else console.warn('[소급매칭] tx 적용 실패:', r.reason);
+    }
   }
 
-  // 소급 매칭된 금액이 있으면 예약 정산 상태 업데이트
   if (totalMatchedAmount > 0) {
+    // 자동 status 갱신은 update_booking_ledger RPC 안에서 처리됨 (payment_status/booking.status 모두).
+    // 여기는 로깅만.
     const paidAmount = ((booking as any).paid_amount || 0) + totalMatchedAmount;
     const newStatus  = calcPaymentStatus({
       total_price:    (booking as any).total_price,
@@ -85,13 +116,7 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
       paid_amount:    paidAmount,
       total_paid_out: (booking as any).total_paid_out || 0,
     });
-
-    await supabase
-      .from('bookings')
-      .update({ paid_amount: paidAmount, payment_status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', bookingId);
-
-    console.log(`[소급매칭] ${booking.booking_no} — ${totalMatchedAmount.toLocaleString()}원 자동 연결, 상태: ${newStatus}`);
+    console.log(`[소급매칭] ${booking.booking_no?.slice(0, 4)}**** — ${Math.round(totalMatchedAmount / 10000)}만원대 자동 연결, 상태: ${newStatus}`);
   }
 }
 
@@ -107,6 +132,10 @@ export async function GET(request: NextRequest) {
   const departureTo = searchParams.get('departure_to');
   // include_deleted: 'only' = 휴지통만, 'all' = 전체, 미지정 = 정상만
   const includeDeleted = searchParams.get('include_deleted');
+  // 감사(2026-05-11): lite=1 — 110+ 컬럼 중 어드민 목록용 50개만 select.
+  const lite = searchParams.get('lite') === '1';
+  const limitParam = searchParams.get('limit');
+  const offsetParam = searchParams.get('offset');
 
   if (id) {
     const booking = await getBookingById(id);
@@ -115,9 +144,20 @@ export async function GET(request: NextRequest) {
   const bookings = await getBookings(
     status || undefined,
     customerId || undefined,
-    { departureFrom: departureFrom || undefined, departureTo: departureTo || undefined, includeDeleted: includeDeleted || undefined }
+    {
+      departureFrom: departureFrom || undefined,
+      departureTo:   departureTo   || undefined,
+      includeDeleted: includeDeleted || undefined,
+      lite,
+      limit:  limitParam  ? Math.min(500, Math.max(1, parseInt(limitParam, 10))) : undefined,
+      offset: offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : undefined,
+    },
   );
-  return NextResponse.json({ bookings, count: bookings.length });
+  return NextResponse.json(
+    { bookings, count: bookings.length },
+    // 어드민 목록 — list 프리셋(30s/60s/5분).
+    { headers: ADMIN_CACHE.list },
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -126,6 +166,24 @@ export async function POST(request: NextRequest) {
   }
   try {
     const body = await request.json();
+    const rawIdempotencyKey =
+      typeof body.idempotencyKey === 'string'
+        ? body.idempotencyKey
+        : typeof body.idempotency_key === 'string'
+          ? body.idempotency_key
+          : '';
+    const idempotencyKey = rawIdempotencyKey.trim();
+
+    if (idempotencyKey) {
+      // 멱등 키는 로깅/DB 인덱싱 안전을 위해 길이·문자 제한
+      if (idempotencyKey.length > 128 || !/^[a-zA-Z0-9:_-]+$/.test(idempotencyKey)) {
+        return NextResponse.json(
+          { error: 'idempotencyKey 형식이 올바르지 않습니다. (영문/숫자/:_- , 128자 이하)' },
+          { status: 400 },
+        );
+      }
+      body.idempotencyKey = idempotencyKey;
+    }
 
     // 서버사이드 유효성 검사
     if (!body.leadCustomerId) {
@@ -135,37 +193,212 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '성인 인원은 1명 이상이어야 합니다.' }, { status: 400 });
     }
 
-    // 어필리에이트 자동 귀속: 쿠키 또는 body에서 referral_code 확인
-    const affRef = body.affiliateRef || request.cookies.get('aff_ref')?.value;
-    let affData: { id: string; commission_rate: number; bonus_rate: number } | null = null;
-    if (affRef && !body.affiliateId) {
-      try {
-        const { data: aff } = await supabaseAdmin
-          .from('affiliates')
-          .select('id, commission_rate, bonus_rate')
-          .eq('referral_code', affRef)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (aff) {
-          affData = aff;
-          body.affiliateId = aff.id;
-          body.bookingType = 'AFFILIATE';
-          console.log(`[Affiliate] 자동 귀속: ${affRef} → ${aff.id}`);
-        }
-      } catch { /* 귀속 실패해도 예약은 진행 */ }
+    // 멱등성: idempotency_key 가 있으면 기존 booking 반환 (재시도/이중제출 방어)
+    if (idempotencyKey) {
+      const { data: existing } = await supabaseAdmin
+        .from('bookings')
+        .select('*')
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ booking: existing, idempotent_replay: true }, { status: 200 });
+      }
     }
 
-    // 커미션 자동계산 (surcharge 제외, 순수 상품가 기준)
+    // 어필리에이트 + 상품 병렬 조회 (순차 → 동시 실행으로 최대 300-500ms 절감)
+    const affRefRaw = (body.affiliateRef as string | undefined) || request.cookies.get('aff_ref')?.value;
+    const affRef =
+      typeof affRefRaw === 'string' && affRefRaw.trim() ? normalizeAffiliateReferralCode(affRefRaw) : '';
+    const affSub = request.cookies.get('aff_sub')?.value || null;
+    const promoCodeRaw = (body.promoCode as string | undefined) || (body.promo_code as string | undefined) || '';
+    const promoCode = normalizeAffiliateReferralCode(promoCodeRaw);
+    type AffRow = {
+      id: string;
+      grade: number | null;
+      bonus_rate: number;
+      created_at: string | null;
+      phone: string | null;
+      email: string | null;
+    };
+    let affData: AffRow | null = null;
+    let selfReferralBlocked = false;
+    let selfReferralReason: string | null = null;
+
+    const affQuery = affRef && !body.affiliateId
+      ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
+      : body.affiliateId
+        ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
+        : null;
+
+    const pkgQuery = body.packageId
+      ? supabaseAdmin.from('travel_packages').select('affiliate_commission_rate, destination').eq('id', body.packageId).maybeSingle()
+      : null;
+
+    // 두 쿼리가 있으면 동시에 실행
+    const [affResult, pkgResult] = await Promise.all([
+      affQuery ? affQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      pkgQuery ? pkgQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+    ]);
+
+    if (affResult.data) {
+      affData = affResult.data as AffRow;
+      if (affRef && !body.affiliateId) {
+        body.affiliateId = affData.id;
+        body.bookingType = 'AFFILIATE';
+        console.log(`[Affiliate] 자동 귀속: ${affRef} → ${affData.id}`);
+      }
+    }
+
+    // 프로모코드 귀속: 쿠키 ref가 없어도 할인코드로 affiliate 귀속
+    if (!body.affiliateId && promoCode) {
+      const nowIso = new Date().toISOString();
+      const { data: promoRow } = await supabaseAdmin
+        .from('affiliate_promo_codes')
+        .select('id, affiliate_id, code, is_active, starts_at, ends_at, max_uses, uses_count')
+        .eq('code', promoCode)
+        .maybeSingle();
+      if (promoRow) {
+        const p = promoRow as {
+          id: string;
+          affiliate_id: string;
+          code: string;
+          is_active: boolean;
+          starts_at: string | null;
+          ends_at: string | null;
+          max_uses: number | null;
+          uses_count: number;
+        };
+        const activeWindow =
+          p.is_active &&
+          (!p.starts_at || p.starts_at <= nowIso) &&
+          (!p.ends_at || p.ends_at >= nowIso) &&
+          (p.max_uses === null || p.uses_count < p.max_uses);
+        if (activeWindow) {
+          body.affiliateId = p.affiliate_id;
+          body.bookingType = 'AFFILIATE';
+          body.promo_code = p.code;
+          body.promo_affiliate_id = p.affiliate_id;
+          console.log(`[Affiliate] 프로모코드 귀속: ${p.code} → ${p.affiliate_id}`);
+          const { data: affFromPromo } = await supabaseAdmin
+            .from('affiliates')
+            .select('id, grade, bonus_rate, created_at, phone, email')
+            .eq('id', p.affiliate_id)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (affFromPromo) affData = affFromPromo as AffRow;
+        }
+      }
+    }
+
+    // 셀프 리퍼럴 방어: 예약자 연락처와 파트너 연락처가 같으면 커미션만 차단
+    if (affData && body.leadCustomerId) {
+      const { data: leadCustomer } = await supabaseAdmin
+        .from('customers')
+        .select('phone, email')
+        .eq('id', body.leadCustomerId)
+        .maybeSingle();
+      const selfCheck = checkSelfReferral({
+        bookingPhone: (leadCustomer as { phone?: string | null } | null)?.phone ?? null,
+        bookingEmail: (leadCustomer as { email?: string | null } | null)?.email ?? null,
+        affiliatePhone: affData.phone,
+        affiliateEmail: affData.email,
+      });
+      selfReferralBlocked = selfCheck.flagged;
+      selfReferralReason = selfCheck.reason;
+    }
+
+    // 커미션 자동계산 — 가산식 정책 엔진 + 예약 시점 스냅샷 (ERR-방지)
+    //   final = 상품기본률 + 등급보너스 + Σ캠페인 ↓ min(글로벌 캡)
+    //   surcharge 제외, 순수 상품가 기준
     if (body.affiliateId && affData) {
       const commissionBase = (body.adultCount || 0) * (body.adultPrice || 0)
                            + (body.childCount || 0) * (body.childPrice || 0);
-      const totalRate = (affData.commission_rate || 0.09) * (1 + (affData.bonus_rate || 0));
-      body.influencerCommission = Math.round(commissionBase * totalRate);
-      body.appliedTotalCommissionRate = Math.round(totalRate * 10000) / 10000;
-      console.log(`[Affiliate] 커미션 자동계산: base=${commissionBase} × rate=${totalRate} = ${body.influencerCommission}`);
+      if (selfReferralBlocked) {
+        body.influencerCommission = 0;
+        body.appliedTotalCommissionRate = 0;
+        body.commissionBreakdown = {
+          base: 0,
+          tier: 0,
+          campaigns: [],
+          capped: false,
+          final_rate: 0,
+          blocked_reason: `SELF_REFERRAL_${selfReferralReason || 'MATCH'}`,
+        };
+        console.warn(
+          `[Affiliate] 셀프 리퍼럴 커미션 차단: affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`
+        );
+      } else {
+        const { applyCommissionPolicies } = await import('@/lib/policy-engine');
+
+        let baseRate = 0.02;
+        let destination: string | undefined;
+        const pkg = pkgResult.data as { affiliate_commission_rate: number | null; destination: string | null } | null;
+        if (pkg) {
+          const r = Number(pkg.affiliate_commission_rate);
+          if (Number.isFinite(r) && r >= 0) baseRate = r;
+          destination = pkg.destination ?? undefined;
+        }
+
+        const daysSinceSignup = affData.created_at
+          ? Math.max(0, Math.floor((Date.now() - new Date(affData.created_at).getTime()) / 86400000))
+          : 0;
+
+        const breakdown = await applyCommissionPolicies({
+          product_id: body.packageId,
+          destination,
+          affiliate_id: affData.id,
+          affiliate_grade: affData.grade ?? 1,
+          days_since_signup: daysSinceSignup,
+          base_rate: baseRate,
+          tier_bonus: affData.bonus_rate ?? 0,
+        });
+
+        body.influencerCommission = Math.round(commissionBase * breakdown.final_rate);
+        body.appliedTotalCommissionRate = breakdown.final_rate;
+        body.commissionBreakdown = breakdown;
+
+        console.log(
+          `[Affiliate] 커미션 자동계산(가산식): base=${commissionBase} × ${breakdown.final_rate} = ${body.influencerCommission} ` +
+          `[${breakdown.base}+${breakdown.tier}+캠페인${breakdown.campaigns.length}건${breakdown.capped ? '(캡적용)' : ''}]`
+        );
+      }
+    }
+
+    // UTM / 제휴 코드 — 클라이언트가 camelCase 로 보내도 스냅샷 컬럼에 정규화
+    if (body.utmSource && !body.utm_source) body.utm_source = body.utmSource;
+    if (body.utmMedium && !body.utm_medium) body.utm_medium = body.utmMedium;
+    if (body.utmCampaign && !body.utm_campaign) body.utm_campaign = body.utmCampaign;
+    if (body.utmTerm && !body.utm_term) body.utm_term = body.utmTerm;
+    if (body.utmContent && !body.utm_content) body.utm_content = body.utmContent;
+    if (affRef && !body.referral_code) body.referral_code = affRef;
+    if (promoCode && !body.promo_code) body.promo_code = promoCode;
+    if (body.affiliateId && !body.promo_affiliate_id && body.promo_code) body.promo_affiliate_id = body.affiliateId;
+    if (!body.attribution_model) body.attribution_model = 'last_touch';
+    if (!body.attribution_split) {
+      body.attribution_split = {
+        model: body.attribution_model,
+        last_touch: affRef || null,
+        promo_code: body.promo_code || null,
+        sub_id: affSub,
+      };
     }
 
     const booking = await createBooking(body);
+
+    if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
+      const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
+      enqueueDepositNoticeGateTask(booking.id as string).catch(() => {});
+    }
+
+    // 셀프 리퍼럴 차단 건은 감사 로그로 남겨 정산 이슈를 사전 방지
+    if (booking?.id && affData && selfReferralBlocked) {
+      supabaseAdmin.from('audit_logs').insert({
+        action: 'AFFILIATE_SELF_REFERRAL_BLOCKED',
+        target_type: 'booking',
+        target_id: booking.id,
+        description: `affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`,
+      }).then(() => {}).catch(() => {});
+    }
 
     // 어필리에이트 last_conversion_at 업데이트
     if (affData && booking?.id) {
@@ -194,6 +427,44 @@ export async function POST(request: NextRequest) {
           }
         })
         .catch(() => {});
+    }
+
+    // 프로모코드 사용량 증가 (예약 생성 성공 후)
+    if (body.promo_code && booking?.id) {
+      const { data: promo } = await supabaseAdmin
+        .from('affiliate_promo_codes')
+        .select('id, uses_count')
+        .eq('code', body.promo_code)
+        .maybeSingle();
+      if (promo) {
+        const pr = promo as { id: string; uses_count: number };
+        supabaseAdmin
+          .from('affiliate_promo_codes')
+          .update({ uses_count: (pr.uses_count || 0) + 1, updated_at: new Date().toISOString() })
+          .eq('id', pr.id)
+          .then(() => {})
+          .catch(() => {});
+      }
+    }
+
+    // Lifetime 귀속 실험군: 신규 고객이 제휴로 첫 예약하면 실험군 할당
+    if (booking?.id && body.leadCustomerId && body.affiliateId) {
+      const experimentRate = Number(process.env.AFFILIATE_LIFETIME_EXPERIMENT_RATE || '0.3');
+      const group = Math.random() < Math.max(0, Math.min(1, experimentRate)) ? 'lifetime_0_5' : 'control';
+      const { data: existsLink } = await supabaseAdmin
+        .from('affiliate_lifetime_links')
+        .select('id')
+        .eq('customer_id', body.leadCustomerId)
+        .eq('affiliate_id', body.affiliateId)
+        .maybeSingle();
+      if (!existsLink) {
+        supabaseAdmin.from('affiliate_lifetime_links').insert({
+          customer_id: body.leadCustomerId,
+          affiliate_id: body.affiliateId,
+          origin_booking_id: booking.id,
+          experiment_group: group,
+        } as never).then(() => {}).catch(() => {});
+      }
     }
 
     // 약관 스냅샷: 예약 시점 4-level 머지 결과를 freeze (법적 증빙용, Ironclad/Juro CLM 관행)
@@ -296,6 +567,25 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
     }
 
+    // 계약금 안내 게이트 해제 (assisted → 운영자 승인 후 전이 허용)
+    if (typeof body.deposit_notice_blocked === 'boolean') {
+      const { data, error } = await supabaseAdmin
+        .from('bookings')
+        .update({
+          deposit_notice_blocked: body.deposit_notice_blocked,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (body.deposit_notice_blocked === false) {
+        const { resolveDepositNoticeGateTasks } = await import('@/lib/booking-workflow-tasks');
+        await resolveDepositNoticeGateTasks(id);
+      }
+      return NextResponse.json({ booking: data });
+    }
+
     // 일행 추가 (booking_passengers에 연결)
     if (body.addPassengerId) {
       const { error } = await supabaseAdmin
@@ -336,25 +626,19 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용)
-      let landOpName: string | null = null;
-      let depLocName: string | null = null;
-      if ((product as any).land_operator_id) {
-        const { data: lo } = await supabaseAdmin
-          .from('land_operators')
-          .select('name')
-          .eq('id', (product as any).land_operator_id)
-          .maybeSingle();
-        landOpName = (lo as any)?.name ?? null;
-      }
-      if ((product as any).departing_location_id) {
-        const { data: dl } = await supabaseAdmin
-          .from('departing_locations')
-          .select('name')
-          .eq('id', (product as any).departing_location_id)
-          .maybeSingle();
-        depLocName = (dl as any)?.name ?? null;
-      }
+      // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용) — 병렬 fetch
+      const landOpId = (product as any).land_operator_id;
+      const depLocId = (product as any).departing_location_id;
+      const [loRes, dlRes] = await Promise.all([
+        landOpId
+          ? supabaseAdmin.from('land_operators').select('name').eq('id', landOpId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        depLocId
+          ? supabaseAdmin.from('departing_locations').select('name').eq('id', depLocId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const landOpName: string | null = (loRes.data as any)?.name ?? null;
+      const depLocName: string | null = (dlRes.data as any)?.name ?? null;
 
       const updateFields: Record<string, unknown> = {
         product_id:    (product as any).internal_code,
@@ -380,8 +664,11 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    // paid_amount 변경 시 payment_status 자동 계산 및 완납이면 status도 completed로
+    // paid_amount 변경 시 — Phase 2a: record_manual_paid_amount_change RPC 로 위임 (ledger 이중쓰기)
+    // 이전 payment_status 자동 계산은 admin UI 가 직접 PATCH 시 별도 필드로 보내거나,
+    // 다른 경로에서 호출 시 calcPaymentStatus 가 처리. 여기서는 ledger 정합성을 우선.
     if (typeof body.paid_amount === 'number') {
+      const newPaidAmount = body.paid_amount;
       const { data: current } = await supabase
         .from('bookings')
         .select('total_price, status')
@@ -389,7 +676,6 @@ export async function PATCH(request: NextRequest) {
         .single();
 
       const totalPrice = (current as { total_price?: number } | null)?.total_price ?? 0;
-      const newPaidAmount = body.paid_amount;
       const newPaymentStatus =
         newPaidAmount >= totalPrice && totalPrice > 0 ? '완납'
         : newPaidAmount > 0 ? '일부입금'
@@ -398,18 +684,26 @@ export async function PATCH(request: NextRequest) {
         newPaidAmount >= totalPrice && totalPrice > 0 ? 'completed'
         : (current as { status?: string } | null)?.status;
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .update({
-          paid_amount: newPaidAmount,
-          payment_status: newPaymentStatus,
-          ...(newStatus ? { status: newStatus } : {}),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
+        p_booking_id: id,
+        p_new_paid_amount: newPaidAmount,
+        p_new_total_paid_out: null,
+        p_source: 'admin_manual_edit',
+        p_source_ref_id: id,
+        p_idempotency_key: `manual:${id}:${Date.now()}`,
+        p_memo: 'PUT /api/bookings paid_amount manual edit',
+        p_created_by: 'admin',
+      });
+      if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+
+      // payment_status / status 자동 후처리 (RPC 가 손대지 않으므로 여기서)
+      await supabaseAdmin.from('bookings').update({
+        payment_status: newPaymentStatus,
+        ...(newStatus ? { status: newStatus } : {}),
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+
+      const { data } = await supabase.from('bookings').select().eq('id', id).single();
       return NextResponse.json({ booking: data });
     }
 
@@ -517,7 +811,7 @@ export async function PATCH(request: NextRequest) {
           packageTitle: b.package_title || '여행 상품',
           balance,
           dueDate,
-          account: process.env.COMPANY_ACCOUNT || '계좌 정보 미설정',
+          account: getSecret('COMPANY_ACCOUNT') || '계좌 정보 미설정',
         }).catch(e => console.warn('[잔금 알림톡 실패]', e));
       }
     }

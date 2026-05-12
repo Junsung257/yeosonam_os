@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -20,9 +21,13 @@ import { applyMarkdownAccents, applyHtmlAccents } from '@/lib/blog-accent';
 import LandingHero from '@/components/blog/LandingHero';
 import StickyMobileCta from '@/components/blog/StickyMobileCta';
 import DestinationCuration from '@/components/blog/DestinationCuration';
+import { ScrollReveal } from '@/components/blog/ScrollReveal';
+import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
+import GlobalNav from '@/components/customer/GlobalNav';
+import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 
-export const revalidate = 3600;
+export const revalidate = 86400;
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
 // 이 한 줄이 "발행 직후 첫 요청 race로 404가 캐시되는" 패턴을 구조적으로 차단한다.
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
@@ -35,7 +40,7 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(2000);
+      .limit(500);
     const rows = (data || []) as Array<{ slug: string | null }>;
     return rows
       .map((r) => r.slug)
@@ -46,7 +51,7 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
   }
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 // ── 타입 ────────────────────────────────────────────────────
 interface BlogPost {
@@ -79,6 +84,7 @@ interface BlogPost {
     departure_airport: string | null;
     product_highlights: string[] | null;
     inclusions: string[] | null;
+    status?: string | null;
   } | null;
 }
 
@@ -98,13 +104,13 @@ interface RelatedPost {
 }
 
 const ANGLE_LABELS: Record<string, string> = {
-  value: '가성비',
-  emotional: '감성',
-  filial: '효도',
-  luxury: '럭셔리',
-  urgency: '긴급특가',
-  activity: '액티비티',
-  food: '미식',
+  value: '💰 가성비',
+  emotional: '🌸 감성',
+  filial: '🎁 효도',
+  luxury: '✨ 럭셔리',
+  urgency: '⚡ 긴급특가',
+  activity: '🏄 액티비티',
+  food: '🍜 미식',
 };
 
 // ── 유틸 ────────────────────────────────────────────────────
@@ -166,7 +172,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status)',
     )
     .eq('slug', slug)
     .eq('status', 'published')
@@ -294,6 +300,34 @@ async function getCurationProductsForInfo(destination: string) {
   ];
 }
 
+// ── 이전/다음 글 (published_at 기준) ─────────────────────────
+type NavPost = { slug: string; seo_title: string | null; og_image_url: string | null; destination: string | null };
+
+async function getPrevNextPosts(
+  slug: string,
+  publishedAt: string,
+): Promise<{ prev: NavPost | null; next: NavPost | null }> {
+  if (!isSupabaseConfigured) return { prev: null, next: null };
+
+  const base = supabaseAdmin
+    .from('content_creatives')
+    .select('slug, seo_title, og_image_url, destination')
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .not('slug', 'is', null)
+    .neq('slug', slug);
+
+  const [prevRes, nextRes] = await Promise.all([
+    base.lt('published_at', publishedAt).order('published_at', { ascending: false }).limit(1),
+    base.gt('published_at', publishedAt).order('published_at', { ascending: true }).limit(1),
+  ]);
+
+  return {
+    prev: (prevRes.data?.[0] as NavPost) ?? null,
+    next: (nextRes.data?.[0] as NavPost) ?? null,
+  };
+}
+
 // ── 동적 메타데이터 ──────────────────────────────────────────
 export async function generateMetadata({
   params,
@@ -383,26 +417,24 @@ export default async function BlogDetailPage({
   const isInfoBlog = !post.product_id;
   const isLanding = !!post.landing_enabled && !!post.product_id;
 
-  // DKI 결정 (상품 블로그 + 광고 유입일 때만)
-  const dki = isLanding
-    ? await resolveDki(
-        { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
-        {
-          seo_title: title,
-          landing_headline: post.landing_headline,
-          landing_subtitle: post.landing_subtitle,
-        },
-      )
-    : null;
-
-  // 정보성 블로그: destination 기반 큐레이션 상품 3개 가져오기
-  const curationProducts = isInfoBlog && post.destination
-    ? await getCurationProductsForInfo(post.destination)
-    : [];
-
-  const [relatedPosts, relatedProducts] = await Promise.all([
+  // post 의존 5개 쿼리 병렬화 — 직렬 누적 RT → 1 RT (TTFB 200~400ms 단축 기대)
+  const [dki, curationProducts, relatedPosts, relatedProducts, prevNext] = await Promise.all([
+    isLanding
+      ? resolveDki(
+          { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
+          {
+            seo_title: title,
+            landing_headline: post.landing_headline,
+            landing_subtitle: post.landing_subtitle,
+          },
+        )
+      : Promise.resolve(null),
+    isInfoBlog && post.destination
+      ? getCurationProductsForInfo(post.destination)
+      : Promise.resolve([] as Awaited<ReturnType<typeof getCurationProductsForInfo>>),
     getRelatedPosts(slug, pkg?.destination, post.angle_type),
     getRelatedProducts(pkg?.id, pkg?.destination),
+    getPrevNextPosts(slug, post.published_at),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -436,175 +468,86 @@ export default async function BlogDetailPage({
     readingMinutes = estimateReadingMinutes(sanitized);
   }
 
-  // FAQ 자동 추출
-  const faqItems: { q: string; a: string }[] = [];
-  if (post.blog_html) {
-    const faqRegex = /\*\*Q\.\s*(.+?)\*\*\s*\n\s*\n\s*A\.\s*(.+?)(?=\n\n|\n\*\*Q\.|\n##|$)/gs;
-    let m;
-    while ((m = faqRegex.exec(post.blog_html)) !== null) {
-      faqItems.push({ q: m[1].trim(), a: m[2].trim() });
-    }
-  }
+  const productDurationDays =
+    pkg?.duration != null && !Number.isNaN(Number(pkg.duration)) ? Number(pkg.duration) : null;
+
+  const jsonLd = buildBlogPostPageJsonLd({
+    baseUrl: BASE_URL,
+    pageUrl,
+    title,
+    description: post.seo_description || '',
+    publishedAt: post.published_at,
+    modifiedAt: post.updated_at,
+    ogImageUrl: post.og_image_url,
+    blogHtmlMarkdown: post.blog_html || '',
+    bodyHtmlForWordCount: bodyHtml,
+    readingMinutes,
+    angleLabel,
+    pkg: pkg
+      ? {
+          id: pkg.id,
+          title: pkg.title,
+          destination: pkg.destination,
+          price: pkg.price,
+        }
+      : null,
+    durationStr,
+    productDurationDays,
+  });
 
   return (
     <>
       <ReadingProgress />
+      <BackToTop />
 
-      {/* JSON-LD: BlogPosting */}
+      {/* JSON-LD — BlogPosting · BreadcrumbList · FAQ · HowTo · TouristTrip (blog-jsonld 단일 소스) */}
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BlogPosting',
-            headline: title,
-            description: post.seo_description || '',
-            image: post.og_image_url || `${BASE_URL}/og-image.png`,
-            datePublished: post.published_at,
-            dateModified: post.updated_at || post.published_at,
-            inLanguage: 'ko-KR',
-            wordCount: bodyHtml.replace(/<[^>]+>/g, '').length,
-            timeRequired: `PT${readingMinutes}M`,
-            articleSection: angleLabel,
-            keywords: [pkg?.destination, angleLabel, '여행', '패키지여행', '단체여행']
-              .filter(Boolean)
-              .join(','),
-            // author 배열 — Google Rich Results는 다중 author 지원.
-            // Organization(브랜드) + Person(편집자)로 EEAT의 Authoritativeness + Experience 분리 시그널.
-            // Quality Rater Guidelines 2025 권장: 저자 신원·외부 프로필 sameAs 노출.
-            author: [
-              {
-                '@type': 'Organization',
-                name: '여소남',
-                url: BASE_URL,
-                sameAs: [
-                  'https://blog.naver.com/yesonam',
-                  'https://www.instagram.com/yesonam',
-                ],
-              },
-              {
-                '@type': 'Person',
-                name: '여소남 운영팀',
-                jobTitle: '여행 큐레이션 에디터',
-                worksFor: { '@type': 'Organization', name: '여소남', url: BASE_URL },
-                url: `${BASE_URL}/about`,
-              },
-            ],
-            // reviewedBy — 본문이 운영팀 OP의 검수를 거쳤다는 사실 시그널 (Experience).
-            reviewedBy: {
-              '@type': 'Organization',
-              name: '여소남 운영팀',
-              url: BASE_URL,
-            },
-            publisher: {
-              '@type': 'Organization',
-              name: '여소남',
-              logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png` },
-            },
-            mainEntityOfPage: pageUrl,
-            ...(pkg && {
-              about: {
-                '@type': 'TouristTrip',
-                name: pkg.title,
-                description: `${pkg.destination}${durationStr ? ` ${durationStr}` : ''} 여행 패키지`,
-                touristType: angleLabel,
-                ...(pkg.destination && {
-                  itinerary: {
-                    '@type': 'TouristDestination',
-                    name: pkg.destination,
-                  },
-                }),
-                ...(pkg.price && {
-                  offers: {
-                    '@type': 'Offer',
-                    price: pkg.price,
-                    priceCurrency: 'KRW',
-                    availability: 'https://schema.org/InStock',
-                    url: `${BASE_URL}/packages/${pkg.id}`,
-                    validThrough: new Date(
-                      new Date().getFullYear(),
-                      11,
-                      31,
-                    )
-                      .toISOString()
-                      .slice(0, 10),
-                  },
-                }),
-              },
-              ...(pkg.destination && {
-                mentions: [
-                  {
-                    '@type': 'TouristDestination',
-                    name: pkg.destination,
-                  },
-                ],
-              }),
-            }),
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.blogPosting) }}
       />
-
-      {/* BreadcrumbList JSON-LD */}
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BreadcrumbList',
-            itemListElement: [
-              { '@type': 'ListItem', position: 1, name: '홈', item: BASE_URL },
-              { '@type': 'ListItem', position: 2, name: '블로그', item: `${BASE_URL}/blog` },
-              ...(pkg?.destination
-                ? [
-                    {
-                      '@type': 'ListItem',
-                      position: 3,
-                      name: pkg.destination,
-                      item: `${BASE_URL}/blog/destination/${encodeURIComponent(pkg.destination)}`,
-                    },
-                    { '@type': 'ListItem', position: 4, name: title, item: pageUrl },
-                  ]
-                : [{ '@type': 'ListItem', position: 3, name: title, item: pageUrl }]),
-            ],
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumbList) }}
       />
-
-      {/* FAQPage JSON-LD */}
-      {faqItems.length > 0 && (
+      {jsonLd.faqPage && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'FAQPage',
-              mainEntity: faqItems.map((faq) => ({
-                '@type': 'Question',
-                name: faq.q,
-                acceptedAnswer: { '@type': 'Answer', text: faq.a },
-              })),
-            }),
-          }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faqPage) }}
+        />
+      )}
+      {jsonLd.howTo && (
+        <script
+          suppressHydrationWarning
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.howTo) }}
+        />
+      )}
+      {jsonLd.touristTrip && (
+        <script
+          suppressHydrationWarning
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.touristTrip) }}
         />
       )}
 
       <BlogTracker contentCreativeId={post.id} />
+      <GlobalNav />
 
       <main className="min-h-screen bg-white">
-        {/* 상단 네비 (breadcrumb) */}
+        {/* breadcrumb (GlobalNav 아래 sticky 2층) */}
         <nav
-          className="border-b bg-white/90 backdrop-blur sticky top-0 z-30"
+          className="border-b bg-white/95 backdrop-blur sticky top-14 md:top-16 z-20"
           aria-label="경로 탐색"
         >
-          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-gray-500">
-            <Link href="/" className="hover:text-indigo-600">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-slate-500">
+            <Link href="/" className="hover:text-brand">
               홈
             </Link>
             <span aria-hidden="true">/</span>
-            <Link href="/blog" className="hover:text-indigo-600">
+            <Link href="/blog" className="hover:text-brand">
               블로그
             </Link>
             {pkg?.destination && (
@@ -612,57 +555,76 @@ export default async function BlogDetailPage({
                 <span aria-hidden="true">/</span>
                 <Link
                   href={`/blog/destination/${encodeURIComponent(pkg.destination)}`}
-                  className="hover:text-indigo-600"
+                  className="hover:text-brand"
                 >
                   {pkg.destination}
                 </Link>
               </>
             )}
             <span aria-hidden="true">/</span>
-            <span className="truncate text-gray-900">{title}</span>
+            <span className="truncate text-slate-900">{title}</span>
           </div>
         </nav>
 
+        {pkg?.status &&
+          !['active', 'approved'].includes(String(pkg.status).toLowerCase()) && (
+            <div className="mx-auto max-w-6xl px-4 pt-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                이 글과 연결된 상품은 현재 예약이 어렵거나 판매가 종료된 상태일 수 있어요.{' '}
+                <Link
+                  href={
+                    pkg.destination
+                      ? `/packages?destination=${encodeURIComponent(pkg.destination)}`
+                      : '/packages'
+                  }
+                  className="font-semibold text-amber-900 underline underline-offset-2"
+                >
+                  대체 패키지 보기
+                </Link>
+              </div>
+            </div>
+          )}
+
         {/* 매거진 스타일 헤더 */}
         <header className="mx-auto max-w-3xl px-4 pb-6 pt-10 md:pt-14">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-5 flex flex-wrap items-center gap-2">
             {pkg?.destination && (
               <Link
                 href={`/blog/destination/${encodeURIComponent(pkg.destination)}`}
-                className="rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                className="bg-slate-900 px-3 py-1 text-xs font-bold text-white transition hover:opacity-80"
               >
                 {pkg.destination}
               </Link>
             )}
             <Link
               href={`/blog/angle/${post.angle_type}`}
-              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 transition hover:border-indigo-300 hover:text-indigo-700"
+              className="border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-900 hover:text-slate-900"
             >
               {angleLabel}
             </Link>
           </div>
 
-          <h1 className="text-[26px] font-black leading-[1.25] tracking-tight text-gray-900 md:text-[34px] md:leading-[1.22]">
+          <h1 className="text-[32px] font-black leading-[1.15] tracking-tight text-slate-900 md:text-[48px] md:leading-[1.1]">
             {title}
           </h1>
 
           {post.seo_description && (
-            <p className="mt-4 text-[15px] leading-relaxed text-gray-500 md:text-base">
+            <p className="mt-5 text-base leading-relaxed text-slate-600 md:text-lg">
               {post.seo_description}
             </p>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 pt-4 text-sm text-gray-500">
+          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <span
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-bold text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-xs font-bold text-white"
                 aria-hidden="true"
               >
                 여
               </span>
-              <span className="font-medium text-gray-700">여소남 에디터</span>
+              <span className="font-medium text-slate-700">여소남 에디터</span>
             </div>
-            <span aria-hidden="true" className="text-gray-300">·</span>
+            <span aria-hidden="true" className="text-slate-300">·</span>
             <time dateTime={post.published_at}>
               {new Date(post.published_at).toLocaleDateString('ko-KR', {
                 year: 'numeric',
@@ -670,7 +632,7 @@ export default async function BlogDetailPage({
                 day: 'numeric',
               })}
             </time>
-            <span aria-hidden="true" className="text-gray-300">·</span>
+            <span aria-hidden="true" className="text-slate-300">·</span>
             <span>약 {readingMinutes}분 읽기</span>
           </div>
         </header>
@@ -690,19 +652,17 @@ export default async function BlogDetailPage({
           </div>
         )}
 
-        {/* 정보성 글 또는 랜딩 비활성 시 기본 히어로 이미지 */}
+        {/* 정보성 글 또는 랜딩 비활성 시 기본 히어로 이미지 — Jiwonnote 스타일: 좁은 폭 + 작은 radius */}
         {!isLanding && post.og_image_url && (
-          <figure className="mx-auto mb-2 max-w-4xl px-4">
-            <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-gray-100 md:aspect-[21/9]">
-              <img
+          <figure className="mx-auto mb-4 max-w-3xl px-4">
+            <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
+              <Image
                 src={post.og_image_url}
                 alt={title}
-                width={1600}
-                height={900}
-                className="h-full w-full object-cover"
-                fetchPriority="high"
-                loading="eager"
-                decoding="async"
+                fill
+                className="object-cover"
+                priority
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
               />
             </div>
           </figure>
@@ -735,7 +695,7 @@ export default async function BlogDetailPage({
                   return (
                     <>
                       <div
-                        className="prose prose-lg prose-indigo prose-blog max-w-none scroll-smooth"
+                        className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
                         dangerouslySetInnerHTML={{ __html: split.before }}
                       />
                       <InlineRelated
@@ -744,7 +704,7 @@ export default async function BlogDetailPage({
                         relatedPosts={inlineRelatedLites}
                       />
                       <div
-                        className="prose prose-lg prose-indigo prose-blog max-w-none scroll-smooth"
+                        className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
                         dangerouslySetInnerHTML={{ __html: split.after }}
                       />
                     </>
@@ -752,25 +712,25 @@ export default async function BlogDetailPage({
                 }
                 return (
                   <div
-                    className="prose prose-lg prose-indigo prose-blog max-w-none scroll-smooth"
+                    className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
                     dangerouslySetInnerHTML={{ __html: bodyHtml }}
                   />
                 );
               })()
             ) : (
-              <p className="py-10 text-center text-gray-400">본문이 준비 중입니다.</p>
+              <p className="py-10 text-center text-slate-400">본문이 준비 중입니다.</p>
             )}
 
-            {/* 상품 CTA 카드 */}
+            {/* 상품 CTA 카드 — Jiwonnote 미니멀 스타일: 슬레이트 보더 + 흰배경 */}
             {pkg && (
-              <aside className="not-prose mt-12 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-6 md:p-7">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+              <aside className="not-prose mt-14 border-t-[3px] border-slate-900 pt-6">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   이 글의 추천 상품
                 </p>
-                <h3 className="mt-2 text-lg font-bold leading-tight text-gray-900 md:text-xl">
+                <h3 className="mt-2 text-xl md:text-2xl font-black leading-tight text-slate-900 tracking-tight">
                   {pkg.title}
                 </h3>
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-gray-600">
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-slate-600">
                   {pkg.destination && (
                     <span className="inline-flex items-center gap-1">
                       <span aria-hidden="true">📍</span>
@@ -790,15 +750,14 @@ export default async function BlogDetailPage({
                     </span>
                   )}
                   {pkg.price && (
-                    <span className="inline-flex items-center gap-1 font-semibold text-indigo-700">
-                      <span aria-hidden="true">💰</span>
+                    <span className="inline-flex items-center gap-1 font-bold text-slate-900 tabular-nums">
                       {pkg.price.toLocaleString()}원~
                     </span>
                   )}
                 </div>
                 <Link
                   href={`/packages/${pkg.id}`}
-                  className="mt-5 inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  className="mt-6 inline-flex items-center gap-1 rounded-md bg-slate-900 px-6 py-3 text-sm font-bold text-white transition hover:opacity-80"
                 >
                   상품 상세 보기
                   <span aria-hidden="true">→</span>
@@ -814,7 +773,7 @@ export default async function BlogDetailPage({
             />
 
             {/* 공유 버튼 */}
-            <ShareButtons url={pageUrl} title={title} />
+            <ShareButtons url={pageUrl} title={title} utmCampaign={slug} />
 
             {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (가격대 분산) */}
             {isInfoBlog && post.destination && curationProducts.length > 0 && (
@@ -839,32 +798,55 @@ export default async function BlogDetailPage({
             <BlogCitations destination={pkg?.destination} airline={pkg?.airline ?? undefined} />
           </article>
 
-          {/* 데스크톱 사이드바 — sticky TOC */}
-          {showToc && (
+          {/* 데스크톱 사이드바 — Jiwonnote 패턴: TOC + 추천 포스팅 */}
+          {(showToc || relatedPosts.length > 0) && (
             <aside className="hidden w-64 shrink-0 lg:block">
-              <div className="sticky top-24">
-                <TableOfContents items={toc} variant="desktop" />
+              <div className="sticky top-24 space-y-10">
+                {showToc && <TableOfContents items={toc} variant="desktop" />}
+                {relatedPosts.length > 0 && (
+                  <div>
+                    <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
+                    <ul className="space-y-3">
+                      {relatedPosts.slice(0, 4).map((rp) => {
+                        const rpTitle = (rp.seo_title || '여행 가이드')
+                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                          .trim();
+                        return (
+                          <li key={rp.id}>
+                            <Link
+                              href={`/blog/${rp.slug}`}
+                              className="block text-[13px] font-semibold text-slate-700 leading-snug hover:text-slate-900 transition line-clamp-3"
+                            >
+                              {rpTitle}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
             </aside>
           )}
         </div>
 
-        {/* 관련 글 섹션 */}
+        {/* 관련 글 섹션 — Jiwonnote 스타일: 흰배경 + 검정 hr 헤더 */}
         {relatedPosts.length > 0 && (
-          <section className="border-t bg-gray-50" aria-label="관련 여행 가이드">
-            <div className="mx-auto max-w-6xl px-4 py-12">
-              <div className="mb-6 flex items-end justify-between">
-                <h2 className="text-xl font-bold text-gray-900 md:text-2xl">
+          <ScrollReveal>
+          <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
+            <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
+              <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
+                <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
                   함께 보면 좋은 여행 가이드
                 </h2>
                 <Link
                   href="/blog"
-                  className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+                  className="text-[13px] md:text-sm text-slate-700 hover:text-slate-900 font-semibold whitespace-nowrap"
                 >
                   전체 보기 →
                 </Link>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {relatedPosts.slice(0, 6).map((rp) => {
                   const rpTitle = (rp.seo_title || '여행 가이드')
                     .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
@@ -874,46 +856,39 @@ export default async function BlogDetailPage({
                     <Link
                       key={rp.id}
                       href={`/blog/${rp.slug}`}
-                      className="group overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      className="group overflow-hidden rounded-md border border-slate-200 bg-white transition hover:shadow-md"
                     >
                       {rp.og_image_url ? (
-                        <div className="aspect-[16/9] overflow-hidden bg-gray-100">
-                          <img
+                        <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+                          <Image
                             src={rp.og_image_url}
                             alt={rpTitle}
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                            loading="lazy"
-                            decoding="async"
+                            fill
+                            className="object-cover transition duration-300 group-hover:scale-105"
+                            sizes="(max-width: 640px) 100vw, 33vw"
                           />
                         </div>
                       ) : (
-                        <div className="flex aspect-[16/9] items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
+                        <div className="flex aspect-[16/9] items-center justify-center bg-slate-50">
                           <span className="text-3xl" aria-hidden="true">
                             ✈️
                           </span>
                         </div>
                       )}
-                      <div className="p-4">
-                        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                      <div className="p-5">
+                        <div className="mb-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
                           {rp.travel_packages?.destination && (
-                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
-                              {rp.travel_packages.destination}
-                            </span>
+                            <span>{rp.travel_packages.destination}</span>
                           )}
-                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
-                            {ANGLE_LABELS[rp.angle_type] || rp.angle_type}
-                          </span>
-                          {rpDur && (
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
-                              {rpDur}
-                            </span>
-                          )}
+                          {rp.travel_packages?.destination && <span>·</span>}
+                          <span>{ANGLE_LABELS[rp.angle_type] || rp.angle_type}</span>
+                          {rpDur && <><span>·</span><span>{rpDur}</span></>}
                         </div>
-                        <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900 group-hover:text-indigo-600 md:text-[15px]">
+                        <h3 className="line-clamp-2 text-base md:text-[17px] font-bold leading-snug text-slate-900 group-hover:text-slate-700 tracking-tight">
                           {rpTitle}
                         </h3>
                         {rp.travel_packages?.price && (
-                          <p className="mt-2 text-xs font-semibold text-indigo-600">
+                          <p className="mt-3 text-base font-black text-slate-900 tabular-nums">
                             {rp.travel_packages.price.toLocaleString()}원~
                           </p>
                         )}
@@ -924,14 +899,87 @@ export default async function BlogDetailPage({
               </div>
             </div>
           </section>
+          </ScrollReveal>
         )}
 
-        {/* 하단 네비 */}
+        {/* 하단 네비 — 이전/다음 글 */}
         <div className="border-t bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-8 text-sm">
-            <Link href="/blog" className="font-medium text-indigo-600 hover:text-indigo-800">
-              ← 블로그 목록으로
-            </Link>
+          <div className="mx-auto max-w-6xl px-4 py-8">
+            <div className="mb-5 text-sm">
+              <Link href="/blog" className="font-medium text-brand hover:text-[#1B64DA]">
+                ← 블로그 목록으로
+              </Link>
+            </div>
+            {(prevNext.prev || prevNext.next) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {prevNext.prev ? (
+                  <Link
+                    href={`/blog/${prevNext.prev.slug}`}
+                    className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
+                  >
+                    {prevNext.prev.og_image_url && (
+                      <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
+                        <Image
+                          src={prevNext.prev.og_image_url}
+                          alt=""
+                          fill
+                          className="object-cover transition duration-300 group-hover:scale-105"
+                          sizes="96px"
+                        />
+                      </div>
+                    )}
+                    <div className="flex flex-col justify-center gap-1 p-4 min-w-0">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        ← 이전 글
+                      </span>
+                      {prevNext.prev.destination && (
+                        <span className="text-xs text-slate-500">{prevNext.prev.destination}</span>
+                      )}
+                      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                        {(prevNext.prev.seo_title || '여행 가이드')
+                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                          .trim()}
+                      </span>
+                    </div>
+                  </Link>
+                ) : (
+                  <div />
+                )}
+                {prevNext.next ? (
+                  <Link
+                    href={`/blog/${prevNext.next.slug}`}
+                    className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
+                  >
+                    <div className="flex flex-col justify-center gap-1 p-4 min-w-0 text-right flex-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        다음 글 →
+                      </span>
+                      {prevNext.next.destination && (
+                        <span className="text-xs text-slate-500">{prevNext.next.destination}</span>
+                      )}
+                      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                        {(prevNext.next.seo_title || '여행 가이드')
+                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                          .trim()}
+                      </span>
+                    </div>
+                    {prevNext.next.og_image_url && (
+                      <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
+                        <Image
+                          src={prevNext.next.og_image_url}
+                          alt=""
+                          fill
+                          className="object-cover transition duration-300 group-hover:scale-105"
+                          sizes="96px"
+                        />
+                      </div>
+                    )}
+                  </Link>
+                ) : (
+                  <div />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </main>

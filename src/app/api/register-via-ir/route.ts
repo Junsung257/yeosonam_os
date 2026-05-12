@@ -18,6 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -25,6 +26,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeWithLlm } from '@/lib/normalize-with-llm';
 import { convertIntakeToPackage, queueUnmatchedSegments } from '@/lib/ir-to-package';
 import { validateIntake, NORMALIZER_VERSION, type NormalizedIntake } from '@/lib/intake-normalizer';
+import { getIrCanaryStatus, pickCanaryEngine } from '@/lib/ir-canary';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Normalizer LLM 이 수 십 초 걸릴 수 있음
@@ -86,6 +88,9 @@ function loadOperators(): Record<string, { uuid: string; code: string }> {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isCronAuthorized(req)) {
+    return cronUnauthorizedResponse();
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 500 });
   }
@@ -96,8 +101,8 @@ export async function POST(req: NextRequest) {
     commissionRate?: number;
     ticketingDeadline?: string | null;
     dryRun?: boolean;
-    /** Phase 1.5 — 엔진 선택: 'claude' (Sonnet API, 기본), 'gemini' (Flash, 저렴), 'direct' (이미 완성된 IR 사용) */
-    engine?: 'claude' | 'gemini' | 'direct';
+    /** Phase 1.5 — 엔진 선택: 'deepseek' (V4-Pro, 기본), 'gemini' (Flash, 폴백), 'claude' (레거시), 'direct' (이미 완성된 IR 사용) */
+    engine?: 'deepseek' | 'gemini' | 'claude' | 'direct';
     /** engine=direct 일 때: Claude Code 세션·어드민이 직접 작성한 NormalizedIntake JSON */
     ir?: NormalizedIntake;
   };
@@ -141,7 +146,7 @@ export async function POST(req: NextRequest) {
     }
     ir = validation.data;
   } else {
-    // ── LLM 모드 (Claude/Gemini) ──
+    // ── LLM 모드 (DeepSeek/Gemini/Claude) ──
     if (!rawText || rawText.length < 50) {
       return NextResponse.json({ ok: false, error: 'rawText 누락 또는 50자 미만 (Rule Zero)' }, { status: 400 });
     }
@@ -149,15 +154,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'landOperator·commissionRate 필수' }, { status: 400 });
     }
 
+    // ANTHROPIC_API_KEY 미설정 시 claude 요청을 deepseek 로 graceful degrade
+    const resolvedEngine = pickCanaryEngine(engine || null);
     const normResult = await normalizeWithLlm({
       rawText,
       landOperator,
       commissionRate,
-    }, { engine: engine === 'gemini' ? 'gemini' : 'claude' });
+    }, { engine: resolvedEngine });
 
     if (!normResult.success || !normResult.ir) {
       return NextResponse.json(
-        { ok: false, step: 'normalize', engine: engine || 'claude', errors: normResult.errors, retryCount: normResult.retryCount },
+        { ok: false, step: 'normalize', engine: resolvedEngine, errors: normResult.errors, retryCount: normResult.retryCount, canary: getIrCanaryStatus() },
         { status: 422 },
       );
     }
@@ -206,7 +213,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       dryRun: true,
-      engine: engine || 'claude',
+      engine: engine || 'deepseek',
+      canary: getIrCanaryStatus(),
       intakeId,
       ir,
       pkg: conversion.pkg,
@@ -279,7 +287,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    engine: engine || 'claude',
+    engine: engine || 'deepseek',
+    canary: getIrCanaryStatus(),
     intakeId,
     packageId: inserted.id,
     shortCode: inserted.short_code,
