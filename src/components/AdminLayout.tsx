@@ -61,6 +61,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/inbox',              label: 'Inbox 액션',   icon: Inbox },
       { href: '/admin/kakao-import',       label: '카톡 임포트',  icon: MessageSquare },
       { href: '/admin/bookings',           label: '예약 관리',    icon: BookOpenCheck },
+      { href: '/admin/leads',              label: '예약 문의',    icon: MessageSquare },
       { href: '/admin/customers',          label: '고객 관리',    icon: Users },
       { href: '/admin/payments',           label: '입금 관리',    icon: Wallet },
       { href: '/admin/payments/reconcile', label: '입금 조정',    icon: ArrowLeftRight },

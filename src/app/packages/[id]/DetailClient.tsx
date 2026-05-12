@@ -538,8 +538,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const handleSubmit = async () => {
     if (!formData.name || !formData.phone || isSubmitting) return;
     setIsSubmitting(true);
+    let ok = false;
+    let errMsg = '';
     try {
-      await fetch('/api/leads', {
+      const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -562,10 +564,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           submittedAt: new Date().toISOString(),
         }),
       });
-    } catch { /* 전송 실패해도 UI는 정상 표시 */ }
-    finally { setIsSubmitting(false); }
-    setSubmitted(true);
-    setTimeout(() => { setShowForm(false); setSubmitted(false); setFormData({ name: '', phone: '', message: '', date: '' }); }, 3000);
+      ok = res.ok;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        errMsg = (data as { error?: string }).error || `요청 실패 (${res.status})`;
+      }
+    } catch (e) {
+      errMsg = e instanceof Error ? e.message : '네트워크 오류';
+    } finally {
+      setIsSubmitting(false);
+    }
+    if (ok) {
+      setSubmitted(true);
+      setTimeout(() => { setShowForm(false); setSubmitted(false); setFormData({ name: '', phone: '', message: '', date: '' }); }, 3000);
+    } else {
+      // silent failure 방지: 사용자에게 실패를 명시 — 카톡 채널 폴백 안내
+      alert(`예약 문의 전송에 실패했습니다.\n${errMsg}\n\n카카오톡 채널로 직접 문의해주시면 빠르게 도와드리겠습니다.`);
+    }
   };
 
   const handleShare = async () => {
