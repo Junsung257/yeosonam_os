@@ -2060,12 +2060,35 @@ function computeCrossValidationScore(checks: ValidationCheck[]): number {
   return total > 0 ? achieved / total : 0;
 }
 
-function decideAutoGate(confidence: number, leakScore: number, criticalFails: number): ConfidenceV2Result['autoGate'] {
-  if (criticalFails > 0 || leakScore >= 0.4) return 'rejected';
-  if (confidence < 0.50) return 'rejected';
-  if (confidence < 0.70) return 'pending_review';
-  if (confidence < 0.95) return 'confirm_queue'; // 사장님 1-click 컨펌
-  return 'auto_publish';
+interface AutoGatePolicy {
+  auto_publish_above:       number;
+  confirm_queue_above:      number;
+  pending_review_above:     number;
+  reject_leak_score_above:  number;
+  full_auto_enabled:        boolean;
+}
+
+const DEFAULT_AUTO_GATE_POLICY: AutoGatePolicy = {
+  auto_publish_above:      0.95,
+  confirm_queue_above:     0.70,
+  pending_review_above:    0.50,
+  reject_leak_score_above: 0.40,
+  full_auto_enabled:       false,
+};
+
+function decideAutoGate(
+  confidence: number,
+  leakScore: number,
+  criticalFails: number,
+  policy: AutoGatePolicy = DEFAULT_AUTO_GATE_POLICY,
+): ConfidenceV2Result['autoGate'] {
+  if (criticalFails > 0)                              return 'rejected';
+  if (leakScore >= policy.reject_leak_score_above)    return 'rejected';
+  if (confidence < policy.pending_review_above)       return 'rejected';
+  if (confidence < policy.confirm_queue_above)        return 'pending_review';
+  if (confidence < policy.auto_publish_above)         return 'confirm_queue';
+  // full_auto_enabled=false 면 95% 이상도 confirm_queue 로 (사장님 1-click)
+  return policy.full_auto_enabled ? 'auto_publish' : 'confirm_queue';
 }
 
 /**
@@ -2075,7 +2098,7 @@ function decideAutoGate(confidence: number, leakScore: number, criticalFails: nu
  */
 export function calculateConfidenceV2(
   data: ExtractedData,
-  ctx: { leakScore?: number; itineraryData?: XValidInput['itineraryData'] } = {},
+  ctx: { leakScore?: number; itineraryData?: XValidInput['itineraryData']; policy?: AutoGatePolicy } = {},
 ): ConfidenceV2Result {
   const fillScore = computeFillScore(data);
   const checks = runCrossValidation(data, { itineraryData: ctx.itineraryData });
@@ -2091,7 +2114,7 @@ export function calculateConfidenceV2(
   ));
 
   const criticalFails = checks.filter(c => !c.passed && c.severity === 'critical').length;
-  const autoGate = decideAutoGate(confidence, leakScore, criticalFails);
+  const autoGate = decideAutoGate(confidence, leakScore, criticalFails, ctx.policy);
 
   return { confidence, fillScore, crossValidationScore, leakScore, cleanScore, checks, autoGate };
 }

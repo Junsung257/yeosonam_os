@@ -4,6 +4,7 @@ import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocu
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments';
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
+import { getRegistrationPolicy } from '@/lib/registration-policy';
 void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateMarketingCopies, type MarketingCopy } from '@/lib/ai';
@@ -757,9 +758,12 @@ export async function POST(request: NextRequest) {
         Object.assign(ed, sanitizeResult.cleaned); // in-place 적용 — 이후 INSERT 에 자동 반영
 
         // ── G3. 신뢰도 V2 (채움률 30% + 정합성 40% + 누출안전 30%) ──
+        // F-4 박제: 정책 임계치 동적 로드 (DB registration_auto_policy)
+        const autoGatePolicy = await getRegistrationPolicy();
         const v2 = calculateConfidenceV2(ed, {
           leakScore: sanitizeResult.leakScore,
           itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
+          policy: autoGatePolicy,
         });
         const confidence = v2.confidence;
         console.log(`[Upload API] confidence V2: ${(v2.confidence*100).toFixed(1)}% (fill=${(v2.fillScore*100).toFixed(0)}% xvalid=${(v2.crossValidationScore*100).toFixed(0)}% clean=${(v2.cleanScore*100).toFixed(0)}%) autoGate=${v2.autoGate}`);
