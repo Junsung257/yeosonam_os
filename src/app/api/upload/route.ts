@@ -5,6 +5,7 @@ import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments';
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
+import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
 import { getRegistrationPolicy } from '@/lib/registration-policy';
 void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -1068,6 +1069,15 @@ export async function POST(request: NextRequest) {
                 detectedB2bTerms:  sanitizeResult.incidents
                   .filter(i => i.severity !== 'medium')
                   .map(i => i.matched),
+              });
+            }
+
+            // Phase 8-2 박제 — Pexels 자동 매칭 (검수 큐에서 1-click 선택 가능)
+            if (internalCode) {
+              void runAutoPhotoMatch({
+                internalCode,
+                destination: ed.destination ?? null,
+                title,
               });
             }
           }
