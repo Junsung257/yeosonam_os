@@ -135,6 +135,34 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
     }
 
+    // Phase 12 P12-2 박제 (2026-05-13): 자동 액션 — 위험 booking internal_memo 자동 마킹
+    // 사장님 어드민에서 한 화면에 보이도록 + agent_actions 큐에 자동 등록
+    let autoActioned = 0;
+    const autoActionRows: Array<Record<string, unknown>> = [];
+    for (const b of (bookingRows ?? []) as Array<{ id: string; booking_no: string | null; internal_memo?: string | null }>) {
+      const memo = `🟠 자동 churn 위험 마킹 [${new Date().toISOString().slice(0,16)}] — 환불/취소 페이지 조회 감지`;
+      const { error: markErr } = await supabaseAdmin
+        .from('bookings')
+        .update({ internal_memo: memo, updated_at: new Date().toISOString() })
+        .eq('id', b.id);
+      if (!markErr) {
+        autoActioned++;
+        autoActionRows.push({
+          package_id:   null,
+          internal_code: null,
+          field_path:   `churn.booking[${b.id.slice(0,8)}]`,
+          pattern_id:   'churn_auto_mark',
+          severity:     'medium',
+          matched_text: `booking ${b.booking_no ?? b.id.slice(0,8)} 자동 마킹`,
+          action:       'logged',
+        });
+      }
+    }
+    if (autoActionRows.length > 0) {
+      void supabaseAdmin.from('customer_leak_audit').insert(autoActionRows);
+    }
+    console.log(`[churn-detect] P12-2 자동 액션: ${autoActioned}/${riskyBookings.length}건 마킹`);
+
     // ── Step 4: Slack 알림 발송 ──────────────────────────────────
     const bookingLines = riskyBookings
       .map((b) => {
