@@ -1040,20 +1040,26 @@ export async function POST(request: NextRequest) {
             savedIds.push(pkgResult.id);
             savedTitles.push(title);
 
-            // ── G8.5. ai_quality_log 적재 — V2 + leak incidents (2026-05-13 박제)
-            // 컨펌 큐 UI의 SSOT. 추세 분석 + 사장님 1-click 컨펌 줄 highlight 입력.
+            // ── G8.5. ai_quality_log 적재 — V2 + leak incidents + LLM 메타 (P11-4)
+            const llmMeta = (ed as { _llm_meta?: Record<string, unknown> })._llm_meta ?? {};
             void supabaseAdmin
               .from('ai_quality_log')
               .insert({
-                package_id:     pkgResult.id,
-                internal_code:  internalCode,
-                confidence:     v2.confidence,
-                fill_score:     v2.fillScore,
-                xvalid_score:   v2.crossValidationScore,
-                leak_score:     v2.leakScore,
-                auto_gate:      v2.autoGate,
-                failed_checks:  v2.checks.filter(c => !c.passed),
-                leak_incidents: sanitizeResult.incidents,
+                package_id:        pkgResult.id,
+                internal_code:     internalCode,
+                confidence:        v2.confidence,
+                fill_score:        v2.fillScore,
+                xvalid_score:      v2.crossValidationScore,
+                leak_score:        v2.leakScore,
+                auto_gate:         v2.autoGate,
+                failed_checks:     v2.checks.filter(c => !c.passed),
+                leak_incidents:    sanitizeResult.incidents,
+                // P11-4 박제: LLM 호출 메타 자동 채움 (자체 LLMOps cost tracking)
+                advisor_escalated: Boolean(llmMeta.advisor_used),
+                llm_providers:     llmMeta.provider ? [String(llmMeta.provider)] : [],
+                llm_tokens_input:  Number(llmMeta.tokens_input ?? 0),
+                llm_tokens_output: Number(llmMeta.tokens_output ?? 0),
+                llm_calls_count:   1 + (llmMeta.advisor_used ? 1 : 0),
               })
               .then(({ error }: { error: { message: string } | null }) => {
                 if (error) console.warn('[Upload API] ai_quality_log 적재 실패(무시):', error.message);
