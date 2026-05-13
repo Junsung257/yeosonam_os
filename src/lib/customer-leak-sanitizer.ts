@@ -138,6 +138,8 @@ interface SurchargeItem { note?: string | null; period?: string | null; amount_u
 export interface CustomerExposedFields {
   title?: string | null;
   destination?: string | null;
+  display_title?: string | null;               // hero 2-tier P-3 (2026-05-22) — 모바일 hero 상단 노출
+  hero_tagline?: string | null;                // hero 2-tier P-3 (2026-05-22) — 한 줄 후킹
   product_summary?: string | null;
   product_highlights?: string[];
   selling_points?: unknown; // ExtractedData 는 객체, 일부 경로는 string. 정책상 sanitize 안 함.
@@ -159,6 +161,8 @@ export function sanitizeForCustomer<T extends CustomerExposedFields>(
   // 1) 평문 필드
   if (typeof cleaned.title === 'string')           cleaned.title           = sanitizeString(cleaned.title,           'title',           incidents);
   if (typeof cleaned.destination === 'string')     cleaned.destination     = sanitizeString(cleaned.destination,     'destination',     incidents);
+  if (typeof cleaned.display_title === 'string')   cleaned.display_title   = sanitizeString(cleaned.display_title,   'display_title',   incidents);
+  if (typeof cleaned.hero_tagline === 'string')    cleaned.hero_tagline    = sanitizeString(cleaned.hero_tagline,    'hero_tagline',    incidents);
   if (typeof cleaned.product_summary === 'string') cleaned.product_summary = sanitizeString(cleaned.product_summary, 'product_summary', incidents);
   if (typeof cleaned.special_notes === 'string')   cleaned.special_notes   = sanitizeString(cleaned.special_notes,   'special_notes',   incidents);
   // selling_points 는 객체 타입(hotel/airline/unique) — 별도 핸들링 안 함

@@ -15,6 +15,7 @@
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { sendSlackAlert } from '@/lib/slack-alert';
 
 export interface VerifyCheck {
   id: string;
@@ -35,13 +36,16 @@ export interface VerifyResult {
 type PackageRow = {
   id: string;
   title?: string | null;
+  display_title?: string | null;
+  hero_tagline?: string | null;
   raw_text?: string | null;
-  itinerary_data?: { days?: unknown[] } | null;
+  itinerary_data?: { days?: Array<{ hotel?: { name?: string | null } | null; schedule?: Array<{ activity?: string }> | null } | null> } | null;
   inclusions?: string[] | string | null;
-  optional_tours?: unknown[] | null;
-  price_dates?: Array<{ adult_selling_price?: number; selling_price?: number }> | null;
-  price_list?: Array<{ adult_selling_price?: number; selling_price?: number }> | null;
+  optional_tours?: Array<{ name?: string; price?: number | string | null; price_currency?: string | null } | string | null> | null;
+  price_dates?: Array<{ adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
+  price_list?: Array<{ adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
   departure_days?: unknown;
+  surcharges?: Array<{ amount?: number | string | null; currency?: string | null } | string | null> | null;
 };
 
 export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
@@ -147,13 +151,139 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   }
 
   // C6: 가격 행 존재 여부
-  const priceRows: unknown[] = Array.isArray(pkg.price_dates)
+  const priceRows: Array<{ adult_selling_price?: number; selling_price?: number; currency?: string | null }> = Array.isArray(pkg.price_dates)
     ? pkg.price_dates
     : Array.isArray(pkg.price_list) ? pkg.price_list : [];
   if (priceRows.length === 0) {
     checks.push({ id: 'C6', label: '가격 데이터', status: 'warn', detail: 'price_dates 행 없음 — 수동 입력 필요' });
   } else {
     checks.push({ id: 'C6', label: '가격 데이터', status: 'pass', detail: `${priceRows.length}개 가격 행` });
+  }
+
+  // C7: 호텔 수 대조 (원문 "박" 수 ≤ days-1 vs hotel.name 채워진 day 수)
+  // 박수 = duration - 1. 마지막 day 는 귀국일이라 hotel null 정상.
+  // 호텔 없는 중간 day = 환각 또는 정규화 누락 신호.
+  if (hasRaw) {
+    const nightsMatch = rawText.match(/(\d+)\s*박\s*(\d+)\s*일/);
+    const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data!.days! : [];
+    if (nightsMatch && days.length > 0) {
+      const expectedHotelDays = parseInt(nightsMatch[1]);
+      const filledHotels = days.filter(d => (d?.hotel?.name ?? '').trim().length >= 2).length;
+      if (filledHotels < expectedHotelDays) {
+        checks.push({
+          id: 'C7',
+          label: '호텔 채움',
+          status: 'warn',
+          detail: `${expectedHotelDays}박 기대, hotel.name 채워진 일정 ${filledHotels}일 — 추출 누락 가능`,
+        });
+      } else {
+        checks.push({ id: 'C7', label: '호텔 채움', status: 'pass', detail: `${filledHotels}/${expectedHotelDays}박 충족` });
+      }
+    } else {
+      checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '원문에 박수 표기 없음' });
+    }
+  } else {
+    checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '원문 없음' });
+  }
+
+  // C8: 통화 일관성 — price_dates / surcharges / optional_tours 모두 동일 currency 또는 NULL.
+  // 통화 mix 는 가격 계산 버그 (USD/KRW 환산 누락) 의 흔한 신호.
+  const currencies = new Set<string>();
+  for (const p of priceRows) {
+    const c = (p?.currency ?? '').trim().toUpperCase();
+    if (c) currencies.add(c);
+  }
+  const surcharges = Array.isArray(pkg.surcharges) ? pkg.surcharges : [];
+  for (const s of surcharges) {
+    if (s && typeof s === 'object') {
+      const c = ((s as { currency?: string | null }).currency ?? '').trim().toUpperCase();
+      if (c) currencies.add(c);
+    }
+  }
+  const opts = Array.isArray(pkg.optional_tours) ? pkg.optional_tours : [];
+  for (const o of opts) {
+    if (o && typeof o === 'object') {
+      const c = ((o as { price_currency?: string | null }).price_currency ?? '').trim().toUpperCase();
+      if (c) currencies.add(c);
+    }
+  }
+  if (currencies.size > 1) {
+    checks.push({
+      id: 'C8',
+      label: '통화 일관성',
+      status: 'warn',
+      detail: `통화 ${currencies.size}종 혼재: ${Array.from(currencies).join(', ')} — 환산 누락 가능`,
+    });
+  } else if (currencies.size === 1) {
+    checks.push({ id: 'C8', label: '통화 일관성', status: 'pass', detail: `${Array.from(currencies)[0]} 단일` });
+  } else {
+    checks.push({ id: 'C8', label: '통화 일관성', status: 'skip', detail: '통화 표기 없음 (기본 KRW 가정)' });
+  }
+
+  // C9: 일정 activity 중복 — 같은 day 내 activity 텍스트 정확히 중복은 추출 분리 버그.
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data!.days! : [];
+  const dupHits: string[] = [];
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    if (!d || !Array.isArray(d.schedule)) continue;
+    const seen = new Set<string>();
+    for (const item of d.schedule) {
+      const key = (item?.activity ?? '').trim();
+      if (key.length < 4) continue;            // 너무 짧은 토큰은 자연스러운 반복 가능
+      if (seen.has(key)) { dupHits.push(`Day${i + 1}:"${key.slice(0, 30)}"`); break; }
+      seen.add(key);
+    }
+  }
+  if (dupHits.length > 0) {
+    checks.push({
+      id: 'C9',
+      label: '일정 중복',
+      status: 'warn',
+      detail: `같은 day 안 activity 중복 ${dupHits.length}건: ${dupHits.slice(0, 2).join(' / ')}${dupHits.length > 2 ? ' …' : ''}`,
+    });
+  } else if (days.length > 0) {
+    checks.push({ id: 'C9', label: '일정 중복', status: 'pass', detail: '중복 없음' });
+  } else {
+    checks.push({ id: 'C9', label: '일정 중복', status: 'skip', detail: 'days 없음' });
+  }
+
+  // C11: hero 2-tier 정합성 (display_title 5자+, hero_tagline 있으면 8자+).
+  // hero 2-tier 사고 — hero 영역이 비거나 너무 짧으면 모바일 카드에 placeholder 노출.
+  // display_title 은 package-schema 에서도 min(5) 박혀있으나, 등록 폼이 우회한 케이스 잡기.
+  const displayTitle = (pkg.display_title ?? '').trim();
+  const heroTagline = (pkg.hero_tagline ?? '').trim();
+  if (!displayTitle) {
+    checks.push({ id: 'C11', label: 'hero 정합성', status: 'warn', detail: 'display_title 누락 — 모바일 hero 후킹 없음' });
+  } else if (displayTitle.length < 5) {
+    checks.push({ id: 'C11', label: 'hero 정합성', status: 'warn', detail: `display_title 너무 짧음 "${displayTitle}" (${displayTitle.length}자)` });
+  } else if (heroTagline && heroTagline.length < 8) {
+    checks.push({ id: 'C11', label: 'hero 정합성', status: 'warn', detail: `hero_tagline 너무 짧음 "${heroTagline}" (${heroTagline.length}자)` });
+  } else {
+    checks.push({ id: 'C11', label: 'hero 정합성', status: 'pass', detail: heroTagline ? `display+tagline 정상` : `display_title 정상 (tagline 미사용)` });
+  }
+
+  // C10: 옵션 투어 가격 유효성 — price 가 음수/문자 그대로 박힌 경우 잡기.
+  const badOpt: string[] = [];
+  for (const o of opts) {
+    if (!o || typeof o !== 'object') continue;
+    const obj = o as { name?: string; price?: number | string | null };
+    if (obj.price === null || obj.price === undefined || obj.price === '') continue;
+    const num = typeof obj.price === 'number' ? obj.price : Number(String(obj.price).replace(/[, ]/g, ''));
+    if (!Number.isFinite(num) || num < 0) {
+      badOpt.push(`${obj.name ?? '?'} = ${JSON.stringify(obj.price)}`);
+    }
+  }
+  if (badOpt.length > 0) {
+    checks.push({
+      id: 'C10',
+      label: '옵션 가격 유효성',
+      status: 'warn',
+      detail: `유효하지 않은 가격 ${badOpt.length}건: ${badOpt.slice(0, 2).join(' / ')}`,
+    });
+  } else if (opts.length > 0) {
+    checks.push({ id: 'C10', label: '옵션 가격 유효성', status: 'pass', detail: `${opts.length}건 정상` });
+  } else {
+    checks.push({ id: 'C10', label: '옵션 가격 유효성', status: 'skip', detail: '옵션 투어 없음' });
   }
 
   const hasFail = checks.some(c => c.status === 'fail');
@@ -189,7 +319,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const { data: rows, error } = await supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, raw_text, itinerary_data, inclusions, optional_tours, price_dates, price_list, departure_days',
+        'id, title, display_title, hero_tagline, raw_text, itinerary_data, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
       )
       .eq('id', packageId)
       .limit(1);
@@ -224,7 +354,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       if (failedFromVerify.length > 0) {
         const { data: latestLog } = await supabaseAdmin
           .from('ai_quality_log')
-          .select('id, failed_checks')
+          .select('id, confidence, failed_checks')
           .eq('package_id', packageId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -234,10 +364,44 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
           const existing = Array.isArray((latestLog as { failed_checks?: unknown[] }).failed_checks)
             ? ((latestLog as { failed_checks: unknown[] }).failed_checks)
             : [];
+
+          // R3-A 박제 (2026-05-22) — Confidence ↔ verify outlier 감지.
+          // 본 사고의 본질: V2 confidence 0.85 통과했는데 결정적 룰이 잡는 케이스.
+          // confidence ≥ 0.85 AND audit warnings/blocked → 거짓 신호 후보. critical 로 표시.
+          const conf = Number((latestLog as { confidence?: number | string }).confidence ?? 0);
+          const extraIncidents: typeof failedFromVerify = [];
+          if (Number.isFinite(conf) && conf >= 0.85 && (result.status === 'warnings' || result.status === 'blocked')) {
+            extraIncidents.push({
+              id: 'confidence_verify_mismatch',
+              severity: 'critical',
+              passed: false,
+              message: `confidence ${(conf * 100).toFixed(1)}% 통과했으나 결정적 룰 ${result.status} (warn ${result.warnCount} fail ${result.failCount}) — 거짓 신호 후보, 산식 V2 재학습 시 calibration 대상`,
+            });
+          }
+
           await supabaseAdmin
             .from('ai_quality_log')
-            .update({ failed_checks: [...existing, ...failedFromVerify] })
+            .update({ failed_checks: [...existing, ...failedFromVerify, ...extraIncidents] })
             .eq('id', latestLog.id);
+
+          if (extraIncidents.length > 0) {
+            console.warn(`[upload-verify] ${packageId}: 거짓 신호 후보 — confidence=${conf.toFixed(3)} but audit=${result.status}`);
+            // R4-A 박제 (2026-05-22) — 거짓 신호 즉시 Slack 알림.
+            // SLACK_ALERT_WEBHOOK_URL 미설정 시 silent skip — 안전.
+            const failedLabels = result.checks
+              .filter(c => c.status === 'warn' || c.status === 'fail')
+              .map(c => `${c.id} ${c.label}`).slice(0, 5).join(', ');
+            void sendSlackAlert(
+              `🚨 등록 거짓 신호 감지 — package_id=${packageId}`,
+              {
+                confidence: Number(conf.toFixed(3)),
+                audit_status: result.status,
+                warn: result.warnCount,
+                fail: result.failCount,
+                failed_checks: failedLabels,
+              },
+            ).catch(() => {});
+          }
         }
       }
     }

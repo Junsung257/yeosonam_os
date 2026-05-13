@@ -14,7 +14,8 @@
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { getRegistrationPolicy, type RegistrationPolicy } from '@/lib/registration-policy';
+import { getRegistrationPolicy, invalidateRegistrationPolicyCache, type RegistrationPolicy } from '@/lib/registration-policy';
+import { refreshConformalPolicy } from '@/lib/conformal-calibration';
 
 interface TriggerCondition {
   id: 'reject_rate' | 'weekly_leak' | 'cove_pass_rate' | 'reflexion_count';
@@ -37,6 +38,10 @@ interface MonitorResponse {
     weekly_leak_count: number;
     cove_pass_rate: number;
     reflexion_count: number;
+    mobile_qa_incidents: number;
+    verify_deterministic_incidents: number;
+    cove_incidents: number;
+    confidence_mismatch_incidents: number;
   };
   triggerEval: {
     conditions: TriggerCondition[];
@@ -96,6 +101,24 @@ export async function GET() {
     const autoPub      = rows.filter(r => r.auto_gate === 'auto_publish').length;
     const avgConf      = total > 0 ? rows.reduce((s, r) => s + Number(r.confidence ?? 0), 0) / total : 0;
     const rejectRate   = total > 0 ? rejected / total : 0;
+
+    // R3-C 박제 (2026-05-22) — failed_checks incident 분류 (prefix 기반)
+    // mobile_*  = 자동 모바일 QA, verify_*  = 결정적 룰 (C1~C10),
+    // cove_*    = CoVe critic, confidence_verify_mismatch = 거짓 신호 (R3-A)
+    let mobileQaCount = 0;
+    let verifyDeterministicCount = 0;
+    let coveCount = 0;
+    let confidenceMismatchCount = 0;
+    for (const r of rows) {
+      const checks = Array.isArray(r.failed_checks) ? r.failed_checks : [];
+      for (const c of checks as Array<{ id?: string }>) {
+        const id = c?.id ?? '';
+        if (id.startsWith('mobile_'))                       mobileQaCount++;
+        else if (id.startsWith('verify_'))                  verifyDeterministicCount++;
+        else if (id.startsWith('cove_'))                    coveCount++;
+        else if (id === 'confidence_verify_mismatch')       confidenceMismatchCount++;
+      }
+    }
     const weeklyLeak   = rows.filter(r =>
       r.created_at >= since7d &&
       Array.isArray(r.leak_incidents) && r.leak_incidents.length > 0
@@ -233,6 +256,11 @@ export async function GET() {
         weekly_leak_count: weeklyLeak,
         cove_pass_rate: Math.round(covePassRate * 1000) / 1000,
         reflexion_count: reflexionCount ?? 0,
+        // R3-C — incident 분류 카운트 (30일)
+        mobile_qa_incidents: mobileQaCount,
+        verify_deterministic_incidents: verifyDeterministicCount,
+        cove_incidents: coveCount,
+        confidence_mismatch_incidents: confidenceMismatchCount,
       },
       triggerEval: { conditions, all_passed: allPassed, recommendation, summary },
       recentLog: recent,
@@ -245,18 +273,37 @@ export async function GET() {
   }
 }
 
-/** POST: 정책 임계치 업데이트 (단일 행 UPSERT) */
+/** POST: 정책 임계치 업데이트 또는 액션 트리거.
+ *   body.action === 'recalibrate_conformal' → 강제 재보정 실행
+ *   body.action === undefined / 정책 patch → 임계치 업데이트
+ */
 export async function POST(req: Request) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
   try {
-    const body = await req.json() as Partial<RegistrationPolicy> & { notes?: string };
+    const body = await req.json() as Partial<RegistrationPolicy> & { notes?: string; action?: string };
+
+    // 액션 분기 — 강제 Conformal 재보정 (사장님 1-click)
+    if (body.action === 'recalibrate_conformal') {
+      const result = await refreshConformalPolicy();
+      invalidateRegistrationPolicyCache();
+      return NextResponse.json({
+        ok: true,
+        action: 'recalibrate_conformal',
+        threshold: result.threshold,
+        sampleSize: result.sampleSize,
+        alpha: result.alpha,
+        reason: result.reason,
+      });
+    }
+
     const allowed: Array<keyof RegistrationPolicy> = [
       'auto_publish_above', 'confirm_queue_above', 'pending_review_above',
       'reject_leak_score_above', 'full_auto_enabled',
       'trigger_max_reject_rate_30d', 'trigger_max_leak_per_week',
       'trigger_min_cove_pass_rate', 'trigger_min_reflexion_count',
+      'conformal_target_alpha', 'conformal_min_sample', 'conformal_enabled',
     ];
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const k of allowed) {
@@ -270,6 +317,7 @@ export async function POST(req: Request) {
       .eq('id', 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    invalidateRegistrationPolicyCache();
     return NextResponse.json({ ok: true, patched: patch });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

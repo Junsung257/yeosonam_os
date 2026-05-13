@@ -29,6 +29,12 @@ interface Policy {
   trigger_max_leak_per_week: number;
   trigger_min_cove_pass_rate: number;
   trigger_min_reflexion_count: number;
+  conformal_threshold: number | null;
+  conformal_target_alpha: number;
+  conformal_min_sample: number;
+  conformal_sample_size: number | null;
+  conformal_last_calibrated_at: string | null;
+  conformal_enabled: boolean;
 }
 
 interface MonitorData {
@@ -43,6 +49,10 @@ interface MonitorData {
     weekly_leak_count: number;
     cove_pass_rate: number;
     reflexion_count: number;
+    mobile_qa_incidents: number;
+    verify_deterministic_incidents: number;
+    cove_incidents: number;
+    confidence_mismatch_incidents: number;
   };
   triggerEval: {
     conditions: TriggerCondition[];
@@ -114,6 +124,31 @@ export default function RegistrationMonitorPage() {
     }
   };
 
+  const recalibrateConformal = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/registration-monitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recalibrate_conformal' }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      const msg = d.reason === 'ok'
+        ? `재보정 완료 — threshold ${d.threshold} (sample ${d.sampleSize}, α=${d.alpha})`
+        : d.reason === 'cold_start'
+          ? `cold-start — sample ${d.sampleSize}/${data?.policy?.conformal_min_sample ?? 20} 부족, fallback 유지`
+          : `재보정 실패 — ${d.reason}`;
+      setToast(msg);
+      setTimeout(() => setToast(null), 4500);
+      await load();
+    } catch (e) {
+      setToast(`재보정 실패: ${String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-admin-muted">로드 중...</div>;
   if (!data) return <div className="p-8 text-red-500">데이터 없음</div>;
 
@@ -169,6 +204,93 @@ export default function RegistrationMonitorPage() {
         <Stat label="자동 발행" value={last30dStats.auto_publish_count} hint="confidence≥95%" />
         <Stat label="컨펌 큐" value={last30dStats.confirm_queue_count} hint="70~95%" />
         <Stat label="거절" value={last30dStats.rejected_count} hint="<50% 또는 leak" tone={last30dStats.rejected_count > 0 ? 'warn' : 'ok'} />
+      </section>
+
+      {/* ── R3-C 박제 — 인시던트 분류 (30일) ───────────────────── */}
+      <section className="bg-white border border-admin-border rounded-lg p-5">
+        <h2 className="text-admin-sm font-bold mb-3">
+          인시던트 분류 (30일)
+          <span className="ml-2 text-[10px] text-admin-muted-2 font-normal">
+            failed_checks 의 prefix 별 카운트 — 어디서 가장 많이 잡히는지 확인
+          </span>
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat
+            label="🚨 거짓 신호 (R3-A)"
+            value={last30dStats.confidence_mismatch_incidents}
+            hint="conf≥85% but audit warnings/blocked"
+            tone={last30dStats.confidence_mismatch_incidents > 0 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="모바일 QA 결함"
+            value={last30dStats.mobile_qa_incidents}
+            hint="hero/hotel/항공/leak/notices"
+            tone={last30dStats.mobile_qa_incidents > 5 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="결정적 룰 (C1~C10)"
+            value={last30dStats.verify_deterministic_incidents}
+            hint="원문↔DB 대조 warn/fail"
+            tone={last30dStats.verify_deterministic_incidents > 10 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="CoVe critic"
+            value={last30dStats.cove_incidents}
+            hint="LLM claim-by-claim 환각"
+            tone={last30dStats.cove_incidents > 5 ? 'warn' : 'ok'}
+          />
+        </div>
+      </section>
+
+      {/* ── Conformal Abstention 패널 (2026-05-22 박제) ────────── */}
+      <section className="bg-white border border-admin-border rounded-lg p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-admin-sm font-bold">Conformal Abstention (calibration-based threshold)</h2>
+            <p className="text-[11px] text-admin-muted-2 mt-0.5">
+              사장님 거절 + 정정(critical/high) 누적분으로 BAD set 의 (1-α) quantile 을 임계값으로 사용 — false-accept rate ≤ α 수학적 보장.
+            </p>
+          </div>
+          <button
+            disabled={saving}
+            onClick={() => void recalibrateConformal()}
+            className="text-[11px] px-3 py-1.5 bg-indigo-600 text-white rounded font-semibold disabled:opacity-50"
+          >
+            🔄 강제 재보정
+          </button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <ConformalStat
+            label="threshold"
+            value={policy.conformal_threshold !== null && policy.conformal_threshold !== undefined ? pct(policy.conformal_threshold) : '—'}
+            hint={policy.conformal_threshold !== null && policy.conformal_threshold !== undefined ? '활성' : 'cold-start (auto_publish_above 사용)'}
+            tone={policy.conformal_threshold !== null && policy.conformal_threshold !== undefined ? 'ok' : 'warn'}
+          />
+          <ConformalStat
+            label="effective threshold"
+            value={pct(Math.max(policy.auto_publish_above, policy.conformal_threshold ?? 0))}
+            hint="실제 사용 (둘 중 더 보수적)"
+          />
+          <ConformalStat
+            label="α (target FAR)"
+            value={pct(policy.conformal_target_alpha)}
+            hint={`BAD 의 ${pct(policy.conformal_target_alpha)} 만 통과 허용`}
+          />
+          <ConformalStat
+            label="BAD set 크기"
+            value={policy.conformal_sample_size ?? 0}
+            hint={`최소 ${policy.conformal_min_sample}건 필요`}
+            tone={(policy.conformal_sample_size ?? 0) >= policy.conformal_min_sample ? 'ok' : 'warn'}
+          />
+          <ConformalStat
+            label="last calibrated"
+            value={policy.conformal_last_calibrated_at
+              ? policy.conformal_last_calibrated_at.slice(5, 16).replace('T', ' ')
+              : '—'}
+            hint={policy.conformal_enabled ? '활성 (24h lazy + 야간 cron)' : '비활성'}
+            tone={policy.conformal_enabled ? 'ok' : 'warn'}
+          />
+        </div>
       </section>
 
       {/* ── 임계치 정책 (인라인 조정) ─────────────────────────── */}
@@ -274,6 +396,24 @@ function Stat({ label, value, hint, tone }: { label: string; value: number | str
     <div className={`p-3 rounded border ${tone === 'warn' ? 'bg-red-50 border-red-200' : 'bg-white border-admin-border'}`}>
       <div className="text-[10px] text-admin-muted">{label}</div>
       <div className={`text-xl font-bold ${tone === 'warn' ? 'text-red-600' : 'text-admin-text-2'}`}>{value}</div>
+      {hint && <div className="text-[10px] text-admin-muted-2 mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+function ConformalStat({ label, value, hint, tone }: { label: string; value: number | string; hint?: string; tone?: 'ok' | 'warn' }) {
+  return (
+    <div className={`p-3 rounded border ${
+      tone === 'warn' ? 'bg-amber-50 border-amber-200'
+      : tone === 'ok' ? 'bg-indigo-50 border-indigo-200'
+      : 'bg-gray-50 border-admin-border'
+    }`}>
+      <div className="text-[10px] text-admin-muted">{label}</div>
+      <div className={`text-base font-bold ${
+        tone === 'warn' ? 'text-amber-700'
+        : tone === 'ok' ? 'text-indigo-700'
+        : 'text-admin-text-2'
+      }`}>{value}</div>
       {hint && <div className="text-[10px] text-admin-muted-2 mt-0.5">{hint}</div>}
     </div>
   );
