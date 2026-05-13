@@ -58,17 +58,38 @@ export async function runCoVeInBackground(packageId: string): Promise<void> {
       .maybeSingle();
 
     if (latestLog?.id) {
+      // CoVe warnings 를 failed_checks 에도 합쳐서 모니터링 한 화면에 표시 (Phase 5-5 박제)
+      const warnings = result.warnings ?? [];
+      const { data: existing } = await supabaseAdmin
+        .from('ai_quality_log')
+        .select('failed_checks')
+        .eq('id', latestLog.id)
+        .maybeSingle();
+
+      const existingChecks = Array.isArray((existing as { failed_checks?: unknown[] } | null)?.failed_checks)
+        ? ((existing as { failed_checks: unknown[] }).failed_checks)
+        : [];
+      const coveAsChecks = warnings
+        .filter(w => w.verdict !== 'verified')
+        .map(w => ({
+          id: `cove_${w.claim_id}`,
+          severity: (w.severity === 'critical' ? 'critical' : w.severity === 'medium' ? 'medium' : 'high') as 'critical' | 'high' | 'medium',
+          passed: false,
+          message: `CoVe ${w.verdict}: ${w.claim_text.slice(0,80)}`,
+        }));
+
       await supabaseAdmin
         .from('ai_quality_log')
         .update({
-          cove_warnings:     result.warnings ?? [],
+          cove_warnings:     warnings,
           cove_completed_at: new Date().toISOString(),
+          failed_checks:     [...existingChecks, ...coveAsChecks],
         })
         .eq('id', latestLog.id);
     }
 
     if ((result.warnings?.length ?? 0) > 0) {
-      console.log(`[CoVe-bridge] ${packageId}: ${result.warnings?.length} warnings`);
+      console.log(`[CoVe-bridge] ${packageId}: ${result.warnings?.length} warnings → failed_checks 병합`);
     }
   } catch (e) {
     console.warn('[CoVe-bridge] 감사 실패(무시):', (e as Error).message);

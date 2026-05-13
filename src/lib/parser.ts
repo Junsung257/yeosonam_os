@@ -15,6 +15,7 @@ import { judgeCatalogProductCountConsistency } from './parser/upload-consistency
 import { getSecret } from '@/lib/secret-registry';
 import { lookupSemanticCache, storeSemanticCache } from '@/lib/semantic-cache';
 import { buildFewShotPromptFragment, retrieveSimilarExamples, type SimilarExample } from '@/lib/few-shot-retriever';
+import { buildProfilePromptFragment, type LandOperatorProfile } from '@/lib/land-operator-profile';
 
 export interface ParseOptions {
   reflections?: CorrectionRecord[];
@@ -26,6 +27,8 @@ export interface ParseOptions {
    * 다음 추출이 compound 로 똑똑해짐 (sleep-time compute).
    */
   fewShotExamples?: SimilarExample[];
+  /** Phase 5-2/6-2 박제 — 랜드사별 추출 프로파일 (마커, B2B 용어, 힌트). */
+  landOperatorProfile?: LandOperatorProfile | null;
 }
 
 // ── optional_tours.region 자동 추론 (등록 시점 방어) ──────────────────────
@@ -753,9 +756,11 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
   const fewShotBlock = fewShotExamples.length
     ? '\n\n' + buildFewShotPromptFragment(fewShotExamples)
     : '';
+  // Phase 5-2/6-2 박제 — 랜드사 프로파일 fragment
+  const profileBlock = buildProfilePromptFragment(options?.landOperatorProfile);
 
   try {
-    const systemPrompt = injectToday(EXTRACT_PROMPT + regionBlock + reflectionBlock + fewShotBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.');
+    const systemPrompt = injectToday(EXTRACT_PROMPT + regionBlock + reflectionBlock + fewShotBlock + profileBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.');
     const cacheKey = `${systemPrompt}\n---USER---\n${text}`;
 
     // 의미 캐시 우선 시도 (parse_travel_doc 는 SAFE_CACHE_TASKS 화이트리스트)
