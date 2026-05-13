@@ -1,10 +1,8 @@
 name: Test Coverage Gate
 
+# 2026-05-13 — mail-flood-stop v2: 항상 fail로 노이즈. 수동만 유지.
 on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
