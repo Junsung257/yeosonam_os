@@ -9,14 +9,8 @@ on:
         description: 'production 기준으로 모든 baseline을 재생성하고 자동 커밋'
         type: boolean
         default: false
-  push:
-    branches: [main, master]
-    paths:
-      - 'src/app/packages/**'
-      - 'src/components/admin/YeosonamA4Template.tsx'
-      - 'src/lib/itinerary-render.ts'
-      - 'src/lib/attraction-matcher.ts'
-      - 'tests/visual/**'
+  # 2026-05-13 — mail-flood-stop v2: push 트리거 제거. schedule(매일 18 UTC) + 수동만 유지.
+  # baseline 갱신은 workflow_dispatch update_baseline=true 로 명시 호출.
 
 jobs:
   check:

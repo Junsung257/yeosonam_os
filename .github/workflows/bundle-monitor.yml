@@ -1,12 +1,8 @@
 name: Bundle Size Monitor
 
+# 2026-05-13 — mail-flood-stop v2: BUNDLEMON_PROJECT_ID 미설정으로 항상 fail. 수동만.
 on:
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'next.config.js'
-      - '.github/workflows/bundle-monitor.yml'
+  workflow_dispatch:
 
 jobs:
   bundle:

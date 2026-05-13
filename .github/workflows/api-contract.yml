@@ -1,15 +1,8 @@
 name: API Contract Validation
 
+# 2026-05-13 — mail-flood-stop v2: 항상 fail로 메일 노이즈만 발생. 수동만 유지.
 on:
-  pull_request:
-    paths:
-      - 'src/app/api/**'
-      - 'scripts/api-contract-validator.js'
-      - '.github/workflows/api-contract.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'src/app/api/**'
+  workflow_dispatch:
 
 jobs:
   contract-validation:

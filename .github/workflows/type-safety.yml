@@ -1,15 +1,8 @@
 name: Type Safety & Coverage
 
+# 2026-05-13 — mail-flood-stop v2: PR Quality Gate에 TypeScript+Vitest가 이미 있어 중복. 수동만.
 on:
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'tsconfig.json'
-      - '.github/workflows/type-safety.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
+  workflow_dispatch:
 
 permissions:
   contents: read

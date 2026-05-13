@@ -1,12 +1,10 @@
 name: PR Lifecycle Automation
 
+# 2026-05-13 — mail-flood-stop v2: PR 자동 라벨링 잡 fail로 PR마다 메일. schedule + 수동만.
 on:
-  pull_request:
-    types: [opened, synchronize, edited, ready_for_review]
-  pull_request_target:
-    types: [opened]
   schedule:
     - cron: '0 0 * * *'  # Daily stale check
+  workflow_dispatch:
 
 jobs:
   auto-label:
