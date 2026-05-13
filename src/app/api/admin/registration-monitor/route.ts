@@ -159,6 +159,23 @@ export async function GET() {
         : '🎯 풀자동 전환 가능 — 4 조건 모두 충족. SQL 1줄로 활성화: UPDATE registration_auto_policy SET full_auto_enabled=true WHERE id=1;'
       : `⚠ ${failedConditions} 조건 미충족 — 컨펌 큐 유지 권장`;
 
+    // Phase 9 Final — 자동화 상태 통합 (카드뉴스 + fraud + booking task)
+    const { data: cardNewsGuard } = await supabaseAdmin
+      .from('card_news_publish_guards')
+      .select('auto_publish_enabled, auto_publish_dry_run, dry_run_activated_at, anomaly_paused_until')
+      .maybeSingle();
+
+    const { count: fraudOpen } = await supabaseAdmin
+      .from('fraud_signals_log')
+      .select('*', { count: 'exact', head: true })
+      .is('resolved_at', null);
+
+    const { count: fraud24hAuto } = await supabaseAdmin
+      .from('fraud_signals_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('auto_action', 'memo_marked')
+      .gte('detected_at', since7d);
+
     // 4) 최근 20건 로그
     const recent = rows.slice(0, 20).map((r, i) => {
       const full = (logs?.[i] ?? {}) as Record<string, unknown>;
@@ -196,8 +213,16 @@ export async function GET() {
         rejected: v.rejected,
       }));
 
-    const response: MonitorResponse = {
+    const response: MonitorResponse & {
+      cardNewsAutomation?: unknown;
+      fraudStats?: unknown;
+    } = {
       policy,
+      cardNewsAutomation: cardNewsGuard ?? null,
+      fraudStats: {
+        unresolved: fraudOpen ?? 0,
+        auto_quarantined_7d: fraud24hAuto ?? 0,
+      },
       last30dStats: {
         total_registrations: total,
         rejected_count: rejected,

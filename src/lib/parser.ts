@@ -2261,6 +2261,94 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
     });
   }
 
+  // ── 2026-05-13 박제 — Phase 9 Final Programmatic Verifier 7 신규 룰 (C26~C32) ──
+
+  // C26 (critical): destination 한국어 도시명 (영어/숫자만 있으면 LLM 오추론)
+  if (data.destination) {
+    const hasKorean = /[가-힣]/.test(data.destination);
+    checks.push({
+      id: 'C26_destination_korean',
+      severity: 'critical',
+      passed: hasKorean,
+      message: hasKorean ? '한국어 destination OK' : `한국어 누락: ${data.destination}`,
+    });
+  }
+
+  // C27 (high): min_participants 합리적 (1~50, 일반적 4)
+  if (data.min_participants !== null && data.min_participants !== undefined) {
+    const m = data.min_participants;
+    checks.push({
+      id: 'C27_min_participants_reasonable',
+      severity: 'high',
+      passed: m >= 1 && m <= 50,
+      message: `min_participants=${m} ${m >= 1 && m <= 50 ? 'OK' : '범위 초과'}`,
+    });
+  }
+
+  // C28 (high): inclusions vs excludes 중복 차단 (같은 항목 양쪽에 있으면 안 됨)
+  if (data.inclusions?.length && data.excludes?.length) {
+    const incSet = new Set(data.inclusions.map(s => s.replace(/[▶•★·\s]/g, '').toLowerCase()));
+    const dupExc = data.excludes.find(s => {
+      const norm = s.replace(/[▶•★·\s]/g, '').toLowerCase();
+      return incSet.has(norm);
+    });
+    checks.push({
+      id: 'C28_no_inc_exc_overlap',
+      severity: 'high',
+      passed: !dupExc,
+      message: dupExc ? `중복: "${dupExc}"` : 'inclusions/excludes 중복 없음',
+    });
+  }
+
+  // C29 (medium): duration 3~30일 (합리적 패키지 길이)
+  if (data.duration !== undefined && data.duration !== null) {
+    checks.push({
+      id: 'C29_duration_reasonable',
+      severity: 'medium',
+      passed: data.duration >= 2 && data.duration <= 30,
+      message: `duration=${data.duration}${data.duration >= 2 && data.duration <= 30 ? ' OK' : ' 비정상'}`,
+    });
+  }
+
+  // C30 (medium): special_notes 길이 (너무 짧으면 의심, 50자 이상)
+  if (data.specialNotes !== undefined) {
+    const len = (data.specialNotes ?? '').length;
+    checks.push({
+      id: 'C30_special_notes_length',
+      severity: 'medium',
+      passed: len === 0 || len >= 50,
+      message: len === 0 ? 'special_notes 빈값' : `${len}자 ${len >= 50 ? 'OK' : '너무 짧음'}`,
+    });
+  }
+
+  // C31 (high): departure_airport 한국 공항 (인천/김해/김포/제주 등)
+  const dep = data.departure_airport;
+  if (dep) {
+    const krAirports = /인천|김해|김포|제주|청주|대구|부산|광주|무안|양양|울산|여수|군산/;
+    checks.push({
+      id: 'C31_departure_airport_kr',
+      severity: 'high',
+      passed: krAirports.test(dep),
+      message: krAirports.test(dep) ? `한국 공항: ${dep}` : `한국 공항 아님: ${dep}`,
+    });
+  }
+
+  // C32 (critical): airline 코드 ↔ flight_out/in prefix 일치 (LJ airline ↔ LJ 119)
+  const airline = data.airline ?? xv.itineraryData?.meta?.airline;
+  const fOut = xv.itineraryData?.meta?.flight_out;
+  if (airline && fOut) {
+    const iataPrefix = airline.match(/\b([A-Z]{2})\b/)?.[1];
+    const flightPrefix = fOut.match(/^([A-Z]{2})/)?.[1];
+    if (iataPrefix && flightPrefix) {
+      checks.push({
+        id: 'C32_airline_flight_prefix_match',
+        severity: 'critical',
+        passed: iataPrefix === flightPrefix,
+        message: iataPrefix === flightPrefix ? `${iataPrefix} 일치` : `airline=${iataPrefix} ↔ flight=${flightPrefix} 불일치`,
+      });
+    }
+  }
+
   return checks;
 }
 
