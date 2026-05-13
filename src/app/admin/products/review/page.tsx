@@ -225,10 +225,16 @@ export default function ProductReviewPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
 
+  // P10-2 박제 (2026-05-13): bulk action 다중 선택
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   }, []);
+
+  // P10-1 키보드 단축키는 selectProduct / toggleBulk / approve / reject 정의 후 박힘 (아래)
 
   // 랜드사 목록 로드
   useEffect(() => {
@@ -269,6 +275,52 @@ export default function ProductReviewPage() {
     setTab('review');
     setResolvedLandOperator(null);
   }, []);
+
+  // P10-2 박제: bulk action 토글
+  const toggleBulk = useCallback((code: string) => {
+    setBulkSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }, []);
+
+  const clearBulk = useCallback(() => setBulkSelected(new Set()), []);
+
+  // P10-2 박제: bulk 승인/거절
+  const bulkAction = useCallback(async (action: 'approve' | 'reject') => {
+    if (bulkSelected.size === 0 || bulkBusy) return;
+    const codes = Array.from(bulkSelected);
+    const reason = action === 'reject' ? (window.prompt(`${codes.length}건 일괄 거절 사유 (공통):`, '검수 반려') ?? '검수 반려') : null;
+    if (action === 'reject' && reason === null) return;
+    if (!window.confirm(`${codes.length}건 ${action === 'approve' ? '일괄 승인' : '일괄 거절'} 진행?`)) return;
+
+    setBulkBusy(true);
+    let success = 0, fail = 0;
+    for (const code of codes) {
+      try {
+        const res = await fetch(`/api/products/review?action=${action}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            action === 'approve'
+              ? { product_id: code, force_approve: true }
+              : { product_id: code, reason: reason ?? '검수 반려' },
+          ),
+        });
+        if (res.ok) success++;
+        else fail++;
+      } catch {
+        fail++;
+      }
+    }
+    // 성공한 것만 목록 제거
+    setProducts(ps => ps.filter(p => !codes.includes(p.internal_code)));
+    setBulkSelected(new Set());
+    setBulkBusy(false);
+    showToast(`${action === 'approve' ? '승인' : '거절'} 완료: ${success}건 성공 / ${fail}건 실패`, fail > 0 ? 'err' : 'ok');
+  }, [bulkSelected, bulkBusy, showToast]);
 
   // ── 이미지 불러오기 ────────────────────────────────────────────────────────
 
@@ -406,6 +458,63 @@ export default function ProductReviewPage() {
     }
   };
 
+  // P10-1 박제 (2026-05-13): 키보드 단축키 — J/K (다음/이전), A (승인 ≥90%), X (거절), B (bulk 토글), Esc
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const list = products;
+      const currIdx = selected ? list.findIndex(p => p.internal_code === selected.internal_code) : -1;
+
+      switch (e.key.toLowerCase()) {
+        case 'j': {
+          e.preventDefault();
+          const next = list[Math.min(currIdx + 1, list.length - 1)];
+          if (next) selectProduct(next);
+          break;
+        }
+        case 'k': {
+          e.preventDefault();
+          const prev = list[Math.max(currIdx - 1, 0)];
+          if (prev) selectProduct(prev);
+          break;
+        }
+        case 'a': {
+          if (!selected) return;
+          e.preventDefault();
+          const score = selected.ai_confidence_score ?? 0;
+          if (score < 90) {
+            showToast(`신뢰도 ${score}% — 90% 미만은 단축키 승인 불가 (수동 승인 필요)`, 'err');
+            return;
+          }
+          if (window.confirm(`승인: ${selected.display_name}?`)) void approve();
+          break;
+        }
+        case 'x': {
+          if (!selected) return;
+          e.preventDefault();
+          void reject();
+          break;
+        }
+        case 'b': {
+          if (!selected) return;
+          e.preventDefault();
+          toggleBulk(selected.internal_code);
+          break;
+        }
+        case 'escape': {
+          if (bulkSelected.size > 0) { e.preventDefault(); clearBulk(); }
+          break;
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, selected, bulkSelected]);
+
   // ── tag 편집 헬퍼 ─────────────────────────────────────────────────────────
 
   const addTag = () => {
@@ -444,13 +553,50 @@ export default function ProductReviewPage() {
               <p className="text-admin-sm">검수 대기 상품 없음</p>
             </div>
           ) : (
-            <ul className="flex-1 overflow-y-auto">
+            <>
+              {/* P10-2 박제 (2026-05-13): bulk action bar — 다중 선택 시 표시 */}
+              {bulkSelected.size > 0 && (
+                <div className="sticky top-0 z-10 bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between text-admin-sm">
+                  <span className="font-semibold text-blue-700">{bulkSelected.size}개 선택됨</span>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={bulkBusy}
+                      onClick={() => void bulkAction('approve')}
+                      className="px-3 py-1 bg-emerald-600 text-white rounded text-xs disabled:opacity-50"
+                    >✅ 일괄 승인</button>
+                    <button
+                      disabled={bulkBusy}
+                      onClick={() => void bulkAction('reject')}
+                      className="px-3 py-1 bg-red-600 text-white rounded text-xs disabled:opacity-50"
+                    >🚫 일괄 거절</button>
+                    <button
+                      onClick={() => clearBulk()}
+                      className="px-2 py-1 text-admin-muted text-xs"
+                    >해제 (Esc)</button>
+                  </div>
+                </div>
+              )}
+              {/* P10-1 박제: 단축키 힌트 (상단 고정) */}
+              <div className="px-4 py-1.5 bg-admin-surface-2 text-[10px] text-admin-muted-2 border-b border-admin-border">
+                💡 단축키: <kbd className="px-1 bg-admin-surface rounded">J</kbd>/<kbd className="px-1 bg-admin-surface rounded">K</kbd> 이동 · <kbd className="px-1 bg-admin-surface rounded">A</kbd> 승인 (≥90%) · <kbd className="px-1 bg-admin-surface rounded">X</kbd> 거절 · <kbd className="px-1 bg-admin-surface rounded">B</kbd> 다중선택
+              </div>
+              <ul className="flex-1 overflow-y-auto">
               {products.map(p => (
                 <li key={p.internal_code} className="border-b border-admin-border-mid">
-                  <button
-                    onClick={() => selectProduct(p)}
-                    className={`w-full text-left px-4 py-3 transition-colors hover:bg-admin-bg ${selected?.internal_code === p.internal_code ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''}`}
-                  >
+                  <div className={`flex items-stretch transition-colors hover:bg-admin-bg ${selected?.internal_code === p.internal_code ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''} ${bulkSelected.has(p.internal_code) ? 'bg-amber-50' : ''}`}>
+                    {/* P10-2 박제: 체크박스 — 좌측 컴팩트 */}
+                    <label className="flex items-center pl-3 pr-1 cursor-pointer" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelected.has(p.internal_code)}
+                        onChange={() => toggleBulk(p.internal_code)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                    </label>
+                    <button
+                      onClick={() => selectProduct(p)}
+                      className="flex-1 text-left px-2 py-3"
+                    >
                     <div className="flex items-center justify-between mb-1">
                       <StatusBadge status={p.status} />
                       <div className="flex items-center gap-1.5">
@@ -481,10 +627,12 @@ export default function ProductReviewPage() {
                     )}
                     <p className="text-admin-sm font-semibold text-admin-text-2 truncate leading-tight">{p.display_name}</p>
                     <p className="text-[11px] text-admin-muted-2 truncate mt-0.5">{p.source_filename ?? p.internal_code}</p>
-                  </button>
+                    </button>
+                  </div>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </>
           )}
         </aside>
 
