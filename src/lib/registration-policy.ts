@@ -24,6 +24,13 @@ export interface RegistrationPolicy {
   trigger_max_leak_per_week:   number;
   trigger_min_cove_pass_rate:  number;
   trigger_min_reflexion_count: number;
+  // Conformal Abstention (2026-05-22 박제) — calibration set 기반 임계값 자동 보정
+  conformal_threshold:           number | null;     // NULL = cold-start 또는 비활성, fallback to auto_publish_above
+  conformal_target_alpha:        number;
+  conformal_min_sample:          number;
+  conformal_sample_size:         number | null;
+  conformal_last_calibrated_at:  string | null;
+  conformal_enabled:             boolean;
 }
 
 export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicy = {
@@ -36,7 +43,15 @@ export const DEFAULT_REGISTRATION_POLICY: RegistrationPolicy = {
   trigger_max_leak_per_week:   0,
   trigger_min_cove_pass_rate:  0.98,
   trigger_min_reflexion_count: 100,
+  conformal_threshold:           null,
+  conformal_target_alpha:        0.05,
+  conformal_min_sample:          20,
+  conformal_sample_size:         null,
+  conformal_last_calibrated_at:  null,
+  conformal_enabled:             true,
 };
+
+const CONFORMAL_STALE_HOURS = 24;
 
 let cache: { policy: RegistrationPolicy; expiry: number } | null = null;
 const TTL_MS = 5 * 60 * 1000; // 5분
@@ -56,6 +71,8 @@ export async function getRegistrationPolicy(): Promise<RegistrationPolicy> {
       .eq('id', 1)
       .maybeSingle();
     if (error || !data) return DEFAULT_REGISTRATION_POLICY;
+    const conformalThresholdRaw = data.conformal_threshold;
+    const conformalLastCalibratedAt: string | null = data.conformal_last_calibrated_at ?? null;
     const policy: RegistrationPolicy = {
       auto_publish_above:          Number(data.auto_publish_above)          ?? DEFAULT_REGISTRATION_POLICY.auto_publish_above,
       confirm_queue_above:         Number(data.confirm_queue_above)         ?? DEFAULT_REGISTRATION_POLICY.confirm_queue_above,
@@ -66,8 +83,32 @@ export async function getRegistrationPolicy(): Promise<RegistrationPolicy> {
       trigger_max_leak_per_week:   Number(data.trigger_max_leak_per_week)   ?? DEFAULT_REGISTRATION_POLICY.trigger_max_leak_per_week,
       trigger_min_cove_pass_rate:  Number(data.trigger_min_cove_pass_rate)  ?? DEFAULT_REGISTRATION_POLICY.trigger_min_cove_pass_rate,
       trigger_min_reflexion_count: Number(data.trigger_min_reflexion_count) ?? DEFAULT_REGISTRATION_POLICY.trigger_min_reflexion_count,
+      conformal_threshold:           conformalThresholdRaw === null || conformalThresholdRaw === undefined ? null : Number(conformalThresholdRaw),
+      conformal_target_alpha:        Number(data.conformal_target_alpha ?? DEFAULT_REGISTRATION_POLICY.conformal_target_alpha),
+      conformal_min_sample:          Number(data.conformal_min_sample    ?? DEFAULT_REGISTRATION_POLICY.conformal_min_sample),
+      conformal_sample_size:         data.conformal_sample_size === null || data.conformal_sample_size === undefined ? null : Number(data.conformal_sample_size),
+      conformal_last_calibrated_at:  conformalLastCalibratedAt,
+      conformal_enabled:             data.conformal_enabled === false ? false : true,
     };
     cache = { policy, expiry: Date.now() + TTL_MS };
+
+    // Lazy 자동 재보정 — 24h stale 이면 fire-and-forget. 다음 호출자가 신선한 값 받음.
+    if (policy.conformal_enabled) {
+      const lastMs = conformalLastCalibratedAt ? new Date(conformalLastCalibratedAt).getTime() : 0;
+      const stale = !lastMs || (Date.now() - lastMs > CONFORMAL_STALE_HOURS * 60 * 60 * 1000);
+      if (stale) {
+        void (async () => {
+          try {
+            const mod = await import('@/lib/conformal-calibration');
+            await mod.refreshConformalPolicy();
+            cache = null; // 다음 호출자가 fresh 값 받게
+          } catch (e) {
+            console.warn('[registration-policy] conformal lazy refresh 실패(무시):', (e as Error).message);
+          }
+        })();
+      }
+    }
+
     return policy;
   } catch {
     return DEFAULT_REGISTRATION_POLICY;
@@ -77,6 +118,23 @@ export async function getRegistrationPolicy(): Promise<RegistrationPolicy> {
 /** 강제 cache 무효화 (어드민이 정책 변경 후 호출) */
 export function invalidateRegistrationPolicyCache(): void {
   cache = null;
+}
+
+/**
+ * Conformal Abstention 을 고려한 auto_publish 임계값.
+ * - conformal_threshold 가 있으면 max(auto_publish_above, conformal_threshold) 사용
+ *   (둘 중 더 보수적 = 더 높은 값. false-accept rate ≤ alpha 보장 + 사장님 수동 floor 도 존중)
+ * - cold-start (NULL) 면 auto_publish_above fallback
+ */
+export function effectiveAutoPublishThreshold(policy: RegistrationPolicy): number {
+  if (
+    policy.conformal_enabled
+    && typeof policy.conformal_threshold === 'number'
+    && Number.isFinite(policy.conformal_threshold)
+  ) {
+    return Math.max(policy.auto_publish_above, policy.conformal_threshold);
+  }
+  return policy.auto_publish_above;
 }
 
 /**
@@ -93,7 +151,8 @@ export function decideAutoGateWithPolicy(
   if (leakScore >= policy.reject_leak_score_above)  return 'rejected';
   if (confidence < policy.pending_review_above)     return 'rejected';
   if (confidence < policy.confirm_queue_above)      return 'pending_review';
-  if (confidence < policy.auto_publish_above)       return 'confirm_queue';
+  const autoPublishThreshold = effectiveAutoPublishThreshold(policy);
+  if (confidence < autoPublishThreshold)            return 'confirm_queue';
   // 풀자동 비활성화면 confirm_queue 로 강제 (사장님 1-click)
   return policy.full_auto_enabled ? 'auto_publish' : 'confirm_queue';
 }
