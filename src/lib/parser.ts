@@ -477,7 +477,13 @@ const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확
   "itinerary": ["제1일: 부산출발 → 서안도착", "제2일: 소안탑 → 회족거리"],
   "accommodations": ["천익호텔 또는 홀리데이인익스프레호텔(4성)"],
   "specialNotes": "주의사항, 여권유효기간, 취소규정 외 기타 안내 전체 (원문 보존용)",
-  "notices_parsed": ["원문의 유의사항을 1건=1문장 배열로 정제. 규칙: ① 번호접두사(1. 2. 등) 제거하고 완전한 문장만 ② 동일 내용 중복 제거 ③ 금액·날짜·조건 등 구체적 수치는 반드시 보존 ④ 빈 문자열이나 번호만 있는 항목 제거"],
+  "notices_parsed": [
+    {"type": "CRITICAL", "title": "중요 공지", "text": "• 여권 만기/필수 서류/일정 미참여 패널티 등\n• 쇼핑 횟수 표기 (예: '쇼핑 2회 [노니&침향, 커피&잡화]')"},
+    {"type": "PAYMENT", "title": "결제 조건", "text": "• 발권 마감일/완납 조건 등 (단 랜드사 거래 용어 '파이널/실명단/투어비 N%' 금지 — 고객 표현으로 치환)"},
+    {"type": "POLICY",  "title": "현장 규정", "text": "• 호텔 룸배정/조인행사/식당 운영 등 현장 정책"},
+    {"type": "INFO",    "title": "안내 사항", "text": "• 가이드/이동/식사 변경 가능성 등 일반 안내"}
+  ],
+  "★ notices_parsed schema 절대 규칙": "정확히 4개 객체 (CRITICAL/PAYMENT/POLICY/INFO 각 1개). type/title/text 3 필드. text 는 '•' 불렛 줄바꿈. 문자열 배열 금지 — 반드시 객체 배열.",
   "cancellation_policy": [
     {"period": "출발일 14일~7일전", "rate": 30, "note": "30% 공제 후 환불"}
   ],
@@ -2030,6 +2036,33 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
     passed: Boolean(data.airline ?? xv.itineraryData?.meta?.airline),
     message: `airline=${data.airline ?? xv.itineraryData?.meta?.airline ?? '∅'}`,
   });
+
+  // C11 (critical): surcharges note 에 leak 패턴 매치 금지 — 2026-05-13 박제 (푸꾸옥 "투어비 9%" 사고)
+  if (Array.isArray(data.surcharges) && data.surcharges.length > 0) {
+    const leakRe = /(투어비|컴|커미션|마진)\s*\d{1,2}\s*%|원가\s*[:：]?\s*[\d,]+/;
+    const dirty = data.surcharges.find(s => {
+      const note = (s as { note?: string }).note;
+      return typeof note === 'string' && leakRe.test(note);
+    });
+    checks.push({
+      id: 'C11_surcharges_no_commission',
+      severity: 'critical',
+      passed: !dirty,
+      message: dirty ? `surcharges 에 커미션/원가 패턴: "${(dirty as { note?: string }).note}"` : 'surcharges clean',
+    });
+  }
+
+  // C12 (high): notices_parsed 가 객체 배열 형식 (문자열 배열 금지) — 2026-05-13 박제
+  if (Array.isArray(data.notices_parsed) && data.notices_parsed.length > 0) {
+    const firstItem = data.notices_parsed[0] as unknown;
+    const isObjectArray = typeof firstItem === 'object' && firstItem !== null && 'type' in firstItem && 'text' in firstItem;
+    checks.push({
+      id: 'C12_notices_object_array',
+      severity: 'high',
+      passed: isObjectArray,
+      message: isObjectArray ? '객체 배열 OK' : `문자열 배열 — LLM schema 오추론 (첫 항목: ${JSON.stringify(firstItem).slice(0,60)})`,
+    });
+  }
 
   return checks;
 }

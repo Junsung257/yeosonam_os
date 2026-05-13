@@ -40,6 +40,8 @@ export const LEAK_PATTERNS: ReadonlyArray<{
 
   // 호텔 인벤토리·도매 정보 (MEDIUM — 운영자용 메모)
   { id: 'room_inventory',     pattern: /\d+\s*방까지\s*사용/g,                   severity: 'medium',   description: 'N방까지 사용 (도매 인벤토리)' },
+  { id: 'room_pax_config',    pattern: /\d+\s*인\s*\d+\s*실/g,                  severity: 'medium',   description: 'N인 N실 (운영 객실 구성)' },
+  { id: 'hotel_marker',       pattern: /^\s*HOTEL\s*:\s*해당숙소\s*$/gm,         severity: 'medium',   description: 'HOTEL : 해당숙소 (운영 마커)' },
   { id: 'allotment',          pattern: /allotment\s*\d+/gi,                     severity: 'medium',   description: 'allotment N (호텔 할당)' },
   { id: 'wholesale_rate',     pattern: /(?:net|넷)\s*(?:요금|레이트|rate)/gi,    severity: 'medium',   description: 'NET 요금 (도매가)' },
 
@@ -131,6 +133,8 @@ interface DayBlock { hotel?: DayHotel; schedule?: DaySchedule[] }
 interface HighlightsBlock { remarks?: string[]; inclusions?: string[]; excludes?: string[]; shopping?: string | null }
 interface ItineraryDataBlock { days?: DayBlock[]; highlights?: HighlightsBlock }
 
+interface SurchargeItem { note?: string | null; period?: string | null; amount_usd?: number | null; amount_krw?: number | null }
+
 export interface CustomerExposedFields {
   title?: string | null;
   destination?: string | null;
@@ -141,6 +145,7 @@ export interface CustomerExposedFields {
   notices_parsed?: Array<string | NoticeItem>; // legacy 호환 (일부 경로는 string[])
   inclusions?: string[];
   excludes?: string[];
+  surcharges?: SurchargeItem[];                // P-2 박제 2026-05-13 (투어비 9% leak 재발 차단)
   itinerary_data?: ItineraryDataBlock;
 }
 
@@ -188,6 +193,18 @@ export function sanitizeForCustomer<T extends CustomerExposedFields>(
       }
       return n;
     });
+  }
+
+  // 3.5) surcharges — leak이 박힐 수 있는 추가 필드 (2026-05-13 박제 — 푸꾸옥 "투어비 9%" 사고)
+  if (Array.isArray(cleaned.surcharges)) {
+    cleaned.surcharges = cleaned.surcharges.map((s, i) => ({
+      ...s,
+      note: s.note ? sanitizeString(s.note, `surcharges[${i}].note`, incidents) : s.note,
+    }));
+    // sanitize 후 note 가 빈 문자열이면 항목 통째로 제거 (의미 없는 surcharge)
+    cleaned.surcharges = cleaned.surcharges.filter(s =>
+      (s.note && s.note.trim().length > 0) || s.amount_usd || s.amount_krw
+    );
   }
 
   // 4) itinerary_data — 호텔 note + schedule activity/note
