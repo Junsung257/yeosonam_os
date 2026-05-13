@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
-import { parseDocument, calculateConfidence, classifyDocument, type ParseOptions } from '@/lib/parser';
+import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
+import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
+import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments';
+import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
+void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateMarketingCopies, type MarketingCopy } from '@/lib/ai';
 import {
@@ -741,7 +745,49 @@ export async function POST(request: NextRequest) {
           if (prices.length > 0) netPrice = Math.min(...prices);
         }
         if (netPrice <= 0) netPrice = 1; // 최소 1원 — DB CHECK 통과, 상품관리에서 수동 수정
-        const confidence = calculateConfidence(ed);
+
+        // ── G2.5. Customer-Leak Sanitizer (1차 게이트) — 2026-05-13 박제 ──
+        // 추출 데이터 전체를 통과시켜 운영/커미션/내부 메모 제거.
+        // 결과 incidents → 신뢰도 V2 의 leak penalty 입력.
+        const sanitizeResult = sanitizeForCustomer(ed);
+        if (sanitizeResult.incidents.length > 0) {
+          console.warn(`[Upload API] Customer-Leak ${sanitizeResult.incidents.length}건 (score=${sanitizeResult.leakScore.toFixed(2)}):`,
+            sanitizeResult.incidents.map(i => `${i.severity}/${i.patternId}@${i.field}`).join(' | '));
+        }
+        Object.assign(ed, sanitizeResult.cleaned); // in-place 적용 — 이후 INSERT 에 자동 반영
+
+        // ── G3. 신뢰도 V2 (채움률 30% + 정합성 40% + 누출안전 30%) ──
+        const v2 = calculateConfidenceV2(ed, {
+          leakScore: sanitizeResult.leakScore,
+          itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
+        });
+        const confidence = v2.confidence;
+        console.log(`[Upload API] confidence V2: ${(v2.confidence*100).toFixed(1)}% (fill=${(v2.fillScore*100).toFixed(0)}% xvalid=${(v2.crossValidationScore*100).toFixed(0)}% clean=${(v2.cleanScore*100).toFixed(0)}%) autoGate=${v2.autoGate}`);
+        const failedChecks = v2.checks.filter(c => !c.passed);
+        if (failedChecks.length > 0) {
+          console.warn(`[Upload API] Cross-validation 실패 ${failedChecks.length}건:`, failedChecks.map(c => `${c.severity}/${c.id}: ${c.message}`).join(' | '));
+          // Reflexion 자동 누적 — 다음 등록 시 같은 랜드사·지역 prompt 에 주입
+          if (isSupabaseConfigured) {
+            const v2Rows = failedChecks.map(c => ({
+              field_path:       `v2.${c.id}`,
+              reflection:       `V2 cross-validation 실패 [${c.severity}]: ${c.message}`,
+              before_value:     null,
+              after_value:      null,
+              raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+              severity:         c.severity,
+              category:         'v2_cross_validation_failure',
+              land_operator_id: effectiveLandOperatorId,
+              destination:      ed.destination ?? tempDest ?? null,
+              is_active:        true,
+              applied_count:    0,
+            }));
+            void supabaseAdmin.from('extractions_corrections').insert(v2Rows)
+              .then(({ error }: { error: { message: string } | null }) => {
+                if (error) console.warn('[Upload API] V2 reflexion 적재 실패(무시):', error.message);
+              });
+          }
+        }
+
         const priceRows  = priceTiersToRows(ed);
 
         console.log(`[Upload API] 가격 행 ${priceRows.length}개 변환됨 (product_prices)`);
@@ -901,7 +947,11 @@ export async function POST(request: NextRequest) {
           activeAttractions,
           ed.destination,
         );
-        const itineraryDataToSave = enrichment.itineraryData ?? product.itineraryData ?? null;
+        // flight_segments 정규화: schedule[type='flight'] 흩어진 항공편을 정규 필드로
+        // 박제 사유 (2026-05-13): 익일 도착·도착시간 누락으로 카드 깨짐 영구 차단
+        const itineraryDataToSave = normalizeFlightSegments(
+          (enrichment.itineraryData ?? product.itineraryData ?? null) as unknown as Parameters<typeof normalizeFlightSegments>[0]
+        ) ?? null;
         enrichment.matchedCanonicalNames.forEach(name => matchedCanonicalNames.add(name));
         for (const day of itineraryDataToSave?.days ?? []) {
           for (const s of day.schedule ?? []) {
@@ -970,6 +1020,29 @@ export async function POST(request: NextRequest) {
           if (pkgResult?.id) {
             savedIds.push(pkgResult.id);
             savedTitles.push(title);
+
+            // ── G8.5. ai_quality_log 적재 — V2 + leak incidents (2026-05-13 박제)
+            // 컨펌 큐 UI의 SSOT. 추세 분석 + 사장님 1-click 컨펌 줄 highlight 입력.
+            void supabaseAdmin
+              .from('ai_quality_log')
+              .insert({
+                package_id:     pkgResult.id,
+                internal_code:  internalCode,
+                confidence:     v2.confidence,
+                fill_score:     v2.fillScore,
+                xvalid_score:   v2.crossValidationScore,
+                leak_score:     v2.leakScore,
+                auto_gate:      v2.autoGate,
+                failed_checks:  v2.checks.filter(c => !c.passed),
+                leak_incidents: sanitizeResult.incidents,
+              })
+              .then(({ error }: { error: { message: string } | null }) => {
+                if (error) console.warn('[Upload API] ai_quality_log 적재 실패(무시):', error.message);
+              });
+
+            // CoVe (Chain-of-Verification) 비동기 감사 — 결과는 ai_quality_log.cove_warnings 적재
+            // 박제 사유: V2 cross-validation 결정적 룰이 못 잡는 미묘한 환각 감지
+            void runCoVeInBackground(pkgResult.id);
           }
           if (internalCode) {
             savedInternalCodes.push(internalCode);

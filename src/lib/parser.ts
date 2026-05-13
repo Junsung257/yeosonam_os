@@ -14,10 +14,18 @@ import {
 import { judgeCatalogProductCountConsistency } from './parser/upload-consistency-judge';
 import { getSecret } from '@/lib/secret-registry';
 import { lookupSemanticCache, storeSemanticCache } from '@/lib/semantic-cache';
+import { buildFewShotPromptFragment, retrieveSimilarExamples, type SimilarExample } from '@/lib/few-shot-retriever';
 
 export interface ParseOptions {
   reflections?: CorrectionRecord[];
   regionContext?: string;
+  /**
+   * EPR (Efficient Prompt Retrieval, NAACL 2022) few-shot 예시.
+   * 호출자가 rawText 로 retrieveSimilarExamples() 미리 호출해서 주입.
+   * 박제 사유 (2026-05-13): 같은 랜드사·지역 등록 누적 시 demo 풀이 풍부해져
+   * 다음 추출이 compound 로 똑똑해짐 (sleep-time compute).
+   */
+  fewShotExamples?: SimilarExample[];
 }
 
 // ── optional_tours.region 자동 추론 (등록 시점 방어) ──────────────────────
@@ -384,12 +392,26 @@ const EXTRACTED_DATA_SCHEMA: ResponseSchema = {
 // ─── 구조화 추출 프롬프트 ────────────────────────────────────
 // Gemini implicit caching 활성화를 위한 버전 고정.
 // 프롬프트 prefix가 호출마다 동일해야 자동 캐싱됨. 변경 시 버전 bump.
-const EXTRACT_PROMPT_VERSION = 'v1.2.0';
+const EXTRACT_PROMPT_VERSION = 'v1.3.0';
 void EXTRACT_PROMPT_VERSION;
+
+/**
+ * 프롬프트 내 {TODAY_ISO} placeholder 를 오늘 날짜(YYYY-MM-DD)로 치환.
+ * 모든 추출 프롬프트는 호출 시점에 이 헬퍼를 통과해야 한다.
+ * 박제 사유: 2026-05-13 등록 사고 — "5/27 출발"이 2025-05-27로 추출되어 캘린더 매칭 실패.
+ */
+export function injectToday(prompt: string): string {
+  return prompt.replace(/\{TODAY_ISO\}/g, new Date().toISOString().slice(0, 10));
+}
 
 const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확히 아래 JSON 형식으로 반환하세요.
 필드가 없으면 null로, 배열이 없으면 []로 반환하세요.
-날짜는 항상 YYYY-MM-DD 형식. 연도가 없으면 2026년으로 가정.
+날짜는 항상 YYYY-MM-DD 형식.
+
+★ 절대 규칙 — 연도 추론 (오늘: {TODAY_ISO}):
+- 출발일에 연도가 명시되지 않으면 **오늘({TODAY_ISO}) 이후 가장 가까운 연도**를 사용한다.
+- 예 (오늘이 2026-05-13 일 때): "5/27" → "2026-05-27", "12/24" → "2026-12-24", "1/15" → "2027-01-15".
+- 발권 마감일·항공 제외일도 동일 규칙. 과거 연도로 절대 추론하지 말 것.
 가격은 원화 숫자만 (쉼표 제거, "만원" 단위면 ×10000).
 
 ★ 절대 규칙 — duration(여행일수) 정확 추출:
@@ -663,7 +685,7 @@ export async function parseImage(buffer: Buffer, mimeType = 'image/jpeg'): Promi
   const base64 = buffer.toString('base64');
 
   try {
-    const raw = await callGeminiVision(apiKey, base64, mimeType, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
+    const raw = await callGeminiVision(apiKey, base64, mimeType, injectToday(EXTRACT_PROMPT), EXTRACTED_DATA_SCHEMA);
     console.log('[Parser] Gemini Vision 응답:', raw.length, '글자');
     const extractedData = parseGeminiResponse(raw, raw);
     console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
@@ -695,8 +717,39 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
     : '';
   const regionBlock = options?.regionContext ?? '';
 
+  // EPR few-shot 자동 retrieve — 박제 2026-05-13
+  // 호출자가 fewShotExamples 안 주입했으면 rawText 로 cosine top-3 자동 회수.
+  // sleep-time compute: 등록 누적할수록 demo 풀 풍부해져 다음 추출이 compound 로 똑똑.
+  let fewShotExamples: SimilarExample[] = options?.fewShotExamples ?? [];
+  if (fewShotExamples.length === 0) {
+    try {
+      // 동적 import — parser 의 supabase 결합도 회피
+      const supaMod = await import('@/lib/supabase');
+      if (supaMod.isSupabaseConfigured) {
+        const geminiKey = getSecret('GOOGLE_AI_API_KEY') ?? '';
+        if (geminiKey) {
+          // 타입 단순화 위해 unknown 캐스팅 — retrieveSimilarExamples 가 자체 검증
+          fewShotExamples = await retrieveSimilarExamples(
+            text,
+            supaMod.supabaseAdmin as unknown as Parameters<typeof retrieveSimilarExamples>[1],
+            geminiKey,
+            { limit: 3, minSimilarity: 0.55 },
+          ).catch(() => []);
+          if (fewShotExamples.length > 0) {
+            console.log(`[Parser] EPR retrieved ${fewShotExamples.length} demos (top sim: ${fewShotExamples[0]?.similarity.toFixed(3)})`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Parser] EPR retrieve 실패(무시):', (e as Error).message);
+    }
+  }
+  const fewShotBlock = fewShotExamples.length
+    ? '\n\n' + buildFewShotPromptFragment(fewShotExamples)
+    : '';
+
   try {
-    const systemPrompt = EXTRACT_PROMPT + regionBlock + reflectionBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.';
+    const systemPrompt = injectToday(EXTRACT_PROMPT + regionBlock + reflectionBlock + fewShotBlock + '\n\n반드시 JSON만 출력하고 다른 설명 텍스트는 절대 포함하지 마세요.');
     const cacheKey = `${systemPrompt}\n---USER---\n${text}`;
 
     // 의미 캐시 우선 시도 (parse_travel_doc 는 SAFE_CACHE_TASKS 화이트리스트)
@@ -716,6 +769,16 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
       maxTokens: 4000,
       temperature: 0.1,
       enableCaching: true,
+      // Confidence-gated escalation — Flash 추출 후 핵심 필드 누락이면 Pro advisor로 자동 재실행
+      escalateIfLowConfidence: (raw) => {
+        if (!raw || typeof raw !== 'object') return true;
+        const arr = Array.isArray(raw) ? raw : [raw];
+        const first = arr[0] as Partial<ExtractedData> | undefined;
+        if (!first) return true;
+        const noCore = !first.title || !first.destination || !first.duration;
+        const noPrice = !first.price_tiers || (Array.isArray(first.price_tiers) && first.price_tiers.length === 0);
+        return noCore || noPrice;
+      },
     });
 
     if (result.success && result.rawText) {
@@ -733,7 +796,7 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
     const apiKey = getSecret('GOOGLE_AI_API_KEY');
     if (apiKey) {
       console.warn('[Parser] llm-gateway 실패, Gemini 직접 fallback');
-      const raw = await callGeminiText(apiKey, text, EXTRACT_PROMPT, EXTRACTED_DATA_SCHEMA);
+      const raw = await callGeminiText(apiKey, text, injectToday(EXTRACT_PROMPT), EXTRACTED_DATA_SCHEMA);
       const extractedData = parseGeminiResponse(raw, text);
       extractedData.rawText = text;
       return extractedData;
@@ -1018,6 +1081,7 @@ const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 
 - 출력은 반드시 유효한 JSON 배열만. 주석·설명·마크다운 코드펜스 금지.
 
 ★★★ 절대 규칙 ★★★
+- 연도 추론 (오늘: {TODAY_ISO}): 출발일·발권일에 연도가 없으면 오늘 이후 가장 가까운 연도를 사용. 절대 과거 연도 추론 금지. 예: 오늘 {TODAY_ISO} 일 때 "5/27"→가장 가까운 5/27 (오늘 이후).
 - 상품 간 데이터 오염 금지: 각 상품의 inclusions/excludes/guide_tip/price_tiers는 해당 상품 섹션에서만 추출.
 - price_tiers 요일 정합성: 각 상품의 price_tiers 내 departure_day_of_week는 해당 상품의 departure_days와 반드시 일치해야 한다. 예: departure_days가 "일,월"인 상품에 "목","금" tier 포함 금지. 제외일 tier도 동일 규칙 적용.
 - [엄격한 경고] inclusions/excludes/specialNotes는 원문 텍스트를 1글자도 변경/요약/삭제/역산하지 말 것. 원본 그대로 복사.
@@ -1058,6 +1122,7 @@ const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 
 const MULTI_PRODUCT_PHASE2_PROMPT = `"{{PRODUCT_TITLE}}" 상품의 일정표만 JSON 객체로 추출하세요. 다른 상품 혼합 금지.
 
 ★★★ 절대 규칙: 원본 일정 텍스트를 1글자도 변경/요약/삭제하지 말 것. 선택관광/미팅위치/수하물안내는 해당 일차 schedule에 그대로 넣을 것. ★★★
+★ 연도 (오늘: {TODAY_ISO}): 일정 내 날짜에 연도가 없으면 오늘 이후 가장 가까운 연도 사용. 과거 연도 금지.
 
 {
   "meta":{"title":"상품명","destination":"목적지","nights":박수,"days":일수,"departure_airport":"출발공항|null","airline":"항공사|null","flight_out":"출발편|null","flight_in":"귀국편|null","departure_days":"출발요일|null","min_participants":최소인원,"brand":"여소남"},
@@ -1313,8 +1378,8 @@ export async function extractMultipleProducts(
       type: SchemaType.ARRAY,
       items: EXTRACTED_DATA_SCHEMA,
     };
-    const phase1Prompt = contextPrefix + MULTI_PRODUCT_PHASE1_PROMPT;
-    const singleProductPhase1Prompt = `${contextPrefix}${MULTI_PRODUCT_PHASE1_PROMPT}\n\n★★★ 이 사용자 메시지 구간에는 여행상품이 정확히 1개만 있습니다. JSON 배열 길이는 반드시 1이어야 합니다. ★★★\n`;
+    const phase1Prompt = injectToday(contextPrefix + MULTI_PRODUCT_PHASE1_PROMPT);
+    const singleProductPhase1Prompt = injectToday(`${contextPrefix}${MULTI_PRODUCT_PHASE1_PROMPT}\n\n★★★ 이 사용자 메시지 구간에는 여행상품이 정확히 1개만 있습니다. JSON 배열 길이는 반드시 1이어야 합니다. ★★★\n`);
 
     const route = classifyUploadDocumentComplexity(truncatedText);
     const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(truncatedText);
@@ -1522,7 +1587,7 @@ export async function extractMultipleProducts(
 
     const phase2Promises = phase1Parsed.map(async (item) => {
       const title = (item.title as string) || '상품명 미상';
-      const prompt = MULTI_PRODUCT_PHASE2_PROMPT.replace(/\{\{PRODUCT_TITLE\}\}/g, title);
+      const prompt = injectToday(MULTI_PRODUCT_PHASE2_PROMPT.replace(/\{\{PRODUCT_TITLE\}\}/g, title));
       try {
         let itinRaw: string;
         /** DeepSeek 실패 직후 이미 Gemini로 본문을 받았으면 JSON 재시도 블록 스킵 (중복 호출 방지) */
@@ -1789,17 +1854,244 @@ export async function classifyDocument(rawText: string): Promise<ClassificationR
   }
 }
 
-// ─── 신뢰도 계산 ────────────────────────────────────────────
+// ─── 신뢰도 계산 V1 (legacy — backward compat) ──────────────
 
+/**
+ * @deprecated 2026-05-13 — V2 사용. 필드 채움률만 보는 산식으로 실제 결함을 못 잡음.
+ * 호출처가 옵션 인자 없이 부르는 곳을 위해 유지. 신규 코드는 V2.
+ */
 export function calculateConfidence(data: ExtractedData): number {
   let score = 0;
   if (data.title) score += 15;
   if (data.destination) score += 15;
   if (data.duration) score += 10;
-  if (data.price_tiers && data.price_tiers.length > 0) score += 30; // price_tiers가 핵심
+  if (data.price_tiers && data.price_tiers.length > 0) score += 30;
   else if (data.price) score += 15;
   if (data.itinerary && data.itinerary.length > 0) score += 15;
   if (data.inclusions && data.inclusions.length > 0) score += 10;
   if (data.product_type) score += 5;
   return Math.min(score / 100, 1);
+}
+
+// ─── 신뢰도 계산 V2 — 3축 (채움률 30% + 정합성 40% + 누출안전 30%) ──────────
+//
+// 박제 사유 (2026-05-13): V1 가중치는 단순 필드 채움률만 봐서 진짜 결함 (연도 오류,
+// 커미션 누출, 항공편 깨짐) 4건이 confidence 0.85로 통과. V2 는 세 축을 곱해
+// 한 축이라도 망가지면 점수가 결정적으로 떨어지게 박음.
+
+export interface ValidationCheck {
+  id: string;
+  severity: 'critical' | 'high' | 'medium';
+  passed: boolean;
+  message: string;
+}
+
+export interface ConfidenceV2Result {
+  confidence: number;             // 0~1
+  fillScore: number;              // 0~1 — 필드 채움률
+  crossValidationScore: number;   // 0~1 — 원문↔DB 정합성
+  leakScore: number;              // 0~1 — leak severity (0=clean, 1=catastrophic)
+  cleanScore: number;             // 1 - leakScore
+  checks: ValidationCheck[];      // 어떤 룰이 통과/실패했는지 상세
+  autoGate: 'auto_publish' | 'confirm_queue' | 'pending_review' | 'rejected';
+}
+
+interface XValidInput {
+  itineraryData?: { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } };
+}
+
+/**
+ * Cross-validation 룰 set — 원문↔DB 의미 정합성 체크.
+ * 신규 룰은 한 줄로 push 만 하면 됨. ConfidenceV2 산식이 자동으로 점수에 반영.
+ */
+export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): ValidationCheck[] {
+  const checks: ValidationCheck[] = [];
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // C1 (critical): duration 과 itinerary days 길이 일치
+  if (data.duration && xv.itineraryData?.days) {
+    const dlen = xv.itineraryData.days.length;
+    checks.push({
+      id: 'C1_duration_days_match',
+      severity: 'critical',
+      passed: data.duration === dlen,
+      message: `duration=${data.duration} vs itinerary.days.length=${dlen}`,
+    });
+  }
+
+  // C2 (critical): 모든 price_tiers 출발일이 오늘 이후 ← 이번 사고 핵심
+  if (data.price_tiers?.length) {
+    let allFuture = true;
+    let badDate: string | null = null;
+    for (const t of data.price_tiers) {
+      const dates: string[] = [
+        ...(t.departure_dates ?? []),
+        ...(t.date_range?.start ? [t.date_range.start] : []),
+        ...(t.date_range?.end ? [t.date_range.end] : []),
+      ].filter(Boolean);
+      for (const d of dates) {
+        if (d < todayISO) { allFuture = false; badDate = d; break; }
+      }
+      if (!allFuture) break;
+    }
+    checks.push({
+      id: 'C2_dates_in_future',
+      severity: 'critical',
+      passed: allFuture,
+      message: allFuture ? `모든 출발일 ${todayISO} 이후` : `과거 출발일 발견: ${badDate}`,
+    });
+  }
+
+  // C3 (high): notices_parsed 4 타입(CRITICAL/PAYMENT/POLICY/INFO) 모두 존재
+  if (data.notices_parsed && Array.isArray(data.notices_parsed)) {
+    const types = new Set(
+      (data.notices_parsed as unknown as Array<{ type?: string }>).map(n => n.type).filter((t): t is string => Boolean(t))
+    );
+    const required = ['CRITICAL', 'PAYMENT', 'POLICY', 'INFO'];
+    const missing = required.filter(t => !types.has(t));
+    checks.push({
+      id: 'C3_notices_four_types',
+      severity: 'high',
+      passed: missing.length === 0,
+      message: missing.length ? `누락 타입: ${missing.join(', ')}` : '4타입 모두 채움',
+    });
+  }
+
+  // C4 (high): 가는편/오는편 항공편 모두 채움
+  const flightOut = xv.itineraryData?.meta?.flight_out;
+  const flightIn  = xv.itineraryData?.meta?.flight_in;
+  checks.push({
+    id: 'C4_flights_both_legs',
+    severity: 'high',
+    passed: Boolean(flightOut && flightIn),
+    message: `flight_out=${flightOut ?? '∅'}, flight_in=${flightIn ?? '∅'}`,
+  });
+
+  // C5 (medium): min_participants 1~50 범위
+  if (data.min_participants !== undefined && data.min_participants !== null) {
+    const m = data.min_participants;
+    checks.push({
+      id: 'C5_min_participants_range',
+      severity: 'medium',
+      passed: m >= 1 && m <= 50,
+      message: `min_participants=${m}`,
+    });
+  }
+
+  // C6 (high): adult_price > 0
+  if (data.price_tiers?.length) {
+    const validPrices = data.price_tiers.every(t => (t.adult_price ?? 0) > 0);
+    checks.push({
+      id: 'C6_adult_price_positive',
+      severity: 'high',
+      passed: validPrices,
+      message: validPrices ? '모든 tier adult_price > 0' : 'adult_price 0 또는 null 존재',
+    });
+  }
+
+  // C7 (medium): inclusions 최소 2건 (정상 패키지면 항공+호텔 최소)
+  checks.push({
+    id: 'C7_inclusions_min',
+    severity: 'medium',
+    passed: (data.inclusions?.length ?? 0) >= 2,
+    message: `inclusions.length=${data.inclusions?.length ?? 0}`,
+  });
+
+  // C8 (medium): 중간 일자에 호텔 존재 (DAY 1, 마지막 제외하고 hotel.name 있어야)
+  if (xv.itineraryData?.days && xv.itineraryData.days.length >= 3) {
+    const middle = xv.itineraryData.days.slice(1, -1);
+    const allHaveHotel = middle.every(d => Boolean(d.hotel?.name));
+    checks.push({
+      id: 'C8_middle_days_hotel',
+      severity: 'medium',
+      passed: allHaveHotel,
+      message: allHaveHotel ? '중간 일자 모두 호텔 있음' : '일부 중간 일자 호텔 누락',
+    });
+  }
+
+  // C9 (high): DAY 1, 마지막 DAY 에 flight type schedule 존재
+  if (xv.itineraryData?.days && xv.itineraryData.days.length >= 2) {
+    const first = xv.itineraryData.days[0];
+    const last = xv.itineraryData.days[xv.itineraryData.days.length - 1];
+    const firstHasFlight = (first.schedule ?? []).some(s => s.type === 'flight');
+    const lastHasFlight = (last.schedule ?? []).some(s => s.type === 'flight');
+    checks.push({
+      id: 'C9_first_last_day_flight',
+      severity: 'high',
+      passed: firstHasFlight && lastHasFlight,
+      message: `DAY1 flight=${firstHasFlight}, DAYn flight=${lastHasFlight}`,
+    });
+  }
+
+  // C10 (critical): airline 추출됨
+  checks.push({
+    id: 'C10_airline_extracted',
+    severity: 'critical',
+    passed: Boolean(data.airline ?? xv.itineraryData?.meta?.airline),
+    message: `airline=${data.airline ?? xv.itineraryData?.meta?.airline ?? '∅'}`,
+  });
+
+  return checks;
+}
+
+function computeFillScore(data: ExtractedData): number {
+  let s = 0;
+  if (data.title)                                   s += 0.15;
+  if (data.destination)                             s += 0.15;
+  if (data.duration)                                s += 0.10;
+  if (data.price_tiers && data.price_tiers.length)  s += 0.25;
+  if (data.itinerary && data.itinerary.length)      s += 0.15;
+  if (data.inclusions && data.inclusions.length)    s += 0.10;
+  if (data.airline)                                 s += 0.05;
+  if (data.product_type)                            s += 0.05;
+  return Math.min(1, s);
+}
+
+function computeCrossValidationScore(checks: ValidationCheck[]): number {
+  if (!checks.length) return 0;
+  const weight = { critical: 1.0, high: 0.5, medium: 0.2 };
+  let total = 0;
+  let achieved = 0;
+  for (const c of checks) {
+    const w = weight[c.severity];
+    total += w;
+    if (c.passed) achieved += w;
+  }
+  return total > 0 ? achieved / total : 0;
+}
+
+function decideAutoGate(confidence: number, leakScore: number, criticalFails: number): ConfidenceV2Result['autoGate'] {
+  if (criticalFails > 0 || leakScore >= 0.4) return 'rejected';
+  if (confidence < 0.50) return 'rejected';
+  if (confidence < 0.70) return 'pending_review';
+  if (confidence < 0.95) return 'confirm_queue'; // 사장님 1-click 컨펌
+  return 'auto_publish';
+}
+
+/**
+ * 신뢰도 V2 산출.
+ * @param data 추출된 ExtractedData
+ * @param ctx  leakScore (customer-leak-sanitizer 결과) + itineraryData (TravelItinerary)
+ */
+export function calculateConfidenceV2(
+  data: ExtractedData,
+  ctx: { leakScore?: number; itineraryData?: XValidInput['itineraryData'] } = {},
+): ConfidenceV2Result {
+  const fillScore = computeFillScore(data);
+  const checks = runCrossValidation(data, { itineraryData: ctx.itineraryData });
+  const crossValidationScore = computeCrossValidationScore(checks);
+  const leakScore = Math.min(1, Math.max(0, ctx.leakScore ?? 0));
+  const cleanScore = 1 - leakScore;
+
+  // 가중 평균. 하지만 critical 룰 1개라도 실패하면 cleanScore 처럼 다축 곱셈에 가깝게 작동.
+  const confidence = Math.max(0, Math.min(1,
+    fillScore * 0.30 +
+    crossValidationScore * 0.40 +
+    cleanScore * 0.30,
+  ));
+
+  const criticalFails = checks.filter(c => !c.passed && c.severity === 'critical').length;
+  const autoGate = decideAutoGate(confidence, leakScore, criticalFails);
+
+  return { confidence, fillScore, crossValidationScore, leakScore, cleanScore, checks, autoGate };
 }

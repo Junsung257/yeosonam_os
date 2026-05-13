@@ -102,8 +102,12 @@ const ROUTING: Record<LlmTask, RouteConfig> = {
 
   // V2 태스크 (V3: DeepSeek 전환)
   'normalize-simple': {
+    // parse_travel_doc — Flash executor + Pro advisor 1회 (2026-05-13 박제).
+    // 정확도 100% 점근 목표 — 필수 필드 누락 시 Pro 로 escalate. 비용 ~2× but ROI 박힘.
     executor: { provider: 'deepseek', model: MODELS.DEEPSEEK_FLASH },
+    advisor:  { provider: 'deepseek', model: MODELS.DEEPSEEK_PRO },
     fallback: { provider: 'gemini', model: MODELS.GEMINI_FLASH },
+    maxAdvisorCalls: 1,
     maxRetries: 3,
   },
   'normalize-complex': {
