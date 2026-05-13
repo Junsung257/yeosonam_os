@@ -5,6 +5,10 @@
       "schedule": "30 * * * *"
     },
     {
+      "path": "/api/cron/refresh-registration-mv",
+      "schedule": "0 18 * * *"
+    },
+    {
       "path": "/api/cron/meta-optimize",
       "schedule": "2 0 * * *"
     },
