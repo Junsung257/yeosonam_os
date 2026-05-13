@@ -2064,6 +2064,75 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
     });
   }
 
+  // ── Phase 5-4 Programmatic Verifier — 결정적 룰 확장 (2026-05-13 박제) ──
+
+  // C13 (high): destination 토큰이 itinerary regions 와 교집합
+  if (data.destination && xv.itineraryData?.days) {
+    const dests = data.destination.split(/[\/\s,·]/).map(s => s.trim()).filter(Boolean);
+    const allRegions = new Set<string>();
+    for (const d of xv.itineraryData.days) {
+      for (const r of (d as { regions?: string[] }).regions ?? []) allRegions.add(r);
+    }
+    const intersect = dests.some(dt => Array.from(allRegions).some(r => r.includes(dt) || dt.includes(r)));
+    checks.push({
+      id: 'C13_destination_in_itinerary',
+      severity: 'high',
+      passed: intersect || allRegions.size === 0,
+      message: intersect ? '교집합 OK' : `destination=${data.destination} ↔ regions=[${Array.from(allRegions).join(',')}] 매치 실패`,
+    });
+  }
+
+  // C14 (medium): duration 5일 이상이면 최소 1개 식사 정보 (조/중/석 중 하나)
+  if (data.duration && data.duration >= 3 && xv.itineraryData?.days) {
+    const hasAnyMeal = xv.itineraryData.days.some(d => {
+      const meals = (d as { meals?: Record<string, unknown> }).meals;
+      return meals && (meals.breakfast || meals.lunch || meals.dinner);
+    });
+    checks.push({
+      id: 'C14_has_meal_info',
+      severity: 'medium',
+      passed: hasAnyMeal,
+      message: hasAnyMeal ? '식사 정보 OK' : '전 일정 식사 정보 없음 (조/중/석)',
+    });
+  }
+
+  // C15 (medium): IATA 항공코드 형식 (2글자 + 숫자) — flight_out/flight_in
+  const flightCodes = [
+    xv.itineraryData?.meta?.flight_out,
+    xv.itineraryData?.meta?.flight_in,
+  ].filter((c): c is string => Boolean(c));
+  if (flightCodes.length > 0) {
+    const iataRe = /^[A-Z]{2}\s*\d{1,4}$/;
+    const allValid = flightCodes.every(c => iataRe.test(c));
+    checks.push({
+      id: 'C15_iata_code_format',
+      severity: 'medium',
+      passed: allValid,
+      message: allValid ? `${flightCodes.length}개 모두 IATA 형식` : `잘못된 형식: ${flightCodes.filter(c => !iataRe.test(c)).join(', ')}`,
+    });
+  }
+
+  // C16 (high): 가격이 정상 범위 (1만원 ~ 5천만원)
+  if (data.price_tiers?.length) {
+    const prices = data.price_tiers.map(t => t.adult_price).filter((p): p is number => typeof p === 'number');
+    const allInRange = prices.length > 0 && prices.every(p => p >= 10_000 && p <= 50_000_000);
+    checks.push({
+      id: 'C16_price_in_range',
+      severity: 'high',
+      passed: allInRange,
+      message: allInRange ? `${prices.length}개 가격 정상 (${Math.min(...prices)}원~${Math.max(...prices)}원)` : '가격 범위 이상',
+    });
+  }
+
+  // C17 (medium): inclusions 안에 "항공" 키워드 (정상 패키지 = 항공 포함)
+  const incText = (data.inclusions ?? []).join(' ');
+  checks.push({
+    id: 'C17_inclusions_has_flight',
+    severity: 'medium',
+    passed: /항공|국제선|왕복/.test(incText),
+    message: /항공|국제선|왕복/.test(incText) ? '항공 포함 명시 OK' : 'inclusions 에 항공 명시 누락',
+  });
+
   return checks;
 }
 
