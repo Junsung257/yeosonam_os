@@ -105,6 +105,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const highItems = flaggedItems.filter(f => f.severity === 'high');
     const mediumItems = flaggedItems.filter(f => f.severity === 'medium');
 
+    // ── Phase 9 AA-1 자동 액션 분기 (2026-05-13 박제) ──
+    // HIGH severity 자동 격리: bookings.internal_memo 자동 마킹 (사장님이 어드민에서 차단 결정)
+    // CRITICAL 은 별도 처리 (현재 maxSeverity 가 'high' 까지만 반환 — fraud-detect.ts 의 enum 따라)
+    let autoActions = 0;
+    if (highItems.length > 0) {
+      const autoActionRows = highItems.map(item => ({
+        booking_id: item.bookingId,
+        memo: `🚨 자동 사기 격리 [${new Date().toISOString().slice(0,16)}] — ${item.signals.map(s => s.description).join(' / ')}`,
+      }));
+      for (const a of autoActionRows) {
+        await supabaseAdmin.from('bookings')
+          .update({
+            internal_memo: a.memo,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', a.booking_id)
+          .then(({ error }: { error: { message: string } | null }) => {
+            if (!error) autoActions++;
+            else console.warn('[fraud-detect] booking auto-mark 실패:', error.message);
+          });
+      }
+      console.log(`[fraud-detect] AA-1 자동 격리: ${autoActions}/${highItems.length}건`);
+    }
+
     const lines: string[] = [
       `🚨 *사기 탐지 경보*: ${flaggedItems.length}건 위험 신호 감지 (최근 1시간)`,
       '',
@@ -142,6 +166,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       flagged: flaggedItems.length,
       high: highItems.length,
       medium: mediumItems.length,
+      auto_actions: autoActions,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : '처리 실패';
