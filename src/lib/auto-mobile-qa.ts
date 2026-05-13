@@ -24,6 +24,62 @@ interface QAIncident {
   message: string;
 }
 
+type ItineraryDay = {
+  hotel?: { name?: string | null } | null;
+};
+
+type ExpectedRender = {
+  title: string | null;
+  hotelNames: string[];
+  hasOptionalTours: boolean;
+};
+
+async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('travel_packages')
+      .select('title, display_title, itinerary_data, optional_tours')
+      .eq('id', packageId)
+      .maybeSingle();
+    if (!data) return { title: null, hotelNames: [], hasOptionalTours: false };
+
+    const title = (data as { display_title?: string | null; title?: string | null }).display_title
+      || (data as { title?: string | null }).title
+      || null;
+
+    const days: ItineraryDay[] = Array.isArray((data as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
+      ? ((data as { itinerary_data: { days: ItineraryDay[] } }).itinerary_data.days)
+      : [];
+    // 마지막 날은 hotel.name null 정상 (귀국일). 0..N-2 만 검사 대상.
+    const hotelNames = days
+      .slice(0, Math.max(0, days.length - 1))
+      .map(d => (d?.hotel?.name ?? '').trim())
+      .filter(n => n.length >= 2);
+
+    const tours = (data as { optional_tours?: unknown[] }).optional_tours;
+    const hasOptionalTours = Array.isArray(tours) && tours.length > 0;
+
+    return { title, hotelNames, hasOptionalTours };
+  } catch {
+    return { title: null, hotelNames: [], hasOptionalTours: false };
+  }
+}
+
+function extractCoreTitleTokens(title: string): string[] {
+  // "★스팟특가★ 부산出 보홀 PKG 5/6일 [제주항공]" → ["보홀", "제주항공"] 같은 핵심 명사.
+  // 한국어 명사 길이 2자 이상 / 영문 3자 이상 토큰만.
+  const clean = title.replace(/[★☆▶◆●○※\[\]()\/\-_,．.·]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokens = clean.split(' ').filter(t => {
+    if (/^\d+/.test(t)) return false;                       // "5/6일" 같은 숫자 토큰 제외
+    if (/^[가-힣]{2,}$/.test(t)) return true;
+    if (/^[A-Za-z]{3,}$/.test(t)) return true;
+    return false;
+  });
+  // 너무 일반적 단어 제거
+  const stopwords = new Set(['일정표', 'PKG', 'pkg', '특가', '스팟', '여행', '패키지', '상품']);
+  return tokens.filter(t => !stopwords.has(t)).slice(0, 4);
+}
+
 export async function runAutoMobileQA(packageId: string, baseUrl?: string): Promise<void> {
   if (!isSupabaseConfigured) return;
   const url = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yeosonam.com';
@@ -54,6 +110,9 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
     // 3) 검증
     const incidents: QAIncident[] = [];
 
+    // 4) DB SSOT 로드 — expected vs actual 대조용
+    const expected = await loadExpectedRender(packageId);
+
     // leak 패턴 (sanitizer set 재사용)
     for (const rule of LEAK_PATTERNS) {
       const match = html.match(rule.pattern);
@@ -77,12 +136,71 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
       });
     }
 
-    // 항공편 카드 존재 여부
-    if (!/가는편|오는편/.test(html)) {
+    // 항공편 카드 존재 여부 (가는편/오는편 텍스트)
+    const hasFlightCard = /가는편|오는편/.test(html);
+    if (!hasFlightCard) {
       incidents.push({
         id: 'mobile_flight_card_missing',
         severity: 'high',
         message: '항공편 카드 (가는편/오는편) 누락',
+      });
+    } else {
+      // 항공편 시간 분리 — 카드 영역에 \d{2}:\d{2} 패턴이 2회 이상 (출발/도착)
+      // "→" 한 토큰으로 병합된 레거시 표기는 시간이 1회만 나옴 → 깨진 카드 감지.
+      const flightTimes = html.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
+      if (flightTimes.length < 2) {
+        incidents.push({
+          id: 'mobile_flight_time_merged',
+          severity: 'high',
+          message: `항공편 출/도 시간 분리 안됨 (시간 토큰 ${flightTimes.length}개) — flight_segments 정규화 필요`,
+        });
+      }
+    }
+
+    // hero 제목 핵심 토큰 노출 — display_title/title 의 핵심 명사가 페이지에 등장하는지
+    if (expected.title) {
+      const tokens = extractCoreTitleTokens(expected.title);
+      const missing = tokens.filter(t => !html.includes(t));
+      if (tokens.length > 0 && missing.length === tokens.length) {
+        // 모든 핵심 토큰 누락 — hero 영역이 비어있거나 다른 상품 렌더 가능성
+        incidents.push({
+          id: 'mobile_hero_title_missing',
+          severity: 'critical',
+          message: `hero 제목 핵심 토큰 모두 누락 (expected: ${tokens.join('·')})`,
+        });
+      } else if (missing.length > tokens.length / 2 && tokens.length >= 2) {
+        incidents.push({
+          id: 'mobile_hero_title_partial',
+          severity: 'medium',
+          message: `hero 제목 일부 누락 (missing: ${missing.join('·')})`,
+        });
+      }
+    }
+
+    // 호텔명 노출 — 마지막날 제외한 호텔이 모두 HTML 에 나오는지
+    if (expected.hotelNames.length > 0) {
+      const missingHotels = expected.hotelNames.filter(h => !html.includes(h));
+      if (missingHotels.length === expected.hotelNames.length) {
+        incidents.push({
+          id: 'mobile_hotel_all_missing',
+          severity: 'critical',
+          message: `모든 호텔명 렌더 누락 (${expected.hotelNames.length}개) — hotel.name SSOT 미반영`,
+        });
+      } else if (missingHotels.length > 0) {
+        incidents.push({
+          id: 'mobile_hotel_partial_missing',
+          severity: 'high',
+          message: `호텔명 일부 누락: ${missingHotels.slice(0, 3).join(', ')}${missingHotels.length > 3 ? ' …' : ''}`,
+        });
+      }
+    }
+
+    // 선택관광 섹션 노출 — DB 에 있는데 페이지에 섹션 헤더 없으면 렌더 누락
+    if (expected.hasOptionalTours && !/선택\s*관광|Optional|옵션\s*투어/.test(html)) {
+      incidents.push({
+        id: 'mobile_optional_tours_missing',
+        severity: 'high',
+        message: 'optional_tours DB 에 있으나 모바일 섹션 미렌더',
       });
     }
 

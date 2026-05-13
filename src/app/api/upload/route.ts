@@ -6,6 +6,7 @@ import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments'
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
+import { runUploadVerify } from '@/lib/upload-verify';
 import { getRegistrationPolicy } from '@/lib/registration-policy';
 void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -1054,6 +1055,11 @@ export async function POST(request: NextRequest) {
             // CoVe (Chain-of-Verification) 비동기 감사 — 결과는 ai_quality_log.cove_warnings 적재
             // 박제 사유: V2 cross-validation 결정적 룰이 못 잡는 미묘한 환각 감지
             void runCoVeInBackground(pkgResult.id);
+
+            // 원문 ↔ DB 결정적 대조 (C1~C6) — 자동 실행 박제 (2026-05-13)
+            // 박제 사유: V2 confidence 0.85 거짓 신호 — audit_status 가 INSERT 직후 NULL 로 남아
+            // 컨펌 큐 SSOT 가 비어있던 문제. 결정적 룰이라 LLM 비용 0, 토큰 0.
+            void runUploadVerify(pkgResult.id);
 
             // 자동 모바일 QA — 등록 후 실제 페이지 fetch + HTML 검증 (2026-05-13 박제)
             // 박제 사유: V2 confidence 와 실제 렌더 결과 gap 자동 감지
