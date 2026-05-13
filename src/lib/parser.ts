@@ -227,6 +227,18 @@ export interface ExtractedData {
   } | null;
 
   rawText: string;
+
+  // P11-4 박제 (2026-05-13): LLM 호출 메타 추적 (ai_quality_log 적재용, transient)
+  _llm_meta?: {
+    advisor_used?: boolean;        // confidence-gated escalation 발동 여부
+    provider?: string;             // 'deepseek' | 'gemini' | 'claude'
+    fallback_used?: boolean;       // 1차 실패 → fallback 발동
+    cache_hit?: boolean;
+    retry_count?: number;
+    tokens_input?: number;
+    tokens_output?: number;
+    cost_usd?: number;
+  };
 }
 
 export interface ParsedDocument {
@@ -795,11 +807,22 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
     if (result.success && result.rawText) {
       const provider = result.fallbackUsed ? 'Gemini(fallback)' : `DeepSeek${result.cacheHit ? '(캐시)' : ''}`;
       console.log(`[Parser] ${provider} 응답:`, result.rawText.length, '글자');
-      // 캐시 저장 (fail-open) — 다음 동일 요청은 LLM 호출 0회
+      // 캐시 저장 (fail-open)
       void storeSemanticCache('parse_travel_doc', cacheKey, result.rawText);
       const extractedData = parseGeminiResponse(result.rawText, text);
       extractedData.rawText = text;
-      console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length);
+      // P11-4 박제: LLM 호출 메타 attach (upload route 가 ai_quality_log 에 적재)
+      const usage = result._usage;
+      extractedData._llm_meta = {
+        advisor_used:  Boolean(result.advisorUsed),
+        provider:      result.provider,
+        fallback_used: Boolean(result.fallbackUsed),
+        cache_hit:     Boolean(result.cacheHit),
+        retry_count:   result.retryCount,
+        tokens_input:  usage?.input,
+        tokens_output: usage?.output,
+      };
+      console.log('[Parser] 추출 완료 - 상품:', extractedData.title, '/ price_tiers:', extractedData.price_tiers?.length, '/ advisor:', extractedData._llm_meta.advisor_used);
       return extractedData;
     }
 
