@@ -1,0 +1,252 @@
+/**
+ * @file /api/admin/registration-monitor/route.ts
+ * @description 등록 정확도 모니터링 대시보드 데이터 API.
+ *
+ * 박제 사유 (2026-05-13): registration_auto_policy 의 풀자동 전환 트리거 4 조건을
+ * 사장님이 한 화면에서 평가할 수 있도록 자동 계산.
+ *
+ * 응답:
+ *   - last30dStats: 30일 거절률, leak 건수, CoVe 통과율, Reflexion 누적
+ *   - triggerEval: 4 조건 충족 여부 + 풀자동 전환 추천
+ *   - recentLog: 최근 등록 20건 (V2 breakdown + leak + cove)
+ *   - dailyTrend: 30일 일별 confidence 평균 + 등록 건수
+ */
+
+import { NextResponse } from 'next/server';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getRegistrationPolicy, type RegistrationPolicy } from '@/lib/registration-policy';
+
+interface TriggerCondition {
+  id: 'reject_rate' | 'weekly_leak' | 'cove_pass_rate' | 'reflexion_count';
+  label: string;
+  actual: number | string;
+  threshold: number;
+  passed: boolean;
+  description: string;
+}
+
+interface MonitorResponse {
+  policy: RegistrationPolicy;
+  last30dStats: {
+    total_registrations: number;
+    rejected_count: number;
+    reject_rate: number;
+    confirm_queue_count: number;
+    auto_publish_count: number;
+    avg_confidence: number;
+    weekly_leak_count: number;
+    cove_pass_rate: number;
+    reflexion_count: number;
+  };
+  triggerEval: {
+    conditions: TriggerCondition[];
+    all_passed: boolean;
+    recommendation: 'enable_full_auto' | 'continue_confirm_queue' | 'investigate';
+    summary: string;
+  };
+  recentLog: Array<{
+    id: number;
+    package_id: string | null;
+    internal_code: string | null;
+    confidence: number;
+    fill_score: number;
+    xvalid_score: number;
+    leak_score: number;
+    auto_gate: string;
+    failed_checks_count: number;
+    leak_incidents_count: number;
+    created_at: string;
+  }>;
+  dailyTrend: Array<{
+    date: string;
+    count: number;
+    avg_confidence: number;
+    rejected: number;
+  }>;
+}
+
+export async function GET() {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  }
+
+  try {
+    const policy = await getRegistrationPolicy();
+
+    // 30일 윈도우
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const since7d  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // 1) ai_quality_log 30일 통계
+    const { data: logs } = await supabaseAdmin
+      .from('ai_quality_log')
+      .select('confidence, auto_gate, leak_score, cove_warnings, created_at, failed_checks, leak_incidents')
+      .gte('created_at', since30d)
+      .order('created_at', { ascending: false });
+
+    const rows = (logs ?? []) as Array<{
+      confidence: number; auto_gate: string; leak_score: number; cove_warnings?: unknown[];
+      created_at: string;
+      failed_checks?: unknown[]; leak_incidents?: unknown[];
+    }>;
+
+    const total = rows.length;
+    const rejected     = rows.filter(r => r.auto_gate === 'rejected').length;
+    const confirmQ     = rows.filter(r => r.auto_gate === 'confirm_queue').length;
+    const autoPub      = rows.filter(r => r.auto_gate === 'auto_publish').length;
+    const avgConf      = total > 0 ? rows.reduce((s, r) => s + Number(r.confidence ?? 0), 0) / total : 0;
+    const rejectRate   = total > 0 ? rejected / total : 0;
+    const weeklyLeak   = rows.filter(r =>
+      r.created_at >= since7d &&
+      Array.isArray(r.leak_incidents) && r.leak_incidents.length > 0
+    ).length;
+    const coveDone     = rows.filter(r => Array.isArray(r.cove_warnings));
+    const covePassRate = coveDone.length > 0
+      ? coveDone.filter(r => (r.cove_warnings?.length ?? 0) === 0).length / coveDone.length
+      : 1;
+
+    // 2) extractions_corrections 누적
+    const { count: reflexionCount } = await supabaseAdmin
+      .from('extractions_corrections')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', true);
+
+    // 3) 트리거 조건 평가
+    const conditions: TriggerCondition[] = [
+      {
+        id: 'reject_rate',
+        label: '30일 거절률',
+        actual: Math.round(rejectRate * 1000) / 10 + '%',
+        threshold: policy.trigger_max_reject_rate_30d * 100,
+        passed: rejectRate <= policy.trigger_max_reject_rate_30d,
+        description: `목표 ${(policy.trigger_max_reject_rate_30d * 100).toFixed(0)}% 이하`,
+      },
+      {
+        id: 'weekly_leak',
+        label: '주간 leak 건수',
+        actual: weeklyLeak,
+        threshold: policy.trigger_max_leak_per_week,
+        passed: weeklyLeak <= policy.trigger_max_leak_per_week,
+        description: `목표 ${policy.trigger_max_leak_per_week}건 이하`,
+      },
+      {
+        id: 'cove_pass_rate',
+        label: 'CoVe 통과율',
+        actual: Math.round(covePassRate * 1000) / 10 + '%',
+        threshold: policy.trigger_min_cove_pass_rate * 100,
+        passed: covePassRate >= policy.trigger_min_cove_pass_rate,
+        description: `목표 ${(policy.trigger_min_cove_pass_rate * 100).toFixed(0)}% 이상`,
+      },
+      {
+        id: 'reflexion_count',
+        label: 'Reflexion 누적',
+        actual: reflexionCount ?? 0,
+        threshold: policy.trigger_min_reflexion_count,
+        passed: (reflexionCount ?? 0) >= policy.trigger_min_reflexion_count,
+        description: `목표 ${policy.trigger_min_reflexion_count}건 이상`,
+      },
+    ];
+
+    const allPassed = conditions.every(c => c.passed);
+    const recommendation: MonitorResponse['triggerEval']['recommendation'] =
+      allPassed && !policy.full_auto_enabled ? 'enable_full_auto' :
+      policy.full_auto_enabled ? 'continue_confirm_queue' :  // 이미 풀자동인데 표시
+      'continue_confirm_queue';
+    const failedConditions = conditions.filter(c => !c.passed).length;
+    const summary = allPassed
+      ? policy.full_auto_enabled
+        ? '✅ 풀자동 운영 중 — 4 조건 모두 충족. 안정적 운영 중입니다.'
+        : '🎯 풀자동 전환 가능 — 4 조건 모두 충족. SQL 1줄로 활성화: UPDATE registration_auto_policy SET full_auto_enabled=true WHERE id=1;'
+      : `⚠ ${failedConditions} 조건 미충족 — 컨펌 큐 유지 권장`;
+
+    // 4) 최근 20건 로그
+    const recent = rows.slice(0, 20).map((r, i) => {
+      const full = (logs?.[i] ?? {}) as Record<string, unknown>;
+      return {
+        id: Number(full.id ?? 0),
+        package_id: (full.package_id as string) ?? null,
+        internal_code: (full.internal_code as string) ?? null,
+        confidence: Number(full.confidence ?? 0),
+        fill_score: Number(full.fill_score ?? 0),
+        xvalid_score: Number(full.xvalid_score ?? 0),
+        leak_score: Number(full.leak_score ?? 0),
+        auto_gate: String(full.auto_gate ?? ''),
+        failed_checks_count: Array.isArray(r.failed_checks) ? r.failed_checks.length : 0,
+        leak_incidents_count: Array.isArray(r.leak_incidents) ? r.leak_incidents.length : 0,
+        created_at: r.created_at,
+      };
+    });
+
+    // 5) 일별 추세 (30일)
+    const daily = new Map<string, { count: number; sumConf: number; rejected: number }>();
+    for (const r of rows) {
+      const d = r.created_at.slice(0, 10);
+      const e = daily.get(d) ?? { count: 0, sumConf: 0, rejected: 0 };
+      e.count++;
+      e.sumConf += Number(r.confidence ?? 0);
+      if (r.auto_gate === 'rejected') e.rejected++;
+      daily.set(d, e);
+    }
+    const dailyTrend = Array.from(daily.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({
+        date,
+        count: v.count,
+        avg_confidence: v.count > 0 ? Math.round((v.sumConf / v.count) * 1000) / 1000 : 0,
+        rejected: v.rejected,
+      }));
+
+    const response: MonitorResponse = {
+      policy,
+      last30dStats: {
+        total_registrations: total,
+        rejected_count: rejected,
+        reject_rate: Math.round(rejectRate * 1000) / 1000,
+        confirm_queue_count: confirmQ,
+        auto_publish_count: autoPub,
+        avg_confidence: Math.round(avgConf * 1000) / 1000,
+        weekly_leak_count: weeklyLeak,
+        cove_pass_rate: Math.round(covePassRate * 1000) / 1000,
+        reflexion_count: reflexionCount ?? 0,
+      },
+      triggerEval: { conditions, all_passed: allPassed, recommendation, summary },
+      recentLog: recent,
+      dailyTrend,
+    };
+
+    return NextResponse.json(response);
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
+}
+
+/** POST: 정책 임계치 업데이트 (단일 행 UPSERT) */
+export async function POST(req: Request) {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  }
+  try {
+    const body = await req.json() as Partial<RegistrationPolicy> & { notes?: string };
+    const allowed: Array<keyof RegistrationPolicy> = [
+      'auto_publish_above', 'confirm_queue_above', 'pending_review_above',
+      'reject_leak_score_above', 'full_auto_enabled',
+      'trigger_max_reject_rate_30d', 'trigger_max_leak_per_week',
+      'trigger_min_cove_pass_rate', 'trigger_min_reflexion_count',
+    ];
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const k of allowed) {
+      if (k in body) patch[k] = body[k];
+    }
+    if (body.notes) patch.notes = body.notes;
+
+    const { error } = await supabaseAdmin
+      .from('registration_auto_policy')
+      .update(patch)
+      .eq('id', 1);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, patched: patch });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
+}

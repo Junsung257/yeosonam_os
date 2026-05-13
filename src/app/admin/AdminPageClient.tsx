@@ -1591,6 +1591,7 @@ export default function AdminPage({
             { title: '상품', links: [
               { href: '/admin/packages', label: '상품 관리' },
               { href: '/admin/products/review', label: '상품 검수' },
+              { href: '/admin/registration-monitor', label: '등록 모니터' },
               { href: '/admin/land-operators', label: '랜드사 관리' },
               { href: '/admin/departing-locations', label: '출발지 관리' },
             ]},
