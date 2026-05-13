@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments';
+import { normalizeItinerary } from '@/lib/itinerary-normalizer';
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
@@ -962,8 +963,11 @@ export async function POST(request: NextRequest) {
         );
         // flight_segments 정규화: schedule[type='flight'] 흩어진 항공편을 정규 필드로
         // 박제 사유 (2026-05-13): 익일 도착·도착시간 누락으로 카드 깨짐 영구 차단
+        // P10-3 박제 (2026-05-13): itinerary 정규화 — 호텔 grade / 식사 카운트 / 호텔명 dedupe / regions
+        const _rawItin = (enrichment.itineraryData ?? product.itineraryData ?? null) as unknown;
+        const _normalized = normalizeItinerary(_rawItin as Parameters<typeof normalizeItinerary>[0]);
         const itineraryDataToSave = normalizeFlightSegments(
-          (enrichment.itineraryData ?? product.itineraryData ?? null) as unknown as Parameters<typeof normalizeFlightSegments>[0]
+          _normalized as unknown as Parameters<typeof normalizeFlightSegments>[0]
         ) ?? null;
         enrichment.matchedCanonicalNames.forEach(name => matchedCanonicalNames.add(name));
         for (const day of itineraryDataToSave?.days ?? []) {
