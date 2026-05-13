@@ -604,6 +604,38 @@ function validatePackage(pkg) {
     }
   }
 
+  // W22-tone — product_summary 톤·구조 검증 (2026-05-13 추가)
+  //   푸꾸옥 회귀: \n 하나만으로 분리되면 DetailClient의 split(/\n{2,}/) 가 헤더/본문 분리 못 함
+  //   → 추천 코멘트 박스가 회색 한 덩어리로 표시. 친근 톤 헤더가 시각적으로 강조되지 않음.
+  //   feedback_product_summary_tone.md 박제 규칙.
+  if (typeof pkg.product_summary === 'string' && pkg.product_summary.trim()) {
+    const ps = pkg.product_summary.trim();
+    if (!/\n\n/.test(ps)) {
+      errors.push(`[W22-tone] product_summary 이중 줄바꿈(\\n\\n) 누락 — 모바일 추천 코멘트 박스에서 헤더/본문 시각 분리 실패. 권장 포맷: "[✨ 친근 헤더 한 줄]\\n\\n[본문 2~3문장]" (값 미리보기: "${ps.slice(0, 60)}...")`);
+    }
+    if (ps.length < 60) {
+      errors.push(`[W22-tone] product_summary 너무 짧음 (${ps.length}자) — 친근 톤 헤더 + 본문 2~3문장 권장. 현재: "${ps.slice(0, 50)}"`);
+    }
+    // 브로셔 톤 (첫 줄이 사실 나열 + 마침표로만 끝남)
+    const firstLine = ps.split('\n')[0].trim();
+    if (/^[가-힣A-Za-z].{5,}(스페셜팩|포함|상품|일정|코스)\.$/.test(firstLine) && !/[!?~ㅋㅎ✨🎉💕💖]/.test(firstLine)) {
+      errors.push(`[W22-tone] product_summary 첫 줄 브로셔 톤 — "${firstLine}" 같은 사실 나열보다 "✨ ... 호화롭게 쉬다 가세요!" 친근 톤 권장`);
+    }
+  }
+
+  // W22-hero — display_title / hero_tagline NULL 차단 (project_hero_two_tier.md 박제 규칙)
+  //   히어로 3-tier 구조의 ②③ 누락 시 모바일 hero에 fallback 텍스트만 노출됨.
+  if (!pkg.display_title || typeof pkg.display_title !== 'string' || !pkg.display_title.trim()) {
+    errors.push(`[W22-hero] display_title 누락 — generateDisplayTitle() 실행 필요. project_hero_two_tier.md 참조`);
+  } else if (pkg.display_title.length > 24) {
+    errors.push(`[W22-hero] display_title 너무 김 (${pkg.display_title.length}자, 권장 8~14자) — 모바일 hero h1 가독성 저하: "${pkg.display_title}"`);
+  }
+  if (!pkg.hero_tagline || typeof pkg.hero_tagline !== 'string' || !pkg.hero_tagline.trim()) {
+    errors.push(`[W22-hero] hero_tagline 누락 — generateHeroTagline() 실행 필요. 한 줄 후킹 문구로 product_highlights 1~2개 합성`);
+  } else if (pkg.hero_tagline.length > 60) {
+    errors.push(`[W22-hero] hero_tagline 너무 김 (${pkg.hero_tagline.length}자, 권장 ≤40자): "${pkg.hero_tagline}"`);
+  }
+
   // W23 — excludes/inclusions에 숫자 포맷 오류 감지
   // "2|000엔" 같은 split 잔해는 " 2 " + "000엔" 형태 또는 pipe 잔존
   const checkNumericIntegrity = (field, arr) => {
