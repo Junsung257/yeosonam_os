@@ -2138,6 +2138,129 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
     message: /항공|국제선|왕복/.test(incText) ? '항공 포함 명시 OK' : 'inclusions 에 항공 명시 누락',
   });
 
+  // ── 2026-05-13 박제 — Phase 9 Programmatic Verifier 8 신규 룰 (C18~C25, LLM 토큰 0) ──
+
+  // C18 (critical): 모든 출발일이 365일 이내 (너무 먼 미래는 LLM 오추론 의심)
+  if (data.price_tiers?.length) {
+    const maxFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const allDates: string[] = [];
+    for (const t of data.price_tiers) {
+      if (t.departure_dates) allDates.push(...t.departure_dates);
+      if (t.date_range?.start) allDates.push(t.date_range.start);
+      if (t.date_range?.end) allDates.push(t.date_range.end);
+    }
+    const badDate = allDates.find(d => d > maxFuture);
+    checks.push({
+      id: 'C18_dates_within_365d',
+      severity: 'critical',
+      passed: !badDate,
+      message: badDate ? `1년 초과 미래 출발일: ${badDate}` : `모든 출발일 365일 이내`,
+    });
+  }
+
+  // C19 (high): 가격 일관성 — 같은 tier 내 adult_price 들 ±50% 이내
+  if (data.price_tiers && data.price_tiers.length >= 2) {
+    const prices = data.price_tiers.map(t => t.adult_price).filter((p): p is number => typeof p === 'number' && p > 0);
+    if (prices.length >= 2) {
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const ratio = max / min;
+      checks.push({
+        id: 'C19_price_consistency',
+        severity: 'high',
+        passed: ratio <= 1.5,
+        message: ratio <= 1.5 ? `가격 일관성 OK (${min}~${max})` : `tier 간 가격 차 ${ratio.toFixed(1)}배 (${min}~${max})`,
+      });
+    }
+  }
+
+  // C20 (high): 호텔 grade 정상 값 (1~5성 또는 null)
+  if (xv.itineraryData?.days) {
+    const hotelGrades = xv.itineraryData.days
+      .map(d => (d as { hotel?: { grade?: string | null } }).hotel?.grade)
+      .filter((g): g is string => typeof g === 'string' && g.trim() !== '');
+    const validGradeRe = /^[1-5](?:성|star|준\d성)?$/i;
+    const allValid = hotelGrades.every(g => validGradeRe.test(g.trim()));
+    checks.push({
+      id: 'C20_hotel_grade_valid',
+      severity: 'high',
+      passed: allValid || hotelGrades.length === 0,
+      message: allValid ? `${hotelGrades.length}개 호텔 등급 정상` : `이상 등급: ${hotelGrades.filter(g => !validGradeRe.test(g.trim())).join(', ')}`,
+    });
+  }
+
+  // C21 (medium): 식사 정보 ≥ duration - 1 (마지막 날 제외하면 매일 조식 정도는 있어야)
+  if (data.duration && data.duration >= 3 && xv.itineraryData?.days) {
+    const mealCount = xv.itineraryData.days.reduce((sum, d) => {
+      const meals = (d as { meals?: Record<string, unknown> }).meals;
+      if (!meals) return sum;
+      return sum + (meals.breakfast ? 1 : 0) + (meals.lunch ? 1 : 0) + (meals.dinner ? 1 : 0);
+    }, 0);
+    checks.push({
+      id: 'C21_meal_count_min',
+      severity: 'medium',
+      passed: mealCount >= (data.duration - 1),
+      message: `식사 카운트 ${mealCount} (최소 ${data.duration - 1})`,
+    });
+  }
+
+  // C22 (high): inclusions 단일 항목 최대 길이 200자 (너무 길면 LLM 이 합쳐 추출)
+  if (data.inclusions?.length) {
+    const tooLong = data.inclusions.find(s => s.length > 200);
+    checks.push({
+      id: 'C22_inclusion_item_length',
+      severity: 'high',
+      passed: !tooLong,
+      message: tooLong ? `inclusions 항목 ${tooLong.length}자 초과 (${tooLong.slice(0,50)}...)` : '모든 inclusions 항목 길이 정상',
+    });
+  }
+
+  // C23 (high): notices_parsed 각 text ≥ 20자 (너무 짧은 안내문은 의미 없음)
+  if (Array.isArray(data.notices_parsed) && data.notices_parsed.length > 0) {
+    const tooShort = (data.notices_parsed as unknown as Array<{ text?: string; type?: string }>).find(n => {
+      const t = typeof n === 'object' ? n.text ?? '' : String(n);
+      return t.length < 20;
+    });
+    checks.push({
+      id: 'C23_notice_min_length',
+      severity: 'high',
+      passed: !tooShort,
+      message: tooShort ? `notices 항목 짧음 (${(tooShort.text ?? '').length}자)` : 'notices 모두 20자+',
+    });
+  }
+
+  // C24 (medium): 항공편 시간 형식 HH:MM 검증
+  if (xv.itineraryData?.days) {
+    const flightTimes: string[] = [];
+    for (const d of xv.itineraryData.days) {
+      for (const s of (d as { schedule?: Array<{ type?: string; time?: string | null }> }).schedule ?? []) {
+        if (s.type === 'flight' && s.time) flightTimes.push(s.time);
+      }
+    }
+    if (flightTimes.length > 0) {
+      const timeRe = /^([01]?\d|2[0-3]):[0-5]\d$/;
+      const allValid = flightTimes.every(t => timeRe.test(t));
+      checks.push({
+        id: 'C24_flight_time_format',
+        severity: 'medium',
+        passed: allValid,
+        message: allValid ? `${flightTimes.length}개 시간 HH:MM` : `잘못된 형식: ${flightTimes.filter(t => !timeRe.test(t)).join(', ')}`,
+      });
+    }
+  }
+
+  // C25 (medium): 가격이 1,000원 단위로 끝남 (799,000 같은 패턴 — 1원 단위는 LLM 오추출 가능성)
+  if (data.price_tiers?.length) {
+    const prices = data.price_tiers.map(t => t.adult_price).filter((p): p is number => typeof p === 'number');
+    const oddPrice = prices.find(p => p % 1000 !== 0);
+    checks.push({
+      id: 'C25_price_unit_1000',
+      severity: 'medium',
+      passed: !oddPrice,
+      message: oddPrice ? `1000원 단위 아님: ${oddPrice}원` : `${prices.length}개 가격 모두 1000원 단위`,
+    });
+  }
+
   return checks;
 }
 

@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/card-news-auto-live",
+      "schedule": "30 * * * *"
+    },
+    {
       "path": "/api/cron/meta-optimize",
       "schedule": "2 0 * * *"
     },
