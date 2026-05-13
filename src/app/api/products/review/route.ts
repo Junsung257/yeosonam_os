@@ -302,6 +302,7 @@ async function handleReject(body: { product_id: string; reason?: string }) {
   const { product_id, reason } = body;
   if (!product_id) return NextResponse.json({ error: 'product_id 필수' }, { status: 400 });
 
+  // 1) products INACTIVE 처리
   const { error } = await supabaseAdmin
     .from('products')
     .update({
@@ -310,8 +311,98 @@ async function handleReject(body: { product_id: string; reason?: string }) {
       updated_at: new Date().toISOString(),
     })
     .eq('internal_code', product_id);
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 2) Active Learning — extractions_corrections 자동 누적 (Phase 5-1, 2026-05-13 박제)
+  void (async () => {
+    try {
+      const { data: prod } = await supabaseAdmin
+        .from('products')
+        .select('display_name, land_operator_id, raw_extracted_text')
+        .eq('internal_code', product_id)
+        .maybeSingle();
+      if (!prod) return;
+
+      const { data: pkg } = await supabaseAdmin
+        .from('travel_packages')
+        .select('id, destination, raw_text')
+        .eq('internal_code', product_id)
+        .maybeSingle();
+
+      const qLog = pkg?.id ? (await supabaseAdmin
+        .from('ai_quality_log')
+        .select('failed_checks, leak_incidents')
+        .eq('package_id', pkg.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()).data : null;
+
+      const failedChecks = Array.isArray((qLog as { failed_checks?: unknown[] } | null)?.failed_checks)
+        ? ((qLog as { failed_checks: Array<{ id?: string; message?: string }> }).failed_checks)
+        : [];
+      const leakIncidents = Array.isArray((qLog as { leak_incidents?: unknown[] } | null)?.leak_incidents)
+        ? ((qLog as { leak_incidents: Array<{ patternId?: string; field?: string; matched?: string }> }).leak_incidents)
+        : [];
+
+      const rawExcerpt = ((prod as { raw_extracted_text?: string }).raw_extracted_text
+                       ?? (pkg as { raw_text?: string } | null)?.raw_text ?? '').slice(0, 500);
+
+      const rows: Array<Record<string, unknown>> = [];
+      rows.push({
+        field_path:       'sajangnim.reject',
+        reflection:       `사장님 거절 사유: ${reason ?? '미명시'} (상품: ${(prod as { display_name: string }).display_name})`,
+        before_value:     null,
+        after_value:      null,
+        raw_text_excerpt: rawExcerpt,
+        severity:         'critical',
+        category:         'sajangnim_reject',
+        land_operator_id: (prod as { land_operator_id?: string }).land_operator_id ?? null,
+        destination:      (pkg as { destination?: string } | null)?.destination ?? null,
+        is_active:        true,
+        applied_count:    0,
+      });
+
+      for (const c of failedChecks) {
+        rows.push({
+          field_path:       `v2.${c.id ?? 'unknown'}`,
+          reflection:       `사장님 거절 + V2 실패: ${c.message ?? ''}`,
+          before_value:     null,
+          after_value:      null,
+          raw_text_excerpt: rawExcerpt,
+          severity:         'high',
+          category:         'reject_xvalid_failure',
+          land_operator_id: (prod as { land_operator_id?: string }).land_operator_id ?? null,
+          destination:      (pkg as { destination?: string } | null)?.destination ?? null,
+          is_active:        true,
+          applied_count:    0,
+        });
+      }
+
+      for (const inc of leakIncidents) {
+        rows.push({
+          field_path:       `leak.${inc.field ?? 'unknown'}`,
+          reflection:       `사장님 거절 + leak 감지: ${inc.patternId ?? ''} "${inc.matched ?? ''}"`,
+          before_value:     inc.matched ?? null,
+          after_value:      null,
+          raw_text_excerpt: rawExcerpt,
+          severity:         'critical',
+          category:         'reject_leak',
+          land_operator_id: (prod as { land_operator_id?: string }).land_operator_id ?? null,
+          destination:      (pkg as { destination?: string } | null)?.destination ?? null,
+          is_active:        true,
+          applied_count:    0,
+        });
+      }
+
+      if (rows.length > 0) {
+        await supabaseAdmin.from('extractions_corrections').insert(rows);
+        console.log(`[Active-Learning] reject ${product_id}: ${rows.length} correction(s) appended`);
+      }
+    } catch (e) {
+      console.warn('[Active-Learning] 적재 실패(무시):', (e as Error).message);
+    }
+  })();
+
   return NextResponse.json({ success: true });
 }
 
