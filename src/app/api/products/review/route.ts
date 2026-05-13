@@ -112,10 +112,37 @@ export async function GET() {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     // 각 상품마다 VA 체크리스트 계산
-    type ReviewProductRow = Parameters<typeof computeVAChecklist>[0] & Record<string, unknown>;
-    const products = (data ?? []).map((p: ReviewProductRow) => ({
+    type ReviewProductRow = Parameters<typeof computeVAChecklist>[0] & Record<string, unknown> & { internal_code: string };
+    const productsRaw = (data ?? []) as ReviewProductRow[];
+
+    // V2 신뢰도 데이터 (ai_quality_log) 조인 — 각 상품별 최신 1건
+    const codes = productsRaw.map(p => p.internal_code).filter(Boolean);
+    const qualityMap = new Map<string, {
+      confidence: number; fill_score: number | null; xvalid_score: number | null;
+      leak_score: number | null; auto_gate: string;
+      failed_checks: Array<{ id: string; severity: string; message: string }>;
+      leak_incidents: Array<{ patternId: string; severity: string; field: string; matched: string }>;
+      cove_warnings: unknown[] | null;
+    }>();
+    if (codes.length > 0) {
+      const { data: qualityRows } = await supabaseAdmin
+        .from('ai_quality_log')
+        .select('internal_code, confidence, fill_score, xvalid_score, leak_score, auto_gate, failed_checks, leak_incidents, cove_warnings, created_at')
+        .in('internal_code', codes)
+        .order('created_at', { ascending: false });
+      // internal_code 별 최신 1건만 유지
+      for (const row of qualityRows ?? []) {
+        const r = row as { internal_code: string; [k: string]: unknown };
+        if (!qualityMap.has(r.internal_code)) {
+          qualityMap.set(r.internal_code, row as unknown as Parameters<Map<string, never>['set']>[1]);
+        }
+      }
+    }
+
+    const products = productsRaw.map(p => ({
       ...p,
       va_checklist: computeVAChecklist(p),
+      v2_quality: qualityMap.get(p.internal_code) ?? null,
     }));
 
     return NextResponse.json({ products });
