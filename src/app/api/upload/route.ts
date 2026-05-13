@@ -7,6 +7,7 @@ import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
 import { runUploadVerify } from '@/lib/upload-verify';
+import { normalizeOptionalTours } from '@/lib/package-acl';
 import { getRegistrationPolicy } from '@/lib/registration-policy';
 void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -1007,7 +1008,9 @@ export async function POST(request: NextRequest) {
               price_list:            ed.price_list        ?? [],
               surcharges:            ed.surcharges        ?? [],
               excluded_dates:        ed.excluded_dates    ?? [],
-              optional_tours:        ed.optional_tours    ?? [],
+              // optional_tours 다형성 (객체/문자열 혼재) 정규화 강제 — package-acl SSOT.
+              // (2026-05-22 박제) DetailClient 의 view.optionalToursByRegion 가 정규 객체 가정.
+              optional_tours:        normalizeOptionalTours(ed.optional_tours) ?? [],
               cancellation_policy:   ed.cancellation_policy ?? [],
               category_attrs:        ed.category_attrs   ?? {},
               land_operator:         filenameRule.supplierRaw ?? ed.land_operator ?? null,
