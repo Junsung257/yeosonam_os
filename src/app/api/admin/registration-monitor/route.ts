@@ -193,6 +193,27 @@ export async function GET() {
       .select('*', { count: 'exact', head: true })
       .is('resolved_at', null);
 
+    // P13-4 박제 (2026-05-13): fraud 정확도 + false positive rate (resolved_by + notes 분석)
+    const { data: fraudResolvedRows } = await supabaseAdmin
+      .from('fraud_signals_log')
+      .select('severity, auto_action, resolved_at, notes')
+      .not('resolved_at', 'is', null)
+      .gte('detected_at', since30d);
+
+    const fraudResolved = (fraudResolvedRows ?? []) as Array<{ severity: string; auto_action: string; notes: string | null }>;
+    const fraudTotal30d = fraudResolved.length;
+    // false positive 마킹: notes 에 "false positive" / "오진" / "정상" 포함
+    const fraudFalsePositive = fraudResolved.filter(r =>
+      r.notes && /false[\s_]?positive|오진|정상\s*예약/i.test(r.notes)
+    ).length;
+    const fraudBlocked = fraudResolved.filter(r => r.auto_action === 'blocked').length;
+    const fraudFalsePositiveRate = fraudTotal30d > 0
+      ? Math.round((fraudFalsePositive / fraudTotal30d) * 1000) / 1000
+      : 0;
+    const fraudPrecision = fraudTotal30d > 0
+      ? Math.round(((fraudTotal30d - fraudFalsePositive) / fraudTotal30d) * 1000) / 1000
+      : null;
+
     const { count: fraud24hAuto } = await supabaseAdmin
       .from('fraud_signals_log')
       .select('*', { count: 'exact', head: true })
@@ -245,6 +266,12 @@ export async function GET() {
       fraudStats: {
         unresolved: fraudOpen ?? 0,
         auto_quarantined_7d: fraud24hAuto ?? 0,
+        // P13-4 박제: 정확도 메트릭 (30일 윈도우)
+        total_30d:               fraudTotal30d,
+        blocked_30d:             fraudBlocked,
+        false_positive_30d:      fraudFalsePositive,
+        false_positive_rate:     fraudFalsePositiveRate,
+        precision:               fraudPrecision,  // null 이면 데이터 부족
       },
       last30dStats: {
         total_registrations: total,
