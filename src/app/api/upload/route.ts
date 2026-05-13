@@ -4,6 +4,7 @@ import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocu
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments';
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
+import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { getRegistrationPolicy } from '@/lib/registration-policy';
 void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -1047,6 +1048,10 @@ export async function POST(request: NextRequest) {
             // CoVe (Chain-of-Verification) 비동기 감사 — 결과는 ai_quality_log.cove_warnings 적재
             // 박제 사유: V2 cross-validation 결정적 룰이 못 잡는 미묘한 환각 감지
             void runCoVeInBackground(pkgResult.id);
+
+            // 자동 모바일 QA — 등록 후 실제 페이지 fetch + HTML 검증 (2026-05-13 박제)
+            // 박제 사유: V2 confidence 와 실제 렌더 결과 gap 자동 감지
+            void runAutoMobileQA(pkgResult.id);
           }
           if (internalCode) {
             savedInternalCodes.push(internalCode);
