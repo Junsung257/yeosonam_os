@@ -1,0 +1,45 @@
+name: Register Pipeline Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/parser.ts'
+      - 'src/lib/customer-leak-sanitizer.ts'
+      - 'src/lib/upload-verify.ts'
+      - 'src/lib/itinerary-normalizer.ts'
+      - 'src/lib/corrections-auto-classifier.ts'
+      - 'src/lib/rejection-pattern-analyzer.ts'
+      - 'src/lib/conformal-calibration.ts'
+      - 'src/lib/merge-conflict-resolver.ts'
+      - 'src/lib/holiday-aware-expand.ts'
+      - 'src/app/api/upload/route.ts'
+      - 'src/app/api/admin/upload/verify/route.ts'
+
+jobs:
+  upload-verify-test:
+    name: upload-verify deterministic rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx vitest run src/lib/upload-verify.test.ts
+        env:
+          CI: true
+
+  parser-typecheck:
+    name: parser.ts type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx tsc --noEmit
+        env:
+          CI: true
