@@ -2349,6 +2349,103 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
     }
   }
 
+  // ── 2026-05-13 박제 — Phase 14 Programmatic Verifier 8 신규 룰 (C33~C40, LLM 0) ──
+
+  // C33 (high): title 에 destination 키워드 포함 (LLM 오추론 차단)
+  if (data.title && data.destination) {
+    const destTokens = data.destination.split(/[\/\s,·]/).filter(t => t.length >= 2);
+    const titleLower = data.title.toLowerCase();
+    const hasMatch = destTokens.some(t => titleLower.includes(t.toLowerCase()));
+    checks.push({
+      id: 'C33_title_destination_match',
+      severity: 'high',
+      passed: hasMatch || destTokens.length === 0,
+      message: hasMatch ? 'title↔dest 매치' : `title="${data.title}" 에 destination=${data.destination} 부재`,
+    });
+  }
+
+  // C34 (medium): inclusions 항목 수 (5건 미만이면 빈약)
+  checks.push({
+    id: 'C34_inclusions_count_min',
+    severity: 'medium',
+    passed: (data.inclusions?.length ?? 0) >= 3,
+    message: `inclusions ${data.inclusions?.length ?? 0}건`,
+  });
+
+  // C35 (high): excludes 에 "팁" 또는 "가이드" 키워드 (정상 패키지)
+  const excText = (data.excludes ?? []).join(' ');
+  checks.push({
+    id: 'C35_excludes_has_tip',
+    severity: 'medium',
+    passed: /팁|가이드|기사|에티켓/.test(excText),
+    message: /팁|가이드|기사|에티켓/.test(excText) ? '팁/가이드 명시 OK' : 'excludes 에 팁/가이드 미명시',
+  });
+
+  // C36 (critical): price_tiers 모든 tier 가 같은 통화 (KRW 가정)
+  if (data.price_tiers && data.price_tiers.length >= 2) {
+    const prices = data.price_tiers.map(t => t.adult_price).filter((p): p is number => typeof p === 'number');
+    if (prices.length >= 2) {
+      const max = Math.max(...prices);
+      const min = Math.min(...prices);
+      // 통화 불일치 의심: max/min > 100배 (1000원 vs 100만원)
+      checks.push({
+        id: 'C36_currency_consistency',
+        severity: 'critical',
+        passed: max / min < 100,
+        message: max / min < 100 ? '통화 일관성 OK' : `tier 간 가격 ${max/min}배 차이 (통화 불일치 의심)`,
+      });
+    }
+  }
+
+  // C37 (high): itinerary_data.days 첫 day 가 출발지 (한국)
+  if (xv.itineraryData?.days?.[0]) {
+    const day0 = xv.itineraryData.days[0] as { regions?: string[] };
+    const firstRegions = Array.isArray(day0.regions) ? day0.regions : [];
+    const krKeywords = /한국|서울|부산|인천|김해|김포|제주/;
+    const hasKr = firstRegions.some((r: string) => krKeywords.test(r));
+    checks.push({
+      id: 'C37_first_day_korea',
+      severity: 'high',
+      passed: hasKr || firstRegions.length === 0,
+      message: hasKr ? 'DAY1 한국 출발' : `DAY1 regions=[${firstRegions.join(',')}] 한국 미명시`,
+    });
+  }
+
+  // C38 (medium): optional_tours name 모두 8자 이상 (너무 짧으면 LLM 오추출)
+  if (data.optional_tours && data.optional_tours.length > 0) {
+    const tooShort = (data.optional_tours as Array<{ name?: string }>).find(t => (t.name ?? '').length < 4);
+    checks.push({
+      id: 'C38_optional_tours_name_min',
+      severity: 'medium',
+      passed: !tooShort,
+      message: tooShort ? `선택관광 이름 짧음: "${tooShort.name}"` : `${data.optional_tours.length}개 모두 적정 길이`,
+    });
+  }
+
+  // C39 (high): cancellation_policy 존재 (필수 정책 누락 차단)
+  if (data.cancellation_policy !== undefined) {
+    const len = Array.isArray(data.cancellation_policy) ? data.cancellation_policy.length : 0;
+    checks.push({
+      id: 'C39_cancellation_policy_present',
+      severity: 'medium',
+      passed: len > 0,
+      message: len > 0 ? `취소규정 ${len}건` : '취소규정 누락 (standard-terms fallback 권장)',
+    });
+  }
+
+  // C40 (critical): itinerary_data.days 모두 day 번호 1..N 순서
+  if (xv.itineraryData?.days && xv.itineraryData.days.length > 1) {
+    const dayNums = xv.itineraryData.days.map((d, i) => ((d as { day?: number }).day ?? i + 1));
+    const expected = Array.from({ length: dayNums.length }, (_, i) => i + 1);
+    const matches = dayNums.every((n, i) => n === expected[i]);
+    checks.push({
+      id: 'C40_day_sequence_continuous',
+      severity: 'critical',
+      passed: matches,
+      message: matches ? `${dayNums.length}일 순서 OK` : `day 순서 깨짐: [${dayNums.join(',')}]`,
+    });
+  }
+
   return checks;
 }
 
