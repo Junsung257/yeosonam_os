@@ -21,6 +21,7 @@ import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repa
 import { tiersToDatePrices } from '@/lib/price-dates';
 import { getRelevantReflections } from '@/lib/reflection-memory';
 import { getRegionCacheContext } from '@/lib/region-cache-context';
+import { getLandOperatorProfile, accumulateLandOperatorProfile } from '@/lib/land-operator-profile';
 import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
@@ -573,7 +574,7 @@ export async function POST(request: NextRequest) {
     const prelimLandOperatorId = resolveLandOperatorId(filenameRule.supplierRaw, landOps ?? []);
     let parseOptions: ParseOptions = {};
     if (isSupabaseConfigured) {
-      const [reflections, regionContext] = await Promise.all([
+      const [reflections, regionContext, landOperatorProfile] = await Promise.all([
         getRelevantReflections(supabaseAdmin, {
           destination: tempDest || undefined,
           landOperatorId: prelimLandOperatorId || undefined,
@@ -581,6 +582,7 @@ export async function POST(request: NextRequest) {
           limit: 5,
         }).catch(() => []),
         tempDest ? getRegionCacheContext(tempDest).catch(() => '') : Promise.resolve(''),
+        prelimLandOperatorId ? getLandOperatorProfile(prelimLandOperatorId).catch(() => null) : Promise.resolve(null),
       ]);
       if (reflections.length > 0) {
         console.log('[Upload API] Reflexion 주입:', reflections.length, '건 (목적지:', tempDest, ')');
@@ -588,7 +590,10 @@ export async function POST(request: NextRequest) {
       if (regionContext) {
         console.log('[Upload API] 지역 컨텍스트 로드:', tempDest, regionContext.length, '자');
       }
-      parseOptions = { reflections, regionContext };
+      if (landOperatorProfile) {
+        console.log('[Upload API] 랜드사 프로파일 로드:', landOperatorProfile.total_registrations, '등록 누적, avg conf:', landOperatorProfile.avg_confidence);
+      }
+      parseOptions = { reflections, regionContext, landOperatorProfile: landOperatorProfile ?? undefined };
     }
 
     // ── [E-1] PDF/HWP 텍스트 추출 (바이너리 → 텍스트) ──────────────────────
@@ -1052,6 +1057,19 @@ export async function POST(request: NextRequest) {
             // 자동 모바일 QA — 등록 후 실제 페이지 fetch + HTML 검증 (2026-05-13 박제)
             // 박제 사유: V2 confidence 와 실제 렌더 결과 gap 자동 감지
             void runAutoMobileQA(pkgResult.id);
+
+            // Phase 5-2/6-2 박제 — 랜드사 프로파일 자동 누적 (마커/B2B 용어 학습)
+            if (effectiveLandOperatorId) {
+              void accumulateLandOperatorProfile({
+                landOperatorId:    effectiveLandOperatorId,
+                rawText:           parsedDocument.rawText ?? '',
+                confidence:        v2.confidence,
+                rejected:          v2.autoGate === 'rejected',
+                detectedB2bTerms:  sanitizeResult.incidents
+                  .filter(i => i.severity !== 'medium')
+                  .map(i => i.matched),
+              });
+            }
           }
           if (internalCode) {
             savedInternalCodes.push(internalCode);
