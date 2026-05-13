@@ -939,12 +939,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </div>
                   <div className="text-center mt-1">
                     {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
-                    {flightDep.transport && <span className="text-[10px] text-gray-400 ml-1">{formatFlightLabel(flightDep.transport)}</span>}
+                    {flightDep.transport && <span className="text-[10px] text-gray-400 ml-1">{flightDep.transport}</span>}
                     <span className="text-[10px] text-gray-400 ml-1">직항</span>
                   </div>
                 </div>
                 <div className="text-center min-w-[60px]">
-                  <p className="text-xl font-black text-gray-900 tabular-nums">{depArrTime || '—'}</p>
+                  <p className="text-xl font-black text-gray-900 tabular-nums">
+                    {depArrTime || '—'}
+                    {view.flightHeader.outbound?.arrDayOffset === 1 && (
+                      <span className="text-[10px] text-orange-500 align-top ml-0.5">+1</span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">{depArrCity}</p>
                 </div>
               </div>
@@ -970,12 +975,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </div>
                   <div className="text-center mt-1">
                     {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
-                    {flightReturn.transport && <span className="text-[10px] text-gray-400 ml-1">{formatFlightLabel(flightReturn.transport)}</span>}
+                    {flightReturn.transport && <span className="text-[10px] text-gray-400 ml-1">{flightReturn.transport}</span>}
                     <span className="text-[10px] text-gray-400 ml-1">직항</span>
                   </div>
                 </div>
                 <div className="text-center min-w-[60px]">
-                  <p className="text-xl font-black text-gray-900 tabular-nums">{retArrTime || '—'}</p>
+                  <p className="text-xl font-black text-gray-900 tabular-nums">
+                    {retArrTime || '—'}
+                    {view.flightHeader.inbound?.arrDayOffset === 1 && (
+                      <span className="text-[10px] text-orange-500 align-top ml-0.5">+1</span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
               </div>

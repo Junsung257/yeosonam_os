@@ -23,6 +23,30 @@ interface ProductPrice {
   note?: string | null;
 }
 
+interface V2QualityCheck {
+  id: string;
+  severity: 'critical' | 'high' | 'medium';
+  message: string;
+}
+
+interface V2LeakIncident {
+  patternId: string;
+  severity: 'critical' | 'high' | 'medium';
+  field: string;
+  matched: string;
+}
+
+interface V2Quality {
+  confidence: number;
+  fill_score: number | null;
+  xvalid_score: number | null;
+  leak_score: number | null;
+  auto_gate: 'auto_publish' | 'confirm_queue' | 'pending_review' | 'rejected';
+  failed_checks: V2QualityCheck[];
+  leak_incidents: V2LeakIncident[];
+  cove_warnings?: unknown[] | null;
+}
+
 interface ReviewProduct {
   internal_code: string;
   display_name: string;
@@ -42,6 +66,7 @@ interface ReviewProduct {
   supplier_code?: string | null;
   supplier_name?: string | null;
   land_operator_id?: string | null;
+  v2_quality?: V2Quality | null;
 }
 
 interface PexelsPhoto {
@@ -72,6 +97,67 @@ function deriveSupplierCode(name: string): string {
 }
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────────
+
+function V2QualityPanel({ q }: { q: V2Quality | null | undefined }) {
+  if (!q) return null;
+  const gateLabel: Record<V2Quality['auto_gate'], { text: string; cls: string }> = {
+    auto_publish:   { text: '자동 발행',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    confirm_queue:  { text: '컨펌 큐',     cls: 'bg-amber-50  text-amber-700  border-amber-200'  },
+    pending_review: { text: '검토 필요',   cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+    rejected:       { text: '거절',        cls: 'bg-red-50    text-red-700    border-red-200'    },
+  };
+  const gate = gateLabel[q.auto_gate];
+  const pct = (n: number | null | undefined) => n == null ? '—' : `${Math.round(n * 100)}%`;
+  const sevColor: Record<V2QualityCheck['severity'], string> = {
+    critical: 'bg-red-50 text-red-700 border-l-2 border-red-500',
+    high:     'bg-orange-50 text-orange-700 border-l-2 border-orange-400',
+    medium:   'bg-amber-50 text-amber-700 border-l-2 border-amber-300',
+  };
+  return (
+    <div className="space-y-2 mt-3 border-t border-admin-divider pt-3">
+      <div className="flex items-center justify-between">
+        <span className="text-admin-xs text-admin-muted font-semibold">V2 신뢰도 분해</span>
+        <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${gate.cls}`}>{gate.text}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-admin-surface-2 rounded p-2">
+          <div className="text-[10px] text-admin-muted">채움률</div>
+          <div className="text-sm font-bold text-blue-600">{pct(q.fill_score)}</div>
+        </div>
+        <div className="bg-admin-surface-2 rounded p-2">
+          <div className="text-[10px] text-admin-muted">정합성</div>
+          <div className="text-sm font-bold text-purple-600">{pct(q.xvalid_score)}</div>
+        </div>
+        <div className="bg-admin-surface-2 rounded p-2">
+          <div className="text-[10px] text-admin-muted">누출안전</div>
+          <div className={`text-sm font-bold ${(q.leak_score ?? 0) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            {pct(q.leak_score == null ? null : 1 - q.leak_score)}
+          </div>
+        </div>
+      </div>
+      {q.failed_checks?.length > 0 && (
+        <div className="space-y-1 mt-2">
+          <div className="text-[10px] text-admin-muted font-semibold">실패 체크 ({q.failed_checks.length})</div>
+          {q.failed_checks.map((c, i) => (
+            <div key={i} className={`text-[11px] px-2 py-1 rounded ${sevColor[c.severity]}`}>
+              <span className="font-mono">{c.id}</span> · {c.message}
+            </div>
+          ))}
+        </div>
+      )}
+      {q.leak_incidents?.length > 0 && (
+        <div className="space-y-1 mt-2">
+          <div className="text-[10px] text-red-600 font-semibold">⚠ Leak 감지 ({q.leak_incidents.length})</div>
+          {q.leak_incidents.slice(0, 5).map((inc, i) => (
+            <div key={i} className={`text-[11px] px-2 py-1 rounded ${sevColor[inc.severity]}`}>
+              <span className="font-mono">{inc.patternId}</span> @ {inc.field}: <span className="line-through">{inc.matched}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ConfidenceBar({ score }: { score: number | null | undefined }) {
   const val = score ?? 0;
@@ -367,9 +453,26 @@ export default function ProductReviewPage() {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <StatusBadge status={p.status} />
-                      <span className={`text-[11px] font-bold ${(p.ai_confidence_score ?? 0) >= 80 ? 'text-emerald-600' : (p.ai_confidence_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
-                        {p.ai_confidence_score ?? 0}%
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {p.v2_quality?.auto_gate && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                            p.v2_quality.auto_gate === 'confirm_queue' ? 'bg-amber-100 text-amber-700'  :
+                            p.v2_quality.auto_gate === 'rejected'      ? 'bg-red-100 text-red-700'      :
+                            p.v2_quality.auto_gate === 'pending_review'? 'bg-orange-100 text-orange-700':
+                                                                          'bg-emerald-100 text-emerald-700'
+                          }`} title={`autoGate: ${p.v2_quality.auto_gate}`}>
+                            {p.v2_quality.auto_gate === 'confirm_queue' ? '컨펌' :
+                             p.v2_quality.auto_gate === 'rejected'      ? '거절' :
+                             p.v2_quality.auto_gate === 'pending_review'? '검토' : '자동'}
+                          </span>
+                        )}
+                        {(p.v2_quality?.leak_incidents?.length ?? 0) > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-100 text-red-700" title="Leak 감지">⚠</span>
+                        )}
+                        <span className={`text-[11px] font-bold ${(p.ai_confidence_score ?? 0) >= 80 ? 'text-emerald-600' : (p.ai_confidence_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                          {p.ai_confidence_score ?? 0}%
+                        </span>
+                      </div>
                     </div>
                     {(!p.supplier_code || p.supplier_code === 'ETC') && (
                       <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold bg-red-50 text-red-600 mb-1">
@@ -476,9 +579,10 @@ export default function ProductReviewPage() {
                       </div>
                     )}
 
-                    {/* AI 신뢰도 바 */}
+                    {/* AI 신뢰도 바 + V2 분해 (Phase 1+2 박제) */}
                     <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
                       <ConfidenceBar score={selected.ai_confidence_score} />
+                      <V2QualityPanel q={selected.v2_quality} />
                     </div>
 
                     {/* selling_points */}

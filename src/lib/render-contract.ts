@@ -196,6 +196,8 @@ export interface CanonicalFlight {
   realtimeDepTime?: string;
   realtimeArrTime?: string;
   realtimeDate?:    string;
+  /** 익일 도착이면 1 (예: 23:55 출발 → 다음날 06:40 도착). normalize-flight-segments 가 박제. */
+  arrDayOffset?:    0 | 1;
 }
 
 /** 호텔 카드 — 하드코딩 헤더 제거용 구조화 출력 */
@@ -784,7 +786,7 @@ export function renderPackage(
   const optionalTours = resolveOptionalTours(pkg);
   return {
     airlineHeader: resolveAirlineHeader(pkg),
-    flightHeader: resolveFlightHeader(days),
+    flightHeader: resolveFlightHeader(days, pkg),
     optionalTours,
     optionalToursByRegion: optionalTours.groups,
     surchargesMerged: merged,
@@ -797,10 +799,44 @@ export function renderPackage(
 }
 
 /**
- * 출발편/귀국편 헤더 추출. days[0].flight = outbound,
- * 귀국편은 마지막 날 우선, 없으면 마지막-1일 fallback (마지막 날이 도착-only 인 경우).
+ * 출발편/귀국편 헤더 추출. flight_segments 정규 필드 우선 (2026-05-13 박제 — normalize-flight-segments).
+ * 없으면 days[0].flight / last.flight / beforeLast.flight fallback.
  */
-function resolveFlightHeader(days: CanonicalDay[]): FlightHeader {
+function resolveFlightHeader(days: CanonicalDay[], pkg?: RenderPackageInput): FlightHeader {
+  // 1차: flight_segments 정규 필드 (SSOT)
+  const segments = (pkg?.itinerary_data as { flight_segments?: Array<{
+    leg: 'outbound' | 'inbound';
+    flight_no: string | null;
+    dep_airport: string | null;
+    dep_time: string | null;
+    arr_airport: string | null;
+    arr_time: string | null;
+    arr_day_offset: 0 | 1;
+  }> } | undefined)?.flight_segments;
+
+  if (Array.isArray(segments) && segments.length > 0) {
+    const toFlight = (seg: typeof segments[number]): CanonicalFlight => ({
+      code:         seg.flight_no,
+      airlineName:  getAirlineName(seg.flight_no),
+      airlineLabel: seg.flight_no
+        ? (getAirlineName(seg.flight_no) ? `${seg.flight_no}(${getAirlineName(seg.flight_no)})` : seg.flight_no)
+        : null,
+      depCity:      seg.dep_airport,
+      arrCity:      seg.arr_airport,
+      depTime:      seg.dep_time,
+      arrTime:      seg.arr_time,
+      label:        `${seg.dep_airport ?? ''} 출발 → ${seg.arr_airport ?? ''} 도착`.trim(),
+      arrDayOffset: seg.arr_day_offset,
+    });
+    const outboundSeg = segments.find(s => s.leg === 'outbound') ?? segments[0];
+    const inboundSeg  = segments.find(s => s.leg === 'inbound')  ?? (segments.length > 1 ? segments[segments.length - 1] : null);
+    return {
+      outbound: outboundSeg ? toFlight(outboundSeg) : null,
+      inbound:  inboundSeg  ? toFlight(inboundSeg)  : null,
+    };
+  }
+
+  // 2차: legacy fallback
   if (days.length === 0) return { outbound: null, inbound: null };
   const outbound = days[0]?.flight ?? null;
   const last = days[days.length - 1];
