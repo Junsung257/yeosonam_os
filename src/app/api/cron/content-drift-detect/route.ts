@@ -8,6 +8,8 @@ export const maxDuration = 60;
 // 최소 기준 — 이 이상 급증한 키워드만 드리프트로 판정
 const DRIFT_RATIO_THRESHOLD = 1.8; // 지난주 대비 80%+ 증가
 const MIN_WEEKLY_COUNT = 3;        // 최소 3회 이상 등장한 키워드만
+// P12-3 박제 (2026-05-13): drift ratio > AUTO_QUEUE_THRESHOLD 시 자동 재생성 큐잉
+const AUTO_QUEUE_THRESHOLD = 2.5;
 
 interface TrendRow {
   keyword: string;
