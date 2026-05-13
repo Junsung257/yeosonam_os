@@ -45,3 +45,33 @@ await supabaseAdmin.from('land_operators').update({ is_active: false }).eq('id',
 
 ## 4. GENERATED 컬럼 주의
 `products.selling_price`는 DB가 자동 계산. INSERT/UPDATE에 포함하면 에러.
+
+## 5. RLS 정책 — 사일런트 실패 방지 (2026-05-13)
+
+신규 테이블을 `CREATE TABLE` + `ENABLE ROW LEVEL SECURITY` 할 때 **정책을 깜빡하면 사일런트 차단 폭탄**이 됩니다. `destination_climate` 회귀(2026-05-13): RLS ON + 정책 0개 → service_role은 통과하지만 anon fallback 시 row 0개 반환 → 모바일 페이지에 시차·날씨 카드 0개 표시.
+
+### 신규 테이블 RLS 체크리스트
+
+1. **이 테이블은 공개 페이지(`page.tsx` 서버 컴포넌트)에서 anon으로 SELECT되는가?**
+   - YES → `CREATE POLICY "Anyone can read X" ON X FOR SELECT TO anon, authenticated USING (true);`
+   - NO → 정책 없이 RLS ON 유지 (PostgreSQL default deny로 anon 차단됨)
+
+2. **client component(`'use client'`)에서 직접 `from('X')` 호출되는가?**
+   - YES → anon 정책 필요. 또는 API 라우트(`supabaseAdmin`) 경유로 변경.
+
+3. **API 라우트만 `supabaseAdmin`으로 조회하는가?**
+   - YES → 정책 없이도 안전. `supabaseAdmin`은 service_role 키로 RLS 우회.
+
+### 폭탄 발굴 SQL (재발 의심 시)
+```sql
+SELECT c.relname, COUNT(p.policyname) as policies
+FROM pg_class c
+LEFT JOIN pg_policies p ON p.tablename = c.relname AND p.schemaname = 'public'
+WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace
+  AND c.relrowsecurity = true
+GROUP BY c.relname
+HAVING COUNT(p.policyname) = 0;
+```
+
+### 핵심: `supabaseAdmin` fallback 위험
+`src/lib/supabase.ts:71` `getSupabaseAdmin()`은 service_role 키 미설정 시 **anon 키로 fallback**. .env 누락 + RLS 정책 0개 조합이 가장 위험. 신규 환경 구축 시 `SUPABASE_SERVICE_ROLE_KEY` 필수 체크.

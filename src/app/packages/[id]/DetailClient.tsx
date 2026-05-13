@@ -256,6 +256,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
+  const [programExpanded, setProgramExpanded] = useState(false);
 
   // CSR 네비게이션 시 referrer가 홈으로 고정되는 문제 대응 — 현재 URL을 sessionStorage에 저장
   useEffect(() => {
@@ -876,15 +877,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         const header = parts.length > 1 ? parts[0] : null;
         const body = parts.length > 1 ? parts.slice(1).join('\n\n') : pkg.product_summary;
         return (
-          <div className="px-5 mt-8 border-b border-gray-100 pb-6 relative">
-            <div className="absolute top-0 right-5 text-4xl opacity-5">❞</div>
-            <h2 className="text-lg font-extrabold text-gray-900 mb-3">여소남의 추천 코멘트 ✍️</h2>
+          <div className="mx-4 mt-6 mb-2 rounded-2xl bg-gradient-to-br from-brand-light/40 to-white border border-brand-light/60 p-5 relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand" />
+            <div className="absolute -top-2 right-3 text-7xl text-brand opacity-10 leading-none select-none pointer-events-none font-serif">&ldquo;</div>
+            <div className="flex items-center gap-2 mb-3 relative">
+              <span className="text-sm">✍️</span>
+              <h2 className="text-[11px] font-bold text-brand uppercase tracking-wider">여소남의 추천 코멘트</h2>
+            </div>
             {header && (
-              <p className="text-base font-bold text-brand mb-3 leading-snug break-keep">
+              <p className="text-base font-bold text-gray-900 mb-2 leading-snug break-keep relative">
                 {header}
               </p>
             )}
-            <p className="text-sm text-gray-600 leading-loose break-keep whitespace-pre-line">
+            <p className="text-sm text-gray-700 leading-relaxed break-keep whitespace-pre-line relative">
               {body}
             </p>
           </div>
@@ -1110,18 +1115,55 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {(view.inclusions.basic.length > 0 || view.inclusions.program.length > 0) && (
             <div className="bg-brand-light/50 rounded-2xl p-4">
               <h3 className="text-xs font-bold text-text-primary mb-3">✅ 포함 사항</h3>
-              <ul className="space-y-1.5">
-                {view.inclusions.basic.map((item, i) => (
-                  <li key={i} className="text-sm text-text-primary flex gap-2 leading-relaxed">
-                    <span className="shrink-0 text-base leading-snug">{item.icon}</span>{item.text}
-                  </li>
-                ))}
-                {view.inclusions.program.length > 0 && (
-                  <li className="pt-2 mt-1.5 border-t border-brand-light text-xs text-brand leading-relaxed">
-                    <span className="mr-1">✨</span>{view.inclusions.program.join(' · ')}
-                  </li>
-                )}
-              </ul>
+              {view.inclusions.basic.length > 0 && (
+                <ul className="space-y-1.5">
+                  {view.inclusions.basic.map((item, i) => (
+                    <li key={i} className="text-sm text-text-primary flex gap-2 leading-relaxed">
+                      <span className="shrink-0 text-base leading-snug">{item.icon}</span>{item.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {view.inclusions.program.length > 0 && (() => {
+                const cleaned = view.inclusions.program
+                  .map(item => item
+                    .replace(/^[\s▶■★◈◆·\-]+/u, '')
+                    .replace(/^특전\s*\d+[.)]\s*/u, '')
+                    .replace(/^<[^>]+>\s*/u, '')
+                    .replace(/☞/gu, '—')
+                    .trim()
+                  )
+                  .filter(Boolean);
+                if (cleaned.length === 0) return null;
+                return (
+                  <div className={`${view.inclusions.basic.length > 0 ? 'mt-3 pt-3 border-t border-brand-light' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setProgramExpanded(prev => !prev)}
+                      aria-expanded={programExpanded}
+                      className="w-full flex items-center justify-between text-left active:scale-[0.98] transition py-1"
+                    >
+                      <span className="text-sm font-bold text-brand flex items-center gap-1.5">
+                        <span>✨</span>
+                        <span>특전 {cleaned.length}가지 둘러보기</span>
+                      </span>
+                      <span className="text-xs font-semibold text-brand">
+                        {programExpanded ? '▲ 접기' : '▼ 펼치기'}
+                      </span>
+                    </button>
+                    {programExpanded && (
+                      <ul className="mt-3 space-y-1.5 pl-1">
+                        {cleaned.map((item, i) => (
+                          <li key={i} className="text-sm text-text-primary flex gap-2 leading-relaxed">
+                            <span className="shrink-0 text-brand mt-0.5">•</span>
+                            <span className="break-keep">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
           {/* W1 CRC — 불포함/써차지 병합은 view에서 이미 해결됨 (ERR-20260418-14/24) */}
