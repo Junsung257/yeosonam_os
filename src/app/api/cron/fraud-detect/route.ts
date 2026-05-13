@@ -105,28 +105,43 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const highItems = flaggedItems.filter(f => f.severity === 'high');
     const mediumItems = flaggedItems.filter(f => f.severity === 'medium');
 
-    // ── Phase 9 AA-1 자동 액션 분기 (2026-05-13 박제) ──
-    // HIGH severity 자동 격리: bookings.internal_memo 자동 마킹 (사장님이 어드민에서 차단 결정)
-    // CRITICAL 은 별도 처리 (현재 maxSeverity 가 'high' 까지만 반환 — fraud-detect.ts 의 enum 따라)
+    // ── Phase 9 AA-1 자동 액션 분기 + audit (2026-05-13 박제) ──
     let autoActions = 0;
     if (highItems.length > 0) {
-      const autoActionRows = highItems.map(item => ({
-        booking_id: item.bookingId,
-        memo: `🚨 자동 사기 격리 [${new Date().toISOString().slice(0,16)}] — ${item.signals.map(s => s.description).join(' / ')}`,
-      }));
-      for (const a of autoActionRows) {
-        await supabaseAdmin.from('bookings')
-          .update({
-            internal_memo: a.memo,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', a.booking_id)
-          .then(({ error }: { error: { message: string } | null }) => {
-            if (!error) autoActions++;
-            else console.warn('[fraud-detect] booking auto-mark 실패:', error.message);
+      const auditRows: Array<Record<string, unknown>> = [];
+      for (const item of highItems) {
+        const memo = `🚨 자동 사기 격리 [${new Date().toISOString().slice(0,16)}] — ${item.signals.map(s => s.description).join(' / ')}`;
+        const { error: memoErr } = await supabaseAdmin.from('bookings')
+          .update({ internal_memo: memo, updated_at: new Date().toISOString() })
+          .eq('id', item.bookingId);
+        if (!memoErr) {
+          autoActions++;
+          auditRows.push({
+            booking_id:    item.bookingId,
+            severity:      item.severity,
+            signal_codes:  item.signals.map(s => s.type),
+            signal_descs:  item.signals.map(s => s.description),
+            auto_action:   'memo_marked',
           });
+        } else {
+          console.warn('[fraud-detect] booking auto-mark 실패:', memoErr.message);
+        }
       }
-      console.log(`[fraud-detect] AA-1 자동 격리: ${autoActions}/${highItems.length}건`);
+      if (auditRows.length > 0) {
+        void supabaseAdmin.from('fraud_signals_log').insert(auditRows);
+      }
+      console.log(`[fraud-detect] AA-1 자동 격리: ${autoActions}/${highItems.length}건 (audit 적재)`);
+    }
+    // MEDIUM 도 audit 적재 (slack_only — 사람이 결정)
+    if (mediumItems.length > 0) {
+      const mediumAudit = mediumItems.map(item => ({
+        booking_id:    item.bookingId,
+        severity:      item.severity,
+        signal_codes:  item.signals.map(s => s.type),
+        signal_descs:  item.signals.map(s => s.description),
+        auto_action:   'slack_only',
+      }));
+      void supabaseAdmin.from('fraud_signals_log').insert(mediumAudit);
     }
 
     const lines: string[] = [
