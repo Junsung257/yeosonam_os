@@ -97,6 +97,7 @@ function ErrorView({ reason }: { reason: 'not_found' | 'expired' | 'revoked' | '
         <div className="mb-2 text-sm font-medium text-gray-500">여소남</div>
         <h1 className="text-xl font-bold text-gray-900 mb-3">{msg.title}</h1>
         <p className="text-sm text-gray-600 leading-relaxed">{msg.body}</p>
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/"
           className="mt-6 inline-block text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2"
