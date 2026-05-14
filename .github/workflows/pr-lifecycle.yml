@@ -1,9 +1,7 @@
 name: PR Lifecycle Automation
 
-# 2026-05-13 — mail-flood-stop v2: PR 자동 라벨링 잡 fail로 PR마다 메일. schedule + 수동만.
+# 2026-05-14 — mail-flood-stop v3: 단독 개발이라 stale PR 검사 의미 없음. 수동만.
 on:
-  schedule:
-    - cron: '0 0 * * *'  # Daily stale check
   workflow_dispatch:
 
 jobs:

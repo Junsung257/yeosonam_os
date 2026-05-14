@@ -1,8 +1,7 @@
 name: Cost & Resource Monitoring
 
+# 2026-05-14 — mail-flood-stop v3: 매일 fail. 비용 모니터링은 Vercel/Supabase 대시보드로.
 on:
-  schedule:
-    - cron: '0 6 * * *'  # Daily at 6 AM UTC
   workflow_dispatch:
 
 jobs:

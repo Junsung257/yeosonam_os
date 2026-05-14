@@ -1,16 +1,14 @@
 name: Visual Regression
 
+# 2026-05-14 — mail-flood-stop v3: 매일 fail. 시각 회귀는 수동·릴리즈 시점에만.
+# baseline 갱신은 workflow_dispatch update_baseline=true 로 명시 호출.
 on:
-  schedule:
-    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       update_baseline:
         description: 'production 기준으로 모든 baseline을 재생성하고 자동 커밋'
         type: boolean
         default: false
-  # 2026-05-13 — mail-flood-stop v2: push 트리거 제거. schedule(매일 18 UTC) + 수동만 유지.
-  # baseline 갱신은 workflow_dispatch update_baseline=true 로 명시 호출.
 
 jobs:
   check:
