@@ -30,6 +30,16 @@ import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
+import { extractPriceTable } from '@/lib/parser/deterministic/price-table';
+import { detectFerry } from '@/lib/parser/deterministic/ferry-classifier';
+import { extractBullets } from '@/lib/parser/deterministic/bullets';
+import { extractNotices } from '@/lib/parser/deterministic/notices';
+import { maybeTriggerMrtSync } from '@/lib/parser/mrt-lazy-sync';
+import { recordHotelsFromItinerary } from '@/lib/parser/hotel-canonical-learner';
+import { detectIssues as detectCriticIssues, autoFixIssues as autoFixCriticIssues } from '@/lib/parser/critic';
+import { parseSections, classifyItem as classifyByContext } from '@/lib/parser/section-aware-parser';
+import { recordSignal } from '@/lib/parser/classification-signals';
+import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
 
@@ -382,6 +392,36 @@ const DEST_KEYWORDS = [
   '홍콩', '마카오', '대만', '타이페이', '괌', '사이판',
 ];
 
+/**
+ * 본문 텍스트에서 가장 빈도 높은 목적지 키워드를 추출 (DEST_CODE_MAP 매칭, 등장 횟수 기반).
+ * DeepSeek/Gemini 가 destination 을 빼먹은 케이스 회복용 fallback — 2026-05-14 박제.
+ * 본문 시작 3000자만 스캔 (랜드사 헤더·일정표 영역 위주). 출발지 표현(부산/김해 등)은 제외.
+ */
+const DEST_FALLBACK_SKIP = new Set([
+  '부산', '인천', '김포', '제주', '청주', '대구',
+]);
+function inferDestinationFromText(rawText: string | undefined): string {
+  if (!rawText) return '';
+  const head = rawText.slice(0, 3000);
+  const counts: Record<string, number> = {};
+  for (const name of Object.keys(DEST_CODE_MAP)) {
+    if (DEST_FALLBACK_SKIP.has(name)) continue;
+    if (name.length < 2) continue;
+    const re = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    const m = head.match(re);
+    if (m && m.length > 0) counts[name] = m.length;
+  }
+  let best = '';
+  let bestCount = 0;
+  for (const [name, count] of Object.entries(counts)) {
+    if (count > bestCount) {
+      best = name;
+      bestCount = count;
+    }
+  }
+  return bestCount >= 1 ? best : '';
+}
+
 function extractDestinationFromFilename(name: string): string {
   const base = name.replace(/\.[^.]+$/, '');
   for (const kw of DEST_KEYWORDS) {
@@ -724,6 +764,158 @@ export async function POST(request: NextRequest) {
         // ── G3. Zod 검증 + 가격 행 변환 ──────────────────────────────────────
         applyDeterministicExtractedDataFixes(ed);
 
+        // destination 미추출 회복 — 본문 키워드 빈도 매칭 (2026-05-14 박제, 부관훼리 회귀)
+        if (!ed.destination || !ed.destination.trim()) {
+          const inferred = inferDestinationFromText(parsedDocument.rawText)
+            || tempDest
+            || '';
+          if (inferred) {
+            ed.destination = inferred;
+            console.log(`[Upload API] destination 본문 fallback 적용: "${inferred}" (LLM 미추출 → 키워드 빈도 매칭)`);
+          }
+        }
+
+        // ── Hybrid v2 Stage 1: Deterministic Layer (2026-05-14 박제) ────────────
+        //   LLM 이 못 잡거나 잘못 잡은 결정적 필드를 정규식으로 회복. 빈 필드만 채움 (기존값 보존).
+        //   부관훼리·베트남 같은 ferry/카탈로그 케이스에서 핵심 효과.
+        const rawForDeterm = parsedDocument.rawText ?? '';
+
+        // 1) Ferry/Cruise 자동 분류 — title/본문 키워드 매칭. 이미 LLM 이 'cruise' 잡으면 그대로.
+        const ferry = detectFerry(rawForDeterm, ed.title);
+        if (ferry.isFerry) {
+          if (!ed.product_type || ed.product_type === 'package') {
+            ed.product_type = 'cruise';
+          }
+          if (!ed.airline && ferry.ferryName) {
+            ed.airline = ferry.ferryName;
+          }
+          console.log(`[Upload API] Ferry 결정적 분류: ${ferry.matchedKeyword} → product_type=cruise, airline=${ferry.ferryName ?? 'kept'}`);
+        }
+
+        // 2) 월·요일별 가격표 결정적 추출 — LLM 이 price_tiers 0 건이면 정규식으로 채움.
+        const llmPriceTiers = Array.isArray(ed.price_tiers) ? ed.price_tiers.length : 0;
+        if (llmPriceTiers === 0) {
+          const detTiers = extractPriceTable(rawForDeterm);
+          if (detTiers.length > 0) {
+            ed.price_tiers = detTiers as typeof ed.price_tiers;
+            // 최저가도 함께 보정
+            const lowest = detTiers
+              .map(t => t.adult_price)
+              .filter((p): p is number => typeof p === 'number' && p > 0);
+            if (lowest.length > 0 && (!ed.price || ed.price === 0)) {
+              ed.price = Math.min(...lowest);
+            }
+            console.log(`[Upload API] price_tiers 결정적 추출: ${detTiers.length} 행, 최저가 ${ed.price?.toLocaleString?.() ?? '?'} (LLM 0건 회복)`);
+          }
+        }
+
+        // 3) ▶ 불릿 inclusions/excludes 결정적 추출 — LLM 0건이면 정규식으로 채움.
+        const bullets = extractBullets(rawForDeterm);
+        if ((!ed.inclusions || ed.inclusions.length === 0) && bullets.inclusions.length > 0) {
+          ed.inclusions = bullets.inclusions;
+          console.log(`[Upload API] inclusions 결정적 추출: ${bullets.inclusions.length} 건`);
+        }
+        if ((!ed.excludes || ed.excludes.length === 0) && bullets.excludes.length > 0) {
+          ed.excludes = bullets.excludes;
+          console.log(`[Upload API] excludes 결정적 추출: ${bullets.excludes.length} 건`);
+        }
+
+        // 4) notices_parsed 4-type 결정적 분류 — Cross-validation 룰 C3 통과 핵심.
+        //    LLM 이 4 타입 분류를 자주 빼먹어 confidence 점수 하락 원인이 됨.
+        const detNotices = extractNotices(rawForDeterm);
+        const llmNoticesRaw: unknown[] = Array.isArray(ed.notices_parsed) ? ed.notices_parsed : [];
+        // type narrowing: notices_parsed 가 string|NoticeItem union 이라 object 만 추출
+        const llmNoticeTypes = new Set<string>();
+        for (const n of llmNoticesRaw) {
+          if (n && typeof n === 'object' && 'type' in n) {
+            const t = (n as { type?: unknown }).type;
+            if (typeof t === 'string') llmNoticeTypes.add(t);
+          }
+        }
+        let appended = 0;
+        const additional: typeof detNotices = [];
+        for (const dn of detNotices) {
+          if (llmNoticeTypes.has(dn.type)) continue;
+          additional.push(dn);
+          llmNoticeTypes.add(dn.type);
+          appended++;
+        }
+        if (appended > 0) {
+          ed.notices_parsed = [...llmNoticesRaw, ...additional] as typeof ed.notices_parsed;
+          console.log(`[Upload API] notices_parsed 결정적 보완: +${appended} type (전체 ${(ed.notices_parsed as unknown[]).length}/4)`);
+        }
+
+        // 5) Critic Agent — cross-field consistency 결정적 검증 (DocSync 2605.02163 패턴, 2026-05-14).
+        //    title↔destination, ferry↔airline, days↔nights, price-range 자동 검증 + 자동 수정 가능 항목 적용.
+        const criticIssues = detectCriticIssues({
+          title: ed.title,
+          destination: ed.destination,
+          airline: ed.airline,
+          product_type: ed.product_type,
+          duration: ed.duration,
+          nights: (ed as { nights?: number }).nights ?? null,
+          price: ed.price ?? null,
+          departure_airport: ed.departure_airport,
+          rawText: rawForDeterm,
+        });
+        if (criticIssues.length > 0) {
+          console.warn(`[Upload API] Critic ${criticIssues.length} issue(s):`,
+            criticIssues.map(i => `${i.severity}/${i.rule}`).join(' | '));
+          const { fixed } = autoFixCriticIssues(ed as unknown as Record<string, unknown>, criticIssues);
+          if (fixed.length > 0) {
+            console.log(`[Upload API] Critic 자동 수정 ${fixed.length}건: ${fixed.join(', ')}`);
+          }
+        }
+
+        // 6) Section-Aware Classifier — 사장님 비전 V5: 원문 섹션 위치가 분류 SSOT (2026-05-14)
+        //    같은 "마사지 120분" 도 어느 섹션에 등장했는지가 perk/inclusion/optional 결정 SSOT.
+        //    inclusions / excludes / optional 의 각 항목을 섹션 컨텍스트로 재검증 + signals 누적.
+        try {
+          const sectionResult = parseSections(rawForDeterm);
+          const recordOne = (text: string, defaultCategory: 'inclusion' | 'optional' | 'exclude' | 'perk') => {
+            if (!text || text.length < 2 || text.length > 200) return;
+            const offset = rawForDeterm.indexOf(text);
+            const ctx = offset >= 0 ? sectionResult.classifyOffset(offset) : 'unknown';
+            const final = classifyByContext(text, ctx);
+            // signals 누적 (fire-and-forget)
+            void recordSignal({
+              keyword: text,
+              category: final.category === 'unknown' ? defaultCategory : final.category,
+              destination: ed.destination ?? null,
+              product_type: ed.product_type ?? null,
+              source: 'local',
+              confidence: final.confidence,
+            });
+          };
+          for (const inc of ed.inclusions ?? []) recordOne(inc, 'inclusion');
+          for (const exc of ed.excludes ?? []) recordOne(exc, 'exclude');
+          for (const opt of ed.optional_tours ?? []) {
+            const name = (opt as { name?: string })?.name;
+            if (name) recordOne(name, 'optional');
+          }
+          console.log(`[Upload API] Section-Aware signals 누적: inc ${ed.inclusions?.length ?? 0} + exc ${ed.excludes?.length ?? 0} + opt ${ed.optional_tours?.length ?? 0}`);
+        } catch (e) {
+          console.warn('[Upload API] section-aware 누적 실패 (무시):', (e as Error).message);
+        }
+
+        // 7) Recommendation Copy 자동 생성 — product_summary 무의미하면 결정적 카피로 교체 (UX-5)
+        if (isWeakCopy(ed.product_summary, ed.title)) {
+          const auto = generateRecommendationCopy({
+            title: ed.title,
+            destination: ed.destination,
+            duration: ed.duration,
+            departure: (ed as { departure?: string }).departure ?? null,
+            product_type: ed.product_type,
+            inclusions: ed.inclusions,
+            product_highlights: ed.product_highlights,
+            airline: ed.airline,
+          });
+          if (auto.length > (ed.product_summary?.length ?? 0)) {
+            console.log(`[Upload API] product_summary 자동 재생성: "${auto}"`);
+            ed.product_summary = auto;
+          }
+        }
+
         let validation = validateExtractedProduct(ed);
         if (validation.warnings.length > 0) {
           console.warn('[Upload API] 검증 경고:', validation.warnings.join(' | '));
@@ -811,9 +1003,11 @@ export async function POST(request: NextRequest) {
         const uploadGate: UploadGate = classifyUploadGate(validation, confidence, priceRows.length);
         console.log(`[Upload API] 업로드 게이트: ${uploadGate} (confidence=${(confidence * 100).toFixed(0)}%, priceRows=${priceRows.length})`);
 
-        // BLOCKED: 핵심 필드 누락 → DB 저장 차단 + 자동 기록
+        // BLOCKED: 핵심 필드 누락 → 학습 로그 + 검토 큐 기록 후 INSERT 강행 (status=REVIEW_NEEDED)
+        // 2026-05-14 박제: INSERT 자체를 건너뛰면 사장님 어드민 상품관리에서 보이지 않아
+        // "방어막을 강화할수록 워크플로우가 끊기는" 안티패턴 (사장님 부관훼리 케이스).
+        // → INSERT 는 진행하되 determineProductStatus 가 REVIEW_NEEDED 로 자동 강등 (모바일 노출 X).
         if (uploadGate === 'BLOCKED') {
-          // 실패 패턴을 extractions_corrections에 자동 기록 (자가학습 flywheel)
           if (isSupabaseConfigured) {
             const correctionRows = validation.errors.map(e => ({
               field_path: e.match(/\[([^\]]+)\]/)?.[1] ?? 'unknown',
@@ -842,8 +1036,8 @@ export async function POST(request: NextRequest) {
             product_title: title,
             land_operator_id: effectiveLandOperatorId,
           });
-          saveErrors.push({ title, error: `필수 필드 누락 (BLOCKED): ${validation.errors.join(', ')}` });
-          continue; // DB INSERT 없이 다음 상품으로
+          console.warn(`[Upload API] BLOCKED 분기 — INSERT 강행 + REVIEW_NEEDED 강등 (어드민 상품관리에서 보완 가능)`);
+          // ⚠️ continue 없음 — INSERT 까지 진행
         }
 
         // REVIEW_NEEDED: confidence 낮음 → 저장 후 수동 검토 필요 패턴 기록
@@ -1106,6 +1300,20 @@ export async function POST(request: NextRequest) {
 
           console.log('[Upload API] travel_packages INSERT 완료:', pkgResult?.id, '← FK:', internalCode);
 
+          // MRT 3-Tier Hybrid: Tier 2 Lazy On-Demand (2026-05-14 박제)
+          //   destination 의 MRT canonical attraction 이 부족하면 백그라운드로 sync 트리거.
+          //   다음 등록부터 fast match. fire-and-forget — 등록 흐름 지연 0.
+          void maybeTriggerMrtSync(ed.destination ?? null);
+
+          // 호텔 빈도 기반 canonical 학습 (사장님 인사이트, 2026-05-14 박제)
+          //   itinerary_data.days[].hotel.name 을 hotel_canonical 테이블에 누적 →
+          //   3회 이상 등장 → 자동 canonical 승격. fuzzy 0.85 로 표기 변형 흡수.
+          void recordHotelsFromItinerary({
+            itineraryData: product.itineraryData,
+            destination: ed.destination ?? null,
+            country: null,
+          });
+
           // ── 미매칭 관광지 자동 수집 (정규화 후보 기반) ──────────────────────
           if (pkgResult?.id && enrichment.unmatchedCandidates.length > 0) {
             for (const u of enrichment.unmatchedCandidates) {
@@ -1184,53 +1392,22 @@ export async function POST(request: NextRequest) {
           );
 
           // 기존 관광지 mention_count 증가 (정규명 매칭 성공분 기준)
+          // ⚠️ supabase rpc() 는 PromiseLike 라 .catch 가 없음 → .then(undefined, …) 사용
+          // (PostgrestBuilder 가 PromiseLike 만 구현. .catch() 시 "is not a function" throw 후
+          //  외부 try/catch 가 잡아 attractions 학습 블록 전체가 매번 silently 실패해 왔음.)
           for (const name of [...matchedCanonicalNames]) {
-            await supabaseAdmin.rpc('increment_mention_count', { attraction_name: name }).catch(() => {});
+            await supabaseAdmin
+              .rpc('increment_mention_count', { attraction_name: name })
+              .then(undefined, () => {});
           }
 
+          // 🚫 ERR-20260418-33 자동 시드 금지 (manage-attractions.md SSOT)
+          //   신규 attraction 의 short_desc/long_desc 를 Gemini 가 자동 생성해 DB INSERT 하던 코드는 제거됨.
+          //   매칭 실패한 activity 는 위에서 이미 `unmatched_activities` 에 플래그만 찍었고,
+          //   사장님이 `/admin/attractions/unmatched` 에서 직접 검토·등록한다.
+          //   (회귀 사례: destination=null 인 상태에서 Gemini 호출이 country="" 로 들어가 oversees 까지 시드.)
           if (newActivities.length > 0) {
-            const apiKey = getSecret('GOOGLE_AI_API_KEY');
-            if (apiKey) {
-              const { GoogleGenerativeAI } = await import('@google/generative-ai');
-              const genAI = new GoogleGenerativeAI(apiKey);
-              const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { temperature: 0.3 } });
-
-              const uniqueNames = [...new Set(newActivities.map(a => a.activity))].slice(0, 30); // 최대 30개
-              const dest = newActivities[0]?.destination || '';
-
-              const prompt = (await getPrompt('attraction-extract-v1', ATTRACTION_EXTRACT_FALLBACK))
-                .replace('{{names_list}}', uniqueNames.map((n, i) => `${i + 1}. ${n}`).join('\n'));
-
-              try {
-                const result = await model.generateContent(prompt);
-                const raw = result.response.text().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-                const attractions = JSON.parse(raw) as { name: string; desc: string; category: string; emoji: string; skip?: boolean }[];
-
-                // skip이 아닌 항목만 DB에 UPSERT
-                const toInsert = attractions
-                  .filter(a => !a.skip && a.name && a.desc)
-                  .map(a => ({
-                    name: a.name,
-                    short_desc: a.desc,
-                    country: dest,
-                    category: a.category || 'sightseeing',
-                    emoji: a.emoji || '📍',
-                    mention_count: 1,
-                  }));
-
-                if (toInsert.length > 0) {
-                  await supabaseAdmin
-                    .from('attractions')
-                    .upsert(toInsert, { onConflict: 'name', ignoreDuplicates: false })
-                    .then(({ error: upsertErr }: { error: { message: string } | null }) => {
-                      if (upsertErr) console.warn('[Upload API] attractions UPSERT 경고:', upsertErr.message);
-                      else console.log('[Upload API] attractions 등록:', toInsert.length, '개 신규');
-                    });
-                }
-              } catch (attrErr) {
-                console.warn('[Upload API] attractions 생성 실패 (비중단):', attrErr instanceof Error ? attrErr.message : attrErr);
-              }
-            }
+            console.log(`[Upload API] 신규 매칭 후보 ${newActivities.length}개 → unmatched_activities 큐 (자동 시드 금지)`);
           }
         }
       } catch (attrError) {

@@ -72,10 +72,11 @@ export async function runCoVeInBackground(packageId: string): Promise<void> {
       const coveAsChecks = warnings
         .filter(w => w.verdict !== 'verified')
         .map(w => ({
-          id: `cove_${w.claim_id}`,
+          id: `cove_${w.claim_id ?? 'unknown'}`,
           severity: (w.severity === 'critical' ? 'critical' : w.severity === 'medium' ? 'medium' : 'high') as 'critical' | 'high' | 'medium',
           passed: false,
-          message: `CoVe ${w.verdict}: ${w.claim_text.slice(0,80)}`,
+          // claim_text 가 undefined 인 cove_audit.js 응답에서 전체 감사가 throw 되던 회귀 가드 (2026-05-14)
+          message: `CoVe ${w.verdict ?? 'unknown'}: ${(w.claim_text ?? '').slice(0,80)}`,
         }));
 
       await supabaseAdmin

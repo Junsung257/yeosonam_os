@@ -760,8 +760,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div>
               <p className="text-gray-500 text-sm mb-1">판매가</p>
               <div className="flex items-baseline gap-1">
-                <span className="text-[28px] font-black text-gray-900">₩{(displayPrice || 0).toLocaleString()}</span>
-                <span className="text-gray-500 text-sm">~</span>
+                {Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0 ? (
+                  <>
+                    <span className="text-[28px] font-black text-gray-900">₩{(displayPrice as number).toLocaleString()}</span>
+                    <span className="text-gray-500 text-sm">~</span>
+                  </>
+                ) : (
+                  // 2026-05-14 박제: minPrice 가 Infinity 가 되어 "₩∞" 표시되던 사고 차단.
+                  // 가격 미추출 상품은 "가격 문의" 안내 — 고객은 카톡 상담으로 유도.
+                  <span className="text-[22px] font-extrabold text-brand">가격 문의</span>
+                )}
               </div>
             </div>
             {pkg.ticketing_deadline && (() => {
@@ -779,16 +787,22 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             })()}
           </div>
 
-          {/* 핵심 특전 — highlights 없으면 inclusions.program에서 최대 4개 fallback */}
+          {/* 핵심 특전 — UX-1 강화: 진짜 특전(화이트리스트)만 표시, 0건이면 섹션 숨김 (2026-05-14) */}
           {(() => {
+            // PERK_WHITELIST_RE 와 동기화 — 진짜 보너스만 (마사지 N분/업그레이드/특식/케이블카 등)
+            const PERK_RE = /마사지\s*\d+분|스파|쿠킹\s*클래스|와인\s*시음|VIP|업그레이드|선물|망고도시락|콩카페|위즐\s*커피|커피핀|특식|미슐랭|사진\s*촬영|케이블카|스피드보트|비경\s*투어|관람차|온천|디너\s*쇼|야경\s*투어|꽃잎\s*세레모니|허니문\s*특전|직항/;
+            // 명백한 포함사항 블랙리스트 — 특전 아님
+            const NOT_PERK_RE = /훼리비|페리비|항공료|TAX|택스|유류|부두세|출국세|공항세|관광지\s*입장|차량|버스|가이드|보험$|호텔$|기본|선내식\s*\d*회/;
+            const filterRealPerk = (s: string) => PERK_RE.test(s) && !NOT_PERK_RE.test(s);
+
             const items = pkg.product_highlights && pkg.product_highlights.length > 0
-              ? pkg.product_highlights.slice(0, 4)
-              : (view?.inclusions.program ?? []).filter(p => /직항|마사지|무료|팁|입장료|가이드|업그레이드/.test(p)).slice(0, 4);
-            if (items.length === 0) return null;
+              ? pkg.product_highlights.filter(filterRealPerk).slice(0, 4)
+              : (view?.inclusions.program ?? []).filter(filterRealPerk).slice(0, 4);
+            if (items.length === 0) return null; // 진짜 특전 없으면 섹션 자체 숨김
             return (
               <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
                 {items.map((h, i) => {
-                  const icon = /직항/.test(h) ? '✈️' : /마사지/.test(h) ? '💆' : /무료|업그레이드/.test(h) ? '🎁' : /팁.*포함|포함.*팁|팁전부/.test(h) ? '✅' : /호텔|리조트|스파/.test(h) ? '🏨' : /가이드/.test(h) ? '👤' : '✨';
+                  const icon = /직항/.test(h) ? '✈️' : /마사지|스파/.test(h) ? '💆' : /업그레이드|선물/.test(h) ? '🎁' : /특식|미슐랭/.test(h) ? '🍽️' : /케이블카|스피드보트|관람차/.test(h) ? '🎢' : /온천/.test(h) ? '♨️' : '✨';
                   return <span key={i} className="bg-brand-light text-brand px-2.5 py-1 rounded-lg text-xs font-medium">{icon} {h}</span>;
                 })}
               </div>
@@ -1654,9 +1668,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         );
       })()}
 
-      {/* ═══ FAQ ═══ */}
+      {/* ═══ FAQ ═══ (UX-2 product_type 별 contextual FAQ — 2026-05-14) */}
       <PackageFAQ
         destination={pkg.destination ?? ''}
+        productType={pkg.product_type ?? null}
         kakaoChannel={() => openKakaoChannel({
           internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
           productTitle: pkg.products?.display_name || pkg.title,

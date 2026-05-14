@@ -12,21 +12,53 @@ allowed-tools: Read, Grep, Glob, Edit, Bash(node db/seed_attractions*)
 
 ---
 
-## 🚨 절대 금지 사항 (ERR-20260418-33 재발 방지)
+## 🔄 정책 갱신 (2026-05-14 — 사장님 비전 V5)
 
-### ❌ 하지 말 것
+**ERR-20260418-33 의 진짜 의도**: "출처 없는 AI 환각 자동 시드" 차단. **외부 source 기반 + paraphrase 검증** 은 안전하므로 허용.
 
-1. **상품 등록(/register) 시 관광지 자동 시드 금지**
-   - `register.md` 지시: "없으면 **시드 필요 플래그**" (플래그만, 자동 생성 X)
-   - 자동 시드하면 AI 환각 → 오매칭 → 고객 혼란
+### ✅ 허용 (사장님 비전 V5 박제)
 
-2. **`db/seed_XXX_attractions.js` 같은 지역별 임시 스크립트 생성 금지**
-   - 이미 통합 파이프라인이 있음 (`/admin/attractions/unmatched`)
-   - 임시 스크립트는 관리 부재 → 품질 악화
+1. **외부 source 기반 자동 시드 OK**
+   - Tier 1: MRT MCP (`mcp__myrealtrip__*`) — 우리 권한, 가장 안전
+   - Tier 2: Wikidata POI (`wikidata-poi.ts` + Wikipedia summary API) — 오픈 데이터
+   - Tier 3: 하나투어/모두투어 ad-hoc fetch (destination 당 10페이지/1년 1회, robots.txt 준수) — 별도 PR
+   - 모든 외부 텍스트는 **`raw_descriptions` (JSONB, internal)** 에 보존
+   - 고객 노출용 `short_desc`/`long_desc` 는 **`paraphrase-enforcer.ts`** 의 cosine ≤ 0.6 검증 통과한 결과만
 
-3. **AI(Sonnet/Gemini)로 short_desc/long_desc 자동 생성 후 바로 DB INSERT 금지**
-   - 환각·오류·중복 유발
-   - 반드시 사용자 검토 거쳐야 함
+2. **자동 시드 컬럼 추적 필수**
+   - `source` (mrt/wikidata/hanatour/modetour/manual)
+   - `external_url` (출처 URL)
+   - `confidence_score` (0.00~1.00)
+   - `seeded_at` (자동 시드 시각)
+
+3. **사장님 정정 시 manual override**
+   - `is_manual_override=true` 설정 시 자동 갱신 차단
+
+### ❌ 여전히 금지
+
+1. **출처 없는 LLM 단독 생성** (예전 ERR-20260418-33 그 자체)
+   - prompt → Gemini → 그대로 INSERT 는 금지
+   - 반드시 외부 source 원문 + paraphrase + cosine 검증 chain 통과
+
+2. **paraphrase 검증 우회**
+   - cosine ≥ 0.6 (원문과 너무 비슷) 시 INSERT 차단
+   - 실패하면 다른 source 시도 또는 unmatched 큐
+
+3. **`db/seed_XXX_attractions.js` 같은 지역별 임시 스크립트 생성 금지**
+   - 이미 통합 파이프라인 (`src/lib/parser/auto-attraction-seeder.ts`) 존재
+   - 새로 만들지 말 것
+
+### 🧠 파이프라인 (auto-attraction-seeder.ts)
+
+```
+신규 키워드 발견
+  → attractions exact 매칭 시도 (이미 있으면 skip)
+  → Tier 1 MRT MCP 검색 (호출자가 사전 주입)
+  → Tier 2 Wikidata Wikipedia summary fetch
+  → Paraphrase Enforcer (cosine < 0.6)
+  → attractions UPSERT (source / external_url / confidence_score)
+  → 다음 등록부터 instant exact match
+```
 
 ---
 

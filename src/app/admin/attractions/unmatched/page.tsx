@@ -291,6 +291,25 @@ export default function UnmatchedPage() {
         <div className="flex gap-2 flex-wrap justify-end">
           <button
             type="button"
+            onClick={async () => {
+              if (!confirm('새 한글 fuzzy 매칭으로 대기 항목을 한 번에 retry 합니다 (최대 600건).\n시간이 약 1~2분 걸릴 수 있습니다.')) return;
+              try {
+                const res = await fetch('/api/admin/attractions/retry-unmatched?limit=600', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error ?? '실패');
+                alert(`✓ retry 완료\n처리 ${data.unmatched_processed}건 / 해소 ${data.resolved}건 / 남은 pending ${data.remaining_pending}건\n샘플: ${(data.sample_matches ?? []).slice(0, 5).map((s: { activity: string; canonical: string }) => `${s.activity}→${s.canonical}`).join(', ')}`);
+                window.location.reload();
+              } catch (err) {
+                alert(`retry 실패: ${err instanceof Error ? err.message : err}`);
+              }
+            }}
+            className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
+            title="새 Hangul fuzzy + MRT canonical 매칭기로 대기 항목 자동 retry"
+          >
+            🔁 새 매칭으로 retry
+          </button>
+          <button
+            type="button"
             onClick={() => void loadBootstrap()}
             disabled={bootstrapLoading}
             className="px-3 py-1.5 bg-amber-700 text-white text-sm rounded-lg hover:bg-amber-800 disabled:opacity-50"

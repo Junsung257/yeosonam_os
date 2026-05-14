@@ -3,7 +3,10 @@
  * - A4 템플릿 + 랜딩페이지 공통 사용
  * - aliases 매칭 지원
  * - 미매칭 항목 수집 기능
+ * - 2026-05-14 박제: Step 7 Hangul Fuzzy + MRT canonical 우선 매칭 추가
  */
+
+import { bestFuzzyMatch } from './parser/hangul-fuzzy';
 
 export interface AttractionData {
   id?: string;
@@ -17,6 +20,8 @@ export interface AttractionData {
   category?: string | null;
   aliases?: string[];
   photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
+  /** MRT canonical 여부 — 동일 fuzzy 후보 중 우선 선택 (2026-05-14) */
+  mrt_gid?: string | null;
 }
 
 // 매칭 제외 키워드 (일반 이동/휴식 활동)
@@ -38,6 +43,10 @@ const MATCH_STOP_WORDS = new Set([
   '체크인', '체크아웃', '휴식', '투숙', '공항', '미팅', '가이드',
   '수속', '탑승', '호텔식', '현지식', '기내식', '한식', '자유',
   '시내', '시장', '거리', '면세점', '마사지', '온천', '쇼핑',
+  // 2026-05-14 박제 — "하노이 맥주거리→삿포로 맥주박물관" / "스피드보트 체험→스쿠버다이빙 체험"
+  // / "영화 촬영지 항루언→LA 아카데미 영화 박물관" 사고 재발 방지.
+  // 일반 활동 descriptor 가 keyword split 단계에서 무관 attraction 을 끌어오던 패턴.
+  '맥주', '영화', '체험', '촬영', '다이빙', '케이블카', '입장', '관람', '탐방',
   // ERR-20260418-28 — 일반 장소 키워드 (오매칭 방지)
   '공원', '사원', '교회', '성당', '광장', '박물관', '궁전', '탑',
   '섬', '해변', '호수', '다리', '거리', '야시장', '동굴', '산',
@@ -66,17 +75,21 @@ export interface AttractionIndex {
   byLowerName: Map<string, AttractionData>;     // 대소문자 무시 정확 이름 → 즉시 룩업
   byLowerAlias: Map<string, AttractionData>;    // 별칭 정확 룩업
   substringList: AttractionData[];              // 이름 길이 DESC 정렬 (긴 이름 우선 매칭)
+  /** destination 없이 빌드된 인덱스 — keyword split 단계 SKIP 하여 일반어 오매칭 방지 (2026-05-14) */
+  degraded: boolean;
 }
 
 export function buildAttractionIndex(
   attractions: AttractionData[],
   destination?: string,
 ): AttractionIndex {
-  const filtered = destination
+  const destTrim = destination?.trim() || '';
+  const degraded = destTrim.length === 0;
+  const filtered = destTrim
     ? attractions.filter(a =>
-        !a.region || !destination ||
-        destination.includes(a.region) || (a.region && a.region.includes(destination)) ||
-        (a.country && destination.includes(a.country)))
+        !a.region || !destTrim ||
+        destTrim.includes(a.region) || (a.region && a.region.includes(destTrim)) ||
+        (a.country && destTrim.includes(a.country)))
     : attractions;
 
   const byLowerName = new Map<string, AttractionData>();
@@ -92,7 +105,7 @@ export function buildAttractionIndex(
   // 긴 이름이 짧은 이름보다 먼저 매칭되도록 정렬 (예: "메르데카 광장" > "광장")
   const substringList = filtered.slice().sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0));
 
-  return { filtered, byLowerName, byLowerAlias, substringList };
+  return { filtered, byLowerName, byLowerAlias, substringList, degraded };
 }
 
 /**
@@ -142,7 +155,11 @@ export function matchAttractionIndexed(
     }
   }
 
-  // 6. Keyword split
+  // 6. Keyword split — destination 없이 (degraded) 빌드된 인덱스에선 SKIP.
+  //    keyword split 은 "박물관"·"공원" 같은 단어를 분리해 양방향 substring 으로 매칭하는데,
+  //    destination 필터가 풀려 있으면 "하노이 맥주거리"가 "삿포로 맥주 박물관"에 매칭되는
+  //    크로스-국가 오매칭이 발생함 (2026-05-14 박제, ERR-attractions-degraded-misroute).
+  if (index.degraded) return null;
   for (const a of index.filtered) {
     if (!a.name) continue;
     const keywords = a.name.split(/[&,+/\s()（）]+/)
@@ -154,7 +171,47 @@ export function matchAttractionIndexed(
     }
   }
 
+  // 7. Hangul Fuzzy (Levenshtein + Jamo) — 음역 변형 흡수 (2026-05-14 박제)
+  //    "루브르박물관 ↔ 루브로박물관 ↔ 루불르박물관" / "불국사 ↔ 불국사절 ↔ 경주불국사" 같은
+  //    1~2자모 차이를 거리 ≤ 0.18 (similarity ≥ 0.82) 로 매칭. destination scope 안에서만
+  //    실행하여 크로스-국가 오매칭 차단. mrt_gid 있는 attraction 을 우선 선택 (MRT SSOT).
+  if (activity.length >= 3 && !MATCH_STOP_WORDS.has(activity)) {
+    const fuzzyCandidates = index.filtered.filter(a =>
+      a.name && a.name.length >= 3 && !MATCH_STOP_WORDS.has(a.name),
+    );
+    // MRT canonical 을 앞에 두기 (동일 fuzzy 점수면 mrt_gid 있는 것을 우선)
+    const ordered = [
+      ...fuzzyCandidates.filter(a => a.mrt_gid),
+      ...fuzzyCandidates.filter(a => !a.mrt_gid),
+    ];
+    const fuzzy = bestFuzzyMatch(activity, ordered, a => a.name, 0.82);
+    if (fuzzy) {
+      // fuzzy 매칭이 잡은 음역 변형은 자동으로 attractions_aliases 에 누적 → 다음 등록 즉시 exact alias match.
+      // fire-and-forget — matcher 가 동기 함수라 await 없이 호출 (recordAlias 가 supabase 미설정 시 noop).
+      void scheduleAliasRecord(fuzzy.candidate.name, activity);
+      return fuzzy.candidate;
+    }
+  }
+
   return null;
+}
+
+// dynamic import 캐싱 — 매번 import() 호출 비용 회피
+let _aliasLearnerImport: Promise<typeof import('./attraction-alias-learner')> | null = null;
+function scheduleAliasRecord(canonical: string, alias: string): void {
+  if (!canonical || !alias || canonical === alias) return;
+  const trimmed = alias.trim();
+  if (trimmed.length < 3) return;
+  if (!_aliasLearnerImport) _aliasLearnerImport = import('./attraction-alias-learner');
+  _aliasLearnerImport
+    .then(({ recordAlias }) =>
+      recordAlias({
+        canonical_name: canonical,
+        alias: trimmed,
+        source: 'reflexion',
+      }).catch(() => {}),
+    )
+    .catch(() => {});
 }
 
 // ── 렌더/요청 스코프 인덱스 캐시 (WeakMap) ──────────────────────────────────
@@ -179,7 +236,7 @@ function getOrBuildIndex(attractions: AttractionData[], destination?: string): A
 
 /**
  * 관광지 매칭 (aliases 지원)
- * 매칭 순서: exact name → aliases exact → DB name⊂activity → activity⊂DB name → aliases⊂activity → keyword split
+ * 매칭 순서: exact name → aliases exact → DB name⊂activity → activity⊂DB name → aliases⊂activity → keyword split → Hangul fuzzy
  *
  * 성능: WeakMap 캐시로 같은 attractions 배열 반복 호출 시 인덱스 재사용 (O(N) → O(log N) 실측).
  */
@@ -193,6 +250,7 @@ export function matchAttraction(
   const index = getOrBuildIndex(attractions, destination);
   return matchAttractionIndexed(activity, index);
 }
+
 
 /**
  * 한 activity 문자열에서 여러 관광지 매칭 (콤마 분리 + 개별 매칭)

@@ -1125,6 +1125,23 @@ const MULTI_PRODUCT_PHASE1_PROMPT = `여행상품 문서에서 모든 상품의 
 - 복수 상품이면 각 상품별 해당 열(Column)의 가격만 추출.
 - excluded_dates: 항공제외일을 YYYY-MM-DD 배열로 반드시 추출.
 
+★★★ 카탈로그 월·요일별 가격표 강제 추출 (2026-05-14 박제) ★★★
+원문에 "5월/6월/7월" 같은 월 헤더 + 요일(일-수, 목, 금, 토) + 날짜 리스트 + 가격이 표 형태로 나오면
+**반드시 모든 행을 price_tiers 로 풀어서** 추출. 예시:
+  원문: "5월 일-수 19,25,31 159,000 / 목 7,14,21,28 219,000"
+  → price_tiers: [
+      {"period_label":"5월 일-수","departure_dates":["YYYY-05-19","YYYY-05-25","YYYY-05-31"],"departure_day_of_week":"일,월,화,수","adult_price":159000},
+      {"period_label":"5월 목","departure_dates":["YYYY-05-07","YYYY-05-14","YYYY-05-21","YYYY-05-28"],"departure_day_of_week":"목","adult_price":219000}
+    ]
+빈 price_tiers 절대 금지. 가격표가 명시되어 있으면 단 한 행도 누락하지 말 것.
+
+★★★ Ferry/Cruise 상품 분류 (2026-05-14 박제) ★★★
+title 또는 본문에 "부관훼리", "뉴카멜리아", "카멜리아", "훼리", "페리", "선박", "크루즈" 키워드가 있으면:
+  - category: "cruise"
+  - product_type: "cruise"
+  - airline: 페리사명 (예: "부관훼리"). 항공편 표기 절대 금지.
+  - excluded_dates: 선박 운항 제외일.
+
 [
   {
     "title":"상품명","category":"package|golf|honeymoon|cruise|theme","product_type":"실속|품격|노팁노옵션|null",
@@ -1417,10 +1434,17 @@ export async function extractMultipleProducts(
 
     const route = classifyUploadDocumentComplexity(truncatedText);
     const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(truncatedText);
+    // 2026-05-14 박제: tier 무관, 헤더가 2개 이상이면 무조건 Map-Reduce.
+    //   - DeepSeek system prompt 가 같아 prefix cache 90% 적중 → 비용 절감
+    //   - 청크별 maxTokens 6000 으로 응답 잘림 위험 ↓ → 정확도 ↑
+    //   - 한 청크 실패해도 나머지는 살아남음 (graceful degradation)
+    //   - 회귀 사례: tier='simple' 로 잘못 분류되어 monolithic 64초 빈 배열로 빠지던 베트남 [VJ]/[VN] 케이스
     const mapReduceOn = !base64Image
       && process.env.UPLOAD_MAP_REDUCE !== '0'
-      && sections.length >= 2
-      && (route.tier === 'catalog' || route.tier === 'risky');
+      && sections.length >= 2;
+    if (mapReduceOn && route.tier !== 'catalog' && route.tier !== 'risky') {
+      console.log('[Parser] tier=' + route.tier + ' 이지만 헤더 ' + sections.length + '개 → Map-Reduce 강제 (정확도+캐시 우선)');
+    }
 
     let phase1Parsed: Record<string, unknown>[] | null = null;
     let phase1Usage: { provider: 'deepseek' | 'gemini'; input: number; output: number; cache_hit: number; elapsed_ms?: number } | undefined;
@@ -1595,12 +1619,20 @@ export async function extractMultipleProducts(
       phase1Parsed = safeParseJsonArray(phase1Raw);
       // DeepSeek/Gemini 텍스트가 success여도 본문이 깨진 JSON인 경우가 많음 → 구조화 출력으로 1회 재시도
       if ((!phase1Parsed || phase1Parsed.length === 0) && apiKey && !base64Image) {
-        console.warn('[Parser] Phase 1 JSON 비정상/빈 배열 — Gemini structured output 재시도');
+        // 디버그 가시성: DeepSeek/Gemini 가 무엇을 뱉었는지 확인 (2026-05-14 박제)
+        const previewLen = phase1Raw?.length ?? 0;
+        const head = (phase1Raw ?? '').slice(0, 200).replace(/\s+/g, ' ');
+        const tail = previewLen > 300 ? (phase1Raw ?? '').slice(-100).replace(/\s+/g, ' ') : '';
+        console.warn(`[Parser] Phase 1 JSON 비정상/빈 배열 — Gemini structured output 재시도 (raw ${previewLen}자, head="${head}"${tail ? `, tail="${tail}"` : ''})`);
         try {
           const retryTokens = estimateRequiredOutputTokens(truncatedText);
           phase1Raw = await callGeminiText(apiKey, truncatedText, phase1Prompt, MULTI_PRODUCT_SCHEMA, retryTokens);
           phase1Parsed = safeParseJsonArray(phase1Raw);
           phase1Usage = { provider: 'gemini', input: 0, output: 0, cache_hit: 0 };
+          if (!phase1Parsed || phase1Parsed.length === 0) {
+            const retryLen = phase1Raw?.length ?? 0;
+            console.warn(`[Parser] Phase 1 Gemini 재시도도 실패 (raw ${retryLen}자, head="${(phase1Raw ?? '').slice(0, 200).replace(/\s+/g, ' ')}")`);
+          }
         } catch (e) {
           console.warn('[Parser] Gemini structured Phase 1 재시도 실패:', e instanceof Error ? e.message : e);
         }

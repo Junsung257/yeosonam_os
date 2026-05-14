@@ -15,32 +15,78 @@ interface FaqItem {
   answer: string;
 }
 
-const COMMON_FAQS: FaqItem[] = [
-  {
-    question: '예약은 어떻게 하나요?',
-    answer: '하단 "카톡 예약하기" 버튼으로 카카오톡 채널에 연결되면, 원하시는 출발일과 인원을 알려주시면 바로 안내해드립니다. 상담 후 입금 확인으로 예약이 확정됩니다.',
-  },
-  {
-    question: '혼자도 참여할 수 있나요?',
-    answer: '네, 1인 참여 가능합니다. 단, 상품마다 최소 출발 인원이 있으며, 최소 인원 미달 시 출발이 취소될 수 있습니다. 출발 확정 여부는 달력에서 "출발확정" 표시로 확인하세요.',
-  },
-  {
-    question: '현지 가이드는 한국인인가요?',
-    answer: '네, 한국인 가이드가 동행합니다. 언어 걱정 없이 편안하게 여행하실 수 있습니다.',
-  },
+// 2026-05-14 UX-2: product_type 별 FAQ 풀 분기 (사장님 비전 V5)
+//   cruise/ferry → 항공 FAQ 제거, 선실/멀미/차량탑승 FAQ
+//   golf → 그린피/캐디팁 FAQ
+//   theme → 일반 패키지 FAQ
+//   default(package) → 기존 6개
+
+const BOOKING_FAQ: FaqItem = {
+  question: '예약은 어떻게 하나요?',
+  answer: '하단 "카톡 예약하기" 버튼으로 카카오톡 채널에 연결되면, 원하시는 출발일과 인원을 알려주시면 바로 안내해드립니다. 상담 후 입금 확인으로 예약이 확정됩니다.',
+};
+const SOLO_FAQ: FaqItem = {
+  question: '혼자도 참여할 수 있나요?',
+  answer: '네, 1인 참여 가능합니다. 단, 상품마다 최소 출발 인원이 있으며, 최소 인원 미달 시 출발이 취소될 수 있습니다. 출발 확정 여부는 달력에서 "출발확정" 표시로 확인하세요.',
+};
+const GUIDE_FAQ: FaqItem = {
+  question: '현지 가이드는 한국인인가요?',
+  answer: '네, 한국인 가이드가 동행합니다. 언어 걱정 없이 편안하게 여행하실 수 있습니다.',
+};
+const CANCEL_FAQ: FaqItem = {
+  question: '취소 시 환불은 어떻게 되나요?',
+  answer: '출발 30일 전 취소 시 전액 환불, 20일 전 10% 공제, 10일 전 30% 공제, 3일 전 50% 공제됩니다. 전체 약관은 하단 유의사항을 참고해 주세요.',
+};
+const WIFI_FAQ: FaqItem = {
+  question: '현지 인터넷(유심/포켓와이파이)은 어떻게 준비하나요?',
+  answer: '인천공항 또는 현지 공항에서 유심 구매를 권장합니다. 출국 전 통신사 로밍을 신청하셔도 됩니다. 포켓와이파이는 일행이 여럿이면 편리합니다.',
+};
+
+const PACKAGE_FAQS: FaqItem[] = [
+  BOOKING_FAQ, SOLO_FAQ, GUIDE_FAQ,
   {
     question: '항공 수하물은 몇 kg까지 가능한가요?',
     answer: '항공사마다 다릅니다. 일반적으로 위탁 수하물 20kg + 기내 수하물 10kg이나, 출발 전 항공사 기준을 확인해 주세요. 추가 수하물은 현장 구매 가능합니다.',
   },
-  {
-    question: '취소 시 환불은 어떻게 되나요?',
-    answer: '출발 30일 전 취소 시 전액 환불, 20일 전 10% 공제, 10일 전 30% 공제, 3일 전 50% 공제됩니다. 전체 약관은 하단 유의사항을 참고해 주세요.',
-  },
-  {
-    question: '현지 인터넷(유심/포켓와이파이)은 어떻게 준비하나요?',
-    answer: '인천공항 또는 현지 공항에서 유심 구매를 권장합니다. 출국 전 통신사 로밍을 신청하셔도 됩니다. 포켓와이파이는 일행이 여럿이면 편리합니다.',
-  },
+  CANCEL_FAQ, WIFI_FAQ,
 ];
+
+const CRUISE_FAQS: FaqItem[] = [
+  BOOKING_FAQ, SOLO_FAQ, GUIDE_FAQ,
+  {
+    question: '선실(객실) 등급과 업그레이드는 어떻게 하나요?',
+    answer: '기본 다인실로 안내되며, 1등실·디럭스룸 업그레이드는 대기 조건으로 가능합니다. 업그레이드 비용은 상품별 안내사항을 참고해 주세요. 사전 신청은 카톡 상담으로.',
+  },
+  {
+    question: '선박 멀미가 걱정됩니다. 어떻게 대비하나요?',
+    answer: '출국 전 약국에서 멀미약(키미테 패치 등)을 미리 준비하시기 바랍니다. 선실에서 휴식 + 수분 섭취 + 갑판에서 수평선 응시가 도움이 됩니다. 큰 선박은 흔들림이 적은 편입니다.',
+  },
+  {
+    question: '차량을 가지고 탑승할 수 있나요?',
+    answer: '본 상품은 도보 탑승 패키지입니다. 차량 동반 탑승은 별도 상품이며, 카톡으로 문의해 주세요.',
+  },
+  CANCEL_FAQ, WIFI_FAQ,
+];
+
+const GOLF_FAQS: FaqItem[] = [
+  BOOKING_FAQ, SOLO_FAQ, GUIDE_FAQ,
+  {
+    question: '그린피와 캐디 팁이 포함되나요?',
+    answer: '상품별로 다릅니다. 일정표의 포함/불포함 사항을 확인해 주세요. 미포함 시 현지에서 별도 결제하시며, 캐디 팁은 18홀 기준 현지 시세 안내해드립니다.',
+  },
+  {
+    question: '클럽 대여가 가능한가요?',
+    answer: '대부분의 골프장에서 클럽 대여가 가능합니다. 사전 예약을 권장하며, 비용은 1라운드 기준 50~100 USD입니다.',
+  },
+  CANCEL_FAQ, WIFI_FAQ,
+];
+
+/** product_type → FAQ 풀 선택 */
+function getFaqsByProductType(productType?: string | null): FaqItem[] {
+  if (productType === 'cruise' || productType === 'ferry') return CRUISE_FAQS;
+  if (productType === 'golf') return GOLF_FAQS;
+  return PACKAGE_FAQS;
+}
 
 const DESTINATION_FAQS: Record<string, FaqItem[]> = {
   다낭: [
@@ -121,12 +167,15 @@ function FaqRow({ item }: { item: FaqItem }) {
 
 interface Props {
   destination: string;
+  /** product_type — cruise/ferry/golf/package — FAQ 풀 분기 (2026-05-14 UX-2) */
+  productType?: string | null;
   kakaoChannel?: () => void;
 }
 
-export default function PackageFAQ({ destination, kakaoChannel }: Props) {
+export default function PackageFAQ({ destination, productType, kakaoChannel }: Props) {
   const destFaqs = getDestinationFaqs(destination ?? '');
-  const allFaqs = [...destFaqs, ...COMMON_FAQS];
+  const baseFaqs = getFaqsByProductType(productType);
+  const allFaqs = [...destFaqs, ...baseFaqs];
 
   return (
     <section className="px-4 py-8">
