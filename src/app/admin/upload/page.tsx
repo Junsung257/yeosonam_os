@@ -63,6 +63,8 @@ export default function UploadPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
+  // 2026-05-15 박제: 강제 재처리 — 같은 텍스트 hash 가 archived/inactive 상품이 아니어도 재처리
+  const [forceReprocess, setForceReprocess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [textInput, setTextInput] = useState('');
 
@@ -70,6 +72,16 @@ export default function UploadPage() {
   const pendingTextRef = useRef<Array<{ id: string; rawText: string }>>([]);
   const bulkModeRef = useRef(false);
   bulkModeRef.current = bulkMode;
+  const forceReprocessRef = useRef(false);
+  forceReprocessRef.current = forceReprocess;
+
+  /** 업로드 URL 생성 — bulk/force 옵션 query 조합 */
+  const buildUploadUrl = (): string => {
+    const params: string[] = [];
+    if (bulkModeRef.current) params.push('mode=bulk');
+    if (forceReprocessRef.current) params.push('force=1');
+    return params.length > 0 ? `/api/upload?${params.join('&')}` : '/api/upload';
+  };
   const itemSeqRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [addedFlash, setAddedFlash] = useState(false);
@@ -108,7 +120,7 @@ export default function UploadPage() {
   const uploadSingle = async (file: File): Promise<Partial<QueueItem>> => {
     const formData = new FormData();
     formData.append('file', file);
-    const uploadUrl = bulkModeRef.current ? '/api/upload?mode=bulk' : '/api/upload';
+    const uploadUrl = buildUploadUrl();
     const res = await fetchWithSessionRefresh(uploadUrl, { method: 'POST', body: formData });
     const data = await safeResJson(res);
     if (!res.ok) throw new Error(data.error || '업로드 실패');
@@ -183,7 +195,7 @@ export default function UploadPage() {
     setQueue(prev => prev.map(it => it.id === id ? { ...it, status: 'processing' } : it));
 
     try {
-      const uploadUrl = bulkModeRef.current ? '/api/upload?mode=bulk' : '/api/upload';
+      const uploadUrl = buildUploadUrl();
       const res = await fetchWithSessionRefresh(uploadUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,13 +358,19 @@ export default function UploadPage() {
               />
             </div>
 
-            <div className="mt-3 flex items-center gap-3">
+            <div className="mt-3 flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={bulkMode} onChange={e => setBulkMode(e.target.checked)}
                   className="w-4 h-4 rounded border-admin-border-strong text-blue-600 focus:ring-blue-500" />
                 <span className="text-sm font-medium text-admin-text-2">⚡ 벌크 모드</span>
               </label>
               <span className="text-[11px] text-admin-muted">{bulkMode ? '분류/마케팅/관광지 스킵 → 2배 빠름' : '전체 처리 (기본)'}</span>
+              <label className="flex items-center gap-2 cursor-pointer ml-3 pl-3 border-l border-admin-border">
+                <input type="checkbox" checked={forceReprocess} onChange={e => setForceReprocess(e.target.checked)}
+                  className="w-4 h-4 rounded border-admin-border-strong text-orange-600 focus:ring-orange-500" />
+                <span className="text-sm font-medium text-admin-text-2">🔁 강제 재처리</span>
+              </label>
+              <span className="text-[11px] text-admin-muted">{forceReprocess ? '중복 해시 차단 우회 (같은 텍스트도 새로 등록)' : 'archived 상품은 자동 재처리 OK'}</span>
             </div>
 
             <div className="mt-3 p-3 bg-admin-bg border border-admin-border-mid rounded-lg text-[11px] text-admin-muted">
