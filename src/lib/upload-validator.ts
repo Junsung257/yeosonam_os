@@ -349,10 +349,22 @@ export function classifyUploadGate(
   confidence: number,
   priceRowCount: number,
 ): UploadGate {
+  // 1) Zod errors 에 핵심 필드 결손 → BLOCKED (기존 분기)
   const criticalMissing = validation.errors.some(e =>
     e.includes('title') || e.includes('destination')
   );
   if (criticalMissing) return 'BLOCKED';
+
+  // 2) Zod 가 destination 을 optional 로 통과시켜 warnings 에만 들어가는 사고 차단 (2026-05-14 박제).
+  //    destination 미추출이면 ① 모바일 ₩∞ ② attractions 매칭이 전 세계로 풀려 "맥주거리→삿포로 맥주박물관"
+  //    같은 사고가 발생. INSERT 자체를 차단.
+  const destMissing = validation.warnings.some(w => w.includes('목적지(destination)'));
+  if (destMissing) return 'BLOCKED';
+
+  // 3) net_price=0 + 가격 행도 0 → 판매가 산출 불가 (active 노출 위험)
+  const priceMissing = validation.warnings.some(w => w.includes('net_price가 0'));
+  if (priceMissing && priceRowCount === 0) return 'BLOCKED';
+
   if (confidence < 0.5 || priceRowCount === 0) return 'REVIEW_NEEDED';
   if (validation.warnings.length >= 3) return 'WARNING';
   return 'CLEAN';

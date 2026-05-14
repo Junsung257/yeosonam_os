@@ -18,9 +18,12 @@ const DETAIL_FIELDS = `
   price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
   product_highlights, customer_notes, internal_notes, notices_parsed, itinerary_data,
   display_title, hero_tagline, product_summary, thumbnail_urls, is_airtel,
-  land_operator_id, audit_status,
+  land_operator_id, audit_status, status,
   products(internal_code, display_name, departure_region)
 `;
+
+/** 고객 상세 페이지 노출 허용 상태 — REVIEW_NEEDED/draft/expired/archived/blocked 등은 노출 X (2026-05-14 박제) */
+const CUSTOMER_VISIBLE_STATUSES = new Set(['active', 'approved', 'selling']);
 
 // SEO: 동적 메타데이터
 export async function generateMetadata({
@@ -32,11 +35,17 @@ export async function generateMetadata({
   const sb = supabaseAdmin;
   const { data } = await sb
     .from('travel_packages')
-    .select('title, destination, price, product_summary')
+    .select('title, destination, price, product_summary, status, audit_status')
     .eq('id', id)
     .single();
 
+  // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
   if (!data) return { title: '상품 상세 | 여소남' };
+  const status = (data as { status?: string }).status;
+  const auditStatus = (data as { audit_status?: string }).audit_status;
+  if (auditStatus === 'blocked' || !status || !CUSTOMER_VISIBLE_STATUSES.has(status)) {
+    return { title: '상품 상세 | 여소남', robots: { index: false, follow: false } };
+  }
 
   return {
     title: `${data.title} | 여소남`,
@@ -68,6 +77,16 @@ export default async function PackageDetailPage({
   // 감사 차단 상품은 고객 상세도 404 처리 (감사 게이트 이중 가드)
   if (pkg && (pkg as { audit_status?: string }).audit_status === 'blocked') {
     notFound();
+  }
+
+  // status 게이트 — REVIEW_NEEDED/draft/expired/archived 등은 고객 노출 차단 (2026-05-14 박제)
+  //   원인: BLOCKED 분기에서 INSERT 강행한 상품(status='REVIEW_NEEDED')이 [/packages/[id]] 모바일에
+  //   그대로 노출되어 ₩∞·잘못된 항공편 헤더 등 미보완 데이터가 고객에게 그대로 표시되던 사고 (부관훼리 케이스).
+  if (pkg) {
+    const pkgStatus = (pkg as { status?: string }).status;
+    if (!pkgStatus || !CUSTOMER_VISIBLE_STATUSES.has(pkgStatus)) {
+      notFound();
+    }
   }
 
   // ── 2-단계 Fetch 전략 (Next.js 2MB 캐시 한계 + 성능 최적화) ─────────────────

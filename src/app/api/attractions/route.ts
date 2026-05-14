@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
     // photos_only=1: 홈페이지용 경량 쿼리 (사진 매칭에 필요한 최소 필드만)
     const photosOnly = searchParams.get('photos_only');
     const fields = photosOnly
-      ? 'id, name, country, region, photos, mention_count'
-      : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, created_at';
+      ? 'id, name, country, region, photos, mention_count, mrt_gid'
+      : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, mrt_gid, mrt_rating, mrt_review_count, created_at';
 
     // ids 지정 조회: itinerary_data attraction_ids 기반 경량 조회
     if (idsParam) {

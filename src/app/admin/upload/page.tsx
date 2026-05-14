@@ -33,9 +33,12 @@ interface QueueItem {
     elapsed_ms?: number;
   };
   gate?: string;
-  verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked';
+  verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'error';
   verifyReport?: { checks: VerifyCheck[]; warnCount: number; failCount: number };
   verifyExpanded?: boolean;
+  verifyError?: string;
+  /** Hybrid v2: 어떤 필드를 결정적으로 회복했는지 (UX 디버그) */
+  deterministicRecovered?: string[];
 }
 
 // 서버가 비-JSON 응답(오류 페이지, 게이트웨이 타임아웃 등)을 반환할 때도 안전하게 파싱
@@ -150,22 +153,28 @@ export default function UploadPage() {
   };
 
   const runVerify = useCallback(async (id: string, dbId: string) => {
-    setQueue(prev => prev.map(it => it.id === id ? { ...it, verifyStatus: 'verifying' } : it));
+    setQueue(prev => prev.map(it => it.id === id ? { ...it, verifyStatus: 'verifying', verifyError: undefined } : it));
     try {
       const res = await fetchWithSessionRefresh('/api/admin/upload/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ packageId: dbId }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
         verifyStatus: data.status as QueueItem['verifyStatus'],
         verifyReport: { checks: data.checks, warnCount: data.warnCount, failCount: data.failCount },
+        verifyError: undefined,
       } : it));
-    } catch {
-      setQueue(prev => prev.map(it => it.id === id ? { ...it, verifyStatus: undefined } : it));
+    } catch (err) {
+      // 401/네트워크/타임아웃 등 — UI 에 재시도 버튼 띄우기 위해 sentinel 상태로 표시
+      setQueue(prev => prev.map(it => it.id === id ? {
+        ...it,
+        verifyStatus: 'error' as QueueItem['verifyStatus'],
+        verifyError: err instanceof Error ? err.message : '검증 결과 수신 실패',
+      } : it));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -500,7 +509,7 @@ export default function UploadPage() {
                   </>
                 )}
               </div>
-              <p className="text-[10px] text-admin-muted-2 mt-2">파싱 AI 비용 기준 (DeepSeek/Gemini). 관광지 매칭 등 부가 비용 미포함.</p>
+              <p className="text-[10px] text-admin-muted-2 mt-2">Phase 1·2 LLM 응답 토큰 × 단가 추정. 실제 청구금액 ≠. attractions Gemini·CoVe·embedding·verify 미포함.</p>
             </div>
           )}
 
@@ -571,6 +580,17 @@ export default function UploadPage() {
                                 {item.gate}
                               </span>
                             )}
+                            {item.dbId && (item.gate === 'BLOCKED' || item.gate === 'REVIEW_NEEDED') && (
+                              <a
+                                href={`/admin/packages?status=REVIEW_NEEDED&q=${encodeURIComponent(item.title ?? '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline"
+                                title="상품관리에서 destination/가격 보완 후 승인"
+                              >
+                                상품관리에서 보완 →
+                              </a>
+                            )}
                             {item.landOperator && (
                               <span className="text-[11px] text-blue-600">{item.landOperator}</span>
                             )}
@@ -593,6 +613,18 @@ export default function UploadPage() {
                         )}
                         {item.verifyStatus === 'clean' && (
                           <span className="inline-block mt-1 text-[10px] text-green-600 font-medium">✓ 원문 대조 통과</span>
+                        )}
+                        {item.verifyStatus === 'error' && item.dbId && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[10px] text-red-500">⚠ 원문 대조 결과 못 받음 {item.verifyError ? `(${item.verifyError})` : ''}</span>
+                            <button
+                              type="button"
+                              onClick={() => runVerify(item.id, item.dbId!)}
+                              className="text-[10px] font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50 transition"
+                            >
+                              재시도
+                            </button>
+                          </div>
                         )}
                         {(item.verifyStatus === 'warnings' || item.verifyStatus === 'blocked') && item.verifyReport && (
                           <div className="mt-1">

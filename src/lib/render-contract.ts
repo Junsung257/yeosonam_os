@@ -88,6 +88,10 @@ export interface DayInput {
 /** renderPackage 입력 — A4와 Mobile의 pkg 공통 부분집합 */
 export interface RenderPackageInput {
   airline?: string | null;
+  /** ferry/cruise 감지에 사용 (2026-05-14) */
+  title?: string | null;
+  /** 'cruise' | 'ferry' | 'package' | 'golf' 등 — ferry 분류 우선 신호 */
+  product_type?: string | null;
   departure_airport?: string | null;
   destination?: string | null;
   excludes?: string[] | null;
@@ -239,10 +243,24 @@ export interface FlightHeader {
   inbound: CanonicalFlight | null;
 }
 
+/** Cruise/Ferry 전용 — 선박 스케줄 (UX-4, 2026-05-14 박제) */
+export interface CruiseSchedule {
+  /** 출항: "부산 → 시모노세키 21:00→08:00" */
+  outboundLabel: string | null;
+  /** 회항: "시모노세키 → 부산 19:45→08:00" */
+  inboundLabel: string | null;
+  /** 선박명 (예: "부관훼리") */
+  vesselName: string | null;
+  /** 선실 등급 메모 */
+  cabinNote: string | null;
+}
+
 export interface CanonicalView {
   airlineHeader: AirlineHeader;
   /** 출발/귀국 항공편 헤더 (Phase 2 확장 — ERR-KUL-05 후속) */
   flightHeader: FlightHeader;
+  /** Cruise/Ferry 전용 선박 스케줄 — isFerryPackage 일 때만 채워짐 */
+  cruiseSchedule: CruiseSchedule | null;
   optionalTours: CanonicalOptionalTours;
   /** optionalTours.groups 단축 — 렌더러 직접 소비용 (CRC v1 마이그레이션 보조) */
   optionalToursByRegion: OptionalTourGroup[];
@@ -320,7 +338,24 @@ function airportToDepCity(ap?: string | null): string | null {
   return stripped || null;
 }
 
+/** Ferry/Cruise 감지 — airline/title 에 페리 키워드가 있으면 항공편 헤더를 전면 차단 (2026-05-14 박제).
+ *  부관훼리 케이스에서 "후쿠오카 출발 → 부산(김해) 도착" 항공편 헤더가 ferry 인데도 매 day 박히던 사고 방지. */
+const FERRY_KEYWORDS = /부관훼리|뉴카멜리아|카멜리아|훼리|페리|선박|크루즈|cruise|ferry/i;
+export function isFerryPackage(pkg: RenderPackageInput): boolean {
+  const productType = pkg.product_type ?? '';
+  if (productType === 'cruise' || productType === 'ferry') return true;
+  const airlineRaw = pkg.airline ?? '';
+  const meta = pkg.itinerary_data?.meta ?? null;
+  const airlineMeta = meta?.airline ?? '';
+  const title = pkg.title ?? '';
+  return FERRY_KEYWORDS.test(`${airlineRaw} ${airlineMeta} ${title}`);
+}
+
 export function resolveAirlineHeader(pkg: RenderPackageInput): AirlineHeader {
+  // Ferry/Cruise 는 항공편 헤더 자체를 노출하지 않음 (환각 차단)
+  if (isFerryPackage(pkg)) {
+    return { label: null, airlineLabel: null, flightNumber: null, airlineName: null, departureCity: null, arrivalCity: null };
+  }
   const meta = pkg.itinerary_data?.meta ?? null;
   const flightNumber = meta?.flight_out?.trim() || null;
   const airlineRaw = pkg.airline || meta?.airline || null;
@@ -532,8 +567,26 @@ export function resolveOptionalTours(pkg: RenderPackageInput): CanonicalOptional
 /**
  * 기본 포함 키워드 — "프로그램" 이 아닌 "표준 항목" 분류에 사용.
  * "택스" (ERR-HSN-render-bundle 반영, 기존 BASIC_INC_RE 의 "텍스" 오타 보정)
+ * 2026-05-14: ferry/cruise 키워드 추가 (왕복훼리비/부두세/출국세/선내식 등) — 부관훼리 케이스에서
+ * "왕복훼리비" 같은 명백한 포함사항이 program(특전 후보)으로 잘못 분류되던 사고 차단.
  */
-const BASIC_INC_RE = /항공|TAX|택스|텍스|유류|호텔|숙박|리조트|식사|조식|중식|석식|차량|버스|리무진|가이드|인솔|보험|입장료|입장권|생수|노팁|노옵션|경비|고속열차|비자|VISA|그린피|라운드|골프/i;
+const BASIC_INC_RE = /항공|TAX|택스|텍스|유류세?|호텔|숙박|리조트|식사|조식|중식|석식|차량|버스|리무진|가이드|인솔|보험|입장료|입장권|생수|노팁|노옵션|경비|고속열차|비자|VISA|그린피|라운드|골프|훼리비|페리비|부두세|출국세|공항세|공항이용료|선내식|선상식|관광지\s*입장/i;
+
+/**
+ * 진짜 특전 화이트리스트 — 일반 패키지에 없는 "보너스" 만.
+ * fallback 분류 시 program → perk 승격 기준.
+ */
+const PERK_WHITELIST_RE = /마사지\s*\d+분|스파|쿠킹\s*클래스|와인\s*시음|VIP|업그레이드|선물|망고도시락|콩카페|위즐\s*커피|커피핀|특식|미슐랭|사진\s*촬영|케이블카|스피드보트|비경\s*투어|관람차|온천|디너\s*쇼|야경\s*투어|꽃잎\s*세레모니|허니문\s*특전/i;
+
+/** "포함 사항" 가까운 (일반 적인) 항목은 특전 X — 블랙리스트 (UX-1 강화) */
+const NOT_PERK_RE = /훼리비|페리비|항공|TAX|택스|유류|부두세|출국세|공항세|관광지\s*입장|차량|버스|가이드|보험|기본|호텔/i;
+
+/** 진짜 특전 인지 판별 — render-contract.ts 외부에서 호출 가능 */
+export function isRealPerk(text: string): boolean {
+  if (!text) return false;
+  if (NOT_PERK_RE.test(text)) return false;
+  return PERK_WHITELIST_RE.test(text);
+}
 
 /** 아이콘 매칭 규칙 — 키워드 기반 */
 export function getInclusionIcon(text: string): string {
@@ -553,7 +606,12 @@ export function getInclusionIcon(text: string): string {
   return '✅';
 }
 
-/** inclusions 자동 분류: 기본 포함 vs 프로그램/특전 (아이콘 매칭 포함) */
+/** inclusions 자동 분류: 기본 포함 vs 프로그램/특전 (아이콘 매칭 포함)
+ *  2026-05-14 UX-1 강화:
+ *    - BASIC_INC_RE 매치 → basic (확장된 패턴: 훼리비/부두세/출국세 등 ferry 키워드)
+ *    - PERK_WHITELIST_RE 매치 (BASIC 아니면) → program (진짜 특전만)
+ *    - 둘 다 안 매치 → basic 으로 안전 fallback (포함사항으로 표시되지 특전으로 잘못 분류 X)
+ */
 export function classifyInclusions(items: string[]): CanonicalInclusions {
   const flat = flattenItems(items);
   const basic: IconizedInclusion[] = [];
@@ -561,8 +619,12 @@ export function classifyInclusions(items: string[]): CanonicalInclusions {
   for (const item of flat) {
     if (BASIC_INC_RE.test(item)) {
       basic.push({ text: item, icon: getInclusionIcon(item) });
-    } else {
+    } else if (PERK_WHITELIST_RE.test(item) && !NOT_PERK_RE.test(item)) {
+      // 진짜 특전 (보너스성 키워드 매치)
       program.push(item);
+    } else {
+      // 분류 모호 → basic 으로 안전 fallback (특전 섹션 환각 차단)
+      basic.push({ text: item, icon: getInclusionIcon(item) });
     }
   }
   return { basic, program, flat };
@@ -787,6 +849,7 @@ export function renderPackage(
   return {
     airlineHeader: resolveAirlineHeader(pkg),
     flightHeader: resolveFlightHeader(days, pkg),
+    cruiseSchedule: resolveCruiseSchedule(pkg),
     optionalTours,
     optionalToursByRegion: optionalTours.groups,
     surchargesMerged: merged,
@@ -798,11 +861,34 @@ export function renderPackage(
   };
 }
 
+/** Cruise/Ferry 전용 — itinerary_data.cruise_schedule 또는 본문에서 스케줄 추출 (UX-4, 2026-05-14).
+ *  현재는 패키지 데이터에 cruise_schedule 필드가 박혀있지 않으니, isFerryPackage 일 때
+ *  airline + destination 으로 기본 라벨 생성. (향후 parser 에서 정밀 추출 박을 수 있음) */
+function resolveCruiseSchedule(pkg: RenderPackageInput): CruiseSchedule | null {
+  if (!isFerryPackage(pkg)) return null;
+  const vesselName = pkg.airline ?? null;
+  // departure_airport 가 "부산" 같이 city → outbound 라벨
+  const dep = pkg.departure_airport ?? null;
+  const arr = pkg.destination?.split(/[\/,]/)[0]?.trim() ?? null;
+  const outboundLabel = dep && arr ? `${dep} → ${arr}` : null;
+  const inboundLabel = dep && arr ? `${arr} → ${dep}` : null;
+  return {
+    outboundLabel,
+    inboundLabel,
+    vesselName,
+    cabinNote: '다인실 기준',
+  };
+}
+
 /**
  * 출발편/귀국편 헤더 추출. flight_segments 정규 필드 우선 (2026-05-13 박제 — normalize-flight-segments).
  * 없으면 days[0].flight / last.flight / beforeLast.flight fallback.
  */
 function resolveFlightHeader(days: CanonicalDay[], pkg?: RenderPackageInput): FlightHeader {
+  // Ferry/Cruise 는 항공편 헤더 자체를 노출하지 않음 (2026-05-14 박제)
+  if (pkg && isFerryPackage(pkg)) {
+    return { outbound: null, inbound: null };
+  }
   // 1차: flight_segments 정규 필드 (SSOT)
   const segments = (pkg?.itinerary_data as { flight_segments?: Array<{
     leg: 'outbound' | 'inbound';
