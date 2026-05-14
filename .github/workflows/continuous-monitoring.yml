@@ -1,8 +1,8 @@
 name: Continuous Monitoring & Health Checks
 
+# 2026-05-14 — mail-flood-stop v3: 15분 schedule이 매일 96통 fail 메일 발송.
+# Vercel/Supabase 자체 모니터링으로 충분. 수동 트리거만 유지.
 on:
-  schedule:
-    - cron: '*/15 * * * *'  # Every 15 minutes
   workflow_dispatch:
 
 jobs:

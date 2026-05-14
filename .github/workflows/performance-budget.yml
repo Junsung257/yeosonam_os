@@ -1,8 +1,7 @@
 name: Performance Budget Enforcement
 
+# 2026-05-14 — mail-flood-stop v3: 매일 fail로 노이즈. 게이트 신뢰 복원 후 재활성화.
 on:
-  schedule:
-    - cron: '0 8 * * *'  # Daily at 8 AM UTC
   workflow_dispatch:
 
 jobs:

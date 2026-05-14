@@ -1,8 +1,7 @@
 name: Disaster Recovery Validation
 
+# 2026-05-14 — mail-flood-stop v3: 매주 fail. 복구 검증은 분기 수동 실행으로 전환.
 on:
-  schedule:
-    - cron: '0 3 * * 0'  # Sunday at 3 AM UTC (weekly)
   workflow_dispatch:
 
 jobs:
