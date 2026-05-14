@@ -500,34 +500,75 @@ export async function POST(request: NextRequest) {
 
     // ── [B] SHA-256 해시 계산 + 중복 파일 차단 ───────────────────────────────
 
-    if (isSupabaseConfigured) {
-      const { data: existingHash } = await supabaseAdmin
+    // 2026-05-15 박제: 강제 재처리 옵션 — UI 에서 ?force=1 또는 ?reprocess=1 query.
+    //   사장님이 같은 텍스트를 의도적으로 다시 처리하고 싶을 때 (archived 정리 후 재시도 등).
+    const forceReprocess = urlParams.get('force') === '1' || urlParams.get('reprocess') === '1';
+
+    if (isSupabaseConfigured && !forceReprocess) {
+      const { data: existingHashes } = await supabaseAdmin
         .from('document_hashes')
         .select('file_hash, product_id, file_name')
-        .eq('file_hash', fileHash)
-        .maybeSingle();
+        .eq('file_hash', fileHash);
 
-      if (existingHash) {
-        console.log('[Upload API] 중복 파일 감지 — 파싱 스킵:', fileHash.slice(0, 12));
+      // 2026-05-15 박제: archived/inactive product 의 hash 는 차단 해제 (재처리 허용).
+      //   사장님이 잘못 등록된 상품을 archived 시킨 후 새 코드로 재시도하려는 의도 보호.
+      let blocked: { file_hash: string; product_id: string | null; file_name: string } | null = null;
+      if (existingHashes && existingHashes.length > 0) {
+        const productIds = (existingHashes as Array<{ product_id: string | null }>)
+          .map(h => h.product_id)
+          .filter((p): p is string => !!p);
+        if (productIds.length > 0) {
+          const { data: aliveProducts } = await supabaseAdmin
+            .from('products')
+            .select('internal_code, status')
+            .in('internal_code', productIds)
+            .not('status', 'in', '("archived","inactive","deleted")');
+          const aliveSet = new Set((aliveProducts ?? []).map((p: { internal_code: string }) => p.internal_code));
+          blocked = (existingHashes as Array<{ file_hash: string; product_id: string | null; file_name: string }>)
+            .find(h => h.product_id && aliveSet.has(h.product_id)) ?? null;
+        }
+      }
+
+      if (blocked) {
+        console.log('[Upload API] 중복 파일 감지 — 파싱 스킵:', fileHash.slice(0, 12),
+          `(기존 product ${blocked.product_id} alive)`);
         return NextResponse.json({
           success:       true,
           duplicate:     true,
           fileHash,
-          internal_code: existingHash.product_id ?? null,
-          message:       `이미 처리된 파일입니다. (원본: ${existingHash.file_name}) AI 파싱 토큰 절약.`,
+          internal_code: blocked.product_id,
+          message:       `이미 처리된 파일입니다. (원본: ${blocked.file_name}) 재처리하려면 force=1.`,
+          hint:          'archived 된 상품은 자동으로 재처리 허용됩니다.',
         });
       }
 
       // 텍스트 붙여넣기: 띄어쓰기·개행만 다른 동일 카탈로그 사전 차단 (파싱 전)
       if (directRawText) {
         const normalizedContentHash = computeNormalizedContentHash(directRawText);
-        const { data: existingNorm } = await supabaseAdmin
+        const { data: existingNormRows } = await supabaseAdmin
           .from('document_hashes')
           .select('file_hash, product_id, file_name, normalized_hash')
-          .eq('normalized_hash', normalizedContentHash)
-          .maybeSingle();
+          .eq('normalized_hash', normalizedContentHash);
 
-        if (existingNorm) {
+        // 동일하게 alive product 만 차단
+        let blockedNorm: { file_hash: string; product_id: string | null; file_name: string; normalized_hash: string } | null = null;
+        if (existingNormRows && existingNormRows.length > 0) {
+          const normPids = (existingNormRows as Array<{ product_id: string | null }>)
+            .map(h => h.product_id)
+            .filter((p): p is string => !!p);
+          if (normPids.length > 0) {
+            const { data: aliveNorm } = await supabaseAdmin
+              .from('products')
+              .select('internal_code, status')
+              .in('internal_code', normPids)
+              .not('status', 'in', '("archived","inactive","deleted")');
+            const aliveNormSet = new Set((aliveNorm ?? []).map((p: { internal_code: string }) => p.internal_code));
+            blockedNorm = (existingNormRows as Array<{ file_hash: string; product_id: string | null; file_name: string; normalized_hash: string }>)
+              .find(h => h.product_id && aliveNormSet.has(h.product_id)) ?? null;
+          }
+        }
+
+        if (blockedNorm) {
           console.log('[Upload API] 정규화 해시 중복 — 파싱 스킵:', normalizedContentHash.slice(0, 12));
           return NextResponse.json({
             success:               true,
@@ -535,11 +576,13 @@ export async function POST(request: NextRequest) {
             duplicateReason:       'normalized_content',
             fileHash,
             normalizedContentHash: normalizedContentHash.slice(0, 16) + '…',
-            internal_code:         existingNorm.product_id ?? null,
-            message:               `이미 처리된 카탈로그입니다(본문 정규화 기준). 원본: ${existingNorm.file_name}`,
+            internal_code:         blockedNorm.product_id,
+            message:               `이미 처리된 카탈로그입니다(본문 정규화 기준). 원본: ${blockedNorm.file_name}. 재처리하려면 force=1.`,
           });
         }
       }
+    } else if (forceReprocess) {
+      console.log('[Upload API] force=1 — 중복 차단 우회');
     }
 
     // ── [C] 마스터 데이터 병렬 로드 (land_operators + departing_locations) ──
