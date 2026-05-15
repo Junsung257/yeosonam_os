@@ -36,14 +36,10 @@ const STANDALONE_STOP_WORDS = new Set<string>([
   '호텔', '리조트', '풀빌라', '게스트하우스',
 ]);
 
-/**
- * 서술형 어미 차단 (ERR-XIY-descriptive@2026-05-16).
- * "양귀비와 당현종의 로맨스장소인 화청지" / "흙으로 구워 만든 병사" 같은
- *  설명 라인 통째로 attraction 으로 박히던 사고 영구 차단.
- *  핵심: attraction 명은 어미가 없는 명사(구). 어미가 있으면 verbatim 의심.
- */
-const DESCRIPTIVE_VERBATIM_RE =
-  /(구워|만든|만들어진|되는|되어|있는|있던|불리는|불리던|보관한|보관된|가져온|즐비한|어우러진|위치한|이루어진|장식한|일컫는|꼽히는|유명한|이름난|장소인|묘지인|모형갱도인|역사탐방|역사를|전통을|문화를|풍경을|모습을|아름다움|일출|일몰|중의\s*하나|풀어주는|풀어주|풀어준|달래주는|달래주|느낄\s*수|볼\s*수|만날\s*수|즐길\s*수|엿볼\s*수|가장\s|최초의|완전한|최고의|최대의|놀라운|훌륭한|중\s*가장)/;
+// DESCRIPTIVE_VERBATIM_RE — ERR-XIY-strict-ssot-revert@2026-05-16 로 제거.
+//   STRICT SSOT(자동 시드 0) 흐름에서는 verbatim 라인이 attractions 에 박힐 통로 자체가 부재.
+//   매처는 라인 통째로 받아 substring/fuzzy 로 SSOT 와 매칭하므로 추출 단계 서술형 가드는
+//   정상 attraction note 까지 false negative 로 차단하는 부작용만 큼. 제거함.
 
 /** 괄호 안 내용도 별도 후보로 뽑아내기 위해 보존했다가 분리한다. (2026-05-15) */
 function extractBracketAliases(text: string): string[] {
@@ -113,13 +109,14 @@ export function extractAttractionCandidates(activity: string, note?: string | nu
     if (STANDALONE_STOP_WORDS.has(t) || STANDALONE_STOP_WORDS.has(tNoSpace)) return;
     // 추가: 너무 짧은 한 단어 (≤3자) + stop word 패턴 매치
     if (t.length <= 3 && /^(시|산|섬|강|길|역|점|관)$/.test(t)) return;
-    // ERR-XIY-verbatim-extract@2026-05-16: 추출 단계에도 시드 단계와 동일 정책 적용 (이중 가드).
-    //   "양귀비와 당현종의 로맨스장소인 화청지" 같은 라인이 후보로 넘어가 매칭 단계에서 오작동하던 사고 차단.
-    //   25자↑ verbatim 의심 후보는 다른 분리 결과(콤마/+/공백)로 들어온 짧은 토큰이 흡수하므로 손실 없음.
-    if (t.length > 25) return;
-    if (DESCRIPTIVE_VERBATIM_RE.test(t)) return;
-    // 공백 가드: 4개+ 만 차단 (도멘 드 마리 성당 = 공백 3개, 정상 attraction 보존).
-    if ((t.match(/\s/g) ?? []).length >= 4) return;
+    // ERR-XIY-strict-ssot-revert@2026-05-16: PR #84 가드 전면 완화.
+    //   STRICT SSOT(자동 시드 0) 흐름에서는 verbatim 라인이 attractions 에 박힐 통로 자체가 부재.
+    //   매처(attraction-matcher.ts)가 라인 통째 받아 SSOT substring/fuzzy 매칭하므로 추출 단계 가드는
+    //   정상 attraction note(태국에서 가장 높은 ... 도이인타논 산 / 옷가게가 즐비한 ... 동서항) 까지
+    //   false negative 차단. enricher 매칭이 깨짐.
+    //   유지: STANDALONE_STOP_WORDS (정확 일치 단독 차단) / NON_ATTRACTION_PREFIX·INLINE (transit 라인) /
+    //         cleanToken trailing / extractBracketAliases duration 가드 / `+` split.
+    //   제거: length>25 / DESCRIPTIVE_VERBATIM_RE / 공백 4+ (모두 false negative 비용 > verbatim 차단 효과).
     const key = t.toLowerCase().replace(/\s+/g, '');
     if (seen.has(key)) return;
     seen.add(key);
