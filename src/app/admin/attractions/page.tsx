@@ -182,6 +182,50 @@ export default function AttractionsPage() {
     });
   };
 
+  // PR #88 Phase 2a — Wikipedia summary 일괄 자동 채움.
+  //   short_desc 또는 long_desc 가 비어 있는 attraction 만 대상.
+  //   라이선스: Wikipedia CC-BY-SA → external_url 자동 저장. STRICT SSOT: 기존 채움값 보존.
+  const [autoDescProgress, setAutoDescProgress] = useState<{ current: number; total: number } | null>(null);
+  const autoFillDescriptions = async () => {
+    const noDesc = attractions.filter(a => !a.short_desc?.trim() || !a.long_desc?.trim());
+    if (noDesc.length === 0) { alert('설명이 비어 있는 관광지가 없습니다.'); return; }
+    if (!confirm(`설명 없는 ${noDesc.length}개 관광지에 Wikipedia(ko→en→zh→ja fallback) 요약 자동 채움.\n(무료, 200 req/s)\n진행하시겠습니까?`)) return;
+
+    setAutoDescProgress({ current: 0, total: noDesc.length });
+    let filled = 0;
+    let missed = 0;
+    for (let i = 0; i < noDesc.length; i++) {
+      const a = noDesc[i];
+      setAutoDescProgress({ current: i + 1, total: noDesc.length });
+      try {
+        const res = await fetch('/api/attractions', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: a.id, action: 'fill_from_wikipedia' }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          filled++;
+          if (data.summary) {
+            setAttractions(prev => prev.map(x => x.id === a.id ? {
+              ...x,
+              short_desc: x.short_desc?.trim() || data.summary.extract_short,
+              long_desc: x.long_desc?.trim() || (data.summary.extract_short ?? x.long_desc),
+            } : x));
+          }
+        } else {
+          missed++;
+        }
+        // Rate limit 안전 간격
+        if (i < noDesc.length - 1) await new Promise(r => setTimeout(r, 200));
+      } catch {
+        missed++;
+      }
+    }
+    setAutoDescProgress(null);
+    alert(`Wikipedia 자동 채움 완료\n채움: ${filled}건 / 미확인: ${missed}건`);
+    load();
+  };
+
   // ── 사진 일괄 자동 생성 ──
   const autoGeneratePhotos = async () => {
     const noPhotos = attractions.filter(a => !a.photos || a.photos.length === 0);
@@ -315,6 +359,14 @@ export default function AttractionsPage() {
               <Camera size={14} />
               {autoPhotoProgress ? `${autoPhotoProgress.current}/${autoPhotoProgress.total}` : `사진 일괄생성 (${noPhotoCount})`}
             </button>
+            <button
+              onClick={autoFillDescriptions}
+              disabled={!!autoDescProgress}
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-cyan-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+              title="설명 비어있는 attraction에 Wikipedia(ko→en→zh→ja) 요약 자동 채움"
+            >
+              🌐 {autoDescProgress ? `${autoDescProgress.current}/${autoDescProgress.total}` : '설명 일괄채움'}
+            </button>
             <a href="/admin/attractions/unmatched">
               <Button variant="secondary" size="sm">
                 <AlertCircle size={14} />
@@ -351,6 +403,17 @@ export default function AttractionsPage() {
           </div>
           <div className="w-full bg-brand/15 rounded-full h-2">
             <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${(autoPhotoProgress.current / autoPhotoProgress.total) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      {autoDescProgress && (
+        <div className="mb-4 bg-sky-50 border border-sky-200 rounded-admin-md p-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-admin-sm font-bold text-sky-700">🌐 Wikipedia 설명 자동 채움 중…</span>
+            <span className="text-admin-xs text-sky-700 admin-num">{autoDescProgress.current} / {autoDescProgress.total}</span>
+          </div>
+          <div className="w-full bg-sky-100 rounded-full h-2">
+            <div className="bg-sky-600 h-2 rounded-full transition-all" style={{ width: `${(autoDescProgress.current / autoDescProgress.total) * 100}%` }} />
           </div>
         </div>
       )}

@@ -153,8 +153,58 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, ...updates } = body;
+    const { id, action, ...updates } = body;
     if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
+
+    // PR #88 Phase 2a — Wikipedia summary 자동 채움 (사장님 1-click).
+    //   action='fill_from_wikipedia' 시 short_desc/long_desc 자동 fetch + UPDATE.
+    //   STRICT SSOT 정책 준수: 자동 INSERT 아님, 기존 attraction 업데이트만, 사장님 명시 트리거.
+    //   라이선스: Wikipedia 본문 CC-BY-SA → external_url 저장, source='wikipedia'.
+    if (action === 'fill_from_wikipedia') {
+      const { fetchWikipediaWithFallback } = await import('@/lib/wikipedia-summary');
+      const { data: attr } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, aliases, wikidata_qid, short_desc, long_desc')
+        .eq('id', id)
+        .single() as { data: { id: string; name: string; aliases: string[] | null; wikidata_qid: string | null; short_desc: string | null; long_desc: string | null } | null };
+      if (!attr) return NextResponse.json({ error: 'attraction 없음' }, { status: 404 });
+
+      // 한국어 alias 우선 시도, 없으면 name
+      const koAlias = (attr.aliases ?? []).find(a => /[가-힣]/.test(a));
+      const searchKey = koAlias && /[가-힣]/.test(attr.name) ? attr.name : (koAlias ?? attr.name);
+      const summary = await fetchWikipediaWithFallback(searchKey);
+      if (!summary) {
+        return NextResponse.json({ error: 'Wikipedia summary 부재 (ko/en/zh/ja 모두 미확인)' }, { status: 404 });
+      }
+
+      // short_desc 비어 있으면 extract_short, long_desc 비어 있으면 extract
+      // 사장님이 기존 채움값 보존: 비어 있을 때만 채움 (no-overwrite)
+      const newShort = !attr.short_desc?.trim() ? summary.extract_short : attr.short_desc;
+      const newLong = !attr.long_desc?.trim() ? summary.extract : attr.long_desc;
+
+      const { error: upErr } = await supabaseAdmin
+        .from('attractions')
+        .update({
+          short_desc: newShort,
+          long_desc: newLong,
+          external_url: summary.page_url,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (upErr) throw upErr;
+
+      return NextResponse.json({
+        success: true,
+        message: `Wikipedia ${summary.lang} "${summary.title}" 으로 채움 완료 (${summary.extract.length}자)`,
+        summary: {
+          lang: summary.lang,
+          title: summary.title,
+          extract_short: summary.extract_short,
+          page_url: summary.page_url,
+          thumbnail_url: summary.thumbnail_url,
+        },
+      });
+    }
 
     const { error } = await supabaseAdmin
       .from('attractions')
