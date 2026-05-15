@@ -33,6 +33,13 @@ interface QueueItem {
     elapsed_ms?: number;
   };
   gate?: string;
+  /** C3 박제 (2026-05-15): 등록 직후 관광지 매칭/시드 통계 UX 노출 */
+  attractionStats?: {
+    matched: number;
+    unmatched: number;
+    seeded: number;
+    reflected: number;
+  };
   verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'error';
   verifyReport?: { checks: VerifyCheck[]; warnCount: number; failCount: number };
   verifyExpanded?: boolean;
@@ -137,6 +144,7 @@ export default function UploadPage() {
       titles: data.titles,
       tokenUsage: data.tokenUsage ?? null,
       gate: data.gate ?? null,
+      attractionStats: data.attractionStats ?? null,
     };
   };
 
@@ -618,6 +626,16 @@ export default function UploadPage() {
                             {item.tokenUsage && (
                               <span className="text-[11px] text-admin-muted-2" title={`in:${item.tokenUsage.inputTokens} out:${item.tokenUsage.outputTokens} cache:${item.tokenUsage.cacheHitTokens}`}>
                                 {item.tokenUsage.provider === 'deepseek' ? '🔵' : '🟡'} ${item.tokenUsage.costUsd.toFixed(5)}{item.tokenUsage.cacheHitTokens > 0 ? ' ⚡캐시' : ''}
+                              </span>
+                            )}
+                            {item.attractionStats && (item.attractionStats.matched + item.attractionStats.seeded + item.attractionStats.unmatched) > 0 && (
+                              <span
+                                className="text-[11px] text-admin-muted-2"
+                                title={`매칭 ${item.attractionStats.matched} · 시드 ${item.attractionStats.seeded} · 즉시반영 ${item.attractionStats.reflected} · 미매칭 ${item.attractionStats.unmatched}`}
+                              >
+                                🗺️ {item.attractionStats.matched}
+                                {item.attractionStats.seeded > 0 && <span className="text-blue-600">+{item.attractionStats.seeded}</span>}
+                                {item.attractionStats.unmatched > 0 && <span className="text-orange-500">·미{item.attractionStats.unmatched}</span>}
                               </span>
                             )}
                           </div>

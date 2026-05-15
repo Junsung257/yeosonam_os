@@ -9,6 +9,7 @@ import {
   normalizeDays,
 } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { destinationToIsoSet } from '@/lib/destination-iso';
 
 export async function resolveLpHeroPhotoUrl(
   sb: SupabaseClient,
@@ -20,10 +21,13 @@ export async function resolveLpHeroPhotoUrl(
 
   const destTokens = pkg.destination.split(/[/,·&]/).map((t: string) => t.trim()).filter(Boolean);
   const regionClauses = destTokens.map((t: string) => `region.ilike.%${t}%`).join(',');
-  const countryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
-  const countryClauses = countryList.split(',').map(c => `country.eq.${c}`).join(',');
-  const destCountryClause = `country.ilike.%${pkg.destination}%`;
-  matchQuery = matchQuery.or(`${regionClauses},${destCountryClause},${countryClauses}`);
+  // 2026-05-15 박제: page.tsx 와 동일한 ISO SSOT 사용 — country 정규화 trigger 적용 후 호환.
+  const destIsoCountries = destinationToIsoSet(pkg.destination);
+  const isoCountryClauses = [...destIsoCountries].map(c => `country.eq.${c}`).join(',');
+  const koreanCountryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
+  const koreanCountryClauses = koreanCountryList.split(',').map(c => `country.eq.${c}`).join(',');
+  const clauses = [regionClauses, isoCountryClauses, koreanCountryClauses].filter(Boolean).join(',');
+  matchQuery = matchQuery.or(clauses);
 
   const matchResult = await matchQuery.limit(3000);
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
@@ -64,8 +68,13 @@ export async function resolveLpHeroPhotoUrl(
   }
 
   const pool = relevantAttractions.length > 0 ? relevantAttractions : lightAttractions;
+  // 2026-05-15 박제: country 가 ISO2 (VN/JP 등) 라 한글 destination 에 .includes 매칭 안 됨.
+  //   destinationToIsoSet 으로 변환한 후 country 일치 확인.
+  const destIsoSet = destinationToIsoSet(pkg.destination);
   const hero = pool.find(
-    a => a.photos && a.photos.length > 0 && a.country && pkg.destination!.includes(a.country),
+    a => a.photos && a.photos.length > 0 && a.country && (
+      destIsoSet.has(a.country) || pkg.destination!.includes(a.country)
+    ),
   );
   const p = hero?.photos?.[0];
   return p?.src_large || p?.src_medium || null;
