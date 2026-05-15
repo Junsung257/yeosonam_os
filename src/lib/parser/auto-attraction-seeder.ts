@@ -139,6 +139,11 @@ export async function autoSeedAttraction(args: {
       destination: args.destination ?? null,
     });
 
+    // E1 박제 (2026-05-15): 하나투어/모두투어 검색 결과로부터 alias 정규화 보강 (fire-and-forget).
+    //   사장님 비전 "OTA 검색으로 관광지 표기 정형화". 사실(공개 명칭) 추출은 저작권 안전.
+    //   SPA 라 실패할 수 있어 fail-soft. 출처 URL 보존.
+    void attachOtaAliases({ attractionId, name });
+
     return {
       seeded: true,
       reason: `${bestSource!.source}+paraphrase(sim=${shortDescResult.similarity.toFixed(2)})`,
@@ -153,6 +158,63 @@ export async function autoSeedAttraction(args: {
  * E4 박제 (2026-05-15): 시드된 attraction 에 Pexels multilingual photos 자동 attach.
  * fire-and-forget. Pexels API 없으면 skip.
  */
+/**
+ * E1 박제 (2026-05-15): 하나투어/모두투어 검색 결과로부터 alias 추출 → attractions.aliases 보강.
+ * fire-and-forget. SPA 페이지면 후보 0 = fail-soft.
+ */
+async function attachOtaAliases(args: { attractionId: string; name: string }): Promise<void> {
+  try {
+    const { fetchOtaAliasCandidates } = await import('@/lib/parser/ota-name-normalizer');
+    const candidates = await fetchOtaAliasCandidates(args.name);
+    if (candidates.length === 0) return;
+
+    const { data: existing } = await supabaseAdmin
+      .from('attractions')
+      .select('aliases, raw_descriptions')
+      .eq('id', args.attractionId)
+      .maybeSingle();
+    const prevAliases = Array.isArray((existing as { aliases?: string[] } | null)?.aliases)
+      ? ((existing as { aliases: string[] }).aliases)
+      : [];
+    const prevRawDescs = Array.isArray((existing as { raw_descriptions?: ExternalDescription[] } | null)?.raw_descriptions)
+      ? ((existing as { raw_descriptions: ExternalDescription[] }).raw_descriptions)
+      : [];
+
+    // 중복 제거 + 합집합 (lowercase 비교)
+    const aliasSet = new Set(prevAliases.map(a => a.toLowerCase().replace(/\s+/g, '')));
+    const newAliases: string[] = [...prevAliases];
+    for (const c of candidates) {
+      const key = c.alias.toLowerCase().replace(/\s+/g, '');
+      if (!aliasSet.has(key)) {
+        aliasSet.add(key);
+        newAliases.push(c.alias);
+      }
+    }
+
+    // raw_descriptions 에 출처 URL 박제 (투명성)
+    const sourceTrace: ExternalDescription[] = candidates.slice(0, 2).map(c => ({
+      source: c.source,
+      url: c.source_url,
+      text: `[alias normalization] ${c.alias}`,
+      fetched_at: c.fetched_at,
+    }));
+
+    await supabaseAdmin
+      .from('attractions')
+      .update({
+        aliases: newAliases,
+        raw_descriptions: [...prevRawDescs, ...sourceTrace].slice(0, MAX_RAW_DESCRIPTIONS),
+      })
+      .eq('id', args.attractionId)
+      .then(({ error }: { error: { message: string } | null }) => {
+        if (error) console.warn('[AutoSeed] OTA aliases UPDATE 실패(무시):', error.message);
+        else console.log(`[AutoSeed] OTA aliases: ${args.name} (+${candidates.length}건)`);
+      });
+  } catch (e) {
+    console.warn('[AutoSeed] OTA aliases 실패(무시):', e instanceof Error ? e.message : e);
+  }
+}
+
 async function attachPhotosToAttraction(args: {
   attractionId: string;
   name: string;
