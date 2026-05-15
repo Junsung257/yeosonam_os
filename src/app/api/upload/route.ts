@@ -38,7 +38,7 @@ import { maybeTriggerMrtSync } from '@/lib/parser/mrt-lazy-sync';
 import { recordHotelsFromItinerary } from '@/lib/parser/hotel-canonical-learner';
 import { detectIssues as detectCriticIssues, autoFixIssues as autoFixCriticIssues } from '@/lib/parser/critic';
 import { parseSections, classifyItem as classifyByContext } from '@/lib/parser/section-aware-parser';
-import { recordSignal } from '@/lib/parser/classification-signals';
+import { recordSignal, lookupSignal } from '@/lib/parser/classification-signals';
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
@@ -915,26 +915,30 @@ export async function POST(request: NextRequest) {
         //    inclusions / excludes / optional 의 각 항목을 섹션 컨텍스트로 재검증 + signals 누적.
         try {
           const sectionResult = parseSections(rawForDeterm);
-          const recordOne = (text: string, defaultCategory: 'inclusion' | 'optional' | 'exclude' | 'perk') => {
+          const recordOne = async (text: string, defaultCategory: 'inclusion' | 'optional' | 'exclude' | 'perk') => {
             if (!text || text.length < 2 || text.length > 200) return;
+            // 2026-05-15 INT-4: 우선 signals DB 에서 이전 분류 lookup (compound learning).
+            //   이전에 사장님 정정 또는 자동 학습된 결과가 있으면 그것을 follow.
+            const prior = await lookupSignal(text, ed.destination ?? null).catch(() => null);
             const offset = rawForDeterm.indexOf(text);
             const ctx = offset >= 0 ? sectionResult.classifyOffset(offset) : 'unknown';
             const final = classifyByContext(text, ctx);
-            // signals 누적 (fire-and-forget)
+            const chosen = prior?.category ?? (final.category === 'unknown' ? defaultCategory : final.category);
+            // signals 누적 (fire-and-forget) — 다음 등록부터 instant
             void recordSignal({
               keyword: text,
-              category: final.category === 'unknown' ? defaultCategory : final.category,
+              category: chosen,
               destination: ed.destination ?? null,
               product_type: ed.product_type ?? null,
-              source: 'local',
-              confidence: final.confidence,
+              source: prior ? prior.source : 'local',
+              confidence: prior ? (prior.confidence + final.confidence) / 2 : final.confidence,
             });
           };
-          for (const inc of ed.inclusions ?? []) recordOne(inc, 'inclusion');
-          for (const exc of ed.excludes ?? []) recordOne(exc, 'exclude');
+          for (const inc of ed.inclusions ?? []) void recordOne(inc, 'inclusion');
+          for (const exc of ed.excludes ?? []) void recordOne(exc, 'exclude');
           for (const opt of ed.optional_tours ?? []) {
             const name = (opt as { name?: string })?.name;
-            if (name) recordOne(name, 'optional');
+            if (name) void recordOne(name, 'optional');
           }
           console.log(`[Upload API] Section-Aware signals 누적: inc ${ed.inclusions?.length ?? 0} + exc ${ed.excludes?.length ?? 0} + opt ${ed.optional_tours?.length ?? 0}`);
         } catch (e) {
@@ -1104,13 +1108,39 @@ export async function POST(request: NextRequest) {
 
         // ── G4. 상태 결정 ────────────────────────────────────────────────────
 
-        const productStatus = determineProductStatus({
+        let productStatus = determineProductStatus({
           confidence,
           netPrice,
           priceRowCount:    priceRows.length,
           isTravel:         classification.isTravel,
           departureDateStr: ed.ticketing_deadline ?? null,
         });
+
+        // 2026-05-15 INT-3: Customer-Ready Gate — data + UX + paraphrase 통과 시 status='approved' 자동.
+        //   사장님 손 떼기 (UX-6). 실패 사유는 BLOCK / 권고는 WARN 으로 분리.
+        try {
+          const { evaluateCustomerReadyGate } = await import('@/lib/parser/customer-ready-gate');
+          const gate = evaluateCustomerReadyGate({
+            ed,
+            netPrice,
+            priceRowCount: priceRows.length,
+            confidence,
+            hasItinerary: !!product.itineraryData?.days?.length,
+            hasThumbnail: false, // auto-photo-match 이후 채워짐 (지금 단계에선 unknown)
+          });
+          if (gate.ready) {
+            productStatus = 'approved' as typeof productStatus;
+            console.log(`[Upload API] Customer-Ready Gate: ✅ APPROVED 자동 활성화`);
+          } else {
+            const summary = [
+              gate.reasons.length > 0 ? `reasons: ${gate.reasons.join(', ')}` : null,
+              gate.warnings.length > 0 ? `warnings: ${gate.warnings.join(', ')}` : null,
+            ].filter(Boolean).join(' | ');
+            console.log(`[Upload API] Customer-Ready Gate: ${gate.reasons.length > 0 ? '🔴' : '🟡'} ${summary}`);
+          }
+        } catch (e) {
+          console.warn('[Upload API] Customer-Ready Gate 실패 (무시):', (e as Error).message);
+        }
 
         console.log(`[Upload API] 상태 결정: ${productStatus} (confidence=${(confidence * 100).toFixed(0)}%)`);
 
@@ -1444,13 +1474,29 @@ export async function POST(request: NextRequest) {
               .then(undefined, () => {});
           }
 
-          // 🚫 ERR-20260418-33 자동 시드 금지 (manage-attractions.md SSOT)
-          //   신규 attraction 의 short_desc/long_desc 를 Gemini 가 자동 생성해 DB INSERT 하던 코드는 제거됨.
-          //   매칭 실패한 activity 는 위에서 이미 `unmatched_activities` 에 플래그만 찍었고,
-          //   사장님이 `/admin/attractions/unmatched` 에서 직접 검토·등록한다.
-          //   (회귀 사례: destination=null 인 상태에서 Gemini 호출이 country="" 로 들어가 oversees 까지 시드.)
-          if (newActivities.length > 0) {
-            console.log(`[Upload API] 신규 매칭 후보 ${newActivities.length}개 → unmatched_activities 큐 (자동 시드 금지)`);
+          // ✅ 자동 시드 — 2026-05-15 정책 갱신 (manage-attractions.md ERR-20260418-33 재해석)
+          //   외부 source(Wikidata Wikipedia summary) + Paraphrase Enforcer(cosine ≤ 0.6) 검증 통과한 경우만 자동 INSERT.
+          //   회귀 차단: destination 빈 경우 skip / paraphrase 실패 시 unmatched 큐 유지 / 출처 추적 필수.
+          //   ※ ed 는 multi-product loop 밖이라 newActivities 의 candidate.destination 사용.
+          const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
+          if (newActivities.length > 0 && firstSeedDest) {
+            const { autoSeedAttraction } = await import('@/lib/parser/auto-attraction-seeder');
+            const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 15);
+            let seededCount = 0;
+            let failedCount = 0;
+            for (const kw of uniqueNew) {
+              const r = await autoSeedAttraction({
+                keyword: kw,
+                destination: firstSeedDest,
+                country: null,
+                category: 'sightseeing',
+              });
+              if (r.seeded) seededCount++;
+              else if (r.reason !== 'already_exists') failedCount++;
+            }
+            console.log(`[Upload API] 자동 시드: ${seededCount}건 성공 / ${failedCount}건 실패 (Wikidata + Paraphrase 통과 분만)`);
+          } else if (newActivities.length > 0) {
+            console.log(`[Upload API] 자동 시드 skip: destination 빈 채로는 oversees 위험 (unmatched 큐만)`);
           }
         }
       } catch (attrError) {
