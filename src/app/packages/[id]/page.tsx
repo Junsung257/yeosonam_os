@@ -6,6 +6,7 @@ import ReviewsSection from '@/components/reviews/ReviewsSection';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { destinationToIsoSet } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 
@@ -103,25 +104,10 @@ export default async function PackageDetailPage({
   if (pkg && pkg.destination) {
     const destTokens = pkg.destination.split(/[\/,·&]/).map((t: string) => t.trim()).filter(Boolean);
     const regionClauses = destTokens.map((t: string) => `region.ilike.%${t}%`).join(',');
-    // 2026-05-15 박제: ISO 정규화 후 한글 country 사라짐 (VN/JP/CN/TH 등). 둘 다 포함 + destination → ISO 매핑.
-    const KOREAN_TO_ISO: Record<string, string> = {
-      '나트랑': 'VN', '다낭': 'VN', '하노이': 'VN', '호치민': 'VN', '푸꾸옥': 'VN', '달랏': 'VN', '베트남': 'VN',
-      '오사카': 'JP', '도쿄': 'JP', '후쿠오카': 'JP', '삿포로': 'JP', '오키나와': 'JP', '교토': 'JP', '나가사키': 'JP', '북해도': 'JP', '일본': 'JP',
-      '방콕': 'TH', '치앙마이': 'TH', '푸켓': 'TH', '태국': 'TH',
-      '서안': 'CN', '장가계': 'CN', '북경': 'CN', '상해': 'CN', '계림': 'CN', '황산': 'CN', '청두': 'CN', '연길': 'CN', '곤명': 'CN', '중국': 'CN',
-      '대만': 'TW', '타이베이': 'TW', '가오슝': 'TW',
-      '세부': 'PH', '보라카이': 'PH', '마닐라': 'PH', '보홀': 'PH', '필리핀': 'PH',
-      '발리': 'ID', '인도네시아': 'ID',
-      '쿠알라룸푸르': 'MY', '코타키나발루': 'MY', '말레이시아': 'MY',
-      '싱가포르': 'SG', '홍콩': 'HK', '마카오': 'MO',
-      '몽골': 'MN', '라오스': 'LA',
-    };
-    const destIsoCountries = new Set<string>();
-    for (const t of destTokens) {
-      const iso = KOREAN_TO_ISO[t];
-      if (iso) destIsoCountries.add(iso);
-    }
+    // 2026-05-15 박제: ISO 정규화 후 한글 country 사라짐 (VN/JP/CN/TH 등). 매핑 SSOT 사용.
+    const destIsoCountries = destinationToIsoSet(pkg.destination);
     const isoCountryClauses = [...destIsoCountries].map(c => `country.eq.${c}`).join(',');
+    // 한글 country fallback — 옛 데이터(trigger 적용 이전) 호환
     const koreanCountryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
     const koreanCountryClauses = koreanCountryList.split(',').map(c => `country.eq.${c}`).join(',');
     const clauses = [regionClauses, isoCountryClauses, koreanCountryClauses].filter(Boolean).join(',');

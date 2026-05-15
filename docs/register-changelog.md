@@ -71,6 +71,8 @@
 
 - **2026-04-27 — 새벽 출국 항공편은 정상 패턴**: 제5일 표기에 03:10 같은 새벽 출발 시간이 등장하면 **호텔 오전 체크아웃(전일) → 새벽 비행기 출국** 패턴. 일반적인 동남아 야간발 항공편 운항 — Agent 가 "제4일 자정 직후 아닌가?" 모순 의심하지 말 것. 일정표 표기는 **제5일 03:10 출발** 그대로 유지. 사장님 결정.
 
+- **2026-05-15 — 관광지 매칭 SSOT 통합 + Same-Session Seed-Reflect (PR #68)**: 사장님 비전 "원문→키워드 솔팅→설명 생성→DB 저장→다음번 재사용"의 "다음번"이 같은 등록까지 포함되도록 박제. ① **DB trigger `fn_attractions_normalize`** — attractions INSERT/UPDATE 시 country 한글→ISO 자동 변환 (27개국). page.tsx OR clause 가 ISO 로 필터링하는데 caller 마다 한글/ISO 혼재해서 fetch 누락되던 사고 영구 차단. ② **`extractAttractionCandidates` 30→60자 + 괄호 별칭 + "X 후 Y" 분리** — 도멘 드 마리 성당 / 린푸억사원(달랏 핑크 사원) / 도이인타논 후 몽족시장 모두 양쪽 후보화. ③ **Same-Session Seed-Reflect** — 시드 후 attractions refetch + enrichItinerary 재실행 + travel_packages.itinerary_data UPDATE + revalidatePath ISR 무효화. 사장님이 등록 직후 모바일 새로고침만 하면 신규 시드 카드 즉시 노출. ④ **등록 종료 한 화면 통계** — 응답 message 에 "관광지 매칭 N · 신규 시드 M · 즉시반영 K · 미매칭 X (검수 큐로)". ai_quality_log 에 4-컬럼 박혀 사장님 시각 검증 가능. ⑤ **destination → ISO SSOT (`src/lib/destination-iso.ts`)** — 67개 한글 도시명 매핑 단일 모듈. 사장님 결정 / 케이스: [LJ] 나트랑/달랏 모바일에서 도멘 드 마리·다딴라 폭포 카드 누락.
+
 ---
 
 > **신규 결정 추가 시**: 위 형식 (`- **YYYY-MM-DD — 한 줄 제목**: 본문 + 사장님 결정 / 케이스`) 으로 append. 본문(register.md)에 직접 적지 말 것.
