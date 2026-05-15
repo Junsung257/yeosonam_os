@@ -73,37 +73,35 @@ export async function paraphraseExternal(args: {
     return { text: '', similarity: 0, attempts: 0, ok: false };
   }
 
-  const lengthHint = args.style === 'short_desc' ? '1~2문장 50~120자' : '2~4문장 200~600자';
-  const stronger = (round: number) => round === 0
-    ? '톤은 자연스럽게, 원문의 정보는 보존하되 문장 구조와 표현을 재작성하세요.'
-    : '원문과 단어 선택·문장 순서·구문이 모두 다르게 완전히 새로 작성하세요. 사실만 보존.';
+  // Y3 박제 (2026-05-15): DeepSeek prompt cache 적중률 극대화.
+  //   - system prompt = 완전 고정 (스타일별 2종만, 라운드/demos 변동 없음) → 90% input 할인
+  //   - user prompt 구조 = 고정 헤더 + 변동 블록 분리 (DeepSeek auto-prefix-cache)
+  //   - demos / round 강도 변경은 user prompt 끝부분으로 → 앞부분 prefix 재사용
+  //   이전: system 고정 + user 매번 다름 (cache 0~10%). 이후: prefix ~70% 재사용.
+  const SYSTEM_SHORT = '당신은 여행 카탈로그 카피라이터입니다. 한 줄 짧은 설명 (50~120자) 을 자연스러운 톤으로 재작성합니다. 마케팅 과장·권유 표현·검증 불가 사실 금지. 결과만 출력.';
+  const SYSTEM_LONG  = '당신은 여행 카탈로그 카피라이터입니다. 상세 설명 (200~600자) 을 자연스러운 톤으로 재작성합니다. 마케팅 과장·권유 표현·검증 불가 사실 금지. 결과만 출력.';
+  const sysPrompt = args.style === 'short_desc' ? SYSTEM_SHORT : SYSTEM_LONG;
 
   // G1: few-shot demos 가 있으면 prompt 에 패턴 학습용으로 주입 (cosine 검증 그대로)
   const demosBlock = args.fewShotDemos && args.fewShotDemos.length > 0
-    ? `\n참고 패턴 (같은 카테고리 attraction 의 짧은 설명 예시 — 톤·구조만 학습, 내용 복사 금지):\n${args.fewShotDemos.slice(0, 3).map((d, i) => `  ${i + 1}. ${d.name} — "${d.short_desc}"`).join('\n')}\n`
+    ? `\n참고 패턴 (톤·구조 학습용, 내용 복사 금지):\n${args.fewShotDemos.slice(0, 3).map((d, i) => `${i + 1}. ${d.name}: "${d.short_desc}"`).join('\n')}\n`
     : '';
 
+  // 고정 prefix — DeepSeek auto-prefix-cache 적중 대상 (style 단위)
+  const userPrefix = `원문:\n"""\n${orig}\n"""\n${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}${args.destination ? `지역: ${args.destination}\n` : ''}${demosBlock}`;
+
   for (let round = 0; round < 2; round++) {
-    const prompt = `당신은 여행 카탈로그 카피라이터입니다. 아래 외부 원문을 ${lengthHint} 분량의 ${args.style === 'short_desc' ? '한 줄 짧은 설명' : '상세 설명'} 으로 재작성하세요.
-
-원문:
-"""
-${orig}
-"""
-
-${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}${args.destination ? `지역: ${args.destination}\n` : ''}${demosBlock}
-요구사항:
-- ${stronger(round)}
-- 마케팅 과장 금지. 사실만.
-- 가격·할인·연령제한 같이 원문에 없는 사실 절대 추가 금지.
-- "방문하시면 어떨까요" 같은 문장 끝 권유 표현 피함.
-- 결과만 출력 (다른 설명·메타·따옴표 없이).`;
+    // 변동 부분 (round 강도) 만 사용자 prompt 끝에 추가
+    const strongerHint = round === 0
+      ? '\n원문 정보 보존, 문장 구조·표현 재작성.'
+      : '\n원문과 단어·순서·구문 모두 다르게. 사실만 보존.';
+    const userPrompt = userPrefix + strongerHint;
 
     try {
       const r = await llmCall({
         task: 'content-brief',
-        systemPrompt: '여행 카탈로그 paraphrase. 결과만 출력.',
-        userPrompt: prompt,
+        systemPrompt: sysPrompt,
+        userPrompt,
         maxTokens: args.style === 'short_desc' ? 200 : 800,
         temperature: 0.6,
       });
