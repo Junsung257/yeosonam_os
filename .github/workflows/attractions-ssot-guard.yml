@@ -1,0 +1,84 @@
+name: attractions SSOT guard
+
+# ERR-XIY-2026-05-16 박제 — 사장님 STRICT SSOT 정책 위반 검출.
+# PR 에 다음 패턴이 추가되면 fail:
+#  1. autoSeedAttraction( 호출 (등록 파이프라인에서 자동 시드 부활 시도)
+#  2. attractions 테이블에 service_role 로 직접 INSERT (사장님 어드민 UI 우회)
+#  3. 정규식 가드 30+ 추가 (verbatim 차단 시도 — 본질 미해결)
+#
+# 자세한 정책: .claude/commands/manage-attractions.md
+# 도메인 전용 에이전트: .claude/agents/attractions-specialist.md
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.ts'
+      - 'src/**/*.tsx'
+      - 'db/**/*.js'
+      - 'supabase/migrations/**'
+
+jobs:
+  ssot-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect base ref
+        id: base
+        run: echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check 1 — autoSeedAttraction( call added
+        run: |
+          set -e
+          ADDED=$(git diff --unified=0 "${{ steps.base.outputs.ref }}"..HEAD -- 'src/**/*.ts' 'src/**/*.tsx' \
+            | grep -E '^\+' | grep -v '^\+\+\+' \
+            | grep -E 'autoSeedAttraction\s*\(' || true)
+          if [ -n "$ADDED" ]; then
+            echo "::error::STRICT SSOT 위반: autoSeedAttraction( 호출이 추가되었습니다."
+            echo "정책: .claude/commands/manage-attractions.md — 자동 시드 금지."
+            echo "추가된 라인:"
+            echo "$ADDED"
+            exit 1
+          fi
+          echo "✅ autoSeedAttraction 호출 추가 없음"
+
+      - name: Check 2 — attractions 테이블 직접 INSERT (service_role 우회)
+        run: |
+          set -e
+          ADDED=$(git diff --unified=0 "${{ steps.base.outputs.ref }}"..HEAD -- 'src/**/*.ts' 'src/**/*.tsx' 'db/**/*.js' \
+            | grep -E '^\+' | grep -v '^\+\+\+' \
+            | grep -E "from\s*\(\s*['\"]attractions['\"]\s*\)\s*\.\s*(insert|upsert)" || true)
+          if [ -n "$ADDED" ]; then
+            echo "::error::STRICT SSOT 위반: attractions 테이블 직접 INSERT/UPSERT 가 추가되었습니다."
+            echo "정책: 사장님 어드민 UI (/admin/attractions) 또는 /api/attractions POST 경로만 사용."
+            echo "추가된 라인:"
+            echo "$ADDED"
+            exit 1
+          fi
+          echo "✅ attractions 직접 INSERT 추가 없음"
+
+      - name: Check 3 — 정규식 가드 폭증 감지 (의심 신호, warning)
+        run: |
+          set -e
+          ADDED=$(git diff --unified=0 "${{ steps.base.outputs.ref }}"..HEAD -- 'src/lib/itinerary-attraction-candidates.ts' 'src/lib/parser/auto-attraction-seeder.ts' \
+            | grep -E '^\+' | grep -v '^\+\+\+' \
+            | grep -E '\.test\s*\(|\.match\s*\(|new RegExp|/\^|/\\' | wc -l || echo 0)
+          if [ "$ADDED" -gt 30 ]; then
+            echo "::warning::정규식 가드 ${ADDED}개 추가 감지 — SSOT 우회 의심 신호."
+            echo "ERR-XIY-2026-05-16: verbatim 차단을 정규식으로 추격하는 패턴은 본질 미해결."
+            echo "매처(attraction-matcher.ts)가 SSOT 기반이므로 가드 없이도 자동 시드 부재 시 안전."
+            echo "정책: .claude/commands/manage-attractions.md"
+          else
+            echo "✅ 정규식 가드 정상 범위 ($ADDED개)"
+          fi
+
+      - name: Check 4 — manage-attractions.md 정책 변경 알림
+        run: |
+          set -e
+          CHANGED=$(git diff --name-only "${{ steps.base.outputs.ref }}"..HEAD -- '.claude/commands/manage-attractions.md' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "::notice::manage-attractions.md 정책 변경 감지. 사장님 검토 필수."
+          fi
