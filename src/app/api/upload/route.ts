@@ -1527,10 +1527,10 @@ export async function POST(request: NextRequest) {
           //   ※ ed 는 multi-product loop 밖이라 newActivities 의 candidate.destination 사용.
           const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
           let seededCountTotal = 0;
+          const seedFailedKeywords: string[] = [];
           if (newActivities.length > 0 && firstSeedDest) {
             const { autoSeedAttraction } = await import('@/lib/parser/auto-attraction-seeder');
             const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 15);
-            let failedCount = 0;
             for (const kw of uniqueNew) {
               const r = await autoSeedAttraction({
                 keyword: kw,
@@ -1539,10 +1539,44 @@ export async function POST(request: NextRequest) {
                 category: 'sightseeing',
               });
               if (r.seeded) seededCountTotal++;
-              else if (r.reason !== 'already_exists') failedCount++;
+              else if (r.reason !== 'already_exists') seedFailedKeywords.push(kw);
             }
-            attractionSeededCount = seededCountTotal;  // A3 통계 박제
-            console.log(`[Upload API] 자동 시드: ${seededCountTotal}건 성공 / ${failedCount}건 실패 (Wikidata + Paraphrase 통과 분만)`);
+            attractionSeededCount = seededCountTotal;
+            console.log(`[Upload API] 자동 시드: ${seededCountTotal}건 성공 / ${seedFailedKeywords.length}건 실패`);
+
+            // X4-1 박제 (2026-05-15): 시드 실패 silent fail 차단.
+            //   SKILL.md Step 0 V5 정책: "매칭 실패 → unmatched_activities INSERT + admin_alerts" 의무.
+            //   사장님 모바일 안 봐도 어드민 빨간 배지로 자동 감지.
+            if (seedFailedKeywords.length > 0) {
+              // unmatched_activities 적재 (이미 박힌 unmatchedRowsToInsert 위로 추가)
+              for (const kw of seedFailedKeywords) {
+                unmatchedRowsToInsert.push({
+                  activity: kw,
+                  package_id: savedIds[0] ?? '',
+                  package_title: savedTitles[0] ?? '',
+                  day_number: 0,
+                  country: firstSeedDest,
+                });
+              }
+              // admin_alerts — 시드 실패 5건 이상이면 사장님 alert
+              if (seedFailedKeywords.length >= 5) {
+                try {
+                  const { postAlert } = await import('@/lib/admin-alerts');
+                  await postAlert({
+                    category: 'general',
+                    severity: 'warning',
+                    title: `자동 시드 실패 ${seedFailedKeywords.length}건 (${firstSeedDest})`,
+                    message: `Wikidata/OTA/LLM 다중 source 모두 실패: ${seedFailedKeywords.slice(0, 5).join(', ')}${seedFailedKeywords.length > 5 ? ' …' : ''}`,
+                    ref_type: 'travel_package',
+                    ref_id: savedIds[0],
+                    meta: { destination: firstSeedDest, failed_keywords: seedFailedKeywords },
+                    dedupe: true,
+                  });
+                } catch (e) {
+                  console.warn('[Upload API] 시드 실패 admin_alert 적재 실패(무시):', e instanceof Error ? e.message : e);
+                }
+              }
+            }
           } else if (newActivities.length > 0) {
             console.log(`[Upload API] 자동 시드 skip: destination 빈 채로는 oversees 위험 (unmatched 큐만)`);
           }
