@@ -823,6 +823,27 @@ const PackageRow = React.memo(function PackageRow({
               className="px-2 py-1 border border-admin-border-strong text-admin-muted rounded text-[11px] hover:bg-admin-bg disabled:opacity-50"
             >비활성화</button>
           )}
+          {/* N5 박제 (2026-05-16 Lemax 표준 — 35% 수익↑): Template 재사용 1-click 복제 */}
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const suffix = prompt('새 패키지 제목 접미사 (예: 4박6일 변형)', '(복제)');
+              if (suffix === null) return;
+              try {
+                const res = await fetch(`/api/admin/packages/${pkg.id}/clone`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ titleSuffix: suffix }),
+                });
+                const data = await res.json();
+                if (!res.ok) { alert(data.error || '복제 실패'); return; }
+                if (confirm(`복제 완료: "${data.title}". 검수 페이지로 이동할까요?`)) {
+                  window.open(data.edit_url, '_blank');
+                }
+              } catch (err) { alert(err instanceof Error ? err.message : '복제 실패'); }
+            }}
+            className="px-2 py-1 bg-purple-100 text-purple-700 border border-purple-300 rounded text-[11px] hover:bg-purple-200 font-medium"
+            title="Lemax 표준 — 패키지 복제 (3x 빠른 등록)"
+          >📋 복제</button>
         </div>
       </td>
     </tr>
