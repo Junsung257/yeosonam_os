@@ -155,10 +155,6 @@ export async function autoSeedAttraction(args: {
 }
 
 /**
- * E4 박제 (2026-05-15): 시드된 attraction 에 Pexels multilingual photos 자동 attach.
- * fire-and-forget. Pexels API 없으면 skip.
- */
-/**
  * E1 박제 (2026-05-15): 하나투어/모두투어 검색 결과로부터 alias 추출 → attractions.aliases 보강.
  * fire-and-forget. SPA 페이지면 후보 0 = fail-soft.
  */
@@ -215,6 +211,10 @@ async function attachOtaAliases(args: { attractionId: string; name: string }): P
   }
 }
 
+/**
+ * E4 박제 (2026-05-15): 시드된 attraction 에 Pexels multilingual photos 자동 attach.
+ * fire-and-forget. Pexels API 없으면 skip.
+ */
 async function attachPhotosToAttraction(args: {
   attractionId: string;
   name: string;
@@ -224,16 +224,18 @@ async function attachPhotosToAttraction(args: {
     const { searchMultilingualPhotos } = await import('@/lib/parser/multilingual-photo');
     const photos = await searchMultilingualPhotos({
       englishKeyword: args.name,
-      destinationKorean: args.destination ?? args.name,
+      // destination 없으면 영문 only (attraction name 자체를 지역어로 넘기면 무의미 검색)
+      destinationKorean: args.destination ?? undefined,
       count: 5,
     });
     if (photos.length === 0) return;
 
+    // F3 박제: AttractionData.photos 타입 (photographer: string, pexels_id: number) 일관성 보장.
     const photoRows = photos.slice(0, 3).map(p => ({
       src_medium: p.src.medium,
       src_large: p.src.large,
-      photographer: p.photographer ?? null,
-      pexels_id: p.pexels_id ?? null,
+      photographer: p.photographer ?? '',
+      pexels_id: p.pexels_id ?? 0,
     }));
 
     await supabaseAdmin
