@@ -118,13 +118,39 @@ function normalizeRegions(regions: string[] | undefined): string[] {
   return Array.from(new Set(cleaned));
 }
 
-/** schedule 빈 항목 제거 (activity 없으면 제거) */
+/** schedule 정제 — 빈 항목 제거 + ▶ 접두사 제거 + 한 덩어리로 합쳐진 activity 줄별 분할.
+ *  2026-05-15 박제 (부관훼리 DAY 2 한 덩어리 사고): LLM 이 여러 활동을 한 activity 에 합쳐서 박는 경우,
+ *  ▶로 시작하는 부분 + 줄바꿈 으로 분할하여 별도 schedule item 으로 정형화. */
+const BULLET_PREFIX_RE = /^[▶●•·◆◇■□★☆+○•▪●◦]+\s*/;
+const ACTIVITY_SPLIT_RE = /\s*(?=▶)\s*|\n+/;
+
 function cleanSchedule(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
   if (!Array.isArray(schedule)) return [];
-  return schedule.filter(s => {
-    const act = (s.activity ?? '').trim();
-    return act.length > 0;
-  });
+  const out: ScheduleItem[] = [];
+  for (const s of schedule) {
+    const raw = (s.activity ?? '').trim();
+    if (!raw) continue;
+    // ▶ 다중 활동이 한 줄/한 item 에 합쳐진 경우 분할
+    const parts = raw.split(ACTIVITY_SPLIT_RE).map(p => p.trim()).filter(p => p.length >= 2);
+    if (parts.length <= 1) {
+      // 단일 활동 — ▶ 접두사만 제거
+      const cleaned = raw.replace(BULLET_PREFIX_RE, '').trim();
+      if (cleaned) out.push({ ...s, activity: cleaned });
+      continue;
+    }
+    // 다중 활동 — 각각 분할해서 별도 schedule item 으로 (첫 item 은 time/transport 등 메타 보존)
+    parts.forEach((part, idx) => {
+      const activity = part.replace(BULLET_PREFIX_RE, '').trim();
+      if (!activity) return;
+      if (idx === 0) {
+        out.push({ ...s, activity });
+      } else {
+        // 추가 분할된 활동은 time/transport 없이 activity 만 (UI 가 시간 없으면 시간란 안 그림)
+        out.push({ activity, time: null, transport: null, type: 'normal' } as ScheduleItem);
+      }
+    });
+  }
+  return out;
 }
 
 /** 메인 정규화 — itinerary_data 통째로 후처리 */
