@@ -1555,116 +1555,36 @@ export async function POST(request: NextRequest) {
               .then(undefined, () => {});
           }
 
-          // ✅ 자동 시드 — 2026-05-15 정책 갱신 (manage-attractions.md ERR-20260418-33 재해석)
-          //   외부 source(Wikidata Wikipedia summary) + Paraphrase Enforcer(cosine ≤ 0.6) 검증 통과한 경우만 자동 INSERT.
-          //   회귀 차단: destination 빈 경우 skip / paraphrase 실패 시 unmatched 큐 유지 / 출처 추적 필수.
-          //   ※ ed 는 multi-product loop 밖이라 newActivities 의 candidate.destination 사용.
-          const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
-          let seededCountTotal = 0;
-          const seedFailedKeywords: string[] = [];
-          if (newActivities.length > 0 && firstSeedDest) {
-            const { autoSeedAttraction } = await import('@/lib/parser/auto-attraction-seeder');
-            const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 15);
+          // ── STRICT SSOT 정책 (2026-05-16, 옵션 1 박제) ──────────────────────
+          //   사장님 의도: attractions 테이블 = 사장님이 관리하는 SSOT. 매칭만 시키고,
+          //   매칭 실패 시 신규 INSERT 하지 않음. unmatched_activities 큐에 적재 → 사장님이
+          //   어드민에서 alias 추가 또는 신규 attraction 등록 결정.
+          //
+          //   ⚠️ 폐기된 자동 시드 (autoSeedAttraction): Wikidata/Wikipedia/LLM paraphrase 통과 시
+          //   자동 INSERT 하던 로직. verbatim 라인이 paraphrase 흡사로 통과해 DB 오염
+          //   ("중국보존건축물중 가장 완전한 서안성벽+함광문유적지박물관" 등 박힘 사고).
+          //   ERR-XIY-2026-05-16: 사장님이 2달간 "이미 등록된 attraction 에 매칭만, 새거면
+          //   사장님이 직접 등록한다" 지시를 정규식 가드로 우회하던 패턴 종결.
+          //
+          //   유지: matched canonical mention_count 증가 / unmatched_activities 적재 / alias 자동학습.
+          //   비활성: autoSeedAttraction 호출, Same-Session Seed-Reflect (시드가 없으므로 무용).
+          //
+          //   향후 신규 시드 경로: 사장님 어드민 UI 직접 등록 또는 외부 카탈로그 paste 도구.
+          if (newActivities.length > 0) {
+            const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
+            const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 30);
             for (const kw of uniqueNew) {
-              const r = await autoSeedAttraction({
-                keyword: kw,
-                destination: firstSeedDest,
-                country: null,
-                category: 'sightseeing',
-              });
-              if (r.seeded) seededCountTotal++;
-              else if (r.reason !== 'already_exists') seedFailedKeywords.push(kw);
+              await supabaseAdmin.from('unmatched_activities').upsert({
+                activity: kw,
+                package_id: savedIds[0] ?? '',
+                package_title: savedTitles[0] ?? '',
+                day_number: 0,
+                country: firstSeedDest,
+                occurrence_count: 1,
+                status: 'pending',
+              }, { onConflict: 'activity' });
             }
-            attractionSeededCount = seededCountTotal;
-            console.log(`[Upload API] 자동 시드: ${seededCountTotal}건 성공 / ${seedFailedKeywords.length}건 실패`);
-
-            // X4-1 박제 (2026-05-15): 시드 실패 silent fail 차단.
-            //   SKILL.md Step 0 V5 정책: "매칭 실패 → unmatched_activities INSERT + admin_alerts" 의무.
-            //   사장님 모바일 안 봐도 어드민 빨간 배지로 자동 감지.
-            if (seedFailedKeywords.length > 0) {
-              // unmatched_activities 적재 (이미 박힌 unmatchedRowsToInsert 위로 추가)
-              for (const kw of seedFailedKeywords) {
-                unmatchedRowsToInsert.push({
-                  activity: kw,
-                  package_id: savedIds[0] ?? '',
-                  package_title: savedTitles[0] ?? '',
-                  day_number: 0,
-                  country: firstSeedDest,
-                });
-              }
-              // admin_alerts — 시드 실패 5건 이상이면 사장님 alert
-              if (seedFailedKeywords.length >= 5) {
-                try {
-                  const { postAlert } = await import('@/lib/admin-alerts');
-                  await postAlert({
-                    category: 'general',
-                    severity: 'warning',
-                    title: `자동 시드 실패 ${seedFailedKeywords.length}건 (${firstSeedDest})`,
-                    message: `Wikidata/OTA/LLM 다중 source 모두 실패: ${seedFailedKeywords.slice(0, 5).join(', ')}${seedFailedKeywords.length > 5 ? ' …' : ''}`,
-                    ref_type: 'travel_package',
-                    ref_id: savedIds[0],
-                    meta: { destination: firstSeedDest, failed_keywords: seedFailedKeywords },
-                    dedupe: true,
-                  });
-                } catch (e) {
-                  console.warn('[Upload API] 시드 실패 admin_alert 적재 실패(무시):', e instanceof Error ? e.message : e);
-                }
-              }
-            }
-          } else if (newActivities.length > 0) {
-            console.log(`[Upload API] 자동 시드 skip: destination 빈 채로는 oversees 위험 (unmatched 큐만)`);
-          }
-
-          // ── A1. Same-Session Seed-Reflect (2026-05-15 박제) ─────────────────
-          //   시드된 신규 attraction 을 같은 등록의 모바일 카드에 즉시 반영.
-          //   사장님 비전: "키워드 솔팅 → 설명 생성 → DB 저장 → 다음번 재사용" 의 "다음번"이 같은 등록도 포함.
-          //   처방: 시드 후 attractions refetch + enrichItinerary 재실행 + travel_packages.itinerary_data UPDATE + ISR revalidate.
-          if (seededCountTotal > 0 && savedIds.length > 0) {
-            try {
-              const { data: freshRows } = await supabaseAdmin
-                .from('attractions')
-                .select('id, name, short_desc, long_desc, aliases, country, region, category, emoji')
-                .eq('is_active', true);
-              const freshAttractions = (freshRows || []) as AttractionData[];
-
-              let reflectedCount = 0;
-              for (const pid of savedIds) {
-                const { data: pkgRow } = await supabaseAdmin
-                  .from('travel_packages')
-                  .select('id, destination, itinerary_data')
-                  .eq('id', pid)
-                  .maybeSingle();
-                if (!pkgRow) continue;
-
-                const itin = (pkgRow as { itinerary_data: ItineraryDataLike | null }).itinerary_data;
-                const dest = (pkgRow as { destination: string | null }).destination ?? undefined;
-                const re = enrichItineraryWithAttractionReferences(itin, freshAttractions, dest);
-
-                if (re.matchedCanonicalNames.length > 0) {
-                  await supabaseAdmin
-                    .from('travel_packages')
-                    .update({ itinerary_data: re.itineraryData, updated_at: new Date().toISOString() })
-                    .eq('id', pid);
-                  revalidatePath(`/packages/${pid}`);
-                  reflectedCount++;
-                }
-                // B1 박제: ai_quality_log 패키지별 시드/reflect 카운트 UPDATE
-                void supabaseAdmin
-                  .from('ai_quality_log')
-                  .update({
-                    attraction_seeded_count:    seededCountTotal,
-                    attraction_reflected_count: re.matchedCanonicalNames.length > 0 ? 1 : 0,
-                  })
-                  .eq('package_id', pid)
-                  .then(({ error }: { error: { message: string } | null }) => {
-                    if (error) console.warn('[Upload API] ai_quality_log attraction UPDATE 실패(무시):', error.message);
-                  });
-              }
-              attractionReflectedCount = reflectedCount;  // A3 통계 박제
-              console.log(`[Upload API] Seed-Reflect: ${reflectedCount}/${savedIds.length} 패키지 itinerary 재반영 + ISR 무효화`);
-            } catch (reflectErr) {
-              console.warn('[Upload API] Seed-Reflect 실패(비중단):', reflectErr instanceof Error ? reflectErr.message : reflectErr);
-            }
+            console.log(`[Upload API] STRICT SSOT: ${uniqueNew.length}건 unmatched 큐 적재 (자동 시드 비활성)`);
           }
         }
       } catch (attrError) {
