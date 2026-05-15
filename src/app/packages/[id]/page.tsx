@@ -114,7 +114,9 @@ export default async function PackageDetailPage({
     matchQuery = matchQuery.or(clauses);
   }
 
-  const matchResult = await matchQuery.limit(1200);
+  // C6 박제 (2026-05-15): JP=793 + TW=160 + 인접 region 매칭이 1200 한계에 근접 → 2000 으로 확장.
+  //   light SELECT (id 제외 9컬럼) 이라 payload 부담 작음. Step B 의 relevantAttractions 가 진짜 페이로드.
+  const matchResult = await matchQuery.limit(2000);
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)

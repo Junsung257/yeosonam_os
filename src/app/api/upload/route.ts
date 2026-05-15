@@ -1232,6 +1232,33 @@ export async function POST(request: NextRequest) {
           activeAttractions,
           ed.destination,
         );
+
+        // C1 박제 (2026-05-15): 신뢰도 V3 — schedule 매칭률을 V2 산식에 반영.
+        //   enrichment 결과로 schedule item count 계산 → V2 재호출 with attractionStats.
+        //   비용 0 (deterministic 재실행). 사장님 비전 "100% 신뢰도 거짓 신호" 차단.
+        let scheduleItemCount = 0;
+        for (const day of itineraryInput?.days ?? []) {
+          for (const s of day.schedule ?? []) {
+            if (!s.activity) continue;
+            const t = (s as { type?: string }).type;
+            if (t === 'flight' || t === 'hotel' || t === 'shopping') continue;
+            scheduleItemCount++;
+          }
+        }
+        const v2WithAttraction = calculateConfidenceV2(ed, {
+          leakScore: sanitizeResult.leakScore,
+          itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
+          policy: autoGatePolicy,
+          attractionStats: {
+            matchedCount: enrichment.matchedCanonicalNames.length,
+            unmatchedCount: enrichment.unmatchedCandidates.length,
+            scheduleItemCount,
+          },
+        });
+        // V3 confidence 가 V2 보다 낮으면 사장님이 보는 신뢰도도 V3 로 갱신
+        const confidenceV3 = v2WithAttraction.confidence;
+        const v3Checks = v2WithAttraction.checks;
+        const v3FailedChecks = v3Checks.filter(c => !c.passed);
         // flight_segments 정규화: schedule[type='flight'] 흩어진 항공편을 정규 필드로
         // 박제 사유 (2026-05-13): 익일 도착·도착시간 누락으로 카드 깨짐 영구 차단
         // P10-3 박제 (2026-05-13): itinerary 정규화 — 호텔 grade / 식사 카운트 / 호텔명 dedupe / regions
@@ -1266,7 +1293,7 @@ export async function POST(request: NextRequest) {
               accommodations:        ed.accommodations   ?? [],
               special_notes:         ed.specialNotes,
               notices_parsed:        ed.notices_parsed    ?? [],
-              confidence,
+              confidence:            confidenceV3,
               category:              ed.category         ?? 'package',
               product_type:          ed.product_type,
               trip_style:            ed.trip_style,
@@ -1322,12 +1349,12 @@ export async function POST(request: NextRequest) {
               .insert({
                 package_id:        pkgResult.id,
                 internal_code:     internalCode,
-                confidence:        v2.confidence,
-                fill_score:        v2.fillScore,
-                xvalid_score:      v2.crossValidationScore,
-                leak_score:        v2.leakScore,
-                auto_gate:         v2.autoGate,
-                failed_checks:     v2.checks.filter(c => !c.passed),
+                confidence:        confidenceV3,
+                fill_score:        v2WithAttraction.fillScore,
+                xvalid_score:      v2WithAttraction.crossValidationScore,
+                leak_score:        v2WithAttraction.leakScore,
+                auto_gate:         v2WithAttraction.autoGate,
+                failed_checks:     v3FailedChecks,
                 leak_incidents:    sanitizeResult.incidents,
                 // P11-4 박제: LLM 호출 메타 자동 채움 (자체 LLMOps cost tracking)
                 advisor_escalated: Boolean(llmMeta.advisor_used),
@@ -1363,8 +1390,8 @@ export async function POST(request: NextRequest) {
               void accumulateLandOperatorProfile({
                 landOperatorId:    effectiveLandOperatorId,
                 rawText:           parsedDocument.rawText ?? '',
-                confidence:        v2.confidence,
-                rejected:          v2.autoGate === 'rejected',
+                confidence:        confidenceV3,
+                rejected:          v2WithAttraction.autoGate === 'rejected',
                 detectedB2bTerms:  sanitizeResult.incidents
                   .filter(i => i.severity !== 'medium')
                   .map(i => i.matched),

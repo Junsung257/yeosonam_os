@@ -299,6 +299,40 @@ async function auditOne(pkg, baseUrl) {
   result.warnings.push(...checkRegionsVsRawText(pkg));
   result.warnings.push(...checkDateOverlap(pkg));
 
+  // 1-b2. C4 박제 (2026-05-15): 관광지 매칭률 자동 감사
+  //   ai_quality_log 에 박힌 매칭/시드 통계로 임계치 검증. 60% 미만이면 검수 큐로 표시.
+  //   사장님 비전 "키워드 솔팅 성공률" 자동 회귀 감지.
+  try {
+    const { data: ql } = await sb
+      .from('ai_quality_log')
+      .select('attraction_matched_count, attraction_unmatched_count, attraction_seeded_count, attraction_reflected_count')
+      .eq('package_id', pkg.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (ql) {
+      const matched = ql.attraction_matched_count ?? 0;
+      const unmatched = ql.attraction_unmatched_count ?? 0;
+      const seeded = ql.attraction_seeded_count ?? 0;
+      const reflected = ql.attraction_reflected_count ?? 0;
+      const denom = matched + unmatched;
+      const rate = denom > 0 ? matched / denom : 1;
+      result.attraction_audit = { matched, unmatched, seeded, reflected, rate };
+      if (denom >= 3 && rate < 0.6) {
+        result.warnings.push(
+          `C41 관광지 매칭률 ${(rate * 100).toFixed(0)}% (${matched}/${denom}) — 60% 미달, attractions 토큰·aliases 점검 필요`
+        );
+      }
+      if (denom >= 3 && matched === 0) {
+        result.warnings.push(
+          `C42 관광지 매칭 0건 — destination 표기 또는 attractions 시드 부재 의심`
+        );
+      }
+    }
+  } catch (e) {
+    console.log(`   [Attraction Audit] ai_quality_log 조회 실패(무시): ${e.message}`);
+  }
+
   // ─── Parallel async wave ─────────────────────────────────────────────
   // 독립적인 비동기 작업 3종을 동시에 발사: RAG 임베딩 조회, CoVe 감사(opt-in),
   // 렌더 HTML fetch. 각각 평균 200~3000ms 라 순차 실행 시 누적 5초+ → 병렬 시 가장
