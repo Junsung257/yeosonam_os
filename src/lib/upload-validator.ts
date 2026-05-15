@@ -129,6 +129,47 @@ export function applyDeterministicExtractedDataFixes(ed: ExtractedData): void {
   if (ed.selling_points?.unique && ed.selling_points.unique.length > 5) {
     ed.selling_points = { ...ed.selling_points, unique: ed.selling_points.unique.slice(0, 5) };
   }
+
+  // ERR-XIY-inclusions-comma-merged@2026-05-16 박제 — inclusions 1줄 콤마 합쳐짐 사고 차단.
+  //   "항공료 및 텍스, 유류할증료, 여행자보험, 숙박..." LLM 가 1 string 으로 박는 케이스 split.
+  //   서안 사고: inc_cnt=1 → C3 "특식 3회 inclusions 미반영" 거짓 신호.
+  if (Array.isArray(ed.inclusions) && ed.inclusions.length === 1 && typeof ed.inclusions[0] === 'string') {
+    const single = ed.inclusions[0];
+    if (single.length > 30 && (single.match(/,/g) ?? []).length >= 3) {
+      // 콤마 split — 단 괄호 안 콤마는 보존 (예: "여행자보험(2억, 의료 포함)")
+      const parts: string[] = [];
+      let depth = 0;
+      let buf = '';
+      for (const ch of single) {
+        if (ch === '(' || ch === '[' || ch === '{') depth++;
+        else if (ch === ')' || ch === ']' || ch === '}') depth--;
+        else if (ch === ',' && depth === 0) {
+          if (buf.trim().length >= 2) parts.push(buf.trim());
+          buf = '';
+          continue;
+        }
+        buf += ch;
+      }
+      if (buf.trim().length >= 2) parts.push(buf.trim());
+      if (parts.length >= 3) ed.inclusions = parts;
+    }
+  }
+
+  // ERR-XIY-display-title-null@2026-05-16 박제 — display_title 자동 생성.
+  //   C11 hero 후킹 부재 사고 차단. 사장님 비전 V5 "2-tier hero".
+  //   title 에서 핵심 토큰 추출 (괄호 안 + #해시태그 제외, 14자 이내 권장).
+  const dt = (ed as { display_title?: string | null }).display_title;
+  if ((!dt || !dt.trim()) && ed.title) {
+    const titleClean = ed.title
+      .replace(/\[[^\]]*\]/g, '')           // [뜨거운 특가] 등 제거
+      .replace(/#[가-힣A-Za-z0-9]+/g, '')   // 해시태그 제거
+      .replace(/\d+박\s*\d+일?|\d+일/g, '')  // "3박5일" / "5일" 제거
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (titleClean.length >= 4) {
+      (ed as { display_title?: string | null }).display_title = titleClean.slice(0, 30);
+    }
+  }
 }
 
 // ─── 검증 함수 ────────────────────────────────────────────────────────────────

@@ -1315,6 +1315,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   // 항공편은 하나투어 스타일 카드로 렌더링 (첫날/마지막날만, 중간DAY는 일반 표시)
                   const isFirstOrLastDay = currentDay.day === 1 || currentDay.day === days[days.length - 1]?.day || currentDay.day === days[days.length - 2]?.day;
                   if (item.type === 'flight' && isFirstOrLastDay) {
+                    // ERR-XIY-flight-double-render@2026-05-16 박제 — DAY 1 의 두 번째 flight item
+                    // ("서안 도착") 이 잘못된 두 번째 flight 카드 ("서안 출발 → 부산 도착") 로 렌더되던 사고 차단.
+                    // 도착-only item 은 앞 출발 item 의 카드에 통합됨.
+                    const isArrivalOnly = /도착/.test(item.activity)
+                      && !/출발|향발/.test(item.activity)
+                      && sIdx > 0
+                      && currentDay.schedule?.[sIdx - 1]?.type === 'flight';
+                    if (isArrivalOnly) return null;
+
                     // ERR-20260418-22 — activity 자체에서 방향 파싱 ("타이페이 출발 → 부산 도착")
                     // 같은 DAY의 다음 스케줄에서 도착 아이템도 폴백으로 확보
                     const parsed = parseFlightActivity(item.activity);
