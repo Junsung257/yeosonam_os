@@ -141,10 +141,24 @@ export default function UnmatchedPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
 
+  // PR #87 Phase 1 — Wikidata 정규화 후보 (1-click 신규 등록).
+  interface WikidataCandidate {
+    qid: string;
+    description: string | null;
+    labels: { ko: string | null; en: string | null; zh: string | null; ja: string | null };
+    aliases: { ko: string[]; en: string[]; zh: string[]; ja: string[] };
+    image_filename: string | null;
+    image_thumb_url: string | null;
+    sitelinks: { kowiki: string | null; enwiki: string | null; zhwiki: string | null };
+  }
+  const [wikidata, setWikidata] = useState<WikidataCandidate | null>(null);
+  const [registeringWd, setRegisteringWd] = useState(false);
+
   const loadSuggestions = async (unmatchedId: string) => {
     if (suggestingId === unmatchedId) {
       setSuggestingId(null);
       setSuggestions([]);
+      setWikidata(null);
       return;
     }
     setSuggestingId(unmatchedId);
@@ -152,15 +166,44 @@ export default function UnmatchedPage() {
     setAddingId(null);
     setSuggestLoading(true);
     setSuggestions([]);
+    setWikidata(null);
     try {
       const res = await fetch(`/api/unmatched/suggest?id=${encodeURIComponent(unmatchedId)}`);
       const json = await res.json();
       setSuggestions(Array.isArray(json.suggestions) ? json.suggestions : []);
+      setWikidata(json.wikidata ?? null);
     } catch (err) {
       console.error('자동 추천 실패', err);
       setSuggestions([]);
+      setWikidata(null);
     } finally {
       setSuggestLoading(false);
+    }
+  };
+
+  const registerFromWikidata = async (unmatchedId: string, wd: WikidataCandidate) => {
+    if (!confirm(`Wikidata ${wd.qid} "${wd.labels.ko ?? wd.labels.en}" 로 신규 등록하시겠습니까?\n다국어 alias ${[...wd.aliases.ko, ...wd.aliases.en, ...wd.aliases.zh, ...wd.aliases.ja].length}개 + Wikimedia 사진 자동 import`)) return;
+    setRegisteringWd(true);
+    try {
+      const res = await fetch('/api/unmatched', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: unmatchedId, action: 'register_from_wikidata', wikidata: wd }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? '등록 실패');
+        return;
+      }
+      alert(data.message);
+      setSuggestingId(null);
+      setSuggestions([]);
+      setWikidata(null);
+      load();
+    } catch (err) {
+      alert('등록 실패: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setRegisteringWd(false);
     }
   };
 
@@ -539,6 +582,46 @@ export default function UnmatchedPage() {
                       <p className="text-[10px] text-admin-muted-2 text-center pt-1">
                         클릭 → "{item.activity}" 가 해당 관광지의 alias 로 영구 적립됨 (다음 등록부터 자동 매칭)
                       </p>
+                    </div>
+                  )}
+
+                  {/* PR #87 Phase 1 — Wikidata 정규화 후보 (외부 SSOT) */}
+                  {wikidata && (
+                    <div className="mt-3 pt-3 border-t border-sky-200">
+                      <p className="text-xs text-sky-700 mb-2 font-medium">
+                        🌐 Wikidata 정규화 후보 — 다국어 alias + 사진 자동 import
+                      </p>
+                      <div className="bg-white border border-sky-200 rounded-lg p-3">
+                        <div className="flex gap-3">
+                          {wikidata.image_thumb_url && (
+                            <img src={wikidata.image_thumb_url} alt={wikidata.labels.ko ?? wikidata.qid}
+                              className="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-bold text-admin-text-2">{wikidata.labels.ko ?? wikidata.labels.en ?? wikidata.qid}</span>
+                              <a href={`https://www.wikidata.org/wiki/${wikidata.qid}`} target="_blank" rel="noopener noreferrer"
+                                className="text-[10px] text-sky-600 underline">{wikidata.qid}</a>
+                            </div>
+                            {wikidata.description && (
+                              <p className="text-xs text-admin-muted mb-2 line-clamp-2">{wikidata.description}</p>
+                            )}
+                            <div className="flex flex-wrap gap-1 mb-2 text-[10px]">
+                              {wikidata.labels.en && <span className="bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">EN: {wikidata.labels.en}</span>}
+                              {wikidata.labels.zh && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">ZH: {wikidata.labels.zh}</span>}
+                              {wikidata.labels.ja && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">JA: {wikidata.labels.ja}</span>}
+                              <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                                alias {[...wikidata.aliases.ko, ...wikidata.aliases.en, ...wikidata.aliases.zh, ...wikidata.aliases.ja].length}개
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={() => registerFromWikidata(item.id, wikidata)}
+                          disabled={registeringWd}
+                          className="w-full mt-2 px-3 py-2 bg-sky-600 text-white text-xs rounded-lg hover:bg-sky-700 font-medium disabled:opacity-50">
+                          {registeringWd ? '등록 중…' : `✅ 이 정보로 신규 attraction 등록 (Wikidata ${wikidata.qid})`}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

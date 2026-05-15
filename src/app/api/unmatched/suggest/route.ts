@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
+import { suggestFromWikidata, type WikidataSuggestion } from '@/lib/wikidata-suggest';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,11 +66,26 @@ export async function GET(request: NextRequest) {
       3,
     );
 
+    // PR #87 Phase 1 — Wikidata 정규화 후보 추가.
+    //   DB 내부 매칭 top hit score 가 낮을 때 (≤80) 사장님이 외부 정규화 후보를 보고 결정할 수 있도록.
+    //   ☑ 클릭 시 신규 attraction 등록 (다국어 alias + P18 image + sitelinks 자동).
+    //   Wikidata = CC0, 무료, ToS 안전. 호출 시간 100-300ms.
+    let wikidata: WikidataSuggestion | null = null;
+    const topScore = scored.suggestions[0]?.score ?? 0;
+    if (topScore < 80) {
+      try {
+        wikidata = await suggestFromWikidata(scored.activity_clean || unmatched.activity);
+      } catch (e) {
+        console.warn('[suggest] Wikidata fetch 실패(무시):', e instanceof Error ? e.message : e);
+      }
+    }
+
     return NextResponse.json({
       activity: unmatched.activity,
       activity_clean: scored.activity_clean,
       candidate_count: candidates?.length || 0,
       suggestions: scored.suggestions,
+      wikidata,
     });
   } catch (error) {
     console.error('[/api/unmatched/suggest] 오류:', error);

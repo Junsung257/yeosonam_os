@@ -225,6 +225,123 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    // PR #87 Phase 1 — Wikidata QID 기반 신규 attraction 등록 (1-click).
+    //   사장님이 어드민에서 Wikidata 후보 카드 보고 ☑ 클릭 시 호출.
+    //   STRICT SSOT 정책 준수: 자동 INSERT 아님, 사장님 명시 승인 후 INSERT.
+    //   body: { id, action: 'register_from_wikidata', wikidata: { qid, labels, aliases, image_thumb_url, description },
+    //          country?, region?, badge_type? }
+    if (body.action === 'register_from_wikidata') {
+      const wd = body.wikidata as {
+        qid: string;
+        description: string | null;
+        labels: { ko: string | null; en: string | null; zh: string | null; ja: string | null };
+        aliases: { ko: string[]; en: string[]; zh: string[]; ja: string[] };
+        image_thumb_url: string | null;
+        image_filename: string | null;
+      } | undefined;
+      if (!wd?.qid) return NextResponse.json({ error: 'wikidata.qid 필요' }, { status: 400 });
+
+      // 1. 미매칭 + 캐노니컬 결정
+      const { data: unmatched } = await supabaseAdmin
+        .from('unmatched_activities')
+        .select('activity, region, country')
+        .eq('id', id)
+        .single();
+      if (!unmatched) return NextResponse.json({ error: '미매칭 항목을 찾을 수 없습니다.' }, { status: 404 });
+
+      const canonical = wd.labels.ko ?? wd.labels.en ?? unmatched.activity;
+      const aliases = [
+        wd.labels.ko, wd.labels.en, wd.labels.zh, wd.labels.ja,
+        ...wd.aliases.ko, ...wd.aliases.en, ...wd.aliases.zh, ...wd.aliases.ja,
+        unmatched.activity,
+      ].filter((v): v is string => !!v && v !== canonical);
+      const dedupedAliases = [...new Set(aliases)];
+
+      // 2. 동일 QID 또는 동일 name 이미 있는지 체크
+      const { data: existing } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name')
+        .or(`wikidata_qid.eq.${wd.qid},name.eq.${canonical}`)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        // 이미 존재 → unmatched 만 link_alias 처리
+        const attractionId = (existing[0] as { id: string }).id;
+        const { error: linkErr } = await supabaseAdmin
+          .from('unmatched_activities')
+          .update({
+            status: 'added',
+            resolved_at: new Date().toISOString(),
+            resolved_kind: 'manual_register_existing',
+            resolved_attraction_id: attractionId,
+            resolved_by: 'admin_wikidata',
+          })
+          .eq('id', id);
+        if (linkErr) throw linkErr;
+        return NextResponse.json({
+          success: true,
+          message: `이미 등록된 관광지 "${(existing[0] as { name: string }).name}" 에 미매칭 연결 완료`,
+          attraction_id: attractionId,
+        });
+      }
+
+      // 3. attractions INSERT
+      const photos = wd.image_thumb_url ? [{
+        src_medium: wd.image_thumb_url,
+        src_large: wd.image_thumb_url,
+        photographer: 'Wikimedia Commons',
+        pexels_id: 0,
+        license: 'wikimedia-commons',
+        source_url: wd.image_filename ? `https://commons.wikimedia.org/wiki/File:${wd.image_filename}` : null,
+      }] : null;
+      const { data: created, error: insErr } = await supabaseAdmin
+        .from('attractions')
+        .insert({
+          name: canonical,
+          short_desc: wd.description ?? null,
+          aliases: dedupedAliases,
+          country: unmatched.country ?? null,
+          region: unmatched.region ?? null,
+          badge_type: body.badge_type ?? 'tour',
+          emoji: '📍',
+          category: 'sightseeing',
+          wikidata_qid: wd.qid,
+          source: 'wikidata',
+          external_url: `https://www.wikidata.org/wiki/${wd.qid}`,
+          confidence_score: 0.85,
+          seeded_at: new Date().toISOString(),
+          is_active: true,
+          photos,
+        })
+        .select('id, name')
+        .single() as { data: { id: string; name: string } | null; error: { message: string } | null };
+      if (insErr || !created) return NextResponse.json({ error: insErr?.message ?? 'INSERT 실패' }, { status: 500 });
+
+      // 4. 미매칭 처리
+      const { error: umErr } = await supabaseAdmin
+        .from('unmatched_activities')
+        .update({
+          status: 'added',
+          resolved_at: new Date().toISOString(),
+          resolved_kind: 'manual_register_wikidata',
+          resolved_attraction_id: created.id,
+          resolved_by: 'admin_wikidata',
+        })
+        .eq('id', id);
+      if (umErr) throw umErr;
+
+      try {
+        await resweepUnmatchedActivities([created.id]);
+      } catch (sweepErr) {
+        console.warn('[PATCH /api/unmatched register_from_wikidata] resweep skip:', sweepErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Wikidata ${wd.qid} → "${created.name}" 신규 등록 완료 (다국어 alias ${dedupedAliases.length}개)`,
+        attraction_id: created.id,
+      });
+    }
+
     // 단순 상태 변경 모드
     const { status } = body;
     if (!status) return NextResponse.json({ error: 'status 필요' }, { status: 400 });
