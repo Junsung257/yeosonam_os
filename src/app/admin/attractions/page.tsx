@@ -182,6 +182,74 @@ export default function AttractionsPage() {
     });
   };
 
+  // PR #90 Phase 2c — Paste-and-Parse 모달 (외부 카탈로그 → AI 카드 → 사장님 ☑ → 일괄 등록).
+  const [showPasteImport, setShowPasteImport] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteRegion, setPasteRegion] = useState('');
+  const [pasteCountry, setPasteCountry] = useState('');
+  const [parseLoading, setParseLoading] = useState(false);
+  interface ParseCard {
+    name: string;
+    short_desc: string | null;
+    badge_type: string;
+    emoji: string;
+    aliases: string[];
+    country: string | null;
+    region: string | null;
+  }
+  const [parsedCards, setParsedCards] = useState<ParseCard[]>([]);
+  const [selectedCardIdx, setSelectedCardIdx] = useState<Set<number>>(new Set());
+  const [bulkRegisterProgress, setBulkRegisterProgress] = useState<{ current: number; total: number } | null>(null);
+
+  const parsePastedText = async () => {
+    if (pasteText.trim().length < 50) { alert('paste 텍스트가 너무 짧습니다 (50자+)'); return; }
+    setParseLoading(true);
+    setParsedCards([]);
+    setSelectedCardIdx(new Set());
+    try {
+      const res = await fetch('/api/attractions/parse-import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: pasteText, region: pasteRegion, country: pasteCountry }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error ?? 'AI 분해 실패'); return; }
+      setParsedCards(data.cards ?? []);
+      // 디폴트 전체 선택
+      setSelectedCardIdx(new Set(Array.from({ length: data.cards?.length ?? 0 }, (_, i) => i)));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '분해 실패');
+    } finally {
+      setParseLoading(false);
+    }
+  };
+
+  const bulkRegisterSelectedCards = async () => {
+    const targets = parsedCards.filter((_, i) => selectedCardIdx.has(i));
+    if (targets.length === 0) { alert('선택된 카드가 없습니다'); return; }
+    if (!confirm(`${targets.length}개 attraction 일괄 등록하시겠습니까?\n(이름 중복 시 skip)`)) return;
+    setBulkRegisterProgress({ current: 0, total: targets.length });
+    let saved = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const c = targets[i];
+      setBulkRegisterProgress({ current: i + 1, total: targets.length });
+      try {
+        const res = await fetch('/api/attractions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(c),
+        });
+        if (res.ok) saved++;
+        await new Promise(r => setTimeout(r, 150));
+      } catch { /* skip */ }
+    }
+    setBulkRegisterProgress(null);
+    alert(`등록 완료: ${saved}/${targets.length}건`);
+    setShowPasteImport(false);
+    setPasteText('');
+    setParsedCards([]);
+    setSelectedCardIdx(new Set());
+    load();
+  };
+
   // PR #88 Phase 2a — Wikipedia summary 일괄 자동 채움.
   //   short_desc 또는 long_desc 가 비어 있는 attraction 만 대상.
   //   라이선스: Wikipedia CC-BY-SA → external_url 자동 저장. STRICT SSOT: 기존 채움값 보존.
@@ -373,6 +441,13 @@ export default function AttractionsPage() {
                 미매칭
               </Button>
             </a>
+            <button
+              onClick={() => setShowPasteImport(true)}
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 transition-opacity"
+              title="하나투어/모두투어/MRT 페이지를 통째로 paste → AI 분해 → 일괄 등록"
+            >
+              📋 카탈로그 paste
+            </button>
             <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
               <Plus size={14} />
               신규
@@ -467,6 +542,96 @@ export default function AttractionsPage() {
               <button onClick={addAttraction} disabled={saving} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50">등록</button>
               <button onClick={() => setShowAdd(false)} className="px-4 py-2 bg-slate-200 text-sm rounded-lg">취소</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PR #90 Phase 2c — Paste-and-Parse 모달 */}
+      {showPasteImport && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-admin-text">📋 카탈로그 paste 등록 (AI 자동 분해)</h2>
+              <button onClick={() => setShowPasteImport(false)} className="text-admin-muted hover:text-admin-text">✕</button>
+            </div>
+
+            {parsedCards.length === 0 ? (
+              <>
+                <p className="text-sm text-admin-muted mb-3">
+                  하나투어 / 모두투어 / MRT 같은 외부 카탈로그 페이지를 통째로 복사해서 붙여넣으세요.<br/>
+                  AI 가 관광지(POI)만 골라 카드로 분해해드립니다. <b>자동 등록 안 됨</b> — 사장님이 확인 후 ☑ 선택한 카드만 일괄 등록.
+                </p>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <input type="text" value={pasteRegion} onChange={e => setPasteRegion(e.target.value)} placeholder="지역 (예: 서안)"
+                    className="border rounded-lg px-3 py-2 text-sm" />
+                  <input type="text" value={pasteCountry} onChange={e => setPasteCountry(e.target.value)} placeholder="국가 코드 (예: CN)"
+                    className="border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
+                  placeholder="여기에 하나투어/모두투어/MRT 페이지를 통째로 붙여넣으세요... (50자 이상, 30000자 이하)"
+                  className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+                  rows={14} />
+                <div className="flex justify-between items-center mt-3">
+                  <span className="text-xs text-admin-muted">{pasteText.length} 자</span>
+                  <button onClick={parsePastedText} disabled={parseLoading || pasteText.trim().length < 50}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                    {parseLoading ? '🤖 분석 중…' : '✨ AI로 분리하기'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-admin-muted mb-3">
+                  AI 가 <b className="text-emerald-700">{parsedCards.length}</b>개 attraction 카드를 분해했습니다.
+                  ☑ 선택한 것만 일괄 등록됩니다. (디폴트 전체 선택)
+                </p>
+                <div className="flex gap-2 mb-3">
+                  <button onClick={() => setSelectedCardIdx(new Set(Array.from({ length: parsedCards.length }, (_, i) => i)))}
+                    className="text-xs px-2 py-1 bg-slate-100 rounded">전체 선택</button>
+                  <button onClick={() => setSelectedCardIdx(new Set())}
+                    className="text-xs px-2 py-1 bg-slate-100 rounded">전체 해제</button>
+                  <button onClick={() => { setParsedCards([]); setPasteText(''); }}
+                    className="text-xs px-2 py-1 bg-slate-100 rounded">다시 paste</button>
+                </div>
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                  {parsedCards.map((c, i) => (
+                    <label key={i} className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition ${
+                      selectedCardIdx.has(i) ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'
+                    }`}>
+                      <input type="checkbox" checked={selectedCardIdx.has(i)}
+                        onChange={e => {
+                          const next = new Set(selectedCardIdx);
+                          e.target.checked ? next.add(i) : next.delete(i);
+                          setSelectedCardIdx(next);
+                        }}
+                        className="mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-base">{c.emoji}</span>
+                          <span className="font-bold text-sm">{c.name}</span>
+                          <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded">{c.badge_type}</span>
+                        </div>
+                        {c.short_desc && <p className="text-xs text-admin-muted mb-1">{c.short_desc}</p>}
+                        {c.aliases.length > 0 && (
+                          <p className="text-[10px] text-admin-muted-2">alias: {c.aliases.join(' · ')}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center mt-4 pt-3 border-t border-slate-200">
+                  <span className="text-sm text-admin-muted">
+                    선택: <b className="text-emerald-700">{selectedCardIdx.size}</b> / {parsedCards.length}
+                  </span>
+                  <button onClick={bulkRegisterSelectedCards} disabled={!!bulkRegisterProgress || selectedCardIdx.size === 0}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                    {bulkRegisterProgress
+                      ? `등록 중… ${bulkRegisterProgress.current}/${bulkRegisterProgress.total}`
+                      : `✅ 선택한 ${selectedCardIdx.size}건 일괄 등록`}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
