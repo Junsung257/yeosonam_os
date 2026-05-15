@@ -16,7 +16,7 @@ export async function resolveLpHeroPhotoUrl(
 ): Promise<string | null> {
   if (!pkg?.destination) return null;
 
-  let matchQuery = sb.from('attractions').select('name, country, region, aliases');
+  let matchQuery = sb.from('attractions').select('name, country, region, aliases, category, mrt_gid');
 
   const destTokens = pkg.destination.split(/[/,·&]/).map((t: string) => t.trim()).filter(Boolean);
   const regionClauses = destTokens.map((t: string) => `region.ilike.%${t}%`).join(',');
