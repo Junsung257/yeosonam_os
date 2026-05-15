@@ -104,6 +104,34 @@ export default function AttractionsPage() {
     setAttractions(prev => prev.filter(a => a.id !== id));
   };
 
+  // ── B 박제 (2026-05-15): alias 수동 추가/삭제 (사장님 도메인 전문성 보완) ──
+  const [aliasInput, setAliasInput] = useState<Record<string, string>>({});
+  const addAlias = async (id: string) => {
+    const alias = (aliasInput[id] ?? '').trim();
+    if (!alias) return;
+    try {
+      const res = await fetch(`/api/admin/attractions/${id}/aliases`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'alias 추가 실패'); return; }
+      setAttractions(prev => prev.map(a => a.id === id ? { ...a, aliases: data.aliases } : a));
+      setAliasInput(p => ({ ...p, [id]: '' }));
+    } catch (e) { alert(e instanceof Error ? e.message : 'alias 추가 실패'); }
+  };
+  const removeAlias = async (id: string, alias: string) => {
+    try {
+      const res = await fetch(`/api/admin/attractions/${id}/aliases`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'alias 삭제 실패'); return; }
+      setAttractions(prev => prev.map(a => a.id === id ? { ...a, aliases: data.aliases } : a));
+    } catch (e) { alert(e instanceof Error ? e.message : 'alias 삭제 실패'); }
+  };
+
   // ── 사진 관리 ──
   const searchPhotos = async (id: string, keyword: string) => {
     setPhotoPanel(p => p ? { ...p, searching: true } : { id, results: [], keyword, searching: true });
@@ -478,6 +506,42 @@ export default function AttractionsPage() {
                           )}
                         </div>
                       )}
+                    </div>
+
+                    {/* B 박제 (2026-05-15): 표기 변형 (aliases) 수동 보완 */}
+                    <div>
+                      <h4 className="text-xs font-bold text-admin-muted mb-2">🏷️ 표기 변형 ({a.aliases?.length || 0})</h4>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {(a.aliases || []).map(al => (
+                          <span key={al} className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
+                            {al}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); removeAlias(a.id, al); }}
+                              className="text-blue-400 hover:text-red-500 font-bold ml-0.5"
+                              title="삭제"
+                            >×</button>
+                          </span>
+                        ))}
+                        {(a.aliases || []).length === 0 && (
+                          <span className="text-[11px] text-admin-muted-2">표기 변형 없음 — 추가 시 매칭 정확도 ↑</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={aliasInput[a.id] ?? ''}
+                          onChange={e => setAliasInput(p => ({ ...p, [a.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAlias(a.id); } }}
+                          onClick={e => e.stopPropagation()}
+                          placeholder="예: 도멘 드 마리 (한 줄 입력)"
+                          className="flex-1 text-xs border rounded-lg px-2 py-1.5"
+                        />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); addAlias(a.id); }}
+                          className="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium"
+                        >
+                          + 추가
+                        </button>
+                      </div>
                     </div>
 
                     {/* 기본 정보 편집 */}
