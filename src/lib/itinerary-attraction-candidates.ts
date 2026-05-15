@@ -88,7 +88,9 @@ export function extractAttractionCandidates(activity: string, note?: string | nu
     const noBullet = line.replace(/^[▶•\-\s]+/, '').trim();
     // 한국어 패키지 일정 표현 보강 (2026-05-15): "X 후 Y", "X 거쳐 Y", "X → Y", "X 들러 Y" 도 분리.
     // " 이동/도착/관광 " 자체는 후처리 cleanToken 의 trailing 제거로 흡수.
-    const parts = noBullet.split(/\s*(?:,|，|\/|·|및|와|&|→|⇒|\sㅡ\s|\s후\s|\s이후\s|\s거쳐\s|\s들러\s)\s*/);
+    // ERR-XIY-plus-split@2026-05-16: "서안성벽+함광문유적지박물관" 같은 + 결합 라인 분리 추가.
+    //   원문 verbatim 한 줄 시드되어 DB 오염되는 사고 영구 차단.
+    const parts = noBullet.split(/\s*(?:,|，|\/|·|및|와|&|\+|→|⇒|\sㅡ\s|\s후\s|\s이후\s|\s거쳐\s|\s들러\s)\s*/);
     for (const p of parts) push(p);
   }
 
