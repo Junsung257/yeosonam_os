@@ -1287,6 +1287,8 @@ export async function POST(request: NextRequest) {
               filename:              fileName,
               file_type:             parsedDocument.fileType,
               raw_text:              parsedDocument.rawText,
+              // X3 박제 (2026-05-15): SKILL.md Rule Zero — raw_text_hash 자동 박제. 사후 변조 탐지용.
+              raw_text_hash:         createHash('sha256').update(parsedDocument.rawText ?? '').digest('hex'),
               itinerary:             ed.itinerary        ?? [],
               inclusions:            ed.inclusions       ?? [],
               excludes:              ed.excludes         ?? [],
@@ -1323,7 +1325,12 @@ export async function POST(request: NextRequest) {
               product_highlights:    ed.product_highlights ?? [],
               product_summary:       ed.product_summary   ?? null,
               itinerary_data:        itineraryDataToSave,
-              status:                'pending_review',
+              // X3 박제 (2026-05-15 SKILL.md Step 7-A): audit_status=clean + V3 신뢰도 ≥ 0.85 자동 approve.
+              // 사장님 비전 "사장님은 PDF 만 붙여넣음 — 등록·감사·승인 전부 Agent" 달성.
+              // V3 신뢰도 낮거나 critical fail 있으면 pending_review (사장님 force 결정 필요).
+              status:                (confidenceV3 >= 0.85 && v3FailedChecks.filter(c => c.severity === 'critical').length === 0)
+                                       ? 'approved'
+                                       : 'pending_review',
               marketing_copies:      marketingCopies,
               internal_code:         internalCode ?? null,
             })
@@ -1668,6 +1675,29 @@ export async function POST(request: NextRequest) {
       ? ` · 관광지 매칭 ${attractionStats.matched}개${attractionStats.seeded > 0 ? ` · 신규 시드 ${attractionStats.seeded}개` : ''}${attractionStats.reflected > 0 ? ` · 같은 등록 즉시반영 ${attractionStats.reflected}개` : ''}${attractionStats.unmatched > 0 ? ` · 미매칭 ${attractionStats.unmatched}개 (검수 큐로)` : ''}`
       : '';
 
+    // X3 박제 (2026-05-15 SKILL.md Step 7-C): 한 화면 표준 리포트.
+    // 사장님이 PDF 만 붙여넣고 어드민 UI 에서 즉시 확인 가능한 풀 상태 (short_code / 가격 / 출발일 / 항공편 / status / 모바일 URL).
+    let registerReport: Array<Record<string, unknown>> = [];
+    if (isSupabaseConfigured && savedIds.length > 0) {
+      try {
+        const { data: pkgs } = await supabaseAdmin
+          .from('travel_packages')
+          .select('id, internal_code, title, price, airline, status, departure_days')
+          .in('id', savedIds);
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '';
+        registerReport = ((pkgs ?? []) as Array<{ id: string; internal_code: string; title: string; price: number | null; airline: string | null; status: string; departure_days: string | null }>).map(p => ({
+          short_code:   p.internal_code,
+          title:        p.title,
+          price:        p.price,
+          airline:      p.airline,
+          status:       p.status,
+          departure_days: p.departure_days,
+          mobile_url:   baseUrl ? `${baseUrl}/packages/${p.id}` : `/packages/${p.id}`,
+          a4_url:       baseUrl ? `${baseUrl}/admin/packages/${p.id}/poster` : `/admin/packages/${p.id}/poster`,
+        }));
+      } catch { /* fail-soft */ }
+    }
+
     return NextResponse.json({
       success: successCount > 0 || !isSupabaseConfigured,
       data:    parsedDocument,
@@ -1686,6 +1716,8 @@ export async function POST(request: NextRequest) {
       gate:            overallGate,
       tokenUsage:      tokenInfo,
       attractionStats,
+      // X3 박제 (2026-05-15): SKILL.md Step 7-C 표준 한 화면 리포트
+      registerReport,
       ...(saveErrors.length > 0 && { errors: saveErrors }),
       message: productCount > 1
         ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.${attractionLine}`

@@ -73,15 +73,34 @@ const raw_text_hash = crypto.createHash('sha256').update(raw_text).digest('hex')
 2. `.claude/commands/manage-attractions.md` — **관광지 처리 가이드 (MUST READ)**
 3. `.claude/CLAUDE.md` 섹션 0 — Zero-Hallucination Policy
 
-## 🚫 관광지 자동 시드 금지 (ERR-20260418-33)
+## 🌱 관광지 자동 시드 (V5 — 2026-05-15 정책 갱신)
 
-**이미 완전한 관광지 관리 파이프라인이 존재합니다.** 새로 만들지 마세요.
+> **이전 정책 ERR-20260418-33 "자동 시드 금지" 폐기 (2026-05-15).** 사장님 비전 V5 가 진짜 표준.
+> **권위 문서**: [`.claude/commands/manage-attractions.md`](../../commands/manage-attractions.md) — 항상 정책 SSOT.
 
-- ❌ `db/seed_XXX_attractions.js` 같은 임시 시드 스크립트 생성 금지
-- ❌ Agent가 AI로 short_desc/long_desc 생성해서 DB INSERT 금지
-- ❌ 상품 등록 중 관광지 자동 생성 금지
-- ✅ 매칭 실패한 관광지는 **자동으로 `unmatched_activities`에 플래그만 찍고 종료**
-- ✅ 사용자가 `/admin/attractions/unmatched` 페이지에서 수동 처리 (CSV 다운로드 → 외부 편집 → CSV 업로드)
+**자동 시드 표준 흐름 (V5):**
+1. **다중 source 검색** (우선순위 순):
+   - Tier 1: MRT canonical (`mrt_gid` 있는 attraction · cron sync)
+   - Tier 2: Wikidata Wikipedia 한국어 → 영문 fallback (`fetchWikidataDescription`)
+   - Tier 3: 하나투어/모두투어 OTA fetch (`ota-name-normalizer.ts` — alias 정규화 / playwright cron G3)
+   - Tier 4: LLM short generate (`generateGenericShortDesc` — 최후 fallback, 무조건 시드 보장)
+2. **Paraphrase 검증** (`paraphrase-enforcer.ts` cosine ≤ 0.6) + G2 Self-Refine critic
+3. **photos 자동 attach** (Pexels multilingual)
+4. **출처 추적** (`source` / `external_url` / `raw_descriptions` 보존 → 저작권 안전)
+5. **Same-Session Seed-Reflect**: 시드 직후 `enrichItineraryWithAttractionReferences` 재실행 + `travel_packages.itinerary_data` UPDATE + `revalidatePath` ISR 무효화 → 같은 등록부터 즉시 카드 표시
+6. **매칭 실패 시 unmatched_activities INSERT + `admin_alerts`** (silent fail 금지)
+
+**옛 정책 금지 사항 (여전히 유효):**
+- ❌ `db/seed_XXX_attractions.js` 같은 임시 1회성 시드 스크립트 생성 금지 (자동 시드는 `autoSeedAttraction` 단일 모듈로 통합)
+- ❌ 출처 없는 LLM 단독 생성 → DB INSERT (paraphrase 검증 우회 금지)
+- ❌ 시드 실패 silent swallow (반드시 unmatched 큐 + admin_alerts)
+
+**구현 모듈 SSOT:**
+- `src/lib/parser/auto-attraction-seeder.ts` — 통합 시드 진입점
+- `src/lib/parser/paraphrase-enforcer.ts` — 표현 차용 차단
+- `src/lib/parser/multilingual-photo.ts` — 사진 attach
+- `src/lib/parser/ota-name-normalizer.ts` + `ota-playwright-fetcher.ts` — OTA alias 정규화
+- `scripts/enrich-ota-aliases.mjs` + `.github/workflows/ota-alias-enrichment.yml` — 일 1회 GitHub Actions cron (비용 0)
 
 ---
 
@@ -243,7 +262,9 @@ INSERT 전에 `insert-template.js` 의 `validatePackage()` 자동 실행:
 
 1. `db/templates/insert-template.js` 의 `run()` 함수는 INSERT 후 자동으로 `post_register_audit.js` 를 spawn 실행 (이미 통합됨).
 2. 신규 작성하는 모든 `db/insert_*.js` 스크립트는 main() 끝에 `spawnSync('node', ['db/post_register_audit.js', ...ids])` 를 포함해야 함.
-3. 환경변수 `SKIP_POST_AUDIT=true` 로만 스킵 가능 (CI/테스트 목적).
+3. `/admin/upload` 경로 (POST `/api/upload`) 는 V5 시드 + Same-Session Seed-Reflect + `runUploadVerify` + `runCoVeInBackground` + `runAutoMobileQA` 자동 fire 박혀있음 (2026-05-15 V5 박제 — `src/app/api/upload/route.ts` L1330~L1400).
+4. **자동 alert (G5 — 2026-05-15)**: `runAutoMobileQA` 가 매칭률 < 60% 시 `admin_alerts` 자동 적재 + Slack 푸시 (high/critical). 어드민 대시보드 빨간 배지 — 사장님이 모바일 안 봐도 자동 알림.
+5. 환경변수 `SKIP_POST_AUDIT=true` 로만 스킵 가능 (CI/테스트 목적).
 
 ### 7-A. 자동 승인 (CLEAN 전용, MANDATORY)
 
