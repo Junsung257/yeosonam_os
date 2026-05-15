@@ -13,16 +13,16 @@
 
 > **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
 
-1. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
-2. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
-3. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.
-4. **ERR-HSN-render-bundle@2026-04-21** (line 676) — 황산 송백CC 2건 렌더링 6가지 오류. → flight 1 activity + `→` 토큰, inclusions 콤마 없는 개별 토큰, 호텔 activity 고정 문구.
-5. **ERR-date-confusion** (line 582) — 원문 날짜 의미 혼동 (배포일 vs 발권기한). → `ticketing_deadline` 명시적 라벨 매칭.
-6. **ERR-FUK-customer-leaks** (line 554) — 내부 메모 고객 화면 노출 + 숫자 콤마 split + 항공편 파싱 실패 (복합 4건). → `internal_notes` vs `customer_notes` 분리 강제.
-7. **ERR-KUL-safe-replace** (line 537) — 중복 감지 시 자동 아카이브의 사일런트 사고. → 중복 감지 후 사용자 확인 분기.
-8. **ERR-KUL-05** (line 516) — 렌더링 계약 분리 구조 (패턴 A 재발). → `renderPackage()` view.* 만 소비, pkg 직접 파싱 금지.
-9. **ERR-KUL-04** (line 495) — `optional_tours` "(싱가포르)" 지역 라벨 A4/모바일 불일치. → `normalizeOptionalTourName()` 공통 사용.
-10. **ERR-KUL-03** (line 481) — 4박6일 DAY 1 "쿠알라 야경투어" 오삽입 (교차 오염). → DAY-별 컨텍스트 격리.
+1. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
+2. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
+3. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
+4. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.
+5. **ERR-HSN-render-bundle@2026-04-21** (line 676) — 황산 송백CC 2건 렌더링 6가지 오류. → flight 1 activity + `→` 토큰, inclusions 콤마 없는 개별 토큰, 호텔 activity 고정 문구.
+6. **ERR-date-confusion** (line 582) — 원문 날짜 의미 혼동 (배포일 vs 발권기한). → `ticketing_deadline` 명시적 라벨 매칭.
+7. **ERR-FUK-customer-leaks** (line 554) — 내부 메모 고객 화면 노출 + 숫자 콤마 split + 항공편 파싱 실패 (복합 4건). → `internal_notes` vs `customer_notes` 분리 강제.
+8. **ERR-KUL-safe-replace** (line 537) — 중복 감지 시 자동 아카이브의 사일런트 사고. → 중복 감지 후 사용자 확인 분기.
+9. **ERR-KUL-05** (line 516) — 렌더링 계약 분리 구조 (패턴 A 재발). → `renderPackage()` view.* 만 소비, pkg 직접 파싱 금지.
+10. **ERR-KUL-04** (line 495) — `optional_tours` "(싱가포르)" 지역 라벨 A4/모바일 불일치. → `normalizeOptionalTourName()` 공통 사용.
 
 > **신규 ERR 추가 시**: 가장 오래된 항목(현재 #10)을 체크리스트에서 제거하고 새 항목을 #1로 prepend. 본문은 그대로 유지(append-only).
 

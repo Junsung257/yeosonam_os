@@ -39,4 +39,35 @@ describe('extractAttractionCandidates', () => {
     const c = extractAttractionCandidates('▶다딴라폭포 → 랑비앙산');
     expect(c).toEqual(expect.arrayContaining(['다딴라폭포', '랑비앙산']));
   });
+
+  // ── 사고 #2026-05-15-KWL 회귀 fixture (GEPA pattern) ──
+  it('[ERR-KWL] 일반어 단독 시드 차단 — "맛집/카페/옷가게..." → 정확한 핵심만', () => {
+    // 사장님 계림 사고 원문 그대로
+    const c = extractAttractionCandidates('▶맛집/카페/옷가게가 즐비한 계림의 명동 동서항');
+    expect(c).not.toContain('맛집');
+    expect(c).not.toContain('카페');
+    expect(c).not.toContain('옷가게');
+    expect(c).not.toContain('명동');
+    // "동서항" 또는 그 변형이 추출되어야 (긴 토큰이라 부분 추출 OK)
+    expect(c.some(x => x.includes('동서항'))).toBe(true);
+  });
+
+  it('[ERR-KWL] STANDALONE_STOP_WORDS 핵심 케이스 차단', () => {
+    const c = extractAttractionCandidates('▶맛집, 카페, 시장, 거리, 박물관, 사원');
+    // 모든 일반어 단독 차단
+    expect(c).not.toContain('맛집');
+    expect(c).not.toContain('카페');
+    expect(c).not.toContain('시장');
+    expect(c).not.toContain('거리');
+    expect(c).not.toContain('박물관');
+    expect(c).not.toContain('사원');
+  });
+
+  it('[ERR-KWL] "여행의 피로를 풀어주는 발마사지 체험" — 핵심 추출', () => {
+    // (60분/팁포함) 같은 괄호 안 부속 정보는 cleanToken 으로 제거
+    const c = extractAttractionCandidates('▶여행의 피로를 풀어주는 발마사지 체험(60분/팁포함)');
+    // "발마사지" 가 cleanToken 후에도 살아남으려면 STOP_WORDS 차단되면 안 됨
+    //   "마사지" 는 STOP_WORDS 에 있지만 "발마사지" 는 4자 + 비-stop word
+    expect(c.length).toBeGreaterThanOrEqual(1);
+  });
 });

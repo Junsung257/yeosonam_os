@@ -284,7 +284,23 @@ async function attachPhotosToAttraction(args: {
       destinationKorean: args.destination ?? undefined,
       count: 5,
     });
-    if (photos.length === 0) return;
+    if (photos.length === 0) {
+      // X4-2 박제 (2026-05-15): photos 0건 시드된 attraction 어드민 alert (Pexels API fail / 검색 결과 0건 자동 감지).
+      try {
+        const { postAlert } = await import('@/lib/admin-alerts');
+        await postAlert({
+          category: 'general',
+          severity: 'info',
+          title: `attraction 사진 누락: ${args.name}`,
+          message: `Pexels multilingual 검색 결과 0건 — 어드민에서 수동 사진 추가 권장`,
+          ref_type: 'attraction',
+          ref_id: args.attractionId,
+          meta: { name: args.name, destination: args.destination },
+          dedupe: true,
+        });
+      } catch { /* swallow */ }
+      return;
+    }
 
     // F3 박제: AttractionData.photos 타입 (photographer: string, pexels_id: number) 일관성 보장.
     const photoRows = photos.slice(0, 3).map(p => ({
