@@ -1226,7 +1226,26 @@ export async function POST(request: NextRequest) {
 
         // ── G8. travel_packages 테이블 INSERT (고객 노출용 + FK 연결) ─────────
 
-        const itineraryInput = (product.itineraryData ?? null) as ItineraryDataLike | null;
+        // L2 박제 (2026-05-16): Phase 2 LLM 추출 실패 시 deterministic day-table 파서 fallback.
+        //   사장님 솔루션: "표 형식 텍스트 파싱 약하면 나눠서 처리". 트립박스 ERP 표준.
+        //   청도 사고 (itinerary_data=null) 재발 차단.
+        let itineraryInput = (product.itineraryData ?? null) as ItineraryDataLike | null;
+        if (!itineraryInput?.days?.length && parsedDocument.rawText) {
+          try {
+            const { parseDayTable } = await import('@/lib/parser/deterministic/day-table');
+            const detResult = parseDayTable(parsedDocument.rawText);
+            if (detResult.days.length > 0 && detResult.confidence >= 0.4) {
+              console.log(`[Upload API] Phase 2 LLM 실패 → day-table deterministic fallback: ${detResult.days.length} days (conf=${detResult.confidence.toFixed(2)})`);
+              itineraryInput = detResult as unknown as ItineraryDataLike;
+              // ed 의 airline 도 보강 (null 이면)
+              if (!ed.airline && detResult.meta.airline) {
+                (ed as { airline?: string | null }).airline = detResult.meta.airline;
+              }
+            }
+          } catch (e) {
+            console.warn('[Upload API] day-table fallback 실패(무시):', e instanceof Error ? e.message : e);
+          }
+        }
         const enrichment = enrichItineraryWithAttractionReferences(
           itineraryInput,
           activeAttractions,
