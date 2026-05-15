@@ -74,6 +74,16 @@ function getNestedValue(obj: unknown, path: string): unknown {
   return cur;
 }
 
+interface HotelSearchResult {
+  id: string;
+  name: string;
+  short_desc: string | null;
+  region: string | null;
+  country: string | null;
+  photo: string | null;
+  aliases: string[];
+}
+
 export default function PackageReviewPage() {
   const params = useParams();
   const packageId = String(params?.id || '');
@@ -82,6 +92,10 @@ export default function PackageReviewPage() {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  // N4 박제 (2026-05-16 트립박스 표준): 호텔 마스터 검색 inline
+  const [hotelSearchQ, setHotelSearchQ] = useState<string>('');
+  const [hotelResults, setHotelResults] = useState<HotelSearchResult[]>([]);
+  const [hotelSearchOpen, setHotelSearchOpen] = useState<string | null>(null); // fieldPath of which day's hotel
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +110,41 @@ export default function PackageReviewPage() {
   }, [packageId]);
 
   useEffect(() => { if (packageId) load(); }, [packageId, load]);
+
+  // N4 박제: 호텔 마스터 검색 (트립박스 표준)
+  const searchHotels = useCallback(async (q: string, region?: string) => {
+    if (q.length < 1 && !region) { setHotelResults([]); return; }
+    try {
+      const url = `/api/admin/attractions/search-hotel?q=${encodeURIComponent(q)}${region ? `&region=${encodeURIComponent(region)}` : ''}&limit=10`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setHotelResults(data.hotels ?? []);
+    } catch { setHotelResults([]); }
+  }, []);
+
+  const applyHotel = useCallback(async (dayFieldPath: string, hotel: HotelSearchResult) => {
+    if (!pkg) return;
+    // dayFieldPath 예: "itinerary_data.days[0].hotel"
+    const rootKey = 'itinerary_data';
+    const rootVal = JSON.parse(JSON.stringify((pkg as Record<string, unknown>)[rootKey] ?? { days: [] }));
+    const m = dayFieldPath.match(/days\[(\d+)\]/);
+    if (!m) return;
+    const idx = Number(m[1]);
+    if (!Array.isArray(rootVal.days) || !rootVal.days[idx]) return;
+    rootVal.days[idx].hotel = { name: hotel.name, grade: rootVal.days[idx].hotel?.grade ?? null };
+    setSaving(true);
+    try {
+      const res = await fetch('/api/packages', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId: pkg.id, [rootKey]: rootVal }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || '저장 실패'); return; }
+      alert(`호텔 적용 완료: ${hotel.name}`);
+      setHotelSearchOpen(null);
+      load();
+    } finally { setSaving(false); }
+  }, [pkg, load]);
 
   const startEdit = (fieldPath: string) => {
     if (!pkg) return;
@@ -277,12 +326,65 @@ export default function PackageReviewPage() {
                     <p className="text-xs text-admin-text-2 mt-1.5">💡 <span className="italic">{info.reason}</span></p>
                   </div>
                   {!isEditing && (
-                    <button onClick={() => startEdit(fieldPath)}
-                      className="flex-shrink-0 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium">
-                      ✏️ 직접 입력
-                    </button>
+                    <div className="flex flex-col gap-1 flex-shrink-0">
+                      <button onClick={() => startEdit(fieldPath)}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium">
+                        ✏️ 직접 입력
+                      </button>
+                      {/* N4 박제: hotel 필드 면 마스터 검색 버튼 */}
+                      {fieldPath.endsWith('.hotel') && (
+                        <button
+                          onClick={() => {
+                            setHotelSearchOpen(fieldPath);
+                            setHotelSearchQ(pkg?.destination ?? '');
+                            void searchHotels(pkg?.destination ?? '', pkg?.destination ?? '');
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 font-medium"
+                          title="attractions 마스터에서 호텔 검색"
+                        >🏨 마스터 검색</button>
+                      )}
+                    </div>
                   )}
                 </div>
+                {/* N4 박제: 호텔 검색 결과 패널 */}
+                {hotelSearchOpen === fieldPath && (
+                  <div className="mt-3 pt-3 border-t border-admin-border-mid">
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        value={hotelSearchQ}
+                        onChange={e => setHotelSearchQ(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') searchHotels(hotelSearchQ, pkg?.destination ?? ''); }}
+                        className="flex-1 text-xs border rounded-lg px-3 py-1.5"
+                        placeholder="호텔명 또는 지역 (예: 하이탠 / 칭다오)"
+                      />
+                      <button onClick={() => searchHotels(hotelSearchQ, pkg?.destination ?? '')}
+                        className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700">검색</button>
+                      <button onClick={() => setHotelSearchOpen(null)}
+                        className="px-3 py-1 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">닫기</button>
+                    </div>
+                    {hotelResults.length > 0 ? (
+                      <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                        {hotelResults.map(h => (
+                          <button
+                            key={h.id}
+                            onClick={() => applyHotel(fieldPath, h)}
+                            disabled={saving}
+                            className="w-full flex items-center gap-2 p-2 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 text-left disabled:opacity-50"
+                          >
+                            {h.photo && <img src={h.photo} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-admin-text-2 truncate">{h.name}</div>
+                              {h.region && <div className="text-[11px] text-admin-muted">📍 {h.region} · {h.country}</div>}
+                              {h.short_desc && <div className="text-[10px] text-admin-muted-2 truncate">{h.short_desc}</div>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-admin-muted-2">검색 결과 없음 — 다른 키워드 시도</p>
+                    )}
+                  </div>
+                )}
                 {isEditing && (
                   <div className="mt-3 pt-3 border-t border-admin-border-mid">
                     <div className="text-[10px] text-blue-600 font-bold mb-1.5">✅ 값 입력 (텍스트 또는 JSON)</div>
