@@ -94,8 +94,11 @@ export default async function PackageDetailPage({
   // Step B: 매칭된 N개에 한해 사진/설명 상세 fetch — 수십 KB
   //
   // 기존: select('*') + limit(3000) + photos 포함 → 2MB 초과 → fetch cache 실패 + 30s timeout
+  // 2026-05-15 박제: category + mrt_gid 추가 — attraction-matcher 가 accommodation/mrt_product
+  //   카테고리를 매칭 후보에서 제외하는데 SELECT 에 누락돼 있어 호텔/투어가 잘못 매칭되던 사고.
+  //   mrt_gid 는 동일 fuzzy 점수일 때 MRT canonical 우선 선택용.
   let matchQuery = sb.from('attractions')
-    .select('name, country, region, aliases');
+    .select('name, country, region, aliases, category, mrt_gid');
 
   if (pkg && pkg.destination) {
     const destTokens = pkg.destination.split(/[\/,·&]/).map((t: string) => t.trim()).filter(Boolean);
