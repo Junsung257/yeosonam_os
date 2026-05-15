@@ -112,6 +112,22 @@ export async function autoSeedAttraction(args: {
     return { seeded: false, reason: 'invalid_name' };
   }
 
+  // ERR-XIY-verbatim-long-name@2026-05-16 박제 — 원문 verbatim 한 줄이 attraction 으로 시드되던 사고 차단.
+  //   "중국보존건축물중 가장 완전한 서안성벽+함광문유적지박물관" 같은 30자+ 서술형 라인이 DB 에 박혀
+  //   다음 등록에서도 반복 매칭되던 이중 오염 영구 차단.
+  //   진짜 attraction 이름은 보통 2~15자 (특별한 케이스 20자 이내).
+  if (name.length > 25) {
+    return { seeded: false, reason: 'name_too_long_likely_verbatim' };
+  }
+  // 추가: 한 줄 안에 한국어 서술형 어미가 있으면 verbatim 의심 (관광지명은 보통 어미 없음)
+  if (/(있는|되는|불리는|보관한|가져온|즐비한|어우러진|위치한|이루어진|장식한)/.test(name)) {
+    return { seeded: false, reason: 'descriptive_text_likely_verbatim' };
+  }
+  // 추가: 공백 3개 이상 = 긴 서술 (단어 4+개 조합) 차단
+  if ((name.match(/\s/g) ?? []).length >= 3) {
+    return { seeded: false, reason: 'too_many_spaces_likely_verbatim' };
+  }
+
   try {
     // 1) 이미 있으면 skip
     const { data: existing } = await supabaseAdmin
