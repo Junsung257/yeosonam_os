@@ -195,9 +195,10 @@ export default function AttractionsPage() {
       try {
         // ERR-pexels-korean-search@2026-04-21: attractionId 전달 → 서버가 aliases 의 영어명 우선 사용.
         // 영어 alias 없으면 서버가 자동으로 한글+지역 fallback.
+        // PR #89 Phase 2b: wikimedia=true 로 Wikidata QID 있는 attraction 은 Commons P18 우선 (false-match 0)
         const res = await fetch('/api/attractions/photos', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ attractionId: a.id, per_page: 3 }),
+          body: JSON.stringify({ attractionId: a.id, per_page: 3, wikimedia: true }),
         });
         const data = await res.json();
         const photos = (data.photos || []).slice(0, 3);

@@ -23,23 +23,21 @@ function pickEnglishAlias(aliases: unknown): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isPexelsConfigured()) {
-    return NextResponse.json({ error: 'PEXELS_API_KEY 미설정', photos: [] }, { status: 503 });
-  }
-
   try {
     const body = await request.json();
-    const { keyword: keywordRaw, attractionId, per_page = 5 } = body;
+    const { keyword: keywordRaw, attractionId, per_page = 5, wikimedia = false } = body;
 
     // 검색 키워드 결정: attractionId 우선, 없으면 keyword
+    type AttrRow = { name: string; aliases: unknown; region: string | null; country: string | null; wikidata_qid: string | null };
     let searchKeyword: string | null = null;
+    let attr: AttrRow | null = null;
     if (attractionId) {
       const { data } = await supabaseAdmin
         .from('attractions')
-        .select('name, aliases, region, country')
+        .select('name, aliases, region, country, wikidata_qid')
         .eq('id', attractionId)
         .limit(1);
-      const attr = data?.[0];
+      attr = (data?.[0] as AttrRow | undefined) ?? null;
       if (!attr) return NextResponse.json({ error: '관광지를 찾을 수 없습니다.' }, { status: 404 });
       const eng = pickEnglishAlias(attr.aliases);
       searchKeyword = eng || `${attr.name} ${attr.region || attr.country || ''} travel`.trim();
@@ -48,20 +46,69 @@ export async function POST(request: NextRequest) {
     }
     if (!searchKeyword) return NextResponse.json({ error: 'keyword 또는 attractionId 필수' }, { status: 400 });
 
-    const photos = await searchPexelsPhotos(searchKeyword, Math.min(per_page, 10));
+    // PR #89 Phase 2b — Wikimedia Commons P18 우선 (false-match 0, 라이선스 메타 보존).
+    //   Pexels 가 한국어 검색 시 false-positive ("서안" → 한국 서안군 사진) 차단.
+    //   Wikidata QID 있을 때만 시도. CC0/PD/CC-BY 만 채택, CC-BY-SA 는 reject.
+    const wikimediaPhotos: Array<{
+      src_medium: string;
+      src_large: string;
+      photographer: string;
+      alt: string;
+      pexels_id: number;  // 0 — Wikimedia 표시
+      license: string;
+      source_url: string;
+    }> = [];
+    if (wikimedia && attr?.wikidata_qid) {
+      try {
+        const { fetchImageFilenameByQid, fetchCommonsPhotoMeta } = await import('@/lib/wikimedia-commons');
+        const filename = await fetchImageFilenameByQid(attr.wikidata_qid);
+        if (filename) {
+          const meta = await fetchCommonsPhotoMeta(filename, 1200);
+          if (meta?.safe_to_use && meta.thumb_url) {
+            wikimediaPhotos.push({
+              pexels_id: 0,
+              src_medium: meta.thumb_url,
+              src_large: meta.full_url,
+              photographer: meta.author ?? 'Wikimedia Commons',
+              alt: `${attr.name} (Wikidata ${attr.wikidata_qid})`,
+              license: meta.license ?? 'Unknown',
+              source_url: meta.description_url,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[Photos] Wikimedia fallback 실패(무시):', e instanceof Error ? e.message : e);
+      }
+    }
 
-    const simplified = photos.map(p => ({
-      pexels_id: p.id,
-      src_medium: p.src.medium,
-      src_large: p.src.large2x,
-      photographer: p.photographer,
-      alt: p.alt,
-    }));
+    // Pexels 보조 (있으면 추가, 없으면 Wikimedia 만)
+    let pexelsSimplified: Array<{ pexels_id: number; src_medium: string; src_large: string; photographer: string; alt: string }> = [];
+    if (isPexelsConfigured()) {
+      try {
+        const photos = await searchPexelsPhotos(searchKeyword, Math.min(per_page, 10));
+        pexelsSimplified = photos.map(p => ({
+          pexels_id: p.id,
+          src_medium: p.src.medium,
+          src_large: p.src.large2x,
+          photographer: p.photographer,
+          alt: p.alt,
+        }));
+      } catch (e) {
+        console.warn('[Photos] Pexels 실패(무시):', e instanceof Error ? e.message : e);
+      }
+    }
 
-    return NextResponse.json({ photos: simplified, searchKeyword });
+    return NextResponse.json({
+      photos: [...wikimediaPhotos, ...pexelsSimplified],
+      searchKeyword,
+      sources: {
+        wikimedia: wikimediaPhotos.length,
+        pexels: pexelsSimplified.length,
+      },
+    });
   } catch (error) {
-    console.error('[Attractions Photos] Pexels 검색 오류:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Pexels 검색 실패', photos: [] }, { status: 500 });
+    console.error('[Attractions Photos] 검색 오류:', error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : '검색 실패', photos: [] }, { status: 500 });
   }
 }
 
