@@ -1,5 +1,9 @@
 name: Slack Notifications
 
+# 2026-05-15 — mail-flood-stop v4: SLACK_WEBHOOK secret 미설정 시 모든 step skip.
+# secret 등록 (pending-settings-tracker SLACK_WEBHOOK_URL) 시점부터 자동 활성화.
+# job-level env 로 secret 을 한 번 expose → step-level if 에서 env.SLACK_WEBHOOK != '' gate.
+
 on:
   deployment:
     types: [created]
@@ -12,17 +16,18 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true  # requires SLACK_WEBHOOK_URL secret
+    env:
+      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Notify deployment start
-        if: github.event_name == 'deployment'
+        if: github.event_name == 'deployment' && env.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v1
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-url: ${{ env.SLACK_WEBHOOK }}
           payload: |
             {
               "channel": "#deployments",
@@ -56,10 +61,10 @@ jobs:
             }
 
       - name: Notify deployment success
-        if: github.event.deployment_status.state == 'success'
+        if: github.event.deployment_status.state == 'success' && env.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v1
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-url: ${{ env.SLACK_WEBHOOK }}
           payload: |
             {
               "channel": "#deployments",
@@ -88,10 +93,10 @@ jobs:
             }
 
       - name: Notify deployment failure
-        if: github.event.deployment_status.state == 'failure'
+        if: github.event.deployment_status.state == 'failure' && env.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v1
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-url: ${{ env.SLACK_WEBHOOK }}
           payload: |
             {
               "channel": "#deployments",
@@ -120,10 +125,10 @@ jobs:
             }
 
       - name: Notify PR merge
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v1
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-url: ${{ env.SLACK_WEBHOOK }}
           payload: |
             {
               "channel": "#releases",

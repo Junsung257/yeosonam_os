@@ -96,6 +96,7 @@ const attr = matchAttraction(item.activity, attractions, pkg.destination);
 | 알림 | `src/lib/notification-adapter.ts`, `src/app/api/notify/**` | [`.claude/rules/notifications.md`](rules/notifications.md) |
 | 마케팅 카피·AI 콘텐츠 | `src/lib/content-pipeline/**`, `src/app/api/card-news\|blog/**` | [`.claude/rules/marketing-copy.md`](rules/marketing-copy.md) |
 | 유틸리티 카탈로그 | `src/lib/**`, `src/components/**`, `src/app/**`, `db/**` | [`.claude/rules/utilities.md`](rules/utilities.md) |
+| **GitHub Actions 워크플로** | **`.github/workflows/**`** | **[`.github/workflows/README.md`](../.github/workflows/README.md) — permissions/continue-on-error/deprecated 액션 체크리스트. 메일 폭탄 사고 v1~v4 이력 박제.** |
 
 > 새 도메인 룰을 추가하려면 `.claude/rules/` 에 `paths:` frontmatter 포함한 .md 추가 후 위 표에 한 줄 반영.
 
