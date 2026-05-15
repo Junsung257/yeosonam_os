@@ -775,9 +775,10 @@ export async function POST(request: NextRequest) {
     }[] = [];
     const matchedCanonicalNames = new Set<string>();
     const extractedCandidateRows: { activity: string; destination?: string }[] = [];
-    // A2/A3 박제 (2026-05-15): 등록 종료 후 사장님에게 한 화면 보고용 통계
-    let attractionSeededCount = 0;
-    let attractionReflectedCount = 0;
+    // A2/A3 박제 (2026-05-15): 등록 종료 후 사장님에게 한 화면 보고용 통계.
+    //   ERR-XIY-2026-05-16 STRICT SSOT 전환 후 자동 시드 없음 → 항상 0 (응답 호환성 유지).
+    const attractionSeededCount = 0;
+    const attractionReflectedCount = 0;
 
     let activeAttractions: AttractionData[] = [];
     if (isSupabaseConfigured && !bulkMode) {
