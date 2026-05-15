@@ -1,0 +1,41 @@
+name: OTA Alias Enrichment (G3)
+
+# 사장님 비용 0 (GitHub Actions free quota): 월 50분 사용 예상 (free 2000분)
+# 일 1회 18:00 UTC (KST 03:00) — Vercel Hobby ToS 무관.
+# 신규 시드된 attraction 의 표기 변형 (alias) 을 하나투어/모두투어 검색으로 보강.
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 매일 UTC 18:00 (KST 03:00)
+  workflow_dispatch:        # 수동 트리거 가능 (사장님 즉시 실행)
+
+permissions:
+  contents: read
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install playwright-core + @sparticuz/chromium (런타임만)
+        run: npm install --no-save playwright-core@^1.48.0 @sparticuz/chromium@^131.0.0
+
+      - name: Run OTA alias enrichment
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REVALIDATE_URL: ${{ secrets.PRODUCTION_URL }}/api/revalidate
+          REVALIDATE_SECRET: ${{ secrets.CRON_SECRET }}
+          OTA_MAX_PER_RUN: '10'
+        run: node scripts/enrich-ota-aliases.mjs
