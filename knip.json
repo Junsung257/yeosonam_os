@@ -55,7 +55,9 @@
     "pretendard",
     "serwist",
     "@serwist/next",
-    "@sentry/nextjs"
+    "@sentry/nextjs",
+    "@testing-library/jest-dom",
+    "bundlemon"
   ],
   "ignoreBinaries": [
     "powershell"

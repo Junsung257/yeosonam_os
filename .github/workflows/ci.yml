@@ -53,11 +53,23 @@ jobs:
 
       - run: npm ci
 
+      # CI build env — dummy 값 (실제 fetch 안 함, supabase client constructor 통과용)
+      # pr-quality-gate.yml 과 동일 패턴 (2026-05-15 박제). 실 secrets 는 Vercel 환경에서만 노출.
       - name: Build
         run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+          SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+          NEXT_PUBLIC_BASE_URL: 'https://example.com'
 
       - name: Visual regression tests
         run: npx playwright install && npm run test:visual
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+          SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+          NEXT_PUBLIC_BASE_URL: 'https://example.com'
 
       - name: Upload test results
         if: always()
@@ -82,8 +94,18 @@ jobs:
           cache: 'npm'
 
       - run: npm ci && npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+          SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+          NEXT_PUBLIC_BASE_URL: 'https://example.com'
 
       - name: Start dev server
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+          SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+          NEXT_PUBLIC_BASE_URL: 'https://example.com'
         run: |
           npm run dev &
           for i in {1..60}; do
