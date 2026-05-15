@@ -19,7 +19,7 @@ import path from 'node:path';
 // Next.js build 출력의 "First Load JS" 는 gzip 후라 약 1/3 수준.
 // 임계는 raw 바이트 기준 — 회귀 방지용으로 현재 max + 헤드룸 으로 설정.
 const BUDGET_KB_DEFAULT = 800; // admin 페이지 (현재 max ≈ 670KB raw)
-const BUDGET_KB_CUSTOMER = 700; // 고객 페이지 (현재 /packages/[id] 676KB → 700 ceiling)
+const BUDGET_KB_CUSTOMER = 720; // 고객 페이지 (2026-05-15: destination-iso SSOT 67도시 inline 으로 /packages/[id] 705KB)
 // TODO(P1): /packages/[id] 와 /auth/* 를 600KB 이하로 슬림화 후 BUDGET_KB_CUSTOMER 600 으로 강화
 const FAIL_FLAG = process.argv.includes('--fail');
 
