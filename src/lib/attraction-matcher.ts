@@ -79,18 +79,29 @@ export interface AttractionIndex {
   degraded: boolean;
 }
 
+/**
+ * 매칭 대상에서 제외할 카테고리 (2026-05-15 박제, 나트랑/달랏 호텔 오매칭 사고).
+ *   accommodation = 호텔/리조트/빌라 — 활동 매칭 대상 아님
+ *   mrt_product   = MRT TNA 상품 (브래킷 프로모션) — 우리 카탈로그 활동과 다른 영역
+ *   호출 측이 호텔 매칭을 원하면 별도 hotel-matcher 사용 (향후).
+ */
+const NON_ATTRACTION_CATEGORIES = new Set(['accommodation', 'mrt_product']);
+
 export function buildAttractionIndex(
   attractions: AttractionData[],
   destination?: string,
 ): AttractionIndex {
   const destTrim = destination?.trim() || '';
   const degraded = destTrim.length === 0;
-  const filtered = destTrim
+  // 1차: destination filter
+  const destFiltered = destTrim
     ? attractions.filter(a =>
         !a.region || !destTrim ||
         destTrim.includes(a.region) || (a.region && a.region.includes(destTrim)) ||
         (a.country && destTrim.includes(a.country)))
     : attractions;
+  // 2차: 호텔/MRT 상품 제외 (활동 매칭 대상 아님)
+  const filtered = destFiltered.filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category));
 
   const byLowerName = new Map<string, AttractionData>();
   const byLowerAlias = new Map<string, AttractionData>();
@@ -184,7 +195,10 @@ export function matchAttractionIndexed(
       ...fuzzyCandidates.filter(a => a.mrt_gid),
       ...fuzzyCandidates.filter(a => !a.mrt_gid),
     ];
-    const fuzzy = bestFuzzyMatch(activity, ordered, a => a.name, 0.82);
+    // 2026-05-15 박제: threshold 0.78 — "린푸옥 사원" ↔ "린푸억사원" (옥/억 음역 변형) 흡수.
+    // 0.82 였을 때 매칭 못 잡아 모바일에 attraction 카드 안 그려지던 사고.
+    // destination scope + accommodation/mrt_product 제외 가드 덕분에 0.78 도 안전.
+    const fuzzy = bestFuzzyMatch(activity, ordered, a => a.name, 0.78);
     if (fuzzy) {
       // fuzzy 매칭이 잡은 음역 변형은 자동으로 attractions_aliases 에 누적 → 다음 등록 즉시 exact alias match.
       // fire-and-forget — matcher 가 동기 함수라 await 없이 호출 (recordAlias 가 supabase 미설정 시 noop).
