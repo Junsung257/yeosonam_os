@@ -15,6 +15,7 @@
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, isPexelsConfigured, destToEnKeyword } from '@/lib/pexels';
+import { searchMultilingualPhotos, getDestinationNative } from '@/lib/parser/multilingual-photo';
 
 export async function runAutoPhotoMatch(args: {
   internalCode: string;
@@ -26,12 +27,25 @@ export async function runAutoPhotoMatch(args: {
   if (!dest) return;
 
   try {
-    // 1) 한국어 → 영어 키워드 변환
+    // 1) 영문 + 지역어 동시 검색 (2026-05-15 UX-V5 박제)
+    //    "Bana Hills Vietnam" + "Bà Nà Hills" 같이 영문/지역어 동시 → 정확도 ↑
     const baseKeyword = destToEnKeyword(dest);
     const keyword = `${baseKeyword} travel landscape`;
+    const nativeHint = getDestinationNative(dest);
 
-    // 2) Pexels 상위 5개 검색
-    const photos = await searchPexelsPhotos(keyword, 5);
+    // 2) Pexels 검색 — multilingual fallback
+    let photos = await searchMultilingualPhotos({
+      englishKeyword: keyword,
+      destinationKorean: dest,
+      count: 5,
+    });
+    // multilingual 실패하면 fallback to 영문 only
+    if (photos.length === 0) {
+      photos = await searchPexelsPhotos(keyword, 5);
+    }
+    if (nativeHint) {
+      console.log(`[AutoPhoto] ${args.internalCode}: multilingual ${nativeHint.native} (${nativeHint.locale})`);
+    }
     if (photos.length === 0) {
       console.log(`[AutoPhoto] ${args.internalCode}: no photos for "${keyword}"`);
       return;
