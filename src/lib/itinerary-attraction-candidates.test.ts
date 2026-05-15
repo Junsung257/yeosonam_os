@@ -19,4 +19,14 @@ describe('extractAttractionCandidates', () => {
     const c = extractAttractionCandidates('석식 후 호텔 투숙 및 휴식');
     expect(c.length).toBe(0);
   });
+
+  it('괄호 안 별칭도 별도 후보로 추출', () => {
+    const c = extractAttractionCandidates('▶린푸억사원(달랏 핑크 사원) 관광');
+    expect(c).toEqual(expect.arrayContaining(['린푸억사원', '달랏 핑크 사원']));
+  });
+
+  it('60자 까지 긴 정식 명칭 흡수', () => {
+    const c = extractAttractionCandidates('▶도멘 드 마리 성당 (Domaine de Marie Catholic Church)');
+    expect(c.some(x => x.includes('도멘 드 마리 성당'))).toBe(true);
+  });
 });
