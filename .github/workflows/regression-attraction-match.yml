@@ -1,0 +1,33 @@
+name: Regression Attraction Match (G6)
+
+# 사장님 발견 사고 패키지 매칭률 주간 회귀 측정 (Latitude GEPA 2026 패턴).
+# 임계치 < 70% 시 admin_alerts 자동 적재 (G5 보다 엄격 — 회귀 감지 목적).
+
+on:
+  schedule:
+    - cron: '0 19 * * 1'   # 매주 월요일 UTC 19:00 (KST 화요일 04:00)
+  workflow_dispatch:        # 수동 트리거 가능
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run regression attraction match
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/regression-attraction-match.mjs

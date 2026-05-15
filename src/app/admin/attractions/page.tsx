@@ -104,6 +104,20 @@ export default function AttractionsPage() {
     setAttractions(prev => prev.filter(a => a.id !== id));
   };
 
+  // ── X4-3 박제 (2026-05-15): attraction 정확/부정확 1-click 피드백 (active learning) ──
+  const submitFeedback = async (id: string, verdict: 'accurate' | 'inaccurate') => {
+    try {
+      const res = await fetch(`/api/admin/attractions/${id}/feedback`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verdict }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || '피드백 실패'); return; }
+      alert(data.message || '피드백 완료');
+      load();
+    } catch (e) { alert(e instanceof Error ? e.message : '피드백 실패'); }
+  };
+
   // ── B 박제 (2026-05-15): alias 수동 추가/삭제 (사장님 도메인 전문성 보완) ──
   const [aliasInput, setAliasInput] = useState<Record<string, string>>({});
   const addAlias = async (id: string) => {
@@ -506,6 +520,24 @@ export default function AttractionsPage() {
                           )}
                         </div>
                       )}
+                    </div>
+
+                    {/* X4-3 박제 (2026-05-15): 정확/부정확 1-click 피드백 (active learning) */}
+                    <div className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="text-xs text-admin-muted">
+                        🤖 자동 시드 검증 (사장님 1-click)
+                        <span className="ml-2 text-blue-700">정확도가 다음 시드 학습에 반영됩니다</span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (confirm(`"${a.name}" 정확? confidence +10%`)) submitFeedback(a.id, 'accurate'); }}
+                          className="text-xs px-2.5 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg font-medium"
+                        >✅ 정확</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (confirm(`"${a.name}" 부정확? confidence -20%, 30% 미만 자동 비활성`)) submitFeedback(a.id, 'inaccurate'); }}
+                          className="text-xs px-2.5 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg font-medium"
+                        >❌ 부정확</button>
+                      </div>
                     </div>
 
                     {/* B 박제 (2026-05-15): 표기 변형 (aliases) 수동 보완 */}
