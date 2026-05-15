@@ -79,6 +79,19 @@ function extractTitlesFromHtml(html: string): string[] {
 }
 
 async function fetchOtaSource(url: string): Promise<string | null> {
+  // G3 placeholder (2026-05-15): headless browser (Vercel Sandbox + @sparticuz/chromium) 확장 자리.
+  //   ENABLE_PLAYWRIGHT_OTA=1 env flag 시 fetchOtaWithBrowser() 호출 → SPA 사이트 SSR rendering.
+  //   현재는 정적 fetch 만. 사장님 Vercel Pro plan 결정 후 playwright-core + @sparticuz/chromium 박제.
+  if (process.env.ENABLE_PLAYWRIGHT_OTA === '1') {
+    try {
+      const { fetchOtaWithBrowser } = await import('./ota-playwright-fetcher');
+      const html = await fetchOtaWithBrowser(url);
+      if (html && html.length >= 1000) return html;
+    } catch (e) {
+      console.warn('[OTA] playwright fetcher 실패(무시 정적 fallback):', e instanceof Error ? e.message : e);
+    }
+  }
+
   try {
     const res = await fetch(url, {
       headers: {

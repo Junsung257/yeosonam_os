@@ -7,6 +7,10 @@
  *   3. 실패 시 다른 source 시도 또는 manual queue
  *
  * 저작권 안전 + 출처 추적.
+ *
+ * 2026-05-15 박제 (G1+G2):
+ *   - G1 fewShotDemos prompt 옵션 (caller 가 비슷한 카테고리/지역 attraction 의 short_desc 예시 주입)
+ *   - G2 Self-Refine critic loop (생성 후 LLM 자신이 "사실 명시 위반" 평가 → 부족하면 재생성)
  */
 
 import { llmCall } from '@/lib/llm-gateway';
@@ -59,6 +63,10 @@ export async function paraphraseExternal(args: {
   style: 'short_desc' | 'long_desc';
   attractionName?: string;
   destination?: string | null;
+  /** G1 박제 (2026-05-15): 유사 카테고리 attraction 의 short_desc 예시 (paraphrase 패턴 학습용) */
+  fewShotDemos?: Array<{ name: string; short_desc: string }>;
+  /** G2 박제 (2026-05-15): Self-Refine critic loop. paraphrase 후 LLM critic 호출하여 부족하면 재생성. */
+  enableSelfRefine?: boolean;
 }): Promise<ParaphraseResult> {
   const orig = (args.originalText ?? '').trim();
   if (!orig || orig.length < 10) {
@@ -70,6 +78,11 @@ export async function paraphraseExternal(args: {
     ? '톤은 자연스럽게, 원문의 정보는 보존하되 문장 구조와 표현을 재작성하세요.'
     : '원문과 단어 선택·문장 순서·구문이 모두 다르게 완전히 새로 작성하세요. 사실만 보존.';
 
+  // G1: few-shot demos 가 있으면 prompt 에 패턴 학습용으로 주입 (cosine 검증 그대로)
+  const demosBlock = args.fewShotDemos && args.fewShotDemos.length > 0
+    ? `\n참고 패턴 (같은 카테고리 attraction 의 짧은 설명 예시 — 톤·구조만 학습, 내용 복사 금지):\n${args.fewShotDemos.slice(0, 3).map((d, i) => `  ${i + 1}. ${d.name} — "${d.short_desc}"`).join('\n')}\n`
+    : '';
+
   for (let round = 0; round < 2; round++) {
     const prompt = `당신은 여행 카탈로그 카피라이터입니다. 아래 외부 원문을 ${lengthHint} 분량의 ${args.style === 'short_desc' ? '한 줄 짧은 설명' : '상세 설명'} 으로 재작성하세요.
 
@@ -78,7 +91,7 @@ export async function paraphraseExternal(args: {
 ${orig}
 """
 
-${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}${args.destination ? `지역: ${args.destination}\n` : ''}
+${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}${args.destination ? `지역: ${args.destination}\n` : ''}${demosBlock}
 요구사항:
 - ${stronger(round)}
 - 마케팅 과장 금지. 사실만.
@@ -98,15 +111,68 @@ ${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}${args.des
       const rewritten = r.rawText.trim().replace(/^["「『]|["」』]$/g, '').trim();
       if (!rewritten) continue;
       const sim = cosineSim(orig, rewritten);
-      if (sim < PARAPHRASE_THRESHOLD) {
-        return { text: rewritten, similarity: sim, attempts: round + 1, ok: true };
+      if (sim >= PARAPHRASE_THRESHOLD) {
+        // 너무 비슷하면 다음 라운드 (더 강한 prompt)
+        continue;
       }
-      // 너무 비슷하면 다음 라운드 (더 강한 prompt)
+      // G2 Self-Refine critic: paraphrase 결과를 LLM 이 평가. 부족하면 다음 라운드.
+      if (args.enableSelfRefine) {
+        const critique = await selfRefineCritique({
+          text: rewritten,
+          attractionName: args.attractionName,
+          style: args.style,
+        });
+        if (!critique.ok) continue;
+      }
+      return { text: rewritten, similarity: sim, attempts: round + 1, ok: true };
     } catch {
       /* 다음 라운드 */
     }
   }
   return { text: '', similarity: 1, attempts: 2, ok: false };
+}
+
+/**
+ * G2 박제 (2026-05-15): Self-Refine critic.
+ * Madaan et al. NeurIPS 2023 "Self-Refine: Iterative Refinement with Self-Feedback".
+ * LLM 이 paraphrase 결과를 평가 — "사실 명시 위반" / "과장" / "권유 표현" 감지 시 fail.
+ */
+async function selfRefineCritique(args: {
+  text: string;
+  attractionName?: string;
+  style: 'short_desc' | 'long_desc';
+}): Promise<{ ok: boolean; reason: string }> {
+  const prompt = `다음 텍스트가 여행 카탈로그용 ${args.style === 'short_desc' ? '짧은 설명' : '상세 설명'} 으로 적합한지 평가하세요.
+
+평가 대상:
+"""
+${args.text}
+"""
+
+${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}
+체크리스트 (위반 시 NG):
+1. 검증 불가 사실 명시 (가격·연령·할인·운영시간·건립연도 등)
+2. 마케팅 과장 ("최고", "반드시", "꼭" 등 권유 표현)
+3. 부정확한 지리·역사 추측
+
+OK / NG 만 한 줄로 출력하세요. NG 면 한 가지 사유 추가.
+예: "OK" 또는 "NG: 건립연도 명시"`;
+
+  try {
+    const r = await llmCall({
+      task: 'judge',
+      systemPrompt: '여행 카탈로그 품질 critic. OK/NG 만 출력.',
+      userPrompt: prompt,
+      maxTokens: 60,
+      temperature: 0.1,
+    });
+    if (!r.success || !r.rawText) return { ok: true, reason: 'critic_unavailable' };
+    const text = r.rawText.trim();
+    if (/^OK\b/i.test(text)) return { ok: true, reason: 'pass' };
+    return { ok: false, reason: text.slice(0, 80) };
+  } catch {
+    return { ok: true, reason: 'critic_exception' }; // critic fail 시 conservative pass
+  }
 }
 
 /**

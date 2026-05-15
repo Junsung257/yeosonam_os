@@ -2514,10 +2514,11 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
   // C41 (high): schedule item 매칭률 ≥ 60%
   //   분모: schedule 안의 flight/hotel/shopping 제외한 활동 item 수
   //   분자: enrichment 가 attraction 매칭한 canonical 개수
+  //   2026-05-15 회귀 차단: 콤마 split 다중 매칭 시 matched > denom 가능 → cap 1.0
   if (xv.attractionStats && xv.attractionStats.scheduleItemCount > 0) {
     const stats = xv.attractionStats;
     const denom = stats.scheduleItemCount;
-    const matchRate = stats.matchedCount / denom;
+    const matchRate = Math.min(1, stats.matchedCount / denom);
     checks.push({
       id: 'C41_attraction_match_rate',
       severity: 'high',
