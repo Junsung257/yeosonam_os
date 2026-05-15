@@ -208,13 +208,18 @@ ${dest ? `지역: ${dest}\n` : ''}
       maxTokens: 120,
       temperature: 0.4,
     });
-    if (!r.success || !r.rawText) return { text: '', ok: false };
-    const out = r.rawText.trim().replace(/^["「『]|["」』]$/g, '').trim().slice(0, 70);
-    if (out.length < 8) return { text: '', ok: false };
-    return { text: out, ok: true };
+    if (r.success && r.rawText) {
+      const out = r.rawText.trim().replace(/^["「『]|["」』]$/g, '').trim().slice(0, 70);
+      if (out.length >= 8) return { text: out, ok: true };
+    }
   } catch {
-    return { text: '', ok: false };
+    /* fall through to template fallback */
   }
+  // F2 박제 (2026-05-15): LLM 실패 시 최후 템플릿 fallback — 절대 시드 0건 안 나게 보장.
+  //   사장님 비전 "신규 키워드 무조건 DB 박힘 → 다음번 자동 매칭".
+  //   짧고 검증 가능한 사실만 (지역 + 카테고리 일반어).
+  if (dest) return { text: `${dest}의 관광 명소 ${name}.`, ok: true };
+  return { text: `현지 관광 명소 ${name}.`, ok: true };
 }
 
 /** 단순 utility — 외부에서 직접 cosine 만 쓰고 싶을 때 */
