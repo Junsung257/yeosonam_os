@@ -198,7 +198,16 @@ export function matchAttractionIndexed(
     // 2026-05-15 박제: threshold 0.78 — "린푸옥 사원" ↔ "린푸억사원" (옥/억 음역 변형) 흡수.
     // 0.82 였을 때 매칭 못 잡아 모바일에 attraction 카드 안 그려지던 사고.
     // destination scope + accommodation/mrt_product 제외 가드 덕분에 0.78 도 안전.
-    const fuzzy = bestFuzzyMatch(activity, ordered, a => a.name, 0.78);
+    //
+    // F3 박제 (2026-05-15 ERR-KWL-fuzzy-length): activity 와 candidate name length 차이 2배 초과면
+    //   부적합 매칭 (예: "산수간쇼" 4자 ↔ "인상·유삼제 산수 실경 공연" 13자) 차단.
+    //   음역 변형 (린푸옥↔린푸억) 은 length 비슷 → 통과.
+    const lengthGuarded = ordered.filter(a => {
+      if (!a.name) return false;
+      const ratio = Math.max(activity.length, a.name.length) / Math.max(1, Math.min(activity.length, a.name.length));
+      return ratio <= 2.0;
+    });
+    const fuzzy = bestFuzzyMatch(activity, lengthGuarded, a => a.name, 0.78);
     if (fuzzy) {
       // fuzzy 매칭이 잡은 음역 변형은 자동으로 attractions_aliases 에 누적 → 다음 등록 즉시 exact alias match.
       // fire-and-forget — matcher 가 동기 함수라 await 없이 호출 (recordAlias 가 supabase 미설정 시 noop).
