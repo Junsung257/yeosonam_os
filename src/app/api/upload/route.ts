@@ -146,7 +146,7 @@ const DEST_CODE_MAP: Record<string, string> = {
   '양곤': 'RGN', '미얀마': 'RGN',
   // 중국
   '장가계': 'DYG', '장자제': 'DYG', '봉황고성': 'DYG',
-  '계림': 'KWL', '구이린': 'KWL',
+  '계림': 'KWL', '구이린': 'KWL', '양삭': 'KWL',
   '북경': 'PEK', '베이징': 'PEK',
   '상해': 'SHA', '상하이': 'SHA',
   '청두': 'CTU', '성도': 'CTU',
@@ -156,6 +156,14 @@ const DEST_CODE_MAP: Record<string, string> = {
   '서안': 'XIY', '시안': 'XIY',
   '중경': 'CKG', '충칭': 'CKG',
   '우루무치': 'URC',
+  // O4 박제 (2026-05-16 ERR-청도-UNK): 청도/칭다오 누락으로 internal_code UNK 박힘 사고 차단.
+  // 호이안/보홀 등 자주 사고 나는 누락 도시 추가.
+  '청도': 'TAO', '칭다오': 'TAO',
+  '호이안': 'HOI',
+  '보홀': 'BOH',
+  '보라카이': 'MPH',
+  '코타키나발루': 'BKI',
+  '카오슝': 'KHH', '가오슝': 'KHH',
   // 태평양/하와이
   '괌': 'GUM', '사이판': 'SPN', '하와이': 'HNL',
   // 중동/유럽

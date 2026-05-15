@@ -107,9 +107,10 @@ function extractRegions(body: string): string[] {
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length < 2 || trimmed.length > 12) continue;
-    // 정확 일치 키워드
+    // F1 박제 (2026-05-16): "인 천" / "청 도" 같이 공백 박힌 한글 토큰도 인식
+    const normalized = trimmed.replace(/\s+/g, '');
     for (const kw of REGION_KEYWORDS) {
-      if (trimmed === kw && !regions.includes(kw)) regions.push(kw);
+      if ((trimmed === kw || normalized === kw) && !regions.includes(kw)) regions.push(kw);
     }
   }
   return regions;
