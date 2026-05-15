@@ -120,11 +120,13 @@ export async function autoSeedAttraction(args: {
     return { seeded: false, reason: 'name_too_long_likely_verbatim' };
   }
   // 추가: 한 줄 안에 한국어 서술형 어미가 있으면 verbatim 의심 (관광지명은 보통 어미 없음)
-  if (/(있는|되는|불리는|보관한|가져온|즐비한|어우러진|위치한|이루어진|장식한)/.test(name)) {
+  //   ERR-XIY-descriptive@2026-05-16: 사전 확장 — "로맨스장소인", "묘지인", "모형갱도인", "역사탐방" 등
+  if (/(구워|만든|만들어진|되는|되어|있는|있던|불리는|불리던|보관한|보관된|가져온|즐비한|어우러진|위치한|이루어진|장식한|일컫는|꼽히는|유명한|이름난|장소인|묘지인|모형갱도인|역사탐방|역사를|전통을|문화를|풍경을|모습을|아름다움|일출|일몰|중의\s*하나|풀어주는|풀어주|풀어준|달래주는|달래주|느낄\s*수|볼\s*수|만날\s*수|즐길\s*수|엿볼\s*수|가장\s|최초의|완전한|최고의|최대의|놀라운|훌륭한|중\s*가장)/.test(name)) {
     return { seeded: false, reason: 'descriptive_text_likely_verbatim' };
   }
-  // 추가: 공백 3개 이상 = 긴 서술 (단어 4+개 조합) 차단
-  if ((name.match(/\s/g) ?? []).length >= 3) {
+  // 추가: 공백 4개 이상 = 긴 서술 (단어 5+개 조합) 차단.
+  //   ERR-XIY-doma-marie@2026-05-16: "도멘 드 마리 성당" (공백 3개) 같은 정식 음차명 보존 위해 4+로 완화.
+  if ((name.match(/\s/g) ?? []).length >= 4) {
     return { seeded: false, reason: 'too_many_spaces_likely_verbatim' };
   }
 

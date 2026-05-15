@@ -24,6 +24,10 @@
 - [ ] **Error Registry 최근 10건 체크리스트 확인했는가?** — `db/error-registry.md` 하단
 - [ ] **"이 기능 제가 구현해드릴게요"라고 말하기 전** 진짜 그 기능이 없는지 확인했는가?
 - [ ] **임시 스크립트(`db/seed_XXX.js`, `db/temp_XXX.js`) 만들려 하는가?** → 중단하고 기존 API/UI 사용
+- [ ] **사장님 SSOT 무력화 패턴 자기진단 (ERR-XIY-2026-05-16):**
+  - 정규식 가드 30개+ 추가하려는가? → 본질 우회 신호. SSOT 테이블·큐 어디에 적재되는지 먼저 확인
+  - 외부 source 기반 자동 INSERT 박으려는가? → `manage-attractions.md` STRICT SSOT 정책 위반. 사장님이 어드민에서 직접 등록하는 게 의도
+  - 사장님이 같은 의견을 2번 이상 주셨는가? → 무조건 채택. `feedback_user_intent_is_ssot.md` 참조
 
 ### 도메인별 강제 진입점
 

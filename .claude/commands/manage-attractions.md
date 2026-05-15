@@ -12,52 +12,50 @@ allowed-tools: Read, Grep, Glob, Edit, Bash(node db/seed_attractions*)
 
 ---
 
-## 🔄 정책 갱신 (2026-05-14 — 사장님 비전 V5)
+## 🔄 정책 갱신 (2026-05-16 — STRICT SSOT, ERR-XIY 박제)
 
-**ERR-20260418-33 의 진짜 의도**: "출처 없는 AI 환각 자동 시드" 차단. **외부 source 기반 + paraphrase 검증** 은 안전하므로 허용.
+**사장님 의도 (2달간 반복 지시, feedback_user_intent_is_ssot.md):**
+> "이미 attractions 관리에 등록된 거 있잖아. 거기에 매칭만 시키면 되는 거 아니야?
+>  같은 키워드 다른 말이 있으면 정규화·alias 추가. 자동 INSERT는 사장님이 안 했음에도
+>  AI가 verbatim 라인을 박아 DB 오염 — 절대 금지."
 
-### ✅ 허용 (사장님 비전 V5 박제)
+**ERR-XIY-2026-05-16 사고:**
+"중국보존건축물중 가장 완전한 서안성벽+함광문유적지박물관" / "당나라 3대 궁전 중의 하나인 흥경궁공원" /
+"인도에서 가져온 견전을 보관한 소안탑" / "소수민족 회족의 전통을 엿볼 수 있는 회족거리" 4건이
+attractions 테이블에 verbatim 박혀 모바일 카드 오염. 원인: 2026-05-14 자동 시드 허용 정책으로 우회.
 
-1. **외부 source 기반 자동 시드 OK**
-   - Tier 1: MRT MCP (`mcp__myrealtrip__*`) — 우리 권한, 가장 안전
-   - Tier 2: Wikidata POI (`wikidata-poi.ts` + Wikipedia summary API) — 오픈 데이터
-   - Tier 3: 하나투어/모두투어 ad-hoc fetch (destination 당 10페이지/1년 1회, robots.txt 준수) — 별도 PR
-   - 모든 외부 텍스트는 **`raw_descriptions` (JSONB, internal)** 에 보존
-   - 고객 노출용 `short_desc`/`long_desc` 는 **`paraphrase-enforcer.ts`** 의 cosine ≤ 0.6 검증 통과한 결과만
+### ❌ 절대 금지 (자동 INSERT)
 
-2. **자동 시드 컬럼 추적 필수**
-   - `source` (mrt/wikidata/hanatour/modetour/manual)
-   - `external_url` (출처 URL)
-   - `confidence_score` (0.00~1.00)
-   - `seeded_at` (자동 시드 시각)
+1. **`autoSeedAttraction` 의 호출 자체 금지** — 함수는 함수로 남기되 upload/route.ts 등 등록 파이프라인에서 호출하지 말 것
+2. **외부 source(Wikidata/Wikipedia/MRT/하나투어) 자동 시드 금지** — 모두 사장님 어드민 수동 확인 필수
+3. **paraphrase 통과했으니 안전" 류 우회 금지** — verbatim 도 paraphrase 흡사하게 통과해 버림 (실제 사고 발생)
+4. **`db/seed_XXX_attractions.js` 임시 스크립트 생성 금지** — 변하지 않음
+5. **정규식 가드로 verbatim 차단하려 시도 금지** — 새 패턴 무한 추격 게임, 본질 미해결. attractions 자체를 사장님 SSOT로 두면 verbatim 박힐 통로가 없음
 
-3. **사장님 정정 시 manual override**
-   - `is_manual_override=true` 설정 시 자동 갱신 차단
+### ✅ 허용 (STRICT SSOT)
 
-### ❌ 여전히 금지
+1. **이미 등록된 attractions 매칭만** — `matchAttraction()`(`attraction-matcher.ts`)이 SSOT 기반 작동
+   - exact name / alias / 양방향 substring / keyword split / Hangul fuzzy (threshold 0.78)
+   - fuzzy 매칭 시 음역 변형은 `attractions_aliases` 에 자동 누적 (alias 자동 학습)
+2. **매칭 실패 = `unmatched_activities` 큐 적재만** — 자동 INSERT 안 함
+3. **사장님이 어드민에서 수동 처리:**
+   - 기존 attraction 의 표기 변형 → **alias 추가** (정규화)
+   - 진짜 신규 → **`/admin/attractions` 직접 등록** (사장님이 하나투어/모두투어 키워드 긁어 입력)
+4. **사진 자동 보강** — 사장님이 신규 등록한 attraction 에 한해 Pexels 일괄 자동 (`/admin/attractions` Pexels 일괄 버튼)
+5. **설명 자동 보강** — 사장님 등록한 attraction 의 short_desc/long_desc 가 비어 있을 때 CSV 다운로드 → 외부 Claude → 업로드 (사장님 주도)
 
-1. **출처 없는 LLM 단독 생성** (예전 ERR-20260418-33 그 자체)
-   - prompt → Gemini → 그대로 INSERT 는 금지
-   - 반드시 외부 source 원문 + paraphrase + cosine 검증 chain 통과
-
-2. **paraphrase 검증 우회**
-   - cosine ≥ 0.6 (원문과 너무 비슷) 시 INSERT 차단
-   - 실패하면 다른 source 시도 또는 unmatched 큐
-
-3. **`db/seed_XXX_attractions.js` 같은 지역별 임시 스크립트 생성 금지**
-   - 이미 통합 파이프라인 (`src/lib/parser/auto-attraction-seeder.ts`) 존재
-   - 새로 만들지 말 것
-
-### 🧠 파이프라인 (auto-attraction-seeder.ts)
+### 🧠 신규 흐름 (auto-attraction-seeder 호출 제거 후)
 
 ```
-신규 키워드 발견
-  → attractions exact 매칭 시도 (이미 있으면 skip)
-  → Tier 1 MRT MCP 검색 (호출자가 사전 주입)
-  → Tier 2 Wikidata Wikipedia summary fetch
-  → Paraphrase Enforcer (cosine < 0.6)
-  → attractions UPSERT (source / external_url / confidence_score)
-  → 다음 등록부터 instant exact match
+일정 activity 추출 (extractAttractionCandidates)
+  → matchAttraction (SSOT 매칭 시도)
+    → ✅ 매칭 성공: mention_count++, alias 자동 학습 (fuzzy 잡힌 변형)
+    → ❌ 매칭 실패: unmatched_activities 적재 (status='pending')
+
+사장님 어드민 (/admin/attractions/unmatched):
+  → "이건 [기존 attraction] 의 다른 표기" → alias 추가
+  → "이건 진짜 신규 관광지" → /admin/attractions 등록
+  → "이건 관광지 아님 (식사/이동 등)" → ignored
 ```
 
 ---
