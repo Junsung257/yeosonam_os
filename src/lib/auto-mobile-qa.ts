@@ -204,6 +204,35 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
       });
     }
 
+    // G5 박제 (2026-05-15): 관광지 매칭률 검증 + admin_alerts 자동 적재
+    //   ai_quality_log 의 attraction_matched_count / attraction_unmatched_count 로 비율 계산
+    //   < 60% 면 admin_alerts 적재 + critical 시 Slack. 사장님이 모바일 안 봐도 자동 알림.
+    let matchRate = 1;
+    let matchedCount = 0;
+    let unmatchedCount = 0;
+    try {
+      const { data: ql } = await supabaseAdmin
+        .from('ai_quality_log')
+        .select('attraction_matched_count, attraction_unmatched_count')
+        .eq('package_id', packageId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (ql) {
+        matchedCount = ((ql as { attraction_matched_count?: number }).attraction_matched_count ?? 0);
+        unmatchedCount = ((ql as { attraction_unmatched_count?: number }).attraction_unmatched_count ?? 0);
+        const denom = matchedCount + unmatchedCount;
+        matchRate = denom > 0 ? matchedCount / denom : 1;
+        if (denom >= 3 && matchRate < 0.6) {
+          incidents.push({
+            id: 'mobile_attraction_match_low',
+            severity: 'high',
+            message: `관광지 매칭률 ${(matchRate * 100).toFixed(0)}% (${matchedCount}/${denom}) — 60% 미달, attraction 시드 / aliases 점검 필요`,
+          });
+        }
+      }
+    } catch { /* swallow — ai_quality_log fetch fail 시 alert skip */ }
+
     // 4) ai_quality_log 적재
     if (incidents.length > 0) {
       const { data: latestLog } = await supabaseAdmin
@@ -228,6 +257,27 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
           .eq('id', latestLog.id);
       }
       console.warn(`[AutoQA] ${packageId}: ${incidents.length} mobile incident(s)`);
+
+      // G5: high/critical incident 시 admin_alerts 적재 (사장님 어드민 대시보드 빨간 배지)
+      const hiSev = incidents.filter(i => i.severity === 'high' || i.severity === 'critical');
+      if (hiSev.length > 0) {
+        try {
+          const { postAlert } = await import('@/lib/admin-alerts');
+          const summary = hiSev.slice(0, 3).map(i => `[${i.severity}] ${i.message}`).join(' / ');
+          await postAlert({
+            category: 'general',
+            severity: hiSev.some(i => i.severity === 'critical') ? 'critical' : 'warning',
+            title: `모바일 QA 실패 (${hiSev.length}건)${matchRate < 0.6 && matchedCount + unmatchedCount >= 3 ? ` · 매칭률 ${(matchRate * 100).toFixed(0)}%` : ''}`,
+            message: summary,
+            ref_type: 'travel_package',
+            ref_id: packageId,
+            meta: { incidents: hiSev, matched: matchedCount, unmatched: unmatchedCount, matchRate },
+            dedupe: true,
+          });
+        } catch (e) {
+          console.warn('[AutoQA] admin_alerts 적재 실패(무시):', e instanceof Error ? e.message : e);
+        }
+      }
     } else {
       console.log(`[AutoQA] ${packageId}: mobile clean ✓`);
     }
