@@ -16,7 +16,7 @@
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { paraphraseExternal } from './paraphrase-enforcer';
+import { paraphraseExternal, generateGenericShortDesc } from './paraphrase-enforcer';
 
 interface ExternalDescription {
   source: 'wikidata' | 'mrt' | 'hanatour' | 'modetour' | 'manual';
@@ -56,36 +56,56 @@ export async function autoSeedAttraction(args: {
       return { seeded: false, reason: 'already_exists', attraction_id: (existing as { id: string }).id };
     }
 
-    // 2) external descriptions 수집 (Wikidata 만 우선 — Tier 1 MRT 는 별도 호출자가 사전 주입)
+    // 2) external descriptions 수집 (Wikidata 한→영 fallback, MRT 는 별도 호출자가 사전 주입)
     const externalDescs = await fetchWikidataDescription(name, args.country ?? null);
-    if (externalDescs.length === 0) {
-      // Tier 1/2 모두 실패 → unmatched 큐에만 (자동 시드 안 함)
-      return { seeded: false, reason: 'no_external_source' };
+
+    // 3) paraphrase enforcer (Wikidata 있을 때만)
+    let shortDescResult: { text: string; ok: boolean; similarity: number; attempts: number } = { text: '', ok: false, similarity: 0, attempts: 0 };
+    let longDescResult: { text: string; ok: boolean; similarity: number; attempts: number } = { text: '', ok: false, similarity: 0, attempts: 0 };
+    let bestSource: ExternalDescription | null = externalDescs[0] ?? null;
+
+    if (bestSource) {
+      shortDescResult = await paraphraseExternal({
+        originalText: bestSource.text.slice(0, 200),
+        style: 'short_desc',
+        attractionName: name,
+        destination: args.destination ?? null,
+      });
+      longDescResult = bestSource.text.length > 200
+        ? await paraphraseExternal({
+            originalText: bestSource.text,
+            style: 'long_desc',
+            attractionName: name,
+            destination: args.destination ?? null,
+          })
+        : { text: '', ok: false, similarity: 0, attempts: 0 };
     }
 
-    // 3) paraphrase enforcer
-    const bestSource = externalDescs[0];
-    const shortDescResult = await paraphraseExternal({
-      originalText: bestSource.text.slice(0, 200),
-      style: 'short_desc',
-      attractionName: name,
-      destination: args.destination ?? null,
-    });
-    const longDescResult = bestSource.text.length > 200
-      ? await paraphraseExternal({
-          originalText: bestSource.text,
-          style: 'long_desc',
-          attractionName: name,
-          destination: args.destination ?? null,
-        })
-      : { text: '', ok: false, similarity: 0, attempts: 0 };
-
+    // E5 박제 (2026-05-15): paraphrase 실패 또는 외부 source 없을 때 LLM short generate fallback.
+    //   카드 비어보임 차단. short_desc 만 보장하고 long_desc 는 null 허용.
     if (!shortDescResult.ok) {
-      return { seeded: false, reason: 'paraphrase_failed' };
+      const generic = await generateGenericShortDesc({
+        attractionName: name,
+        destination: args.destination ?? null,
+      });
+      if (generic.ok) {
+        shortDescResult = { text: generic.text, ok: true, similarity: 0, attempts: 99 };
+        if (!bestSource) {
+          // 외부 source 0건이면 source 정보를 'manual' 로 기록 (LLM 자체 생성)
+          bestSource = {
+            source: 'manual',
+            url: null,
+            text: generic.text,
+            fetched_at: new Date().toISOString(),
+          };
+        }
+      } else {
+        return { seeded: false, reason: bestSource ? 'paraphrase_failed' : 'no_external_source' };
+      }
     }
 
     // 4) attractions INSERT
-    const { data: inserted, error } = await supabaseAdmin
+    const insertedRow = await supabaseAdmin
       .from('attractions')
       .insert({
         name,
@@ -97,23 +117,37 @@ export async function autoSeedAttraction(args: {
         emoji: '📍',
         is_active: true,
         mention_count: 1,
-        source: bestSource.source,
-        external_url: bestSource.url,
-        confidence_score: shortDescResult.ok ? 0.7 : 0.5,
+        source: bestSource!.source,
+        external_url: bestSource!.url,
+        confidence_score: shortDescResult.similarity > 0 ? 0.7 : 0.4, // LLM 자체 생성은 낮은 confidence
         raw_descriptions: externalDescs.slice(0, MAX_RAW_DESCRIPTIONS),
         seeded_at: new Date().toISOString(),
       })
       .select('id')
       .single();
 
-    if (error || !inserted) {
-      return { seeded: false, reason: `insert_error: ${error?.message ?? 'unknown'}` };
+    if (insertedRow.error || !insertedRow.data) {
+      return { seeded: false, reason: `insert_error: ${insertedRow.error?.message ?? 'unknown'}` };
     }
+    const attractionId = (insertedRow.data as { id: string }).id;
+
+    // E4 박제 (2026-05-15): 시드 직후 Pexels multilingual photos 자동 attach (fire-and-forget).
+    //   사장님 비전 "사진 매칭 자동" — 새 attraction 카드가 즉시 사진 포함되도록.
+    void attachPhotosToAttraction({
+      attractionId,
+      name,
+      destination: args.destination ?? null,
+    });
+
+    // E1 박제 (2026-05-15): 하나투어/모두투어 검색 결과로부터 alias 정규화 보강 (fire-and-forget).
+    //   사장님 비전 "OTA 검색으로 관광지 표기 정형화". 사실(공개 명칭) 추출은 저작권 안전.
+    //   SPA 라 실패할 수 있어 fail-soft. 출처 URL 보존.
+    void attachOtaAliases({ attractionId, name });
 
     return {
       seeded: true,
-      reason: `${bestSource.source}+paraphrase(sim=${shortDescResult.similarity.toFixed(2)})`,
-      attraction_id: (inserted as { id: string }).id,
+      reason: `${bestSource!.source}+paraphrase(sim=${shortDescResult.similarity.toFixed(2)})`,
+      attraction_id: attractionId,
     };
   } catch (e) {
     return { seeded: false, reason: `exception: ${e instanceof Error ? e.message : 'unknown'}` };
@@ -121,34 +155,133 @@ export async function autoSeedAttraction(args: {
 }
 
 /**
- * Wikidata POI 설명 조회 — 무료, ToS clean, 한국어 우선 + 영문 fallback.
- * MediaWiki API + Wikidata SPARQL 직접 호출.
+ * E4 박제 (2026-05-15): 시드된 attraction 에 Pexels multilingual photos 자동 attach.
+ * fire-and-forget. Pexels API 없으면 skip.
  */
-async function fetchWikidataDescription(name: string, country: string | null): Promise<ExternalDescription[]> {
-  const results: ExternalDescription[] = [];
+/**
+ * E1 박제 (2026-05-15): 하나투어/모두투어 검색 결과로부터 alias 추출 → attractions.aliases 보강.
+ * fire-and-forget. SPA 페이지면 후보 0 = fail-soft.
+ */
+async function attachOtaAliases(args: { attractionId: string; name: string }): Promise<void> {
   try {
-    // Wikipedia 한국어 요약 API
-    const koUrl = `https://ko.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`;
-    const koRes = await fetch(koUrl, {
-      headers: { 'User-Agent': 'YeosonamOS/1.0 (catalog assist; contact: admin@yeosonam.com)' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (koRes.ok) {
-      const koJson = await koRes.json();
-      const extract = (koJson as { extract?: string }).extract;
-      if (extract && extract.length >= MIN_DESC_LENGTH) {
-        results.push({
-          source: 'wikidata',
-          url: (koJson as { content_urls?: { desktop?: { page?: string } } }).content_urls?.desktop?.page ?? null,
-          text: extract,
-          fetched_at: new Date().toISOString(),
-        });
+    const { fetchOtaAliasCandidates } = await import('@/lib/parser/ota-name-normalizer');
+    const candidates = await fetchOtaAliasCandidates(args.name);
+    if (candidates.length === 0) return;
+
+    const { data: existing } = await supabaseAdmin
+      .from('attractions')
+      .select('aliases, raw_descriptions')
+      .eq('id', args.attractionId)
+      .maybeSingle();
+    const prevAliases = Array.isArray((existing as { aliases?: string[] } | null)?.aliases)
+      ? ((existing as { aliases: string[] }).aliases)
+      : [];
+    const prevRawDescs = Array.isArray((existing as { raw_descriptions?: ExternalDescription[] } | null)?.raw_descriptions)
+      ? ((existing as { raw_descriptions: ExternalDescription[] }).raw_descriptions)
+      : [];
+
+    // 중복 제거 + 합집합 (lowercase 비교)
+    const aliasSet = new Set(prevAliases.map(a => a.toLowerCase().replace(/\s+/g, '')));
+    const newAliases: string[] = [...prevAliases];
+    for (const c of candidates) {
+      const key = c.alias.toLowerCase().replace(/\s+/g, '');
+      if (!aliasSet.has(key)) {
+        aliasSet.add(key);
+        newAliases.push(c.alias);
       }
     }
-  } catch {
-    /* Wikipedia 실패 swallow */
+
+    // raw_descriptions 에 출처 URL 박제 (투명성)
+    const sourceTrace: ExternalDescription[] = candidates.slice(0, 2).map(c => ({
+      source: c.source,
+      url: c.source_url,
+      text: `[alias normalization] ${c.alias}`,
+      fetched_at: c.fetched_at,
+    }));
+
+    await supabaseAdmin
+      .from('attractions')
+      .update({
+        aliases: newAliases,
+        raw_descriptions: [...prevRawDescs, ...sourceTrace].slice(0, MAX_RAW_DESCRIPTIONS),
+      })
+      .eq('id', args.attractionId)
+      .then(({ error }: { error: { message: string } | null }) => {
+        if (error) console.warn('[AutoSeed] OTA aliases UPDATE 실패(무시):', error.message);
+        else console.log(`[AutoSeed] OTA aliases: ${args.name} (+${candidates.length}건)`);
+      });
+  } catch (e) {
+    console.warn('[AutoSeed] OTA aliases 실패(무시):', e instanceof Error ? e.message : e);
   }
-  // 추가 source 는 향후 확장 (MRT MCP 는 호출자가 주입)
+}
+
+async function attachPhotosToAttraction(args: {
+  attractionId: string;
+  name: string;
+  destination: string | null;
+}): Promise<void> {
+  try {
+    const { searchMultilingualPhotos } = await import('@/lib/parser/multilingual-photo');
+    const photos = await searchMultilingualPhotos({
+      englishKeyword: args.name,
+      destinationKorean: args.destination ?? args.name,
+      count: 5,
+    });
+    if (photos.length === 0) return;
+
+    const photoRows = photos.slice(0, 3).map(p => ({
+      src_medium: p.src.medium,
+      src_large: p.src.large,
+      photographer: p.photographer ?? null,
+      pexels_id: p.pexels_id ?? null,
+    }));
+
+    await supabaseAdmin
+      .from('attractions')
+      .update({ photos: photoRows })
+      .eq('id', args.attractionId)
+      .then(({ error }: { error: { message: string } | null }) => {
+        if (error) console.warn('[AutoSeed] attachPhotos UPDATE 실패(무시):', error.message);
+        else console.log(`[AutoSeed] photos attached: ${args.name} (${photoRows.length})`);
+      });
+  } catch (e) {
+    console.warn('[AutoSeed] attachPhotos 실패(무시):', e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Wikidata POI 설명 조회 — 무료, ToS clean, 한국어 우선 + 영문 fallback (2026-05-15 E3 박제).
+ * MediaWiki Wikipedia REST API 직접 호출. 한국어 페이지 없으면 영문 시도 (베트남/중국 관광지 흡수).
+ */
+async function fetchWikidataDescription(name: string, _country: string | null): Promise<ExternalDescription[]> {
+  const results: ExternalDescription[] = [];
+  const langs: { code: 'ko' | 'en'; minLength: number }[] = [
+    { code: 'ko', minLength: MIN_DESC_LENGTH },
+    { code: 'en', minLength: MIN_DESC_LENGTH * 2 }, // 영문은 길면 paraphrase 가 한국어로 재구성
+  ];
+
+  for (const { code, minLength } of langs) {
+    if (results.length > 0) break; // 한국어 성공 시 영문 skip (비용 절약)
+    try {
+      const url = `https://${code}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'YeosonamOS/1.0 (catalog assist; contact: admin@yeosonam.com)' },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) continue;
+      const json = await res.json();
+      const extract = (json as { extract?: string }).extract;
+      if (!extract || extract.length < minLength) continue;
+      results.push({
+        source: 'wikidata',
+        url: (json as { content_urls?: { desktop?: { page?: string } } }).content_urls?.desktop?.page ?? null,
+        text: extract,
+        fetched_at: new Date().toISOString(),
+      });
+    } catch {
+      /* Wikipedia 실패 swallow → 다음 lang 시도 */
+    }
+  }
   return results;
 }
 

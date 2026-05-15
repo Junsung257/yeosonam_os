@@ -109,5 +109,47 @@ ${args.attractionName ? `관광지명: ${args.attractionName}\n` : ''}${args.des
   return { text: '', similarity: 1, attempts: 2, ok: false };
 }
 
+/**
+ * E5 박제 (2026-05-15): paraphrase 2회 실패 시 LLM 으로 짧은 설명 자체 생성 fallback.
+ * 외부 원문에 의존하지 않고 attractionName + destination 기반으로 일반 가이드 한 줄 생성.
+ * "사실 명시 금지" 룰: 가격·연령·우선·할인·역사 연도 등 검증 불가 정보는 금지.
+ * 결과는 카드 비어보임 차단용 최소 보장.
+ */
+export async function generateGenericShortDesc(args: {
+  attractionName: string;
+  destination?: string | null;
+}): Promise<{ text: string; ok: boolean }> {
+  const name = args.attractionName.trim();
+  if (!name) return { text: '', ok: false };
+
+  const dest = args.destination ?? null;
+  const prompt = `여행 카탈로그용 짧은 한 줄 설명 (50자 이내) 을 작성하세요.
+관광지: ${name}
+${dest ? `지역: ${dest}\n` : ''}
+규칙:
+- 가격·할인·연령·운영시간·건립연도 같이 검증이 필요한 사실 절대 추가 금지.
+- "방문" "꼭 가봐야" 같은 권유·과장 표현 피함.
+- 자연 환경·건축 양식·일반 분위기 같이 카테고리 차원 묘사만.
+- 결과만 출력. 다른 설명·따옴표 없이.
+
+예시 출력: "달랏 시내 핑크 톤 가톨릭 성당으로 유명한 야경 명소"`;
+
+  try {
+    const r = await llmCall({
+      task: 'content-brief',
+      systemPrompt: '여행 관광지 짧은 설명 생성. 결과만 50자 이내 한 줄로 출력.',
+      userPrompt: prompt,
+      maxTokens: 120,
+      temperature: 0.4,
+    });
+    if (!r.success || !r.rawText) return { text: '', ok: false };
+    const out = r.rawText.trim().replace(/^["「『]|["」』]$/g, '').trim().slice(0, 70);
+    if (out.length < 8) return { text: '', ok: false };
+    return { text: out, ok: true };
+  } catch {
+    return { text: '', ok: false };
+  }
+}
+
 /** 단순 utility — 외부에서 직접 cosine 만 쓰고 싶을 때 */
 export { cosineSim };

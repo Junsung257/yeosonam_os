@@ -1964,6 +1964,12 @@ export interface ConfidenceV2Result {
 
 interface XValidInput {
   itineraryData?: { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } };
+  /** 매칭 통계 (enrichItineraryWithAttractionReferences 결과) — C41/C42 룰 평가용. 호출자가 enrichment 후 별도로 전달. */
+  attractionStats?: {
+    matchedCount: number;
+    unmatchedCount: number;
+    scheduleItemCount: number;
+  };
 }
 
 /**
@@ -2501,6 +2507,35 @@ export function runCrossValidation(data: ExtractedData, xv: XValidInput = {}): V
     });
   }
 
+  // ── 2026-05-15 박제 — C41~C42 관광지 매칭률 룰 ──
+  //   enrichItineraryWithAttractionReferences 결과를 호출자가 전달했을 때만 평가.
+  //   사장님 비전 "키워드 솔팅" 성공률을 confidence 에 반영.
+
+  // C41 (high): schedule item 매칭률 ≥ 60%
+  //   분모: schedule 안의 flight/hotel/shopping 제외한 활동 item 수
+  //   분자: enrichment 가 attraction 매칭한 canonical 개수
+  if (xv.attractionStats && xv.attractionStats.scheduleItemCount > 0) {
+    const stats = xv.attractionStats;
+    const denom = stats.scheduleItemCount;
+    const matchRate = stats.matchedCount / denom;
+    checks.push({
+      id: 'C41_attraction_match_rate',
+      severity: 'high',
+      passed: matchRate >= 0.6,
+      message: `매칭률 ${(matchRate * 100).toFixed(0)}% (${stats.matchedCount}/${denom}) — 미매칭 ${stats.unmatchedCount}개 검수 큐로`,
+    });
+  }
+
+  // C42 (medium): 매칭 0건이면 (외부 source 시드 의존) 경고
+  if (xv.attractionStats && xv.attractionStats.scheduleItemCount >= 3 && xv.attractionStats.matchedCount === 0) {
+    checks.push({
+      id: 'C42_attraction_match_zero',
+      severity: 'medium',
+      passed: false,
+      message: `schedule ${xv.attractionStats.scheduleItemCount}개 모두 매칭 0 — destination 토큰/aliases 점검 필요`,
+    });
+  }
+
   return checks;
 }
 
@@ -2568,10 +2603,10 @@ function decideAutoGate(
  */
 export function calculateConfidenceV2(
   data: ExtractedData,
-  ctx: { leakScore?: number; itineraryData?: XValidInput['itineraryData']; policy?: AutoGatePolicy } = {},
+  ctx: { leakScore?: number; itineraryData?: XValidInput['itineraryData']; policy?: AutoGatePolicy; attractionStats?: XValidInput['attractionStats'] } = {},
 ): ConfidenceV2Result {
   const fillScore = computeFillScore(data);
-  const checks = runCrossValidation(data, { itineraryData: ctx.itineraryData });
+  const checks = runCrossValidation(data, { itineraryData: ctx.itineraryData, attractionStats: ctx.attractionStats });
   const crossValidationScore = computeCrossValidationScore(checks);
   const leakScore = Math.min(1, Math.max(0, ctx.leakScore ?? 0));
   const cleanScore = 1 - leakScore;

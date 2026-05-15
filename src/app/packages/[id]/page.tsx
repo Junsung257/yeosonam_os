@@ -6,6 +6,7 @@ import ReviewsSection from '@/components/reviews/ReviewsSection';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { destinationToIsoSet } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 
@@ -94,19 +95,28 @@ export default async function PackageDetailPage({
   // Step B: 매칭된 N개에 한해 사진/설명 상세 fetch — 수십 KB
   //
   // 기존: select('*') + limit(3000) + photos 포함 → 2MB 초과 → fetch cache 실패 + 30s timeout
+  // 2026-05-15 박제: category + mrt_gid 추가 — attraction-matcher 가 accommodation/mrt_product
+  //   카테고리를 매칭 후보에서 제외하는데 SELECT 에 누락돼 있어 호텔/투어가 잘못 매칭되던 사고.
+  //   mrt_gid 는 동일 fuzzy 점수일 때 MRT canonical 우선 선택용.
   let matchQuery = sb.from('attractions')
-    .select('name, country, region, aliases');
+    .select('name, country, region, aliases, category, mrt_gid');
 
   if (pkg && pkg.destination) {
     const destTokens = pkg.destination.split(/[\/,·&]/).map((t: string) => t.trim()).filter(Boolean);
     const regionClauses = destTokens.map((t: string) => `region.ilike.%${t}%`).join(',');
-    const countryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
-    const countryClauses = countryList.split(',').map(c => `country.eq.${c}`).join(',');
-    const destCountryClause = `country.ilike.%${pkg.destination}%`;
-    matchQuery = matchQuery.or(`${regionClauses},${destCountryClause},${countryClauses}`);
+    // 2026-05-15 박제: ISO 정규화 후 한글 country 사라짐 (VN/JP/CN/TH 등). 매핑 SSOT 사용.
+    const destIsoCountries = destinationToIsoSet(pkg.destination);
+    const isoCountryClauses = [...destIsoCountries].map(c => `country.eq.${c}`).join(',');
+    // 한글 country fallback — 옛 데이터(trigger 적용 이전) 호환
+    const koreanCountryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
+    const koreanCountryClauses = koreanCountryList.split(',').map(c => `country.eq.${c}`).join(',');
+    const clauses = [regionClauses, isoCountryClauses, koreanCountryClauses].filter(Boolean).join(',');
+    matchQuery = matchQuery.or(clauses);
   }
 
-  const matchResult = await matchQuery.limit(1200);
+  // C6 박제 (2026-05-15): JP=793 + TW=160 + 인접 region 매칭이 1200 한계에 근접 → 2000 으로 확장.
+  //   light SELECT (id 제외 9컬럼) 이라 payload 부담 작음. Step B 의 relevantAttractions 가 진짜 페이로드.
+  const matchResult = await matchQuery.limit(2000);
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)

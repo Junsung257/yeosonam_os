@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
@@ -38,7 +39,7 @@ import { maybeTriggerMrtSync } from '@/lib/parser/mrt-lazy-sync';
 import { recordHotelsFromItinerary } from '@/lib/parser/hotel-canonical-learner';
 import { detectIssues as detectCriticIssues, autoFixIssues as autoFixCriticIssues } from '@/lib/parser/critic';
 import { parseSections, classifyItem as classifyByContext } from '@/lib/parser/section-aware-parser';
-import { recordSignal } from '@/lib/parser/classification-signals';
+import { recordSignal, lookupSignal } from '@/lib/parser/classification-signals';
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
@@ -500,34 +501,75 @@ export async function POST(request: NextRequest) {
 
     // ── [B] SHA-256 해시 계산 + 중복 파일 차단 ───────────────────────────────
 
-    if (isSupabaseConfigured) {
-      const { data: existingHash } = await supabaseAdmin
+    // 2026-05-15 박제: 강제 재처리 옵션 — UI 에서 ?force=1 또는 ?reprocess=1 query.
+    //   사장님이 같은 텍스트를 의도적으로 다시 처리하고 싶을 때 (archived 정리 후 재시도 등).
+    const forceReprocess = urlParams.get('force') === '1' || urlParams.get('reprocess') === '1';
+
+    if (isSupabaseConfigured && !forceReprocess) {
+      const { data: existingHashes } = await supabaseAdmin
         .from('document_hashes')
         .select('file_hash, product_id, file_name')
-        .eq('file_hash', fileHash)
-        .maybeSingle();
+        .eq('file_hash', fileHash);
 
-      if (existingHash) {
-        console.log('[Upload API] 중복 파일 감지 — 파싱 스킵:', fileHash.slice(0, 12));
+      // 2026-05-15 박제: archived/inactive product 의 hash 는 차단 해제 (재처리 허용).
+      //   사장님이 잘못 등록된 상품을 archived 시킨 후 새 코드로 재시도하려는 의도 보호.
+      let blocked: { file_hash: string; product_id: string | null; file_name: string } | null = null;
+      if (existingHashes && existingHashes.length > 0) {
+        const productIds = (existingHashes as Array<{ product_id: string | null }>)
+          .map(h => h.product_id)
+          .filter((p): p is string => !!p);
+        if (productIds.length > 0) {
+          const { data: aliveProducts } = await supabaseAdmin
+            .from('products')
+            .select('internal_code, status')
+            .in('internal_code', productIds)
+            .not('status', 'in', '("archived","inactive","deleted")');
+          const aliveSet = new Set((aliveProducts ?? []).map((p: { internal_code: string }) => p.internal_code));
+          blocked = (existingHashes as Array<{ file_hash: string; product_id: string | null; file_name: string }>)
+            .find(h => h.product_id && aliveSet.has(h.product_id)) ?? null;
+        }
+      }
+
+      if (blocked) {
+        console.log('[Upload API] 중복 파일 감지 — 파싱 스킵:', fileHash.slice(0, 12),
+          `(기존 product ${blocked.product_id} alive)`);
         return NextResponse.json({
           success:       true,
           duplicate:     true,
           fileHash,
-          internal_code: existingHash.product_id ?? null,
-          message:       `이미 처리된 파일입니다. (원본: ${existingHash.file_name}) AI 파싱 토큰 절약.`,
+          internal_code: blocked.product_id,
+          message:       `이미 처리된 파일입니다. (원본: ${blocked.file_name}) 재처리하려면 force=1.`,
+          hint:          'archived 된 상품은 자동으로 재처리 허용됩니다.',
         });
       }
 
       // 텍스트 붙여넣기: 띄어쓰기·개행만 다른 동일 카탈로그 사전 차단 (파싱 전)
       if (directRawText) {
         const normalizedContentHash = computeNormalizedContentHash(directRawText);
-        const { data: existingNorm } = await supabaseAdmin
+        const { data: existingNormRows } = await supabaseAdmin
           .from('document_hashes')
           .select('file_hash, product_id, file_name, normalized_hash')
-          .eq('normalized_hash', normalizedContentHash)
-          .maybeSingle();
+          .eq('normalized_hash', normalizedContentHash);
 
-        if (existingNorm) {
+        // 동일하게 alive product 만 차단
+        let blockedNorm: { file_hash: string; product_id: string | null; file_name: string; normalized_hash: string } | null = null;
+        if (existingNormRows && existingNormRows.length > 0) {
+          const normPids = (existingNormRows as Array<{ product_id: string | null }>)
+            .map(h => h.product_id)
+            .filter((p): p is string => !!p);
+          if (normPids.length > 0) {
+            const { data: aliveNorm } = await supabaseAdmin
+              .from('products')
+              .select('internal_code, status')
+              .in('internal_code', normPids)
+              .not('status', 'in', '("archived","inactive","deleted")');
+            const aliveNormSet = new Set((aliveNorm ?? []).map((p: { internal_code: string }) => p.internal_code));
+            blockedNorm = (existingNormRows as Array<{ file_hash: string; product_id: string | null; file_name: string; normalized_hash: string }>)
+              .find(h => h.product_id && aliveNormSet.has(h.product_id)) ?? null;
+          }
+        }
+
+        if (blockedNorm) {
           console.log('[Upload API] 정규화 해시 중복 — 파싱 스킵:', normalizedContentHash.slice(0, 12));
           return NextResponse.json({
             success:               true,
@@ -535,11 +577,13 @@ export async function POST(request: NextRequest) {
             duplicateReason:       'normalized_content',
             fileHash,
             normalizedContentHash: normalizedContentHash.slice(0, 16) + '…',
-            internal_code:         existingNorm.product_id ?? null,
-            message:               `이미 처리된 카탈로그입니다(본문 정규화 기준). 원본: ${existingNorm.file_name}`,
+            internal_code:         blockedNorm.product_id,
+            message:               `이미 처리된 카탈로그입니다(본문 정규화 기준). 원본: ${blockedNorm.file_name}. 재처리하려면 force=1.`,
           });
         }
       }
+    } else if (forceReprocess) {
+      console.log('[Upload API] force=1 — 중복 차단 우회');
     }
 
     // ── [C] 마스터 데이터 병렬 로드 (land_operators + departing_locations) ──
@@ -723,6 +767,9 @@ export async function POST(request: NextRequest) {
     }[] = [];
     const matchedCanonicalNames = new Set<string>();
     const extractedCandidateRows: { activity: string; destination?: string }[] = [];
+    // A2/A3 박제 (2026-05-15): 등록 종료 후 사장님에게 한 화면 보고용 통계
+    let attractionSeededCount = 0;
+    let attractionReflectedCount = 0;
 
     let activeAttractions: AttractionData[] = [];
     if (isSupabaseConfigured && !bulkMode) {
@@ -872,26 +919,30 @@ export async function POST(request: NextRequest) {
         //    inclusions / excludes / optional 의 각 항목을 섹션 컨텍스트로 재검증 + signals 누적.
         try {
           const sectionResult = parseSections(rawForDeterm);
-          const recordOne = (text: string, defaultCategory: 'inclusion' | 'optional' | 'exclude' | 'perk') => {
+          const recordOne = async (text: string, defaultCategory: 'inclusion' | 'optional' | 'exclude' | 'perk') => {
             if (!text || text.length < 2 || text.length > 200) return;
+            // 2026-05-15 INT-4: 우선 signals DB 에서 이전 분류 lookup (compound learning).
+            //   이전에 사장님 정정 또는 자동 학습된 결과가 있으면 그것을 follow.
+            const prior = await lookupSignal(text, ed.destination ?? null).catch(() => null);
             const offset = rawForDeterm.indexOf(text);
             const ctx = offset >= 0 ? sectionResult.classifyOffset(offset) : 'unknown';
             const final = classifyByContext(text, ctx);
-            // signals 누적 (fire-and-forget)
+            const chosen = prior?.category ?? (final.category === 'unknown' ? defaultCategory : final.category);
+            // signals 누적 (fire-and-forget) — 다음 등록부터 instant
             void recordSignal({
               keyword: text,
-              category: final.category === 'unknown' ? defaultCategory : final.category,
+              category: chosen,
               destination: ed.destination ?? null,
               product_type: ed.product_type ?? null,
-              source: 'local',
-              confidence: final.confidence,
+              source: prior ? prior.source : 'local',
+              confidence: prior ? (prior.confidence + final.confidence) / 2 : final.confidence,
             });
           };
-          for (const inc of ed.inclusions ?? []) recordOne(inc, 'inclusion');
-          for (const exc of ed.excludes ?? []) recordOne(exc, 'exclude');
+          for (const inc of ed.inclusions ?? []) void recordOne(inc, 'inclusion');
+          for (const exc of ed.excludes ?? []) void recordOne(exc, 'exclude');
           for (const opt of ed.optional_tours ?? []) {
             const name = (opt as { name?: string })?.name;
-            if (name) recordOne(name, 'optional');
+            if (name) void recordOne(name, 'optional');
           }
           console.log(`[Upload API] Section-Aware signals 누적: inc ${ed.inclusions?.length ?? 0} + exc ${ed.excludes?.length ?? 0} + opt ${ed.optional_tours?.length ?? 0}`);
         } catch (e) {
@@ -1061,13 +1112,39 @@ export async function POST(request: NextRequest) {
 
         // ── G4. 상태 결정 ────────────────────────────────────────────────────
 
-        const productStatus = determineProductStatus({
+        let productStatus = determineProductStatus({
           confidence,
           netPrice,
           priceRowCount:    priceRows.length,
           isTravel:         classification.isTravel,
           departureDateStr: ed.ticketing_deadline ?? null,
         });
+
+        // 2026-05-15 INT-3: Customer-Ready Gate — data + UX + paraphrase 통과 시 status='approved' 자동.
+        //   사장님 손 떼기 (UX-6). 실패 사유는 BLOCK / 권고는 WARN 으로 분리.
+        try {
+          const { evaluateCustomerReadyGate } = await import('@/lib/parser/customer-ready-gate');
+          const gate = evaluateCustomerReadyGate({
+            ed,
+            netPrice,
+            priceRowCount: priceRows.length,
+            confidence,
+            hasItinerary: !!product.itineraryData?.days?.length,
+            hasThumbnail: false, // auto-photo-match 이후 채워짐 (지금 단계에선 unknown)
+          });
+          if (gate.ready) {
+            productStatus = 'approved' as typeof productStatus;
+            console.log(`[Upload API] Customer-Ready Gate: ✅ APPROVED 자동 활성화`);
+          } else {
+            const summary = [
+              gate.reasons.length > 0 ? `reasons: ${gate.reasons.join(', ')}` : null,
+              gate.warnings.length > 0 ? `warnings: ${gate.warnings.join(', ')}` : null,
+            ].filter(Boolean).join(' | ');
+            console.log(`[Upload API] Customer-Ready Gate: ${gate.reasons.length > 0 ? '🔴' : '🟡'} ${summary}`);
+          }
+        } catch (e) {
+          console.warn('[Upload API] Customer-Ready Gate 실패 (무시):', (e as Error).message);
+        }
 
         console.log(`[Upload API] 상태 결정: ${productStatus} (confidence=${(confidence * 100).toFixed(0)}%)`);
 
@@ -1155,6 +1232,33 @@ export async function POST(request: NextRequest) {
           activeAttractions,
           ed.destination,
         );
+
+        // C1 박제 (2026-05-15): 신뢰도 V3 — schedule 매칭률을 V2 산식에 반영.
+        //   enrichment 결과로 schedule item count 계산 → V2 재호출 with attractionStats.
+        //   비용 0 (deterministic 재실행). 사장님 비전 "100% 신뢰도 거짓 신호" 차단.
+        let scheduleItemCount = 0;
+        for (const day of itineraryInput?.days ?? []) {
+          for (const s of day.schedule ?? []) {
+            if (!s.activity) continue;
+            const t = (s as { type?: string }).type;
+            if (t === 'flight' || t === 'hotel' || t === 'shopping') continue;
+            scheduleItemCount++;
+          }
+        }
+        const v2WithAttraction = calculateConfidenceV2(ed, {
+          leakScore: sanitizeResult.leakScore,
+          itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
+          policy: autoGatePolicy,
+          attractionStats: {
+            matchedCount: enrichment.matchedCanonicalNames.length,
+            unmatchedCount: enrichment.unmatchedCandidates.length,
+            scheduleItemCount,
+          },
+        });
+        // V3 confidence 가 V2 보다 낮으면 사장님이 보는 신뢰도도 V3 로 갱신
+        const confidenceV3 = v2WithAttraction.confidence;
+        const v3Checks = v2WithAttraction.checks;
+        const v3FailedChecks = v3Checks.filter(c => !c.passed);
         // flight_segments 정규화: schedule[type='flight'] 흩어진 항공편을 정규 필드로
         // 박제 사유 (2026-05-13): 익일 도착·도착시간 누락으로 카드 깨짐 영구 차단
         // P10-3 박제 (2026-05-13): itinerary 정규화 — 호텔 grade / 식사 카운트 / 호텔명 dedupe / regions
@@ -1189,7 +1293,7 @@ export async function POST(request: NextRequest) {
               accommodations:        ed.accommodations   ?? [],
               special_notes:         ed.specialNotes,
               notices_parsed:        ed.notices_parsed    ?? [],
-              confidence,
+              confidence:            confidenceV3,
               category:              ed.category         ?? 'package',
               product_type:          ed.product_type,
               trip_style:            ed.trip_style,
@@ -1236,17 +1340,21 @@ export async function POST(request: NextRequest) {
 
             // ── G8.5. ai_quality_log 적재 — V2 + leak incidents + LLM 메타 (P11-4)
             const llmMeta = (ed as { _llm_meta?: Record<string, unknown> })._llm_meta ?? {};
+            // B1 박제 (2026-05-15): 관광지 매칭 통계 — 사장님 시각 검증용
+            //   reflected 는 multi-product loop 종료 후 별도 UPDATE (시드 후 재반영 시점에)
+            const pkgMatchedCount   = enrichment.matchedCanonicalNames.length;
+            const pkgUnmatchedCount = enrichment.unmatchedCandidates.length;
             void supabaseAdmin
               .from('ai_quality_log')
               .insert({
                 package_id:        pkgResult.id,
                 internal_code:     internalCode,
-                confidence:        v2.confidence,
-                fill_score:        v2.fillScore,
-                xvalid_score:      v2.crossValidationScore,
-                leak_score:        v2.leakScore,
-                auto_gate:         v2.autoGate,
-                failed_checks:     v2.checks.filter(c => !c.passed),
+                confidence:        confidenceV3,
+                fill_score:        v2WithAttraction.fillScore,
+                xvalid_score:      v2WithAttraction.crossValidationScore,
+                leak_score:        v2WithAttraction.leakScore,
+                auto_gate:         v2WithAttraction.autoGate,
+                failed_checks:     v3FailedChecks,
                 leak_incidents:    sanitizeResult.incidents,
                 // P11-4 박제: LLM 호출 메타 자동 채움 (자체 LLMOps cost tracking)
                 advisor_escalated: Boolean(llmMeta.advisor_used),
@@ -1254,6 +1362,11 @@ export async function POST(request: NextRequest) {
                 llm_tokens_input:  Number(llmMeta.tokens_input ?? 0),
                 llm_tokens_output: Number(llmMeta.tokens_output ?? 0),
                 llm_calls_count:   1 + (llmMeta.advisor_used ? 1 : 0),
+                // B1 박제: 패키지 단위 관광지 매칭 통계
+                attraction_matched_count:   pkgMatchedCount,
+                attraction_unmatched_count: pkgUnmatchedCount,
+                attraction_seeded_count:    0, // 시드는 loop 종료 후 일괄 — 별도 UPDATE
+                attraction_reflected_count: 0,
               })
               .then(({ error }: { error: { message: string } | null }) => {
                 if (error) console.warn('[Upload API] ai_quality_log 적재 실패(무시):', error.message);
@@ -1277,8 +1390,8 @@ export async function POST(request: NextRequest) {
               void accumulateLandOperatorProfile({
                 landOperatorId:    effectiveLandOperatorId,
                 rawText:           parsedDocument.rawText ?? '',
-                confidence:        v2.confidence,
-                rejected:          v2.autoGate === 'rejected',
+                confidence:        confidenceV3,
+                rejected:          v2WithAttraction.autoGate === 'rejected',
                 detectedB2bTerms:  sanitizeResult.incidents
                   .filter(i => i.severity !== 'medium')
                   .map(i => i.matched),
@@ -1401,13 +1514,82 @@ export async function POST(request: NextRequest) {
               .then(undefined, () => {});
           }
 
-          // 🚫 ERR-20260418-33 자동 시드 금지 (manage-attractions.md SSOT)
-          //   신규 attraction 의 short_desc/long_desc 를 Gemini 가 자동 생성해 DB INSERT 하던 코드는 제거됨.
-          //   매칭 실패한 activity 는 위에서 이미 `unmatched_activities` 에 플래그만 찍었고,
-          //   사장님이 `/admin/attractions/unmatched` 에서 직접 검토·등록한다.
-          //   (회귀 사례: destination=null 인 상태에서 Gemini 호출이 country="" 로 들어가 oversees 까지 시드.)
-          if (newActivities.length > 0) {
-            console.log(`[Upload API] 신규 매칭 후보 ${newActivities.length}개 → unmatched_activities 큐 (자동 시드 금지)`);
+          // ✅ 자동 시드 — 2026-05-15 정책 갱신 (manage-attractions.md ERR-20260418-33 재해석)
+          //   외부 source(Wikidata Wikipedia summary) + Paraphrase Enforcer(cosine ≤ 0.6) 검증 통과한 경우만 자동 INSERT.
+          //   회귀 차단: destination 빈 경우 skip / paraphrase 실패 시 unmatched 큐 유지 / 출처 추적 필수.
+          //   ※ ed 는 multi-product loop 밖이라 newActivities 의 candidate.destination 사용.
+          const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
+          let seededCountTotal = 0;
+          if (newActivities.length > 0 && firstSeedDest) {
+            const { autoSeedAttraction } = await import('@/lib/parser/auto-attraction-seeder');
+            const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 15);
+            let failedCount = 0;
+            for (const kw of uniqueNew) {
+              const r = await autoSeedAttraction({
+                keyword: kw,
+                destination: firstSeedDest,
+                country: null,
+                category: 'sightseeing',
+              });
+              if (r.seeded) seededCountTotal++;
+              else if (r.reason !== 'already_exists') failedCount++;
+            }
+            attractionSeededCount = seededCountTotal;  // A3 통계 박제
+            console.log(`[Upload API] 자동 시드: ${seededCountTotal}건 성공 / ${failedCount}건 실패 (Wikidata + Paraphrase 통과 분만)`);
+          } else if (newActivities.length > 0) {
+            console.log(`[Upload API] 자동 시드 skip: destination 빈 채로는 oversees 위험 (unmatched 큐만)`);
+          }
+
+          // ── A1. Same-Session Seed-Reflect (2026-05-15 박제) ─────────────────
+          //   시드된 신규 attraction 을 같은 등록의 모바일 카드에 즉시 반영.
+          //   사장님 비전: "키워드 솔팅 → 설명 생성 → DB 저장 → 다음번 재사용" 의 "다음번"이 같은 등록도 포함.
+          //   처방: 시드 후 attractions refetch + enrichItinerary 재실행 + travel_packages.itinerary_data UPDATE + ISR revalidate.
+          if (seededCountTotal > 0 && savedIds.length > 0) {
+            try {
+              const { data: freshRows } = await supabaseAdmin
+                .from('attractions')
+                .select('id, name, short_desc, long_desc, aliases, country, region, category, emoji')
+                .eq('is_active', true);
+              const freshAttractions = (freshRows || []) as AttractionData[];
+
+              let reflectedCount = 0;
+              for (const pid of savedIds) {
+                const { data: pkgRow } = await supabaseAdmin
+                  .from('travel_packages')
+                  .select('id, destination, itinerary_data')
+                  .eq('id', pid)
+                  .maybeSingle();
+                if (!pkgRow) continue;
+
+                const itin = (pkgRow as { itinerary_data: ItineraryDataLike | null }).itinerary_data;
+                const dest = (pkgRow as { destination: string | null }).destination ?? undefined;
+                const re = enrichItineraryWithAttractionReferences(itin, freshAttractions, dest);
+
+                if (re.matchedCanonicalNames.length > 0) {
+                  await supabaseAdmin
+                    .from('travel_packages')
+                    .update({ itinerary_data: re.itineraryData, updated_at: new Date().toISOString() })
+                    .eq('id', pid);
+                  revalidatePath(`/packages/${pid}`);
+                  reflectedCount++;
+                }
+                // B1 박제: ai_quality_log 패키지별 시드/reflect 카운트 UPDATE
+                void supabaseAdmin
+                  .from('ai_quality_log')
+                  .update({
+                    attraction_seeded_count:    seededCountTotal,
+                    attraction_reflected_count: re.matchedCanonicalNames.length > 0 ? 1 : 0,
+                  })
+                  .eq('package_id', pid)
+                  .then(({ error }: { error: { message: string } | null }) => {
+                    if (error) console.warn('[Upload API] ai_quality_log attraction UPDATE 실패(무시):', error.message);
+                  });
+              }
+              attractionReflectedCount = reflectedCount;  // A3 통계 박제
+              console.log(`[Upload API] Seed-Reflect: ${reflectedCount}/${savedIds.length} 패키지 itinerary 재반영 + ISR 무효화`);
+            } catch (reflectErr) {
+              console.warn('[Upload API] Seed-Reflect 실패(비중단):', reflectErr instanceof Error ? reflectErr.message : reflectErr);
+            }
           }
         }
       } catch (attrError) {
@@ -1475,6 +1657,17 @@ export async function POST(request: NextRequest) {
       };
     })() : null;
 
+    // A3 박제 (2026-05-15): 등록 종료 한 화면 통계 — 사장님 비전 "다음번 등록 시 자동" 가시화
+    const attractionStats = {
+      matched: matchedCanonicalNames.size,
+      unmatched: unmatchedRowsToInsert.length,
+      seeded: attractionSeededCount,
+      reflected: attractionReflectedCount,
+    };
+    const attractionLine = attractionStats.matched + attractionStats.seeded + attractionStats.unmatched > 0
+      ? ` · 관광지 매칭 ${attractionStats.matched}개${attractionStats.seeded > 0 ? ` · 신규 시드 ${attractionStats.seeded}개` : ''}${attractionStats.reflected > 0 ? ` · 같은 등록 즉시반영 ${attractionStats.reflected}개` : ''}${attractionStats.unmatched > 0 ? ` · 미매칭 ${attractionStats.unmatched}개 (검수 큐로)` : ''}`
+      : '';
+
     return NextResponse.json({
       success: successCount > 0 || !isSupabaseConfigured,
       data:    parsedDocument,
@@ -1492,11 +1685,12 @@ export async function POST(request: NextRequest) {
       classification,
       gate:            overallGate,
       tokenUsage:      tokenInfo,
+      attractionStats,
       ...(saveErrors.length > 0 && { errors: saveErrors }),
       message: productCount > 1
-        ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.`
+        ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.${attractionLine}`
         : successCount > 0
-          ? `문서 파싱 완료. (${savedInternalCodes[0] ?? 'DB 미설정'}) 가격 ${totalPriceRowsSaved}행`
+          ? `문서 파싱 완료. (${savedInternalCodes[0] ?? 'DB 미설정'}) 가격 ${totalPriceRowsSaved}행${attractionLine}`
           : '문서 파싱은 완료됐으나 DB 저장에 실패했습니다.',
     });
 
