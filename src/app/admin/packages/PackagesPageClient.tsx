@@ -640,6 +640,25 @@ const PackageRow = React.memo(function PackageRow({
               {AUDIT_BADGE[(pkg as { audit_status: string }).audit_status].label}
             </span>
           )}
+          {/* N1 박제 (2026-05-16): 누락 필드 빨간 배지 — 트립박스 ERP 표준 + 1-click 보완 이동 */}
+          {(() => {
+            const missing: string[] = [];
+            if (!pkg.airline) missing.push('항공사');
+            const days = (pkg as { has_itinerary_data?: boolean; itinerary_data?: { days?: unknown[] } }).itinerary_data?.days;
+            if (!Array.isArray(days) || days.length === 0) missing.push('일정');
+            if (!pkg.price && (!pkg.price_tiers || pkg.price_tiers.length === 0)) missing.push('가격');
+            if (missing.length === 0) return null;
+            return (
+              <a
+                href={`/admin/packages/${pkg.id}/review`}
+                onClick={(e) => e.stopPropagation()}
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-300 hover:bg-red-200 cursor-pointer"
+                title={`누락된 필드 — 사장님 1-click 보완 필요: ${missing.join(', ')}. 클릭 → review 페이지`}
+              >
+                ⚠ 누락 {missing.length}
+              </a>
+            );
+          })()}
         </div>
       </td>
       {/* 마케팅 커버리지 + 토글 */}

@@ -183,6 +183,33 @@ export default function PackageReviewPage() {
 
   const fc = pkg.field_confidences;
   const suspiciousEntries = fc?.fields ? Object.entries(fc.fields).sort(([, a], [, b]) => a.score - b.score) : [];
+
+  // N2+N3 박제 (2026-05-16 트립박스/Travefy 표준): 누락 필드 강제 표시.
+  //   field_confidences 의심 점수 없어도 핵심 필드 null/0 면 사장님 1-click 보완 필요.
+  const missingFieldEntries: Array<[string, FieldConfidence]> = [];
+  const addMissing = (path: string, reason: string, severity: 'critical' | 'high' = 'high') => {
+    if (suspiciousEntries.some(([p]) => p === path)) return;
+    missingFieldEntries.push([path, { score: 0, severity, reason }]);
+  };
+  if (!pkg.airline) addMissing('airline', '항공사 누락 — 트립박스 표준: 편명 prefix 로 추론 (SC→산동항공, LJ→진에어 등)', 'critical');
+  if (!pkg.departure_airport) addMissing('departure_airport', '출발 공항 누락 — 모바일 hero 카드에 표시 필요', 'high');
+  const itin = (pkg as { itinerary_data?: { days?: unknown[]; meta?: Record<string, unknown> } }).itinerary_data;
+  if (!itin?.days || !Array.isArray(itin.days) || itin.days.length === 0) {
+    addMissing('itinerary_data', '일정표 누락 — Phase 2 LLM 추출 실패. day-table deterministic 폴백도 실패한 경우. 사장님이 일차별 JSON 직접 입력 필요', 'critical');
+  } else {
+    if (!itin.meta || !(itin.meta as { flight_out?: string }).flight_out) {
+      addMissing('itinerary_data.meta', 'meta.flight_out / flight_in 누락 — 항공편 카드 표시 안 됨', 'high');
+    }
+    for (let i = 0; i < itin.days.length; i++) {
+      const d = itin.days[i] as { hotel?: { name?: string }; schedule?: unknown[] };
+      if (i < itin.days.length - 1 && !d.hotel?.name) {
+        addMissing(`itinerary_data.days[${i}].hotel`, `DAY ${i + 1} 호텔명 누락 — 마지막 day 제외 모든 day 호텔 필수 (트립박스 표준)`, 'high');
+      }
+      if (!d.schedule || (d.schedule as unknown[]).length === 0) {
+        addMissing(`itinerary_data.days[${i}].schedule`, `DAY ${i + 1} schedule 비어있음`, 'high');
+      }
+    }
+  }
   const overallConf = fc?.overall_confidence ?? null;
   const overallColor = overallConf == null ? 'text-admin-muted'
     : overallConf >= 0.85 ? 'text-emerald-600'
@@ -230,13 +257,65 @@ export default function PackageReviewPage() {
         )}
       </div>
 
+      {/* N2+N3 박제: 누락 필드 강제 표시 (트립박스/Travefy 표준 inline 보완) */}
+      {missingFieldEntries.length > 0 && (
+        <div className="space-y-3 mb-4">
+          <h2 className="text-sm font-bold text-red-700">🚨 누락 필드 ({missingFieldEntries.length}건) — 사장님 1-click 보완 필요 (트립박스/Travefy 표준)</h2>
+          {missingFieldEntries.map(([fieldPath, info]) => {
+            const isEditing = editingField === fieldPath;
+            return (
+              <div key={fieldPath} className={`rounded-admin-md border-2 p-4 ${SEVERITY_BG[info.severity]}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 text-[10px] font-mono rounded border ${SEVERITY_BADGE[info.severity]}`}>
+                        {info.severity.toUpperCase()}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-admin-text-2">{fieldPath}</span>
+                      <span className="text-xs text-red-600 font-bold">⚠ 누락</span>
+                    </div>
+                    <p className="text-xs text-admin-text-2 mt-1.5">💡 <span className="italic">{info.reason}</span></p>
+                  </div>
+                  {!isEditing && (
+                    <button onClick={() => startEdit(fieldPath)}
+                      className="flex-shrink-0 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium">
+                      ✏️ 직접 입력
+                    </button>
+                  )}
+                </div>
+                {isEditing && (
+                  <div className="mt-3 pt-3 border-t border-admin-border-mid">
+                    <div className="text-[10px] text-blue-600 font-bold mb-1.5">✅ 값 입력 (텍스트 또는 JSON)</div>
+                    <textarea
+                      value={editValue}
+                      onChange={e => setEditValue(e.target.value)}
+                      className="w-full text-xs border border-blue-300 rounded-lg px-3 py-2 font-mono min-h-[80px] focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder={fieldPath === 'airline' ? '예: 산동항공 (SC)' : fieldPath === 'departure_airport' ? '예: 인천' : 'JSON 또는 텍스트'}
+                      autoFocus
+                    />
+                    <div className="flex gap-2 mt-2 items-center">
+                      <button onClick={() => saveEdit(fieldPath)} disabled={saving}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                        {saving ? '저장 중...' : '저장 + Reflexion 적립'}
+                      </button>
+                      <button onClick={() => setEditingField(null)}
+                        className="px-3 py-1.5 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">취소</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* 의심 필드 목록 */}
-      {suspiciousEntries.length === 0 ? (
+      {suspiciousEntries.length === 0 && missingFieldEntries.length === 0 ? (
         <div className="bg-emerald-50 border border-emerald-200 rounded-admin-md p-6 text-center">
           <p className="text-emerald-700 font-bold">🎉 의심 필드 없음</p>
           <p className="text-xs text-emerald-600 mt-1">모든 필드가 cross-validator 통과. 추가 검토 불필요.</p>
         </div>
-      ) : (
+      ) : suspiciousEntries.length === 0 ? null : (
         <div className="space-y-3">
           <h2 className="text-sm font-bold text-admin-text-2">⚠️ 의심 필드 ({suspiciousEntries.length}건) — 점수 낮은 순</h2>
           {suspiciousEntries.map(([fieldPath, info]) => {
