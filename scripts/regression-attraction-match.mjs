@@ -30,12 +30,31 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// 사장님 발견 사고 패키지 IDs (Production failure → 자동 test case).
-// 신규 사고 발견 시 db/error-registry.md ACTIVE CHECKLIST 와 함께 이 목록도 갱신.
-const INCIDENT_PACKAGE_IDS = [
+// Y4 박제 (2026-05-15): 사고 패키지 IDs DB 기반 자동화.
+//   travel_packages.meta_tags 에 'regression_fixture' 박힌 패키지 자동 monitor.
+//   사장님이 어드민 검수 큐에서 "회귀 fixture 등록" 1-click → DB 갱신 → 다음 cron 자동 포함.
+//   fallback: 정적 baseline (계림 사고 2건) — DB 조회 실패 시 최소 회귀 보장.
+const STATIC_FALLBACK_IDS = [
   '3a136d76-79c0-44f2-aa1a-8e8d4cbdb12a', // ERR-KWL 인천/계림/양삭 3박5일
   'f54cc782-9f13-46dd-ba0b-97c05f2086be', // ERR-KWL 인천/계림/양삭 4박6일
 ];
+
+async function getIncidentPackageIds() {
+  try {
+    const { data } = await supabase
+      .from('travel_packages')
+      .select('id')
+      .contains('product_tags', ['regression_fixture'])
+      .limit(50);
+    const dbIds = ((data ?? [])).map(r => r.id);
+    // DB 등록분 + static fallback union (중복 제거)
+    const merged = new Set([...dbIds, ...STATIC_FALLBACK_IDS]);
+    return [...merged];
+  } catch (e) {
+    console.warn('[Regression] DB fetch 실패 → static fallback:', e.message);
+    return STATIC_FALLBACK_IDS;
+  }
+}
 
 const MATCH_RATE_THRESHOLD = 0.7; // 회귀 임계치 — 70% 미달 시 alert (G5 의 0.6 보다 엄격)
 
@@ -111,9 +130,10 @@ async function checkPackage(packageId) {
 }
 
 async function main() {
-  console.log(`🔁 사고 패키지 회귀 측정 시작 (${INCIDENT_PACKAGE_IDS.length}건)`);
+  const ids = await getIncidentPackageIds();
+  console.log(`🔁 사고 패키지 회귀 측정 시작 (${ids.length}건 — DB ${ids.length - STATIC_FALLBACK_IDS.length}+ static ${STATIC_FALLBACK_IDS.length})`);
   const results = [];
-  for (const id of INCIDENT_PACKAGE_IDS) {
+  for (const id of ids) {
     const r = await checkPackage(id);
     if (r) results.push(r);
   }

@@ -40,6 +40,17 @@ interface QueueItem {
     seeded: number;
     reflected: number;
   };
+  /** Y5 박제 (2026-05-15 SKILL.md Step 7-C): 등록 직후 한 화면 표준 리포트 */
+  registerReport?: Array<{
+    short_code: string;
+    title: string;
+    price: number | null;
+    airline: string | null;
+    status: string;
+    departure_days: string | null;
+    mobile_url: string;
+    a4_url: string;
+  }>;
   verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'error';
   verifyReport?: { checks: VerifyCheck[]; warnCount: number; failCount: number };
   verifyExpanded?: boolean;
@@ -145,6 +156,7 @@ export default function UploadPage() {
       tokenUsage: data.tokenUsage ?? null,
       gate: data.gate ?? null,
       attractionStats: data.attractionStats ?? null,
+      registerReport: data.registerReport ?? null,
     };
   };
 
@@ -638,6 +650,24 @@ export default function UploadPage() {
                                 {item.attractionStats.unmatched > 0 && <span className="text-orange-500">·미{item.attractionStats.unmatched}</span>}
                               </span>
                             )}
+                          </div>
+                        )}
+                        {/* Y5 박제 (2026-05-15 SKILL.md Step 7-C): 등록 직후 한 화면 표준 리포트 */}
+                        {item.registerReport && item.registerReport.length > 0 && (
+                          <div className="mt-2 space-y-1.5">
+                            {item.registerReport.map((r) => (
+                              <div key={r.short_code} className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg text-[11px]">
+                                <span className="font-mono text-green-700 font-bold">{r.short_code}</span>
+                                <span className={`px-1.5 py-0.5 rounded font-medium ${r.status === 'approved' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                                  {r.status === 'approved' ? '✅ 판매중' : '⏳ 검토'}
+                                </span>
+                                {r.price != null && <span className="text-admin-muted">₩{r.price.toLocaleString()}</span>}
+                                {r.airline && <span className="text-blue-600">{r.airline}</span>}
+                                {r.departure_days && <span className="text-admin-muted-2">{r.departure_days}</span>}
+                                <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium ml-auto">📱 모바일</a>
+                                <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
+                              </div>
+                            ))}
                           </div>
                         )}
                         {/* 원문 대조 검증 결과 */}

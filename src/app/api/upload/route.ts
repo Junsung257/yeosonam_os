@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
@@ -1379,22 +1379,25 @@ export async function POST(request: NextRequest) {
                 if (error) console.warn('[Upload API] ai_quality_log 적재 실패(무시):', error.message);
               });
 
-            // CoVe (Chain-of-Verification) 비동기 감사 — 결과는 ai_quality_log.cove_warnings 적재
-            // 박제 사유: V2 cross-validation 결정적 룰이 못 잡는 미묘한 환각 감지
-            void runCoVeInBackground(pkgResult.id);
+            // Y1 박제 (2026-05-15): silent fail 근본 차단.
+            //   Next.js 15.5 stable `after` API — Vercel serverless 응답 반환 후도 백그라운드 task 완수 보장.
+            //   기존 `void` fire-and-forget 은 함수 종료 시 죽었음 → admin_alerts 적재 silent fail.
+            const pkgIdForAudit = pkgResult.id;
+            nextAfter(async () => {
+              try {
+                await Promise.allSettled([
+                  runCoVeInBackground(pkgIdForAudit),
+                  runUploadVerify(pkgIdForAudit),
+                  runAutoMobileQA(pkgIdForAudit),
+                ]);
+              } catch (e) {
+                console.warn('[upload-after] post-audit 묶음 실패:', e instanceof Error ? e.message : e);
+              }
+            });
 
-            // 원문 ↔ DB 결정적 대조 (C1~C6) — 자동 실행 박제 (2026-05-13)
-            // 박제 사유: V2 confidence 0.85 거짓 신호 — audit_status 가 INSERT 직후 NULL 로 남아
-            // 컨펌 큐 SSOT 가 비어있던 문제. 결정적 룰이라 LLM 비용 0, 토큰 0.
-            void runUploadVerify(pkgResult.id);
-
-            // 자동 모바일 QA — 등록 후 실제 페이지 fetch + HTML 검증 (2026-05-13 박제)
-            // 박제 사유: V2 confidence 와 실제 렌더 결과 gap 자동 감지
-            void runAutoMobileQA(pkgResult.id);
-
-            // Phase 5-2/6-2 박제 — 랜드사 프로파일 자동 누적 (마커/B2B 용어 학습)
+            // 랜드사 프로파일 자동 누적도 after 로 — 응답 반환 후 안전 실행
             if (effectiveLandOperatorId) {
-              void accumulateLandOperatorProfile({
+              const profileArgs = {
                 landOperatorId:    effectiveLandOperatorId,
                 rawText:           parsedDocument.rawText ?? '',
                 confidence:        confidenceV3,
@@ -1402,6 +1405,10 @@ export async function POST(request: NextRequest) {
                 detectedB2bTerms:  sanitizeResult.incidents
                   .filter(i => i.severity !== 'medium')
                   .map(i => i.matched),
+              };
+              nextAfter(async () => {
+                try { await accumulateLandOperatorProfile(profileArgs); }
+                catch (e) { console.warn('[upload-after] land-operator profile 실패:', e instanceof Error ? e.message : e); }
               });
             }
 

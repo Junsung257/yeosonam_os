@@ -29,9 +29,13 @@ const MIN_DESC_LENGTH = 30;
 const MAX_RAW_DESCRIPTIONS = 5;
 
 /**
- * G1 박제 (2026-05-15): 같은 category/region 의 기존 attraction 의 short_desc 패턴 retrieve.
- * paraphrase prompt few-shot demo 주입용. 임베딩 인프라 없이 단순 SQL — 비용 0.
- * 추후 embedding-based retrieval 로 확장 가능.
+ * G1 + Y2 박제 (2026-05-15): active learning 폐쇄 루프.
+ *   1. 사장님이 ✅정확 피드백한 attraction (attraction_feedback.verdict='accurate') 우선
+ *   2. confidence_score ≥ 0.7 우선
+ *   3. 같은 category/region 매칭
+ *
+ * 사장님 도메인 전문성이 다음 시드 prompt 의 few-shot demo 로 자동 학습 →
+ *   compound improvement (운영할수록 똑똑).
  */
 async function retrieveSimilarAttractionDemos(args: {
   category: string;
@@ -39,34 +43,54 @@ async function retrieveSimilarAttractionDemos(args: {
   limit: number;
 }): Promise<Array<{ name: string; short_desc: string }>> {
   try {
+    // Y2: 사장님 accurate 피드백 받은 attraction ID 우선 retrieve (compound learning)
+    const { data: accurateFeedback } = await supabaseAdmin
+      .from('attraction_feedback')
+      .select('attraction_id')
+      .eq('verdict', 'accurate')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    const accurateIds = new Set(
+      ((accurateFeedback ?? []) as Array<{ attraction_id: string }>).map(r => r.attraction_id),
+    );
+
     let q = supabaseAdmin
       .from('attractions')
-      .select('name, short_desc')
+      .select('id, name, short_desc, confidence_score')
       .eq('is_active', true)
       .eq('category', args.category)
-      .not('short_desc', 'is', null);
+      .not('short_desc', 'is', null)
+      .gte('confidence_score', 0.5); // 신뢰도 낮은 attraction 은 demo 에서 제외 (오염 차단)
     if (args.destination) {
-      // 같은 region 우선 (없으면 카테고리만)
       q = q.ilike('region', `%${args.destination}%`);
     }
-    const { data } = await q.limit(args.limit);
-    if (!Array.isArray(data) || data.length === 0) {
-      // region fallback — 같은 category 전체에서
-      if (args.destination) {
-        const { data: fallback } = await supabaseAdmin
-          .from('attractions')
-          .select('name, short_desc')
-          .eq('is_active', true)
-          .eq('category', args.category)
-          .not('short_desc', 'is', null)
-          .limit(args.limit);
-        return ((fallback ?? []) as Array<{ name: string; short_desc: string }>)
-          .filter(d => d.short_desc && d.short_desc.length >= 10);
-      }
-      return [];
+    const { data } = await q.limit(args.limit * 3); // 가져온 뒤 정렬·필터
+    let rows = (data ?? []) as Array<{ id: string; name: string; short_desc: string; confidence_score: number }>;
+    rows = rows.filter(d => d.short_desc && d.short_desc.length >= 10);
+
+    if (rows.length === 0 && args.destination) {
+      // region fallback — 같은 category 전체
+      const { data: fallback } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, short_desc, confidence_score')
+        .eq('is_active', true)
+        .eq('category', args.category)
+        .not('short_desc', 'is', null)
+        .gte('confidence_score', 0.5)
+        .limit(args.limit * 3);
+      rows = ((fallback ?? []) as Array<{ id: string; name: string; short_desc: string; confidence_score: number }>)
+        .filter(d => d.short_desc && d.short_desc.length >= 10);
     }
-    return (data as Array<{ name: string; short_desc: string }>)
-      .filter(d => d.short_desc && d.short_desc.length >= 10);
+
+    // Y2 정렬: 사장님 accurate 피드백 우선 → confidence_score 내림차순
+    rows.sort((a, b) => {
+      const aAccurate = accurateIds.has(a.id) ? 1 : 0;
+      const bAccurate = accurateIds.has(b.id) ? 1 : 0;
+      if (aAccurate !== bAccurate) return bAccurate - aAccurate;
+      return (b.confidence_score ?? 0) - (a.confidence_score ?? 0);
+    });
+
+    return rows.slice(0, args.limit).map(r => ({ name: r.name, short_desc: r.short_desc }));
   } catch {
     return [];
   }
