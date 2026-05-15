@@ -29,4 +29,14 @@ describe('extractAttractionCandidates', () => {
     const c = extractAttractionCandidates('▶도멘 드 마리 성당 (Domaine de Marie Catholic Church)');
     expect(c.some(x => x.includes('도멘 드 마리 성당'))).toBe(true);
   });
+
+  it('"X 후 Y" 패턴 분리 (2026-05-15)', () => {
+    const c = extractAttractionCandidates('▶도이인타논 후 몽족시장');
+    expect(c).toEqual(expect.arrayContaining(['도이인타논', '몽족시장']));
+  });
+
+  it('"→" / "거쳐" 패턴 분리', () => {
+    const c = extractAttractionCandidates('▶다딴라폭포 → 랑비앙산');
+    expect(c).toEqual(expect.arrayContaining(['다딴라폭포', '랑비앙산']));
+  });
 });

@@ -59,7 +59,9 @@ export function extractAttractionCandidates(activity: string, note?: string | nu
     if (NON_ATTRACTION_PREFIX.test(line)) continue;
     for (const inner of extractBracketAliases(line)) push(inner);
     const noBullet = line.replace(/^[▶•\-\s]+/, '').trim();
-    const parts = noBullet.split(/\s*(?:,|，|\/|·|및|와|&)\s*/);
+    // 한국어 패키지 일정 표현 보강 (2026-05-15): "X 후 Y", "X 거쳐 Y", "X → Y", "X 들러 Y" 도 분리.
+    // " 이동/도착/관광 " 자체는 후처리 cleanToken 의 trailing 제거로 흡수.
+    const parts = noBullet.split(/\s*(?:,|，|\/|·|및|와|&|→|⇒|\sㅡ\s|\s후\s|\s이후\s|\s거쳐\s|\s들러\s)\s*/);
     for (const p of parts) push(p);
   }
 
