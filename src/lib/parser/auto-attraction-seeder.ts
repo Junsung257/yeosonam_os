@@ -29,6 +29,50 @@ const MIN_DESC_LENGTH = 30;
 const MAX_RAW_DESCRIPTIONS = 5;
 
 /**
+ * G1 박제 (2026-05-15): 같은 category/region 의 기존 attraction 의 short_desc 패턴 retrieve.
+ * paraphrase prompt few-shot demo 주입용. 임베딩 인프라 없이 단순 SQL — 비용 0.
+ * 추후 embedding-based retrieval 로 확장 가능.
+ */
+async function retrieveSimilarAttractionDemos(args: {
+  category: string;
+  destination: string | null;
+  limit: number;
+}): Promise<Array<{ name: string; short_desc: string }>> {
+  try {
+    let q = supabaseAdmin
+      .from('attractions')
+      .select('name, short_desc')
+      .eq('is_active', true)
+      .eq('category', args.category)
+      .not('short_desc', 'is', null);
+    if (args.destination) {
+      // 같은 region 우선 (없으면 카테고리만)
+      q = q.ilike('region', `%${args.destination}%`);
+    }
+    const { data } = await q.limit(args.limit);
+    if (!Array.isArray(data) || data.length === 0) {
+      // region fallback — 같은 category 전체에서
+      if (args.destination) {
+        const { data: fallback } = await supabaseAdmin
+          .from('attractions')
+          .select('name, short_desc')
+          .eq('is_active', true)
+          .eq('category', args.category)
+          .not('short_desc', 'is', null)
+          .limit(args.limit);
+        return ((fallback ?? []) as Array<{ name: string; short_desc: string }>)
+          .filter(d => d.short_desc && d.short_desc.length >= 10);
+      }
+      return [];
+    }
+    return (data as Array<{ name: string; short_desc: string }>)
+      .filter(d => d.short_desc && d.short_desc.length >= 10);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 단일 키워드 자동 시드. 백그라운드 호출 fire-and-forget.
  * 외부 source 조회 비용이 있으므로 사전에 attractions 캐시 확인 후 호출.
  */
@@ -64,12 +108,22 @@ export async function autoSeedAttraction(args: {
     let longDescResult: { text: string; ok: boolean; similarity: number; attempts: number } = { text: '', ok: false, similarity: 0, attempts: 0 };
     let bestSource: ExternalDescription | null = externalDescs[0] ?? null;
 
+    // G1 박제 (2026-05-15): 같은 category/region 의 기존 attraction short_desc 패턴 retrieve.
+    //   비용 0 (단일 SELECT). LLM paraphrase prompt 에 demo 로 주입하여 일관된 톤 학습.
+    const fewShotDemos = await retrieveSimilarAttractionDemos({
+      category: args.category ?? 'sightseeing',
+      destination: args.destination ?? null,
+      limit: 3,
+    });
+
     if (bestSource) {
       shortDescResult = await paraphraseExternal({
         originalText: bestSource.text.slice(0, 200),
         style: 'short_desc',
         attractionName: name,
         destination: args.destination ?? null,
+        fewShotDemos,
+        enableSelfRefine: true, // G2: 사실 명시 위반·과장 자동 차단
       });
       longDescResult = bestSource.text.length > 200
         ? await paraphraseExternal({
@@ -77,6 +131,8 @@ export async function autoSeedAttraction(args: {
             style: 'long_desc',
             attractionName: name,
             destination: args.destination ?? null,
+            fewShotDemos,
+            enableSelfRefine: true,
           })
         : { text: '', ok: false, similarity: 0, attempts: 0 };
     }
