@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
@@ -766,6 +767,9 @@ export async function POST(request: NextRequest) {
     }[] = [];
     const matchedCanonicalNames = new Set<string>();
     const extractedCandidateRows: { activity: string; destination?: string }[] = [];
+    // A2/A3 박제 (2026-05-15): 등록 종료 후 사장님에게 한 화면 보고용 통계
+    let attractionSeededCount = 0;
+    let attractionReflectedCount = 0;
 
     let activeAttractions: AttractionData[] = [];
     if (isSupabaseConfigured && !bulkMode) {
@@ -1479,10 +1483,10 @@ export async function POST(request: NextRequest) {
           //   회귀 차단: destination 빈 경우 skip / paraphrase 실패 시 unmatched 큐 유지 / 출처 추적 필수.
           //   ※ ed 는 multi-product loop 밖이라 newActivities 의 candidate.destination 사용.
           const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
+          let seededCountTotal = 0;
           if (newActivities.length > 0 && firstSeedDest) {
             const { autoSeedAttraction } = await import('@/lib/parser/auto-attraction-seeder');
             const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 15);
-            let seededCount = 0;
             let failedCount = 0;
             for (const kw of uniqueNew) {
               const r = await autoSeedAttraction({
@@ -1491,12 +1495,54 @@ export async function POST(request: NextRequest) {
                 country: null,
                 category: 'sightseeing',
               });
-              if (r.seeded) seededCount++;
+              if (r.seeded) seededCountTotal++;
               else if (r.reason !== 'already_exists') failedCount++;
             }
-            console.log(`[Upload API] 자동 시드: ${seededCount}건 성공 / ${failedCount}건 실패 (Wikidata + Paraphrase 통과 분만)`);
+            attractionSeededCount = seededCountTotal;  // A3 통계 박제
+            console.log(`[Upload API] 자동 시드: ${seededCountTotal}건 성공 / ${failedCount}건 실패 (Wikidata + Paraphrase 통과 분만)`);
           } else if (newActivities.length > 0) {
             console.log(`[Upload API] 자동 시드 skip: destination 빈 채로는 oversees 위험 (unmatched 큐만)`);
+          }
+
+          // ── A1. Same-Session Seed-Reflect (2026-05-15 박제) ─────────────────
+          //   시드된 신규 attraction 을 같은 등록의 모바일 카드에 즉시 반영.
+          //   사장님 비전: "키워드 솔팅 → 설명 생성 → DB 저장 → 다음번 재사용" 의 "다음번"이 같은 등록도 포함.
+          //   처방: 시드 후 attractions refetch + enrichItinerary 재실행 + travel_packages.itinerary_data UPDATE + ISR revalidate.
+          if (seededCountTotal > 0 && savedIds.length > 0) {
+            try {
+              const { data: freshRows } = await supabaseAdmin
+                .from('attractions')
+                .select('id, name, short_desc, long_desc, aliases, country, region, category, emoji')
+                .eq('is_active', true);
+              const freshAttractions = (freshRows || []) as AttractionData[];
+
+              let reflectedCount = 0;
+              for (const pid of savedIds) {
+                const { data: pkgRow } = await supabaseAdmin
+                  .from('travel_packages')
+                  .select('id, destination, itinerary_data')
+                  .eq('id', pid)
+                  .maybeSingle();
+                if (!pkgRow) continue;
+
+                const itin = (pkgRow as { itinerary_data: ItineraryDataLike | null }).itinerary_data;
+                const dest = (pkgRow as { destination: string | null }).destination ?? undefined;
+                const re = enrichItineraryWithAttractionReferences(itin, freshAttractions, dest);
+
+                if (re.matchedCanonicalNames.length > 0) {
+                  await supabaseAdmin
+                    .from('travel_packages')
+                    .update({ itinerary_data: re.itineraryData, updated_at: new Date().toISOString() })
+                    .eq('id', pid);
+                  revalidatePath(`/packages/${pid}`);
+                  reflectedCount++;
+                }
+              }
+              attractionReflectedCount = reflectedCount;  // A3 통계 박제
+              console.log(`[Upload API] Seed-Reflect: ${reflectedCount}/${savedIds.length} 패키지 itinerary 재반영 + ISR 무효화`);
+            } catch (reflectErr) {
+              console.warn('[Upload API] Seed-Reflect 실패(비중단):', reflectErr instanceof Error ? reflectErr.message : reflectErr);
+            }
           }
         }
       } catch (attrError) {
@@ -1564,6 +1610,17 @@ export async function POST(request: NextRequest) {
       };
     })() : null;
 
+    // A3 박제 (2026-05-15): 등록 종료 한 화면 통계 — 사장님 비전 "다음번 등록 시 자동" 가시화
+    const attractionStats = {
+      matched: matchedCanonicalNames.size,
+      unmatched: unmatchedRowsToInsert.length,
+      seeded: attractionSeededCount,
+      reflected: attractionReflectedCount,
+    };
+    const attractionLine = attractionStats.matched + attractionStats.seeded + attractionStats.unmatched > 0
+      ? ` · 관광지 매칭 ${attractionStats.matched}개${attractionStats.seeded > 0 ? ` · 신규 시드 ${attractionStats.seeded}개` : ''}${attractionStats.reflected > 0 ? ` · 같은 등록 즉시반영 ${attractionStats.reflected}개` : ''}${attractionStats.unmatched > 0 ? ` · 미매칭 ${attractionStats.unmatched}개 (검수 큐로)` : ''}`
+      : '';
+
     return NextResponse.json({
       success: successCount > 0 || !isSupabaseConfigured,
       data:    parsedDocument,
@@ -1581,11 +1638,12 @@ export async function POST(request: NextRequest) {
       classification,
       gate:            overallGate,
       tokenUsage:      tokenInfo,
+      attractionStats,
       ...(saveErrors.length > 0 && { errors: saveErrors }),
       message: productCount > 1
-        ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.`
+        ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.${attractionLine}`
         : successCount > 0
-          ? `문서 파싱 완료. (${savedInternalCodes[0] ?? 'DB 미설정'}) 가격 ${totalPriceRowsSaved}행`
+          ? `문서 파싱 완료. (${savedInternalCodes[0] ?? 'DB 미설정'}) 가격 ${totalPriceRowsSaved}행${attractionLine}`
           : '문서 파싱은 완료됐으나 DB 저장에 실패했습니다.',
     });
 
