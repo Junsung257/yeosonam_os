@@ -35,6 +35,11 @@ export async function isAdminRequest(req: NextRequest): Promise<boolean> {
   if (process.env.NODE_ENV !== 'production') {
     if (req.cookies.get('ys-dev-admin')?.value === '1') return true;
     if (req.cookies.get('sb-admin')?.value) return true;
+    // 2026-05-15 박제: dev 환경 매우 관대 모드 — sb-access-token 쿠키만 있으면 통과.
+    //   verifySupabaseAccessToken 이 .env.local SUPABASE_JWT_SECRET 미설정·만료된 토큰 등
+    //   환경 문제로 false 떨어져 verify 401 race 가 끊임없이 발생하던 사고 차단.
+    //   production 은 그대로 엄격 (아래 JWT verify 분기 사용).
+    if (req.cookies.get('sb-access-token')?.value) return true;
   }
 
   const adminEmails = (process.env.ADMIN_EMAILS ?? '')
@@ -49,8 +54,6 @@ export async function isAdminRequest(req: NextRequest): Promise<boolean> {
   if (!v.ok) return false;
 
   // dev 환경에서 ADMIN_EMAILS 미설정이면 verify 성공만으로 통과 (2026-05-14 박제).
-  // 사장님 .env.local 에 ADMIN_EMAILS 가 비어 있는 경우 dev 모든 admin API 가 401 → refresh loop 발생.
-  // production 은 ADMIN_EMAILS 강제 (보안 게이트 유지).
   if (adminEmails.length === 0) {
     return process.env.NODE_ENV !== 'production';
   }

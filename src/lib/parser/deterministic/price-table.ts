@@ -158,17 +158,17 @@ export function extractPriceTable(rawText: string, todayYear?: number): PriceTie
     // 월 안에서만 의미 있음
     if (!currentMonth) continue;
 
-    // 요일 라벨
+    // 요일 라벨 — 새 요일 그룹 시작 (pendingDow 갱신)
     if (DOW_LABEL.test(line)) {
       pendingDow = expandDowLabel(line);
       pendingLabel = `${currentMonth}월 ${line}`;
       continue;
     }
 
-    // 날짜 리스트
+    // 날짜 리스트 — 2026-05-15 박제: 같은 요일 그룹 안에서 연속 (date_list, price) 쌍을
+    //   여러 번 처리. 부관훼리 5월 "일-수" 그룹 아래 3개 (date,price) 쌍이 연속 등장하는 패턴.
     if (DATE_LIST.test(line) && pendingDow) {
       pendingDates = expandDateList(line);
-      // 같은 줄 또는 다음 줄에서 가격 찾기
       const priceOnSameLine = line.match(PRICE_LINE);
       if (priceOnSameLine && !DATE_LIST.test(line.split(/\s+/)[0])) {
         flush(parsePriceToken(priceOnSameLine[1]));
@@ -176,10 +176,11 @@ export function extractPriceTable(rawText: string, todayYear?: number): PriceTie
       continue;
     }
 
-    // 가격 라인
+    // 가격 라인 — 같은 요일 그룹 안의 다음 쌍을 기다리도록 pendingDow 유지 (NOT reset)
     const priceM = line.match(PRICE_LINE);
     if (priceM && pendingDates) {
       flush(parsePriceToken(priceM[1]));
+      // pendingDow 는 유지 — 다음 date_list 가 또 나오면 같은 요일 그룹으로 재사용
     }
   }
 
