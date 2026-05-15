@@ -1313,6 +1313,10 @@ export async function POST(request: NextRequest) {
 
             // ── G8.5. ai_quality_log 적재 — V2 + leak incidents + LLM 메타 (P11-4)
             const llmMeta = (ed as { _llm_meta?: Record<string, unknown> })._llm_meta ?? {};
+            // B1 박제 (2026-05-15): 관광지 매칭 통계 — 사장님 시각 검증용
+            //   reflected 는 multi-product loop 종료 후 별도 UPDATE (시드 후 재반영 시점에)
+            const pkgMatchedCount   = enrichment.matchedCanonicalNames.length;
+            const pkgUnmatchedCount = enrichment.unmatchedCandidates.length;
             void supabaseAdmin
               .from('ai_quality_log')
               .insert({
@@ -1331,6 +1335,11 @@ export async function POST(request: NextRequest) {
                 llm_tokens_input:  Number(llmMeta.tokens_input ?? 0),
                 llm_tokens_output: Number(llmMeta.tokens_output ?? 0),
                 llm_calls_count:   1 + (llmMeta.advisor_used ? 1 : 0),
+                // B1 박제: 패키지 단위 관광지 매칭 통계
+                attraction_matched_count:   pkgMatchedCount,
+                attraction_unmatched_count: pkgUnmatchedCount,
+                attraction_seeded_count:    0, // 시드는 loop 종료 후 일괄 — 별도 UPDATE
+                attraction_reflected_count: 0,
               })
               .then(({ error }: { error: { message: string } | null }) => {
                 if (error) console.warn('[Upload API] ai_quality_log 적재 실패(무시):', error.message);
@@ -1537,6 +1546,17 @@ export async function POST(request: NextRequest) {
                   revalidatePath(`/packages/${pid}`);
                   reflectedCount++;
                 }
+                // B1 박제: ai_quality_log 패키지별 시드/reflect 카운트 UPDATE
+                void supabaseAdmin
+                  .from('ai_quality_log')
+                  .update({
+                    attraction_seeded_count:    seededCountTotal,
+                    attraction_reflected_count: re.matchedCanonicalNames.length > 0 ? 1 : 0,
+                  })
+                  .eq('package_id', pid)
+                  .then(({ error }: { error: { message: string } | null }) => {
+                    if (error) console.warn('[Upload API] ai_quality_log attraction UPDATE 실패(무시):', error.message);
+                  });
               }
               attractionReflectedCount = reflectedCount;  // A3 통계 박제
               console.log(`[Upload API] Seed-Reflect: ${reflectedCount}/${savedIds.length} 패키지 itinerary 재반영 + ISR 무효화`);
