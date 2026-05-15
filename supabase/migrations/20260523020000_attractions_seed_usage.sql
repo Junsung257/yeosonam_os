@@ -12,10 +12,14 @@ CREATE TABLE IF NOT EXISTS public.attractions_seed_usage (
   called_at   timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_seed_usage_called_at ON public.attractions_seed_usage(called_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_seed_usage_called_at ON public.attractions_seed_usage(called_at DESC);
 
 ALTER TABLE public.attractions_seed_usage ENABLE ROW LEVEL SECURITY;
--- service_role 만 접근 (정책 없음 = anon 차단). admin API 가 supabaseAdmin 으로 적재.
+
+-- service_role 만 접근하도록 명시적 차단 정책 (safety-checker 룰 통과 + 사일런트 차단 방지).
+-- supabaseAdmin (service_role) 은 RLS bypass 라 영향 없음. anon/authenticated 만 0행 반환.
+CREATE POLICY "deny_anon_seed_usage" ON public.attractions_seed_usage
+  FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
 
 COMMENT ON TABLE public.attractions_seed_usage IS
 'Vercel Sandbox playwright fetch 호출 추적. 월 누적 elapsed_ms 임계치 초과 시 호출 측에서 skip (사장님 비용 0 보장). 2026-05-15 박제.';
