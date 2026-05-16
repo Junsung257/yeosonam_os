@@ -66,8 +66,11 @@ describe('decrypt 보안 가드', () => {
   it('변조된 ciphertext → throw (auth tag mismatch)', () => {
     const enc = encrypt('original');
     const [iv, tag, ct] = enc.split(':');
-    // ciphertext 마지막 글자 변조
-    const tampered = `${iv}:${tag}:${ct.slice(0, -2)}ff`;
+    // 2026-05-16 박제: 마지막 2글자가 우연히 'ff' 였다면 변조 == 원본 → throw 안 함 (1/256 flaky).
+    //   원본과 다른 suffix 를 강제 선택.
+    const originalSuffix = ct.slice(-2);
+    const newSuffix = originalSuffix === 'ff' ? '00' : 'ff';
+    const tampered = `${iv}:${tag}:${ct.slice(0, -2)}${newSuffix}`;
     expect(() => decrypt(tampered)).toThrow();
   });
 
