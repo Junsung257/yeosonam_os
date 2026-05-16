@@ -1586,6 +1586,29 @@ export async function POST(request: NextRequest) {
               }, { onConflict: 'activity' });
             }
             console.log(`[Upload API] STRICT SSOT: ${uniqueNew.length}건 unmatched 큐 적재 (자동 시드 비활성)`);
+
+            // PR #94 갭 D — 신규 지역 부트스트랩 자동화.
+            //   시즈오카 사고 (모바일 attraction 카드 0개) 영구 차단.
+            //   백그라운드 DeepSeek 으로 카드 분해 → unmatched_activities.suggested_card 적재.
+            //   사장님 어드민 ☑ 한 번 → 일괄 attractions INSERT → reEnrichAffectedPackages → 모바일 즉시 반영.
+            //   fire-and-forget (사장님 응답 블로킹 X).
+            const trigPackageId = savedIds[0];
+            if (trigPackageId && uniqueNew.length > 0) {
+              void (async () => {
+                try {
+                  const { bootstrapNewRegionAsync } = await import('@/lib/auto-bootstrap-new-region');
+                  const r = await bootstrapNewRegionAsync({
+                    packageId: trigPackageId,
+                    region: firstSeedDest,
+                    country: null,
+                    activities: uniqueNew,
+                  });
+                  console.log(`[Upload API] Bootstrap: ${r.suggested}건 suggested_card 적재 (alert=${r.alerted})`);
+                } catch (e) {
+                  console.warn('[Upload API] Bootstrap 실패(무시):', e instanceof Error ? e.message : e);
+                }
+              })();
+            }
           }
         }
       } catch (attrError) {
