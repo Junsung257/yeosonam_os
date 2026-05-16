@@ -235,6 +235,82 @@ export async function PATCH(request: NextRequest) {
     //   STRICT SSOT 정책 준수: 자동 INSERT 아님, 사장님 명시 승인 후 INSERT.
     //   body: { id, action: 'register_from_wikidata', wikidata: { qid, labels, aliases, image_thumb_url, description },
     //          country?, region?, badge_type? }
+    // PR #94 갭 D — suggested_card 일괄 등록 (사장님 1-click).
+    //   백그라운드 부트스트랩이 만든 AI 카드를 attractions 에 일괄 INSERT + 미매칭 처리.
+    //   STRICT SSOT 준수: 사장님 명시 ☑ 후에만 INSERT.
+    if (body.action === 'register_from_suggested_card') {
+      const { data: unmatched } = await supabaseAdmin
+        .from('unmatched_activities')
+        .select('id, activity, region, country, suggested_card')
+        .eq('id', id)
+        .single() as { data: { id: string; activity: string; region: string | null; country: string | null; suggested_card: Record<string, unknown> | null } | null };
+      if (!unmatched) return NextResponse.json({ error: '미매칭 항목 없음' }, { status: 404 });
+      const card = unmatched.suggested_card;
+      if (!card || typeof card !== 'object') return NextResponse.json({ error: 'suggested_card 부재 — 부트스트랩 안됨' }, { status: 400 });
+
+      const name = String(card.name ?? '').trim();
+      if (!name || name.length < 2) return NextResponse.json({ error: 'card.name invalid' }, { status: 400 });
+
+      // 동일 name 시 alias 추가만
+      const { data: existing } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, aliases')
+        .ilike('name', name)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        const ex = existing[0] as { id: string; name: string; aliases: string[] | null };
+        const aliases = ex.aliases ?? [];
+        if (!aliases.includes(unmatched.activity)) {
+          await supabaseAdmin.from('attractions').update({ aliases: [...aliases, unmatched.activity] }).eq('id', ex.id);
+        }
+        await supabaseAdmin.from('unmatched_activities').update({
+          status: 'added',
+          resolved_at: new Date().toISOString(),
+          resolved_kind: 'manual_register_suggested_existing',
+          resolved_attraction_id: ex.id,
+          resolved_by: 'admin_suggested',
+        }).eq('id', id);
+        return NextResponse.json({ success: true, message: `이미 존재: "${ex.name}" → alias 추가`, attraction_id: ex.id });
+      }
+
+      // 신규 INSERT
+      const { data: created, error: insErr } = await supabaseAdmin.from('attractions').insert({
+        name,
+        short_desc: card.short_desc ?? null,
+        long_desc: card.long_desc ?? null,
+        aliases: Array.isArray(card.aliases) ? card.aliases : [],
+        country: unmatched.country,
+        region: unmatched.region,
+        badge_type: card.badge_type ?? 'tour',
+        emoji: card.emoji ?? '📍',
+        category: 'sightseeing',
+        source: 'paste-auto-bootstrap',
+        confidence_score: 0.7,
+        seeded_at: new Date().toISOString(),
+        is_active: true,
+        is_manual_override: true,  // 사장님 명시 ☑ = manual
+        last_owner_edited_at: new Date().toISOString(),
+      }).select('id, name').single() as { data: { id: string; name: string } | null; error: { message: string } | null };
+      if (insErr || !created) return NextResponse.json({ error: insErr?.message ?? 'INSERT 실패' }, { status: 500 });
+
+      await supabaseAdmin.from('unmatched_activities').update({
+        status: 'added',
+        resolved_at: new Date().toISOString(),
+        resolved_kind: 'manual_register_suggested_card',
+        resolved_attraction_id: created.id,
+        resolved_by: 'admin_suggested',
+      }).eq('id', id);
+
+      // resweep + re-enrich (PR #93)
+      try {
+        await resweepUnmatchedActivities([created.id]);
+        const { reEnrichAffectedPackages } = await import('@/lib/package-reenrich-on-attraction-change');
+        void reEnrichAffectedPackages([created.id], { maxPackages: 50 }).catch(() => {});
+      } catch {}
+
+      return NextResponse.json({ success: true, message: `신규 등록: "${created.name}"`, attraction_id: created.id });
+    }
+
     if (body.action === 'register_from_wikidata') {
       const wd = body.wikidata as {
         qid: string;
