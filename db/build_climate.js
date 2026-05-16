@@ -75,6 +75,15 @@ const DESTINATION_SEED = [
   { destination: '황산',                  primary_city: '황산',       country: '중국',  lat: 30.1340, lon: 118.1660 },
   { destination: '티벳',                  primary_city: '라싸',       country: '중국',  lat: 29.6520, lon: 91.1721 },
   { destination: '호화호특',              primary_city: '호화호특',   country: '중국',  lat: 40.8419, lon: 111.7497 },
+  // 2026-05-16 박제: 계림/양삭 시드 누락으로 모바일 상세에 날씨·시차·짐싸기 카드 미노출 사고
+  { destination: '계림',                  primary_city: '계림',       country: '중국',  lat: 25.2742, lon: 110.2900 },
+  { destination: '계림/양삭',             primary_city: '계림',       country: '중국',  lat: 25.2742, lon: 110.2900 },
+  { destination: '계림, 양삭',            primary_city: '계림',       country: '중국',  lat: 25.2742, lon: 110.2900 },
+  { destination: '계림, 용승, 양삭',      primary_city: '계림',       country: '중국',  lat: 25.2742, lon: 110.2900 },
+  { destination: '양삭',                  primary_city: '양삭',       country: '중국',  lat: 24.7766, lon: 110.4974 },
+  // 백두산·연길 — 한중 접경, Asia/Shanghai
+  { destination: '백두산',                primary_city: '연길',       country: '중국',  lat: 42.9067, lon: 129.5106 },
+  { destination: '연길/백두산',           primary_city: '연길',       country: '중국',  lat: 42.9067, lon: 129.5106 },
 
   // ── 일본 ──
   { destination: '시즈오카',              primary_city: '시즈오카',   country: '일본',  lat: 34.9756, lon: 138.3828 },
@@ -140,7 +149,13 @@ const destFilter = destFilterIdx >= 0 ? args[destFilterIdx + 1] : null;
 
 const envFile = fs.readFileSync('.env.local', 'utf-8');
 const env = {};
-envFile.split('\n').forEach(l => { const [k, ...v] = l.split('='); if (k) env[k.trim()] = v.join('=').trim(); });
+// 2026-05-16 박제: Windows CRLF (\r\n) 환경에서 value 끝에 \r 가 남아
+//   Supabase URL 검증을 통과 못하던 사고. 양끝 공백 + \r 제거.
+envFile.split(/\r?\n/).forEach(l => {
+  if (!l || l.trim().startsWith('#')) return;
+  const [k, ...v] = l.split('=');
+  if (k) env[k.trim()] = v.join('=').trim().replace(/^["']|["']$/g, '');
+});
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
 const KST_OFFSET_MIN = 9 * 60; // KST = UTC+9

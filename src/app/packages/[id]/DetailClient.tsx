@@ -858,28 +858,30 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         );
       })()}
 
-      {/* ═══ 여행 적합도 + 시차 (destination_climate 시드된 destination만 노출) ═══ */}
+      {/* ═══ 여행 적합도 (monthly_normals/fitness_scores 둘 다 있어야 의미 있음) ═══ */}
       {climateData && Array.isArray(climateData.monthly_normals) && Array.isArray(climateData.fitness_scores) && (
-        <>
-          <TravelFitnessCard
-            destination={climateData.destination}
-            primaryCity={climateData.primary_city}
-            country={climateData.country}
-            monthlyNormals={climateData.monthly_normals as MonthlyNormal[]}
-            fitnessScores={climateData.fitness_scores as FitnessScore[]}
-            seasonalSignals={(climateData.seasonal_signals as SeasonalSignal[]) ?? null}
-            representativeMonth={representativeMonth}
-            departureDistribution={departureDistribution}
-          />
-          <TimezoneCard
-            destination={climateData.destination}
-            primaryCity={climateData.primary_city}
-            country={climateData.country}
-            offsetMinutes={climateData.utc_offset_minutes}
-            timezone={climateData.timezone}
-          />
-          {/* PackingTipsCard 는 유의사항 위로 이동 (사장님 피드백 2026-04-29) */}
-        </>
+        <TravelFitnessCard
+          destination={climateData.destination}
+          primaryCity={climateData.primary_city}
+          country={climateData.country}
+          monthlyNormals={climateData.monthly_normals as MonthlyNormal[]}
+          fitnessScores={climateData.fitness_scores as FitnessScore[]}
+          seasonalSignals={(climateData.seasonal_signals as SeasonalSignal[]) ?? null}
+          representativeMonth={representativeMonth}
+          departureDistribution={departureDistribution}
+        />
+      )}
+      {/* ═══ 시차 카드 — utc_offset_minutes 만 있으면 독립 노출 (2026-05-16 박제)
+           기존: fitness_scores 게이트에 묶여 monthly_normals 미시드 destination 에서 시차도 사라짐.
+           시차는 timezone seed 만으로 충분히 의미 있는 정보. ═══ */}
+      {climateData && typeof climateData.utc_offset_minutes === 'number' && climateData.timezone && (
+        <TimezoneCard
+          destination={climateData.destination}
+          primaryCity={climateData.primary_city}
+          country={climateData.country}
+          offsetMinutes={climateData.utc_offset_minutes}
+          timezone={climateData.timezone}
+        />
       )}
 
       {/* ═══ 상품 감성 스토리 (product_summary 인젝션) ═══ */}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { openKakaoChannel } from '@/lib/kakaoChannel';
 
 interface DigestQuote {
   text: string;
@@ -16,24 +17,53 @@ interface DigestPayload {
 }
 
 /**
- * 패키지 hero 직하 — 실제 다녀온 분들의 1줄 후기 carousel
- * - cron(`review-digest`)이 채운 package_review_digests 에서 fetch
- * - 데이터 없으면 렌더링 자체 안 함 (UI 정합성)
+ * 패키지 hero 직하 — 실제 다녀온 분들의 1줄 후기 carousel.
+ *
+ * 2026-05-16 박제: 후기 0건일 때도 fallback CTA 노출.
+ *   기존: `quotes.length === 0` 이면 통째 숨김 → cron 미시드 + 신상품 모두에서 영구 미노출.
+ *   변경: fetch 정상 응답 + 0건 → "리뷰 모집 중" strip 으로 노출(카톡 상담 유도).
+ *         fetch 실패 (네트워크/500) → 조용히 숨김 (silent fail 차단은 cron 쪽에서).
  */
 export default function ReviewDigestStrip({ packageId }: { packageId: string }) {
   const [data, setData] = useState<DigestPayload | null>(null);
+  const [fetched, setFetched] = useState(false);
 
   useEffect(() => {
     let alive = true;
     fetch(`/api/packages/${packageId}/review-digest`)
-      .then(r => r.json())
-      .then(d => { if (alive) setData(d); })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (alive) { setData(d); setFetched(true); } })
       .catch(() => {});
     return () => { alive = false; };
   }, [packageId]);
 
   const quotes = data?.digest_quotes ?? [];
-  if (quotes.length === 0) return null;
+
+  // fetch 자체가 실패하면 (네트워크/500) 조용히 숨김 — 빈 데이터인지 장애인지 구분 못함.
+  if (!fetched) return null;
+
+  // fallback: 정상 응답 + 0건 → 리뷰 모집 중 CTA
+  if (quotes.length === 0) {
+    return (
+      <section className="px-4 py-3 -mt-2 relative z-10">
+        <button
+          type="button"
+          onClick={() => openKakaoChannel()}
+          className="w-full bg-gradient-to-r from-purple-50 via-white to-purple-50 border border-purple-100 rounded-2xl px-4 py-3 shadow-sm text-left active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-purple-700 flex items-center gap-1">
+              ✦ 첫 다녀온 분이 되어 주세요
+            </span>
+            <span className="text-[11px] text-purple-600 font-medium">카톡 상담 →</span>
+          </div>
+          <p className="text-[13px] text-gray-600 leading-snug mt-1">
+            아직 등록된 후기가 없어요. 출발 전 궁금한 점은 카톡으로 1:1 상담 받으세요.
+          </p>
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section className="px-4 py-3 -mt-2 relative z-10">
