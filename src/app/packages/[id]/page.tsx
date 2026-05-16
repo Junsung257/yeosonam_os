@@ -12,7 +12,14 @@ import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
-export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음) // refreshed 2026-04-22
+// 2026-05-16 박제 (시즈오카 사고 종결):
+//   revalidate=3600 + Next fetch cache 깊이가 supabase 응답을 길게 hold 하여
+//   사장님이 attractions/itinerary_data 변경 직후 모바일에서 옛 데이터가 노출됨.
+//   revalidatePath() 호출도 fetch cache 까지 invalidate 하지 못하는 케이스 발생.
+//   상세 페이지는 트래픽 대비 변경 빈도가 높으므로 매 요청 fresh build 로 전환.
+//   ISR 복구는 attraction-change → revalidate 흐름 안정화 후 별도 PR.
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
 const DETAIL_FIELDS = `
