@@ -359,6 +359,13 @@ JSON 객체만 응답:`;
     if ('aliases' in updates || 'name' in updates) {
       void reEnrichAffectedPackages([id], { maxPackages: 50 })
         .catch(e => console.warn('[Attractions API] re-enrich 실패:', e instanceof Error ? e.message : e));
+    } else if ('short_desc' in updates || 'long_desc' in updates || 'photos' in updates || 'emoji' in updates || 'badge_type' in updates) {
+      // PR #98 갭 — 사진/desc/emoji 변경 시 itinerary_data 변경 없어도 ISR 강제 무효화.
+      //   모바일 DetailClient 는 attraction_ids 로 attractions 테이블 직접 fetch.
+      //   따라서 사진/desc 수정해도 ISR 캐시 (1시간) 지나야 사장님 눈에 보임.
+      //   forceRevalidate=true 로 즉시 revalidatePath 호출 → 다음 페이지 로드 즉시 반영.
+      void reEnrichAffectedPackages([id], { maxPackages: 50, forceRevalidate: true })
+        .catch(e => console.warn('[Attractions API] force-revalidate 실패:', e instanceof Error ? e.message : e));
     }
 
     return NextResponse.json({ success: true, sweep });
