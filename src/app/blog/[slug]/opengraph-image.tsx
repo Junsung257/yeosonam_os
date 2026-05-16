@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { safeDecodeSlug } from '@/lib/decode-slug';
 
 export const runtime = 'nodejs';
 export const alt = '여소남 여행 블로그';
@@ -25,7 +26,7 @@ export default async function OgImage({ params }: { params: { slug: string } }) 
     const { data } = await supabaseAdmin
       .from('content_creatives')
       .select('seo_title, angle_type, og_image_url, travel_packages(destination)')
-      .eq('slug', params.slug)
+      .eq('slug', safeDecodeSlug(params.slug))
       .eq('status', 'published')
       .limit(1);
 
