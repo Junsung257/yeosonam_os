@@ -22,12 +22,17 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
+// 2026-05-16 박제 (시즈오카 사고 결정타): 존재하지 않는 컬럼 `min_people`, `thumbnail_urls`
+//   가 DETAIL_FIELDS 에 포함되어 PostgREST select 가 일부 fields(destination/itinerary_data)
+//   를 silent 누락. pkg.destination=undefined → matchAttractions destination 매칭 fail →
+//   matchedNames=0 + idsFromItinerary=0 → relevantAttractions 빈 배열 → 모든 attraction 카드
+//   미표출. min_participants 가 정식 컬럼이고 min_people 은 미존재. thumbnail_urls 도 미존재.
 const DETAIL_FIELDS = `
   id, title, destination, duration, nights, price, airline, departure_airport, departure_days,
-  min_participants, min_people, ticketing_deadline, product_type,
+  min_participants, ticketing_deadline, product_type,
   price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
   product_highlights, customer_notes, internal_notes, notices_parsed, itinerary_data,
-  display_title, hero_tagline, product_summary, thumbnail_urls, is_airtel,
+  display_title, hero_tagline, product_summary, is_airtel,
   land_operator_id, audit_status, status,
   products(internal_code, display_name, departure_region)
 `;
@@ -169,19 +174,20 @@ export default async function PackageDetailPage({
   }
   if (matchedNames.size > 0 || idsFromItinerary.size > 0) {
     type DetailRow = { id: string; name: string; short_desc: string | null; long_desc: string | null; photos: unknown; country: string | null; region: string | null; badge_type: string | null; emoji: string | null; aliases: unknown; category: string | null };
-    let detailQuery = sb.from('attractions')
-      .select('id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category');
-    if (idsFromItinerary.size > 0 && matchedNames.size > 0) {
-      const idList = Array.from(idsFromItinerary).map(id => `id.eq.${id}`).join(',');
-      const nameList = Array.from(matchedNames).map(n => `name.eq."${n.replace(/"/g, '\\"')}"`).join(',');
-      detailQuery = detailQuery.or([idList, nameList].filter(Boolean).join(','));
-    } else if (idsFromItinerary.size > 0) {
-      detailQuery = detailQuery.in('id', Array.from(idsFromItinerary));
-    } else {
-      detailQuery = detailQuery.in('name', Array.from(matchedNames));
+    const SELECT = 'id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category';
+    const merged = new Map<string, DetailRow>();
+    // 2026-05-16 박제: .or() 합성으로 id + name 동시 매칭 시 한글 name 의 PostgREST OR 절
+    //   파싱 실패 (공백/따옴표 escape 비표준) → 0건 반환되어 모든 attraction 카드 미표출.
+    //   두 번 fetch + 합집합으로 단순화.
+    if (idsFromItinerary.size > 0) {
+      const { data } = await sb.from('attractions').select(SELECT).in('id', Array.from(idsFromItinerary));
+      for (const a of ((data ?? []) as DetailRow[])) merged.set(a.id, a);
     }
-    const { data: detail } = await detailQuery;
-    relevantAttractions = ((detail ?? []) as DetailRow[]) as unknown as AttractionData[];
+    if (matchedNames.size > 0) {
+      const { data } = await sb.from('attractions').select(SELECT).in('name', Array.from(matchedNames));
+      for (const a of ((data ?? []) as DetailRow[])) if (!merged.has(a.id)) merged.set(a.id, a);
+    }
+    relevantAttractions = (Array.from(merged.values()) as unknown) as AttractionData[];
   }
   // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
   const attrResult = { data: relevantAttractions.length > 0 ? relevantAttractions : lightAttractions };
