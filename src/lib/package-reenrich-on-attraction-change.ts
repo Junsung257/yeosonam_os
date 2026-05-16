@@ -35,10 +35,12 @@ export interface ReEnrichResult {
  *
  * @param attractionIds 변경된 attraction ID 배열 (필수). region 광역 sweep 막기 위해 명시 권장.
  * @param options.maxPackages 한 번에 처리할 최대 패키지 수 (default 100, 대량 변경 시 폭주 방지)
+ * @param options.forceRevalidate true 면 attraction_ids 변경 없어도 revalidatePath 호출.
+ *   PR #98: 사진/desc/emoji 만 변경 시 itinerary_data 변경은 없지만 모바일 카드 즉시 반영 위해 필요.
  */
 export async function reEnrichAffectedPackages(
   attractionIds: string[],
-  options: { maxPackages?: number } = {},
+  options: { maxPackages?: number; forceRevalidate?: boolean } = {},
 ): Promise<ReEnrichResult> {
   const start = Date.now();
   const result: ReEnrichResult = {
@@ -160,23 +162,27 @@ export async function reEnrichAffectedPackages(
         const hasChange = beforeIds.size !== afterIds.size
           || [...afterIds].some(id => !beforeIds.has(id));
 
-        if (!hasChange) continue;
+        // PR #98 — forceRevalidate=true 면 attraction_ids 변경 없어도 ISR 무효화.
+        //   사진/desc/emoji 만 수정 시 itinerary_data 의 attraction_ids 변경 없지만
+        //   모바일은 attraction_ids 로 attractions 테이블 직접 fetch 하므로 ISR 캐시 무효화 필요.
+        if (!hasChange && !options.forceRevalidate) continue;
 
-        const { error: upErr } = await supabaseAdmin
-          .from('travel_packages')
-          .update({
-            itinerary_data: re.itineraryData,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', pid);
-        if (upErr) {
-          result.errors++;
-          continue;
+        if (hasChange) {
+          const { error: upErr } = await supabaseAdmin
+            .from('travel_packages')
+            .update({
+              itinerary_data: re.itineraryData,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', pid);
+          if (upErr) {
+            result.errors++;
+            continue;
+          }
+          result.updated_packages++;
         }
 
-        result.updated_packages++;
-
-        // ISR revalidate (모바일 즉시 반영)
+        // ISR revalidate (모바일 즉시 반영) — hasChange 또는 forceRevalidate 시 호출
         try {
           revalidatePath(`/packages/${pid}`);
           revalidatePath(`/m/packages/${pid}`);
