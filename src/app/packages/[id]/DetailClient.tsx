@@ -1298,8 +1298,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   // ERR-20260418-25/32 — optional/shopping 타입도 매칭 스킵 (선택관광 안내에 관광지 카드 안 붙도록)
                   const skipMatch = item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
                     /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|추천|선택관광/.test(item.activity);
-                  // ERR-20260417-03 — matchAttractions(복수)로 콤마 관광지도 매칭, 첫 결과 사용
-                  const attrCandidate = skipMatch ? null : (matchAttractions(item.activity, attractions as AttractionData[], pkg.destination)[0] || null);
+                  // 2026-05-17 박제 (시즈오카 사고 ERR-shizuoka-client-match):
+                  //   기존: matchAttractions(item.activity, ...) 로 client-side 매번 재매칭 →
+                  //     "705년에 창건된 후지산의 수호신을 모시는 신사" 가 "후지산" 부분 키워드로
+                  //     "후지산 파노라마 로프웨이" 잘못 매칭. DAY dedup 으로 진짜 라인 카드 누락.
+                  //   변경: schedule[].attraction_ids 가 SSOT. page.tsx Step B 가 이미 정확히
+                  //     매칭한 결과를 client 에서 그대로 사용. attraction_ids 없으면 카드 X
+                  //     (잘못된 부분 키워드 매칭 차단). matchAttractions fallback 제거.
+                  const itemIds = (item as { attraction_ids?: string[] }).attraction_ids;
+                  const attrCandidate = skipMatch ? null : (
+                    (itemIds && itemIds.length > 0)
+                      ? ((attractions as AttractionData[]).find(a => a.id === itemIds[0]) || null)
+                      : null
+                  );
                   // DAY 내 dedup: 이미 같은 DAY 에 표시한 관광지면 카드 생략 (activity 텍스트는 유지).
                   // 키는 id 우선, 없으면 name. page.tsx 의 attractions select 에 id 가 빠져 있어도 name 으로 안전.
                   const candidateKey = attrCandidate?.id || attrCandidate?.name || null;

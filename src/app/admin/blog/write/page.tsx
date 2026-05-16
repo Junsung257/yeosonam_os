@@ -149,6 +149,9 @@ export default function BlogWritePage() {
         if (data.seo?.slug) setSlug(data.seo.slug);
         if (data.seo?.seoTitle) setSeoTitle(data.seo.seoTitle);
         if (data.seo?.seoDescription) setSeoDescription(data.seo.seoDescription);
+        // 정보성 블로그도 Pexels 자동 cover 받음 (생성 응답에 og_image_url 포함)
+        const auto = data.og_image_url || data.seo?.ogImageUrl;
+        if (auto) setOgImageUrl(auto);
         showToast('AI 블로그 생성 완료!');
       }
     } catch (err: any) {
