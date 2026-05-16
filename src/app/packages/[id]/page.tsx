@@ -9,6 +9,8 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { destinationToIsoSet } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
 export const revalidate = 3600; // 1시간 ISR (상품 데이터 변경 빈도 낮음) // refreshed 2026-04-22
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
@@ -23,8 +25,10 @@ const DETAIL_FIELDS = `
   products(internal_code, display_name, departure_region)
 `;
 
-/** 고객 상세 페이지 노출 허용 상태 — REVIEW_NEEDED/draft/expired/archived/blocked 등은 노출 X (2026-05-14 박제) */
-const CUSTOMER_VISIBLE_STATUSES = new Set(['active', 'approved', 'selling']);
+/**
+ * 고객 상세 노출 게이트 — SSOT 는 `src/lib/visibility-status.ts`.
+ * 2026-05-16 박제: 어휘 불일치(예: 'available' 누락)로 사일런트 미노출 사고 차단.
+ */
 
 // SEO: 동적 메타데이터
 export async function generateMetadata({
@@ -44,7 +48,7 @@ export async function generateMetadata({
   if (!data) return { title: '상품 상세 | 여소남' };
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
-  if (auditStatus === 'blocked' || !status || !CUSTOMER_VISIBLE_STATUSES.has(status)) {
+  if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
     return { title: '상품 상세 | 여소남', robots: { index: false, follow: false } };
   }
 
@@ -85,7 +89,7 @@ export default async function PackageDetailPage({
   //   그대로 노출되어 ₩∞·잘못된 항공편 헤더 등 미보완 데이터가 고객에게 그대로 표시되던 사고 (부관훼리 케이스).
   if (pkg) {
     const pkgStatus = (pkg as { status?: string }).status;
-    if (!pkgStatus || !CUSTOMER_VISIBLE_STATUSES.has(pkgStatus)) {
+    if (!isCustomerVisibleStatus(pkgStatus)) {
       notFound();
     }
   }
@@ -243,20 +247,14 @@ export default async function PackageDetailPage({
   const attractionsForClient = (attrResult.data ?? []) as React.ComponentProps<typeof DetailClient>['initialAttractions'];
 
   // ── destination_climate 조인 (여행 적합도 + 시차 카드용) ────────────────
-  // pkg.destination 텍스트로 매칭 (build_climate.js 의 시드와 1:1)
-  let climateData: {
-    destination: string; primary_city: string; country: string | null;
-    lat: number; lon: number; timezone: string; utc_offset_minutes: number;
-    monthly_normals: unknown; fitness_scores: unknown; seasonal_signals: unknown;
-  } | null = null;
+  // 2026-05-16 박제: `eq('destination', …)` 완전일치 매칭으로 "계림/양삭" 같은
+  //   alias 미시드 destination 에서 날씨·시차·짐싸기 3종이 통째 사라지던 사고.
+  //   정규화 lookup 으로 폴백 (`src/lib/destination-climate-lookup.ts`).
+  let climateData: Awaited<ReturnType<typeof resolveDestinationClimate>> = null;
   let representativeMonth = new Date().getMonth() + 1;
   let departureDistribution: Record<number, number> = {};
   if (pkg?.destination) {
-    const { data: cli } = await sb.from('destination_climate')
-      .select('destination, primary_city, country, lat, lon, timezone, utc_offset_minutes, monthly_normals, fitness_scores, seasonal_signals')
-      .eq('destination', pkg.destination)
-      .maybeSingle();
-    if (cli) climateData = cli as unknown as typeof climateData;
+    climateData = await resolveDestinationClimate(pkg.destination);
 
     // 출발일 평균월 산출 — price_dates 우선, 없으면 price_tiers.departure_dates
     const dates: string[] = [];

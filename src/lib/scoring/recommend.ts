@@ -12,6 +12,7 @@ import { loadMrtHotelQualityMap } from '@/lib/mrt-hotel-intel';
 import { computeEffectivePrice, type EffectivePriceResult } from './effective-price';
 import { topsis, type CriterionType } from './topsis';
 import { loadBrandEntries, type HotelBrandEntry } from './hotel-brands';
+import { SCORING_ELIGIBLE_STATUSES } from '@/lib/visibility-status';
 
 export interface RecommendBestInput {
   destination: string;
@@ -173,7 +174,7 @@ export async function recommendBestPackages(
     .from('travel_packages')
     .select(PACKAGE_SELECT_COLS)
     .ilike('destination', `%${input.destination}%`)
-    .in('status', ['approved', 'active'])
+    .in('status', SCORING_ELIGIBLE_STATUSES as unknown as string[])
     .limit(100);
 
   // departure_date 컬럼 제거 — price_dates jsonb 내부에서 처리. 그룹 키도 destination + duration 으로 변경
@@ -270,7 +271,7 @@ export async function recomputeAllScores(): Promise<{
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(PACKAGE_SELECT_COLS)
-    .in('status', ['approved', 'active']);
+    .in('status', SCORING_ELIGIBLE_STATUSES as unknown as string[]);
   if (error) throw new Error(`전체 조회 실패: ${error.message}`);
   const all = ((data ?? []) as unknown as Array<RawPackageRow & { title: string }>);
 
