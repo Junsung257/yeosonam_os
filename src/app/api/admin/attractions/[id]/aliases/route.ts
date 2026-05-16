@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { revalidatePath } from 'next/cache';
+import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 
 const MAX_ALIAS_LENGTH = 60;
 const MAX_ALIASES = 30;
@@ -62,6 +63,13 @@ export const POST = withAdminGuard(async (req: NextRequest, ctx?: { params?: Pro
 
   // ISR 무효화 — 해당 attraction 이 포함된 페이지들이 다음 fetch 에서 즉시 갱신
   revalidatePath('/packages', 'layout');
+
+  // PR #93 갭 B/C — alias 추가 후 영향받은 패키지 itinerary_data 재계산 + 개별 ISR 무효화.
+  //   layout 무효화만으로는 개별 page ISR 캐시 미적중 위험. 명시 reenrich 로 itinerary_data 의
+  //   attraction_ids 까지 업데이트하여 모바일 즉시 반영.
+  void reEnrichAffectedPackages([id], { maxPackages: 50 })
+    .catch(e => console.warn('[Aliases API] re-enrich 실패:', e instanceof Error ? e.message : e));
+
   return NextResponse.json({ ok: true, aliases: next });
 });
 

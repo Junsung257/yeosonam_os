@@ -3,6 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getUnmatchedBootstrapCandidates, getUnmatchedSummary } from '@/lib/unmatched-admin-queries';
 import { getUnmatchedBootstrapEnvDefaults } from '@/lib/unmatched-bootstrap-config';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
+import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 
 /**
  * POST /api/unmatched — 미매칭 관광지 자동 수집
@@ -219,6 +220,10 @@ export async function PATCH(request: NextRequest) {
         console.warn('[PATCH /api/unmatched link_alias] resweep skip:', sweepErr);
       }
 
+      // PR #93 갭 B/C — link_alias 후 영향받은 패키지 itinerary_data 재계산 + ISR 무효화
+      void reEnrichAffectedPackages([attractionId], { maxPackages: 50 })
+        .catch(e => console.warn('[link_alias] re-enrich 실패:', e instanceof Error ? e.message : e));
+
       return NextResponse.json({
         success: true,
         message: `"${aliasText}" → "${attraction.name}" 별칭 연결 완료`,
@@ -334,6 +339,10 @@ export async function PATCH(request: NextRequest) {
       } catch (sweepErr) {
         console.warn('[PATCH /api/unmatched register_from_wikidata] resweep skip:', sweepErr);
       }
+
+      // PR #93 갭 A/B/C — Wikidata 신규 등록 후 영향받은 패키지 itinerary_data 재계산 + ISR
+      void reEnrichAffectedPackages([created.id], { maxPackages: 50 })
+        .catch(e => console.warn('[register_from_wikidata] re-enrich 실패:', e instanceof Error ? e.message : e));
 
       return NextResponse.json({
         success: true,

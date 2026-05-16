@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
+import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 
 // GET /api/attractions — 전체 관광지 목록
 export async function GET(request: NextRequest) {
@@ -143,6 +144,11 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       console.warn('[Attractions API] resweep 실패 (등록은 성공):', e instanceof Error ? e.message : e);
     }
+
+    // PR #93 갭 A — 신규 attraction 추가 후 영향받은 패키지 itinerary_data 자동 재계산 + ISR 무효화.
+    //   사장님 paste-and-parse 직후 모바일 카드 즉시 반영 보장.
+    void reEnrichAffectedPackages([data.id], { maxPackages: 50 })
+      .catch(e => console.warn('[Attractions API] re-enrich 실패 (등록은 성공):', e instanceof Error ? e.message : e));
 
     // 🆕 Pexels 자동 사진 fetch — photos 없이 등록된 경우 비동기로 채움 (등록을 블로킹하지 않음)
     if (!body.photos?.length && getSecret('PEXELS_API_KEY')) {
@@ -348,6 +354,13 @@ JSON 객체만 응답:`;
         console.warn('[Attractions API] resweep 실패 (수정은 성공):', e instanceof Error ? e.message : e);
       }
     }
+
+    // PR #93 갭 B — alias/name 변경 후 영향받은 패키지 itinerary_data 재계산 + ISR
+    if ('aliases' in updates || 'name' in updates) {
+      void reEnrichAffectedPackages([id], { maxPackages: 50 })
+        .catch(e => console.warn('[Attractions API] re-enrich 실패:', e instanceof Error ? e.message : e));
+    }
+
     return NextResponse.json({ success: true, sweep });
   } catch (error) {
     console.error('[Attractions API] 수정 오류:', error);

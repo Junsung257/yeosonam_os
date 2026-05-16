@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
+import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
     let resolved = 0;
     let scanned = 0;
     const errors: string[] = [];
+    const affectedAttractionIds = new Set<string>();
 
     for (const row of unresolved || []) {
       scanned++;
@@ -89,6 +91,18 @@ export async function GET(request: NextRequest) {
         continue;
       }
       resolved++;
+      affectedAttractionIds.add(top.id);
+    }
+
+    // PR #93 갭 E — cron 일일 sweep 후 영향받은 패키지 itinerary_data 일괄 재계산 + ISR 무효화
+    let reenrich: { scanned_packages: number; updated_packages: number; revalidated_paths: number } | null = null;
+    if (affectedAttractionIds.size > 0) {
+      try {
+        const r = await reEnrichAffectedPackages([...affectedAttractionIds], { maxPackages: 200 });
+        reenrich = { scanned_packages: r.scanned_packages, updated_packages: r.updated_packages, revalidated_paths: r.revalidated_paths };
+      } catch (e) {
+        console.warn('[cron unmatched-auto-resolve] re-enrich 실패:', e instanceof Error ? e.message : e);
+      }
     }
 
     return NextResponse.json({
@@ -96,6 +110,7 @@ export async function GET(request: NextRequest) {
       scanned,
       resolved,
       minScore,
+      reenrich,
       errors: errors.slice(0, 20),
     });
   } catch (e) {
