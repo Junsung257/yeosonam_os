@@ -273,14 +273,26 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: true, message: `이미 존재: "${ex.name}" → alias 추가`, attraction_id: ex.id });
       }
 
+      // 2026-05-17 박제 (ERR-shizuoka-country-destination):
+      //   unmatched_activities.country 에 한글 destination(예 '시즈오카')이 잘못 박혀 있던
+      //   레거시 row 가 다수 존재. 그대로 INSERT 하면 attractions.country='시즈오카' 박혀
+      //   page.tsx OR clause(country.eq.JP) 매칭 실패 → 모바일 카드 미표출 사고.
+      //   INSERT 시점에 ISO2 정규화. region 은 한글 destination 보존.
+      const { inferCountryFromDestination } = await import('@/lib/destination-iso');
+      const rawCountry = unmatched.country as string | null;
+      const rawRegion = unmatched.region as string | null;
+      const isISO2 = (s: string | null) => !!s && /^[A-Z]{2}$/.test(s);
+      const normCountry = isISO2(rawCountry) ? rawCountry : (inferCountryFromDestination(rawCountry) ?? inferCountryFromDestination(rawRegion));
+      const normRegion = rawRegion ?? (isISO2(rawCountry) ? null : rawCountry);
+
       // 신규 INSERT
       const { data: created, error: insErr } = await supabaseAdmin.from('attractions').insert({
         name,
         short_desc: card.short_desc ?? null,
         long_desc: card.long_desc ?? null,
         aliases: Array.isArray(card.aliases) ? card.aliases : [],
-        country: unmatched.country,
-        region: unmatched.region,
+        country: normCountry,
+        region: normRegion,
         badge_type: card.badge_type ?? 'tour',
         emoji: card.emoji ?? '📍',
         category: 'sightseeing',
@@ -307,6 +319,33 @@ export async function PATCH(request: NextRequest) {
         const { reEnrichAffectedPackages } = await import('@/lib/package-reenrich-on-attraction-change');
         void reEnrichAffectedPackages([created.id], { maxPackages: 50 }).catch(() => {});
       } catch {}
+
+      // 2026-05-17 박제 (ERR-shizuoka-photos-empty 갭 G2):
+      //   부트스트랩으로 INSERT 된 attraction 은 photos=[] 빈 상태로 박혀 모바일 카드가
+      //   매칭은 되지만 사진이 0건이라 결국 카드 미표출 (시즈오카 8개 사고). INSERT 직후
+      //   Pexels 자동 fetch + UPDATE 로 photos 3장 보강. fire-and-forget.
+      void (async () => {
+        try {
+          const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
+          if (!isPexelsConfigured()) return;
+          // 한글 검색은 false-match 위험. 영어 alias 우선, 없으면 name + region + 'travel'.
+          const eng = Array.isArray(card.aliases) ? (card.aliases as unknown[]).find(a => typeof a === 'string' && /^[\x20-\x7E]+$/.test(a)) as string | undefined : undefined;
+          const keyword = eng || `${name} ${normRegion ?? ''} travel`.trim();
+          const photos = await searchPexelsPhotos(keyword, 3);
+          if (photos.length === 0) return;
+          const simplified = photos.map(p => ({
+            pexels_id: p.id,
+            src_medium: p.src.medium,
+            src_large: p.src.large2x,
+            photographer: p.photographer,
+            alt: p.alt,
+          }));
+          await supabaseAdmin.from('attractions').update({ photos: simplified, updated_at: new Date().toISOString() }).eq('id', created.id);
+          console.log(`[unmatched register_from_suggested_card] Pexels auto-attached ${photos.length} photos to "${name}"`);
+        } catch (e) {
+          console.warn('[unmatched register_from_suggested_card] Pexels auto-attach 실패(무시):', e instanceof Error ? e.message : e);
+        }
+      })();
 
       return NextResponse.json({ success: true, message: `신규 등록: "${created.name}"`, attraction_id: created.id });
     }

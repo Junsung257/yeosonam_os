@@ -1573,6 +1573,12 @@ export async function POST(request: NextRequest) {
           //   향후 신규 시드 경로: 사장님 어드민 UI 직접 등록 또는 외부 카탈로그 paste 도구.
           if (newActivities.length > 0) {
             const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
+            // 2026-05-17 박제 (ERR-shizuoka-country-destination):
+            //   기존 `country: firstSeedDest` 가 '시즈오카' 같은 한글 도시명을 country 컬럼에 박아
+            //   attractions.country='시즈오카'(ISO 아님) → page.tsx OR clause 매칭 실패 → 모바일
+            //   카드 0건 사고. country 는 ISO2, region 은 한글 destination 으로 분리.
+            const { inferCountryFromDestination } = await import('@/lib/destination-iso');
+            const firstSeedCountry = inferCountryFromDestination(firstSeedDest);
             const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 30);
             for (const kw of uniqueNew) {
               await supabaseAdmin.from('unmatched_activities').upsert({
@@ -1580,7 +1586,8 @@ export async function POST(request: NextRequest) {
                 package_id: savedIds[0] ?? '',
                 package_title: savedTitles[0] ?? '',
                 day_number: 0,
-                country: firstSeedDest,
+                country: firstSeedCountry,
+                region: firstSeedDest,
                 occurrence_count: 1,
                 status: 'pending',
               }, { onConflict: 'activity' });
@@ -1600,7 +1607,7 @@ export async function POST(request: NextRequest) {
                   const r = await bootstrapNewRegionAsync({
                     packageId: trigPackageId,
                     region: firstSeedDest,
-                    country: null,
+                    country: firstSeedCountry,
                     activities: uniqueNew,
                   });
                   console.log(`[Upload API] Bootstrap: ${r.suggested}건 suggested_card 적재 (alert=${r.alerted})`);

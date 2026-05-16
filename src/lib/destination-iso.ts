@@ -52,6 +52,26 @@ export const KOREAN_DESTINATION_TO_ISO: Readonly<Record<string, string>> = Objec
 });
 
 /**
+ * destination 한글 문자열에서 단일 ISO2 country code 추론.
+ * 첫 토큰 우선, 매핑 실패 시 null.
+ * upload/unmatched/auto-bootstrap 등 INSERT 경로에서 attractions.country 값 정규화용.
+ *
+ * 2026-05-17 박제 (ERR-shizuoka-country-destination):
+ *   upload/route.ts 가 `country: firstSeedDest`(='시즈오카') 로 unmatched 적재 → 등록 시
+ *   attractions.country='시즈오카'(ISO 아님) 로 박혀 page.tsx Step A OR clause 매칭 실패.
+ *   본 헬퍼로 'JP' 변환 후 박아야 함. region 컬럼에 한글 destination 보존.
+ */
+export function inferCountryFromDestination(destination: string | null | undefined): string | null {
+  if (!destination) return null;
+  const tokens = destination.split(/[\/,·&\+\s]+/).map(t => t.trim()).filter(Boolean);
+  for (const t of tokens) {
+    const iso = KOREAN_DESTINATION_TO_ISO[t];
+    if (iso) return iso;
+  }
+  return null;
+}
+
+/**
  * destination 한글 문자열에서 ISO2 country codes 추출.
  * "나트랑/달랏" → ['VN'] (중복 제거)
  * "후쿠오카 + 오사카" → ['JP']
