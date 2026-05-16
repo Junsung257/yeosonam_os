@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { destinationToIsoSet, KOREAN_DESTINATION_TO_ISO } from './destination-iso';
+import { destinationToIsoSet, KOREAN_DESTINATION_TO_ISO, inferCountryFromDestination } from './destination-iso';
 
 describe('destination-iso SSOT', () => {
   it('단일 도시 매핑', () => {
@@ -44,5 +44,34 @@ describe('destination-iso SSOT', () => {
     expect(destinationToIsoSet('나트랑/달랏')).toEqual(new Set(['VN']));
     expect(KOREAN_DESTINATION_TO_ISO['달랏']).toBe('VN');
     expect(KOREAN_DESTINATION_TO_ISO['나트랑']).toBe('VN');
+  });
+
+  // 시즈오카 사고 (ERR-shizuoka-country-destination @ 2026-05-16) 회귀 차단.
+  // 일본 JP 매핑 13개 누락이 모바일 attraction 카드 8개 전체 미표출 사고를 일으킴.
+  describe('시즈오카 사고 회귀 차단 (일본 JP 매핑)', () => {
+    it.each([
+      '시즈오카', '카와구치', '카와구치코', '이즈', '이즈반도',
+      '미시마', '하코네', '센다이', '가고시마', '구마모토',
+      '나고야', '히로시마', '고베', '요코하마',
+    ])('"%s" → JP', (dest) => {
+      expect(KOREAN_DESTINATION_TO_ISO[dest]).toBe('JP');
+    });
+  });
+
+  describe('inferCountryFromDestination — 단일 ISO 추론', () => {
+    it('시즈오카 → JP (시즈오카 사고 직접 fix)', () => {
+      expect(inferCountryFromDestination('시즈오카')).toBe('JP');
+    });
+    it('"시즈오카/카와구치" 복합 → JP (첫 매칭 우선)', () => {
+      expect(inferCountryFromDestination('시즈오카/카와구치')).toBe('JP');
+    });
+    it('null/empty → null', () => {
+      expect(inferCountryFromDestination(null)).toBeNull();
+      expect(inferCountryFromDestination(undefined)).toBeNull();
+      expect(inferCountryFromDestination('')).toBeNull();
+    });
+    it('매핑 미존재 → null (silent)', () => {
+      expect(inferCountryFromDestination('알수없는도시')).toBeNull();
+    });
   });
 });
