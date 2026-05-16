@@ -69,6 +69,11 @@ export function destinationLookupKeys(raw: string): string[] {
 /**
  * 정규화 lookup. 첫 hit 즉시 반환.
  * 시드에 없으면 null — 호출자는 카드 숨김.
+ *
+ * 2026-05-16 박제: silent fail 차단 ([[feedback-silent-failure-forbidden]]).
+ *   lookup 0건/에러는 fire-and-forget admin_alerts 로 기록.
+ *   사장님이 어드민에서 "이 destination 의 climate 가 production 에서 안 받힌다" 즉시 확인 가능.
+ *   record 실패는 throw 금지 (page.tsx 흐름 차단 방지).
  */
 export async function resolveDestinationClimate(
   rawDestination: string | null | undefined,
@@ -81,7 +86,15 @@ export async function resolveDestinationClimate(
     .from('destination_climate')
     .select(CLIMATE_COLS)
     .in('destination', keys);
-  if (error || !data || data.length === 0) return null;
+
+  if (error) {
+    void recordClimateLookupAlert({ rawDestination, keys, reason: 'query_error', detail: error.message });
+    return null;
+  }
+  if (!data || data.length === 0) {
+    void recordClimateLookupAlert({ rawDestination, keys, reason: 'zero_hits', detail: null });
+    return null;
+  }
 
   // 우선순위 보존: keys 순서대로 첫 매치 반환
   const byKey = new Map<string, DestinationClimateRow>();
@@ -93,4 +106,44 @@ export async function resolveDestinationClimate(
     if (hit) return hit;
   }
   return (data[0] as unknown as DestinationClimateRow) ?? null;
+}
+
+/**
+ * fire-and-forget admin_alerts INSERT. 실패는 console.warn 만.
+ * 중복 폭주 방지: 같은 destination 의 동일 reason 은 5분 dedup (created_at 검사).
+ */
+async function recordClimateLookupAlert(p: {
+  rawDestination: string;
+  keys: string[];
+  reason: 'zero_hits' | 'query_error';
+  detail: string | null;
+}): Promise<void> {
+  try {
+    // dedup: 같은 destination + reason 이 최근 5분 안에 있으면 skip
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: recent } = await supabaseAdmin
+      .from('admin_alerts')
+      .select('id')
+      .eq('category', 'climate_lookup_miss')
+      .eq('ref_id', p.rawDestination)
+      .gte('created_at', fiveMinAgo)
+      .limit(1);
+    if (recent && recent.length > 0) return;
+
+    await supabaseAdmin.from('admin_alerts').insert({
+      category: 'climate_lookup_miss',
+      severity: 'warning',
+      title: p.reason === 'query_error'
+        ? `climate query error · ${p.rawDestination}`
+        : `climate 0 hits · ${p.rawDestination}`,
+      message: p.reason === 'query_error'
+        ? `destination_climate query error: ${p.detail ?? '(no detail)'}`
+        : `destination_climate 0 hits for keys: ${p.keys.join(' | ')}`,
+      ref_type: 'destination',
+      ref_id: p.rawDestination,
+      meta: { keys: p.keys, reason: p.reason, detail: p.detail },
+    });
+  } catch (e) {
+    console.warn('[climate-lookup-alert] insert failed:', e instanceof Error ? e.message : 'unknown');
+  }
 }
