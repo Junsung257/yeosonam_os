@@ -145,12 +145,36 @@ export default async function PackageDetailPage({
   }
 
   // Step B: 매칭된 관광지만 photos/short_desc 등 상세 가져오기 (일반적으로 10개 미만)
+  // 2026-05-16 박제 (시즈오카 사고): name 기반 매칭만 의존하면 destination/region 정규화 실패 시
+  //   사진/설명 전부 누락 → 카드 미표출. itinerary_data.days[].schedule[].attraction_ids 에
+  //   이미 박힌 ID 를 SSOT 로 합쳐 detail fetch (매칭 우회 fallback).
   let relevantAttractions: AttractionData[] = [];
-  if (matchedNames.size > 0) {
-    const { data: detail } = await sb.from('attractions')
-      .select('id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category')
-      .in('name', Array.from(matchedNames));
-    relevantAttractions = (detail ?? []) as unknown as AttractionData[];
+  const idsFromItinerary = new Set<string>();
+  if (pkg?.itinerary_data) {
+    const daysRaw = (pkg.itinerary_data as { days?: Array<{ schedule?: Array<{ attraction_ids?: string[] }> }> } | null)?.days ?? [];
+    for (const d of daysRaw) {
+      for (const s of (d.schedule ?? [])) {
+        for (const aid of (s.attraction_ids ?? [])) {
+          if (typeof aid === 'string' && aid.length > 0) idsFromItinerary.add(aid);
+        }
+      }
+    }
+  }
+  if (matchedNames.size > 0 || idsFromItinerary.size > 0) {
+    type DetailRow = { id: string; name: string; short_desc: string | null; long_desc: string | null; photos: unknown; country: string | null; region: string | null; badge_type: string | null; emoji: string | null; aliases: unknown; category: string | null };
+    let detailQuery = sb.from('attractions')
+      .select('id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category');
+    if (idsFromItinerary.size > 0 && matchedNames.size > 0) {
+      const idList = Array.from(idsFromItinerary).map(id => `id.eq.${id}`).join(',');
+      const nameList = Array.from(matchedNames).map(n => `name.eq."${n.replace(/"/g, '\\"')}"`).join(',');
+      detailQuery = detailQuery.or([idList, nameList].filter(Boolean).join(','));
+    } else if (idsFromItinerary.size > 0) {
+      detailQuery = detailQuery.in('id', Array.from(idsFromItinerary));
+    } else {
+      detailQuery = detailQuery.in('name', Array.from(matchedNames));
+    }
+    const { data: detail } = await detailQuery;
+    relevantAttractions = ((detail ?? []) as DetailRow[]) as unknown as AttractionData[];
   }
   // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
   const attrResult = { data: relevantAttractions.length > 0 ? relevantAttractions : lightAttractions };
