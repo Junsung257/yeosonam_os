@@ -41,29 +41,32 @@ export interface BlogJsonLdPackageLite {
 
 /**
  * FAQ 추출 — 다양한 마크다운 패턴 지원
- *   1) **Q. 질문** \n\n A. 답
- *   2) Q. 질문\nA. 답 (평문)
- *   3) ### Q. 질문 / 답
+ *   1) **Q. 질문** / **Q: 질문**  \n\n  A. / A: 답
+ *   2) ### Q. / Q: 질문
+ *   3) Q. / Q: 평문
+ *
+ * 구분자: 점(`.`)·콜론(`:`)·공백 어느 쪽도 허용 — Gemini/Claude 생성기 둘 다 커버.
+ * (실측: `**Q: 답?` 형식 글이 FAQPage JSON-LD 추출 실패 → 구글 rich result 누락 — 2026-05-17)
  */
 export function extractFaqItems(blogHtml: string): FaqItem[] {
   const items: FaqItem[] = []
   if (!blogHtml) return items
 
-  const re1 = /\*\*Q\.\s*(.+?)\*\*\s*\n+\s*A\.\s*([\s\S]+?)(?=\n\n\*\*Q\.|\n\n##|\n\n###|$)/g
+  const re1 = /\*\*Q[.:]\s*(.+?)\*\*\s*\n+\s*A[.:]\s*([\s\S]+?)(?=\n\n\*\*Q[.:]|\n\n##|\n\n###|$)/g
   let m
   while ((m = re1.exec(blogHtml)) !== null) {
     items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
   }
 
   if (items.length === 0) {
-    const re2 = /^###\s+Q\.?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm
+    const re2 = /^###\s+Q[.:]?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm
     while ((m = re2.exec(blogHtml)) !== null) {
       items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
     }
   }
 
   if (items.length === 0) {
-    const re3 = /^Q\.?\s+(.+?)$\n+\s*A\.?\s+([\s\S]+?)(?=\n\nQ\.|\n##|$)/gm
+    const re3 = /^Q[.:]?\s+(.+?)$\n+\s*A[.:]?\s+([\s\S]+?)(?=\n\nQ[.:]|\n##|$)/gm
     while ((m = re3.exec(blogHtml)) !== null) {
       items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
     }
