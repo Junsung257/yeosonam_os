@@ -13,7 +13,8 @@
 
 > **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
 
-1. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
+1. **ERR-blog-encoded-slug@2026-05-16** — `/blog/[slug]` 정보성 블로그 25건 일괄 404 (5월 1~16일 발행 전부 사망). 원인: Next.js dynamic route가 한글 slug를 URL-encoded(`%EC%84%9D…`) 상태로 page handler에 전달했는데 `getPost(slug)`가 그대로 `.eq('slug', param)` → DB의 한글 원본과 매칭 0건 → `notFound()`. 다른 route(`destination/[dest]`)는 이미 `decodeURIComponent` 호출하고 있었으나 `[slug]` 만 누락. → `src/lib/decode-slug.ts` 의 `safeDecodeSlug()` 박제 + `page.tsx`/`opengraph-image.tsx` 둘 다 적용 + `getPost` error 분기에 `admin_alerts` 적재(silent fail 차단). 회귀 fixture: `tests/unit/lib/decode-slug.spec.ts` 5건.
+2. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
 2. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
 3. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
 4. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.

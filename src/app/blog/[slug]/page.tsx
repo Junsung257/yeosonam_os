@@ -26,6 +26,7 @@ import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
+import { safeDecodeSlug } from '@/lib/decode-slug';
 
 export const revalidate = 86400;
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
@@ -166,7 +167,9 @@ function estimateReadingMinutes(html: string): number {
 async function getPost(slug: string): Promise<BlogPost | null> {
   if (!isSupabaseConfigured) return null;
 
-  const { data } = await supabaseAdmin
+  const dbSlug = safeDecodeSlug(slug);
+
+  const { data, error } = await supabaseAdmin
     .from('content_creatives')
     .select(
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
@@ -174,12 +177,28 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
       'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status)',
     )
-    .eq('slug', slug)
+    .eq('slug', dbSlug)
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
     .not('slug', 'is', null)
     .limit(1);
 
+  // 사일런트 fail 차단: PostgREST가 400 등 비-200을 돌려보내면 data는 null이지만
+  // 사고 원인을 묻으면 안 된다. 운영 화면(admin_alerts)에 적재해 다음 사고 추적성 확보.
+  if (error) {
+    console.error('[blog/getPost] supabase error:', { dbSlug, error });
+    try {
+      await supabaseAdmin.from('admin_alerts').insert({
+        kind: 'blog_get_post_fail',
+        severity: 'error',
+        message: `blog detail query failed: ${error.message ?? String(error)}`,
+        payload: { slug: dbSlug, rawParam: slug, code: (error as any).code ?? null, hint: (error as any).hint ?? null },
+      });
+    } catch {
+      /* alerts insert 실패도 페이지를 막지 않는다 */
+    }
+    return null;
+  }
   if (!data || data.length === 0) return null;
   return data[0] as unknown as BlogPost;
 }
@@ -334,7 +353,8 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = safeDecodeSlug(rawSlug);
   const post = await getPost(slug);
   // 404 캐시가 색인되지 않도록 명시적 noindex.
   if (!post) {
@@ -400,7 +420,8 @@ export default async function BlogDetailPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = safeDecodeSlug(rawSlug);
   const qp = await searchParams;
   const utmCampaign = (qp.utm_campaign as string) || null;
   const utmTerm = (qp.utm_term as string) || null;
