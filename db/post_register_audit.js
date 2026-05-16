@@ -333,31 +333,6 @@ async function auditOne(pkg, baseUrl) {
     console.log(`   [Attraction Audit] ai_quality_log 조회 실패(무시): ${e.message}`);
   }
 
-  // 1-b3. C43 박제 (2026-05-17, 시즈오카 사고 ERR-shizuoka-country-destination):
-  //   itinerary_data.days[].schedule[].attraction_ids 로 들어간 attraction 의 country 가
-  //   ISO2 (2자 대문자) 가 아니면 page.tsx OR clause `country.eq.JP` 매칭 실패 위험.
-  //   시즈오카 사고 (country='시즈오카' 박힘 → 모바일 카드 0건) 재발 차단.
-  try {
-    const aids = new Set();
-    const days = (pkg.itinerary_data && pkg.itinerary_data.days) || [];
-    for (const d of days) {
-      for (const s of (d.schedule || [])) {
-        for (const id of (s.attraction_ids || [])) aids.add(id);
-      }
-    }
-    if (aids.size > 0) {
-      const { data: attrs } = await sb.from('attractions').select('id, name, country').in('id', [...aids]);
-      const bad = (attrs || []).filter(a => !a.country || !/^[A-Z]{2}$/.test(a.country));
-      if (bad.length > 0) {
-        result.warnings.push(
-          `C43 attractions.country ISO2 위반 ${bad.length}건 (${bad.slice(0, 3).map(a => `"${a.name}"=${a.country || 'null'}`).join(', ')}) — page.tsx OR clause 매칭 실패 위험. inferCountryFromDestination 으로 정규화 필요.`
-        );
-      }
-    }
-  } catch (e) {
-    console.log(`   [Country ISO Audit] 실패(무시): ${e.message}`);
-  }
-
   // ─── Parallel async wave ─────────────────────────────────────────────
   // 독립적인 비동기 작업 3종을 동시에 발사: RAG 임베딩 조회, CoVe 감사(opt-in),
   // 렌더 HTML fetch. 각각 평균 200~3000ms 라 순차 실행 시 누적 5초+ → 병렬 시 가장
