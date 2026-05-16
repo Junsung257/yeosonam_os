@@ -49,6 +49,8 @@ const PUBLIC_EXACT = new Set([
   '/api/blog-engagement',
   // ISR 캐시 무효화
   '/api/revalidate',
+  // 일회용 디버그 (secret 보호) — 사용 후 제거
+  '/api/_debug/climate-render',
   // 크론 (서버-to-서버)
   '/api/cron/meta-optimize',
   '/api/cron/visual-baseline-monitor',
