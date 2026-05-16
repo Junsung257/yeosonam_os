@@ -90,10 +90,36 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+
+    // PR #92 — 사장님 paste-and-parse 또는 직접 등록은 manual override.
+    //   wikidata-suggest 자동 등록(/api/unmatched register_from_wikidata)은 source='wikidata' + is_manual_override=false.
+    //   sourceLevel: 'manual' (사장님 직접) | 'paste' (paste-and-parse 사장님 ☑) → 둘 다 manual_override=true
+    //   'auto' (Wikidata 자동) → false
+    const sourceLevel = (body.source_level ?? 'manual') as 'manual' | 'paste' | 'auto';
+    const isManual = sourceLevel === 'manual' || sourceLevel === 'paste';
+
+    // 동일 name 중복 체크 — 사장님 paste-and-parse 시 중복 방지 (3-옵션 모달 트리거)
+    const cleanName = sanitizeName(body.name) || body.name;
+    if (cleanName) {
+      const { data: existing } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, short_desc, source, is_manual_override')
+        .ilike('name', cleanName)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        return NextResponse.json({
+          error: 'duplicate',
+          message: `이미 등록된 attraction: "${(existing[0] as { name: string }).name}"`,
+          existing: existing[0],
+          options: ['skip', 'add_alias', 'overwrite'],
+        }, { status: 409 });
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('attractions')
       .insert({
-        name: sanitizeName(body.name) || body.name, // sanitize 후 빈 이름은 원본 유지 (edge case)
+        name: cleanName,
         short_desc: body.short_desc || null,
         long_desc: body.long_desc || null,
         country: body.country || null,
@@ -102,6 +128,8 @@ export async function POST(request: NextRequest) {
         emoji: sanitizeEmoji(body.emoji),
         aliases: body.aliases || [],
         photos: body.photos || [],
+        is_manual_override: isManual,
+        last_owner_edited_at: isManual ? new Date().toISOString() : null,
       })
       .select()
       .single();
@@ -160,14 +188,99 @@ export async function PATCH(request: NextRequest) {
     //   action='fill_from_wikipedia' 시 short_desc/long_desc 자동 fetch + UPDATE.
     //   STRICT SSOT 정책 준수: 자동 INSERT 아님, 기존 attraction 업데이트만, 사장님 명시 트리거.
     //   라이선스: Wikipedia 본문 CC-BY-SA → external_url 저장, source='wikipedia'.
+    // PR #93 — DeepSeek 으로 desc 자동 채움 (Wikipedia 보다 ROI 높음).
+    //   사장님 톤 prompt + Wikipedia 그라운딩 fallback (있을 때만). is_manual_override=true 면 차단.
+    if (action === 'fill_from_llm') {
+      const { data: attr } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, aliases, region, country, badge_type, short_desc, long_desc, is_manual_override')
+        .eq('id', id)
+        .single() as { data: { id: string; name: string; aliases: string[] | null; region: string | null; country: string | null; badge_type: string | null; short_desc: string | null; long_desc: string | null; is_manual_override: boolean | null } | null };
+      if (!attr) return NextResponse.json({ error: 'attraction 없음' }, { status: 404 });
+      if (attr.is_manual_override) {
+        return NextResponse.json({ error: '사장님 직접 입력 attraction 은 자동 채움 차단됨', locked: true }, { status: 423 });
+      }
+
+      const { llmCall } = await import('@/lib/llm-gateway');
+      const { fetchWikipediaWithFallback } = await import('@/lib/wikipedia-summary');
+
+      // 그라운딩: Wikipedia 한국어/영어 hit 시 fact 추출
+      const koAlias = (attr.aliases ?? []).find(a => /[가-힣]/.test(a));
+      const searchKey = koAlias && /[가-힣]/.test(attr.name) ? attr.name : (koAlias ?? attr.name);
+      const wiki = await fetchWikipediaWithFallback(searchKey).catch(() => null);
+      const groundFact = wiki?.extract ?? '';
+
+      const SYS = `당신은 여소남 OS 의 한국 패키지 여행 attraction 카피 작성자입니다.
+사장님 톤: 친근, 구체, 소통. 슬래시 나열 금지. 마케팅 과장 금지.
+형식: { "short_desc": "1줄 hook 15-40자", "long_desc": "2-3문장 100-200자, 친근 한국어, 사실만" }
+환각 금지: 외부 그라운딩 fact 가 있으면 그것만 활용. 없으면 일반적/보수적 안내.`;
+      const userPrompt = `attraction: "${attr.name}" (지역: ${attr.region ?? ''} / 국가: ${attr.country ?? ''} / 카테고리: ${attr.badge_type ?? 'tour'})
+${groundFact ? `Wikipedia 그라운딩 fact:\n${groundFact.slice(0, 500)}\n` : '(외부 그라운딩 없음 — 보수적 안내)'}
+JSON 객체만 응답:`;
+
+      const result = await llmCall<{ short_desc?: string; long_desc?: string }>({
+        task: 'extract-meta',
+        systemPrompt: SYS,
+        userPrompt,
+        maxTokens: 600,
+      });
+      if (!result.success) {
+        return NextResponse.json({ error: `LLM 호출 실패: ${result.errors?.join(', ') ?? 'unknown'}` }, { status: 502 });
+      }
+
+      let parsed: { short_desc?: string; long_desc?: string } = {};
+      try {
+        const raw = result.data ?? result.rawText ?? '';
+        if (typeof raw === 'object' && raw !== null) parsed = raw as typeof parsed;
+        else if (typeof raw === 'string') {
+          const trimmed = raw.trim().replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
+          parsed = JSON.parse(trimmed);
+        }
+      } catch (e) {
+        return NextResponse.json({ error: 'LLM JSON 파싱 실패', raw_preview: String(result.rawText ?? '').slice(0, 300) }, { status: 502 });
+      }
+
+      // no-overwrite: 사장님이 채운 값 절대 보존
+      const newShort = !attr.short_desc?.trim() && parsed.short_desc ? parsed.short_desc.trim() : attr.short_desc;
+      const newLong = !attr.long_desc?.trim() && parsed.long_desc ? parsed.long_desc.trim() : attr.long_desc;
+
+      const { error: upErr } = await supabaseAdmin
+        .from('attractions')
+        .update({
+          short_desc: newShort,
+          long_desc: newLong,
+          source: groundFact ? 'wikipedia+llm' : 'llm',
+          external_url: wiki?.page_url ?? null,
+          confidence_score: groundFact ? 0.75 : 0.55,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (upErr) throw upErr;
+
+      return NextResponse.json({
+        success: true,
+        message: `DeepSeek 채움 완료${groundFact ? ' (Wikipedia 그라운딩)' : ''}`,
+        result: { short_desc: newShort, long_desc: newLong, grounded: !!groundFact },
+        llm_meta: { provider: result.provider, model: result.model, elapsed_ms: result.elapsed_ms },
+      });
+    }
+
     if (action === 'fill_from_wikipedia') {
       const { fetchWikipediaWithFallback } = await import('@/lib/wikipedia-summary');
       const { data: attr } = await supabaseAdmin
         .from('attractions')
-        .select('id, name, aliases, wikidata_qid, short_desc, long_desc')
+        .select('id, name, aliases, wikidata_qid, short_desc, long_desc, is_manual_override')
         .eq('id', id)
-        .single() as { data: { id: string; name: string; aliases: string[] | null; wikidata_qid: string | null; short_desc: string | null; long_desc: string | null } | null };
+        .single() as { data: { id: string; name: string; aliases: string[] | null; wikidata_qid: string | null; short_desc: string | null; long_desc: string | null; is_manual_override: boolean | null } | null };
       if (!attr) return NextResponse.json({ error: 'attraction 없음' }, { status: 404 });
+
+      // PR #92 — 사장님 입력 우선 잠금
+      if (attr.is_manual_override) {
+        return NextResponse.json({
+          error: '사장님이 직접 입력한 attraction 은 자동 채움 차단됨 (is_manual_override=true)',
+          locked: true,
+        }, { status: 423 });
+      }
 
       // 한국어 alias 우선 시도, 없으면 name
       const koAlias = (attr.aliases ?? []).find(a => /[가-힣]/.test(a));
@@ -206,9 +319,21 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    // PR #92 — 사장님 입력 우선 잠금 자동 트리거.
+    //   고객 노출 필드 (short_desc/long_desc/name/aliases/photos/badge_type/emoji) 가
+    //   API PATCH 로 수정되면 사장님 직접 편집으로 간주 → is_manual_override=true + last_owner_edited_at.
+    //   이후 fill_from_wikipedia 같은 자동 채움이 차단됨.
+    const OWNER_EDIT_FIELDS = ['short_desc', 'long_desc', 'name', 'aliases', 'photos', 'badge_type', 'emoji'];
+    const isOwnerEdit = OWNER_EDIT_FIELDS.some(f => f in updates);
+    const finalUpdates: Record<string, unknown> = { ...updates };
+    if (isOwnerEdit) {
+      finalUpdates.is_manual_override = true;
+      finalUpdates.last_owner_edited_at = new Date().toISOString();
+    }
+
     const { error } = await supabaseAdmin
       .from('attractions')
-      .update(updates)
+      .update(finalUpdates)
       .eq('id', id);
 
     if (error) throw error;

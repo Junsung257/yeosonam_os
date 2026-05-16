@@ -226,27 +226,89 @@ export default function AttractionsPage() {
   const bulkRegisterSelectedCards = async () => {
     const targets = parsedCards.filter((_, i) => selectedCardIdx.has(i));
     if (targets.length === 0) { alert('선택된 카드가 없습니다'); return; }
-    if (!confirm(`${targets.length}개 attraction 일괄 등록하시겠습니까?\n(이름 중복 시 skip)`)) return;
+    if (!confirm(`${targets.length}개 attraction 일괄 등록하시겠습니까?\n동일 name 발견 시 alias 추가됩니다 (덮어쓰기 안 함)`)) return;
     setBulkRegisterProgress({ current: 0, total: targets.length });
     let saved = 0;
+    let aliased = 0;
+    let skipped = 0;
     for (let i = 0; i < targets.length; i++) {
       const c = targets[i];
       setBulkRegisterProgress({ current: i + 1, total: targets.length });
       try {
         const res = await fetch('/api/attractions', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(c),
+          body: JSON.stringify({ ...c, source_level: 'paste' }),
         });
-        if (res.ok) saved++;
+        if (res.ok) {
+          saved++;
+        } else if (res.status === 409) {
+          // 동일 name 발견 → alias 추가 (덮어쓰기 안 함, 사장님 입력 우선)
+          const dup = await res.json();
+          const existingId = dup.existing?.id;
+          if (existingId) {
+            // 기존 attraction 의 aliases 에 paste 카드의 aliases + 카드 name 자체를 alias 로 추가
+            const aliasList = [c.name, ...(c.aliases ?? [])].filter(a => a && a.length >= 2);
+            const aliasRes = await fetch(`/api/admin/attractions/${existingId}/aliases`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ alias: aliasList[0] }),
+            });
+            if (aliasRes.ok) aliased++;
+            else skipped++;
+          } else {
+            skipped++;
+          }
+        } else {
+          skipped++;
+        }
         await new Promise(r => setTimeout(r, 150));
-      } catch { /* skip */ }
+      } catch { skipped++; }
     }
     setBulkRegisterProgress(null);
-    alert(`등록 완료: ${saved}/${targets.length}건`);
+    alert(`등록 완료\n신규: ${saved}건 / alias 추가: ${aliased}건 / skip: ${skipped}건`);
     setShowPasteImport(false);
     setPasteText('');
     setParsedCards([]);
     setSelectedCardIdx(new Set());
+    load();
+  };
+
+  // PR #93 — DeepSeek 으로 desc 일괄 채움 (Wikipedia 보다 ROI 높음).
+  //   사장님 톤 prompt + Wikipedia 그라운딩 fallback. is_manual_override=true 차단됨.
+  const [autoLlmProgress, setAutoLlmProgress] = useState<{ current: number; total: number } | null>(null);
+  const autoFillDescriptionsLLM = async () => {
+    const noDesc = attractions.filter(a => !a.short_desc?.trim() || !a.long_desc?.trim());
+    if (noDesc.length === 0) { alert('설명 비어있는 attraction 0건'); return; }
+    if (!confirm(`설명 없는 ${noDesc.length}개 attraction 에 DeepSeek 자동 채움.\n사장님 톤 + Wikipedia 그라운딩 (있으면). 비용 ~$${(noDesc.length * 0.0001).toFixed(4)}.\n진행?`)) return;
+    setAutoLlmProgress({ current: 0, total: noDesc.length });
+    let filled = 0; let locked = 0; let failed = 0;
+    for (let i = 0; i < noDesc.length; i++) {
+      const a = noDesc[i];
+      setAutoLlmProgress({ current: i + 1, total: noDesc.length });
+      try {
+        const res = await fetch('/api/attractions', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: a.id, action: 'fill_from_llm' }),
+        });
+        if (res.ok) {
+          filled++;
+          const data = await res.json();
+          if (data.result) {
+            setAttractions(prev => prev.map(x => x.id === a.id ? {
+              ...x,
+              short_desc: x.short_desc?.trim() || data.result.short_desc,
+              long_desc: x.long_desc?.trim() || data.result.long_desc,
+            } : x));
+          }
+        } else if (res.status === 423) {
+          locked++;
+        } else {
+          failed++;
+        }
+        if (i < noDesc.length - 1) await new Promise(r => setTimeout(r, 300));
+      } catch { failed++; }
+    }
+    setAutoLlmProgress(null);
+    alert(`DeepSeek 채움 완료\n채움: ${filled}건 / 사장님 잠금: ${locked}건 / 실패: ${failed}건`);
     load();
   };
 
@@ -429,12 +491,20 @@ export default function AttractionsPage() {
               {autoPhotoProgress ? `${autoPhotoProgress.current}/${autoPhotoProgress.total}` : `사진 일괄생성 (${noPhotoCount})`}
             </button>
             <button
+              onClick={autoFillDescriptionsLLM}
+              disabled={!!autoLlmProgress}
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+              title="설명 비어있는 attraction에 DeepSeek 자동 채움 (Wikipedia 그라운딩 + 사장님 톤)"
+            >
+              🤖 {autoLlmProgress ? `${autoLlmProgress.current}/${autoLlmProgress.total}` : 'DeepSeek 일괄채움'}
+            </button>
+            <button
               onClick={autoFillDescriptions}
               disabled={!!autoDescProgress}
               className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-cyan-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
-              title="설명 비어있는 attraction에 Wikipedia(ko→en→zh→ja) 요약 자동 채움"
+              title="(보조) Wikipedia 만 사용 — 한국어 hit rate 낮음. DeepSeek 권장"
             >
-              🌐 {autoDescProgress ? `${autoDescProgress.current}/${autoDescProgress.total}` : '설명 일괄채움'}
+              🌐 {autoDescProgress ? `${autoDescProgress.current}/${autoDescProgress.total}` : 'Wiki만 (보조)'}
             </button>
             <a href="/admin/attractions/unmatched">
               <Button variant="secondary" size="sm">
@@ -479,6 +549,17 @@ export default function AttractionsPage() {
           </div>
           <div className="w-full bg-brand/15 rounded-full h-2">
             <div className="bg-brand h-2 rounded-full transition-all" style={{ width: `${(autoPhotoProgress.current / autoPhotoProgress.total) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      {autoLlmProgress && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-admin-md p-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-admin-sm font-bold text-amber-700">🤖 DeepSeek 자동 채움 중…</span>
+            <span className="text-admin-xs text-amber-700 admin-num">{autoLlmProgress.current} / {autoLlmProgress.total}</span>
+          </div>
+          <div className="w-full bg-amber-100 rounded-full h-2">
+            <div className="bg-amber-600 h-2 rounded-full transition-all" style={{ width: `${(autoLlmProgress.current / autoLlmProgress.total) * 100}%` }} />
           </div>
         </div>
       )}
