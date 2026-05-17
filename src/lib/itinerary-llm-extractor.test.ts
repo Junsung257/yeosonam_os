@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { extractItineraryWithLLM, mergeLLMExtractWithExisting, ItineraryExtractSchema } from './itinerary-llm-extractor';
+import {
+  extractItineraryWithLLM,
+  mergeLLMExtractWithExisting,
+  ItineraryExtractSchema,
+  NON_ATTRACTION_PATTERN,
+  LONG_DESC_HEADER_PATTERN,
+  isLooseMatch,
+} from './itinerary-llm-extractor';
 
 /**
  * 5가지 랜드사 패턴 회귀 차단.
@@ -122,6 +129,84 @@ describe('itinerary-llm-extractor — 5가지 랜드사 패턴 (mocked LLM)', ()
     const types = r.value.days[0].schedule.map(s => s.type);
     expect(types.filter(t => t === 'flight').length).toBe(1);
     expect(types.filter(t => t === 'attraction').length).toBe(1);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  2026-05-18 박제 (ERR-loose-match 회귀 차단) — 이번 세션 발견 사고 8건
+//  사장님 화면 검수 ground truth 기준 PR #116/#117/#124 가드 회귀 0% 보장.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('NON_ATTRACTION_PATTERN — L1 skip 정규식 회귀 (PR #116)', () => {
+  it('마사지/쇼핑/샤워/드랍/픽업/샌딩 라인 skip', () => {
+    expect(NON_ATTRACTION_PATTERN.test('여행의 피로를 풀어주는 발+전신마사지(90분)')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('면세점 쇼핑 1시간')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('호텔 샤워 후 휴식')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('공항 드랍')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('호텔 픽업 후 이동')).toBe(true);
+  });
+
+  it('도착·이동·체크인 라인 skip (장가계 사고 패턴)', () => {
+    expect(NON_ATTRACTION_PATTERN.test('장가계 도착 / 가이드 미팅 후 중식')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('동인으로 이동(4시간)')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('호텔 조식 후')).toBe(true);
+    expect(NON_ATTRACTION_PATTERN.test('호텔 투숙 및 휴식')).toBe(true);
+  });
+
+  it('정상 attraction 라인은 통과 (skip 안 함)', () => {
+    expect(NON_ATTRACTION_PATTERN.test('범정산 관광 (셔틀버스-케이블카-...)')).toBe(false);
+    expect(NON_ATTRACTION_PATTERN.test('중국 최고의 협곡 장가계대협곡')).toBe(false);
+    expect(NON_ATTRACTION_PATTERN.test('-붓을 꽂아놓은 듯한 형상의 어필봉')).toBe(false);
+  });
+});
+
+describe('LONG_DESC_HEADER_PATTERN — 본문 carry-over 라인 skip (PR #117)', () => {
+  it('측정값 시작 라인 skip (장가계 DAY 4 "총길이 430M..." 사고)', () => {
+    expect(LONG_DESC_HEADER_PATTERN.test('총길이 430M, 넓이 6M, 계곡에서의 높이 300M')).toBe(true);
+    expect(LONG_DESC_HEADER_PATTERN.test('넓이 6M, 계곡에서의 높이 300M')).toBe(true);
+    expect(LONG_DESC_HEADER_PATTERN.test('높이 300M에 달하는 세계 최고의 스카이 워크')).toBe(true);
+    expect(LONG_DESC_HEADER_PATTERN.test('면적 567만 평방미터')).toBe(true);
+    expect(LONG_DESC_HEADER_PATTERN.test('해발 2,494M의 높이')).toBe(true);
+  });
+
+  it('서술문 본문 (측정값 시작 아님) 통과', () => {
+    expect(LONG_DESC_HEADER_PATTERN.test('중국 5대 불교명산 중 하나')).toBe(false);
+    expect(LONG_DESC_HEADER_PATTERN.test('미륵보살의 도장으로 인정')).toBe(false);
+    // "약 2KM" — "약\s*\d" 후 "\s*[\d,]" 못 매칭 → false (보수적 통과)
+    expect(LONG_DESC_HEADER_PATTERN.test('약 2KM의 협곡')).toBe(false);
+  });
+});
+
+describe('isLooseMatch — loose 매칭 차단 (PR #116/#117)', () => {
+  it('exact match 통과', () => {
+    expect(isLooseMatch('범정산', '범정산')).toBe(false);
+    expect(isLooseMatch('천문산사', '천문산사')).toBe(false);
+    expect(isLooseMatch('장가계대협곡', '장가계대협곡')).toBe(false);
+  });
+
+  it('3자 미만 키워드 reject (단어 단편)', () => {
+    expect(isLooseMatch('가', '가나')).toBe(true);
+    expect(isLooseMatch('동인', '동인대협곡')).toBe(true);  // "동인으로 이동" 사고 — 짧은 prefix
+    expect(isLooseMatch('산', '천문산')).toBe(true);
+  });
+
+  it('case 3: 괄호 안 region prefix 차단 (장가계 → 전신마사지60분(장가계) 사고)', () => {
+    expect(isLooseMatch('장가계', '전신마사지60분(장가계)')).toBe(true);
+    expect(isLooseMatch('청도', '전신마사지60분(청도)')).toBe(true);
+    expect(isLooseMatch('나트랑', '전신마사지60분(나트랑)')).toBe(true);
+  });
+
+  it('case 2: 긴 attraction.name 25자+ 단어경계 매칭 강제', () => {
+    // "유리다리" → "장가계해외국제-[장가계]대협곡B코스(유리다리/VR/미끄럼/유람선)티켓"
+    // 코어 = "장가계해외국제-대협곡B코스티켓" (괄호·대괄호 제거). "유리다리" 단어경계 매칭 안 됨 → reject
+    expect(isLooseMatch('유리다리', '장가계해외국제-[장가계]대협곡B코스(유리다리/VR/미끄럼/유람선)티켓')).toBe(true);
+  });
+
+  it('정상 단어경계 매칭 통과', () => {
+    // 5자 키워드 + 정확 매칭 attraction.name
+    expect(isLooseMatch('미혼대', '미혼대')).toBe(false);
+    // 정상 fuzzy 음역
+    expect(isLooseMatch('센겐신사', '아라쿠라야마 센겐신사')).toBe(false);  // 24자 < 25 case 2 skip, 24 / 4 = 6배 > 2.5, 단어경계 매칭 OK
   });
 });
 
