@@ -124,3 +124,31 @@ migration-safety-report.json
 *.pptx
 /창*.pptx
 /청*.json
+
+# 2026-05-18 박제 (feedback_session_2026_05_17_18_self_review §11): 1회용 진단/디버그 스크립트.
+# 영구 박제할 backfill·migration 만 명시적으로 추가. nodemon 스타일 디버그는 커밋 X.
+db/debug_*.ts
+db/debug_*.js
+db/check_*.ts
+db/check_*.js
+db/diagnose_*.ts
+db/diagnose_*.js
+db/fix_*.ts
+db/fix_*.js
+db/test_*.ts
+db/test_*.js
+db/verify_*.ts
+db/verify_*.js
+db/force_*.ts
+db/force_*.js
+db/rerun_*.ts
+db/cleanup_*.js
+db/fill_*.js
+db/reenrich_*.js
+db/final_audit.ts
+db/session_audit_*.ts
+db/bulk_backfill_*.ts
+db/bulk_resolve_*.ts
+db/backfill_*.ts
+db/test_set_*.ts
+dev-server.log
