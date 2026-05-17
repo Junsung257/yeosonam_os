@@ -1632,8 +1632,9 @@ export async function POST(request: NextRequest) {
       for (const pkgId of savedIds) {
         void (async () => {
           try {
-            const { reExtractAndUpdateItineraryByPackageId } = await import('@/lib/itinerary-llm-extractor');
-            const r = await reExtractAndUpdateItineraryByPackageId(pkgId, { skipIfMatchRateAbove: 0.9 });
+            // (A) 방식 (사장님 권장): schedule 원본 verbatim 보존 + attraction_ids 매핑만 LLM.
+            const { backfillScheduleMappingByPackageId } = await import('@/lib/itinerary-llm-extractor');
+            const r = await backfillScheduleMappingByPackageId(pkgId, { onlyIfMatchRateBelow: 0.9 });
             if (r.ok) {
               console.log(`[Upload API] LLM itinerary re-extract: ${pkgId.slice(0, 8)} ${((r.before ?? 0) * 100).toFixed(0)}% → ${((r.after ?? 0) * 100).toFixed(0)}%`);
             } else {

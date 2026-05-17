@@ -73,9 +73,8 @@ const CONCURRENT = 5;
     process.exit(0);
   }
 
-  // tsx 로 TS 모듈 import (Next.js 환경 아니라 직접 호출)
-  require('tsx/cjs');
-  const { reExtractAndUpdateItineraryByPackageId } = require('../src/lib/itinerary-llm-extractor.ts');
+  // tsx 로 실행 — (A) 방식 mapping-only (schedule 원본 verbatim 보존)
+  const { backfillScheduleMappingByPackageId } = await import('../src/lib/itinerary-llm-extractor');
 
   let okCount = 0, skipCount = 0, failCount = 0;
   const results = [];
@@ -83,12 +82,12 @@ const CONCURRENT = 5;
   // concurrent N 처리
   for (let i = 0; i < pkgs.length; i += CONCURRENT) {
     const batch = pkgs.slice(i, i + CONCURRENT);
-    const batchResults = await Promise.all(batch.map(async (p) => {
+    const batchResults = await Promise.all(batch.map(async (p: { id: string; title?: string | null; destination?: string | null; status?: string | null }) => {
       try {
-        const r = await reExtractAndUpdateItineraryByPackageId(p.id, { skipIfMatchRateAbove: 0.9 });
+        const r = await backfillScheduleMappingByPackageId(p.id, { onlyIfMatchRateBelow: 0.9 });
         return { pkg: p, r };
       } catch (e) {
-        return { pkg: p, r: { ok: false, reason: e.message } };
+        return { pkg: p, r: { ok: false, reason: (e as Error).message } };
       }
     }));
     for (const { pkg, r } of batchResults) {
