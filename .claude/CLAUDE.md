@@ -295,6 +295,17 @@ else await pushToUnmatched(activity, packageId, day, destination);  // L4
 
 **비용**: 패키지 1개당 ~$0.005 (3 함수 병렬 + prompt cache).
 
+### 12-7-pre. 새 세션 시작 시 의무 체크 (2026-05-18 박제 — self-review 12 실수)
+
+> [[feedback-session-2026-05-17-18-self-review]] — 2026-05-17/18 세션 자기검토 12 실수.
+> 매 세션 시작 시 아래 5가지 의무 체크:
+
+1. **사장님 의도 텍스트 inline 인용 확인** — "정확히 무엇 원하시는지?" 모호하면 즉시 질문
+2. **Pre-Flight Check 수행** — 기존 인프라 grep + 강제 진입점 MD Read (CLAUDE.md §0)
+3. **TodoWrite 사용** — 3단계+ 작업 시 의무
+4. **"완료" 단어 사용 전** — 사장님 화면 fetch 또는 ASCII 시뮬레이션
+5. **외부 API 호출 보고 전** — 5분 실측 (AbortSignal.timeout(N) 의무)
+
 ### 12-7. 자동 후속 처리 (ERR-audit-stale-snapshot + ERR-dev-revalidate-누락 박제)
 
 > **2026-05-17 사고 (오늘 세션 6회 반복)**: backfill 함수가 DB UPDATE 후 audit_report
