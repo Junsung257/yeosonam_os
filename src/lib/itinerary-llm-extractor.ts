@@ -414,6 +414,7 @@ export async function backfillPackageAttractionsL3(
       }
 
       // pendingL3 결과 적용 — LLM 키워드 → attraction 매칭 시 prefix-only 매칭 차단
+      // + alias 자동 학습 (Phase 1 발견: alias 인프라 1건만 적재. L3 매칭 통과 시 키워드를 attraction alias 로 박음)
       for (const p of pendingL3) {
         const kws = dayKeywords.get(p.itemIdx) ?? [];
         for (const k of kws) {
@@ -425,6 +426,12 @@ export async function backfillPackageAttractionsL3(
               pushUnmatched(k, d.day ?? 0);
             } else {
               p.matchedIds.add(m.id);
+              // 2026-05-18 박제: LLM 매칭 통과 키워드 → alias 자동 학습 (다음 등록 시 exact alias match)
+              if (k !== name && k.length >= 3) {
+                void import('./attraction-alias-learner').then(({ recordAlias }) =>
+                  recordAlias({ canonical_name: name, alias: k.trim(), source: 'llm_suggest', destination: dest ?? undefined }).catch(() => {}),
+                ).catch(() => {});
+              }
             }
           } else {
             pushUnmatched(k, d.day ?? 0);
