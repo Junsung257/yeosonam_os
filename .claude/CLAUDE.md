@@ -208,3 +208,66 @@ const attr = matchAttraction(item.activity, attractions, pkg.destination);
 - `node -e "..."` (인라인 Node.js)
 
 새 반복 패턴이 3회 이상 허가 요청되면: settings.json `permissions.allow` 에 추가 제안.
+
+---
+
+## 12. 정보 추출/매칭 작업 — 학술 표준 hierarchy (필수 준수)
+
+> **2026-05-17 박제 (시즈오카 사고 ERR-LLM-overuse)**: 사장님이 5번 반복한 의도("정보는 일정표에 이미 있고 애매한 부분만 LLM")를 무시하고 라인 매칭 작은 문제를 "전체 itinerary 재추출 모듈(PR #109/#110)"로 확장 → 매칭률 42%→13% 다운그레이드 + 원문 verbatim 정책 위반.
+>
+> 본 절은 Mihalcea & Csomai 2007 "Wikify!", Andersen et al. 2008 "Hybrid IE" 학술 컨센서스 박제.
+
+### 12-1. 정보 추출 hierarchy (cost ascending)
+
+attractions·schedule·destination·고객 정보 등 **텍스트에서 정보 추출 작업**은 항상 아래 순서로:
+
+| Level | 방법 | 비용 | 사용 시점 |
+|-------|------|------|---------|
+| **L1** | Rule (regex / DB 직접 읽기 / 조건) | $0 | 명확한 패턴 (식사/이동/공항/조식/날짜/요일/이미 박힌 DB 컬럼) |
+| **L2** | Fuzzy / Alias / Substring 매칭 | $0 | 표기 변형 (Levenshtein 0.78+, 이미 박힌 `attractions_aliases`) |
+| **L3** | LLM (단순 키워드 추출, 50~200 토큰) | ~$0.0001 | **L1+L2 가 fail 한 ambiguity 만** |
+| **L4** | Human-in-the-loop (사장님 어드민) | 사장님 시간 | L3 도 확신 0 — `unmatched_activities` 큐 |
+
+### 12-2. 절대 금지 (anti-patterns)
+
+- ❌ **L1/L2 대신 L3 사용** — 토큰 낭비 + 환각 위험 + 응답 지연 (DeepSeek raw_text 5000자 → 2~8초)
+- ❌ **LLM 에게 전체 재구성 요청** (raw_text → 통째 JSON). 라인 단위 ambiguity 해결만.
+- ❌ **기존 인프라 무시 + 새 모듈 신규 작성** — `matchAttraction`/`attractions_aliases`/`unmatched_activities`/EPR few-shot/Reflexion memory 가 이미 다 있음. 이걸 활용하지 않고 새 함수 만들면 NIH 신드롬.
+- ❌ **few-shot 5개 + Zod strict schema + 백슬래시 잡탕 prompt** — DeepSeek 빈 응답 폭주 (ERR-LLM-empty-response @ 2026-05-17).
+- ❌ **사장님 schedule activity 원본 텍스트 변경** — `feedback_no_reference_pattern_borrow.md` 위반.
+
+### 12-3. 올바른 L3 사용법
+
+```ts
+// L1: 명확한 패턴 skip (regex)
+if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|면세점/.test(activity)) continue;
+
+// L2: 기존 인프라 (substring + fuzzy + alias)
+const candidates = extractAttractionCandidates(activity, note);  // regex
+const matches = candidates.flatMap(c => matchAttraction(c, attractions, destination));
+if (matches.length > 0) {
+  item.attraction_ids = matches.map(m => m.id);
+  continue;  // L3 호출 안 함
+}
+
+// L3: L1+L2 fail 한 라인만 LLM
+const keywords = await extractAttractionKeywordsWithLLM(activity, destination);
+const llmMatches = keywords.flatMap(kw => matchAttraction(kw, attractions, destination));
+if (llmMatches.length > 0) item.attraction_ids = llmMatches.map(m => m.id);
+else await pushToUnmatched(activity, packageId, day, destination);  // L4
+```
+
+### 12-4. 학술 출처
+
+- Mihalcea & Csomai 2007 "Wikify!" — Entity Linking 표준
+- Andersen et al. 2008 "Hybrid Information Extraction" — rule + ML cost ordering
+- Brown et al. 2020 "GPT-3 few-shot" — in-context learning 비용 분석
+- OpenAI Cookbook "Function calling with data extraction" — schema 강제는 ambiguity 만
+- Microsoft GraphRAG 2024 — KB entity linking pattern (우리 attractions DB와 동일)
+
+### 12-5. 사장님 비전 일치
+
+> "정보는 일정표에 이미 들어가있고 애매한 부분만 LLM" — 2026-05-17 사장님 명시.
+> = Information Extraction hierarchy의 한국어 번역. 100% 학술 표준 일치.
+
+새 정보 추출 작업 시 본 12절 hierarchy 무시하고 L3/L4 부터 작성한 PR 은 사장님 검토 자동 차단.

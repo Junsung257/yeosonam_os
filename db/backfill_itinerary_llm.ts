@@ -73,8 +73,8 @@ const CONCURRENT = 5;
     process.exit(0);
   }
 
-  // tsx 로 실행 — (A) 방식 mapping-only (schedule 원본 verbatim 보존)
-  const { backfillScheduleMappingByPackageId } = await import('../src/lib/itinerary-llm-extractor');
+  // 2026-05-17 박제 (CLAUDE.md 12절 hierarchy): L1(rule) → L2(fuzzy) → L3(LLM) → L4(human).
+  const { backfillPackageAttractionsL3 } = await import('../src/lib/itinerary-llm-extractor');
 
   let okCount = 0, skipCount = 0, failCount = 0;
   const results = [];
@@ -84,7 +84,7 @@ const CONCURRENT = 5;
     const batch = pkgs.slice(i, i + CONCURRENT);
     const batchResults = await Promise.all(batch.map(async (p: { id: string; title?: string | null; destination?: string | null; status?: string | null }) => {
       try {
-        const r = await backfillScheduleMappingByPackageId(p.id, { onlyIfMatchRateBelow: 0.9 });
+        const r = await backfillPackageAttractionsL3(p.id, { skipIfMatchRateAbove: 0.9 });
         return { pkg: p, r };
       } catch (e) {
         return { pkg: p, r: { ok: false, reason: (e as Error).message } };

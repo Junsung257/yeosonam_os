@@ -1,37 +1,247 @@
 /**
  * @file itinerary-llm-extractor.ts
  *
- * 목적:
- *   랜드사 raw_text (PDF/엑셀에서 추출한 원본 텍스트) 의 일정표 섹션을 LLM 으로
- *   structured schedule items 로 재추출.
+ * 2026-05-17 박제 (CLAUDE.md 12절 — 정보 추출 hierarchy):
  *
- *   기존 regex parser 가 잡지 못하는 5가지 패턴을 LLM 의 한국어 의미 이해로 묶음:
+ * **사장님 비전 = Information Extraction 학술 표준**:
+ *   - L1: rule (regex/DB) → 식사/이동/공항 skip
+ *   - L2: fuzzy/alias 매칭 (matchAttraction + attractions_aliases)
+ *   - L3: LLM 단순 키워드 추출 (L1+L2 fail 시만)  ← `extractAttractionKeywordsWithLLM`
+ *   - L4: human-in-the-loop (`unmatched_activities` 큐)
  *
- *   A) ▶<이름>(설명)              — 한 줄         (예: 북해도 "▶도야호 유람선탑승(...)")
- *   B) ▶<설명>\n   <이름>           — 두 줄         (예: 시즈오카 "▶705년...신사\n   아라쿠라야마")
- *   C) ▶<이름>\n<부속들>            — 여러 줄       (예: 장가계 "▶천문산 등정\n신선이...\n999계단...")
- *   D) ▶<영역>으로 이동\n-<부속들>  — 영역+부속     (예: 장가계 "▶천자산 풍경구\n-2KM 케이블카...")
- *   E) ▶<설명> <이름1 및 이름2>     — 콤마/및 분리  (예: 대만 "▶트리하우스로 유명한 안평수옥 및 안평옛거리")
+ * **권장 진입점**:
+ *   - `extractAttractionKeywordsWithLLM(line, destination)` — 라인 1개 ambiguity 해결
+ *   - `backfillPackageAttractionsL3(packageId)` — 패키지 1개 hierarchy 흐름
  *
- *   regex 30개를 추가해도 false positive 폭발 (사장님 SSOT 무력화 사고 패턴
- *   `feedback_user_intent_is_ssot`). LLM + Zod schema + few-shot 으로 한 번에 해결.
+ * **@deprecated 모듈** (PR #109/#110 의 LLM 만능 환상 — 사고 박제):
+ *   - `extractItineraryWithLLM` — 전체 itinerary 재추출. L3 over-use.
+ *   - `mapScheduleToAttractionsWithLLM` — 매칭 후보 200개 prompt 박음.
+ *   - `reExtractAndUpdateItineraryByPackageId` — schedule 재구성 (verbatim 위반).
+ *   - `backfillScheduleMappingByPackageId` — `backfillPackageAttractionsL3` 로 대체.
  *
- * 인프라:
- *   - llm-gateway.ts `parse_travel_doc` task (DeepSeek Flash, fallback Gemini, maxRetries=3)
- *   - llm-validate-retry.ts `callWithZodValidation` (instructor-js 스타일 self-repair)
- *
- * 비용:
- *   - 패키지 1개당 ~$0.001 (DeepSeek Flash + prompt cache)
- *   - 사장님 전체 backfill (수백 패키지) <$1
- *
- * 운영:
- *   - 신규 등록: upload/route.ts fire-and-forget 호출
- *   - 기존 패키지: db/backfill_itinerary_v2.js batch (사장님 확인 후 실행)
+ *   이 4개 함수는 호환성 위해 남기되 신규 호출 금지. 다음 PR 에서 제거 예정.
  */
 
 import { z } from 'zod';
 import { llmCall } from './llm-gateway';
 import { callWithZodValidation } from './llm-validate-retry';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  L3 — 라인 1개에서 attraction 키워드 추출 (CLAUDE.md 12절)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const KeywordsSchema = z.object({
+  keywords: z.array(z.string().min(1)).max(10),
+});
+
+const NON_ATTRACTION_PATTERN = /(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|온천\s*휴식|호텔\s*안내|면세점)/;
+
+/**
+ * 한 schedule 라인에서 attraction 후보 이름 추출 (L3).
+ *
+ * 호출 조건 (CLAUDE.md 12-3):
+ *   - L1 (rule): 식사/이동/공항 라인은 호출 전 skip
+ *   - L2 (fuzzy): `matchAttraction` 이 0 건일 때만 L3 호출
+ *
+ * @example
+ *   await extractAttractionKeywordsWithLLM(
+ *     '▶ 마을 곳곳에 아기자기한 상점이 즐비한 민예거리 및 긴린호수 관광',
+ *     '후쿠오카/유후인'
+ *   ) → { keywords: ['민예거리', '긴린호수'] }
+ *
+ * 비용: ~50~200 토큰 / 호출 (~$0.0001).
+ */
+export async function extractAttractionKeywordsWithLLM(
+  activity: string,
+  destination?: string | null,
+): Promise<{ success: true; keywords: string[]; attempts: number } | { success: false; reason: string; attempts: number }> {
+  if (!activity || activity.length < 2) return { success: true, keywords: [], attempts: 0 };
+  // L1 빠른 차단 — 식사/이동 등은 LLM 호출조차 안 함
+  if (NON_ATTRACTION_PATTERN.test(activity)) return { success: true, keywords: [], attempts: 0 };
+
+  const userPrompt = `[목적지] ${destination ?? '미상'}
+[일정 라인]
+${activity}
+
+이 라인에 포함된 관광지(attraction) 이름만 추출하라.
+- 식사/이동/공항/호텔/조식/중식/석식/체크인/면세점 키워드는 attraction 아님 → 빈 배열
+- "민예거리 및 긴린호수" / "어필봉, 선녀헌화" 같이 복수면 각각 분리
+- 괄호 안 설명("도야호 유람선탑승(화산분화로...)") 은 attraction 이름에 포함 안 함
+- ▶/▷/♥/♨ 등 마크는 제거하고 이름만
+
+JSON: {"keywords":["관광지명1","관광지명2"]}`;
+
+  const result = await callWithZodValidation<z.infer<typeof KeywordsSchema>>({
+    label: 'extract-attraction-keywords',
+    schema: KeywordsSchema,
+    maxAttempts: 2,
+    preprocessor: (raw: string): string => {
+      let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      try {
+        const p: unknown = JSON.parse(s);
+        if (p && typeof p === 'object' && Array.isArray((p as { keywords?: unknown[] }).keywords)) return s;
+        if (Array.isArray(p)) return JSON.stringify({ keywords: p });
+      } catch { /* keep raw */ }
+      return s;
+    },
+    fn: async (feedback) => {
+      const prompt = feedback ? `${userPrompt}\n\n[이전 오류] ${feedback}\n다시 JSON 만 응답.` : userPrompt;
+      const r = await llmCall<unknown>({
+        task: 'parse_travel_doc',
+        systemPrompt: '여행 일정 라인에서 관광지 이름만 추출. raw JSON 만 응답.',
+        userPrompt: prompt,
+        maxTokens: 300,
+        jsonSchema: {
+          type: 'object',
+          properties: { keywords: { type: 'array', items: { type: 'string' } } },
+          required: ['keywords'],
+        },
+      });
+      if (!r.success) throw new Error(r.errors?.join('; ') || 'LLM 실패');
+      const data = (r as { data?: unknown }).data;
+      if (data !== undefined && data !== null) return JSON.stringify(data);
+      if (r.rawText && r.rawText.length > 0) return r.rawText;
+      throw new Error('LLM 응답 없음');
+    },
+  });
+
+  if (result.success) {
+    // 정제: trim, 빈 문자열 제거, 마크 잔재 제거
+    const cleaned = result.value.keywords
+      .map(k => k.replace(/^[▶▷♥♨\s\-•]+/, '').replace(/\s*[♥♨]+\s*$/, '').trim())
+      .filter(k => k.length >= 2 && !NON_ATTRACTION_PATTERN.test(k));
+    return { success: true, keywords: cleaned, attempts: result.attempts };
+  }
+  return { success: false, reason: result.attemptErrors?.[result.attemptErrors.length - 1] ?? 'unknown', attempts: result.attempts };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  L1+L2+L3+L4 hierarchy — 패키지 1개 backfill
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 패키지 1개의 schedule item 에 대해 정보 추출 hierarchy 적용:
+ *   L1: 식사/이동/공항 라인 skip
+ *   L2: extractAttractionCandidates (regex) + matchAttraction (fuzzy/alias)
+ *   L3: L2 fail 라인만 extractAttractionKeywordsWithLLM (LLM)
+ *   L4: 최종 미매칭 → unmatched_activities 큐
+ *
+ * **schedule activity 원본 텍스트 보존** (사장님 정책). attraction_ids 만 박음.
+ * 기존 박힌 attraction_ids 는 union 으로 보존.
+ */
+export async function backfillPackageAttractionsL3(
+  packageId: string,
+  options: { skipIfMatchRateAbove?: number; useLLMFallback?: boolean } = {},
+): Promise<{ ok: boolean; reason?: string; before?: number; after?: number; llmCalls?: number }> {
+  const useLLM = options.useLLMFallback !== false;
+  const { supabaseAdmin, isSupabaseConfigured } = await import('./supabase');
+  if (!isSupabaseConfigured) return { ok: false, reason: 'supabase-not-configured' };
+
+  const { data: pkg, error } = await supabaseAdmin
+    .from('travel_packages')
+    .select('id, destination, itinerary_data, title')
+    .eq('id', packageId)
+    .maybeSingle();
+  if (error || !pkg) return { ok: false, reason: error?.message ?? 'package-not-found' };
+
+  type ScheduleItem = { activity?: string; attraction_ids?: string[]; type?: string; note?: string | null; [k: string]: unknown };
+  type DayShape = { day?: number; schedule?: ScheduleItem[] };
+  const existingItin = (pkg as { itinerary_data?: { days?: DayShape[] } | null }).itinerary_data ?? null;
+  if (!existingItin?.days?.length) return { ok: false, reason: 'no-schedule' };
+
+  const dest = (pkg as { destination?: string | null }).destination ?? null;
+  const beforeStats = countMatchStats(existingItin);
+  const beforeRate = beforeStats.total > 0 ? beforeStats.matched / beforeStats.total : 0;
+  if (options.skipIfMatchRateAbove != null && beforeRate >= options.skipIfMatchRateAbove) {
+    return { ok: true, reason: 'skip-already-high-match', before: beforeRate };
+  }
+
+  // attractions DB fetch (destination scope)
+  const { destinationToIsoSet } = await import('./destination-iso');
+  const isoSet = destinationToIsoSet(dest);
+  let q = supabaseAdmin.from('attractions').select('id, name, aliases, region, country, short_desc, badge_type, emoji, category, mrt_gid').eq('is_active', true);
+  const orClauses: string[] = [];
+  if (dest) for (const t of dest.split(/[/,·&+\s]+/).filter(Boolean)) orClauses.push(`region.ilike.%${t}%`);
+  for (const c of isoSet) orClauses.push(`country.eq.${c}`);
+  if (orClauses.length) q = q.or(orClauses.join(','));
+  const { data: attrs } = await q.limit(2000);
+  type AttrShape = { id: string; name: string; aliases?: string[] | null; region?: string | null; country?: string | null; short_desc?: string | null; badge_type?: string | null; emoji?: string | null; category?: string | null; mrt_gid?: string | null };
+  const attractions = ((attrs ?? []) as AttrShape[]);
+  if (attractions.length === 0) return { ok: false, reason: 'no-candidate-attractions', before: beforeRate };
+
+  // 인덱스 + 매칭 함수 동적 import
+  const { buildAttractionIndex, matchAttractionIndexed } = await import('./attraction-matcher');
+  type AttractionData = Parameters<typeof buildAttractionIndex>[0][number];
+  const idx = buildAttractionIndex(attractions as unknown as AttractionData[], dest ?? undefined);
+  const { extractAttractionCandidates } = await import('./itinerary-attraction-candidates');
+
+  let llmCalls = 0;
+  const newDays: DayShape[] = [];
+  for (const d of existingItin.days) {
+    const newSchedule: ScheduleItem[] = [];
+    for (const item of (d.schedule ?? [])) {
+      const activity = item.activity ?? '';
+      // 기존 attraction_ids 보존
+      const existingIds = Array.isArray(item.attraction_ids) ? item.attraction_ids : [];
+      if (!activity || activity.length < 2) { newSchedule.push(item); continue; }
+      // L1: skip 패턴
+      if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping' || NON_ATTRACTION_PATTERN.test(activity)) {
+        newSchedule.push(item); continue;
+      }
+      // L2: regex candidates + fuzzy match
+      const matchedIds = new Set<string>(existingIds);
+      const candidates = extractAttractionCandidates(activity, item.note);
+      for (const c of candidates) {
+        const m = matchAttractionIndexed(c, idx);
+        if (m?.id) matchedIds.add(m.id);
+      }
+      // L3 fallback: L2 가 0 건일 때만 LLM
+      if (matchedIds.size === existingIds.length && useLLM) {
+        const kw = await extractAttractionKeywordsWithLLM(activity, dest);
+        llmCalls++;
+        if (kw.success) {
+          for (const k of kw.keywords) {
+            const m = matchAttractionIndexed(k, idx);
+            if (m?.id) matchedIds.add(m.id);
+            else {
+              // L4: 미매칭 큐 (fire-and-forget)
+              void supabaseAdmin.from('unmatched_activities').upsert({
+                activity: k,
+                package_id: packageId,
+                package_title: (pkg as { title?: string }).title ?? null,
+                day_number: d.day ?? 0,
+                country: null,
+                region: dest,
+                occurrence_count: 1,
+                status: 'pending',
+              }, { onConflict: 'activity' }).then(() => {});
+            }
+          }
+        }
+      }
+      const finalIds = [...matchedIds];
+      newSchedule.push(finalIds.length > 0 ? { ...item, attraction_ids: finalIds } : item);
+    }
+    newDays.push({ ...d, schedule: newSchedule });
+  }
+  const newItin = { ...existingItin, days: newDays };
+
+  const { error: upErr } = await supabaseAdmin
+    .from('travel_packages')
+    .update({ itinerary_data: newItin, updated_at: new Date().toISOString() })
+    .eq('id', packageId);
+  if (upErr) return { ok: false, reason: upErr.message, before: beforeRate, llmCalls };
+
+  try {
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath(`/packages/${packageId}`);
+    revalidatePath(`/m/packages/${packageId}`);
+  } catch { /* no-op */ }
+
+  const afterStats = countMatchStats(newItin);
+  const afterRate = afterStats.total > 0 ? afterStats.matched / afterStats.total : 0;
+  return { ok: true, before: beforeRate, after: afterRate, llmCalls };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Zod schema — LLM 출력 강제 구조
@@ -127,6 +337,9 @@ export interface ExtractItineraryOptions {
 /**
  * raw_text → schedule 구조화 추출.
  *
+ * @deprecated 2026-05-17 — CLAUDE.md 12절 hierarchy 위반. 전체 itinerary 재추출은
+ *   schedule activity 텍스트 변경 → 원문 verbatim 정책 위반 + 매칭률 다운그레이드.
+ *   대체: `extractAttractionKeywordsWithLLM` (라인 1개 키워드 추출) + `backfillPackageAttractionsL3`.
  * @example
  * const result = await extractItineraryWithLLM(pkg.raw_text, { destination: '시즈오카' });
  * if (result.success) {
@@ -345,12 +558,13 @@ export interface MapScheduleOptions {
 }
 
 /**
+ * @deprecated 2026-05-17 — CLAUDE.md 12절 hierarchy 위반. 매칭 후보 200개를 한 번에 LLM
+ *   prompt 에 박는 NIH 패턴. 기존 `matchAttraction` (L2) + `extractAttractionKeywordsWithLLM`
+ *   (L3) 조합이 학술 표준이고 비용·정확도 우월.
+ *   대체: `backfillPackageAttractionsL3`.
+ *
  * (A) 방식: schedule item 원본 텍스트 그대로 두고, LLM 이 각 라인에 어떤 attraction 이
  * 매핑되는지 판단. 결과를 schedule[].attraction_ids 에 박음.
- *
- * - schedule activity 변경 없음 (원본 verbatim 보존)
- * - ▶헤딩 라인 + 부속 라인 모두 같은 attraction_id 가능 (DAY dedup 로 한 카드)
- * - LLM 토큰 절약: schedule + attractions 후보만 prompt 에 박음 (raw_text 불필요)
  */
 export async function mapScheduleToAttractionsWithLLM(
   existingItin: { days?: Array<{ day?: number; schedule?: Array<{ activity?: string }> }> } | null,
@@ -451,10 +665,9 @@ JSON 응답: {"mappings":[{"day":1,"idx":4,"attraction_id":"7a04cfba-..."}]}`;
 }
 
 /**
- * 패키지 1개를 (A) 방식으로 backfill:
- *   - schedule item 텍스트 그대로 보존
- *   - LLM 이 매핑 판단 → attraction_ids 만 박음
- *   - 기존에 박힌 attraction_ids 가 있으면 보존 (LLM 결과와 union)
+ * @deprecated 2026-05-17 — `mapScheduleToAttractionsWithLLM` 호출. 대체: `backfillPackageAttractionsL3`.
+ *
+ * 패키지 1개를 (A) 방식으로 backfill (schedule 보존 + LLM 매핑).
  */
 export async function backfillScheduleMappingByPackageId(
   packageId: string,
@@ -545,10 +758,11 @@ export async function backfillScheduleMappingByPackageId(
  *   - db/backfill_itinerary_v2.js: 기존 패키지 batch
  *   - (선택) 어드민 endpoint /api/admin/itinerary/re-extract
  *
+ * @deprecated 2026-05-17 — schedule activity 재구성 → 원문 verbatim 정책 위반.
+ *   대체: `backfillPackageAttractionsL3`.
+ *
  * 안전:
  *   - LLM 실패 시 기존 itinerary_data 보존 (덮어쓰기 안 함).
- *   - attraction_ids 기존 박힌 것 우선 merge.
- *   - revalidatePath 실패는 무시 (server context 외 호출 시 throw).
  */
 export async function reExtractAndUpdateItineraryByPackageId(
   packageId: string,
