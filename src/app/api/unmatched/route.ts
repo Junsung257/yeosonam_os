@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getUnmatchedBootstrapCandidates, getUnmatchedSummary } from '@/lib/unmatched-admin-queries';
 import { getUnmatchedBootstrapEnvDefaults } from '@/lib/unmatched-bootstrap-config';
@@ -323,14 +323,19 @@ export async function PATCH(request: NextRequest) {
       // 2026-05-17 박제 (ERR-shizuoka-photos-empty 갭 G2):
       //   부트스트랩으로 INSERT 된 attraction 은 photos=[] 빈 상태로 박혀 모바일 카드가
       //   매칭은 되지만 사진이 0건이라 결국 카드 미표출 (시즈오카 8개 사고). INSERT 직후
-      //   Pexels 자동 fetch + UPDATE 로 photos 3장 보강. fire-and-forget.
-      void (async () => {
+      //   Pexels 자동 fetch + UPDATE 로 photos 3장 보강.
+      // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail 연쇄): void → nextAfter 통일.
+      const createdAttractionId = created.id;
+      const cardAliases = card.aliases;
+      const attractionName = name;
+      const attractionRegion = normRegion;
+      nextAfter(async () => {
         try {
           const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
           if (!isPexelsConfigured()) return;
           // 한글 검색은 false-match 위험. 영어 alias 우선, 없으면 name + region + 'travel'.
-          const eng = Array.isArray(card.aliases) ? (card.aliases as unknown[]).find(a => typeof a === 'string' && /^[\x20-\x7E]+$/.test(a)) as string | undefined : undefined;
-          const keyword = eng || `${name} ${normRegion ?? ''} travel`.trim();
+          const eng = Array.isArray(cardAliases) ? (cardAliases as unknown[]).find(a => typeof a === 'string' && /^[\x20-\x7E]+$/.test(a)) as string | undefined : undefined;
+          const keyword = eng || `${attractionName} ${attractionRegion ?? ''} travel`.trim();
           const photos = await searchPexelsPhotos(keyword, 3);
           if (photos.length === 0) return;
           const simplified = photos.map(p => ({
@@ -340,12 +345,24 @@ export async function PATCH(request: NextRequest) {
             photographer: p.photographer,
             alt: p.alt,
           }));
-          await supabaseAdmin.from('attractions').update({ photos: simplified, updated_at: new Date().toISOString() }).eq('id', created.id);
-          console.log(`[unmatched register_from_suggested_card] Pexels auto-attached ${photos.length} photos to "${name}"`);
+          await supabaseAdmin.from('attractions').update({ photos: simplified, updated_at: new Date().toISOString() }).eq('id', createdAttractionId);
+          console.log(`[unmatched register_from_suggested_card] Pexels auto-attached ${photos.length} photos to "${attractionName}"`);
         } catch (e) {
-          console.warn('[unmatched register_from_suggested_card] Pexels auto-attach 실패(무시):', e instanceof Error ? e.message : e);
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn('[unmatched register_from_suggested_card] Pexels auto-attach 실패:', msg);
+          if (isSupabaseConfigured) {
+            await supabaseAdmin.from('admin_alerts').insert({
+              category: 'attractions-pexels',
+              severity: 'warning',
+              title: `unmatched bootstrap Pexels 실패: ${createdAttractionId.slice(0, 8)}`,
+              message: msg.slice(0, 500),
+              ref_type: 'attraction',
+              ref_id: createdAttractionId,
+              meta: { phase: 'unmatched-bootstrap-pexels', name: attractionName, error: msg.slice(0, 500) },
+            }).then(() => {}, () => {});
+          }
         }
-      })();
+      });
 
       return NextResponse.json({ success: true, message: `신규 등록: "${created.name}"`, attraction_id: created.id });
     }

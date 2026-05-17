@@ -6,9 +6,9 @@
  * POST → action=approve | reject | faq | images | marketing
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
 import { createHash } from 'crypto';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos } from '@/lib/pexels';
 import { generateAdVariants } from '@/lib/ai';
 import { checkAiCopyConsistency } from '@/lib/ai-consistency-checker';
@@ -314,7 +314,9 @@ async function handleReject(body: { product_id: string; reason?: string }) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // 2) Active Learning — extractions_corrections 자동 누적 (Phase 5-1, 2026-05-13 박제)
-  void (async () => {
+  // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail 연쇄): void → nextAfter 통일.
+  //   사장님 reject 시점에 background 학습 누적이 silent 죽으면 다음 등록 동일 사고 반복.
+  nextAfter(async () => {
     try {
       const { data: prod } = await supabaseAdmin
         .from('products')
@@ -399,9 +401,21 @@ async function handleReject(body: { product_id: string; reason?: string }) {
         console.log(`[Active-Learning] reject ${product_id}: ${rows.length} correction(s) appended`);
       }
     } catch (e) {
-      console.warn('[Active-Learning] 적재 실패(무시):', (e as Error).message);
+      const msg = (e as Error).message;
+      console.warn('[Active-Learning] 적재 실패:', msg);
+      if (isSupabaseConfigured) {
+        await supabaseAdmin.from('admin_alerts').insert({
+          category: 'active-learning-reject',
+          severity: 'warning',
+          title: `Active Learning 적재 실패: ${product_id}`,
+          message: msg.slice(0, 500),
+          ref_type: 'product',
+          ref_id: product_id,
+          meta: { phase: 'reject-corrections', error: msg.slice(0, 500) },
+        }).then(() => {}, () => {});
+      }
     }
-  })();
+  });
 
   return NextResponse.json({ success: true });
 }

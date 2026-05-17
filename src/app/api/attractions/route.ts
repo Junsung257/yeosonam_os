@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
@@ -151,11 +151,15 @@ export async function POST(request: NextRequest) {
       .catch(e => console.warn('[Attractions API] re-enrich 실패 (등록은 성공):', e instanceof Error ? e.message : e));
 
     // 🆕 Pexels 자동 사진 fetch — photos 없이 등록된 경우 비동기로 채움 (등록을 블로킹하지 않음)
+    // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail 연쇄): void → nextAfter 통일.
+    //   Vercel/Next serverless 함수 종료 시 background task 가 죽지 않도록.
     if (!body.photos?.length && getSecret('PEXELS_API_KEY')) {
-      void (async () => {
+      const attractionIdForPexels = data.id;
+      const keywordSource = data.destination || data.region || data.name;
+      nextAfter(async () => {
         try {
           const { searchPexelsPhotos, destToEnKeyword } = await import('@/lib/pexels');
-          const keyword = destToEnKeyword(data.destination || data.region || data.name);
+          const keyword = destToEnKeyword(keywordSource);
           const photos = await searchPexelsPhotos(`${keyword} travel`, 5);
           if (photos.length > 0) {
             const photoData = photos.map(p => ({
@@ -166,12 +170,24 @@ export async function POST(request: NextRequest) {
               photographer: p.photographer,
               alt: p.alt,
             }));
-            await supabaseAdmin.from('attractions').update({ photos: photoData }).eq('id', data.id);
+            await supabaseAdmin.from('attractions').update({ photos: photoData }).eq('id', attractionIdForPexels);
           }
         } catch (e) {
-          console.warn('[Attractions API] Pexels 자동 사진 실패 (등록은 성공):', e instanceof Error ? e.message : e);
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn('[Attractions API] Pexels 자동 사진 실패:', msg);
+          if (isSupabaseConfigured) {
+            await supabaseAdmin.from('admin_alerts').insert({
+              category: 'attractions-pexels',
+              severity: 'warning',
+              title: `Pexels 자동 사진 실패: ${attractionIdForPexels}`,
+              message: msg.slice(0, 500),
+              ref_type: 'attraction',
+              ref_id: attractionIdForPexels,
+              meta: { phase: 'pexels-auto-fetch', keyword: keywordSource, error: msg.slice(0, 500) },
+            }).then(() => {}, () => {});
+          }
         }
-      })();
+      });
     }
 
     return NextResponse.json({ attraction: data, sweep }, { status: 201 });
