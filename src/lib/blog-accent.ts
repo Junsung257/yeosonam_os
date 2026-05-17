@@ -78,17 +78,29 @@ export function applyMarkdownAccents(md: string): string {
 export function applyHtmlAccents(html: string): string {
   if (!html) return html;
 
-  // 숫자+단위 패턴
-  // - 12,000원 / 3박 / 5일 / 30% / 25℃ / 17도 / 1.5km / 90분 / 4시간 / 1,400m / $30
-  const NUM_UNIT_RE = /(\b[0-9][0-9,]*(?:\.[0-9]+)?\s*(?:원|만원|천원|만\s*원|박|일|박\s*\d*일|%|℃|도|km|m|분|시간|시|분대|년|회|명|인|층|EUR|USD|JPY|THB)|\$\s*[0-9]+(?:\.[0-9]+)?)/g;
+  /**
+   * 숫자+단위 + **범위(`A–B단위`)** 패턴
+   *
+   * - 단독: 12,000원 / 3박 / 5일 / 30% / 25℃ / 1.5km / 90분 / $30
+   * - 범위: 25–32℃, 30분–1시간, 2–5시, 0.5–1m, 12–5월  ← **range 통째 wrap (start 검정 + 단위만 주황 분리 사고 차단, 2026-05-17)**
+   *
+   * `m(?![a-zA-Z가-힣])` lookahead — `200mm` 의 첫 `m` 단독 매치 차단 (mm 단위는 alternation 우선 매치).
+   * alternation 순서: longest unit first (만원>원, mm>m, 분대>분).
+   */
+  // `m(?![a-zA-Z])` — 영문자만 차단 (`200mm` 의 첫 `m` 단독 매치 방지). 한글(`1m로`, `500m와`)은 정상.
+  const UNIT_SRC = '만원|천원|만\\s*원|원|박\\s*\\d*일|박|일|km|mm|cm|m(?![a-zA-Z])|℃|도|%|분대|분|시간|시|년|월|주|회|배|잔|명|인|층|EUR|USD|JPY|THB';
+  const NUM = '\\d[\\d,]*(?:\\.\\d+)?';
+  const RANGE = `${NUM}\\s*(?:${UNIT_SRC})?\\s*–\\s*${NUM}\\s*(?:${UNIT_SRC})`;
+  const SINGLE = `\\b${NUM}\\s*(?:${UNIT_SRC})|\\$\\s*\\d+(?:\\.\\d+)?`;
+  const NUM_UNIT_RE = new RegExp(`(${RANGE}|${SINGLE})`, 'g');
 
   // HTML 태그를 건너뛰며 텍스트 노드만 변환
   const parts: string[] = [];
   let i = 0;
   const len = html.length;
 
-  // skip 영역 탐지용 태그
-  const SKIP_TAGS = ['<a ', '<code', '<pre', '<script', '<style', '<img'];
+  // skip 영역 탐지용 태그 — `<strong` 추가 (이미 wrap 된 .num 안에서 중첩 매치 방지)
+  const SKIP_TAGS = ['<a ', '<code', '<pre', '<script', '<style', '<img', '<strong'];
 
   while (i < len) {
     // 태그 시작인지 확인

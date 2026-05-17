@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRangeDashes, applyMarkdownAccents } from './blog-accent';
+import { normalizeRangeDashes, applyMarkdownAccents, applyHtmlAccents } from './blog-accent';
 
 /**
  * 회귀 fixture — 2026-05-17 PR #105 세부 6월 블로그 사고
@@ -107,5 +107,70 @@ describe('applyMarkdownAccents (normalizeRangeDashes integration)', () => {
     const out = applyMarkdownAccents(md);
     expect(out).toContain('9–11시');
     expect(out).toContain('<aside class="tip">');
+  });
+});
+
+describe('applyHtmlAccents — range 통째 wrap (2026-05-17 사장님 라운드 3 발견)', () => {
+  /**
+   * 사고: `25–32℃` 가 `25` (검정) + `–` (검정) + `<strong class="num">32℃</strong>` 로 쪼개져
+   *      앞 숫자만 검정으로 떠 본문 깨짐. range 통째 wrap 으로 차단.
+   */
+  it('숫자–숫자단위 → 통째로 .num wrap (앞 숫자 검정 사고 차단)', () => {
+    const html = '<p>평균 25–32℃ 가 평균</p>';
+    const out = applyHtmlAccents(html);
+    expect(out).toContain('<strong class="num">25–32℃</strong>');
+    expect(out).not.toContain('>25<'); // 단독 검정 25 가 떨어져 나가면 안 됨
+  });
+
+  it('한글단위–한글단위 range (30분–1시간)', () => {
+    const html = '<p>스콜은 30분–1시간 단위</p>';
+    const out = applyHtmlAccents(html);
+    expect(out).toContain('<strong class="num">30분–1시간</strong>');
+  });
+
+  it('시작에 단위 없는 range (오후 2–5시)', () => {
+    const html = '<p>오후 2–5시 집중</p>';
+    const out = applyHtmlAccents(html);
+    expect(out).toContain('<strong class="num">2–5시</strong>');
+  });
+
+  it('소수 range (0.5–1m) — 한글 직후 m 정상 매치', () => {
+    const html = '<p>파고는 0.5–1m 잔잔</p>';
+    const out = applyHtmlAccents(html);
+    expect(out).toContain('<strong class="num">0.5–1m</strong>');
+  });
+
+  it('한글 직후 m 단독 (1m로)', () => {
+    const html = '<p>거리 1m로 잔잔</p>';
+    const out = applyHtmlAccents(html);
+    expect(out).toContain('<strong class="num">1m</strong>');
+  });
+
+  it('200mm 단위 (m 단독 매치 사고 차단)', () => {
+    const html = '<p>강수량은 200mm 내외</p>';
+    const out = applyHtmlAccents(html);
+    expect(out).toContain('<strong class="num">200mm</strong>');
+    // `200m` 만 wrap 되고 뒤 `m` 떨어지면 사고
+    expect(out).not.toContain('<strong class="num">200m</strong>m');
+  });
+
+  it('새 단위 (배·월·주) 인식', () => {
+    expect(applyHtmlAccents('<p>1.5배 비싼</p>')).toContain('<strong class="num">1.5배</strong>');
+    expect(applyHtmlAccents('<p>5월 출발</p>')).toContain('<strong class="num">5월</strong>');
+    expect(applyHtmlAccents('<p>2주 일정</p>')).toContain('<strong class="num">2주</strong>');
+  });
+
+  it('이미 wrap 된 .num 내부에 중첩 wrap 안 함', () => {
+    const html = '<p>평균 <strong class="num">25–32℃</strong> 입니다</p>';
+    const out = applyHtmlAccents(html);
+    // 한 번만 wrap, 중첩 X
+    const count = (out.match(/<strong class="num">/g) || []).length;
+    expect(count).toBe(1);
+  });
+
+  it('a/code/img 안의 숫자는 wrap 안 함 (기존 동작 회귀 보호)', () => {
+    const html = '<a href="/p/25">link 25℃</a><code>30분</code>';
+    const out = applyHtmlAccents(html);
+    expect(out).not.toContain('<strong class="num">');
   });
 });
