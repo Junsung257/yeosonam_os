@@ -1636,12 +1636,22 @@ export async function POST(request: NextRequest) {
             const { backfillPackageAttractionsL3 } = await import('@/lib/itinerary-llm-extractor');
             const r = await backfillPackageAttractionsL3(pkgId, { skipIfMatchRateAbove: 0.9 });
             if (r.ok) {
-              console.log(`[Upload API] LLM itinerary re-extract: ${pkgId.slice(0, 8)} ${((r.before ?? 0) * 100).toFixed(0)}% → ${((r.after ?? 0) * 100).toFixed(0)}%`);
+              console.log(`[Upload API] L3 attractions: ${pkgId.slice(0, 8)} ${((r.before ?? 0) * 100).toFixed(0)}% → ${((r.after ?? 0) * 100).toFixed(0)}%`);
             } else {
-              console.warn(`[Upload API] LLM itinerary re-extract skip/fail: ${pkgId.slice(0, 8)} — ${r.reason}`);
+              console.warn(`[Upload API] L3 attractions skip/fail: ${pkgId.slice(0, 8)} — ${r.reason}`);
             }
           } catch (e) {
-            console.warn('[Upload API] LLM itinerary re-extract 예외(무시):', e instanceof Error ? e.message : e);
+            console.warn('[Upload API] L3 attractions 예외(무시):', e instanceof Error ? e.message : e);
+          }
+          // 2026-05-17 박제 (CLAUDE.md 12절 — 7 도메인 hierarchy 전체 적용):
+          //   hero context (destination/title/summary/tagline) + price_dates + inclusions/excludes/notices
+          //   기존 parser 가 NULL/0건/빈약하면 LLM L3 fallback. force=false (기존 값 보존).
+          try {
+            const { backfillSectionsByPackageId } = await import('@/lib/parser/llm/section-extractors');
+            const s = await backfillSectionsByPackageId(pkgId, { force: false });
+            console.log(`[Upload API] L3 sections: ${pkgId.slice(0, 8)} hero=${s.hero?.applied} price=${s.price?.applied}(${s.price?.rowCount ?? 0}) notices=${s.notices?.applied}`);
+          } catch (e) {
+            console.warn('[Upload API] L3 sections 예외(무시):', e instanceof Error ? e.message : e);
           }
         })();
       }

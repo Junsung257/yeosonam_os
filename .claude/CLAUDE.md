@@ -271,3 +271,26 @@ else await pushToUnmatched(activity, packageId, day, destination);  // L4
 > = Information Extraction hierarchy의 한국어 번역. 100% 학술 표준 일치.
 
 새 정보 추출 작업 시 본 12절 hierarchy 무시하고 L3/L4 부터 작성한 PR 은 사장님 검토 자동 차단.
+
+### 12-6. register 파이프라인 7 도메인 hierarchy (전체 적용 박제)
+
+> **2026-05-17 사고 (ERR-domain-scope-narrow)**: attractions 매칭에만 hierarchy 적용하고
+> 다른 6 도메인 누락 → 후쿠오카 패키지 등록 시 destination/price_dates/display_title/
+> product_summary 모두 fail. 사장님 "전부 해결" 인식과 실제 "1/7 도메인 해결" 의 갭.
+
+| # | 도메인 | L1 (rule) | L2 (fuzzy/alias) | L3 (LLM) | L4 (human) |
+|---|--------|----------|-----------------|---------|----------|
+| 1 | **attractions 매칭** | 식사/이동 skip | `matchAttraction` | `extractAttractionsByDayWithLLM` (hybrid) | unmatched_activities |
+| 2 | **destination** | 제목 우선 / 대괄호 패턴 | `destinationToIsoSet` | `extractHeroContextWithLLM` | 사장님 어드민 |
+| 3 | **display_title** | 제목 첫 줄 trim | (없음) | 위 hero LLM | 어드민 |
+| 4 | **product_summary** | (없음) | (없음) | 위 hero LLM (환각 차단) | 어드민 |
+| 5 | **price_dates** | `extractPriceTable` (표준 4-라인 regex) | (없음) | `extractPriceTableWithLLM` (chunk 분할) | 어드민 |
+| 6 | **inclusions/excludes** | regex 섹션 추출 | (없음) | `extractInclusionsExcludesNoticesWithLLM` | 어드민 |
+| 7 | **notices_parsed** | `deterministic/notices.ts` (4-type) | (없음) | 위 inc/exc/notices LLM (5-type: + PRICING_RULE) | 어드민 |
+
+**통합 호출**:
+- `src/lib/parser/llm/section-extractors.ts` `backfillSectionsByPackageId(packageId, {force})`
+- upload/route.ts G2 단계에서 fire-and-forget (사장님 응답 블로킹 X)
+- 기존 값 verbatim 보존 (force=false default). NULL/0건/빈약 컬럼만 채움.
+
+**비용**: 패키지 1개당 ~$0.005 (3 함수 병렬 + prompt cache).
