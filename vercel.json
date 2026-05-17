@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/card-news-auto-live",
-      "schedule": "30 * * * *"
+      "schedule": "30 0 * * *"
     },
     {
       "path": "/api/cron/refresh-registration-mv",
@@ -207,7 +207,7 @@
     },
     {
       "path": "/api/cron/marketing-rules",
-      "schedule": "15 * * * *"
+      "schedule": "15 16-21 * * *"
     },
     {
       "path": "/api/cron/concierge-cart-retarget",
@@ -283,7 +283,7 @@
     },
     {
       "path": "/api/cron/band-rss",
-      "schedule": "0 * * * *"
+      "schedule": "0 */4 * * *"
     },
     {
       "path": "/api/cron/threads-trend-miner",
@@ -299,7 +299,7 @@
     },
     {
       "path": "/api/cron/auto-publish-loop",
-      "schedule": "30 * * * *"
+      "schedule": "30 */2 * * *"
     },
     {
       "path": "/api/cron/review-digest",
@@ -336,10 +336,6 @@
     {
       "path": "/api/cron/sync-flight-availability",
       "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/cron/sync-ota-prices",
-      "schedule": "0 22 * * *"
     },
     {
       "path": "/api/cron/demand-forecast",
