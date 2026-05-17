@@ -14,6 +14,7 @@ export default function TldrBox({ title = '핵심 요약', items }: Props) {
 
   return (
     <aside
+      data-tldr
       className="not-prose mb-10 rounded-2xl border border-blue-200 bg-gradient-to-br from-brand-light/70 to-blue-50/40 p-5 md:p-6"
       aria-label={title}
     >

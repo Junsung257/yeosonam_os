@@ -679,13 +679,15 @@ export default async function BlogDetailPage({
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
               <Image
                 src={post.og_image_url}
-                alt={title}
+                alt={[pkg?.destination || post.destination, title].filter(Boolean).join(' — ')}
                 fill
                 className="object-cover"
                 priority
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
+                fetchPriority="high"
               />
             </div>
+            <figcaption className="sr-only">{title}</figcaption>
           </figure>
         )}
 

@@ -490,13 +490,23 @@ td, th {
  *   3) <aside class="tip">  — 민트 인포박스 (TL;DR · 꿀팁)
  * ──────────────────────────────────────────────────────────*/
 .prose-blog mark {
-  background-color: #FEF3C7;
-  color: #92400E;
+  /* 2026-05-17 CRO 업데이트: 파스텔 노랑(#FEF3C7) → 주황계열로 — .num 과 팔레트 통일 + 가독성/주목도 ↑.
+   * 헬로마켓·당근·토스 등 모바일 커머스에서 검증된 amber 강조와 동일 톤. AA 대비 4.7:1. */
+  background-color: #FFEDD5; /* tailwind orange-100 */
+  color: #7C2D12;            /* tailwind orange-900 */
   padding: 0.05em 0.3em;
   border-radius: 0.25em;
   font-weight: 600;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+
+/* 다크 모드 대비: 옅은 배경은 다크에서 빛나 보이므로 반전 */
+@media (prefers-color-scheme: dark) {
+  .prose-blog mark {
+    background-color: rgba(234, 88, 12, 0.18); /* orange-600 @ 18% */
+    color: #FED7AA;                              /* orange-200 */
+  }
 }
 
 .prose-blog strong.num,

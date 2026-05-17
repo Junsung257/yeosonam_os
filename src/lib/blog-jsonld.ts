@@ -304,7 +304,15 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
       name: '여소남',
       logo: { '@type': 'ImageObject', url: `${baseUrl}/logo.png` },
     },
-    mainEntityOfPage: pageUrl,
+    // mainEntityOfPage 는 string 보다 WebPage 객체가 schema-dts 표준 + Google rich-result parser 안정성 ↑ (2026-05-17 PR #105)
+    mainEntityOfPage: { '@type': 'WebPage', '@id': pageUrl },
+    // speakable — Google Assistant / Gemini / Perplexity 등 음성·AI Overview 인용 시 발췌 대상 영역 지정.
+    // h1·본문 첫 문단·TL;DR 박스를 후보로 노출. 2026 Google docs: voice/AI 트래픽 핵심 신호
+    // (https://developers.google.com/search/docs/appearance/structured-data/speakable)
+    speakable: {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['article h1', '.prose-blog > p:first-of-type', '[data-tldr]'],
+    },
     ...(pkg && {
       about: {
         '@type': 'TouristTrip',
