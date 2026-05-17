@@ -113,14 +113,19 @@ const nextConfig = {
   },
 };
 
+// Vercel Observability events 절감 (2026-05-17):
+//   - automaticVercelMonitors: false — Cron Monitor 자동 생성 끔. 88개 cron × 매 invocation 마다
+//     Vercel 측 monitor event 가산되던 부분 제거. Vercel Logs + Sentry 자체 cron capture 로 충분.
+//   - widenClientFileUpload: false — sourcemap 업로드 범위 축소.
+//     상세 stack trace 가 약간 덜 친절해지지만 매 빌드마다 업로드 트래픽/스토리지 절감.
 const sentryConfig = {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   silent: !process.env.CI,
-  widenClientFileUpload: true,
+  widenClientFileUpload: false,
   hideSourceMaps: true,
   disableLogger: true,
-  automaticVercelMonitors: true,
+  automaticVercelMonitors: false,
 };
 
 const hasSentry = !!(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
