@@ -1192,8 +1192,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <span className="shrink-0 text-red-300">•</span>
                     <span>
                       {item}
-                      {/마사지팁/.test(item) && <span className="text-red-400 text-xs ml-1">(60분 $2, 90분 $3, 120분 $4)</span>}
-                      {/매너팁|가이드팁/.test(item) && !/마사지/.test(item) && <span className="text-red-400 text-xs ml-1">(약 $1~2/일)</span>}
+                      {/* 2026-05-18 박제 (ERR-hardcoded-default-tip @ b68b08fe 나트랑):
+                          매너팁/가이드팁/마사지팁 default 금액 자동 suffix 제거.
+                          원문에 명시 안 한 사실 자동 추가는 환각 ([[feedback_card_news_faithfulness]]).
+                          금액 노출은 사장님이 원문 박은 그대로만 (excludes 본문 또는 notices_parsed). */}
                     </span>
                   </li>
                 ))}
