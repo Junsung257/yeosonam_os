@@ -1,0 +1,467 @@
+/**
+ * @file section-extractors.ts — 등록 파이프라인 7 도메인 LLM hierarchy 통합
+ *
+ * 2026-05-17 박제 (사장님 5번 반복 의도 "섹션별 LLM 처리" 전체 적용):
+ *
+ * CLAUDE.md 12절 hierarchy 를 attractions 만 적용했던 사고 종결:
+ *   - destination/display_title/product_summary  → extractHeroContextWithLLM
+ *   - price_dates (요금표 비표준 표)              → extractPriceTableWithLLM
+ *   - inclusions/excludes/notices_parsed         → extractInclusionsExcludesNoticesWithLLM
+ *
+ * 학술 출처: Mihalcea & Csomai 2007 + Andersen 2008 + Asai 2023 Self-RAG (map-reduce LLM).
+ * 호출 비용: 패키지 1개당 ~$0.005 (DeepSeek Flash + prompt cache).
+ *
+ * 호출 전략 (fire-and-forget):
+ *   upload/route.ts 등록 직후 → 3 함수 병렬 호출 → DB UPDATE → revalidate.
+ *   기존 regex parser 가 0건/빈약하면 fallback 으로만 LLM 사용 (cost ascending).
+ */
+
+import { z } from 'zod';
+import { llmCall } from '../../llm-gateway';
+import { callWithZodValidation } from '../../llm-validate-retry';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  공통 헬퍼
+// ═══════════════════════════════════════════════════════════════════════════
+
+function cleanJsonResponse(raw: string): string {
+  return raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+}
+
+async function callJsonLLM<T>(
+  label: string,
+  schema: z.ZodType<T>,
+  systemPrompt: string,
+  userPrompt: string,
+  jsonSchema: Record<string, unknown>,
+  maxTokens = 2000,
+): Promise<{ success: true; value: T } | { success: false; reason: string }> {
+  const result = await callWithZodValidation<T>({
+    label,
+    schema,
+    maxAttempts: 2,
+    preprocessor: cleanJsonResponse,
+    fn: async (feedback) => {
+      const prompt = feedback ? `${userPrompt}\n\n[이전 오류] ${feedback}\n다시 JSON 만.` : userPrompt;
+      const r = await llmCall<unknown>({
+        task: 'parse_travel_doc',
+        systemPrompt,
+        userPrompt: prompt,
+        maxTokens,
+        jsonSchema,
+      });
+      if (!r.success) throw new Error(r.errors?.join('; ') || 'LLM 실패');
+      const data = (r as { data?: unknown }).data;
+      if (data !== undefined && data !== null) return JSON.stringify(data);
+      if (r.rawText && r.rawText.length > 0) return r.rawText;
+      throw new Error('LLM 응답 없음');
+    },
+  });
+  if (result.success) return { success: true, value: result.value };
+  return { success: false, reason: result.attemptErrors?.[result.attemptErrors.length - 1] ?? 'unknown' };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ① Hero Context — destination + display_title + product_summary + hero_tagline
+// ═══════════════════════════════════════════════════════════════════════════
+
+const HeroContextSchema = z.object({
+  destination: z.string().min(2),
+  display_title: z.string().min(2),
+  product_summary: z.string().min(10),
+  hero_tagline: z.string().min(5),
+});
+export type HeroContext = z.infer<typeof HeroContextSchema>;
+
+/**
+ * raw_text 의 제목·헤더·일정·요금 구간 종합 → 4개 hero 필드 한 번에 추출.
+ *
+ * 사고 사례:
+ *   - 후쿠오카: parser 가 본문 한 줄 ("벳부의 명물인 지옥온천 순례...") 을 destination 으로 박음
+ *   - product_summary 자동 합성 → destination 환각 연쇄
+ *   - display_title NULL → 모바일 hero 후킹 없음
+ */
+export async function extractHeroContextWithLLM(
+  rawText: string,
+): Promise<{ success: true; value: HeroContext } | { success: false; reason: string }> {
+  if (!rawText || rawText.length < 50) return { success: false, reason: 'raw-text-too-short' };
+  // 토큰 절약: 첫 1500자만 (제목·헤더 구간이면 충분)
+  const head = rawText.slice(0, 1500);
+  const userPrompt = `다음 여행상품 원문에서 4개 필드를 추출:
+${head}
+
+추출 규칙:
+1. destination: 여행 목적지 도시명 (제목 / 본문 첫 5줄에서 우선). 예: "유후인/벳부/아소/쿠로가와", "북해도", "시즈오카". 본문 설명 한 줄을 채택하면 안 됨.
+2. display_title: 모바일 hero 후킹용 짧은 헤드라인 (40자 이내). 제목 라인 + 핵심 셀링포인트.
+3. product_summary: 한 줄 요약 (80~150자). 항공·호텔·핵심 코스 명시. 사실 기반, 환각 금지.
+4. hero_tagline: 8~20자 짧은 후킹 (예: "온천1박+시내1박 ♨ 큐슈 4대 핵심").
+
+JSON: {"destination":"...","display_title":"...","product_summary":"...","hero_tagline":"..."}`;
+
+  return callJsonLLM(
+    'extract-hero-context',
+    HeroContextSchema,
+    '한국어 여행상품 hero 정보 추출 전문가. raw JSON 만.',
+    userPrompt,
+    {
+      type: 'object',
+      properties: {
+        destination: { type: 'string' },
+        display_title: { type: 'string' },
+        product_summary: { type: 'string' },
+        hero_tagline: { type: 'string' },
+      },
+      required: ['destination', 'display_title', 'product_summary', 'hero_tagline'],
+    },
+    1500,
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ② Price Table — 요금표 비표준 표 추출 (extractPriceTable L1 fallback)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PriceRowSchema = z.object({
+  date: z.string().min(4),  // "2026-06-17" or "06-17" or "6/17"
+  adult_price: z.coerce.number().int().positive(),
+  child_price: z.coerce.number().int().nullable().optional(),
+  note: z.string().nullable().optional(),
+  status: z.string().nullable().optional(),
+});
+const PriceTableSchema = z.object({
+  rows: z.array(PriceRowSchema),
+});
+export type PriceRow = z.infer<typeof PriceRowSchema>;
+
+/**
+ * 비표준 요금표 LLM 추출. L1 (extractPriceTable regex) 가 0건/빈약할 때 fallback.
+ *
+ * 2026-05-17 박제 (사고 ERR-LLM-price-truncate):
+ *   후쿠오카 8구간 × 100+ row 한 번 호출 → JSON max_tokens 초과 truncate → 파싱 fail.
+ *   → 구간(월별/range) 단위 chunk 분할 후 병렬 호출 (Asai 2023 Self-RAG map-reduce).
+ */
+export async function extractPriceTableWithLLM(
+  rawText: string,
+  todayYear?: number,
+): Promise<{ success: true; rows: PriceRow[] } | { success: false; reason: string }> {
+  if (!rawText || rawText.length < 50) return { success: false, reason: 'raw-text-too-short' };
+  const year = todayYear ?? new Date().getFullYear();
+
+  // 일정표 시작점 ("제1일", "DAY 1", "일 자") 찾고 그 전까지가 가격+비고 영역.
+  // 한국 카탈로그는 보통 [제목 → 요금표 → 포함/불포함 → 비고 → 일정표] 순서.
+  const itinHints = ['제1일', 'DAY 1', 'Day 1', '제 1 일', '일 자\n', '일자\n'];
+  let endIdx = rawText.length;
+  for (const hint of itinHints) {
+    const i = rawText.indexOf(hint);
+    if (i >= 0 && i < endIdx) endIdx = i;
+  }
+  // 가격 영역만 잡기 위해 비고/포함 섹션 직전까지 자름. "포 함", "비 고", "포함사항" 등.
+  const stopHints = ['포 함 사 항', '포함사항', '포 함', '비 고', '★출발 4주', '최소출발인원'];
+  let stopIdx = endIdx;
+  for (const hint of stopHints) {
+    const i = rawText.indexOf(hint);
+    if (i >= 0 && i < stopIdx) stopIdx = i;
+  }
+  const full = rawText.slice(0, Math.min(stopIdx, 4500));
+
+  // 구간 분할 — 1500자 단위 chunk (line boundary 보존)
+  const CHUNK_SIZE = 1500;
+  const finalChunks: string[] = [];
+  if (full.length <= CHUNK_SIZE) {
+    finalChunks.push(full);
+  } else {
+    const lines = full.split(/\r?\n/);
+    let buf = '';
+    for (const line of lines) {
+      if (buf.length + line.length + 1 > CHUNK_SIZE && buf.length > 0) {
+        finalChunks.push(buf);
+        buf = line;
+      } else {
+        buf += (buf ? '\n' : '') + line;
+      }
+    }
+    if (buf.length > 0) finalChunks.push(buf);
+  }
+
+  // 각 chunk 병렬 호출 (max_tokens 2000 안전)
+  const results = await Promise.all(finalChunks.map(async (chunk) => {
+    const prompt = `다음 여행상품 요금 구간에서 모든 출발일+가격을 추출:
+${chunk}
+
+규칙:
+- date 는 "${year}-MM-DD" 형식. "5/7" → "${year}-05-07".
+- 요일 라벨 ("일~화", "수 특가") 은 해당 범위 [날짜~날짜] 안의 모든 해당 요일을 각각 row 로.
+- "★ 출확" / "(10명 출확 조건)" / "선발권 특가" 는 note 에. status 는 그대로 비워둠.
+- "5/27 제외" 같은 제외문은 그 날짜만 row 에서 빼고 note 에 명시.
+- 콤마 천 단위 가격 → 정수. "779,000원" → 779000.
+
+JSON: {"rows":[{"date":"${year}-05-07","adult_price":779000,"note":"일~화"}, ...]}`;
+
+    return callJsonLLM(
+      'extract-price-table-chunk',
+      PriceTableSchema,
+      '한국어 여행상품 요금표 추출 전문가. raw JSON 만.',
+      prompt,
+      {
+        type: 'object',
+        properties: {
+          rows: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                date: { type: 'string' },
+                adult_price: { type: 'integer' },
+                child_price: { type: 'integer' },
+                note: { type: 'string' },
+                status: { type: 'string' },
+              },
+              required: ['date', 'adult_price'],
+            },
+          },
+        },
+        required: ['rows'],
+      },
+      2000,
+    );
+  }));
+
+  const allRows: PriceRow[] = [];
+  const errors: string[] = [];
+  for (const r of results) {
+    if (r.success) allRows.push(...r.value.rows);
+    else errors.push(r.reason.slice(0, 100));
+  }
+
+  if (allRows.length === 0) {
+    return { success: false, reason: errors.length > 0 ? `all-chunks-failed: ${errors[0]}` : 'no-rows-extracted' };
+  }
+  // 중복 제거 (date + adult_price + note)
+  const seen = new Set<string>();
+  const dedup = allRows.filter(r => {
+    const key = `${r.date}|${r.adult_price}|${r.note ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { success: true, rows: dedup };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ③ Inclusions / Excludes / Notices
+// ═══════════════════════════════════════════════════════════════════════════
+
+const InclExclNoticeSchema = z.object({
+  inclusions: z.array(z.string()),
+  excludes: z.array(z.string()),
+  notices: z.array(z.object({
+    type: z.enum(['CRITICAL', 'PAYMENT', 'POLICY', 'INFO', 'PRICING_RULE']),
+    title: z.string(),
+    text: z.string(),
+  })),
+});
+export type InclExclNotice = z.infer<typeof InclExclNoticeSchema>;
+
+/**
+ * 포함/불포함/비고 LLM 추출 + 5-type 자동 분류.
+ *
+ * 5 types (notices_parsed 확장):
+ *   - CRITICAL    : 취소/환불/면책
+ *   - PAYMENT     : 추가 요금 (유류할증료/가이드경비/싱글차지)
+ *   - POLICY      : 현장 규정 (쇼핑·예약·인원 조건)
+ *   - INFO        : 정보 안내 (호텔 변경 가능성 / 항공 스케줄)
+ *   - PRICING_RULE: 가격 정책 (아동 = 성인가 등)
+ */
+export async function extractInclusionsExcludesNoticesWithLLM(
+  rawText: string,
+): Promise<{ success: true; value: InclExclNotice } | { success: false; reason: string }> {
+  if (!rawText || rawText.length < 50) return { success: false, reason: 'raw-text-too-short' };
+
+  // "포 함" / "불포함" / "비 고" 섹션 ±2000자만 추출
+  const hints = ['포 함', '포함', '불포함', '비 고', '비고', '특전', '특별 약관'];
+  const starts: number[] = [];
+  for (const h of hints) {
+    const i = rawText.indexOf(h);
+    if (i >= 0) starts.push(i);
+  }
+  const startIdx = starts.length > 0 ? Math.max(0, Math.min(...starts) - 100) : 0;
+  const segment = rawText.slice(startIdx, Math.min(rawText.length, startIdx + 3000));
+
+  const userPrompt = `다음 여행상품 원문에서 포함/불포함/비고를 추출:
+${segment}
+
+규칙:
+- inclusions: 포함 사항 (각 항목 1줄). 예: "왕복항공권+TAX", "전일정 호텔숙박 (2인1실)", "관광지 입장료", "전용차량"
+- excludes: 불포함 사항. 예: "유류세(5월 기준 155,600원)", "가이드경비(3만원 성인/아동 동일)", "기타 개인경비"
+- notices: 비고/현장규정/취소약관 항목 자동 분류:
+  * CRITICAL: 취소/환불/면책/특별약관
+  * PAYMENT: 유류할증료/가이드경비/싱글차지/추가 요금
+  * POLICY: 면세점 방문 / 최소 인원 / 예약 조건 / 쇼핑 규정
+  * INFO: 호텔 변경 가능성 / 항공 스케줄 변경 / 객실 특성
+  * PRICING_RULE: 아동가 성인 동일 / 3인실 조건 등 가격 정책
+
+JSON: {"inclusions":[...], "excludes":[...], "notices":[{"type":"...","title":"...","text":"..."}, ...]}`;
+
+  return callJsonLLM(
+    'extract-incl-excl-notices',
+    InclExclNoticeSchema,
+    '한국어 여행상품 포함/불포함/비고 추출 + 분류 전문가. raw JSON 만.',
+    userPrompt,
+    {
+      type: 'object',
+      properties: {
+        inclusions: { type: 'array', items: { type: 'string' } },
+        excludes: { type: 'array', items: { type: 'string' } },
+        notices: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { type: { type: 'string' }, title: { type: 'string' }, text: { type: 'string' } },
+            required: ['type', 'title', 'text'],
+          },
+        },
+      },
+      required: ['inclusions', 'excludes', 'notices'],
+    },
+    3000,
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Orchestration — 패키지 1개에 3 함수 모두 적용 + DB UPDATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 패키지 1개의 raw_text 로 7 도메인 LLM hierarchy 적용:
+ *   ① Hero context (destination, display_title, product_summary, hero_tagline)
+ *   ② Price table (price_dates)
+ *   ③ Inclusions / Excludes / Notices
+ *
+ * 호출 정책:
+ *   - onlyIfBlank: true (default) → 기존 값 있으면 skip. NULL/빈 컬럼만 채움.
+ *   - force: true → 기존 값 있어도 LLM 호출하고 overwrite (사장님 명시 트리거용)
+ *
+ * 사장님 정책 박제: 기존 값 verbatim 보존. LLM 은 NULL 채우기·sanity check 만.
+ */
+export async function backfillSectionsByPackageId(
+  packageId: string,
+  options: { force?: boolean } = {},
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  hero?: { applied: boolean; reason?: string };
+  price?: { applied: boolean; rowCount?: number; reason?: string };
+  notices?: { applied: boolean; counts?: { inc: number; exc: number; not: number }; reason?: string };
+}> {
+  const { supabaseAdmin, isSupabaseConfigured } = await import('../../supabase');
+  if (!isSupabaseConfigured) return { ok: false, reason: 'supabase-not-configured' };
+
+  const { data: pkg, error } = await supabaseAdmin
+    .from('travel_packages')
+    .select('id, raw_text, destination, display_title, product_summary, hero_tagline, price_dates, inclusions, excludes, notices_parsed')
+    .eq('id', packageId)
+    .maybeSingle();
+  if (error || !pkg) return { ok: false, reason: error?.message ?? 'package-not-found' };
+
+  const raw = (pkg as { raw_text?: string | null }).raw_text;
+  if (!raw || raw.length < 100) return { ok: false, reason: 'raw-text-empty' };
+
+  const p = pkg as {
+    destination?: string | null; display_title?: string | null;
+    product_summary?: string | null; hero_tagline?: string | null;
+    price_dates?: unknown; inclusions?: unknown; excludes?: unknown; notices_parsed?: unknown;
+  };
+  const force = options.force === true;
+
+  // 3 함수 병렬 호출 (cost ↓, 응답 시간 ↓)
+  const heroNeeded = force || !p.destination || p.destination.length < 2 ||
+    !p.display_title || !p.product_summary || !p.hero_tagline;
+  const priceNeeded = force || !Array.isArray(p.price_dates) || (p.price_dates as unknown[]).length === 0;
+  const noticesNeeded = force || !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0 ||
+    !Array.isArray(p.notices_parsed) || (p.notices_parsed as unknown[]).length === 0;
+
+  const [heroR, priceR, noticeR] = await Promise.all([
+    heroNeeded ? extractHeroContextWithLLM(raw) : Promise.resolve(null),
+    priceNeeded ? extractPriceTableWithLLM(raw) : Promise.resolve(null),
+    noticesNeeded ? extractInclusionsExcludesNoticesWithLLM(raw) : Promise.resolve(null),
+  ]);
+
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const result: Awaited<ReturnType<typeof backfillSectionsByPackageId>> = { ok: true };
+
+  // ① Hero
+  if (!heroNeeded) {
+    result.hero = { applied: false, reason: 'already-filled' };
+  } else if (heroR && heroR.success) {
+    if (force || !p.destination || p.destination.includes('명물') || p.destination.includes('순례')) {
+      update.destination = heroR.value.destination;
+    }
+    if (force || !p.display_title) update.display_title = heroR.value.display_title;
+    if (force || !p.product_summary || p.product_summary.includes('명물') || p.product_summary.includes('순례')) {
+      update.product_summary = heroR.value.product_summary;
+    }
+    if (force || !p.hero_tagline) update.hero_tagline = heroR.value.hero_tagline;
+    result.hero = { applied: true };
+  } else if (heroR) {
+    result.hero = { applied: false, reason: heroR.reason };
+  }
+
+  // ② Price
+  if (!priceNeeded) {
+    result.price = { applied: false, reason: 'already-filled' };
+  } else if (priceR && priceR.success) {
+    // PriceRow → price_dates jsonb 형식
+    const priceDates = priceR.rows.map(r => ({
+      date: r.date,
+      price: r.adult_price,
+      child_price: r.child_price ?? null,
+      note: r.note ?? null,
+      status: r.status ?? 'available',
+    }));
+    update.price_dates = priceDates;
+    result.price = { applied: true, rowCount: priceDates.length };
+  } else if (priceR) {
+    result.price = { applied: false, reason: priceR.reason };
+  }
+
+  // ③ Inclusions / Excludes / Notices
+  if (!noticesNeeded) {
+    result.notices = { applied: false, reason: 'already-filled' };
+  } else if (noticeR && noticeR.success) {
+    if (force || !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0) {
+      update.inclusions = noticeR.value.inclusions;
+    }
+    if (force || !Array.isArray(p.excludes) || (p.excludes as unknown[]).length === 0) {
+      update.excludes = noticeR.value.excludes;
+    }
+    if (force || !Array.isArray(p.notices_parsed) || (p.notices_parsed as unknown[]).length === 0) {
+      update.notices_parsed = noticeR.value.notices;
+    }
+    result.notices = {
+      applied: true,
+      counts: { inc: noticeR.value.inclusions.length, exc: noticeR.value.excludes.length, not: noticeR.value.notices.length },
+    };
+  } else if (noticeR) {
+    result.notices = { applied: false, reason: noticeR.reason };
+  }
+
+  // UPDATE 가 실질 변경 1건 이상 있을 때만 (updated_at 만 있으면 skip)
+  if (Object.keys(update).length <= 1) {
+    return { ...result, ok: true, reason: 'no-changes' };
+  }
+
+  const { error: upErr } = await supabaseAdmin
+    .from('travel_packages')
+    .update(update)
+    .eq('id', packageId);
+  if (upErr) return { ok: false, reason: upErr.message };
+
+  // ISR revalidate
+  try {
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath(`/packages/${packageId}`);
+    revalidatePath(`/m/packages/${packageId}`);
+  } catch { /* no-op */ }
+
+  return result;
+}
