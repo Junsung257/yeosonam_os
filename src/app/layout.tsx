@@ -6,6 +6,7 @@ import PartytownInit from '@/components/PartytownInit';
 import MetaPixel from '@/components/MetaPixel';
 import KakaoMomentPixel from '@/components/KakaoMomentPixel';
 import MsClarity from '@/components/MsClarity';
+import GA4Tracker from '@/components/GA4Tracker';
 import TrackerBootstrap from '@/components/TrackerBootstrap';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
@@ -167,6 +168,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${pretendard.className} bg-gray-50 antialiased`}>
         <PartytownInit />
         <TrackerBootstrap />
+        <GA4Tracker />
         <MetaPixel />
         <KakaoMomentPixel />
         <MsClarity />

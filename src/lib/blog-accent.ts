@@ -57,6 +57,12 @@ export function applyMarkdownAccents(md: string): string {
   // 0) 범위 표기 정규화 (strikethrough 폭주 방지) — 가장 먼저 적용
   let out = normalizeRangeDashes(md);
 
+  // 0-b) 본문 markdown 의 모든 H1(`# `) → H2(`## `) 강등.
+  //     이유: blog/[slug]/page.tsx 가 seo_title 을 SEO 표준 <h1> 으로 이미 출력하므로,
+  //     본문에 H1 이 또 있으면 Google 가이드 위반 (페이지당 H1 1개 권장 → CTR/순위 페널티).
+  //     사고: 세부 6월 글 라이브 측정 시 H1 2개 발견 (2026-05-17 라운드 4).
+  out = out.replace(/^# /gm, '## ');
+
   // 1) ==text== → <mark>…</mark>
   //    개행 포함 X, 빈 내용 X
   out = out.replace(/==([^=\n]{1,120}?)==/g, '<mark>$1</mark>');

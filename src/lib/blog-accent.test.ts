@@ -96,6 +96,41 @@ describe('normalizeRangeDashes', () => {
   });
 });
 
+describe('applyMarkdownAccents — H1 중복 차단 (라운드 4 사장님 발견)', () => {
+  /**
+   * 사고: 라이브 측정에서 H1 2개 (page.tsx 의 <h1>seo_title</h1> + 본문 markdown `# 제목`).
+   *      Google 가이드 "페이지당 H1 1개" 위반 → 순위 페널티.
+   * 픽스: 본문 markdown 의 모든 `# ` → `## ` 자동 강등 (page.tsx 가 SEO H1 SSOT).
+   */
+  it('본문 첫 줄 H1 → H2 강등', () => {
+    const md = '# 세부 6월 날씨\n\n본문 시작';
+    const out = applyMarkdownAccents(md);
+    expect(out).toContain('## 세부 6월 날씨');
+    // 라인 시작에 단독 `# ` (## 아닌) 가 남아있으면 안 됨
+    expect(out).not.toMatch(/^# (?!#)/m);
+  });
+
+  it('본문 중간 H1도 H2로 강등', () => {
+    const md = '## 섹션1\n\n# 잘못 박힌 H1\n\n본문';
+    const out = applyMarkdownAccents(md);
+    expect(out).toContain('## 섹션1');
+    expect(out).toContain('## 잘못 박힌 H1');
+    expect(out).not.toMatch(/^# /m);
+  });
+
+  it('H2/H3 은 건드리지 않음', () => {
+    const md = '## 그대로 H2\n\n### 그대로 H3';
+    const out = applyMarkdownAccents(md);
+    expect(out).toBe('## 그대로 H2\n\n### 그대로 H3');
+  });
+
+  it('인라인 #해시태그 는 H1 으로 오인하지 않음 (앞에 공백 있어야 H1)', () => {
+    const md = '본문 #해시태그 끝';
+    const out = applyMarkdownAccents(md);
+    expect(out).toBe('본문 #해시태그 끝');
+  });
+});
+
 describe('applyMarkdownAccents (normalizeRangeDashes integration)', () => {
   it('range 변환 + ==highlight== 함께 적용', () => {
     const md = '평균 ==25~32℃== 입니다';
