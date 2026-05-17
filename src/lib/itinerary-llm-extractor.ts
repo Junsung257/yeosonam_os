@@ -378,6 +378,12 @@ export async function backfillPackageAttractionsL3(
     .eq('id', packageId);
   if (upErr) return { ok: false, reason: upErr.message, before: beforeRate, llmCalls };
 
+  // 2026-05-17 박제 (ERR-audit-stale-snapshot): backfill 후 audit_report 자동 정정
+  try {
+    const { refreshAuditAfterBackfill } = await import('./parser/llm/section-extractors');
+    await refreshAuditAfterBackfill(packageId);
+  } catch { /* no-op */ }
+
   try {
     const { revalidatePath } = await import('next/cache');
     revalidatePath(`/packages/${packageId}`);

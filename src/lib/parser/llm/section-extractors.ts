@@ -456,7 +456,12 @@ export async function backfillSectionsByPackageId(
     .eq('id', packageId);
   if (upErr) return { ok: false, reason: upErr.message };
 
-  // ISR revalidate
+  // 2026-05-17 박제 (ERR-audit-stale-snapshot):
+  //   audit_report 는 등록 시점 snapshot. backfill 로 NULL 채워도 사장님 화면엔
+  //   옛 경고 그대로 보임. 채워진 컬럼은 audit_report 의 해당 check 를 pass 로 갱신.
+  await refreshAuditAfterBackfill(packageId);
+
+  // ISR revalidate (server context 내부)
   try {
     const { revalidatePath } = await import('next/cache');
     revalidatePath(`/packages/${packageId}`);
@@ -464,4 +469,48 @@ export async function backfillSectionsByPackageId(
   } catch { /* no-op */ }
 
   return result;
+}
+
+/**
+ * 2026-05-17 박제 (ERR-audit-stale-snapshot):
+ *   backfill 후 audit_report 의 해당 check 자동 정정.
+ *   - C6 (price_dates): price_dates 1+ 건 있으면 pass
+ *   - C11 (display_title): display_title 있으면 pass
+ *   - 모든 warn 이 사라지면 audit_status='clean', status pending_review → approved 가능
+ *
+ * 사장님 시선 (audit_report 옛 snapshot 경고) 차단.
+ */
+export async function refreshAuditAfterBackfill(packageId: string): Promise<void> {
+  const { supabaseAdmin } = await import('../../supabase');
+  const { data: pkg } = await supabaseAdmin
+    .from('travel_packages')
+    .select('display_title, price_dates, audit_report, audit_status, status, inclusions, notices_parsed')
+    .eq('id', packageId)
+    .maybeSingle();
+  if (!pkg) return;
+  const p = pkg as { display_title?: string | null; price_dates?: unknown; audit_report?: { checks?: Array<{ id: string; status: string; detail: string; label?: string }>; [k: string]: unknown } | null; audit_status?: string; status?: string; inclusions?: unknown; notices_parsed?: unknown };
+  const report = p.audit_report;
+  if (!report?.checks?.length) return;
+
+  const dt = p.display_title;
+  const pdLen = Array.isArray(p.price_dates) ? (p.price_dates as unknown[]).length : 0;
+  const newChecks = report.checks.map(c => {
+    // C11 (hero 정합성) — display_title 채워졌으면 pass
+    if (c.id === 'C11' && dt && dt.trim().length >= 2) {
+      return { ...c, status: 'pass', detail: `display_title 박힘 (LLM backfill)` };
+    }
+    // C6 (가격 데이터) — price_dates 1건+ 있으면 pass
+    if (c.id === 'C6' && pdLen > 0) {
+      return { ...c, status: 'pass', detail: `price_dates ${pdLen}건 (LLM backfill)` };
+    }
+    return c;
+  });
+
+  const stillWarn = newChecks.filter(c => c.status === 'warn').length;
+  const newAuditStatus = stillWarn === 0 ? 'clean' : (p.audit_status === 'blocked' ? 'blocked' : 'warnings');
+
+  await supabaseAdmin
+    .from('travel_packages')
+    .update({ audit_report: { ...report, checks: newChecks }, audit_status: newAuditStatus, updated_at: new Date().toISOString() })
+    .eq('id', packageId);
 }
