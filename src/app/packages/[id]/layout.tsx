@@ -1,18 +1,14 @@
 import type { Metadata } from 'next';
+import { getPackageById } from '@/lib/supabase';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
+// 2026-05-18 박제 (ERR-layout-page-source-drift):
+//   기존 fetch('/api/packages?id=...') 는 page.tsx 의 supabaseAdmin 직접 쿼리 와
+//   별도 데이터 소스 (BASE_URL HTTP 왕복 + ISR 300s 캐시). 캐시 만료 타이밍 어긋나면
+//   meta 와 본문 drift 가능. getPackageById SSOT 통일.
 async function getPackage(id: string) {
-  try {
-    const res = await fetch(`${BASE_URL}/api/packages?id=${id}`, {
-      next: { revalidate: 300 },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.package ?? null;
-  } catch {
-    return null;
-  }
+  return await getPackageById(id);
 }
 
 export async function generateMetadata({
@@ -42,14 +38,18 @@ export async function generateMetadata({
     ? parts.join(' | ')
     : '여소남에서 안심 여행을 예약하세요.';
 
-  // OG 이미지: 상품 대표사진 → 호텔/관광지 사진 → 브랜드 기본 이미지 폴백
-  // 카톡/페북 미리보기는 절대 URL + 1200×630 권장
+  // OG 이미지: itinerary_data 의 호텔/관광지 사진 → 브랜드 기본 이미지 폴백.
+  // 2026-05-18 박제 (PR #102 패턴): thumbnail_urls, hero_image_url 은 travel_packages 에 미존재 컬럼.
+  //   기존 코드는 undefined 로 silently fallback 했지만 dead-code 위생 정리.
   const firstItineraryPhoto = (() => {
     try {
-      const days = Array.isArray(pkg.itinerary_data) ? pkg.itinerary_data : [];
+      const root = pkg.itinerary_data as { days?: Array<Record<string, unknown>> } | null;
+      const days = Array.isArray(pkg.itinerary_data)
+        ? (pkg.itinerary_data as Array<Record<string, unknown>>)
+        : (root?.days ?? []);
       for (const day of days) {
-        const items = Array.isArray(day?.items) ? day.items : [];
-        for (const it of items) {
+        const items = Array.isArray(day?.schedule) ? day.schedule : (Array.isArray(day?.items) ? day.items : []);
+        for (const it of items as Array<{ photo?: string; image?: string; hotel?: { image?: string } }>) {
           const photo = it?.photo || it?.image || it?.hotel?.image;
           if (typeof photo === 'string' && photo.startsWith('http')) return photo;
         }
@@ -58,11 +58,7 @@ export async function generateMetadata({
     return null;
   })();
 
-  const heroCandidate: string | null =
-    (Array.isArray(pkg.thumbnail_urls) && pkg.thumbnail_urls[0]) ||
-    pkg.hero_image_url ||
-    firstItineraryPhoto ||
-    null;
+  const heroCandidate: string | null = firstItineraryPhoto;
 
   const ogImage = heroCandidate
     ? (heroCandidate.startsWith('http') ? heroCandidate : `${BASE_URL}${heroCandidate}`)

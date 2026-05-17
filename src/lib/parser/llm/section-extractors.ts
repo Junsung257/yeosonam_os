@@ -19,6 +19,7 @@
 import { z } from 'zod';
 import { llmCall } from '../../llm-gateway';
 import { callWithZodValidation } from '../../llm-validate-retry';
+import { KOREAN_DESTINATION_TO_ISO } from '../../destination-iso';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  공통 헬퍼
@@ -68,6 +69,60 @@ async function callJsonLLM<T>(
 // ═══════════════════════════════════════════════════════════════════════════
 //  ① Hero Context — destination + display_title + product_summary + hero_tagline
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 2026-05-18 박제 (CLAUDE.md §12-1 L1 rule):
+ *   Hero context 가 L3 (LLM) 직접 호출만 있던 사고 (extractHeroContextWithLLM).
+ *   제목 첫 줄에서 KOREAN_DESTINATION_TO_ISO 키를 substring 매칭해 destination 우선 추출.
+ *   destination + display_title 모두 잡히면 LLM 호출 자체 skip → 토큰 절감 ~30%.
+ *
+ * 환각 차단:
+ *   product_summary, hero_tagline 은 자동 생성 안 함 (NULL 유지 → 어드민 수동 입력 우선).
+ *   사장님 정책 [[feedback_card_news_faithfulness]]: 원문 명시 안 한 사실 자동 추가 금지.
+ */
+export function extractHeroContextL1(rawText: string): {
+  destination?: string;
+  display_title?: string;
+  confidence: 'high' | 'low';
+} {
+  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { confidence: 'low' };
+
+  // 제목 라인 후보: 첫 5줄 중 적절한 길이 (6~80자) + "일정표/일자" 등 헤더 제외
+  let titleLine = lines[0];
+  for (const ln of lines.slice(0, 5)) {
+    if (ln.length < 6 || ln.length > 80) continue;
+    if (/^(일\s*자|일정\s*표|DAY\s*\d|제\s*\d\s*일)/i.test(ln)) continue;
+    titleLine = ln;
+    break;
+  }
+
+  // KOREAN_DESTINATION_TO_ISO 키 중 titleLine 에서 매칭. 긴 토큰 우선 (prefix 충돌 차단).
+  const tokens = Object.keys(KOREAN_DESTINATION_TO_ISO).sort((a, b) => b.length - a.length);
+  const found: string[] = [];
+  const remaining = titleLine;
+  for (const tok of tokens) {
+    if (tok.length < 2) continue;
+    if (remaining.includes(tok)) {
+      // 이미 추가된 더 긴 토큰의 substring 이면 skip (예: "후쿠오카" 추가 후 "후쿠" skip)
+      if (found.some(f => f.includes(tok))) continue;
+      found.push(tok);
+      if (found.length >= 3) break;
+    }
+  }
+
+  const trimmedTitle = titleLine.length <= 40 ? titleLine : titleLine.slice(0, 40);
+
+  if (found.length === 0) {
+    return { display_title: trimmedTitle, confidence: 'low' };
+  }
+
+  return {
+    destination: found.join('/'),
+    display_title: trimmedTitle,
+    confidence: 'high',
+  };
+}
 
 const HeroContextSchema = z.object({
   destination: z.string().min(2),
@@ -384,8 +439,21 @@ export async function backfillSectionsByPackageId(
   const noticesNeeded = force || !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0 ||
     !Array.isArray(p.notices_parsed) || (p.notices_parsed as unknown[]).length === 0;
 
+  // 2026-05-18 박제 (CLAUDE.md §12-1 L1 rule):
+  //   Hero LLM 호출 전 제목 regex 시도. destination + display_title 둘 다 잡히면 LLM skip.
+  //   force=true 면 L1 우회 (사장님이 직접 강제 재추출 요청한 경우).
+  //   토큰 절감 ~30% (제목 명확한 신규 패키지 대다수).
+  let heroL1Skipped = false;
+  const heroL1 = (heroNeeded && !force && (!p.destination || p.destination.length < 2 || !p.display_title))
+    ? extractHeroContextL1(raw)
+    : null;
+
+  // L1 high confidence 시 hero LLM 호출 skip 결정
+  const heroL1Sufficient = !!(heroNeeded && heroL1?.confidence === 'high' && heroL1.destination && heroL1.display_title);
+  if (heroL1Sufficient) heroL1Skipped = true;
+
   const [heroR, priceR, noticeR] = await Promise.all([
-    heroNeeded ? extractHeroContextWithLLM(raw) : Promise.resolve(null),
+    heroL1Sufficient ? Promise.resolve(null) : (heroNeeded ? extractHeroContextWithLLM(raw) : Promise.resolve(null)),
     priceNeeded ? extractPriceTableWithLLM(raw) : Promise.resolve(null),
     noticesNeeded ? extractInclusionsExcludesNoticesWithLLM(raw) : Promise.resolve(null),
   ]);
@@ -396,6 +464,12 @@ export async function backfillSectionsByPackageId(
   // ① Hero
   if (!heroNeeded) {
     result.hero = { applied: false, reason: 'already-filled' };
+  } else if (heroL1Skipped && heroL1) {
+    // L1 rule 적용: destination + display_title 만 박고 LLM skip (~30% 토큰 절감)
+    if (!p.destination || p.destination.length < 2) update.destination = heroL1.destination;
+    if (!p.display_title) update.display_title = heroL1.display_title;
+    // product_summary, hero_tagline 은 NULL 유지 (환각 차단 — 어드민 수동 입력)
+    result.hero = { applied: true, reason: 'L1-rule' };
   } else if (heroR && heroR.success) {
     if (force || !p.destination || p.destination.includes('명물') || p.destination.includes('순례')) {
       update.destination = heroR.value.destination;

@@ -17,6 +17,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getSecret } from '@/lib/secret-registry';
+import { traceLlmCall, recordLlmUsage } from '@/lib/telemetry/llm-tracer';
 
 export interface SuspiciousField {
   field_path: string;       // 'inclusions[2]', 'min_participants', 'days[1].schedule[0].activity'
@@ -127,24 +128,37 @@ export async function crossValidateWithGemini(
 
   const start = Date.now();
   try {
-    const res = await model.generateContent(userPrompt);
-    const elapsed = Date.now() - start;
-    const txt = res.response.text();
-    const parsed = JSON.parse(txt) as {
-      recommendation: 'pass' | 'review' | 'reject';
-      overall_confidence: number;
-      suspicious_fields: SuspiciousField[];
-      reasoning: string;
-    };
-
-    return {
-      available: true,
-      recommendation: parsed.recommendation,
-      overall_confidence: parsed.overall_confidence ?? 0,
-      suspicious_fields: parsed.suspicious_fields || [],
-      reasoning: parsed.reasoning || '',
-      elapsed_ms: elapsed,
-    };
+    // 2026-05-18 박제: OTel span + usage 추적 (기존 llm-gateway 우회로 비용 미집계되던 사고).
+    const modelName = options.model || 'gemini-2.5-flash';
+    const result = await traceLlmCall(
+      { task: 'cross-validate', provider: 'gemini', model: modelName, phase: 'executor' },
+      async (span) => {
+        const res = await model.generateContent(userPrompt);
+        const elapsed = Date.now() - start;
+        const txt = res.response.text();
+        const usage = res.response.usageMetadata;
+        recordLlmUsage(span, {
+          input: usage?.promptTokenCount,
+          output: usage?.candidatesTokenCount,
+          latency_ms: elapsed,
+        });
+        const parsed = JSON.parse(txt) as {
+          recommendation: 'pass' | 'review' | 'reject';
+          overall_confidence: number;
+          suspicious_fields: SuspiciousField[];
+          reasoning: string;
+        };
+        return {
+          available: true as const,
+          recommendation: parsed.recommendation,
+          overall_confidence: parsed.overall_confidence ?? 0,
+          suspicious_fields: parsed.suspicious_fields || [],
+          reasoning: parsed.reasoning || '',
+          elapsed_ms: elapsed,
+        };
+      },
+    );
+    return result;
   } catch (e) {
     return {
       available: false, recommendation: 'pass', overall_confidence: 0, suspicious_fields: [], reasoning: '',

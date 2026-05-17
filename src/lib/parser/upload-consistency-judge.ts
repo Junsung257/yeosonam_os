@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import { getSecret } from '@/lib/secret-registry';
+import { traceLlmCall, recordLlmUsage } from '@/lib/telemetry/llm-tracer';
 
 const JUDGE_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
@@ -44,11 +45,25 @@ export async function judgeCatalogProductCountConsistency(
 ${rawTextSnippet.slice(0, 6000)}
 ---`;
 
+  // 2026-05-18 박제: OTel span + usage 추적 (llm-gateway 우회 비용 미집계 정정)
+  const start = Date.now();
   try {
-    const res = await model.generateContent(prompt);
-    const txt = res.response.text();
-    const parsed = JSON.parse(txt) as { consistent?: boolean };
-    return { consistent: parsed.consistent !== false, skipped: false };
+    const result = await traceLlmCall(
+      { task: 'judge', provider: 'gemini', model: 'gemini-2.5-flash', phase: 'executor' },
+      async (span) => {
+        const res = await model.generateContent(prompt);
+        const usage = res.response.usageMetadata;
+        recordLlmUsage(span, {
+          input: usage?.promptTokenCount,
+          output: usage?.candidatesTokenCount,
+          latency_ms: Date.now() - start,
+        });
+        const txt = res.response.text();
+        const parsed = JSON.parse(txt) as { consistent?: boolean };
+        return { consistent: parsed.consistent !== false, skipped: false };
+      },
+    );
+    return result;
   } catch {
     return { consistent: true, skipped: false };
   }

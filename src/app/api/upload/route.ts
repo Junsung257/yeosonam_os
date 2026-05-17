@@ -1542,16 +1542,30 @@ export async function POST(request: NextRequest) {
     if (isSupabaseConfigured && !bulkMode) {
       try {
         if (unmatchedRowsToInsert.length > 0) {
+          // 2026-05-18 박제 (ERR-unmatched-count-stuck-at-1):
+          //   기존 upsert 는 occurrence_count: 1 고정 → 같은 activity 재등장 시 빈도 누적 0.
+          //   migration 20260518100000_unmatched_count_increment 의 RPC 로 atomic +1.
+          //   RPC 미적용 환경에서는 legacy upsert 로 fallback (function not found 감지).
           for (const u of unmatchedRowsToInsert) {
-            await supabaseAdmin.from('unmatched_activities').upsert({
-              activity: u.activity,
-              package_id: u.package_id,
-              package_title: u.package_title,
-              day_number: u.day_number,
-              country: u.country,
-              occurrence_count: 1,
-              status: 'pending',
-            }, { onConflict: 'activity' });
+            const r = await supabaseAdmin.rpc('increment_unmatched_count', {
+              p_activity: u.activity,
+              p_package_id: u.package_id,
+              p_package_title: u.package_title,
+              p_day_number: u.day_number,
+              p_country: u.country,
+            });
+            if (r.error) {
+              // RPC 미적용 fallback (idempotent legacy 동작)
+              await supabaseAdmin.from('unmatched_activities').upsert({
+                activity: u.activity,
+                package_id: u.package_id,
+                package_title: u.package_title,
+                day_number: u.day_number,
+                country: u.country,
+                occurrence_count: 1,
+                status: 'pending',
+              }, { onConflict: 'activity' });
+            }
           }
           console.log(`[Upload API] 미매칭 관광지 ${unmatchedRowsToInsert.length}개 수집됨`);
         }
