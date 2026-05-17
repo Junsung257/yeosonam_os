@@ -358,6 +358,34 @@ async function auditOne(pkg, baseUrl) {
     console.log(`   [Country ISO Audit] 실패(무시): ${e.message}`);
   }
 
+  // 1-b4. C44 박제 (2026-05-17, ▶헤딩+부속 parser 사고):
+  //   itinerary_data.days[].schedule[] 중 attraction-likely item (flight/hotel/shopping
+  //   제외) 의 attraction_ids 매칭률 < 50% 면 WARN. LLM extractor 가 실패한 패키지
+  //   알림용. 사장님 어드민에서 수동 트리거 또는 다음 LLM backfill 대상 식별.
+  try {
+    let total = 0, matched = 0;
+    const days = (pkg.itinerary_data && pkg.itinerary_data.days) || [];
+    for (const d of days) {
+      for (const s of (d.schedule || [])) {
+        if (!s || !s.activity) continue;
+        const t = s.type;
+        if (t === 'flight' || t === 'hotel' || t === 'shopping') continue;
+        // skip 활동 키워드 (이동/공항/식사 등)
+        if (/^(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|호텔 조식)/.test(s.activity.trim())) continue;
+        total++;
+        if (Array.isArray(s.attraction_ids) && s.attraction_ids.length > 0) matched++;
+      }
+    }
+    if (total >= 5 && matched / total < 0.5) {
+      const rate = (matched / total * 100).toFixed(0);
+      result.warnings.push(
+        `C44 schedule attraction_ids 매칭률 ${rate}% (${matched}/${total}) — 50% 미달, LLM itinerary 재추출 권장 (POST /api/admin/itinerary/re-extract?package_id=${pkg.id})`
+      );
+    }
+  } catch (e) {
+    console.log(`   [Schedule Match Audit] 실패(무시): ${e.message}`);
+  }
+
   // ─── Parallel async wave ─────────────────────────────────────────────
   // 독립적인 비동기 작업 3종을 동시에 발사: RAG 임베딩 조회, CoVe 감사(opt-in),
   // 렌더 HTML fetch. 각각 평균 200~3000ms 라 순차 실행 시 누적 5초+ → 병렬 시 가장

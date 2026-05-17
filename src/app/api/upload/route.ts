@@ -1623,6 +1623,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── [G2] LLM 기반 itinerary 재추출 (2026-05-17 박제) ─────────────────────────
+    //   기존 regex parser 가 잡지 못하는 5가지 랜드사 패턴 (▶헤딩\n부속코스,
+    //   ▶<설명><이름>, ▶<영역>\n-<부속>, "및" 분리 등) 을 DeepSeek Flash 로 정확히
+    //   재추출. fire-and-forget — 사장님 응답 블로킹 안 함.
+    //   비용: 패키지 1개당 ~$0.001. backfill 시 더 큰 batch 도 동일.
+    if (savedIds.length > 0) {
+      for (const pkgId of savedIds) {
+        void (async () => {
+          try {
+            const { reExtractAndUpdateItineraryByPackageId } = await import('@/lib/itinerary-llm-extractor');
+            const r = await reExtractAndUpdateItineraryByPackageId(pkgId, { skipIfMatchRateAbove: 0.9 });
+            if (r.ok) {
+              console.log(`[Upload API] LLM itinerary re-extract: ${pkgId.slice(0, 8)} ${((r.before ?? 0) * 100).toFixed(0)}% → ${((r.after ?? 0) * 100).toFixed(0)}%`);
+            } else {
+              console.warn(`[Upload API] LLM itinerary re-extract skip/fail: ${pkgId.slice(0, 8)} — ${r.reason}`);
+            }
+          } catch (e) {
+            console.warn('[Upload API] LLM itinerary re-extract 예외(무시):', e instanceof Error ? e.message : e);
+          }
+        })();
+      }
+    }
+
     // ── [H] document_hashes 기록 (파싱 완료 후 해시 저장) ────────────────────
 
     if (isSupabaseConfigured && savedInternalCodes.length > 0) {
