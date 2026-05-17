@@ -384,10 +384,10 @@ export async function backfillPackageAttractionsL3(
     await refreshAuditAfterBackfill(packageId);
   } catch { /* no-op */ }
 
+  // 2026-05-17 박제 (ERR-dev-revalidate-누락): prod + dev 동시 revalidate
   try {
-    const { revalidatePath } = await import('next/cache');
-    revalidatePath(`/packages/${packageId}`);
-    revalidatePath(`/m/packages/${packageId}`);
+    const { revalidatePackagePaths } = await import('./revalidate-helper');
+    await revalidatePackagePaths(packageId, { alsoServerContext: true });
   } catch { /* no-op */ }
 
   const afterStats = countMatchStats(newItin);
