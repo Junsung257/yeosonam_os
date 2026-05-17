@@ -6,7 +6,7 @@ import ReviewsSection from '@/components/reviews/ReviewsSection';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
-import { destinationToIsoSet } from '@/lib/destination-iso';
+import { destinationToIsoSet, extractDestinationTokens } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
@@ -392,8 +392,24 @@ export default async function PackageDetailPage({
     const since24h = new Date(Date.now() - 86400000).toISOString();
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    const destPkgIds = (await sb.from('travel_packages').select('id').eq('destination', pkg.destination))
-      .data?.map((p: { id: string }) => p.id) ?? [];
+    // 2026-05-18 박제 (ERR-social-proof-eq-mismatch):
+    //   기존 raw `.eq('destination', pkg.destination)` 는 "다낭" 패키지가 "다낭/호이안" 패키지를 못 봄.
+    //   tokenize 후 첫 토큰(메인 도시) ilike 매칭으로 회복 + raw eq 도 합집합으로 fallback 보존.
+    const destPkgIdsSet = new Set<string>();
+    const destTokens = extractDestinationTokens(pkg.destination);
+    const mainDestToken = destTokens[0] ?? null;
+    const destLookups = await Promise.all([
+      sb.from('travel_packages').select('id').eq('destination', pkg.destination),
+      mainDestToken
+        ? sb.from('travel_packages').select('id').ilike('destination', `%${mainDestToken}%`)
+        : Promise.resolve({ data: [] as Array<{ id: string }> }),
+    ]);
+    for (const q of destLookups) {
+      for (const row of (q.data ?? []) as Array<{ id: string }>) {
+        if (row?.id) destPkgIdsSet.add(row.id);
+      }
+    }
+    const destPkgIds = Array.from(destPkgIdsSet);
 
     // 가장 가까운 미래 출발일 탐색 (price_dates 또는 price_tiers에서)
     const pd = (pkg as { price_dates?: { date: string }[] }).price_dates ?? [];

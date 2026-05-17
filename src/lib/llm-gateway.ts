@@ -233,6 +233,13 @@ export interface GatewayCallParams {
   enableCaching?: boolean;
   autoEscalate?: boolean;  // true면 복잡도 감지 후 자동 task 업그레이드 (기본 true)
   /**
+   * 2026-05-18 박제 (ERR-llm-retry-stack): 내부 executor 재시도 횟수 호출자 override.
+   * ROUTING.maxRetries 보다 우선. 외부 layer (callWithZodValidation) 와 중첩 재시도하면
+   * 최대 호출 = 외부 maxAttempts × (내부 maxRetries + 1) 이라 빠르게 폭주.
+   * section-extractors 등 외부 재시도가 있는 경우 1 로 강제해서 총 호출 상한 유지.
+   */
+  maxRetries?: number;
+  /**
    * Claude/Anthropic 호출에 한해 prompt cache TTL 을 1h 로 끌어올린다.
    * 기본 ephemeral 은 5분 — register Step 0~7 처럼 한 번의 등록이 5분 넘게 끌리거나
    * 동일 system prompt 로 batch 호출(여러 상품 연속 등록)할 때 cache miss 비용을 줄인다.
@@ -637,7 +644,8 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
   const envTimeout = Number(process.env.AI_EXECUTOR_TIMEOUT_MS || 0);
   const timeoutMs = policy.timeoutMs ?? (envTimeout > 0 ? envTimeout : null);
   const errors: string[] = [];
-  const maxRetries = route.maxRetries ?? 2;
+  // 호출자 override (params.maxRetries) > ROUTING 기본 (route.maxRetries) > fallback 2
+  const maxRetries = params.maxRetries ?? route.maxRetries ?? 2;
 
   // ─── 비용 기록 헬퍼 (fail-open) ────────────────────────────────────────────
   function recordCost(result: GatewayResult, model: string, provider: 'deepseek' | 'gemini' | 'claude') {

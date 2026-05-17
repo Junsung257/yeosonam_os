@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { destinationToIsoSet, KOREAN_DESTINATION_TO_ISO, inferCountryFromDestination } from './destination-iso';
+import {
+  destinationToIsoSet,
+  KOREAN_DESTINATION_TO_ISO,
+  inferCountryFromDestination,
+  extractDestinationTokens,
+} from './destination-iso';
 
 describe('destination-iso SSOT', () => {
   it('단일 도시 매핑', () => {
@@ -55,6 +60,36 @@ describe('destination-iso SSOT', () => {
       '나고야', '히로시마', '고베', '요코하마',
     ])('"%s" → JP', (dest) => {
       expect(KOREAN_DESTINATION_TO_ISO[dest]).toBe('JP');
+    });
+  });
+
+  // 2026-05-18 박제 (ERR-social-proof-eq-mismatch):
+  //   /packages/[id]/page.tsx social proof 가 raw .eq('destination', pkg.destination) 였음.
+  //   tokenize → 첫 토큰 ilike 매칭으로 회복. 회귀 fixture 박제.
+  describe('extractDestinationTokens — social proof 정규화 (회귀 차단)', () => {
+    it('단일 도시', () => {
+      expect(extractDestinationTokens('시즈오카')).toEqual(['시즈오카']);
+    });
+    it('슬래시 구분자 (계림 사고 패턴)', () => {
+      expect(extractDestinationTokens('계림/양삭')).toEqual(['계림', '양삭']);
+    });
+    it('복합 구분자 (콤마·중점·플러스·공백)', () => {
+      expect(extractDestinationTokens('유후인/벳부·아소 + 쿠로가와')).toEqual(['유후인', '벳부', '아소', '쿠로가와']);
+    });
+    it('빈/null → 빈 배열', () => {
+      expect(extractDestinationTokens(null)).toEqual([]);
+      expect(extractDestinationTokens(undefined)).toEqual([]);
+      expect(extractDestinationTokens('')).toEqual([]);
+      expect(extractDestinationTokens('   ')).toEqual([]);
+    });
+    it('메인 토큰 (첫 번째) 보존 — page.tsx ilike 매칭용', () => {
+      expect(extractDestinationTokens('다낭/호이안')[0]).toBe('다낭');
+      expect(extractDestinationTokens('나트랑/달랏/푸꾸옥')[0]).toBe('나트랑');
+    });
+    it('비-ISO 표기도 토큰화 (시즈오카 사고 회복 fixture)', () => {
+      // 시즈오카는 destination 으로 박혀있지만 ISO 매핑 늦게 추가됨.
+      // 그 사이 등록된 패키지를 social proof 합산하려면 raw 표기로도 tokenize 가능해야 함.
+      expect(extractDestinationTokens('시즈오카')).toContain('시즈오카');
     });
   });
 

@@ -197,6 +197,13 @@ export const PackageCoreSchema = z.object({
   special_notes: z.string().nullable().optional(),
   product_highlights: z.array(z.string()).default([]),
 
+  // Hero 2-tier (2026-05-18 박제): 모바일 hero 후킹용. PR #113 extractHeroContextWithLLM 자동 생성.
+  //   기존 PackageStrictSchema 에 미정의 → AgentProposalSchema .passthrough() 만 통과시켰음.
+  //   AI 파서 출력이 Zod 검증 우회하던 사고 차단. INSERT 시점에 길이 보장 (display_title min 2, summary min 10).
+  display_title: z.string().min(2).nullable().optional(),
+  hero_tagline: z.string().min(2).nullable().optional(),
+  product_summary: z.string().min(10).nullable().optional(),
+
   // 메타
   product_type: z.string().nullable().optional(),
   // 실제 운영 중인 status 값 전체 (레거시 + 신규 워크플로우 모두 수용)
