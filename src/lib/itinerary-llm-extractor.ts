@@ -34,7 +34,36 @@ const KeywordsSchema = z.object({
   keywords: z.array(z.string().min(1)).max(10),
 });
 
-const NON_ATTRACTION_PATTERN = /(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|온천\s*휴식|호텔\s*안내|면세점)/;
+// 2026-05-17 박제 (ERR-loose-match): 마사지/쇼핑/샤워/드랍/도착/출발 누락으로
+//   "장가계 도착" → "전신마사지60분(장가계)" 잘못 매칭 사고. 패턴 확장.
+const NON_ATTRACTION_PATTERN = /(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|온천\s*휴식|호텔\s*안내|면세점|마사지|쇼핑|샤워|드랍|픽업|샌딩|^도착|^출발|도착\s*\/|출발\s*\/|호텔\s*조식\s*후|호텔\s*투숙)/;
+
+/**
+ * LLM 키워드 → attraction 매칭 시 prefix-only 매칭 차단 (ERR-loose-match @ 2026-05-17).
+ *
+ * 예: 키워드 "장가계"(3자) → "전신마사지60분(장가계)"(15자) 매칭 차단.
+ *   - attraction.name 길이가 키워드 길이의 2.5배 이상이고
+ *   - 키워드가 attraction.name 의 핵심 명사가 아닌 (괄호 안 region prefix) 경우
+ *   - reject.
+ *
+ * 키워드와 attraction.name 의 의미 매칭이 단순 substring 우연인지 검증.
+ */
+function isPrefixOnlyMatch(keyword: string, attractionName: string): boolean {
+  const kw = keyword.trim();
+  const name = attractionName.trim();
+  if (kw === name) return false;  // 정확 일치는 OK
+  if (kw.length < 3) return true;  // 2자 키워드는 너무 관대 (단어 단편)
+  // attraction.name 이 키워드의 2.5배 이상이고 키워드가 괄호 안에 들어 있으면 region prefix 의심
+  if (name.length >= kw.length * 2.5) {
+    // 키워드가 attraction.name 의 괄호 안에만 있으면 region prefix 매칭 — reject
+    const paren = name.match(/\(([^)]+)\)/g)?.map(p => p.slice(1, -1)) ?? [];
+    if (paren.some(p => p === kw)) return true;
+    // 키워드가 attraction.name 의 단어 경계로 정확 매칭이 아닌 substring 이면 reject
+    const wordBoundary = new RegExp(`(^|[\\s/·,(])${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s/·,)]|$)`);
+    if (!wordBoundary.test(name)) return true;
+  }
+  return false;
+}
 
 /**
  * 한 schedule 라인에서 attraction 후보 이름 추출 (L3).
@@ -238,9 +267,11 @@ JSON: {"results":[{"idx":0,"keywords":[...]},{"idx":1,"keywords":[...]}]}`;
  */
 export async function backfillPackageAttractionsL3(
   packageId: string,
-  options: { skipIfMatchRateAbove?: number; useLLMFallback?: boolean } = {},
-): Promise<{ ok: boolean; reason?: string; before?: number; after?: number; llmCalls?: number }> {
+  options: { skipIfMatchRateAbove?: number; useLLMFallback?: boolean; cleanWrongMatches?: boolean } = {},
+): Promise<{ ok: boolean; reason?: string; before?: number; after?: number; llmCalls?: number; cleaned?: number }> {
   const useLLM = options.useLLMFallback !== false;
+  // cleanWrongMatches: L1 skip 라인 (식사/이동/마사지/쇼핑) 에 박힌 attraction_ids 정리 + LLM 매칭 prefix-only 차단
+  const cleanWrong = options.cleanWrongMatches === true;
   const { supabaseAdmin, isSupabaseConfigured } = await import('./supabase');
   if (!isSupabaseConfigured) return { ok: false, reason: 'supabase-not-configured' };
 
@@ -283,7 +314,11 @@ export async function backfillPackageAttractionsL3(
   const { extractAttractionCandidates } = await import('./itinerary-attraction-candidates');
 
   let llmCalls = 0;
+  let cleanedCount = 0;
   const newDays: DayShape[] = [];
+  // attraction id → name lookup (prefix-only 매칭 검증용)
+  const attractionNameById = new Map<string, string>();
+  for (const a of attractions) attractionNameById.set(a.id, a.name);
 
   // L4: 미매칭 큐 적재 헬퍼 (fire-and-forget)
   const pushUnmatched = (kw: string, dayNum: number) => {
@@ -311,14 +346,24 @@ export async function backfillPackageAttractionsL3(
       if (!activity || activity.length < 2) { newSchedule.push(item); return; }
       // L1: skip 패턴
       if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping' || NON_ATTRACTION_PATTERN.test(activity)) {
-        newSchedule.push(item); return;
+        // cleanWrongMatches: L1 skip 라인에 박혀 있는 attraction_ids 정리 (잘못 박힌 사고 차단)
+        if (cleanWrong && existingIds.length > 0) {
+          cleanedCount += existingIds.length;
+          newSchedule.push({ ...item, attraction_ids: [] });
+        } else {
+          newSchedule.push(item);
+        }
+        return;
       }
-      // L2: regex candidates + fuzzy match
+      // L2: regex candidates + fuzzy match (prefix-only 매칭 차단)
       const matchedIds = new Set<string>(existingIds);
       const candidates = extractAttractionCandidates(activity, item.note);
       for (const c of candidates) {
         const m = matchAttractionIndexed(c, idx);
-        if (m?.id) matchedIds.add(m.id);
+        if (m?.id) {
+          const name = attractionNameById.get(m.id) ?? '';
+          if (!isPrefixOnlyMatch(c, name)) matchedIds.add(m.id);
+        }
       }
       // L2 가 새로 매칭 발견했으면 박고 종료. 못 했으면 L3 pending 큐에 넣음.
       if (matchedIds.size > existingIds.length) {
@@ -354,13 +399,22 @@ export async function backfillPackageAttractionsL3(
         if (r.success && r.keywords.length > 0) dayKeywords.set(p.itemIdx, r.keywords);
       }
 
-      // pendingL3 결과 적용
+      // pendingL3 결과 적용 — LLM 키워드 → attraction 매칭 시 prefix-only 매칭 차단
       for (const p of pendingL3) {
         const kws = dayKeywords.get(p.itemIdx) ?? [];
         for (const k of kws) {
           const m = matchAttractionIndexed(k, idx);
-          if (m?.id) p.matchedIds.add(m.id);
-          else pushUnmatched(k, d.day ?? 0);
+          if (m?.id) {
+            const name = attractionNameById.get(m.id) ?? '';
+            // ERR-loose-match @ 2026-05-17: "장가계"(3자) → "전신마사지60분(장가계)"(15자) 차단
+            if (isPrefixOnlyMatch(k, name)) {
+              pushUnmatched(k, d.day ?? 0);
+            } else {
+              p.matchedIds.add(m.id);
+            }
+          } else {
+            pushUnmatched(k, d.day ?? 0);
+          }
         }
         if (p.matchedIds.size > p.existingIds.length) {
           newSchedule[p.itemIdx] = { ...newSchedule[p.itemIdx], attraction_ids: [...p.matchedIds] };
@@ -392,7 +446,7 @@ export async function backfillPackageAttractionsL3(
 
   const afterStats = countMatchStats(newItin);
   const afterRate = afterStats.total > 0 ? afterStats.matched / afterStats.total : 0;
-  return { ok: true, before: beforeRate, after: afterRate, llmCalls };
+  return { ok: true, before: beforeRate, after: afterRate, llmCalls, cleaned: cleanedCount };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
