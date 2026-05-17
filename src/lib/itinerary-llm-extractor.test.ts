@@ -22,11 +22,13 @@ describe('itinerary-llm-extractor — Zod schema', () => {
     const fail = ItineraryExtractSchema.safeParse({ days: [{ day: 0, schedule: [{ activity: 'X' }] }] });
     expect(fail.success).toBe(false);
   });
-  it('잘못된 type enum 거부', () => {
-    const fail = ItineraryExtractSchema.safeParse({
-      days: [{ day: 1, schedule: [{ activity: 'X', type: 'random' as unknown as 'attraction' }] }],
+  it('자유 string type 허용 (후처리에서 normalizeType 으로 매핑)', () => {
+    // 2026-05-17 박제: LLM 이 우리 카테고리 밖 enum (arrival/meeting/etc) 자주 사용 →
+    //   Zod 거부 시 3회 retry 모두 fail 사고. 자유 string 으로 받고 후처리 정규화.
+    const ok = ItineraryExtractSchema.safeParse({
+      days: [{ day: 1, schedule: [{ activity: 'X', type: 'arrival' }] }],
     });
-    expect(fail.success).toBe(false);
+    expect(ok.success).toBe(true);
   });
 });
 

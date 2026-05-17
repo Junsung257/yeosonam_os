@@ -294,3 +294,29 @@ else await pushToUnmatched(activity, packageId, day, destination);  // L4
 - 기존 값 verbatim 보존 (force=false default). NULL/0건/빈약 컬럼만 채움.
 
 **비용**: 패키지 1개당 ~$0.005 (3 함수 병렬 + prompt cache).
+
+### 12-7. 자동 후속 처리 (ERR-audit-stale-snapshot + ERR-dev-revalidate-누락 박제)
+
+> **2026-05-17 사고 (오늘 세션 6회 반복)**: backfill 함수가 DB UPDATE 후 audit_report
+> 갱신 안 하고 prod 만 revalidate → 사장님 페이지에 **옛 경고 + 옛 캐시** 노출.
+> 사장님 "또 사고" 인식 → 매 PR 머지 후 동일 패턴.
+
+**모든 backfill 함수는 DB UPDATE 직후 다음 2개 helper 호출 의무**:
+
+1. **`refreshAuditAfterBackfill(packageId)`** (`section-extractors.ts`)
+   - audit_report.checks 자동 정정 (C4/C5/C6/C11)
+   - 모든 warn 사라지면 `audit_status: 'warnings' → 'clean'`
+   - 사장님 페이지의 stale 경고 차단
+
+2. **`revalidatePackagePaths(packageId, {alsoServerContext})`** (`revalidate-helper.ts`)
+   - prod (yeosonam.com) + dev3001 동시 호출
+   - `DEV_REVALIDATE_URL` / `PROD_REVALIDATE_URL` 환경변수 지원
+   - server context 내부면 `revalidatePath` 직접 호출 (alsoServerContext: true)
+
+**금지**: `revalidatePath` 단독 호출 (server 내부만), 또는 prod 만 fetch (dev 누락).
+**필수**: 둘 다 또는 `revalidatePackagePaths` 단일 호출.
+
+**현재 적용 함수**:
+- `backfillSectionsByPackageId` ✓
+- `backfillPackageAttractionsL3` ✓
+- 향후 신규 backfill 함수도 동일 패턴 박제.
