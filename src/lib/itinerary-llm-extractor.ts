@@ -36,11 +36,12 @@ const KeywordsSchema = z.object({
 
 // 2026-05-17 박제 (ERR-loose-match): 마사지/쇼핑/샤워/드랍/도착/출발 누락으로
 //   "장가계 도착" → "전신마사지60분(장가계)" 잘못 매칭 사고. 패턴 확장.
-const NON_ATTRACTION_PATTERN = /(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|온천\s*휴식|호텔\s*안내|면세점|마사지|쇼핑|샤워|드랍|픽업|샌딩|^도착|^출발|도착\s*\/|출발\s*\/|호텔\s*조식\s*후|호텔\s*투숙)/;
+// 2026-05-18 박제 (vitest fixture): export 추가로 회귀 테스트 강제.
+export const NON_ATTRACTION_PATTERN = /(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|온천\s*휴식|호텔\s*안내|면세점|마사지|쇼핑|샤워|드랍|픽업|샌딩|^도착|^출발|도착\s*\/|출발\s*\/|호텔\s*조식\s*후|호텔\s*투숙)/;
 
 // 본문 long-description carry-over 라인 (측정값 시작) — attraction 매칭에서 제외.
 // 예: "총길이 430M, 넓이 6M, 계곡에서의 높이 300M에 달하는..." 라인이 다른 패키지 attraction 흡수 사고 차단.
-const LONG_DESC_HEADER_PATTERN = /^(?:총\s*)?(?:길이|넓이|높이|면적|폭|해발|약\s*\d|평\s*\d)\s*[\d,]/;
+export const LONG_DESC_HEADER_PATTERN = /^(?:총\s*)?(?:길이|넓이|높이|면적|폭|해발|약\s*\d|평\s*\d)\s*[\d,]/;
 
 /**
  * LLM/L2 키워드 → attraction 매칭 시 의미 없는 substring 매칭 차단 (ERR-loose-match @ 2026-05-17).
@@ -53,7 +54,7 @@ const LONG_DESC_HEADER_PATTERN = /^(?:총\s*)?(?:길이|넓이|높이|면적|폭
  *   3. attraction.name 이 키워드의 2.5배 이상이고 키워드가 괄호 안 region prefix
  *      예: "장가계" → "전신마사지60분(장가계)" 차단
  */
-function isLooseMatch(keyword: string, attractionName: string): boolean {
+export function isLooseMatch(keyword: string, attractionName: string): boolean {
   const kw = keyword.trim();
   const name = attractionName.trim();
   if (kw === name) return false;
