@@ -115,7 +115,7 @@ JSON: {"keywords":["관광지명1","관광지명2"]}`;
     schema: KeywordsSchema,
     maxAttempts: 2,
     preprocessor: (raw: string): string => {
-      let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
       try {
         const p: unknown = JSON.parse(s);
         if (p && typeof p === 'object' && Array.isArray((p as { keywords?: unknown[] }).keywords)) return s;
@@ -210,7 +210,7 @@ JSON: {"results":[{"idx":0,"keywords":[...]},{"idx":1,"keywords":[...]}]}`;
     schema: DayKeywordsSchema,
     maxAttempts: 2,
     preprocessor: (raw: string): string => {
-      let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
       try {
         const p: unknown = JSON.parse(s);
         if (p && typeof p === 'object' && Array.isArray((p as { results?: unknown[] }).results)) return s;
@@ -836,7 +836,7 @@ JSON 응답: {"mappings":[{"day":1,"idx":4,"attraction_id":"7a04cfba-..."}]}`;
     schema: ScheduleMappingSchema,
     maxAttempts: 3,
     preprocessor: (raw: string): string => {
-      let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
       try {
         const p: unknown = JSON.parse(s);
         if (p && typeof p === 'object' && Array.isArray((p as { mappings?: unknown[] }).mappings)) return s;
