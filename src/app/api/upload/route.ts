@@ -1628,11 +1628,15 @@ export async function POST(request: NextRequest) {
     //   ▶<설명><이름>, ▶<영역>\n-<부속>, "및" 분리 등) 을 DeepSeek Flash 로 정확히
     //   재추출. fire-and-forget — 사장님 응답 블로킹 안 함.
     //   비용: 패키지 1개당 ~$0.001. backfill 시 더 큰 batch 도 동일.
+    // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail @ b68b08fe 나트랑 에어텔):
+    //   기존 `void (async () => {...})()` 는 Vercel/Next 함수 종료 시 background task 도 죽음.
+    //   register response 보낸 직후 backfill 호출 중단 → display_title null, price_dates 0건 silent fail.
+    //   Next.js 15 `after` API 로 변경 — response 후 안전한 background 완료 보장.
+    //   추가: 실패 시 admin_alerts 적재로 silent fail 영구 차단.
     if (savedIds.length > 0) {
       for (const pkgId of savedIds) {
-        void (async () => {
+        nextAfter(async () => {
           try {
-            // 2026-05-17 박제 (CLAUDE.md 12절 hierarchy): L1(rule) → L2(fuzzy) → L3(LLM) → L4(human).
             const { backfillPackageAttractionsL3 } = await import('@/lib/itinerary-llm-extractor');
             const r = await backfillPackageAttractionsL3(pkgId, { skipIfMatchRateAbove: 0.9 });
             if (r.ok) {
@@ -1641,19 +1645,54 @@ export async function POST(request: NextRequest) {
               console.warn(`[Upload API] L3 attractions skip/fail: ${pkgId.slice(0, 8)} — ${r.reason}`);
             }
           } catch (e) {
-            console.warn('[Upload API] L3 attractions 예외(무시):', e instanceof Error ? e.message : e);
+            const msg = e instanceof Error ? e.message : String(e);
+            console.warn('[Upload API] L3 attractions 예외:', msg);
+            if (isSupabaseConfigured) {
+              await supabaseAdmin.from('admin_alerts').insert({
+                category: 'register-backfill',
+                severity: 'warning',
+                title: `attractions backfill 실패: ${pkgId.slice(0, 8)}`,
+                message: msg.slice(0, 500),
+                ref_type: 'travel_package',
+                ref_id: pkgId,
+                meta: { phase: 'attractions', error: msg.slice(0, 500) },
+              }).then(() => {}, () => {});
+            }
           }
-          // 2026-05-17 박제 (CLAUDE.md 12절 — 7 도메인 hierarchy 전체 적용):
-          //   hero context (destination/title/summary/tagline) + price_dates + inclusions/excludes/notices
-          //   기존 parser 가 NULL/0건/빈약하면 LLM L3 fallback. force=false (기존 값 보존).
           try {
             const { backfillSectionsByPackageId } = await import('@/lib/parser/llm/section-extractors');
             const s = await backfillSectionsByPackageId(pkgId, { force: false });
             console.log(`[Upload API] L3 sections: ${pkgId.slice(0, 8)} hero=${s.hero?.applied} price=${s.price?.applied}(${s.price?.rowCount ?? 0}) notices=${s.notices?.applied}`);
+            // hero 또는 price 가 실패면 admin_alerts (사장님 인지 보장)
+            if (!s.hero?.applied || !s.price?.applied) {
+              if (isSupabaseConfigured) {
+                await supabaseAdmin.from('admin_alerts').insert({
+                  category: 'register-backfill',
+                  severity: 'warning',
+                  title: `sections backfill 부분 실패: ${pkgId.slice(0, 8)}`,
+                  message: `hero=${s.hero?.applied} price=${s.price?.applied}(${s.price?.rowCount ?? 0})`,
+                  ref_type: 'travel_package',
+                  ref_id: pkgId,
+                  meta: { phase: 'sections', hero: s.hero, price: s.price, notices: s.notices },
+                }).then(() => {}, () => {});
+              }
+            }
           } catch (e) {
-            console.warn('[Upload API] L3 sections 예외(무시):', e instanceof Error ? e.message : e);
+            const msg = e instanceof Error ? e.message : String(e);
+            console.warn('[Upload API] L3 sections 예외:', msg);
+            if (isSupabaseConfigured) {
+              await supabaseAdmin.from('admin_alerts').insert({
+                category: 'register-backfill',
+                severity: 'warning',
+                title: `sections backfill 예외: ${pkgId.slice(0, 8)}`,
+                message: msg.slice(0, 500),
+                ref_type: 'travel_package',
+                ref_id: pkgId,
+                meta: { phase: 'sections', error: msg.slice(0, 500) },
+              }).then(() => {}, () => {});
+            }
           }
-        })();
+        });
       }
     }
 
