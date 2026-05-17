@@ -1441,11 +1441,32 @@ export async function POST(request: NextRequest) {
             }
 
             // Phase 8-2 박제 — Pexels 자동 매칭 (검수 큐에서 1-click 선택 가능)
+            // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail 연쇄): void → nextAfter 통일.
+            //   PR #119 는 backfill 두 곳만 옮겼고 autoPhotoMatch 누락 → 동일 silent fail 위험.
             if (internalCode) {
-              void runAutoPhotoMatch({
+              const photoArgs = {
                 internalCode,
                 destination: ed.destination ?? null,
                 title,
+              };
+              const photoPkgId = pkgResult?.id ?? null;
+              nextAfter(async () => {
+                try { await runAutoPhotoMatch(photoArgs); }
+                catch (e) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  console.warn('[Upload API] autoPhotoMatch 예외:', msg);
+                  if (isSupabaseConfigured) {
+                    await supabaseAdmin.from('admin_alerts').insert({
+                      category: 'register-backfill',
+                      severity: 'warning',
+                      title: `autoPhotoMatch 실패: ${photoArgs.internalCode}`,
+                      message: msg.slice(0, 500),
+                      ref_type: 'travel_package',
+                      ref_id: photoPkgId,
+                      meta: { phase: 'auto-photo-match', error: msg.slice(0, 500) },
+                    }).then(() => {}, () => {});
+                  }
+                }
               });
             }
           }
@@ -1599,9 +1620,10 @@ export async function POST(request: NextRequest) {
             //   백그라운드 DeepSeek 으로 카드 분해 → unmatched_activities.suggested_card 적재.
             //   사장님 어드민 ☑ 한 번 → 일괄 attractions INSERT → reEnrichAffectedPackages → 모바일 즉시 반영.
             //   fire-and-forget (사장님 응답 블로킹 X).
+            // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail 연쇄): void → nextAfter 통일.
             const trigPackageId = savedIds[0];
             if (trigPackageId && uniqueNew.length > 0) {
-              void (async () => {
+              nextAfter(async () => {
                 try {
                   const { bootstrapNewRegionAsync } = await import('@/lib/auto-bootstrap-new-region');
                   const r = await bootstrapNewRegionAsync({
@@ -1612,9 +1634,21 @@ export async function POST(request: NextRequest) {
                   });
                   console.log(`[Upload API] Bootstrap: ${r.suggested}건 suggested_card 적재 (alert=${r.alerted})`);
                 } catch (e) {
-                  console.warn('[Upload API] Bootstrap 실패(무시):', e instanceof Error ? e.message : e);
+                  const msg = e instanceof Error ? e.message : String(e);
+                  console.warn('[Upload API] Bootstrap 예외:', msg);
+                  if (isSupabaseConfigured) {
+                    await supabaseAdmin.from('admin_alerts').insert({
+                      category: 'register-backfill',
+                      severity: 'warning',
+                      title: `bootstrapNewRegion 실패: ${trigPackageId.slice(0, 8)}`,
+                      message: msg.slice(0, 500),
+                      ref_type: 'travel_package',
+                      ref_id: trigPackageId,
+                      meta: { phase: 'bootstrap-new-region', region: firstSeedDest, error: msg.slice(0, 500) },
+                    }).then(() => {}, () => {});
+                  }
                 }
-              })();
+              });
             }
           }
         }

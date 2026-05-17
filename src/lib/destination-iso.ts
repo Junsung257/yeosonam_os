@@ -72,6 +72,22 @@ export function inferCountryFromDestination(destination: string | null | undefin
 }
 
 /**
+ * destination 한글 문자열을 도시 토큰 배열로 분해.
+ *   "시즈오카" → ['시즈오카']
+ *   "계림/양삭" → ['계림', '양삭']
+ *   "유후인/벳부/아소 + 쿠로가와" → ['유후인', '벳부', '아소', '쿠로가와']
+ *
+ * 2026-05-18 박제 (ERR-social-proof-eq-mismatch):
+ *   /packages/[id]/page.tsx social proof 가 raw `.eq('destination', pkg.destination)` 였음.
+ *   같은 도시 다른 표기 ("다낭" vs "다낭/호이안") 패키지 인기도 합산 누락.
+ *   본 헬퍼로 tokenize → 메인 토큰 ilike 매칭으로 회복.
+ */
+export function extractDestinationTokens(destination: string | null | undefined): string[] {
+  if (!destination) return [];
+  return destination.split(/[\/,·&\+\s]+/).map(t => t.trim()).filter(Boolean);
+}
+
+/**
  * destination 한글 문자열에서 ISO2 country codes 추출.
  * "나트랑/달랏" → ['VN'] (중복 제거)
  * "후쿠오카 + 오사카" → ['JP']

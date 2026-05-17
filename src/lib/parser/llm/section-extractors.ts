@@ -36,6 +36,9 @@ async function callJsonLLM<T>(
   jsonSchema: Record<string, unknown>,
   maxTokens = 2000,
 ): Promise<{ success: true; value: T } | { success: false; reason: string }> {
+  // 2026-05-18 박제 (ERR-llm-retry-stack): 외부 maxAttempts × 내부 maxRetries 중첩 차단.
+  //   외부 callWithZodValidation 이 feedback loop 로 1회 재시도 → 내부 llmCall maxRetries=1
+  //   총 호출 상한: 2 × (1+1) = 4회. 기존 2 × (3+1) = 8회에서 50% 절감.
   const result = await callWithZodValidation<T>({
     label,
     schema,
@@ -49,6 +52,7 @@ async function callJsonLLM<T>(
         userPrompt: prompt,
         maxTokens,
         jsonSchema,
+        maxRetries: 1,
       });
       if (!r.success) throw new Error(r.errors?.join('; ') || 'LLM 실패');
       const data = (r as { data?: unknown }).data;

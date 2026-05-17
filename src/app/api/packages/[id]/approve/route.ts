@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { revalidateLandingPagesForPackage } from '@/lib/revalidate-lp-package';
 import type { MarketingCopy } from '@/lib/ai';
 import { recomputeGroupForPackage } from '@/lib/scoring/recommend';
@@ -120,20 +120,33 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       }
     }
 
-    // ── MRT 호텔 인텔 동기화 (일정 호텔만 — 점수·자비스 FAQ용 DB 캐시) ──
-    try {
-      const { syncPackageHotelIntelByPackageId } = await import('@/lib/mrt-hotel-intel');
-      await syncPackageHotelIntelByPackageId(id);
-    } catch (e) {
-      console.warn('[Approve API] MRT 호텔 동기화 실패 (비중단):', e instanceof Error ? e.message : e);
+    // 2026-05-18 박제 (ERR-approve-silent-fail): post-approve fail-soft 단계를 admin_alerts 로 가시화.
+    //   PR #119 가 upload backfill 만 박았고 approve 후속 처리(MRT/점수/RAG) 는 silent 였음.
+    //   사장님이 "승인 OK 인 줄 알았는데 RAG 0건" 같은 거짓 신호 받던 사고 영구 차단.
+    const postApproveWarnings: Array<{ phase: string; message: string }> = [];
+    async function alertWarn(phase: string, e: unknown): Promise<void> {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[Approve API] ${phase} 실패 (비중단):`, msg);
+      postApproveWarnings.push({ phase, message: msg.slice(0, 500) });
+      if (!isSupabaseConfigured) return;
+      await supabaseAdmin.from('admin_alerts').insert({
+        category: 'approve-post-processing',
+        severity: 'warning',
+        title: `${phase} 실패: ${id.slice(0, 8)}`,
+        message: msg.slice(0, 500),
+        ref_type: 'travel_package',
+        ref_id: id,
+        meta: { phase, error: msg.slice(0, 500) },
+      }).then(() => {}, () => {});
     }
 
     // ── MRT 호텔 인텔 동기화 (일정 호텔만 — 점수·자비스 FAQ용 DB 캐시) ──
+    //   2026-05-18 박제: 중복 호출(2회) 제거.
     try {
       const { syncPackageHotelIntelByPackageId } = await import('@/lib/mrt-hotel-intel');
       await syncPackageHotelIntelByPackageId(id);
     } catch (e) {
-      console.warn('[Approve API] MRT 호텔 동기화 실패 (비중단):', e instanceof Error ? e.message : e);
+      await alertWarn('mrt-hotel-sync', e);
     }
 
     // ── 점수 그룹 자동 재계산 (신상품 등록 시 기존 상품 점수 자동 하락 보장) ──
@@ -143,7 +156,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       scoreInfo = { group_size: result.group_size, group_key: result.group_key };
     } catch (e) {
       // 점수 산출 실패해도 approve 자체는 성공 (안전망: 새벽 cron 이 처리)
-      console.warn('[Approve API] 점수 그룹 재계산 실패 (비중단):', e instanceof Error ? e.message : e);
+      await alertWarn('score-recompute', e);
     }
 
     // ── 🆕 자비스 RAG 자동 인덱싱 (v5, 2026-04-30) ──
@@ -152,7 +165,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     try {
       ragInfo = await indexPackage(id);
     } catch (e) {
-      console.warn('[Approve API] RAG 인덱싱 실패 (비중단):', e instanceof Error ? e.message : e);
+      await alertWarn('rag-index', e);
     }
 
     // ISR 캐시 즉시 무효화 — 모바일 /packages 즉시 반영
@@ -164,7 +177,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         (pkg as { short_code?: string | null }).short_code ?? null,
       );
     } catch (e) {
-      console.warn('[Approve API] revalidatePath 실패 (비중단):', e instanceof Error ? e.message : e);
+      await alertWarn('revalidate-path', e);
     }
 
     // ── 🆕 정책 기반 자동 트리거 ──
@@ -187,7 +200,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       const { assignPublishSlots } = await import('@/lib/blog-scheduler');
       await assignPublishSlots();
     } catch (e) {
-      console.warn('[Approve API] multi-angle drip 실패 (비중단):', e instanceof Error ? e.message : e);
+      await alertWarn('multi-angle-drip', e);
     }
 
     // 2) 카드뉴스 자동 변형 (정책 ON 시 + DEEPSEEK_API_KEY 있을 때)
@@ -274,6 +287,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       card_news: cardNewsInfo,
       orchestrator: orchestratorInfo,
       va_notification: vaNotification,
+      // 2026-05-18 박제: post-approve fail-soft 단계 실패 가시화 (admin_alerts 와 일치)
+      warnings: postApproveWarnings.length > 0 ? postApproveWarnings : undefined,
     });
   }
 
