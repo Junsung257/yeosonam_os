@@ -38,29 +38,39 @@ const KeywordsSchema = z.object({
 //   "장가계 도착" → "전신마사지60분(장가계)" 잘못 매칭 사고. 패턴 확장.
 const NON_ATTRACTION_PATTERN = /(공항|출국|입국|수속|이동|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|온천\s*휴식|호텔\s*안내|면세점|마사지|쇼핑|샤워|드랍|픽업|샌딩|^도착|^출발|도착\s*\/|출발\s*\/|호텔\s*조식\s*후|호텔\s*투숙)/;
 
+// 본문 long-description carry-over 라인 (측정값 시작) — attraction 매칭에서 제외.
+// 예: "총길이 430M, 넓이 6M, 계곡에서의 높이 300M에 달하는..." 라인이 다른 패키지 attraction 흡수 사고 차단.
+const LONG_DESC_HEADER_PATTERN = /^(?:총\s*)?(?:길이|넓이|높이|면적|폭|해발|약\s*\d|평\s*\d)\s*[\d,]/;
+
 /**
- * LLM 키워드 → attraction 매칭 시 prefix-only 매칭 차단 (ERR-loose-match @ 2026-05-17).
+ * LLM/L2 키워드 → attraction 매칭 시 의미 없는 substring 매칭 차단 (ERR-loose-match @ 2026-05-17).
  *
- * 예: 키워드 "장가계"(3자) → "전신마사지60분(장가계)"(15자) 매칭 차단.
- *   - attraction.name 길이가 키워드 길이의 2.5배 이상이고
- *   - 키워드가 attraction.name 의 핵심 명사가 아닌 (괄호 안 region prefix) 경우
- *   - reject.
- *
- * 키워드와 attraction.name 의 의미 매칭이 단순 substring 우연인지 검증.
+ * 차단 케이스:
+ *   1. 키워드 길이 < 3자 (단어 단편)
+ *   2. attraction.name 이 25자 이상인데 키워드가 핵심 명사 단어 경계 매칭이 아님
+ *      예: "유리다리" → "백룡엘리베이터탑승"(긴 합성어) 매칭 차단
+ *      예: "엘리베이터" → "장가계해외국제-[장가계]대협곡B코스(유리다리/VR/미끄럼/유람선)티켓" 차단
+ *   3. attraction.name 이 키워드의 2.5배 이상이고 키워드가 괄호 안 region prefix
+ *      예: "장가계" → "전신마사지60분(장가계)" 차단
  */
-function isPrefixOnlyMatch(keyword: string, attractionName: string): boolean {
+function isLooseMatch(keyword: string, attractionName: string): boolean {
   const kw = keyword.trim();
   const name = attractionName.trim();
-  if (kw === name) return false;  // 정확 일치는 OK
-  if (kw.length < 3) return true;  // 2자 키워드는 너무 관대 (단어 단편)
-  // attraction.name 이 키워드의 2.5배 이상이고 키워드가 괄호 안에 들어 있으면 region prefix 의심
+  if (kw === name) return false;
+  if (kw.length < 3) return true;
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 케이스 2: 긴 attraction.name (25자+) 은 코어 명사 단어 경계 매칭 강제
+  if (name.length >= 25) {
+    const core = name.replace(/[\[\(].*?[\]\)]/g, '').trim();  // 괄호·대괄호 안 제거
+    const wb = new RegExp(`(^|[\\s/·,\\-])${escape(kw)}([\\s/·,\\-]|$)`);
+    if (!wb.test(core)) return true;
+  }
+  // 케이스 3: 키워드가 attraction.name 의 2.5배 이상 짧음 + 괄호 안 region prefix
   if (name.length >= kw.length * 2.5) {
-    // 키워드가 attraction.name 의 괄호 안에만 있으면 region prefix 매칭 — reject
     const paren = name.match(/\(([^)]+)\)/g)?.map(p => p.slice(1, -1)) ?? [];
     if (paren.some(p => p === kw)) return true;
-    // 키워드가 attraction.name 의 단어 경계로 정확 매칭이 아닌 substring 이면 reject
-    const wordBoundary = new RegExp(`(^|[\\s/·,(])${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s/·,)]|$)`);
-    if (!wordBoundary.test(name)) return true;
+    const wb = new RegExp(`(^|[\\s/·,(])${escape(kw)}([\\s/·,)]|$)`);
+    if (!wb.test(name)) return true;
   }
   return false;
 }
@@ -344,8 +354,12 @@ export async function backfillPackageAttractionsL3(
       const activity = item.activity ?? '';
       const existingIds = Array.isArray(item.attraction_ids) ? item.attraction_ids : [];
       if (!activity || activity.length < 2) { newSchedule.push(item); return; }
-      // L1: skip 패턴
-      if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping' || NON_ATTRACTION_PATTERN.test(activity)) {
+      // L1: skip 패턴 (non-attraction + 본문 long-desc carry-over)
+      if (
+        item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping'
+        || NON_ATTRACTION_PATTERN.test(activity)
+        || LONG_DESC_HEADER_PATTERN.test(activity)
+      ) {
         // cleanWrongMatches: L1 skip 라인에 박혀 있는 attraction_ids 정리 (잘못 박힌 사고 차단)
         if (cleanWrong && existingIds.length > 0) {
           cleanedCount += existingIds.length;
@@ -362,7 +376,7 @@ export async function backfillPackageAttractionsL3(
         const m = matchAttractionIndexed(c, idx);
         if (m?.id) {
           const name = attractionNameById.get(m.id) ?? '';
-          if (!isPrefixOnlyMatch(c, name)) matchedIds.add(m.id);
+          if (!isLooseMatch(c, name)) matchedIds.add(m.id);
         }
       }
       // L2 가 새로 매칭 발견했으면 박고 종료. 못 했으면 L3 pending 큐에 넣음.
@@ -407,7 +421,7 @@ export async function backfillPackageAttractionsL3(
           if (m?.id) {
             const name = attractionNameById.get(m.id) ?? '';
             // ERR-loose-match @ 2026-05-17: "장가계"(3자) → "전신마사지60분(장가계)"(15자) 차단
-            if (isPrefixOnlyMatch(k, name)) {
+            if (isLooseMatch(k, name)) {
               pushUnmatched(k, d.day ?? 0);
             } else {
               p.matchedIds.add(m.id);
