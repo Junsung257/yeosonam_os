@@ -116,6 +116,113 @@ JSON: {"keywords":["관광지명1","관광지명2"]}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  L3 (day별) — 한 day 전체 schedule 통째 LLM 호출
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DayKeywordsSchema = z.object({
+  results: z.array(z.object({
+    idx: z.coerce.number().int().min(0),
+    keywords: z.array(z.string()),
+  })),
+});
+
+/**
+ * day 1개의 schedule item 들을 통째로 LLM 에 보내 라인별 attraction 키워드 추출.
+ *
+ * **A안 — Liu et al. 2024 "Lost in the Middle" + Wei et al. 2022 chain-of-thought**:
+ *   - day 전체 context 보고 ▶헤딩+부속 두 줄 패턴 자동 묶음 (B안 라인별로는 처리 불가)
+ *   - 호출 수 ↓ (라인별 N회 → day 1회) → partial failure 위험 ↓
+ *   - DeepSeek system prompt cache 적중률 ↑
+ *
+ * @example
+ *   await extractAttractionsByDayWithLLM([
+ *     '▶705년에 창건된 후지산의 수호신을 모시는 신사',
+ *     '   아라쿠라야마 센겐신사',
+ *     '▶후지산 파노라마 로프웨이 ♥왕복 로프웨이 탑승♥',
+ *   ], '시즈오카')
+ *   → results: [
+ *       { idx: 0, keywords: [] },                          // 헤딩 — 다음 라인이 진짜 attraction
+ *       { idx: 1, keywords: ['아라쿠라야마 센겐신사'] },
+ *       { idx: 2, keywords: ['후지산 파노라마 로프웨이'] },
+ *     ]
+ */
+export async function extractAttractionsByDayWithLLM(
+  activities: string[],
+  destination?: string | null,
+): Promise<{ success: true; results: Map<number, string[]>; attempts: number } | { success: false; reason: string; attempts: number }> {
+  if (activities.length === 0) return { success: true, results: new Map(), attempts: 0 };
+
+  // 라인별 번호 매겨 prompt 에 박음
+  const numbered = activities.map((a, i) => `[${i}] ${a}`).join('\n');
+  const userPrompt = `[목적지] ${destination ?? '미상'}
+[하루 일정 라인들]
+${numbered}
+
+각 [idx] 라인에서 관광지(attraction) 이름만 추출하라.
+- 식사/이동/공항/호텔/조식/중식/석식/체크인/면세점 키워드는 attraction 아님 → 빈 배열
+- ▶<설명> 다음 줄 들여쓰기 부속코스가 있으면 헤딩 라인은 빈 배열, 부속 라인이 진짜 attraction
+- "및"/쉼표로 묶인 복수 attraction 은 분리
+- 괄호 안 설명은 attraction 이름에서 제외
+
+JSON: {"results":[{"idx":0,"keywords":[...]},{"idx":1,"keywords":[...]}]}`;
+
+  const result = await callWithZodValidation<z.infer<typeof DayKeywordsSchema>>({
+    label: 'extract-attractions-by-day',
+    schema: DayKeywordsSchema,
+    maxAttempts: 2,
+    preprocessor: (raw: string): string => {
+      let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      try {
+        const p: unknown = JSON.parse(s);
+        if (p && typeof p === 'object' && Array.isArray((p as { results?: unknown[] }).results)) return s;
+        if (Array.isArray(p)) return JSON.stringify({ results: p });
+      } catch { /* keep raw */ }
+      return s;
+    },
+    fn: async (feedback) => {
+      const prompt = feedback ? `${userPrompt}\n\n[이전 오류] ${feedback}\n다시 JSON 만 응답.` : userPrompt;
+      const r = await llmCall<unknown>({
+        task: 'parse_travel_doc',
+        systemPrompt: '여행 일정 day 의 각 라인에서 관광지 이름만 추출. raw JSON 만 응답.',
+        userPrompt: prompt,
+        maxTokens: 2000,
+        jsonSchema: {
+          type: 'object',
+          properties: {
+            results: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { idx: { type: 'integer' }, keywords: { type: 'array', items: { type: 'string' } } },
+                required: ['idx', 'keywords'],
+              },
+            },
+          },
+          required: ['results'],
+        },
+      });
+      if (!r.success) throw new Error(r.errors?.join('; ') || 'LLM 실패');
+      const data = (r as { data?: unknown }).data;
+      if (data !== undefined && data !== null) return JSON.stringify(data);
+      if (r.rawText && r.rawText.length > 0) return r.rawText;
+      throw new Error('LLM 응답 없음');
+    },
+  });
+
+  if (result.success) {
+    const map = new Map<number, string[]>();
+    for (const r of result.value.results) {
+      const cleaned = r.keywords
+        .map(k => k.replace(/^[▶▷♥♨\s\-•]+/, '').replace(/\s*[♥♨]+\s*$/, '').trim())
+        .filter(k => k.length >= 2 && !NON_ATTRACTION_PATTERN.test(k));
+      if (cleaned.length > 0) map.set(r.idx, cleaned);
+    }
+    return { success: true, results: map, attempts: result.attempts };
+  }
+  return { success: false, reason: result.attemptErrors?.[result.attemptErrors.length - 1] ?? 'unknown', attempts: result.attempts };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  L1+L2+L3+L4 hierarchy — 패키지 1개 backfill
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -177,16 +284,34 @@ export async function backfillPackageAttractionsL3(
 
   let llmCalls = 0;
   const newDays: DayShape[] = [];
+
+  // L4: 미매칭 큐 적재 헬퍼 (fire-and-forget)
+  const pushUnmatched = (kw: string, dayNum: number) => {
+    void supabaseAdmin.from('unmatched_activities').upsert({
+      activity: kw,
+      package_id: packageId,
+      package_title: (pkg as { title?: string }).title ?? null,
+      day_number: dayNum,
+      country: null,
+      region: dest,
+      occurrence_count: 1,
+      status: 'pending',
+    }, { onConflict: 'activity' }).then(() => {});
+  };
+
   for (const d of existingItin.days) {
     const newSchedule: ScheduleItem[] = [];
-    for (const item of (d.schedule ?? [])) {
+    // 1차 패스: L1 (skip) + L2 (fuzzy/alias 매칭). L2 fail 라인 수집.
+    type Pending = { itemIdx: number; activity: string; existingIds: string[]; matchedIds: Set<string> };
+    const pendingL3: Pending[] = [];
+
+    (d.schedule ?? []).forEach((item, itemIdx) => {
       const activity = item.activity ?? '';
-      // 기존 attraction_ids 보존
       const existingIds = Array.isArray(item.attraction_ids) ? item.attraction_ids : [];
-      if (!activity || activity.length < 2) { newSchedule.push(item); continue; }
+      if (!activity || activity.length < 2) { newSchedule.push(item); return; }
       // L1: skip 패턴
       if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping' || NON_ATTRACTION_PATTERN.test(activity)) {
-        newSchedule.push(item); continue;
+        newSchedule.push(item); return;
       }
       // L2: regex candidates + fuzzy match
       const matchedIds = new Set<string>(existingIds);
@@ -195,33 +320,54 @@ export async function backfillPackageAttractionsL3(
         const m = matchAttractionIndexed(c, idx);
         if (m?.id) matchedIds.add(m.id);
       }
-      // L3 fallback: L2 가 0 건일 때만 LLM
-      if (matchedIds.size === existingIds.length && useLLM) {
-        const kw = await extractAttractionKeywordsWithLLM(activity, dest);
+      // L2 가 새로 매칭 발견했으면 박고 종료. 못 했으면 L3 pending 큐에 넣음.
+      if (matchedIds.size > existingIds.length) {
+        newSchedule.push({ ...item, attraction_ids: [...matchedIds] });
+      } else {
+        pendingL3.push({ itemIdx: newSchedule.length, activity, existingIds, matchedIds });
+        newSchedule.push(item);  // 임시 — L3 후 갱신
+      }
+    });
+
+    // 2차 패스: L3 hybrid (Hybrid pattern — Asai et al. 2023 Self-RAG)
+    //   pendingL3.length >= 2 → A안 (day 통째 LLM, ▶헤딩+부속 자동 묶기)
+    //   pendingL3.length == 1 → B안 (라인별 LLM, cost 절약)
+    //   pendingL3.length == 0 → LLM 호출 안 함
+    if (useLLM && pendingL3.length > 0) {
+      const dayKeywords = new Map<number, string[]>();
+      if (pendingL3.length >= 2) {
+        // A안: day 통째 호출
+        const activities = pendingL3.map(p => p.activity);
+        const r = await extractAttractionsByDayWithLLM(activities, dest);
         llmCalls++;
-        if (kw.success) {
-          for (const k of kw.keywords) {
-            const m = matchAttractionIndexed(k, idx);
-            if (m?.id) matchedIds.add(m.id);
-            else {
-              // L4: 미매칭 큐 (fire-and-forget)
-              void supabaseAdmin.from('unmatched_activities').upsert({
-                activity: k,
-                package_id: packageId,
-                package_title: (pkg as { title?: string }).title ?? null,
-                day_number: d.day ?? 0,
-                country: null,
-                region: dest,
-                occurrence_count: 1,
-                status: 'pending',
-              }, { onConflict: 'activity' }).then(() => {});
-            }
+        if (r.success) {
+          for (const [localIdx, kws] of r.results.entries()) {
+            const itemIdx = pendingL3[localIdx]?.itemIdx;
+            if (itemIdx !== undefined) dayKeywords.set(itemIdx, kws);
           }
         }
+      } else {
+        // B안: 라인 1개만 LLM 호출
+        const p = pendingL3[0];
+        const r = await extractAttractionKeywordsWithLLM(p.activity, dest);
+        llmCalls++;
+        if (r.success && r.keywords.length > 0) dayKeywords.set(p.itemIdx, r.keywords);
       }
-      const finalIds = [...matchedIds];
-      newSchedule.push(finalIds.length > 0 ? { ...item, attraction_ids: finalIds } : item);
+
+      // pendingL3 결과 적용
+      for (const p of pendingL3) {
+        const kws = dayKeywords.get(p.itemIdx) ?? [];
+        for (const k of kws) {
+          const m = matchAttractionIndexed(k, idx);
+          if (m?.id) p.matchedIds.add(m.id);
+          else pushUnmatched(k, d.day ?? 0);
+        }
+        if (p.matchedIds.size > p.existingIds.length) {
+          newSchedule[p.itemIdx] = { ...newSchedule[p.itemIdx], attraction_ids: [...p.matchedIds] };
+        }
+      }
     }
+
     newDays.push({ ...d, schedule: newSchedule });
   }
   const newItin = { ...existingItin, days: newDays };
