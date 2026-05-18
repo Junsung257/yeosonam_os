@@ -1662,6 +1662,46 @@ export async function extractMultipleProducts(
       console.warn('[Parser] Phase 1 파싱 실패 — fallback');
       return [];
     }
+
+    // 2026-05-19 박제 (P1-A): 단일 상품 경로에서도 judge 호출.
+    //   사장님 5 카탈로그 사고 패턴: sections=1 로 처리됐는데 사장님 모르게 1상품 INSERT.
+    //   regex 가 매칭 못 잡으면 mapReduceOn=false → judge 호출 안 됨 → silent fallback.
+    //   판단 기준: phase1Parsed.length === 1 + 원문 길이 >= 3000자 (충분히 카탈로그 의심)
+    //   → judge LLM 이 "진짜 1개?" 검증 → 불일치 시 Gemini structured 재파싱.
+    //   비용: ~$0.0001/카탈로그. mapReduceOn 분기와 동일한 자동 보정 패턴.
+    if (
+      phase1Parsed.length === 1
+      && !mapReduceOn
+      && truncatedText.length >= 3000
+      && !base64Image
+      && process.env.UPLOAD_JUDGE_SINGLE !== '0'
+    ) {
+      try {
+        const judge = await judgeCatalogProductCountConsistency(truncatedText, 1);
+        if (!judge.skipped && !judge.consistent) {
+          console.warn(`[Parser] P1-A judge: 단일상품으로 처리됐으나 원문에 진짜 여러 상품 의심 (reason=${judge.reason ?? 'mismatch'})`);
+          if (apiKey && process.env.UPLOAD_JUDGE_REPAIR !== '0') {
+            try {
+              const retryTokens = estimateRequiredOutputTokens(truncatedText);
+              const repairedRaw = await callGeminiText(apiKey, truncatedText, phase1Prompt, MULTI_PRODUCT_SCHEMA, retryTokens);
+              const repaired = safeParseJsonArray(repairedRaw);
+              if (repaired && repaired.length > 1) {
+                console.log('[Parser] P1-A judge 불일치 보정: 단일 →', repaired.length, '개 상품');
+                phase1Parsed = repaired;
+                phase1Usage = { provider: 'gemini', input: 0, output: 0, cache_hit: 0 };
+              } else {
+                console.warn('[Parser] P1-A judge 보정 시도했으나 여전히 1개 — judge false positive 가능');
+              }
+            } catch (e) {
+              console.warn('[Parser] P1-A judge 보정 호출 실패:', e instanceof Error ? e.message : e);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Parser] P1-A judge 호출 실패(무시):', e instanceof Error ? e.message : e);
+      }
+    }
+
     console.log('[Parser] Phase 1 완료 —', phase1Parsed.length, '개 상품', phase1Usage ? `(input:${phase1Usage.input} out:${phase1Usage.output} cache:${phase1Usage.cache_hit})` : '');
 
     // ── Phase 2: 각 상품별 일정표 병렬 추출 (텍스트=DeepSeek, 이미지=Gemini Vision) ──
