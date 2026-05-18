@@ -75,9 +75,42 @@ export async function lookupSignal(
   }
 }
 
+// 2026-05-19 박제 (SF-1): recordSignal fail 누적 카운터 + 임계치 admin_alerts.
+//   기존: .then(undefined, () => {}) 로 silent skip → 학습 단절 (사장님 미인지).
+//   변경: 모듈 module-scope 카운터 누적 → 10회 도달 시 1회 admin_alerts (스팸 차단).
+const recordSignalFailState = {
+  consecutive: 0,
+  lastAlertAt: 0,
+  ALERT_THRESHOLD: 10,
+  ALERT_COOLDOWN_MS: 30 * 60 * 1000, // 30분 cooldown
+};
+function reportRecordSignalFailure(reason: string): void {
+  recordSignalFailState.consecutive++;
+  if (recordSignalFailState.consecutive < recordSignalFailState.ALERT_THRESHOLD) return;
+  if (Date.now() - recordSignalFailState.lastAlertAt < recordSignalFailState.ALERT_COOLDOWN_MS) return;
+  recordSignalFailState.lastAlertAt = Date.now();
+  if (!isSupabaseConfigured) return;
+  // void — fire-and-forget. alert 적재 자체 실패는 swallow.
+  supabaseAdmin.from('admin_alerts').insert({
+    category: 'register-learning',
+    severity: 'warning',
+    title: `classification_signals 학습 실패 누적 ${recordSignalFailState.consecutive}회`,
+    message: `recordSignal 적재 ${recordSignalFailState.consecutive}회 연속 실패 — compound learning 단절. 최근 reason: ${reason.slice(0, 300)}`,
+    ref_type: 'parser',
+    ref_id: null,
+    meta: { phase: 'classification-signals', consecutive: recordSignalFailState.consecutive, reason: reason.slice(0, 300) },
+  }).then(() => {}, () => {});
+  recordSignalFailState.consecutive = 0; // 리셋
+}
+function resetRecordSignalFailure(): void {
+  recordSignalFailState.consecutive = 0;
+}
+
 /**
  * 새 분류 신호 누적 (compound learning).
  * fire-and-forget — 호출 측은 await 안 함.
+ *
+ * 2026-05-19 박제 (SF-1): silent fail 누적 임계치 시 admin_alerts.
  */
 export async function recordSignal(args: {
   keyword: string;
@@ -94,19 +127,23 @@ export async function recordSignal(args: {
   if (norm.length < 2) return;
 
   try {
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: selErr } = await supabaseAdmin
       .from('classification_signals')
       .select('id, occurrence_count, confidence, is_manual_override')
       .eq('keyword_norm', norm)
       .eq('destination', args.destination ?? null)
       .eq('category', args.category)
       .maybeSingle();
+    if (selErr) {
+      reportRecordSignalFailure(`SELECT fail: ${selErr.message}`);
+      return;
+    }
 
     if (existing) {
       const row = existing as { id: number; occurrence_count: number; confidence: number; is_manual_override: boolean };
       // manual override 가 이미 있으면 건드리지 않음
       if (row.is_manual_override && !args.manual) return;
-      await supabaseAdmin
+      const { error: updErr } = await supabaseAdmin
         .from('classification_signals')
         .update({
           occurrence_count: row.occurrence_count + 1,
@@ -114,10 +151,11 @@ export async function recordSignal(args: {
           last_seen_at: new Date().toISOString(),
           is_manual_override: args.manual || row.is_manual_override,
         })
-        .eq('id', row.id)
-        .then(undefined, () => {});
+        .eq('id', row.id);
+      if (updErr) reportRecordSignalFailure(`UPDATE fail: ${updErr.message}`);
+      else resetRecordSignalFailure();
     } else {
-      await supabaseAdmin
+      const { error: insErr } = await supabaseAdmin
         .from('classification_signals')
         .insert({
           keyword: args.keyword,
@@ -129,10 +167,11 @@ export async function recordSignal(args: {
           source_url: args.source_url ?? null,
           confidence: args.confidence ?? 0.7,
           is_manual_override: !!args.manual,
-        })
-        .then(undefined, () => {});
+        });
+      if (insErr) reportRecordSignalFailure(`INSERT fail: ${insErr.message}`);
+      else resetRecordSignalFailure();
     }
-  } catch {
-    /* swallow */
+  } catch (e) {
+    reportRecordSignalFailure(`exception: ${e instanceof Error ? e.message : String(e)}`);
   }
 }

@@ -1079,9 +1079,24 @@ export async function POST(request: NextRequest) {
               is_active:        true,
               applied_count:    0,
             }));
+            // 2026-05-19 박제 (SF-2): V2 reflexion INSERT silent fail → admin_alerts.
+            //   학습 loop 단절 가시화 — 동일 랜드사/지역 재등록 시 같은 사고 반복 차단.
             void supabaseAdmin.from('extractions_corrections').insert(v2Rows)
               .then(({ error }: { error: { message: string } | null }) => {
-                if (error) console.warn('[Upload API] V2 reflexion 적재 실패(무시):', error.message);
+                if (error) {
+                  console.warn('[Upload API] V2 reflexion 적재 실패:', error.message);
+                  if (isSupabaseConfigured) {
+                    supabaseAdmin.from('admin_alerts').insert({
+                      category: 'register-learning',
+                      severity: 'warning',
+                      title: `V2 reflexion 적재 실패: ${title.slice(0, 40)}`,
+                      message: `extractions_corrections INSERT 실패 — 학습 누적 안 됨. error: ${error.message.slice(0, 300)}`,
+                      ref_type: 'upload',
+                      ref_id: null,
+                      meta: { phase: 'v2-reflexion', land_operator_id: effectiveLandOperatorId, destination: ed.destination, rows: v2Rows.length },
+                    }).then(() => {}, () => {});
+                  }
+                }
               });
           }
         }
