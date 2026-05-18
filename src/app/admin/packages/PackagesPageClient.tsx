@@ -224,6 +224,8 @@ interface Package {
   ai_tags?: string[];
   theme_tags?: string[];
   supplier_name?: string;
+  // 2026-05-19 박제 (PR #139 P2-A): 같은 카탈로그 N 패키지 그룹 UUID
+  catalog_id?: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -526,6 +528,15 @@ const PackageRow = React.memo(function PackageRow({
           </button>
         ) : (
           <span className="text-[11px] text-admin-muted-2 font-mono">코드 미발급</span>
+        )}
+        {/* 2026-05-19 박제 (P2-A 3): catalog_id 그룹 배지 — 같은 카탈로그 N 패키지 인지 */}
+        {pkg.catalog_id && (
+          <span
+            className="ml-1.5 inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-700 text-[10px] font-mono"
+            title={`같은 카탈로그에서 분리된 패키지 그룹 (catalog_id: ${pkg.catalog_id.slice(0, 8)})`}
+          >
+            📚 그룹 {pkg.catalog_id.slice(0, 6)}
+          </span>
         )}
       </td>
       <td className="px-3 py-2 min-w-[130px]" onClick={e => e.stopPropagation()}>
