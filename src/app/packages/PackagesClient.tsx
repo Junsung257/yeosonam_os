@@ -44,6 +44,8 @@ interface Package {
   products?: { display_name?: string; internal_code?: string };
   seats_held?: number;
   seats_confirmed?: number;
+  // 2026-05-19 박제 (PR #139 P2-A): 같은 카탈로그 N 패키지 그룹 UUID
+  catalog_id?: string | null;
 }
 
 // 항공사 매핑 SSOT: getAirlineName() in @/lib/render-contract (CRC). 인라인 dict 제거.
@@ -208,6 +210,17 @@ export default function PackagesClient({ initialPackages, imageByPkgId: imageByP
     () => filteredPackages.slice(0, visibleCount),
     [filteredPackages, visibleCount],
   );
+
+  // 2026-05-19 박제 (P2-A / A2): 같은 catalog_id 패키지 그룹 카운트 (전체 필터된 set 기준)
+  //   - 사용자가 카드에서 "📚 +N 다른 옵션" 인지
+  //   - 같은 카탈로그에서 분리된 N 패키지 (예: 단수이/베이토우/우라이) 가시화
+  const catalogGroupSizeMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of filteredPackages) {
+      if (p.catalog_id) m.set(p.catalog_id, (m.get(p.catalog_id) ?? 0) + 1);
+    }
+    return m;
+  }, [filteredPackages]);
 
   return (
     <div className="min-h-screen bg-white w-full overflow-x-hidden max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
@@ -385,6 +398,7 @@ export default function PackagesClient({ initialPackages, imageByPkgId: imageByP
               isReasonOpen={activeReasonId === pkg.id}
               onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
               onClick={trackClick}
+              catalogGroupCount={pkg.catalog_id ? catalogGroupSizeMap.get(pkg.catalog_id) : undefined}
             />
           ))}
         </div>
