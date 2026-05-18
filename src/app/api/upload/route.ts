@@ -764,6 +764,18 @@ export async function POST(request: NextRequest) {
     const productsToSave = parsedDocument.multiProducts ?? [
       { extractedData: parsedDocument.extractedData, itineraryData: parsedDocument.itineraryData ?? null },
     ];
+
+    // 2026-05-19 박제 (P2-A): 같은 카탈로그에서 분리된 N 패키지 catalog_id 그룹핑.
+    //   multiProducts.length >= 2 면 새 UUID 생성 후 모든 sub-package travel_packages.catalog_id 에 박음.
+    //   1상품이면 catalog_id NULL (그룹 없음 — 단독 상품).
+    //   추후 어드민/모바일 UI 에서 같은 catalog_id 그룹 표시 (별도 PR).
+    const catalogGroupId = productsToSave.length >= 2
+      ? (globalThis.crypto?.randomUUID?.() ?? (await import('crypto')).randomUUID())
+      : null;
+    if (catalogGroupId) {
+      console.log(`[Upload API] catalog_id 그룹 박힘: ${catalogGroupId.slice(0, 8)} (${productsToSave.length}개 sub-package)`);
+    }
+
     let catalogSplitWarning: { headerCount: number; processedCount: number; raw_excerpt: string } | null = null;
     if (!parsedDocument.multiProducts) {
       try {
@@ -1408,6 +1420,8 @@ export async function POST(request: NextRequest) {
                                        : 'pending_review',
               marketing_copies:      marketingCopies,
               internal_code:         internalCode ?? null,
+              // 2026-05-19 박제 (P2-A): 같은 카탈로그 N 패키지 그룹핑 ID. 1상품이면 null.
+              catalog_id:            catalogGroupId,
             })
             .select()
             .single();
