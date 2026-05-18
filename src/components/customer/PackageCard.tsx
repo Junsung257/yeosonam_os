@@ -30,6 +30,8 @@ export interface PackageCardData {
   seats_held?: number | null;
   seats_confirmed?: number | null;
   products?: { display_name?: string | null; internal_code?: string | null } | null;
+  // 2026-05-19 박제 (PR #139 P2-A / A2): 같은 카탈로그 N 패키지 그룹 UUID
+  catalog_id?: string | null;
 }
 
 interface Props {
@@ -48,6 +50,8 @@ interface Props {
   lossAversionText?: string;
   /** 랭킹 오버레이 숫자 (RankingSection 전용) */
   rankNumber?: number;
+  /** 2026-05-19 박제 (P2-A / A2): 같은 catalog_id 그룹 안의 패키지 수 (≥2 면 "분기 선택 가능" 배지) */
+  catalogGroupCount?: number;
 }
 
 function computeMinPrice(pkg: PackageCardData): number {
@@ -146,6 +150,7 @@ export default function PackageCard({
   primaryReason,
   lossAversionText,
   rankNumber,
+  catalogGroupCount,
 }: Props) {
   const title = pickTitle(pkg);
   const minPrice = precomputedMinPrice ?? computeMinPrice(pkg);
@@ -189,6 +194,7 @@ export default function PackageCard({
           <CardBody
             pkg={pkg} title={title} airlineName={airlineName} duration={duration} nextDate={nextDate} minPrice={minPrice} compact
             rankBadge={rankBadge} primaryReason={primaryReason} lossAversionText={lossAversionText}
+            catalogGroupCount={catalogGroupCount}
           />
         </div>
       </Link>
@@ -217,6 +223,7 @@ export default function PackageCard({
       <CardBody
         pkg={pkg} title={title} airlineName={airlineName} duration={duration} nextDate={nextDate} minPrice={minPrice}
         rankBadge={rankBadge} primaryReason={primaryReason} lossAversionText={lossAversionText}
+        catalogGroupCount={catalogGroupCount}
       />
     </Link>
   );
@@ -322,13 +329,15 @@ function CardImage({
 
 function CardBody({
   pkg, title, airlineName, duration, nextDate, minPrice, compact = false,
-  rankBadge, primaryReason, lossAversionText,
+  rankBadge, primaryReason, lossAversionText, catalogGroupCount,
 }: {
   pkg: PackageCardData; title: string; airlineName: string | null;
   duration: string | null; nextDate: string | null; minPrice: number;
   compact?: boolean;
   rankBadge?: string; primaryReason?: string; lossAversionText?: string;
+  catalogGroupCount?: number;
 }) {
+  const hasCatalogGroup = (catalogGroupCount ?? 0) >= 2;
   return (
     <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
       {/* 목적지 + 일정 메타 */}
@@ -357,6 +366,13 @@ function CardBody({
       <h2 className="mt-1.5 text-[15px] md:text-[17px] font-bold text-text-primary leading-snug line-clamp-2 tracking-[-0.02em]">
         {title}
       </h2>
+
+      {/* 2026-05-19 박제 (P2-A / A2): 같은 카탈로그 다른 분기 인지 배지 */}
+      {hasCatalogGroup && (
+        <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-full">
+          📚 같은 카탈로그 +{(catalogGroupCount ?? 1) - 1}개 다른 옵션
+        </p>
+      )}
 
       {/* 손실 회피 문구 */}
       {lossAversionText && (

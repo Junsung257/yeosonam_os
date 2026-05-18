@@ -60,6 +60,7 @@ const PACKAGE_FIELDS = `
   internal_code, is_airtel, display_title, hero_tagline, duration, nights,
   avg_rating, review_count,
   seats_held, seats_confirmed,
+  catalog_id,
   products(internal_code, display_name)
 `;
 
