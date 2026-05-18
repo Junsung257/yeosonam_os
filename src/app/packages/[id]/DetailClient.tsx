@@ -151,6 +151,14 @@ interface DetailClientProps {
     free_option_count: number | null; is_direct_flight: boolean | null;
     breakdown: { list_price?: number; why?: string[]; deductions?: Record<string, number> } | null;
   }>>;
+  /** 2026-05-19 박제 (P2-A / A3): 같은 catalog_id 다른 패키지 (selector UI). */
+  catalogSiblings?: Array<{
+    id: string;
+    title: string;
+    display_title: string | null;
+    destination: string | null;
+    product_highlights: string[] | null;
+  }>;
   /** package_scores 출발일별 row N개 (v3 옵션 A — 출발일에 따라 점수 다름) */
   scoreRows?: Array<{
     departure_date: string | null;
@@ -227,7 +235,7 @@ function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; 
   );
 }
 
-export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [], initialNotices = [], climateData = null, representativeMonth = new Date().getMonth() + 1, departureDistribution = {}, scoreRows = [], rivalsByDate = {}, socialProof }: DetailClientProps) {
+export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [], initialNotices = [], climateData = null, representativeMonth = new Date().getMonth() + 1, departureDistribution = {}, scoreRows = [], rivalsByDate = {}, socialProof, catalogSiblings = [] }: DetailClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -713,6 +721,35 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
         )}
       </div>
+
+      {/* ═══ 같은 카탈로그 다른 분기 selector (P2-A / A3, 2026-05-19 박제) ═══ */}
+      {/* 같은 catalog_id 패키지가 있으면 "단수이 vs 베이토우 vs 우라이" 같은 즉시 전환 chips. */}
+      {catalogSiblings.length > 0 && (
+        <section className="px-4 mt-4">
+          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-violet-700 text-sm font-bold">📚 같은 카탈로그 다른 옵션</span>
+              <span className="text-violet-600 text-xs">총 {catalogSiblings.length + 1}개 분기 중 선택</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {/* 현재 패키지 (selected) */}
+              <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-violet-600 text-white text-xs font-semibold shadow-sm">
+                {pkg.display_title || pkg.title} <span className="ml-1.5 opacity-80">현재</span>
+              </span>
+              {/* 다른 sibling 패키지 — Link 로 즉시 이동 */}
+              {catalogSiblings.map(s => (
+                <Link
+                  key={s.id}
+                  href={`/packages/${s.id}`}
+                  className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100 hover:border-violet-400 transition-colors"
+                >
+                  {s.display_title || s.title}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ═══ 리뷰 1줄 요약 strip (PR-F, cron review-digest 산출물) ═══ */}
       <ReviewDigestStrip packageId={pkg.id} />
