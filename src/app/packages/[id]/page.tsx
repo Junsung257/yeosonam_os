@@ -34,6 +34,7 @@ const DETAIL_FIELDS = `
   product_highlights, customer_notes, internal_notes, notices_parsed, itinerary_data,
   display_title, hero_tagline, product_summary, is_airtel,
   land_operator_id, audit_status, status,
+  catalog_id,
   products(internal_code, display_name, departure_region)
 `;
 
@@ -468,6 +469,25 @@ export default async function PackageDetailPage({
     initialNotices = formatCancellationDates(resolved, earliestDate);
   }
 
+  // 2026-05-19 박제 (P2-A / A3): 같은 catalog_id 다른 패키지 fetch — 모바일 상세 페이지 selector 용
+  //   "단수이 vs 베이토우 vs 우라이" 같은 분기 선택 UI. 사용자가 현재 패키지에서 즉시 다른 옵션으로 이동 가능.
+  type CatalogSibling = { id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null };
+  let catalogSiblings: CatalogSibling[] = [];
+  const currentCatalogId = (pkg as { catalog_id?: string | null }).catalog_id;
+  if (currentCatalogId) {
+    const { data: siblings } = await sb
+      .from('travel_packages')
+      .select('id, title, display_title, destination, product_highlights, status, audit_status')
+      .eq('catalog_id', currentCatalogId)
+      .neq('id', id)
+      .order('created_at', { ascending: true });
+    catalogSiblings = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string }>)
+      .filter(s => s.audit_status !== 'blocked' && isCustomerVisibleStatus(s.status))
+      .map(({ id: sid, title, display_title, destination, product_highlights }) => ({
+        id: sid, title, display_title, destination, product_highlights,
+      }));
+  }
+
   return (
     <>
       <DetailClient
@@ -483,6 +503,7 @@ export default async function PackageDetailPage({
         scoreRows={scoreRows}
         rivalsByDate={rivalsByDate}
         socialProof={socialProof}
+        catalogSiblings={catalogSiblings}
       />
       {/* 고객 후기 (approved 리뷰 있을 때만 렌더) */}
       <div className="mx-auto max-w-4xl px-4">
