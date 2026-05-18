@@ -367,10 +367,13 @@ function CardBody({
         {title}
       </h2>
 
-      {/* 2026-05-19 박제 (P2-A / A2): 같은 카탈로그 다른 분기 인지 배지 */}
+      {/* 2026-05-19 박제 (P2-A / A2 / 전문가 근거):
+          Shopify Polaris "brand vs utility 분리" + Material 3 secondary indigo.
+          violet 은 AI 추천 도메인 (ChatWidget/RecommendationSection) 이라 의미 충돌.
+          워딩: "비슷한 일정" 자연어 — Baymard 17% variant confusion 완화. */}
       {hasCatalogGroup && (
-        <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-full">
-          📚 같은 카탈로그 +{(catalogGroupCount ?? 1) - 1}개 다른 옵션
+        <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full">
+          📚 비슷한 일정 +{(catalogGroupCount ?? 1) - 1}개 옵션
         </p>
       )}
 

@@ -529,13 +529,14 @@ const PackageRow = React.memo(function PackageRow({
         ) : (
           <span className="text-[11px] text-admin-muted-2 font-mono">코드 미발급</span>
         )}
-        {/* 2026-05-19 박제 (P2-A 3): catalog_id 그룹 배지 — 같은 카탈로그 N 패키지 인지 */}
+        {/* 2026-05-19 박제 (P2-A 3 / 전문가 판단):
+            catalog_id 그룹 배지 — slate-indigo 토큰 (violet은 AI/추천에 박혀 있어 의미 충돌). */}
         {pkg.catalog_id && (
           <span
-            className="ml-1.5 inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-700 text-[10px] font-mono"
+            className="ml-1.5 inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-medium"
             title={`같은 카탈로그에서 분리된 패키지 그룹 (catalog_id: ${pkg.catalog_id.slice(0, 8)})`}
           >
-            📚 그룹 {pkg.catalog_id.slice(0, 6)}
+            📚 카탈로그 그룹
           </span>
         )}
       </td>
