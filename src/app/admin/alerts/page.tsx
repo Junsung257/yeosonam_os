@@ -42,6 +42,8 @@ const CATEGORY_LABELS: Record<string, { label: string; emoji: string; color: str
   'approve-post-processing': { label: '승인 후처리 실패', emoji: '📋', color: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
   'attractions-pexels': { label: 'Pexels 사진 실패', emoji: '🖼️', color: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
   'active-learning-reject': { label: 'Active Learning 실패', emoji: '🧠', color: 'bg-purple-50 text-purple-800 border-purple-200' },
+  // PR #133 (SF-1+2) / #137 (SF-4) — 학습 loop 단절 가시화
+  'register-learning': { label: '등록 학습 실패', emoji: '📚', color: 'bg-violet-50 text-violet-800 border-violet-200' },
   general: { label: '일반', emoji: 'ℹ️', color: 'bg-admin-bg text-admin-text-2 border-admin-border-mid' },
 };
 
