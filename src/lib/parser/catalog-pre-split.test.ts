@@ -3,6 +3,10 @@ import {
   collectItineraryHeaderStarts,
   countCatalogItineraryHeaders,
   splitCatalogByItineraryHeaders,
+  applyLLMSplit,
+  detectCatalogBoundariesWithLLM,
+  splitCatalogSmart,
+  type LLMSplitResult,
 } from './catalog-pre-split';
 
 describe('splitCatalogByItineraryHeaders', () => {
@@ -150,5 +154,106 @@ ${'일정 본문 '.repeat(30)}`;
 
     // false positive 차단(본문 "3박 5일" 표기)은 별도 layer (consistency-judge, LLM validate)
     // 책임. catalog-pre-split 은 헤더 후보를 *넓게* 감지하고, 검증은 후속 단계.
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2026-05-19 박제 (P1-B): LLM split fallback
+  //
+  // regex 매칭 실패 시 LLM 이 character offset 으로 boundary 결정.
+  // 실제 LLM 호출은 mock — 결과 처리 로직만 검증 (applyLLMSplit).
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('LLM split fallback (P1-B 박제)', () => {
+    it('applyLLMSplit: 2 products → 2 sections + sharedPrefix', () => {
+      const raw = `공통 안내 텍스트
+전체 약관 등
+[새포맷] 도시A 3박4일 특가
+일정 본문 A
+[새포맷] 도시B 4박5일 럭셔리
+일정 본문 B`;
+      const llm: LLMSplitResult = {
+        products: [
+          { start_char: raw.indexOf('[새포맷] 도시A'), name_hint: '[새포맷] 도시A 3박4일' },
+          { start_char: raw.indexOf('[새포맷] 도시B'), name_hint: '[새포맷] 도시B 4박5일' },
+        ],
+      };
+      const r = applyLLMSplit(raw, llm);
+      expect(r.sections, '2 sections').toHaveLength(2);
+      expect(r.sharedPrefix, '공통 prefix 보존').toContain('공통 안내');
+      expect(r.sections[0]).toContain('도시A');
+      expect(r.sections[1]).toContain('도시B');
+    });
+
+    it('applyLLMSplit: 1 product → 1 section', () => {
+      const raw = '단일 상품 카탈로그\n일정 본문';
+      const llm: LLMSplitResult = {
+        products: [{ start_char: 0, name_hint: '단일 상품' }],
+      };
+      const r = applyLLMSplit(raw, llm);
+      expect(r.sections).toHaveLength(1);
+      expect(r.sharedPrefix, '시작 0이면 prefix 없음').toBe('');
+    });
+
+    it('applyLLMSplit: 빈 products → 전체를 1 section 으로', () => {
+      const raw = '내용';
+      const r = applyLLMSplit(raw, { products: [] });
+      expect(r.sections).toHaveLength(1);
+      expect(r.sections[0]).toBe('내용');
+    });
+
+    it('applyLLMSplit: start_char 역순도 자동 정렬', () => {
+      const raw = `prefix
+[B] 두번째
+본문B
+[A] 첫번째
+본문A`;
+      const llm: LLMSplitResult = {
+        products: [
+          { start_char: raw.indexOf('[A]'), name_hint: 'A' },
+          { start_char: raw.indexOf('[B]'), name_hint: 'B' },
+        ],
+      };
+      // 입력은 [A, B] 순서지만 char offset 은 B 먼저 → 정렬 후 [B 먼저]
+      const r = applyLLMSplit(raw, llm);
+      expect(r.sections[0]).toContain('[B]');
+      expect(r.sections[1]).toContain('[A]');
+    });
+
+    it('detectCatalogBoundariesWithLLM: 짧은 텍스트면 skip', async () => {
+      const r = await detectCatalogBoundariesWithLLM('짧은 텍스트');
+      expect(r.skipped).toBe(true);
+      expect(r.reason).toBe('too-short');
+    });
+
+    it('detectCatalogBoundariesWithLLM: env disabled 면 skip', async () => {
+      const original = process.env.UPLOAD_CATALOG_LLM_SPLIT;
+      process.env.UPLOAD_CATALOG_LLM_SPLIT = '0';
+      try {
+        const longText = '본문 텍스트 '.repeat(500);
+        const r = await detectCatalogBoundariesWithLLM(longText);
+        expect(r.skipped).toBe(true);
+        expect(r.reason).toBe('env-disabled');
+      } finally {
+        if (original === undefined) delete process.env.UPLOAD_CATALOG_LLM_SPLIT;
+        else process.env.UPLOAD_CATALOG_LLM_SPLIT = original;
+      }
+    });
+
+    it('splitCatalogSmart: regex 가 잡으면 LLM 우회 (source=regex)', async () => {
+      const raw = `공통
+[ZE] 치앙마이 5일 일정표
+본문1
+[BK] 방콕 6일 일정표
+본문2`;
+      const r = await splitCatalogSmart(raw);
+      expect(r.source).toBe('regex');
+      expect(r.sections).toHaveLength(2);
+    });
+
+    it('splitCatalogSmart: regex miss + 짧은 텍스트 → single (LLM skip)', async () => {
+      const raw = '짧은 단일 상품 내용';
+      const r = await splitCatalogSmart(raw);
+      expect(r.source).toBe('single');
+      expect(r.sections).toHaveLength(1);
+    });
   });
 });
