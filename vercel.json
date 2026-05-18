@@ -227,7 +227,7 @@
     },
     {
       "path": "/api/cron/affiliate-live-celebration",
-      "schedule": "0 * * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/affiliate-lifetime-commission",
@@ -259,7 +259,7 @@
     },
     {
       "path": "/api/cron/churn-detect",
-      "schedule": "0 * * * *"
+      "schedule": "0 */4 * * *"
     },
     {
       "path": "/api/cron/weather-upsell",
@@ -275,7 +275,7 @@
     },
     {
       "path": "/api/cron/fraud-detect",
-      "schedule": "0 * * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/daily-marketing",
