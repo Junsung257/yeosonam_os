@@ -23,6 +23,32 @@ const SYNC_COOLDOWN_HOURS = 24;
 const _inflightCooldown = new Map<string, number>();
 const INFLIGHT_COOLDOWN_MS = 2 * 60 * 1000;
 
+// 2026-05-19 박제 (B1): serverless skip 누적 카운터 — Tier 1 cron 미가동 또는 누락 가시화.
+//   SF-1/SF-4 와 동일 패턴 (10회 + 30분 cooldown).
+const serverlessSkipState = {
+  consecutive: 0,
+  lastAlertAt: 0,
+  ALERT_THRESHOLD: 10,
+  ALERT_COOLDOWN_MS: 30 * 60 * 1000,
+};
+function reportServerlessSkip(destination: string): void {
+  serverlessSkipState.consecutive++;
+  if (serverlessSkipState.consecutive < serverlessSkipState.ALERT_THRESHOLD) return;
+  if (Date.now() - serverlessSkipState.lastAlertAt < serverlessSkipState.ALERT_COOLDOWN_MS) return;
+  serverlessSkipState.lastAlertAt = Date.now();
+  if (!isSupabaseConfigured) return;
+  supabaseAdmin.from('admin_alerts').insert({
+    category: 'register-learning',
+    severity: 'info',
+    title: `MRT lazy-sync ${serverlessSkipState.consecutive}회 serverless skip`,
+    message: `serverless 환경(Vercel)에서 ${serverlessSkipState.consecutive}회 destination MRT sync 큐 적재됨. Tier 1 cron(db/sync_mrt_attractions.js) 정상 작동 확인 필요. 최근 destination: ${destination}`,
+    ref_type: 'parser',
+    ref_id: null,
+    meta: { phase: 'mrt-lazy-sync', consecutive: serverlessSkipState.consecutive, last_destination: destination },
+  }).then(() => {}, () => {});
+  serverlessSkipState.consecutive = 0;
+}
+
 /**
  * destination 의 MRT canonical attraction 수를 확인하고 부족하면 백그라운드 sync 트리거.
  * 호출 측은 await 안 함 — fire-and-forget. 등록 흐름 지연 0.
@@ -75,6 +101,8 @@ export async function maybeTriggerMrtSync(destination: string | null | undefined
     //    Production 은 cron 으로 Tier 1 가 보완.
     if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
       console.log(`[MRT-Lazy] ${dest} sync 큐에 적재 (serverless 환경 — Tier 1 cron 이 처리)`);
+      // 2026-05-19 박제 (B1): 누적 임계치 시 admin_alerts — Tier 1 cron 모니터링.
+      reportServerlessSkip(dest);
       return;
     }
 
