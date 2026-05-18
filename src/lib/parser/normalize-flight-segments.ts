@@ -59,12 +59,26 @@ function classifyActivity(activity: string | null | undefined): 'depart' | 'arri
   return 'other';
 }
 
-/** activity 안의 도시명 추출 (e.g. "부산 국제공항 출발" → "부산") */
+/** activity 안의 도시명 추출 (e.g. "부산 국제공항 출발" → "부산")
+ *
+ * 2026-05-19 박제 (사고 발견 — FIX-3 fixture 에서): 기존 regex `[\w가-힣]+?` 가
+ * 공백 미포함 → "타이페이 타오위안 국제공항 출발" 같은 두 단어 공항명에서
+ * 매칭 실패 → dep_airport=null. [BX] 대만 카탈로그 회귀 위험.
+ *
+ * 해결: 첫 단어만 추출하는 regex 추가. "X (Y) 국제공항 출발/도착" 패턴에서
+ * X (도시명 첫 단어) 만 캡처. Y (공항명) 는 무시.
+ */
 function extractCity(activity: string | null | undefined): string | null {
   if (!activity) return null;
-  // "X 국제공항 출발/도착" 또는 "X 공항 출발/도착" 또는 "X 출발/도착"
+  // [NEW] 첫 단어 + 공백 + 임의 단어 + "국제공항/공항" + "출발/도착"
+  //   예: "타이페이 타오위안 국제공항 출발" → "타이페이"
+  //   예: "후쿠오카 신치토세 공항 도착" → "후쿠오카"
+  const mMulti = activity.match(/^([\w가-힣]+)\s+[\w가-힣]+\s*(?:국제)?\s*공항/);
+  if (mMulti) return mMulti[1];
+  // [기존] "X 국제공항 출발/도착" 또는 "X 공항 출발/도착"
   const m = activity.match(/^([\w가-힣]+?)\s*(?:국제)?\s*공항/);
   if (m) return m[1];
+  // [기존] "X 출발/도착"
   const m2 = activity.match(/^([\w가-힣]+?)\s*(?:출발|도착)/);
   if (m2) return m2[1];
   return null;
