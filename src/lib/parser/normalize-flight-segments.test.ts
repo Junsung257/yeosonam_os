@@ -149,11 +149,10 @@ describe('normalizeFlightSegments — flight pair 정규화 (FIX-3)', () => {
       expect(r?.flight_segments).toBeUndefined();
     });
 
-    it('국제공항 표기 + 한글 도시 추출 — 현재 동작 박제 (dep_airport=null)', () => {
-      // 2026-05-19 박제 (사고 발견): extractCity regex `[\w가-힣]+?` 가 공백 미포함 →
-      // "타이페이 타오위안 국제공항" 같은 두 단어 공항명 매칭 실패 → dep_airport=null.
-      // 사장님 [BX] 대만 카탈로그 같은 경우 dep_airport 누락 사고 회귀 가능성.
-      // 별도 PR 수정 후보 — extractCity 개선해서 "타이페이" 만 추출.
+    it('두 단어 공항명 추출 ("타이페이 타오위안 국제공항 출발") → 첫 단어 "타이페이"', () => {
+      // 2026-05-19 박제 (PR #135 사고 영구 차단):
+      //   extractCity regex 확장으로 "X Y 국제공항" 패턴에서 X 만 캡처.
+      //   [BX] 대만 카탈로그 회귀 차단.
       const itin = {
         days: [{
           day: 1,
@@ -163,7 +162,20 @@ describe('normalizeFlightSegments — flight pair 정규화 (FIX-3)', () => {
         }],
       };
       const r = normalizeFlightSegments(itin);
-      expect(r!.flight_segments![0].dep_airport, '현재 동작: 두 단어 공항명 매칭 실패').toBeNull();
+      expect(r!.flight_segments![0].dep_airport).toBe('타이페이');
+    });
+
+    it('"후쿠오카 신치토세 공항 도착" → "후쿠오카"', () => {
+      const itin = {
+        days: [{
+          day: 1,
+          schedule: [
+            { type: 'flight', activity: '후쿠오카 신치토세 공항 도착', time: '14:00', transport: 'JL222' },
+          ],
+        }],
+      };
+      const r = normalizeFlightSegments(itin);
+      expect(r!.flight_segments![0].arr_airport).toBe('후쿠오카');
     });
 
     it('단순 공항 표기 ("부산 국제공항 출발") → 도시 정상 추출', () => {
