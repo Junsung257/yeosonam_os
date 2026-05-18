@@ -57,6 +57,11 @@ interface QueueItem {
   verifyError?: string;
   /** Hybrid v2: 어떤 필드를 결정적으로 회복했는지 (UX 디버그) */
   deterministicRecovered?: string[];
+  /** 2026-05-19 박제 (PR #128 + UI 보강):
+   *  catalog regex 가 헤더 N개 감지했는데 multiProducts=null 로 1상품 silent fallback.
+   *  사장님 인지 보장 — UI 에 빨간 경고 + /admin/alerts 링크.
+   */
+  catalogSplitWarning?: { headerCount: number; processedCount: number };
 }
 
 // 서버가 비-JSON 응답(오류 페이지, 게이트웨이 타임아웃 등)을 반환할 때도 안전하게 파싱
@@ -157,6 +162,7 @@ export default function UploadPage() {
       gate: data.gate ?? null,
       attractionStats: data.attractionStats ?? null,
       registerReport: data.registerReport ?? null,
+      catalogSplitWarning: data.catalogSplitWarning ?? null,
     };
   };
 
@@ -240,6 +246,9 @@ export default function UploadPage() {
         landOperator: ed?.land_operator,
         tokenUsage: data.tokenUsage ?? null,
         gate: data.gate ?? null,
+        attractionStats: data.attractionStats ?? null,
+        registerReport: data.registerReport ?? null,
+        catalogSplitWarning: data.catalogSplitWarning ?? null,
       } : it));
 
       if (dbId) runVerify(id, dbId);
@@ -668,6 +677,22 @@ export default function UploadPage() {
                                 <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
                               </div>
                             ))}
+                          </div>
+                        )}
+                        {/* 2026-05-19 박제: catalog split silent fallback 경고 (PR #128 UI 보강) */}
+                        {item.catalogSplitWarning && (
+                          <div className="mt-2 px-2.5 py-2 bg-rose-50 border border-rose-300 rounded-lg text-[11px]">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-rose-700 font-bold">⚠️ 카탈로그 분리 실패</span>
+                              <span className="text-rose-600">
+                                — 원문에서 헤더 <strong>{item.catalogSplitWarning.headerCount}개</strong> 감지됐는데 <strong>{item.catalogSplitWarning.processedCount}개</strong>만 처리됨
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-rose-700 leading-relaxed">
+                              사장님이 직접 텍스트를 <code className="bg-rose-100 px-1 rounded">===</code> 로 분할해서 다시 paste 하거나,
+                              <a href="/admin/alerts?category=catalog-split-fallback" target="_blank" rel="noopener noreferrer" className="text-rose-700 underline font-medium ml-1">/admin/alerts</a>
+                              에서 상세 확인하세요.
+                            </p>
                           </div>
                         )}
                         {/* 원문 대조 검증 결과 */}
