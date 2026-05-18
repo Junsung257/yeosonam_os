@@ -199,6 +199,24 @@ export default function PackagesClient({ initialPackages, imageByPkgId: imageByP
     }
     if (sortBy === 'price_asc') result = [...result].sort((a, b) => mp(a) - mp(b));
     if (sortBy === 'price_desc') result = [...result].sort((a, b) => mp(b) - mp(a));
+
+    // 2026-05-19 박제 (P2-A Stage 2 / 게슈탈트 proximity 원리):
+    //   같은 catalog_id 패키지를 sortBy 무관 인접 정렬. 그룹 첫 번째 카드의 순위를 기준으로 묶음.
+    //   근거: Nielsen Norman Group "proximity" — 관련 항목은 가까이 배치해야 인지 부담 ↓.
+    //   사장님 카탈로그 분기 (단수이/베이토우/우라이) 가 흩어지면 사용자 인지 불가.
+    const groupFirstIdx = new Map<string, number>();
+    result.forEach((p, idx) => {
+      if (p.catalog_id && !groupFirstIdx.has(p.catalog_id)) {
+        groupFirstIdx.set(p.catalog_id, idx);
+      }
+    });
+    if (groupFirstIdx.size > 0) {
+      result = [...result].sort((a, b) => {
+        const aKey = a.catalog_id ? groupFirstIdx.get(a.catalog_id) ?? 9999 : (result.indexOf(a));
+        const bKey = b.catalog_id ? groupFirstIdx.get(b.catalog_id) ?? 9999 : (result.indexOf(b));
+        return aKey - bKey;
+      });
+    }
     return result;
   }, [packages, activeFilter, sortBy, month, priceMinNum, priceMaxNum, minPriceByPkgId, matchesMonth]);
 
