@@ -10,6 +10,7 @@ import {
   extractBalancedJsonArraySubstring,
   extractBalancedJsonObjectSubstring,
   splitCatalogByItineraryHeaders,
+  splitCatalogSmart,
 } from './parser/catalog-pre-split';
 import { judgeCatalogProductCountConsistency } from './parser/upload-consistency-judge';
 import { getSecret } from '@/lib/secret-registry';
@@ -1433,7 +1434,26 @@ export async function extractMultipleProducts(
     const singleProductPhase1Prompt = injectToday(`${contextPrefix}${MULTI_PRODUCT_PHASE1_PROMPT}\n\n★★★ 이 사용자 메시지 구간에는 여행상품이 정확히 1개만 있습니다. JSON 배열 길이는 반드시 1이어야 합니다. ★★★\n`);
 
     const route = classifyUploadDocumentComplexity(truncatedText);
-    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(truncatedText);
+    // 2026-05-19 박제 (P1-B): splitCatalogSmart 통합.
+    //   regex 가 매칭 0/1건이면 LLM (Gemini Flash, ~$0.0001) 으로 boundary 결정.
+    //   image upload 는 LLM split 우회 (base64 일 때 텍스트 분리 의미 없음).
+    let sharedPrefix = '';
+    let sections: string[] = [];
+    let splitSource: 'regex' | 'llm-fallback' | 'single' = 'single';
+    if (base64Image) {
+      const r = splitCatalogByItineraryHeaders(truncatedText);
+      sharedPrefix = r.sharedPrefix;
+      sections = r.sections;
+      splitSource = sections.length >= 2 ? 'regex' : 'single';
+    } else {
+      const r = await splitCatalogSmart(truncatedText);
+      sharedPrefix = r.sharedPrefix;
+      sections = r.sections;
+      splitSource = r.source;
+      if (splitSource === 'llm-fallback') {
+        console.log('[Parser] LLM split fallback → 헤더 ' + sections.length + '개 감지 (regex miss)');
+      }
+    }
     // 2026-05-14 박제: tier 무관, 헤더가 2개 이상이면 무조건 Map-Reduce.
     //   - DeepSeek system prompt 가 같아 prefix cache 90% 적중 → 비용 절감
     //   - 청크별 maxTokens 6000 으로 응답 잘림 위험 ↓ → 정확도 ↑

@@ -183,3 +183,202 @@ export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult 
   }
   return { sharedPrefix, sections };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  2026-05-19 박제 (P1-B): LLM split fallback
+//
+//  regex 가 새로운 헤더 포맷을 못 잡을 때 LLM 이 character offset 으로 boundary 결정.
+//  비용 ~$0.0001/카탈로그 (Gemini Flash). 신규 랜드사 포맷에 자동 적응.
+//
+//  사용 패턴 (parser.ts 또는 upload/route.ts):
+//    const regexSplit = splitCatalogByItineraryHeaders(raw);
+//    if (regexSplit.sections.length <= 1 && raw.length > 2000) {
+//      const llmSplit = await detectCatalogBoundariesWithLLM(raw);
+//      if (llmSplit && llmSplit.products.length >= 2) {
+//        return applyLLMSplit(raw, llmSplit);
+//      }
+//    }
+//    return regexSplit;
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface LLMSplitProduct {
+  start_char: number;
+  name_hint: string;
+}
+
+export interface LLMSplitResult {
+  products: LLMSplitProduct[];
+  reason?: string;
+  skipped?: boolean;
+}
+
+/**
+ * regex 가 0/1개만 잡으면 LLM 이 진짜 별개 상품 개수 + 시작 char offset 결정.
+ *
+ * 학습 SSOT (사장님 5 실제 카탈로그 기준):
+ * - [BX] 대만 / 단수이/베이토우/우라이 3 상품 → 같은 카탈로그 N 상품
+ * - [LJ] 몽골 3박5일【금】 + 4박6일【월】 → 같은 카탈로그 2 상품 (출발 요일 다름)
+ * - [VJ]/[VN] 베트남 같은 일정 다른 항공사 → 2 상품
+ * - [부관훼리] 요금표 카드 + 일정 카드 → 1 상품 (카드 분산)
+ */
+export async function detectCatalogBoundariesWithLLM(
+  rawText: string,
+  options: { maxChars?: number; minLengthForLLM?: number } = {},
+): Promise<LLMSplitResult> {
+  const { maxChars = 8000, minLengthForLLM = 2000 } = options;
+  if (!rawText || rawText.length < minLengthForLLM) {
+    return { products: [], skipped: true, reason: 'too-short' };
+  }
+  if (process.env.UPLOAD_CATALOG_LLM_SPLIT === '0') {
+    return { products: [], skipped: true, reason: 'env-disabled' };
+  }
+
+  // 동적 import — 직렬 dependency 안 만듦. Vercel cold start 0 영향.
+  type SecretMod = typeof import('@/lib/secret-registry');
+  type GenAIMod = typeof import('@google/generative-ai');
+  type TracerMod = typeof import('@/lib/telemetry/llm-tracer');
+  let secretMod: SecretMod;
+  let genAIMod: GenAIMod;
+  let tracerMod: TracerMod;
+  try {
+    secretMod = await import('@/lib/secret-registry');
+    genAIMod = await import('@google/generative-ai');
+    tracerMod = await import('@/lib/telemetry/llm-tracer');
+  } catch {
+    return { products: [], skipped: true, reason: 'import-failed' };
+  }
+
+  const apiKey = secretMod.getSecret('GOOGLE_AI_API_KEY');
+  if (!apiKey) return { products: [], skipped: true, reason: 'no-api-key' };
+  const { GoogleGenerativeAI, SchemaType } = genAIMod;
+  const { traceLlmCall, recordLlmUsage } = tracerMod;
+
+  // 토큰 절약: 첫 8000자만 (대부분 카탈로그는 헤더+요금표가 앞에 옴)
+  const snippet = rawText.slice(0, maxChars);
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: 512,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          products: {
+            type: SchemaType.ARRAY,
+            items: {
+              type: SchemaType.OBJECT,
+              properties: {
+                start_char: { type: SchemaType.INTEGER, description: '상품 시작 character offset (0-based)' },
+                name_hint: { type: SchemaType.STRING, description: '상품명 힌트 (헤더 첫 줄)' },
+              },
+              required: ['start_char', 'name_hint'],
+            },
+          },
+        },
+        required: ['products'],
+      },
+    },
+  });
+
+  const prompt = `한국 여행상품 카탈로그 원문에서 별개 상품의 시작 위치를 char offset 으로 알려줘.
+
+판단 기준 (랜드사마다 헤더 포맷 다름):
+- "[XX] 도시명 N박 M일" — 대괄호 + 코드(영숫자/한글) + 박일
+- "도시명 N박 M일【요일】" — 대괄호 없고 전각 요일
+- "[XX] ... 무박N일" — 페리 패키지
+- "일정표" 키워드가 있는 줄
+
+같은 상품을 여러 카드로 나눠 적은 경우(요금표 카드 + 일정 카드)는 1개로 묶어:
+- 항공편이 다르면 별도 상품 (BX vs LJ vs VJ vs VN)
+- 일정 차이가 Day 1개 이상이면 별도 상품
+- 같은 일정인데 요금표만 따로면 같은 상품
+
+각 product 의 start_char 는 원문에서 그 상품 헤더 줄이 시작하는 정확한 byte/char offset.
+1개 상품만 있으면 products: [{start_char: 0, name_hint: "..."}].
+
+원문 (${snippet.length} chars):
+---
+${snippet}
+---
+
+JSON: {"products": [{"start_char": 0, "name_hint": "[BX] 대만 단수이 3박 4일"}, ...]}`;
+
+  const start = Date.now();
+  try {
+    const result = await traceLlmCall(
+      { task: 'judge', provider: 'gemini', model: 'gemini-2.5-flash', phase: 'executor' },
+      async (span) => {
+        const res = await model.generateContent(prompt);
+        const usage = res.response.usageMetadata;
+        recordLlmUsage(span, {
+          input: usage?.promptTokenCount,
+          output: usage?.candidatesTokenCount,
+          latency_ms: Date.now() - start,
+        });
+        const txt = res.response.text();
+        const parsed = JSON.parse(txt) as { products?: LLMSplitProduct[] };
+        const products = Array.isArray(parsed.products) ? parsed.products : [];
+        // start_char 범위 검증 (0 ~ rawText.length)
+        const valid = products.filter(p =>
+          typeof p.start_char === 'number' &&
+          p.start_char >= 0 &&
+          p.start_char < rawText.length &&
+          typeof p.name_hint === 'string' &&
+          p.name_hint.length > 0
+        );
+        // start_char 오름차순 정렬
+        valid.sort((a, b) => a.start_char - b.start_char);
+        return { products: valid };
+      },
+    );
+    return result;
+  } catch (e) {
+    return {
+      products: [],
+      skipped: true,
+      reason: `LLM split 실패: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+
+/**
+ * LLM split 결과를 CatalogSplitResult 로 변환.
+ */
+export function applyLLMSplit(rawText: string, llm: LLMSplitResult): CatalogSplitResult {
+  if (llm.products.length === 0) {
+    return { sharedPrefix: '', sections: [rawText] };
+  }
+  const sortedStarts = [...llm.products].sort((a, b) => a.start_char - b.start_char);
+  const firstStart = sortedStarts[0].start_char;
+  const sharedPrefix = rawText.slice(0, firstStart).trimEnd();
+  const sections: string[] = [];
+  for (let i = 0; i < sortedStarts.length; i++) {
+    const end = i + 1 < sortedStarts.length ? sortedStarts[i + 1].start_char : rawText.length;
+    sections.push(rawText.slice(sortedStarts[i].start_char, end).trim());
+  }
+  return { sharedPrefix, sections };
+}
+
+/**
+ * Smart split: regex 우선, miss 시 LLM fallback.
+ */
+export async function splitCatalogSmart(rawText: string): Promise<CatalogSplitResult & {
+  source: 'regex' | 'llm-fallback' | 'single';
+}> {
+  const regexResult = splitCatalogByItineraryHeaders(rawText);
+  if (regexResult.sections.length >= 2) {
+    return { ...regexResult, source: 'regex' };
+  }
+  // regex miss → LLM fallback (rawText 충분히 길고 env 활성 시)
+  if (rawText.length >= 2000) {
+    const llm = await detectCatalogBoundariesWithLLM(rawText);
+    if (!llm.skipped && llm.products.length >= 2) {
+      const llmSplit = applyLLMSplit(rawText, llm);
+      return { ...llmSplit, source: 'llm-fallback' };
+    }
+  }
+  return { ...regexResult, source: 'single' };
+}
