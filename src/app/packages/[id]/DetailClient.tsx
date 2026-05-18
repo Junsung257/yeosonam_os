@@ -731,19 +731,24 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <span className="text-violet-700 text-sm font-bold">📚 같은 카탈로그 다른 옵션</span>
               <span className="text-violet-600 text-xs">총 {catalogSiblings.length + 1}개 분기 중 선택</span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            {/* 2026-05-19 박제 (Plan 에이전트 design review P1):
+                5+ 분기 wrap 폭발 방지 — chip max-width 180px + truncate.
+                모바일: 가로 스크롤 (overflow-x-auto + flex-nowrap), 데스크탑: wrap (md:flex-wrap). */}
+            <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto md:overflow-visible no-scrollbar -mx-1 px-1">
               {/* 현재 패키지 (selected) */}
-              <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-violet-600 text-white text-xs font-semibold shadow-sm">
-                {pkg.display_title || pkg.title} <span className="ml-1.5 opacity-80">현재</span>
+              <span className="inline-flex items-center max-w-[180px] px-3 py-1.5 rounded-full bg-violet-600 text-white text-xs font-semibold shadow-sm shrink-0">
+                <span className="truncate">{pkg.display_title || pkg.title}</span>
+                <span className="ml-1.5 opacity-80 shrink-0">현재</span>
               </span>
               {/* 다른 sibling 패키지 — Link 로 즉시 이동 */}
               {catalogSiblings.map(s => (
                 <Link
                   key={s.id}
                   href={`/packages/${s.id}`}
-                  className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100 hover:border-violet-400 transition-colors"
+                  className="inline-flex items-center max-w-[180px] px-3 py-1.5 rounded-full bg-white border border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100 hover:border-violet-400 transition-colors shrink-0"
+                  title={s.display_title || s.title}
                 >
-                  {s.display_title || s.title}
+                  <span className="truncate">{s.display_title || s.title}</span>
                 </Link>
               ))}
             </div>
