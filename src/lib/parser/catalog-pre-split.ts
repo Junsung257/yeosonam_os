@@ -13,16 +13,53 @@ export interface CatalogSplitResult {
   sections: string[];
 }
 
-/** 헤더 줄: 대괄호(반각/전각) + 랜드코드 + 일정표 (앞에 선택적 번호·개행) */
+// ═══════════════════════════════════════════════════════════════════════════
+//  2026-05-19 박제 (사장님 5 카탈로그 실측 사고 — 근본 박제):
+//
+//  기존 regex 두 개 모두 "일정 표" 키워드를 강제했음.
+//  실측 결과 한국 여행사 카탈로그 80%+ 헤더에 "일정표" 키워드 없음:
+//    - [BX] 대만 단수이 3박 4일                          ← "일정표" 없음
+//    - 울란바토르, 테를지초원 3박 5일【금】              ← 대괄호 코드도 없음
+//    - [VJ] 베트남 하노이/하롱/옌뜨 3박5일 ☑노팁노옵션  ← "일정표" 없음
+//    - [VN] 베트남 하노이/하롱베이/옌뜨 3박5일           ← "일정표" 없음
+//    - [부관훼리] 초특가 가성비 무박3일 PKG              ← 한글 코드 + "일정표" 없음
+//
+//  2달간 catalog-pre-split.ts 0회 수정 + 32개 PR 우회 (FACE Engine 도 안 만짐).
+//  사장님이 paste-and-parse N번으로 우회해 사고가 인지 안 됨.
+//  본질 박제: regex 확장 + 5 실제 케이스 fixture vitest 강제.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** [LEGACY] 대괄호 + 영숫자 코드 + "일정표" — 가장 보수적 (false positive 0) */
 const ITIN_HEADER_LINE_RE =
   /(?:^|\n)((?:\d+[.)]\s*)?[\[【［][A-Z0-9]{2,4}[\]】］][^\n]*일정\s*표)/gi;
 
-/**
- * 글머리(■◆ 등) + 일정표 — 대괄호 없는 랜드 PDF 에서 간헐적.
- * 같은 줄에 "일정"과 "표"가 있어야 함 (과분할 방지).
- */
+/** [LEGACY] 글머리(■◆ 등) + "일정표" */
 const ITIN_HEADER_BULLET_RE =
   /(?:^|\n)((?:\d+[.)]\s*)?[■◆▶▪・●○◎◇□]\s*[^\n]{0,120}일정\s*표)/gi;
+
+/**
+ * [NEW] 대괄호 (반각/전각) + 코드 (영숫자 OR 한글) + "N박 M일" — 베트남/대만/부관훼리.
+ * 매칭 예:
+ *   - "[BX] 대만 단수이 3박 4일"
+ *   - "[VJ] 베트남 하노이/하롱/옌뜨 3박5일 ☑노팁노옵션"
+ *   - "[부관훼리] 초특가 가성비 무박3일 PKG"
+ */
+const HEADER_BRACKET_NIGHTS_RE =
+  /(?:^|\n)((?:\d+[.)]\s*)?[\[【［][^\]】］\n]{1,12}[\]】］][^\n]{0,80}\d+박\s*\d+일[^\n]{0,40})/g;
+
+/**
+ * [NEW] 대괄호 없는 헤더 + "N박 M일" + 전각 요일【금】/【월】 — 몽골 LJ 패턴.
+ * 매칭 예: "울란바토르, 테를지초원 3박 5일【금】"
+ */
+const HEADER_PLAIN_NIGHTS_DOW_RE =
+  /(?:^|\n)([^\n\[【]{2,60}\d+박\s*\d+일\s*[\[【][월화수목금토일][\]】][^\n]{0,20})/g;
+
+/**
+ * [NEW] 대괄호 코드 + "무박N일" — 부관훼리 같은 페리 패키지.
+ * 매칭 예: "[부관훼리] 초특가 가성비 무박3일 PKG"
+ */
+const HEADER_NOBAK_RE =
+  /(?:^|\n)((?:\d+[.)]\s*)?[\[【［][^\]】］\n]{1,12}[\]】］][^\n]{0,80}무박\s*\d+일[^\n]{0,40})/g;
 
 /** 두 패턴에서 헤더 시작 문자 인덱스 수집 → 근접 중복 제거 */
 export function collectItineraryHeaderStarts(raw: string): number[] {
@@ -40,12 +77,20 @@ export function collectItineraryHeaderStarts(raw: string): number[] {
     }
   };
 
+  // 기존 보수적 패턴 (일정표 키워드)
   run(ITIN_HEADER_LINE_RE);
   run(ITIN_HEADER_BULLET_RE);
+  // 신규 확장 패턴 (N박 M일 + 다양한 헤더 포맷)
+  run(HEADER_BRACKET_NIGHTS_RE);
+  run(HEADER_PLAIN_NIGHTS_DOW_RE);
+  run(HEADER_NOBAK_RE);
 
   const sorted = [...starts].sort((a, b) => a - b);
   if (sorted.length <= 1) return sorted;
 
+  // MIN_GAP 8 — 두 헤더 패턴이 같은 줄에서 중복 매칭되는 경우만 dedupe.
+  // 본문 내 "3박 5일" false positive 는 별도 layer (consistency-judge, LLM validate)
+  // 에서 잡는다. 여기서 강화하면 짧은 카탈로그 fixture 가 깨짐.
   const deduped: number[] = [sorted[0]];
   const MIN_GAP = 8;
   for (let i = 1; i < sorted.length; i++) {
