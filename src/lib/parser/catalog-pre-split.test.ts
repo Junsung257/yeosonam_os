@@ -57,4 +57,98 @@ describe('splitCatalogByItineraryHeaders', () => {
     expect(sections[0]).toContain('■');
     expect(sections[1]).toContain('◆');
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2026-05-19 박제 (사장님 실제 5 카탈로그 회귀 차단):
+  //
+  // 지금까지 fixture 는 "[ZE]…일정표" 같은 이상화된 헤더만 있었음.
+  // 사장님이 실제로 매일 받는 BX/LJ/VJ/VN/부관훼리 헤더는 "일정표" 키워드 없음.
+  // 2달 동안 catalog-pre-split.ts 0회 수정 + 32 PR 우회한 근본 사고.
+  //
+  // 다음 PR 이 가드 풀면 즉시 회귀.
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('실제 카탈로그 5 케이스 회귀 차단 (2026-05-19 박제)', () => {
+    it('[BX] 대만 — 3 상품 카탈로그 분리', () => {
+      const raw = `공통 요금표 + 하계 써차지 표
+정기 5/1~6/30: 859,000원
+하계 5/3 등: 999,000원
+
+[BX] 대만 단수이 3박 4일
+행 사 날 짜  2026년 5월 1일 ~ 2026년 10월 24일
+최 소 출 발  성인 8명 이상 출발 가능
+포함내역: 항공/호텔/차량/가이드/입장료/식사/여행자보험
+${'단수이 일정 상세 본문 '.repeat(20)}
+
+[BX] 대만 베이토우 3박 4일
+행 사 날 짜  2026년 5월 1일 ~ 2026년 10월 24일
+${'베이토우 일정 상세 본문 '.repeat(20)}
+
+[BX] 대만 우라이 3박 4일
+행 사 날 짜  2026년 5월 1일 ~ 2026년 10월 24일
+${'우라이 일정 상세 본문 '.repeat(20)}`;
+      const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+      expect(sections, '[BX] 3 상품 분리').toHaveLength(3);
+      expect(sharedPrefix, '공통 요금표 보존').toContain('공통 요금표');
+      expect(sections[0]).toContain('단수이');
+      expect(sections[1]).toContain('베이토우');
+      expect(sections[2]).toContain('우라이');
+    });
+
+    it('[LJ] 몽골 — 대괄호 코드 없음 + 전각 요일【금】/【월】', () => {
+      const raw = `광활한 대초원과 황금빛 사막
+4명부터 출발 노팁노옵션노쇼핑
+
+울란바토르, 테를지초원 3박 5일【금】
+최소출발 성인 4명 이상
+포함 항공료 호텔 차량 가이드
+${'테를지 일정 상세 '.repeat(25)}
+
+울란바토르, 테를지초원 엘승타사르하이사막 4박 6일【월】
+최소출발 성인 4명 이상
+포함 항공료 호텔 차량 가이드
+${'엘승타사르하이 일정 상세 '.repeat(25)}`;
+      const { sections } = splitCatalogByItineraryHeaders(raw);
+      expect(sections, '[LJ] 2 상품 분리').toHaveLength(2);
+      expect(sections[0]).toMatch(/3박\s*5일/);
+      expect(sections[1]).toMatch(/4박\s*6일/);
+    });
+
+    it('[VJ]/[VN] 베트남 — 항공사 코드 다른 2 상품 (같은 일정)', () => {
+      const raw = `공통: 옌뜨국립공원 + 하롱베이 + 마사지
+
+[VJ] 베트남 하노이/하롱/옌뜨 3박5일 ☑노팁노옵션
+출 발 일 6/10 - 14
+상 품 가 1인 759,000원
+포함 호텔 차량 식사 가이드
+${'VJ 일정 상세 본문 '.repeat(30)}
+
+[VN] 베트남 하노이/하롱베이/옌뜨 3박5일 ☑노팁노옵션
+출 발 일 6/10 - 14
+상 품 가 1인 959,000원
+${'VN 일정 상세 본문 '.repeat(30)}`;
+      const { sections } = splitCatalogByItineraryHeaders(raw);
+      expect(sections, '[VJ][VN] 2 상품 분리').toHaveLength(2);
+      expect(sections[0]).toContain('[VJ]');
+      expect(sections[1]).toContain('[VN]');
+    });
+
+    it('[부관훼리] 한글 코드 + 무박3일 — 2 카드 1 상품 (헤더 2건이 같은 이름이면 분리)', () => {
+      const raw = `${'사전 안내 텍스트 '.repeat(10)}
+[부관훼리] 초특가 가성비 무박3일 패키지
+선박 스케쥴 부산-시모노세키 21:00-08:00
+포함 사항 왕복훼리비 부두세 가이드 전용버스
+${'요금표 행 '.repeat(40)}
+
+[부관훼리] 초특가 가성비 무박3일 PKG
+인원 10명부터 출발 확정
+일정표
+${'일정 본문 '.repeat(30)}`;
+      const { sections } = splitCatalogByItineraryHeaders(raw);
+      // 헤더 이름이 거의 같지만 분리는 됨 (LLM/judge가 통합 판단 별도 단계)
+      expect(sections.length, '[부관훼리] 2 카드 분리 감지').toBeGreaterThanOrEqual(2);
+    });
+
+    // false positive 차단(본문 "3박 5일" 표기)은 별도 layer (consistency-judge, LLM validate)
+    // 책임. catalog-pre-split 은 헤더 후보를 *넓게* 감지하고, 검증은 후속 단계.
+  });
 });

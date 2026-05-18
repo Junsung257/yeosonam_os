@@ -11,19 +11,26 @@ const JUDGE_SCHEMA: ResponseSchema = {
 };
 
 /**
- * UPLOAD_CATALOG_JUDGE=1 일 때만 호출. 저비용 Gemini Flash로 개수 정합만 확인.
- * false여도 파이프는 중단하지 않음(로그·향후 게이트 확장용).
+ * 카탈로그 갯수 정합 검증 (Gemini Flash, ~$0.0001/호출).
+ *
+ * 2026-05-19 박제 (사장님 5 카탈로그 사고 종결):
+ *   - 기본 ON 으로 변경 (기존: UPLOAD_CATALOG_JUDGE=1 명시해야만 동작 → 사실상 호출 0).
+ *   - 명시적 OFF (UPLOAD_CATALOG_JUDGE=0) 만 비활성.
+ *   - 프롬프트 확장 — "일정표" 키워드 외 "N박 M일" + 대괄호 코드 패턴도 인식.
+ *
+ * false여도 파이프는 중단하지 않음 (admin_alerts 적재만 — 어드민이 보고 정정).
  */
 export async function judgeCatalogProductCountConsistency(
   rawTextSnippet: string,
   extractedProductCount: number,
-): Promise<{ consistent: boolean; skipped: boolean }> {
-  if (process.env.UPLOAD_CATALOG_JUDGE !== '1') {
-    return { consistent: true, skipped: true };
+): Promise<{ consistent: boolean; skipped: boolean; headerCount?: number; reason?: string }> {
+  // 명시적 OFF 만 비활성. 그 외 자동 ON.
+  if (process.env.UPLOAD_CATALOG_JUDGE === '0') {
+    return { consistent: true, skipped: true, reason: 'env-disabled' };
   }
   const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey || extractedProductCount < 1) {
-    return { consistent: true, skipped: true };
+    return { consistent: true, skipped: true, reason: 'no-api-key-or-zero-products' };
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -37,9 +44,25 @@ export async function judgeCatalogProductCountConsistency(
     },
   });
 
-  const prompt = `원문에서 일정표 섹션 헤더가 몇 번 나오는지 센다.
-헤더 패턴: 반각 [XX]·전각 【XX】 등 대괄호 안 2~4자 영숫자 코드 뒤에 같은 줄에 "일정표"가 오는 줄(앞에 1. 2. 번호가 붙을 수 있음).
-이미 추출된 상품 개수가 ${extractedProductCount}개일 때, 헤더 개수와 같으면 consistent:true, 다르면 false만 반환.
+  const prompt = `한국 여행상품 카탈로그 원문에서 별개 상품 개수를 센다.
+
+상품 시작점 패턴 (다양함, 랜드사마다 다름):
+- [XX] / 【XX】 대괄호 + 코드 (영숫자 OR 한글) + "N박 M일" 또는 "무박N일"
+  예: "[BX] 대만 단수이 3박 4일", "[VJ] 베트남 하노이 3박5일", "[부관훼리] 무박3일 PKG"
+- 대괄호 없이 도시명 + "N박 M일" + 전각 요일【금】/【월】
+  예: "울란바토르, 테를지초원 3박 5일【금】"
+- "일정표" / "일정 표" 키워드가 있는 줄
+- ■◆ 같은 글머리 + 상품명
+
+같은 상품을 여러 카드(요금표 + 일정)로 나눠 적은 경우는 1개로 묶어.
+판단 기준:
+- 항공편이 다르면 별도 상품 (BX vs LJ vs VJ)
+- 일정 차이가 Day 1개 이상이면 별도 상품
+- 같은 일정인데 요금표만 따로면 같은 상품
+
+이미 추출된 상품 개수: ${extractedProductCount}개
+원문에서 별개 상품 개수와 일치하면 consistent:true, 다르면 false.
+
 원문 발췌:
 ---
 ${rawTextSnippet.slice(0, 6000)}

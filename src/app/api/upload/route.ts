@@ -757,9 +757,41 @@ export async function POST(request: NextRequest) {
 
     // ── [G] 각 상품별 내부코드 생성 + 이중 저장 루프 ────────────────────────
 
+    // 2026-05-19 박제 (catalog split silent fallback 사고 차단):
+    //   parseDocument 가 multiProducts 채우지 못한 경우 (regex miss / Phase 1 실패) 1상품 fallback.
+    //   기존: 사장님 모르게 처리 → N 상품 카탈로그가 1로 묶이는 사고.
+    //   변경: headerCount >= 2 인데 multiProducts null 이면 admin_alerts 적재 + 응답 warning.
     const productsToSave = parsedDocument.multiProducts ?? [
       { extractedData: parsedDocument.extractedData, itineraryData: parsedDocument.itineraryData ?? null },
     ];
+    let catalogSplitWarning: { headerCount: number; processedCount: number; raw_excerpt: string } | null = null;
+    if (!parsedDocument.multiProducts) {
+      try {
+        const { countCatalogItineraryHeaders } = await import('@/lib/parser/catalog-pre-split');
+        const headerCount = countCatalogItineraryHeaders(parsedDocument.rawText ?? '');
+        if (headerCount >= 2) {
+          catalogSplitWarning = {
+            headerCount,
+            processedCount: 1,
+            raw_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+          };
+          console.warn(`[Upload API] ⚠️ catalog split silent fallback — 헤더 ${headerCount}개 감지됐는데 1상품으로 처리됨`);
+          if (isSupabaseConfigured) {
+            await supabaseAdmin.from('admin_alerts').insert({
+              category: 'catalog-split-fallback',
+              severity: 'warning',
+              title: `카탈로그 분리 실패: 헤더 ${headerCount}개 → 1상품 처리`,
+              message: `${fileName ?? 'direct-text'}: 헤더 ${headerCount}개 감지됐으나 parseDocument 가 multiProducts 채우지 못함. 1상품으로 fallback 처리됨. 사장님 어드민에서 정정 필요 가능성.`,
+              ref_type: 'upload',
+              ref_id: null,
+              meta: { headerCount, fileName, raw_excerpt: catalogSplitWarning.raw_excerpt },
+            }).then(() => {}, () => {});
+          }
+        }
+      } catch (e) {
+        console.warn('[Upload API] catalog header count 체크 실패(무시):', e instanceof Error ? e.message : e);
+      }
+    }
 
     const savedIds: string[]           = [];
     const savedTitles: string[]        = [];
@@ -1858,6 +1890,8 @@ export async function POST(request: NextRequest) {
       attractionStats,
       // X3 박제 (2026-05-15): SKILL.md Step 7-C 표준 한 화면 리포트
       registerReport,
+      // 2026-05-19 박제: catalog 분리 실패 silent fallback 가시화
+      ...(catalogSplitWarning && { catalogSplitWarning }),
       ...(saveErrors.length > 0 && { errors: saveErrors }),
       message: productCount > 1
         ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.${attractionLine}`
