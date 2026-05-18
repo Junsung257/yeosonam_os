@@ -19,6 +19,35 @@ import { hangulSimilarity } from './hangul-fuzzy';
 const AUTO_CANONICAL_THRESHOLD = 3;
 const FUZZY_THRESHOLD = 0.85;
 
+// 2026-05-19 박제 (SF-4): hotel_canonical 적재 silent fail 누적 카운터.
+//   SF-1 (classification-signals) 와 동일 패턴 — 10회 + 30분 cooldown.
+const hotelLearnFailState = {
+  consecutive: 0,
+  lastAlertAt: 0,
+  ALERT_THRESHOLD: 10,
+  ALERT_COOLDOWN_MS: 30 * 60 * 1000,
+};
+function reportHotelLearnFailure(reason: string): void {
+  hotelLearnFailState.consecutive++;
+  if (hotelLearnFailState.consecutive < hotelLearnFailState.ALERT_THRESHOLD) return;
+  if (Date.now() - hotelLearnFailState.lastAlertAt < hotelLearnFailState.ALERT_COOLDOWN_MS) return;
+  hotelLearnFailState.lastAlertAt = Date.now();
+  if (!isSupabaseConfigured) return;
+  supabaseAdmin.from('admin_alerts').insert({
+    category: 'register-learning',
+    severity: 'warning',
+    title: `hotel_canonical 학습 실패 누적 ${hotelLearnFailState.consecutive}회`,
+    message: `recordHotelOccurrence 적재 ${hotelLearnFailState.consecutive}회 연속 실패 — 호텔 alias 학습 단절. 최근 reason: ${reason.slice(0, 300)}`,
+    ref_type: 'parser',
+    ref_id: null,
+    meta: { phase: 'hotel-canonical', consecutive: hotelLearnFailState.consecutive, reason: reason.slice(0, 300) },
+  }).then(() => {}, () => {});
+  hotelLearnFailState.consecutive = 0;
+}
+function resetHotelLearnFailure(): void {
+  hotelLearnFailState.consecutive = 0;
+}
+
 interface HotelRow {
   id: number;
   canonical_name: string;
@@ -74,7 +103,7 @@ export async function recordHotelOccurrence(args: {
         newAliases.push(cleaned);
       }
       const newCount = exact.total_count + 1;
-      await supabaseAdmin
+      const { error: updExactErr } = await supabaseAdmin
         .from('hotel_canonical')
         .update({
           aliases: newAliases,
@@ -82,8 +111,9 @@ export async function recordHotelOccurrence(args: {
           is_canonical: exact.is_canonical || newCount >= AUTO_CANONICAL_THRESHOLD,
           last_seen_at: new Date().toISOString(),
         })
-        .eq('id', exact.id)
-        .then(undefined, () => {});
+        .eq('id', exact.id);
+      if (updExactErr) reportHotelLearnFailure(`exact UPDATE fail: ${updExactErr.message}`);
+      else resetHotelLearnFailure();
       return;
     }
 
@@ -101,7 +131,7 @@ export async function recordHotelOccurrence(args: {
       const newAliases = Array.isArray(bestRow.aliases) ? bestRow.aliases : [];
       if (!newAliases.includes(cleaned)) newAliases.push(cleaned);
       const newCount = bestRow.total_count + 1;
-      await supabaseAdmin
+      const { error: updFuzzyErr } = await supabaseAdmin
         .from('hotel_canonical')
         .update({
           aliases: newAliases,
@@ -109,13 +139,14 @@ export async function recordHotelOccurrence(args: {
           is_canonical: bestRow.is_canonical || newCount >= AUTO_CANONICAL_THRESHOLD,
           last_seen_at: new Date().toISOString(),
         })
-        .eq('id', bestRow.id)
-        .then(undefined, () => {});
+        .eq('id', bestRow.id);
+      if (updFuzzyErr) reportHotelLearnFailure(`fuzzy UPDATE fail: ${updFuzzyErr.message}`);
+      else resetHotelLearnFailure();
       return;
     }
 
     // 3) 신규 호텔 — INSERT
-    await supabaseAdmin
+    const { error: insErr } = await supabaseAdmin
       .from('hotel_canonical')
       .insert({
         canonical_name: cleaned,
@@ -125,11 +156,14 @@ export async function recordHotelOccurrence(args: {
         aliases: [],
         total_count: 1,
         is_canonical: false,
-      })
-      .then(undefined, () => {});
+      });
+    if (insErr) reportHotelLearnFailure(`INSERT fail: ${insErr.message}`);
+    else resetHotelLearnFailure();
   } catch (e) {
-    // fire-and-forget — 학습 실패는 등록 흐름에 영향 없음
-    console.warn('[Hotel-Canonical] 누적 실패 (무시):', e instanceof Error ? e.message : e);
+    // fire-and-forget — 학습 실패는 등록 흐름에 영향 없음. 누적 카운터로 alert.
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[Hotel-Canonical] 누적 실패:', msg);
+    reportHotelLearnFailure(`exception: ${msg}`);
   }
 }
 
