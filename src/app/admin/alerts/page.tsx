@@ -36,6 +36,12 @@ const CATEGORY_LABELS: Record<string, { label: string; emoji: string; color: str
   policy_winner: { label: '정책 winner', emoji: '🏆', color: 'bg-blue-50 text-blue-800 border-blue-200' },
   feature_change: { label: 'features 변경', emoji: '🔄', color: 'bg-amber-50 text-amber-800 border-amber-200' },
   ltr_ready: { label: 'LTR 학습 준비', emoji: '📊', color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  // 2026-05-19 박제: 등록 파이프라인 silent fail 가시화 카테고리 5종
+  'catalog-split-fallback': { label: '카탈로그 분리 실패', emoji: '⚠️', color: 'bg-rose-50 text-rose-800 border-rose-200' },
+  'register-backfill': { label: '등록 백필 실패', emoji: '🔧', color: 'bg-orange-50 text-orange-800 border-orange-200' },
+  'approve-post-processing': { label: '승인 후처리 실패', emoji: '📋', color: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
+  'attractions-pexels': { label: 'Pexels 사진 실패', emoji: '🖼️', color: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+  'active-learning-reject': { label: 'Active Learning 실패', emoji: '🧠', color: 'bg-purple-50 text-purple-800 border-purple-200' },
   general: { label: '일반', emoji: 'ℹ️', color: 'bg-admin-bg text-admin-text-2 border-admin-border-mid' },
 };
 
