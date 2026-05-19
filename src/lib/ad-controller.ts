@@ -24,6 +24,7 @@
 
 import { fetchAdAccountSnapshot, isMetaConfigured } from '@/lib/meta-api';
 import { getSecret } from '@/lib/secret-registry';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
   fetchNaverKeywordIdeas,
   isNaverAdsConfigured,
@@ -145,6 +146,29 @@ export async function checkAndAlertLowBalance(
   ].join('\n');
 
   console.error('[AdController] 잔액 긴급 알림:\n' + message);
+
+  // admin_alerts 적재 — 어드민 페이지 (/admin/marketing/ads-automation) 에서 표시
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseAdmin.from('admin_alerts').insert({
+        category: 'ad-balance',
+        severity: snapshot.current_balance <= threshold / 2 ? 'critical' : 'warning',
+        title: `[${snapshot.platform.toUpperCase()}] 광고 잔액 부족 — ${snapshot.account_name}`,
+        message,
+        ref_type: 'ad_account',
+        ref_id: null,
+        meta: {
+          platform: snapshot.platform,
+          account_name: snapshot.account_name,
+          current_balance: snapshot.current_balance,
+          threshold,
+          daily_budget: snapshot.daily_budget,
+        },
+      } as never);
+    } catch (e) {
+      console.warn('[AdController] admin_alerts 적재 실패:', (e as Error)?.message ?? e);
+    }
+  }
 
   // Slack 발송 — SLACK_ALERT_WEBHOOK_URL 또는 SLACK_ALERTS_WEBHOOK 재사용 (이미 운영 알림 채널)
   const webhook = getSecret('SLACK_ALERT_WEBHOOK_URL') ?? getSecret('SLACK_ALERTS_WEBHOOK');

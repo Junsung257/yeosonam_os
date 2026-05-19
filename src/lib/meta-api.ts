@@ -209,6 +209,31 @@ export async function activateAd(adId: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────
+// 6-bis. 캠페인 PAUSE / ACTIVATE (광고 단위가 아닌 캠페인 전체)
+// ─────────────────────────────────────────────
+export async function pauseMetaCampaign(campaignId: string): Promise<void> {
+  const { accessToken } = getCredentials();
+  const body = new URLSearchParams({
+    status: 'PAUSED',
+    access_token: accessToken,
+  });
+  const res = await fetch(`${BASE_URL}/${campaignId}`, { method: 'POST', body });
+  const json: MetaApiResponse = await res.json();
+  if (json.error) handleMetaError(json, `pauseMetaCampaign(${campaignId})`);
+}
+
+export async function activateMetaCampaign(campaignId: string): Promise<void> {
+  const { accessToken } = getCredentials();
+  const body = new URLSearchParams({
+    status: 'ACTIVE',
+    access_token: accessToken,
+  });
+  const res = await fetch(`${BASE_URL}/${campaignId}`, { method: 'POST', body });
+  const json: MetaApiResponse = await res.json();
+  if (json.error) handleMetaError(json, `activateMetaCampaign(${campaignId})`);
+}
+
+// ─────────────────────────────────────────────
 // 7. 광고 세트 예산 변경
 // ─────────────────────────────────────────────
 export async function updateAdsetBudget(

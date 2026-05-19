@@ -7,6 +7,7 @@ import {
   getKeywordPerformances,
   updateKeywordStatus,
   updateKeywordBid,
+  upsertKeywordPerformance,
 } from '@/lib/supabase';
 import {
   syncAdAccountBalance,
@@ -194,13 +195,50 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     push('롱테일 키워드 발굴 시작 (자정 실행)');
     try {
       const seedKeywords = ['단체여행', '패키지여행', '허니문', '효도여행'];
-      const longtails = await discoverLongtailKeywords({
-        platform: 'naver',
-        seedKeywords,
-      });
-      push(`롱테일 발굴 ${longtails.length}개 후보 — ${longtails.map((l) => l.keyword).join(', ')}`);
 
-      // TODO: keyword_performances 테이블에 is_longtail=true로 INSERT
+      // 네이버 + 구글 양쪽 모두 발굴 (각 플랫폼이 다른 키워드 풀 가짐)
+      const [naverLongtails, googleLongtails] = await Promise.all([
+        discoverLongtailKeywords({ platform: 'naver', seedKeywords }),
+        discoverLongtailKeywords({ platform: 'google', seedKeywords }),
+      ]);
+
+      const allLongtails = [
+        ...naverLongtails.map((lt) => ({ ...lt, platform: 'naver' as const })),
+        ...googleLongtails.map((lt) => ({ ...lt, platform: 'google' as const })),
+      ];
+
+      push(`롱테일 발굴 총 ${allLongtails.length}개 (네이버 ${naverLongtails.length} + 구글 ${googleLongtails.length})`);
+
+      // keyword_performances 테이블에 is_longtail=true 로 upsert
+      // onConflict: 'platform,keyword' — 같은 키워드 발굴 시 매번 갱신
+      const today = new Date().toISOString().slice(0, 10);
+      let inserted = 0;
+      for (const lt of allLongtails) {
+        try {
+          await upsertKeywordPerformance({
+            platform: lt.platform,
+            keyword: lt.keyword,
+            total_spend: 0,
+            total_revenue: 0,
+            total_cost: 0,
+            status: 'ACTIVE',
+            current_bid: lt.estimated_cpc,
+            clicks: 0,
+            impressions: 0,
+            conversions: 0,
+            is_longtail: true,
+            discovered_at: new Date().toISOString(),
+            period_start: today,
+            period_end: today,
+          });
+          inserted++;
+        } catch (upsertErr) {
+          console.warn(`[ad-optimizer] keyword upsert 실패 ${lt.platform}/${lt.keyword}:`, upsertErr instanceof Error ? upsertErr.message : upsertErr);
+        }
+      }
+      push(`롱테일 DB INSERT: ${inserted}/${allLongtails.length}건 성공`);
+
+      // 원본 TODO 코드 (참고용)
       // for (const lt of longtails) {
       //   await upsertKeywordPerformance({ platform: 'naver', keyword: lt.keyword, is_longtail: true, current_bid: lt.estimated_cpc, ... });
       // }
