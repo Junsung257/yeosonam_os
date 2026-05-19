@@ -23,6 +23,12 @@
  */
 
 import { fetchAdAccountSnapshot, isMetaConfigured } from '@/lib/meta-api';
+import { getSecret } from '@/lib/secret-registry';
+import {
+  fetchNaverKeywordIdeas,
+  isNaverAdsConfigured,
+  isGoogleAdsConfigured,
+} from '@/lib/search-ads-api';
 
 // ── 설정 상수 ────────────────────────────────────────────────
 
@@ -140,7 +146,41 @@ export async function checkAndAlertLowBalance(
 
   console.error('[AdController] 잔액 긴급 알림:\n' + message);
 
-  // TODO: 이메일 / Slack — sendSlackAlert·notifySlack 등 공통 유틸로 발송
+  // Slack 발송 — SLACK_ALERT_WEBHOOK_URL 또는 SLACK_ALERTS_WEBHOOK 재사용 (이미 운영 알림 채널)
+  const webhook = getSecret('SLACK_ALERT_WEBHOOK_URL') ?? getSecret('SLACK_ALERTS_WEBHOOK');
+  if (webhook) {
+    try {
+      const res = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: message,
+          // Slack Block Kit 형식 — 텍스트 그대로도 작동, 향후 풍부한 포맷으로 확장 가능
+          attachments: [
+            {
+              color: 'danger',
+              fields: [
+                { title: '플랫폼', value: snapshot.platform.toUpperCase(), short: true },
+                { title: '계정', value: snapshot.account_name, short: true },
+                { title: '현재 잔액', value: `₩${snapshot.current_balance.toLocaleString('ko-KR')}`, short: true },
+                { title: '임계값', value: `₩${threshold.toLocaleString('ko-KR')}`, short: true },
+                { title: '일일 예산', value: `₩${snapshot.daily_budget.toLocaleString('ko-KR')}`, short: true },
+              ],
+              ts: Math.floor(Date.now() / 1000),
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) {
+        console.warn(`[AdController] Slack 알림 발송 실패: HTTP ${res.status}`);
+      }
+    } catch (e) {
+      console.warn('[AdController] Slack 알림 예외:', (e as Error)?.message ?? e);
+    }
+  } else {
+    console.warn('[AdController] SLACK_ALERT_WEBHOOK_URL 미설정 — 잔액 알림 stderr 만 남음');
+  }
 
   return { alerted: true, message };
 }
@@ -259,15 +299,58 @@ export async function discoverLongtailKeywords(params: {
     `시드: ${params.seedKeywords.join(', ')} / 최대CPC: ₩${maxCpc}`
   );
 
-  // TODO: 네이버 키워드 도구 API — 연동 시 별도 모듈·시크릿 레지스트리 경유
+  // 네이버: /keywordstool API — 시드당 최대 5개 묶음으로 분할 호출
+  if (params.platform === 'naver' && isNaverAdsConfigured()) {
+    try {
+      const allIdeas: { keyword: string; estimated_cpc: number; monthly_search: number }[] = [];
+      // 5개씩 청크 분할 (네이버 API hintKeywords 한도)
+      for (let i = 0; i < params.seedKeywords.length; i += 5) {
+        const chunk = params.seedKeywords.slice(i, i + 5);
+        const ideas = await fetchNaverKeywordIdeas(chunk);
+        for (const idea of ideas) {
+          const monthly = (idea.monthlyPcQcCnt || 0) + (idea.monthlyMobileQcCnt || 0);
+          // CPC 추정: 경쟁도 × 기준단가 — 네이버는 직접 CPC 안 줌, 경쟁도 → CPC 매핑
+          const compFactor = idea.compIdx === '높음' ? 200 : idea.compIdx === '중간' ? 100 : 50;
+          const estimatedCpc = compFactor;
+          if (estimatedCpc < maxCpc) {
+            allIdeas.push({
+              keyword: idea.relKeyword,
+              estimated_cpc: estimatedCpc,
+              monthly_search: monthly,
+            });
+          }
+        }
+      }
+      return allIdeas;
+    } catch (e) {
+      console.warn('[KeywordDiscovery] 네이버 실제 API 실패 — mock fallback:', (e as Error)?.message ?? e);
+    }
+  }
 
-  // Mock: 시드 키워드 기반 롱테일 샘플 생성
+  // 구글: Keyword Plan Idea Service
+  if (params.platform === 'google' && isGoogleAdsConfigured()) {
+    try {
+      const { generateKeywordIdeas } = await import('./google-ads/client');
+      const ideas = await generateKeywordIdeas(params.seedKeywords);
+      return ideas
+        .map((i) => ({
+          keyword: i.keyword,
+          // 구글은 lowTopOfPageBidKrw ~ highTopOfPageBidKrw 범위 제공 — 중간값 사용
+          estimated_cpc: Math.round((i.lowTopOfPageBidKrw + i.highTopOfPageBidKrw) / 2),
+          monthly_search: i.avgMonthlySearches,
+        }))
+        .filter((r) => r.estimated_cpc < maxCpc && r.estimated_cpc > 0);
+    } catch (e) {
+      console.warn('[KeywordDiscovery] 구글 실제 API 실패 — mock fallback:', (e as Error)?.message ?? e);
+    }
+  }
+
+  // Fallback (env 미설정 또는 API 실패): 시드 기반 mock
   const mockResults = params.seedKeywords.flatMap((seed) => [
     { keyword: `${seed} 저렴한`, estimated_cpc: 45, monthly_search: 320 },
     { keyword: `${seed} 추천`, estimated_cpc: 72, monthly_search: 890 },
     { keyword: `${seed} 패키지`, estimated_cpc: 88, monthly_search: 1200 },
   ]);
-
   return mockResults.filter((r) => r.estimated_cpc < maxCpc);
 }
 
