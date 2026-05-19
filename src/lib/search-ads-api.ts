@@ -199,13 +199,63 @@ export async function fetchNaverKeywordIdeas(
 }
 
 // ── 구글 Ads API ─────────────────────────────────────────
+// 2026-05-19 PR C: google-ads-api npm 패키지 OAuth refresh_token 흐름으로 실제 연동.
+// 환경변수 미설정 시 mock fallback.
 
 export async function fetchGooglePerformance(keywords: SearchAdKeyword[]): Promise<SearchAdPerformance[]> {
-  if (!isGoogleAdsConfigured()) {
-    return generateMockPerformance(keywords.filter(k => k.platform === 'google'));
+  const googleKw = keywords.filter(k => k.platform === 'google');
+  if (!isGoogleAdsConfigured() || googleKw.length === 0) {
+    return generateMockPerformance(googleKw);
   }
-  // TODO: Google Ads API v16 연동
-  return generateMockPerformance(keywords.filter(k => k.platform === 'google'));
+  try {
+    const { getGoogleAdsCustomer } = await import('./google-ads/client');
+    const customer = getGoogleAdsCustomer();
+    const today = new Date().toISOString().slice(0, 10);
+    // GAQL — 키워드 단위 성과 조회 (최근 7일)
+    // https://developers.google.com/google-ads/api/fields/v16/keyword_view
+    // average_position 은 2019 deprecated — average_top_impression_percentage 등으로 대체 가능하나
+    // 본 시점에는 노출 위치 메트릭 생략 (avgPosition=0 으로 보고).
+    const query = `
+      SELECT
+        ad_group_criterion.resource_name,
+        ad_group_criterion.keyword.text,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.ctr,
+        metrics.average_cpc,
+        metrics.conversions,
+        metrics.cost_micros
+      FROM keyword_view
+      WHERE ad_group_criterion.resource_name IN (${googleKw.map(k => `'${k.id.replace(/'/g, '')}'`).join(',')})
+        AND segments.date DURING LAST_7_DAYS
+    `;
+    const rows = await customer.query(query);
+    const byResource = new Map<string, typeof rows[number]>();
+    for (const row of rows) {
+      const rn = row.ad_group_criterion?.resource_name;
+      if (rn) byResource.set(rn, row);
+    }
+    return googleKw.map(k => {
+      const row = byResource.get(k.id);
+      const m = row?.metrics;
+      return {
+        keywordId: k.id,
+        keyword: k.keyword,
+        platform: 'google' as const,
+        impressions: Number(m?.impressions ?? 0),
+        clicks: Number(m?.clicks ?? 0),
+        ctr: Math.round(Number(m?.ctr ?? 0) * 10000) / 100,
+        cpc: Math.round(Number(m?.average_cpc ?? 0) / 1_000_000),
+        conversions: Math.round(Number(m?.conversions ?? 0)),
+        spend: Math.round(Number(m?.cost_micros ?? 0) / 1_000_000),
+        avgPosition: 0, // 2019 deprecated by Google
+        date: today,
+      };
+    });
+  } catch (e) {
+    console.warn('[GoogleAds] fetchGooglePerformance 실패 — mock fallback:', (e as Error)?.message ?? e);
+    return generateMockPerformance(googleKw);
+  }
 }
 
 export async function updateGoogleBid(keywordId: string, newBid: number): Promise<boolean> {
@@ -213,7 +263,8 @@ export async function updateGoogleBid(keywordId: string, newBid: number): Promis
     console.log(`[Mock] 구글 입찰가 변경: ${keywordId} → ₩${newBid}`);
     return true;
   }
-  return true;
+  const { updateAdGroupCriterionBid } = await import('./google-ads/client');
+  return updateAdGroupCriterionBid(keywordId, newBid);
 }
 
 export async function pauseGoogleKeyword(keywordId: string): Promise<boolean> {
@@ -221,7 +272,8 @@ export async function pauseGoogleKeyword(keywordId: string): Promise<boolean> {
     console.log(`[Mock] 구글 키워드 정지: ${keywordId}`);
     return true;
   }
-  return true;
+  const { mutateAdGroupCriterionStatus } = await import('./google-ads/client');
+  return mutateAdGroupCriterionStatus(keywordId, 'PAUSED');
 }
 
 // ── 통합 함수 ────────────────────────────────────────────

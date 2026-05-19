@@ -91,6 +91,7 @@
     "eslint": "^8",
     "eslint-config-next": "^15.5.18",
     "exceljs": "^4.4.0",
+    "google-ads-api": "^23.0.0",
     "googleapis": "^171.4.0",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
