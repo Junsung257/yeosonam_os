@@ -12,14 +12,17 @@ import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
-// 2026-05-16 박제 (시즈오카 사고 종결):
-//   revalidate=3600 + Next fetch cache 깊이가 supabase 응답을 길게 hold 하여
-//   사장님이 attractions/itinerary_data 변경 직후 모바일에서 옛 데이터가 노출됨.
-//   revalidatePath() 호출도 fetch cache 까지 invalidate 하지 못하는 케이스 발생.
-//   상세 페이지는 트래픽 대비 변경 빈도가 높으므로 매 요청 fresh build 로 전환.
-//   ISR 복구는 attraction-change → revalidate 흐름 안정화 후 별도 PR.
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
+// 2026-05-19 박제 (시즈오카 봉인 해제, 성능 복구):
+//   2026-05-16 시즈오카 사고는 revalidate=3600 + fetch cache 깊이 hold 가 원인.
+//   당시 임시 봉인으로 force-dynamic 박았으나 production 실측 결과 매 요청 ~3s SSR + 캐시 0% (X-Vercel-Cache: MISS) 폭주.
+//   이후 박힌 인프라:
+//     - /api/packages/[id]/approve   → revalidatePath('/packages', '/packages/[id]') (이미 호출)
+//     - /api/packages (PATCH/POST)   → revalidatePath + revalidateTag('packages')
+//     - /api/admin/attractions/[id]/feedback|aliases → revalidatePath('/packages','layout')
+//     - section-extractors.ts, itinerary-llm-extractor.ts → revalidatePackagePaths(packageId)
+//   → ISR=60s 로 복구. 최대 staleness 60초 (사장님 변경 직후엔 explicit revalidatePath 가 즉시 무효화).
+//   장기 측정 후 더 늘릴 수 있음 (e.g. revalidate=300).
+export const revalidate = 60;
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
 // 2026-05-16 박제 (시즈오카 사고 결정타): 존재하지 않는 컬럼 `min_people`, `thumbnail_urls`
