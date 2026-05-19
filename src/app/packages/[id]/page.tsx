@@ -12,17 +12,41 @@ import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
-// 2026-05-19 박제 (시즈오카 봉인 해제, 성능 복구):
-//   2026-05-16 시즈오카 사고는 revalidate=3600 + fetch cache 깊이 hold 가 원인.
-//   당시 임시 봉인으로 force-dynamic 박았으나 production 실측 결과 매 요청 ~3s SSR + 캐시 0% (X-Vercel-Cache: MISS) 폭주.
-//   이후 박힌 인프라:
-//     - /api/packages/[id]/approve   → revalidatePath('/packages', '/packages/[id]') (이미 호출)
-//     - /api/packages (PATCH/POST)   → revalidatePath + revalidateTag('packages')
-//     - /api/admin/attractions/[id]/feedback|aliases → revalidatePath('/packages','layout')
-//     - section-extractors.ts, itinerary-llm-extractor.ts → revalidatePackagePaths(packageId)
-//   → ISR=60s 로 복구. 최대 staleness 60초 (사장님 변경 직후엔 explicit revalidatePath 가 즉시 무효화).
-//   장기 측정 후 더 늘릴 수 있음 (e.g. revalidate=300).
+// 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
+//   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
+//   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
+//     `generateStaticParams` + `dynamicParams = true` 조합이 필수.
+//   증거 — 동일 production 측정:
+//     - /things-to-do/[region] (generateStaticParams ✅): X-Vercel-Cache: PRERENDER, X-Nextjs-Prerender: 1
+//     - /destinations/[city]  (generateStaticParams ❌): MISS, no-store
+//     - /packages/[id]        (generateStaticParams ❌): MISS, no-store (PR #152 후에도)
+//   해결: 활성 상품 top 50개를 빌드 시 prerender + 나머지는 first-request ISR (dynamicParams=true).
+//   invalidation 인프라는 동일: /api/packages/[id]/approve · /api/packages (bulk PATCH/POST)
+//     · /api/admin/attractions/[id]/{feedback,aliases} · section-extractors · itinerary-llm-extractor
+//     모두 revalidatePath('/packages/{id}') 또는 revalidatePackagePaths() 호출.
 export const revalidate = 60;
+export const dynamicParams = true;
+
+/**
+ * 빌드 시 prerender 대상: 최근 활성 상품 50개. 인기 핫패스를 0ms 응답으로 즉시 처리.
+ * 나머지 상품(아카이브·승인대기 등)은 첫 요청 시 ISR 캐시 생성 + 60초 재사용.
+ * - 빌드 환경에 supabase 가용 시에만 실행 (CI sandbox 등 가용성 보장 안 되면 빈 배열).
+ * - 50개 선정 기준: status in (active, approved) + updated_at desc — 최근 운영 상품 우선.
+ */
+export async function generateStaticParams(): Promise<Array<{ id: string }>> {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY) return [];
+  try {
+    const { data } = await supabaseAdmin
+      .from('travel_packages')
+      .select('id')
+      .in('status', ['active', 'approved'])
+      .order('updated_at', { ascending: false })
+      .limit(50);
+    return ((data ?? []) as Array<{ id: string }>).map((p) => ({ id: p.id }));
+  } catch {
+    return [];
+  }
+}
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
 // 2026-05-16 박제 (시즈오카 사고 결정타): 존재하지 않는 컬럼 `min_people`, `thumbnail_urls`
