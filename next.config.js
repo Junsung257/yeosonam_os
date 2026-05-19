@@ -91,6 +91,18 @@ const nextConfig = {
         source: '/api/exchange-rate',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=600, stale-while-revalidate=3600' }],
       },
+      {
+        // 패키지 검색 목록 — Vercel Edge CDN 1분 캐시, stale-while-revalidate 5분
+        // searchParams 별 cache key 분리 (인기 검색 쿼리는 누적 HIT). PR #156 패턴.
+        // 같은 destination/q/hub 조합으로 1분 안에 재방문 시 0.15s HIT 가능.
+        source: '/packages',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      {
+        // 블로그 목록 — 발행 주기가 길어 5분 캐시, stale-while-revalidate 30분
+        source: '/blog',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=1800' }],
+      },
     ];
   },
   async redirects() {
