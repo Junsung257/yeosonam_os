@@ -14,6 +14,28 @@ import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion } from 
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300;
+export const dynamicParams = true;
+
+/**
+ * 2026-05-19 박제 (PR #153 패턴 적용): Next.js 15 dynamic route 의 ISR 활성화를 위해
+ * generateStaticParams 가 필수. 빈 배열이라도 반환해야 runtime ISR cache 동작.
+ * 활성 상품이 있는 destination 만 빌드 시 prerender (sitemap 노출 도시 우선).
+ */
+export async function generateStaticParams(): Promise<Array<{ city: string }>> {
+  if (!isSupabaseConfigured) return [];
+  try {
+    const { data } = await supabaseAdmin
+      .from('travel_packages')
+      .select('destination')
+      .in('status', ['active', 'approved'])
+      .not('destination', 'is', null)
+      .limit(2000);
+    const unique: string[] = [...new Set(((data ?? []) as Array<{ destination: string | null }>).map((r) => r.destination ?? '').filter((d): d is string => d.length > 0))];
+    return unique.slice(0, 30).map((city) => ({ city }));
+  } catch {
+    return [];
+  }
+}
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
