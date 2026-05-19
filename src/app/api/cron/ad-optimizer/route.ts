@@ -27,6 +27,13 @@ import {
   isNaverAdsConfigured,
   isGoogleAdsConfigured,
 } from '@/lib/search-ads-api';
+import {
+  isMetaConfigured,
+  listActiveCampaigns,
+  fetchCampaignROAS,
+  pauseMetaCampaign,
+} from '@/lib/meta-api';
+import { autoSeedAdAccounts } from '@/lib/ad-account-seeder';
 
 /**
  * GET /api/cron/ad-optimizer
@@ -85,6 +92,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       log,
     });
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // STEP 0. AdAccount 자동 시드 (신규 키 등록 감지 시 INSERT)
+  // ═══════════════════════════════════════════════════════════
+  const seedResult = await autoSeedAdAccounts();
+  if (seedResult.seeded > 0) {
+    push(`자동 시드: ${seedResult.seeded}건 신규 ad_accounts INSERT`);
+  }
+  seedResult.details.forEach((d) => push(`  ${d}`));
 
   // ═══════════════════════════════════════════════════════════
   // STEP 1. 광고 계정 잔액 동기화
@@ -246,6 +262,51 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // }
     } catch (err) {
       push(`롱테일 발굴 실패: ${err instanceof Error ? err.message : '오류'}`);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // STEP 4. Meta 캠페인 ROAS 자동 PAUSE (Insights API 7일 윈도우)
+  // ═══════════════════════════════════════════════════════════
+  // 근거: Meta 표준 7-day-click 측정 윈도우 (searchengineland.com)
+  // 안전: applyDbChanges + isMetaConfigured 시에만 실제 PAUSE
+  if (isMetaConfigured()) {
+    try {
+      const metaRoasTarget = Number(process.env.AD_META_ROAS_TARGET_PCT ?? process.env.AD_ROAS_TARGET_PCT ?? 150);
+      const metaMinSpend = Number(process.env.AD_META_MIN_SPEND_KRW ?? 30000); // 최소 지출 (데이터 부족 보호)
+      const metaWindowDays = Number(process.env.AD_META_ROAS_WINDOW_DAYS ?? 7);
+
+      const campaigns = await listActiveCampaigns();
+      push(`Meta 활성 캠페인 ${campaigns.length}개 ROAS 분석 (${metaWindowDays}d 윈도우, 목표 ${metaRoasTarget}%)`);
+
+      let metaPaused = 0;
+      let metaSkipped = 0;
+      for (const camp of campaigns) {
+        try {
+          const roas = await fetchCampaignROAS(camp.id, metaWindowDays);
+          if (roas.spend < metaMinSpend) {
+            // 데이터 부족 — 성급한 PAUSE 회피 (Optmyzr 표준 패턴)
+            metaSkipped++;
+            push(`  [meta:${camp.id}] "${camp.name}" SKIP (지출 ₩${roas.spend.toLocaleString('ko-KR')} < ₩${metaMinSpend.toLocaleString('ko-KR')})`);
+            continue;
+          }
+          if (roas.roasPct < metaRoasTarget) {
+            push(`  [meta:${camp.id}] "${camp.name}" PAUSE 후보 — ROAS ${roas.roasPct}% < ${metaRoasTarget}% (지출 ₩${roas.spend.toLocaleString('ko-KR')} / 매출 ₩${roas.revenue.toLocaleString('ko-KR')})`);
+            if (applyDbChanges) {
+              await pauseMetaCampaign(camp.id);
+              metaPaused++;
+              push(`    └ ✓ Meta PAUSE 적용`);
+            } else {
+              push(`    └ dry-run (APPLY_CHANGES=false)`);
+            }
+          }
+        } catch (e) {
+          push(`  [meta:${camp.id}] ROAS 조회 실패: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+      push(`Meta 캠페인: ${metaPaused}건 PAUSE 적용, ${metaSkipped}건 데이터부족 skip`);
+    } catch (e) {
+      push(`Meta 캠페인 자동 PAUSE 실패: ${e instanceof Error ? e.message : e}`);
     }
   }
 

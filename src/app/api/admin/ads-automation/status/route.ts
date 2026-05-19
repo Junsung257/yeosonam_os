@@ -91,13 +91,30 @@ export async function GET() {
         ? Math.round((todayStats.totalRevenue / todayStats.totalSpend) * 100)
         : 0;
 
-    // 잔액 부족 알림 최근 5건
+    // 잔액 부족 알림 최근 5건 (dismissed 제외)
     const { data: alerts } = await supabaseAdmin
       .from('admin_alerts')
       .select('id, severity, title, message, created_at')
       .eq('category', 'ad-balance')
+      .is('dismissed_at', null)
       .order('created_at', { ascending: false })
       .limit(5);
+
+    // 최근 발굴된 롱테일 키워드 (자정 cron 의 결과) — 최대 20건
+    const { data: longtails } = await supabaseAdmin
+      .from('keyword_performances')
+      .select('id, platform, keyword, current_bid, discovered_at')
+      .eq('is_longtail', true)
+      .order('discovered_at', { ascending: false })
+      .limit(20);
+
+    // PAUSED/FLAGGED_UP 키워드 상위 20건 (1-click 액션용)
+    const { data: actionable } = await supabaseAdmin
+      .from('keyword_performances')
+      .select('id, platform, keyword, status, roas_pct, pause_count, permanently_paused, current_bid')
+      .in('status', ['PAUSED', 'FLAGGED_UP'])
+      .order('updated_at', { ascending: false })
+      .limit(20);
 
     return NextResponse.json({
       ok: true,
@@ -116,6 +133,8 @@ export async function GET() {
       keywordStats,
       todayStats,
       recentBalanceAlerts: alerts ?? [],
+      recentLongtails: longtails ?? [],
+      actionableKeywords: actionable ?? [],
     });
   } catch (err) {
     return NextResponse.json(

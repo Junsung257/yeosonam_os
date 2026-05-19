@@ -281,6 +281,97 @@ export async function fetchCampaignInsights(
 }
 
 // ─────────────────────────────────────────────
+// 8-bis. 활성 캠페인 목록 (자동 PAUSE 후보 선별용)
+// ─────────────────────────────────────────────
+export interface MetaCampaignSummary {
+  id: string;
+  name: string;
+  status: string;
+  objective?: string;
+  daily_budget?: string;
+}
+
+export async function listActiveCampaigns(): Promise<MetaCampaignSummary[]> {
+  const { accessToken, adAccountId } = getCredentials();
+  const params = new URLSearchParams({
+    fields: 'id,name,status,objective,daily_budget',
+    effective_status: '["ACTIVE"]',
+    limit: '100',
+    access_token: accessToken,
+  });
+  const res = await fetch(`${BASE_URL}/${adAccountId}/campaigns?${params.toString()}`);
+  const json = (await res.json()) as MetaApiResponse<MetaCampaignSummary[]> & { data?: MetaCampaignSummary[] };
+  if (json.error) handleMetaError(json, 'listActiveCampaigns');
+  return json.data ?? [];
+}
+
+// ─────────────────────────────────────────────
+// 8-ter. 캠페인 ROAS 계산 (action_values 의 purchase 활용)
+// ─────────────────────────────────────────────
+export interface MetaCampaignROAS {
+  campaignId: string;
+  spend: number;       // 통화 단위 (KRW 계정이면 원)
+  revenue: number;     // 통화 단위
+  conversions: number;
+  roasPct: number;     // revenue / spend * 100
+  impressions: number;
+  clicks: number;
+}
+
+interface MetaActionRow {
+  action_type: string;
+  value: string;
+}
+
+/** 캠페인 단위 ROAS — 기본 7일 윈도우 (Meta 표준 7-day-click) */
+export async function fetchCampaignROAS(
+  campaignId: string,
+  daysBack: number = 7,
+): Promise<MetaCampaignROAS> {
+  const { accessToken } = getCredentials();
+  const to = new Date();
+  const from = new Date(to.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  const params = new URLSearchParams({
+    fields: 'spend,impressions,clicks,actions,action_values',
+    time_range: JSON.stringify({
+      since: from.toISOString().slice(0, 10),
+      until: to.toISOString().slice(0, 10),
+    }),
+    access_token: accessToken,
+  });
+  const res = await fetch(`${BASE_URL}/${campaignId}/insights?${params.toString()}`);
+  const json = (await res.json()) as MetaApiResponse<
+    Array<{
+      spend?: string;
+      impressions?: string;
+      clicks?: string;
+      actions?: MetaActionRow[];
+      action_values?: MetaActionRow[];
+    }>
+  >;
+  if (json.error) handleMetaError(json, `fetchCampaignROAS(${campaignId})`);
+  const row = json.data?.[0];
+  if (!row) {
+    return { campaignId, spend: 0, revenue: 0, conversions: 0, roasPct: 0, impressions: 0, clicks: 0 };
+  }
+  const spend = Number(row.spend ?? 0);
+  const purchaseAction = row.actions?.find((a) => a.action_type === 'purchase' || a.action_type === 'omni_purchase');
+  const purchaseValue = row.action_values?.find((a) => a.action_type === 'purchase' || a.action_type === 'omni_purchase');
+  const conversions = Number(purchaseAction?.value ?? 0);
+  const revenue = Number(purchaseValue?.value ?? 0);
+  const roasPct = spend > 0 ? Math.round((revenue / spend) * 100) : 0;
+  return {
+    campaignId,
+    spend: Math.round(spend),
+    revenue: Math.round(revenue),
+    conversions: Math.round(conversions),
+    roasPct,
+    impressions: Number(row.impressions ?? 0),
+    clicks: Number(row.clicks ?? 0),
+  };
+}
+
+// ─────────────────────────────────────────────
 // 9. KRW → Meta cents 변환 유틸
 // ─────────────────────────────────────────────
 export function krwToMetaCents(krw: number, usdKrwRate: number): number {

@@ -15,6 +15,8 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import OAuthStartButton from './OAuthStartButton';
+import KeywordToggleButton from './KeywordToggleButton';
+import AlertDismissButton from './AlertDismissButton';
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -76,6 +78,23 @@ interface StatusResponse {
     message: string;
     created_at: string;
   }>;
+  recentLongtails?: Array<{
+    id: string;
+    platform: string;
+    keyword: string;
+    current_bid: number;
+    discovered_at: string | null;
+  }>;
+  actionableKeywords?: Array<{
+    id: string;
+    platform: string;
+    keyword: string;
+    status: 'ACTIVE' | 'PAUSED' | 'FLAGGED_UP';
+    roas_pct: number;
+    pause_count?: number;
+    permanently_paused?: boolean;
+    current_bid: number;
+  }>;
 }
 
 async function fetchStatus(): Promise<StatusResponse | null> {
@@ -123,7 +142,16 @@ export default async function AdsAutomationPage() {
     );
   }
 
-  const { credentials, toggles, accounts = [], keywordStats, todayStats, recentBalanceAlerts = [] } = status;
+  const {
+    credentials,
+    toggles,
+    accounts = [],
+    keywordStats,
+    todayStats,
+    recentBalanceAlerts = [],
+    recentLongtails = [],
+    actionableKeywords = [],
+  } = status;
 
   const credsCount = [credentials.meta, credentials.naver, credentials.google].filter(Boolean).length;
 
@@ -348,6 +376,92 @@ export default async function AdsAutomationPage() {
                 <time className="text-xs text-gray-500">
                   {new Date(alert.created_at).toLocaleString('ko-KR')}
                 </time>
+                <AlertDismissButton alertId={alert.id} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* 액션 필요 키워드 — 1-click PAUSE/RESUME */}
+      {actionableKeywords.length > 0 && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold">
+            액션 필요 키워드 <span className="text-sm font-normal text-gray-500">({actionableKeywords.length}건)</span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase text-gray-500">
+                  <th className="py-2">플랫폼</th>
+                  <th>키워드</th>
+                  <th>상태</th>
+                  <th className="text-right">ROAS</th>
+                  <th className="text-right">입찰가</th>
+                  <th className="text-right">PAUSE 누적</th>
+                  <th className="text-right">액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {actionableKeywords.map((kw) => (
+                  <tr key={kw.id} className="border-b last:border-b-0">
+                    <td className="py-2 font-medium uppercase">{kw.platform}</td>
+                    <td>{kw.keyword}</td>
+                    <td>
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs ${
+                          kw.status === 'PAUSED'
+                            ? 'bg-rose-100 text-rose-700'
+                            : kw.status === 'FLAGGED_UP'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                        }`}
+                      >
+                        {kw.status}
+                      </span>
+                      {kw.permanently_paused && (
+                        <span className="ml-1 text-xs text-gray-500">(영구)</span>
+                      )}
+                    </td>
+                    <td className="text-right font-mono">{kw.roas_pct}%</td>
+                    <td className="text-right font-mono">₩{kw.current_bid.toLocaleString('ko-KR')}</td>
+                    <td className="text-right font-mono text-xs text-gray-500">{kw.pause_count ?? 0}회</td>
+                    <td className="text-right">
+                      <KeywordToggleButton
+                        keywordId={kw.id}
+                        keyword={kw.keyword}
+                        currentStatus={kw.status}
+                        platform={kw.platform}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* 최근 발굴된 롱테일 */}
+      {recentLongtails.length > 0 && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold">
+            최근 발굴된 롱테일 키워드 <span className="text-sm font-normal text-gray-500">({recentLongtails.length}건)</span>
+          </h2>
+          <p className="mb-3 text-xs text-gray-500">
+            자정 cron 이 시드 키워드(단체여행/패키지여행/허니문/효도여행) → 네이버 + 구글 키워드 도구 API 로 발굴.
+            <code className="ml-1 rounded bg-gray-100 px-1">AD_LONGTAIL_CPC_MAX={toggles.longtailCpcMax}</code> 이하만 등록.
+          </p>
+          <ul className="grid grid-cols-1 gap-1 text-sm md:grid-cols-2">
+            {recentLongtails.map((lt) => (
+              <li key={lt.id} className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] uppercase text-violet-700">
+                    {lt.platform}
+                  </span>
+                  <span>{lt.keyword}</span>
+                </div>
+                <span className="font-mono text-xs text-gray-600">₩{lt.current_bid.toLocaleString('ko-KR')}</span>
               </li>
             ))}
           </ul>
