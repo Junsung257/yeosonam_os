@@ -13,6 +13,26 @@
 
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import OAuthStartButton from './OAuthStartButton';
+
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function resolvePlatformTenantId(): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data } = await supabaseAdmin
+      .from('tenants')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const id = (data?.[0] as { id?: string } | undefined)?.id;
+    if (id && UUID_V4_RE.test(id)) return id;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 interface StatusResponse {
   ok: boolean;
@@ -92,7 +112,7 @@ function CredentialBadge({ ok, label }: { ok: boolean; label: string }) {
 }
 
 export default async function AdsAutomationPage() {
-  const status = await fetchStatus();
+  const [status, platformTenantId] = await Promise.all([fetchStatus(), resolvePlatformTenantId()]);
 
   if (!status) {
     return (
@@ -176,8 +196,16 @@ export default async function AdsAutomationPage() {
               <li>Google Ads Manager → API 센터 → Basic Access 신청 (3~14일 승인)</li>
               <li>승인 후 console.cloud.google.com 에서 OAuth 클라이언트 생성</li>
               <li>Vercel env 에 GOOGLE_ADS_CLIENT_ID / CLIENT_SECRET 등록</li>
-              <li>아래 버튼 클릭 → Google 로그인 → refresh_token 자동 저장</li>
+              <li>아래 버튼 클릭 → Google 로그인 → refresh_token 자동 저장 (DB tenant_api_tokens)</li>
             </ol>
+            <OAuthStartButton tenantId={platformTenantId} configured={false} />
+          </div>
+        )}
+        {credentials.google && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs">
+            <strong className="text-emerald-700">구글 Ads 연동 완료.</strong> 토큰 만료 시
+            tenant_api_tokens 에서 자동 refresh.
+            <OAuthStartButton tenantId={platformTenantId} configured={true} />
           </div>
         )}
       </section>
