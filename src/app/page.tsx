@@ -2,7 +2,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
-import { getSecret } from '@/lib/secret-registry';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
@@ -297,11 +296,13 @@ export default async function HomePage() {
   }));
 
   // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
-  // 2026-05-19 박제 (PR #155 + #156):
-  //   1) `getRandomPexelsPhoto` 의 Math.random() → `getDeterministicPexelsPhoto` 로 교체 (PR #155)
-  //   2) `await import('@/lib/pexels')` dynamic import → top-level static import 로 교체 (PR #156)
-  //   /destinations(○ Static) 와 달리 /(ƒ Dynamic) 인 이유로 의심되는 두 패턴을 모두 제거.
-  if (getSecret('PEXELS_API_KEY')) {
+  // 2026-05-19 박제 (PR #155 단계적 fix — / 를 SSG 로 복귀시키기 위한 누적 변경):
+  //   1) `getRandomPexelsPhoto`(Math.random) → `getDeterministicPexelsPhoto`
+  //   2) `await import('@/lib/pexels')` dynamic import → top-level static import
+  //   3) `getSecret('PEXELS_API_KEY')` (process.env[key] 동적 인덱싱) → `process.env.PEXELS_API_KEY` 정적 참조
+  // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
+  //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
+  if (process.env.PEXELS_API_KEY?.trim()) {
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
       ...topDests.filter(d => !d.image).map(d => d.destination),
