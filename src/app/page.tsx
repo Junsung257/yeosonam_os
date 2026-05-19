@@ -13,6 +13,7 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -296,13 +297,11 @@ export default async function HomePage() {
   }));
 
   // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
-  // 2026-05-19 박제: `getRandomPexelsPhoto` 의 Math.random() 이 페이지를 dynamic 으로 강등시켜
-  //   CI build log 에 `ƒ /` (Dynamic) 표시됨 → /destinations(○) 와 달리 / production MISS 폭주.
-  //   deterministic 호출로 교체 → 빌드 시 SSG 가능 + Pexels fetch cache 1h 적중률 100%.
-  //   keyword 자체가 destination별로 다르므로 다양성 보존됨.
+  // 2026-05-19 박제 (PR #155 + #156):
+  //   1) `getRandomPexelsPhoto` 의 Math.random() → `getDeterministicPexelsPhoto` 로 교체 (PR #155)
+  //   2) `await import('@/lib/pexels')` dynamic import → top-level static import 로 교체 (PR #156)
+  //   /destinations(○ Static) 와 달리 /(ƒ Dynamic) 인 이유로 의심되는 두 패턴을 모두 제거.
   if (getSecret('PEXELS_API_KEY')) {
-    const { getDeterministicPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
-
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
       ...topDests.filter(d => !d.image).map(d => d.destination),
