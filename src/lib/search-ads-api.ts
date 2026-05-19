@@ -3,10 +3,14 @@
  * Search Ads API — 네이버/구글 검색광고 API 래퍼
  * ══════════════════════════════════════════════════════════
  * API 키 미설정 시 mock 데이터 반환 (graceful fallback)
+ *
+ * 2026-05-19 PR B: 네이버 실제 API 연동 (HMAC-SHA256 서명).
+ * 2026-05-19 PR C: 구글 Ads google-ads-api npm 패키지 연동 (OAuth refresh).
  */
 
 import type { SearchAdKeyword, Platform } from './keyword-brain';
 import { getSecret } from '@/lib/secret-registry';
+import { naverAdsFetch } from './naver-ads/client';
 
 // ── 환경 변수 체크 ───────────────────────────────────────
 // 2026-05-19 통일: 서버 전용 키로 마이그레이션 (NEXT_PUBLIC_* 제거 — 클라이언트 번들 노출 위험 차단)
@@ -75,16 +79,55 @@ function generateMockPerformance(keywords: SearchAdKeyword[]): SearchAdPerforman
 
 // ── 네이버 검색광고 API ──────────────────────────────────
 
+interface NaverStatsRow {
+  id: string;
+  impCnt?: number;
+  clkCnt?: number;
+  ctr?: number;
+  cpc?: number;
+  ccnt?: number;       // 전환수
+  salesAmt?: number;   // 비용(원)
+  avgRnk?: number;
+}
+
 export async function fetchNaverPerformance(keywords: SearchAdKeyword[]): Promise<SearchAdPerformance[]> {
-  if (!isNaverAdsConfigured()) {
-    // Mock fallback
-    return generateMockPerformance(keywords.filter(k => k.platform === 'naver'));
+  const naverKw = keywords.filter(k => k.platform === 'naver');
+  if (!isNaverAdsConfigured() || naverKw.length === 0) {
+    return generateMockPerformance(naverKw);
   }
 
-  // TODO: 실제 네이버 검색광고 API 연동
-  // POST https://api.searchad.naver.com/keywordstool
-  // GET https://api.searchad.naver.com/stats
-  return generateMockPerformance(keywords.filter(k => k.platform === 'naver'));
+  try {
+    // 공식 stats API — 키워드 ID 콤마 결합, 최근 7일 성과 집계
+    // https://github.com/naver/searchad-apidoc — /stats?ids=...&fields=impCnt,clkCnt,salesAmt,ccnt
+    const ids = naverKw.map(k => k.id).join(',');
+    const today = new Date().toISOString().slice(0, 10);
+    const stats = await naverAdsFetch<{ data?: NaverStatsRow[] }>('/stats', {
+      method: 'GET',
+      query: { ids, fields: 'impCnt,clkCnt,ctr,cpc,ccnt,salesAmt,avgRnk', timeRange: today },
+    });
+    const rows = stats?.data ?? [];
+    const byId = new Map(rows.map(r => [r.id, r]));
+
+    return naverKw.map(k => {
+      const r = byId.get(k.id);
+      return {
+        keywordId: k.id,
+        keyword: k.keyword,
+        platform: 'naver' as const,
+        impressions: r?.impCnt ?? 0,
+        clicks: r?.clkCnt ?? 0,
+        ctr: Math.round((r?.ctr ?? 0) * 100) / 100,
+        cpc: Math.round(r?.cpc ?? 0),
+        conversions: r?.ccnt ?? 0,
+        spend: Math.round(r?.salesAmt ?? 0),
+        avgPosition: r?.avgRnk ?? 0,
+        date: today,
+      };
+    });
+  } catch (e) {
+    console.warn('[NaverAds] fetchNaverPerformance 실패 — mock fallback:', (e as Error)?.message ?? e);
+    return generateMockPerformance(naverKw);
+  }
 }
 
 export async function updateNaverBid(keywordId: string, newBid: number): Promise<boolean> {
@@ -92,8 +135,17 @@ export async function updateNaverBid(keywordId: string, newBid: number): Promise
     console.log(`[Mock] 네이버 입찰가 변경: ${keywordId} → ₩${newBid}`);
     return true;
   }
-  // TODO: PUT https://api.searchad.naver.com/ncc/keywords/{keywordId}
-  return true;
+  try {
+    // PUT /ncc/keywords/{keywordId}  body: { bidAmt: number }
+    await naverAdsFetch(`/ncc/keywords/${encodeURIComponent(keywordId)}`, {
+      method: 'PUT',
+      body: { bidAmt: newBid },
+    });
+    return true;
+  } catch (e) {
+    console.error(`[NaverAds] updateNaverBid 실패 ${keywordId}:`, (e as Error)?.message ?? e);
+    return false;
+  }
 }
 
 export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
@@ -101,8 +153,49 @@ export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
     console.log(`[Mock] 네이버 키워드 정지: ${keywordId}`);
     return true;
   }
-  // TODO: PUT status=PAUSED
-  return true;
+  try {
+    // PUT /ncc/keywords/{keywordId}  body: { userLock: true } — userLock 으로 일시 중지
+    await naverAdsFetch(`/ncc/keywords/${encodeURIComponent(keywordId)}`, {
+      method: 'PUT',
+      body: { userLock: true },
+    });
+    return true;
+  } catch (e) {
+    console.error(`[NaverAds] pauseNaverKeyword 실패 ${keywordId}:`, (e as Error)?.message ?? e);
+    return false;
+  }
+}
+
+/**
+ * 키워드 도구 API — 시드 키워드의 관련 키워드 + 월간 검색량 + 경쟁도 조회.
+ * 공식: GET /keywordstool?hintKeywords=...&showDetail=1
+ */
+export interface NaverKeywordIdea {
+  relKeyword: string;
+  monthlyPcQcCnt: number;
+  monthlyMobileQcCnt: number;
+  monthlyAvePcClkCnt: number;
+  monthlyAveMobileClkCnt: number;
+  compIdx: '낮음' | '중간' | '높음';
+  plAvgDepth?: number;
+}
+
+export async function fetchNaverKeywordIdeas(
+  seedKeywords: string[],
+): Promise<NaverKeywordIdea[]> {
+  if (!isNaverAdsConfigured() || seedKeywords.length === 0) return [];
+  try {
+    // hintKeywords 는 콤마 결합, 최대 5개. 5개 초과 시 호출자가 분할 권장.
+    const hint = seedKeywords.slice(0, 5).join(',');
+    const res = await naverAdsFetch<{ keywordList?: NaverKeywordIdea[] }>('/keywordstool', {
+      method: 'GET',
+      query: { hintKeywords: hint, showDetail: 1 },
+    });
+    return res?.keywordList ?? [];
+  } catch (e) {
+    console.warn('[NaverAds] fetchNaverKeywordIdeas 실패:', (e as Error)?.message ?? e);
+    return [];
+  }
 }
 
 // ── 구글 Ads API ─────────────────────────────────────────

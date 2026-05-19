@@ -17,6 +17,14 @@ import {
   type KeywordPerf,
   type OptimizationAction,
 } from '@/lib/ad-controller';
+import {
+  pauseNaverKeyword,
+  updateNaverBid,
+  pauseGoogleKeyword,
+  updateGoogleBid,
+  isNaverAdsConfigured,
+  isGoogleAdsConfigured,
+} from '@/lib/search-ads-api';
 
 /**
  * GET /api/cron/ad-optimizer
@@ -137,31 +145,43 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (applyDbChanges) await updateKeywordStatus(kw.id, 'PAUSED');
       push(`PAUSED: "${action.keyword}" — ${action.reason}`);
 
-      // TODO: 실제 네이버 광고 API — 키워드 일시 중지
-      // await fetch(`https://api.naver.com/ncc/adgroups/keywords/${kw.id}`, {
-      //   method: 'PUT',
-      //   headers: { 'X-API-KEY': '<NAVER_AD_API_KEY>' },
-      //   body: JSON.stringify({ userLock: true }),
-      // });
-
-      // TODO: 실제 구글 Ads API — 키워드 PAUSED
-      // await googleAdsClient.mutateAdGroupCriteria({
-      //   operations: [{ update: { resource_name: kw.id, status: 'PAUSED' } }]
-      // });
+      // 실제 광고 플랫폼 API 호출 — applyDbChanges 켜진 상태에서만 외부 변경
+      if (applyDbChanges) {
+        if (kw.platform === 'naver' && isNaverAdsConfigured()) {
+          const ok = await pauseNaverKeyword(kw.id);
+          push(`  └ [naver] PAUSE ${ok ? '✓' : '✗ (실패, 로그 확인)'}`);
+        } else if (kw.platform === 'google' && isGoogleAdsConfigured()) {
+          const ok = await pauseGoogleKeyword(kw.id);
+          push(`  └ [google] PAUSE ${ok ? '✓' : '✗ (실패, 로그 확인)'}`);
+        } else if (kw.platform === 'meta') {
+          // Meta 는 키워드 단위가 아니라 캠페인/광고세트 단위 — 별도 흐름에서 처리
+        } else {
+          push(`  └ [${kw.platform}] API 키 미설정 — DB 만 반영`);
+        }
+      }
 
     } else if (action.type === 'FLAG_UP' && kw.status !== 'FLAGGED_UP') {
+      const upBid = Math.round((kw.current_bid || 0) * Number(process.env.AD_FLAG_UP_BID_FACTOR || 1.1));
       if (applyDbChanges) {
         await updateKeywordStatus(kw.id, 'FLAGGED_UP');
-        const upBid = Math.round((kw.current_bid || 0) * Number(process.env.AD_FLAG_UP_BID_FACTOR || 1.1));
         if (upBid > 0) {
           await updateKeywordBid(kw.id, upBid);
         }
       }
-      push(`FLAGGED_UP: "${action.keyword}" — ${action.reason}`);
+      push(`FLAGGED_UP: "${action.keyword}" — ${action.reason} (${kw.current_bid} → ${upBid})`);
 
-      // TODO: 실제 입찰가 상향 반영
-      // const newBid = Math.min(kw.current_bid * 1.2, MAX_BID_LIMIT);
-      // await updateKeywordBid(kw.id, newBid);
+      // 실제 광고 플랫폼 입찰가 상향
+      if (applyDbChanges && upBid > 0) {
+        if (kw.platform === 'naver' && isNaverAdsConfigured()) {
+          const ok = await updateNaverBid(kw.id, upBid);
+          push(`  └ [naver] BID ${ok ? '✓' : '✗'}`);
+        } else if (kw.platform === 'google' && isGoogleAdsConfigured()) {
+          const ok = await updateGoogleBid(kw.id, upBid);
+          push(`  └ [google] BID ${ok ? '✓' : '✗'}`);
+        } else {
+          push(`  └ [${kw.platform}] API 키 미설정 — DB 만 반영`);
+        }
+      }
     }
   }
 
