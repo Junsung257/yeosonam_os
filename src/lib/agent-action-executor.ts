@@ -279,7 +279,10 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
       target_id: affiliate_id,
       description: `${affiliate_name} ${kind} 이상탐지 확인`,
       after_value: { kind, detail },
-    }).then(() => {}).catch(() => {})
+    }).then(
+      () => {},
+      (e: unknown) => console.error('[agent-action-executor] AFFILIATE_ANOMALY_ACK audit_logs insert failed:', (e as Error)?.message ?? e),
+    )
     return { acknowledged: true, kind, affiliate_id, affiliate_name }
   },
 
@@ -316,7 +319,10 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
         confirmed: data?.length ?? 0,
         confirmed_booking_nos: (data ?? []).map((b: any) => b.booking_no),
       },
-    } as never).then(() => {}).catch(() => {})
+    } as never).then(
+      () => {},
+      (e: unknown) => console.error('[agent-action-executor] BULK_CONFIRM_SETTLEMENTS audit_logs insert failed:', (e as Error)?.message ?? e),
+    )
 
     return {
       requested: booking_ids.length,

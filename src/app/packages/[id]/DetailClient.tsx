@@ -328,8 +328,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       }
     }).catch(console.error).finally(() => setIsLoading(false));
     // initialAttractions가 비어 있을 때만 폴백 fetch (불필요 중복 호출 방지)
+    // 데이터 fetch 실패는 사용자에게 영향 — dev 콘솔에는 가시화 (트래커와 달리 silent 금지)
     if (initialAttractions.length === 0) {
-      fetch('/api/attractions?limit=500').then(r => r.json()).then(d => setAttractions(d.attractions || [])).catch(() => {});
+      fetch('/api/attractions?limit=500')
+        .then(r => r.json())
+        .then(d => setAttractions(d.attractions || []))
+        .catch((e) => console.warn('[DetailClient] attractions fallback fetch failed:', e?.message ?? e));
     }
   }, [id, initialPackage, initialAttractions.length]);
 

@@ -232,9 +232,18 @@ function scheduleAliasRecord(canonical: string, alias: string): void {
         canonical_name: canonical,
         alias: trimmed,
         source: 'reflexion',
-      }).catch(() => {}),
+      }).catch((e) => {
+        // 학습 실패는 본 매칭 흐름과 무관하나, dev 환경에서는 누락 가시화
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[attraction-matcher] alias record failed:', e?.message ?? e);
+        }
+      }),
     )
-    .catch(() => {});
+    .catch((e) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[attraction-matcher] alias-learner import failed:', e?.message ?? e);
+      }
+    });
 }
 
 // ── 렌더/요청 스코프 인덱스 캐시 (WeakMap) ──────────────────────────────────
