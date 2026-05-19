@@ -8,6 +8,7 @@ import {
   updateKeywordStatus,
   updateKeywordBid,
   upsertKeywordPerformance,
+  markKeywordAutoPaused,
 } from '@/lib/supabase';
 import {
   syncAdAccountBalance,
@@ -143,7 +144,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!kw) continue;
 
     if (action.type === 'PAUSE' && kw.status !== 'PAUSED') {
-      if (applyDbChanges) await updateKeywordStatus(kw.id, 'PAUSED');
+      // Self-healing 추적: pause_count 증가 + last_paused_at 기록 + 3회 누적 시 permanently_paused
+      if (applyDbChanges) await markKeywordAutoPaused(kw.id);
       push(`PAUSED: "${action.keyword}" — ${action.reason}`);
 
       // 실제 광고 플랫폼 API 호출 — applyDbChanges 켜진 상태에서만 외부 변경

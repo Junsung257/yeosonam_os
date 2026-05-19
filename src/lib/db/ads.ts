@@ -388,6 +388,11 @@ export interface KeywordPerformance {
   period_start?: string | null;
   period_end?: string | null;
   updated_at: string;
+  // ── self-healing (migration 20260520000000) ────────────────────
+  pause_count?: number;
+  last_paused_at?: string | null;
+  last_reactivation_at?: string | null;
+  permanently_paused?: boolean;
 }
 
 // ── AdAccount CRUD ──────────────────────────────────────────────
@@ -464,6 +469,76 @@ export async function upsertKeywordPerformance(
     { ...data, updated_at: new Date().toISOString() } as never,
     { onConflict: 'platform,keyword' }
   );
+}
+
+// ── Self-Healing helpers (migration 20260520000000) ─────────────
+
+/**
+ * 자동 PAUSE 마킹 — pause_count 증가 + last_paused_at 기록.
+ * 3회 이상 누적 시 permanently_paused=TRUE (반복 trial 차단).
+ *
+ * 근거: Google Ads "Low activity system bulk changes" 패턴 + Optmyzr 표준.
+ *       잘못 PAUSE 한 경우 자동 복원 가능하되, 반복적으로 미달인 키워드는 영구 차단.
+ */
+export async function markKeywordAutoPaused(id: string, maxPauseCount = 3): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb
+    .from('keyword_performances')
+    .select('pause_count')
+    .eq('id', id)
+    .limit(1);
+  const currentCount = (data?.[0] as { pause_count?: number } | undefined)?.pause_count ?? 0;
+  const nextCount = currentCount + 1;
+  await sb
+    .from('keyword_performances')
+    .update({
+      status: 'PAUSED',
+      pause_count: nextCount,
+      last_paused_at: new Date().toISOString(),
+      permanently_paused: nextCount >= maxPauseCount,
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq('id', id);
+}
+
+/**
+ * Self-healing 대상 후보 조회 — PAUSED 상태 + 영구 PAUSE 아님 + 일정 시간 경과.
+ * 기본 7일 (168h) 경과 — Meta 7-day-click 측정 윈도우 컨센서스 ([searchengineland.com](https://searchengineland.com/strategy-new-keyword-paid-search-performance-473398))
+ */
+export async function getReactivationCandidates(
+  options: { minHoursSincePaused?: number; maxRowsPerRun?: number } = {},
+): Promise<KeywordPerformance[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const minHours = options.minHoursSincePaused ?? 168; // 7d
+  const cutoff = new Date(Date.now() - minHours * 60 * 60 * 1000).toISOString();
+  const { data } = await sb
+    .from('keyword_performances')
+    .select('*')
+    .eq('status', 'PAUSED')
+    .eq('permanently_paused', false)
+    .lt('last_paused_at', cutoff)
+    .order('last_paused_at', { ascending: true })
+    .limit(options.maxRowsPerRun ?? 50);
+  return (data ?? []) as KeywordPerformance[];
+}
+
+/**
+ * Trial reactivation — status='ACTIVE' 로 복원 + last_reactivation_at 기록.
+ * 24h 내 다시 같은 키워드를 reactivation 하지 않도록 cron 이 last_reactivation_at 으로 가드.
+ */
+export async function markKeywordReactivated(id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  await sb
+    .from('keyword_performances')
+    .update({
+      status: 'ACTIVE',
+      last_reactivation_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq('id', id);
 }
 
 /** 오늘 날짜 기준 총 광고 지출 및 전환 매출 집계 */

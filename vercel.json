@@ -30,6 +30,10 @@
       "schedule": "2 2 * * *"
     },
     {
+      "path": "/api/cron/ad-self-healing",
+      "schedule": "18 18 * * *"
+    },
+    {
       "path": "/api/cron/sync-creative-performance",
       "schedule": "6 0 * * *"
     },

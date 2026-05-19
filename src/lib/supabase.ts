@@ -1239,6 +1239,8 @@ export {
   getAdAccounts, updateAdAccountBalance,
   getKeywordPerformances, updateKeywordStatus, updateKeywordBid, upsertKeywordPerformance,
   getAdDashboardStats,
+  // self-healing (migration 20260520000000)
+  markKeywordAutoPaused, getReactivationCandidates, markKeywordReactivated,
 } from './db/ads';
 export type { AdAccount, KeywordPerformance } from './db/ads';
 
