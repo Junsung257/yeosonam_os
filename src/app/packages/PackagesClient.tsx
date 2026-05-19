@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import useSWR from 'swr';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -14,7 +15,11 @@ import {
   DEPARTURE_HUB_OPTIONS,
   DEFAULT_DEPARTURE_HUB,
   appendDepartureHubToSearchParams,
+  normalizeDepartureHub,
 } from '@/lib/departure-hub';
+import Loading from './loading';
+
+const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
 const INITIAL_VISIBLE_COUNT = 18;
 const VISIBLE_STEP = 18;
 
@@ -76,28 +81,53 @@ const CATEGORY_LABELS: Record<string, string> = {
   theme: '🎯 테마여행',
 };
 
-interface ClientProps {
-  initialPackages: Package[];
-  /** 서버에서 attractions 기반으로 미리 계산한 카드 이미지 (클라이언트에 attractions 배열 불필요) */
+interface SearchResponse {
+  packages: Package[];
   imageByPkgId: Record<string, string | null>;
-  destination: string;
-  filter: string;
+  recommendedIds: string[];
+  recommendedReasonMap: Record<string, string[]>;
   hub: DepartureHubId;
-  q?: string;
-  month?: string;
-  priceMin?: string;
-  priceMax?: string;
-  urgency?: string;
-  category?: string;
-  recommendedIds?: string[];
-  recommendedReasonMap?: Record<string, string[]>;
+  filterForClient: string;
 }
 
-export default function PackagesClient({ initialPackages, imageByPkgId: imageByPkgIdProp, destination, filter, hub, q = '', month = '', priceMin = '', priceMax = '', urgency = '', category = '', recommendedIds = [], recommendedReasonMap = {} }: ClientProps) {
+// 옵션 4a — props 제거, useSearchParams 로 query 읽고 SWR 로 fetch.
+// Page 가 searchParams 안 받으므로 정적 prerender (`○` 마킹) 가능.
+// 트레이드오프: 첫 hydration 시 skeleton, hydration 후 SWR fetch.
+export default function PackagesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
+
+  // URL 쿼리에서 직접 추출
+  const destination = searchParams.get('destination') || '';
+  const rawFilter = searchParams.get('filter') || '';
+  const q = searchParams.get('q')?.trim() || '';
+  const month = searchParams.get('month') || '';
+  const priceMin = searchParams.get('priceMin') || '';
+  const priceMax = searchParams.get('priceMax') || '';
+  const urgency = searchParams.get('urgency') || '';
+  const category = searchParams.get('category') || '';
+
+  // 서버와 동일한 hub/filter 해석 로직
+  let hubFromParam = normalizeDepartureHub(searchParams.get('hub'));
+  if (rawFilter === '인천출발' && !searchParams.get('hub')) hubFromParam = 'incheon';
+  const filterForClientInitial = rawFilter === '인천출발' ? '' : rawFilter;
+
+  // SWR fetch — query string 별 cache key
+  const apiQuery = searchParams.toString();
+  const { data, isLoading } = useSWR<SearchResponse>(
+    `/api/packages/search?${apiQuery}`,
+    swrFetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+
+  const initialPackages = data?.packages ?? [];
+  const imageByPkgIdProp = data?.imageByPkgId ?? {};
+  const recommendedIds = data?.recommendedIds ?? [];
+  const recommendedReasonMap = data?.recommendedReasonMap ?? {};
+  const hub = data?.hub ?? hubFromParam;
+  const filter = data?.filterForClient ?? filterForClientInitial;
+  const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
 
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
@@ -139,6 +169,11 @@ export default function PackagesClient({ initialPackages, imageByPkgId: imageByP
   const [sortBy, setSortBy] = useState('recommended');
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const listTopRef = useRef<HTMLDivElement>(null);
+
+  // SWR 응답 후 filter 값이 바뀌면 activeFilter 동기화 (URL ?filter= 변경 대응)
+  useEffect(() => {
+    setActiveFilter(resolveLegacyFilterLabel(filter || '전체'));
+  }, [filter]);
 
   useEffect(() => {
     listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -239,6 +274,11 @@ export default function PackagesClient({ initialPackages, imageByPkgId: imageByP
     }
     return m;
   }, [filteredPackages]);
+
+  // 첫 SWR fetch 동안 skeleton (loading.tsx 와 동일 마크업)
+  if (isLoading && !data) {
+    return <Loading />;
+  }
 
   return (
     <div className="min-h-screen bg-white w-full overflow-x-hidden max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">

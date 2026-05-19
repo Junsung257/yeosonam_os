@@ -1,75 +1,31 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import PackagesData from './PackagesData';
+import PackagesClient from './PackagesClient';
 import Loading from './loading';
-import { normalizeDepartureHub, type DepartureHubId } from '@/lib/departure-hub';
 
-export const revalidate = 300; // 5분 ISR
-
-// Vercel 공식 PPR 패턴 (https://nextjs.org/docs/15/app/getting-started/partial-prerendering):
-//   "Components only opt into dynamic rendering when the value is accessed."
-//   Page 는 searchParams 를 prop 으로 받기만 하고 access 안 함 → 정적 shell prerender 가능.
-//   Suspense 안 PackagesData 만 dynamic, 검색 결과는 streaming.
+// 옵션 4a — Page 가 searchParams 안 받음 → 정적 prerender (`○`).
+//   클라이언트(PackagesClient) 가 useSearchParams + SWR 로 `/api/packages/search` fetch.
+//   API route 응답에 Cache-Control: s-maxage=60, swr=300 헤더 → Vercel Edge CDN cache.
 //
-// generateMetadata 는 searchParams access 하지만 metadata 만 dynamic — 페이지 본문 prerender 와 별개.
+// 트레이드오프: 첫 hydration 시 skeleton, hydration 후 결과 fetch.
+//   metadata: 정적 (`searchParams` access 하면 모든 page/segment 가 dynamic 됨 —
+//             https://www.buildwithmatija.com/blog/nextjs-searchparams-static-generation-fix).
+//             검색어별 title 동적 못함 = SEO 측 손해. 검색 결과 URL 은 indexable 의도 없음.
+//   장기 (Next.js 16 PPR stable): server searchParams + 정적 shell 양립 가능.
 
-function hubMetaLabel(hub: DepartureHubId): string {
-  if (hub === 'all') return '전국 출발';
-  if (hub === 'busan') return '부산 출발';
-  if (hub === 'incheon') return '인천 출발';
-  if (hub === 'daegu') return '대구 출발';
-  return '청주 출발';
-}
+export const metadata: Metadata = {
+  title: '패키지 상품 | 여소남',
+  description: '여소남 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지 — 확정일·요금 비교.',
+  alternates: { canonical: '/packages' },
+};
 
-export async function generateMetadata(
-  props: {
-    searchParams: Promise<{ destination?: string; q?: string; month?: string; hub?: string; filter?: string }>;
-  }
-): Promise<Metadata> {
-  const searchParams = await props.searchParams;
-  let hub = normalizeDepartureHub(searchParams.hub);
-  if ((searchParams.filter || '') === '인천출발' && !searchParams.hub) hub = 'incheon';
-
-  const term = (searchParams.destination || searchParams.q || '').trim();
-  const month = searchParams.month || '';
-  const hubLine = hubMetaLabel(hub);
-
-  if (term) {
-    const monthLabel = month ? ` ${month.split('-')[0]}년 ${parseInt(month.split('-')[1])}월` : '';
-    return {
-      title: `${term}${monthLabel} 패키지 | 여소남`,
-      description: `${term}${monthLabel} · ${hubLine} 단체·패키지 여행. 확정일·요금 비교.`,
-      alternates: {
-        canonical: `/packages?destination=${encodeURIComponent(term)}${month ? `&month=${month}` : ''}`,
-      },
-    };
-  }
-  return {
-    title: `${hubLine} 패키지 상품 | 여소남`,
-    description: `${hubLine} 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지.`,
-    alternates: { canonical: '/packages' },
-  };
-}
-
-export default function PackagesPage(
-  props: {
-    searchParams: Promise<{
-      destination?: string;
-      filter?: string;
-      q?: string;
-      month?: string;
-      priceMin?: string;
-      priceMax?: string;
-      urgency?: string;
-      category?: string;
-      hub?: string;
-    }>;
-  }
-) {
-  // Page 는 searchParams 를 access 하지 않고 prop 으로 forward — Page 자체는 정적.
+export default function PackagesPage() {
+  // useSearchParams 사용 client component 는 Suspense boundary 필수
+  // (Next.js 공식: https://nextjs.org/docs/app/api-reference/functions/use-search-params#prerendering)
+  // 이게 있어야 Page 본문이 정적 prerender (`○`) 되고 PackagesClient 만 client-side render.
   return (
     <Suspense fallback={<Loading />}>
-      <PackagesData searchParams={props.searchParams} />
+      <PackagesClient />
     </Suspense>
   );
 }
