@@ -17,9 +17,11 @@ import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
 
-// Next 15: route segment config는 정적 평가만 가능. ISR 5분 + auto.
+// Next 15: route segment config는 정적 평가만 가능. ISR 5분 + force-static.
+// 2026-05-19 박제: dynamic='auto' 였으나 / 가 ƒ Dynamic 으로 마킹되어 production MISS 폭주.
+// force-static 명시로 dynamic API 호출 시 빌드 에러 발생 → 정확한 트리거 위치 식별.
 export const revalidate = 300;
-export const dynamic = 'auto';
+export const dynamic = 'force-static';
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
