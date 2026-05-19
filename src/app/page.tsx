@@ -2,7 +2,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
-import { getSecret } from '@/lib/secret-registry';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
@@ -13,13 +12,16 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
 
-// Next 15: route segment config는 정적 평가만 가능. ISR 5분 + auto.
+// Next 15: route segment config는 정적 평가만 가능. ISR 5분 + force-static.
+// 2026-05-19 박제: dynamic='auto' 였으나 / 가 ƒ Dynamic 으로 마킹되어 production MISS 폭주.
+// force-static 명시로 dynamic API 호출 시 빌드 에러 발생 → 정확한 트리거 위치 식별.
 export const revalidate = 300;
-export const dynamic = 'auto';
+export const dynamic = 'force-static';
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
@@ -296,10 +298,13 @@ export default async function HomePage() {
   }));
 
   // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
-  // ISR 캐시(revalidate=300) + Next.js fetch 캐시(1h)로 실제 Pexels 호출은 드물게 발생
-  if (getSecret('PEXELS_API_KEY')) {
-    const { getRandomPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
-
+  // 2026-05-19 박제 (PR #155 단계적 fix — / 를 SSG 로 복귀시키기 위한 누적 변경):
+  //   1) `getRandomPexelsPhoto`(Math.random) → `getDeterministicPexelsPhoto`
+  //   2) `await import('@/lib/pexels')` dynamic import → top-level static import
+  //   3) `getSecret('PEXELS_API_KEY')` (process.env[key] 동적 인덱싱) → `process.env.PEXELS_API_KEY` 정적 참조
+  // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
+  //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
+  if (process.env.PEXELS_API_KEY?.trim()) {
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
       ...topDests.filter(d => !d.image).map(d => d.destination),
@@ -310,7 +315,7 @@ export default async function HomePage() {
       const filled = await Promise.all(
         missingDests.map(async dest => {
           try {
-            const photo = await getRandomPexelsPhoto(destToEnKeyword(dest));
+            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
             // 추천여행지 히어로용 large2x, 나머지는 large
             return { dest, large2x: photo?.src.large2x ?? null, large: photo?.src.large ?? null };
           } catch {
