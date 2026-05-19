@@ -23,11 +23,16 @@ export interface TravelPackage {
   };
 }
 
-// AI 클라이언트 lazy 초기화 (V3: DeepSeek primary)
-function getDeepSeek() {
-  const key = getSecret('DEEPSEEK_API_KEY');
-  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
-  return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
+// AI 클라이언트 lazy singleton (V3: DeepSeek primary)
+// getSecret 결과는 런타임 중 불변 → 매 호출 재생성 회피 (Vercel Fluid Compute 최적화)
+let _deepseekClient: OpenAI | null = null;
+function getDeepSeek(): OpenAI {
+  if (!_deepseekClient) {
+    const key = getSecret('DEEPSEEK_API_KEY');
+    if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
+    _deepseekClient = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
+  }
+  return _deepseekClient;
 }
 
 // DeepSeek V4-Flash로 콘텐츠 생성 (V3: 모든 모델 호출을 DeepSeek로 통합)

@@ -18,6 +18,14 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as 
 type AllowedType = typeof ALLOWED_TYPES[number];
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
+// 모듈 레벨 lazy singleton — Vercel Fluid Compute 인스턴스 재사용 시 클라이언트 재생성 회피.
+// getSecret() 결과가 변하지 않는다는 가정(런타임 중) 하에 안전.
+let _anthropic: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!_anthropic) _anthropic = new Anthropic();
+  return _anthropic;
+}
+
 export async function POST(request: NextRequest) {
   const limited = await rateLimitAI(request);
   if (limited) return limited;
@@ -54,7 +62,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // 1. Claude Haiku Vision으로 텍스트 추출
-    const client = new Anthropic();
+    const client = getAnthropicClient();
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,

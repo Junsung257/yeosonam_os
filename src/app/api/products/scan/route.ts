@@ -168,13 +168,22 @@ interface AIExtracted {
   ai_tags: string[];
 }
 
+// 모듈 레벨 lazy singleton — Vercel Fluid Compute 인스턴스 재사용 시 클라이언트 재생성 회피.
+let _scanDeepseekClient: OpenAI | null = null;
+function getScanDeepSeekClient(): OpenAI {
+  if (!_scanDeepseekClient) {
+    const key = getSecret('DEEPSEEK_API_KEY');
+    if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
+    _scanDeepseekClient = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
+  }
+  return _scanDeepseekClient;
+}
+
 async function analyzeWithDeepSeek(
   rawText: string,
   hints: FilenameHints,
 ): Promise<AIExtracted> {
-  const key = getSecret('DEEPSEEK_API_KEY');
-  if (!key) throw new Error('DEEPSEEK_API_KEY 미설정');
-  const client = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
+  const client = getScanDeepSeekClient();
 
   const systemPrompt = await getPrompt('product-scan-system', PRODUCT_SCAN_FALLBACK);
 

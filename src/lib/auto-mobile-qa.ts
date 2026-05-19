@@ -85,14 +85,16 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
   const url = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yeosonam.com';
 
   try {
-    // 1) ISR revalidate
+    // 1) ISR revalidate (실패 시 stale snapshot 으로 QA 결과가 옛 페이지를 본 결과일 수 있음 — 로그 필수)
     const secret = process.env.REVALIDATE_SECRET;
     if (secret) {
       void fetch(`${url}/api/revalidate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths: [`/packages/${packageId}`], secret }),
-      }).catch(() => {});
+      }).catch((e) =>
+        console.warn(`[AutoQA] revalidate fetch failed for ${packageId}:`, e?.message ?? e),
+      );
     }
 
     // ISR 빌드 대기

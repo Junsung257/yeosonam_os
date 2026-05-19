@@ -200,5 +200,8 @@ export async function applySettlementApproval(draft: SettlementDraft): Promise<v
     target_id: draft.affiliate_id,
     description: `${draft.period} ${draft.affiliate_name} 정산 ${draft.qualified ? '확정' : '이월'} (${draft.final_payout.toLocaleString()}원)`,
     after_value: draft as any,
-  }).then(() => {}).catch(() => {});
+  }).then(
+    () => {},
+    (e: unknown) => console.error(`[settlement-calc] audit_logs insert failed for ${draft.affiliate_id}:`, (e as Error)?.message ?? e),
+  );
 }
