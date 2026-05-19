@@ -296,9 +296,12 @@ export default async function HomePage() {
   }));
 
   // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
-  // ISR 캐시(revalidate=300) + Next.js fetch 캐시(1h)로 실제 Pexels 호출은 드물게 발생
+  // 2026-05-19 박제: `getRandomPexelsPhoto` 의 Math.random() 이 페이지를 dynamic 으로 강등시켜
+  //   CI build log 에 `ƒ /` (Dynamic) 표시됨 → /destinations(○) 와 달리 / production MISS 폭주.
+  //   deterministic 호출로 교체 → 빌드 시 SSG 가능 + Pexels fetch cache 1h 적중률 100%.
+  //   keyword 자체가 destination별로 다르므로 다양성 보존됨.
   if (getSecret('PEXELS_API_KEY')) {
-    const { getRandomPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
+    const { getDeterministicPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
 
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
@@ -310,7 +313,7 @@ export default async function HomePage() {
       const filled = await Promise.all(
         missingDests.map(async dest => {
           try {
-            const photo = await getRandomPexelsPhoto(destToEnKeyword(dest));
+            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
             // 추천여행지 히어로용 large2x, 나머지는 large
             return { dest, large2x: photo?.src.large2x ?? null, large: photo?.src.large ?? null };
           } catch {

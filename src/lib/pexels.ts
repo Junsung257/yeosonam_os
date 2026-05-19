@@ -79,7 +79,11 @@ export async function searchPexelsPhotos(
 
 /**
  * 키워드로 랜덤 이미지 1개 반환
- * 페이지를 랜덤으로 선택하여 다양성 확보
+ * 페이지를 랜덤으로 선택하여 다양성 확보.
+ *
+ * ⚠️ 주의: `Math.random()` 호출이 들어있어 Next.js 15 가 호출 페이지를 dynamic 으로 표시합니다.
+ * Static/SSG 가 필요한 페이지(예: `/`)에서는 `getDeterministicPexelsPhoto` 를 사용하세요.
+ * 카드뉴스·블로그·랜드오퍼레이터 분석 등 빌드 시점 prerender 가 무관한 경로에서만 사용.
  */
 export async function getRandomPexelsPhoto(keyword: string): Promise<PexelsPhoto | null> {
   // 1~5 페이지 중 랜덤 선택
@@ -88,6 +92,21 @@ export async function getRandomPexelsPhoto(keyword: string): Promise<PexelsPhoto
   if (photos.length === 0) return null;
   // 결과 중 랜덤 선택
   return photos[Math.floor(Math.random() * photos.length)];
+}
+
+/**
+ * 키워드로 결정론적(deterministic) 이미지 1개 반환.
+ *
+ * 2026-05-19 박제 — Static/SSG 호환:
+ *   `Math.random()` 미사용. 동일 keyword 입력 → 동일 결과. Next.js 15 가 빌드 시 정적 prerender 가능.
+ *   `/page.tsx` BAILOUT_TO_CLIENT_SIDE_RENDERING 차단용 (CI build log 라우트 마킹 `ƒ /` → `●/○ /` 전환 목적).
+ *   동일 keyword 호출 시 next.fetch cache 1h 적중률 100%.
+ *
+ * 검색 페이지 1, 상위 결과 첫번째 photo 반환. 다양성은 keyword 자체에서 확보 (destination별 다른 keyword).
+ */
+export async function getDeterministicPexelsPhoto(keyword: string): Promise<PexelsPhoto | null> {
+  const photos = await searchPexelsPhotos(keyword, 10, 1);
+  return photos[0] ?? null;
 }
 
 /**
