@@ -9,12 +9,25 @@ import type { SearchAdKeyword, Platform } from './keyword-brain';
 import { getSecret } from '@/lib/secret-registry';
 
 // ── 환경 변수 체크 ───────────────────────────────────────
+// 2026-05-19 통일: 서버 전용 키로 마이그레이션 (NEXT_PUBLIC_* 제거 — 클라이언트 번들 노출 위험 차단)
+// 네이버 검색광고: API_KEY + SECRET (HMAC 서명 필요) + CUSTOMER_ID 세 가지 모두 필수.
 export function isNaverAdsConfigured(): boolean {
-  return !!(getSecret('NEXT_PUBLIC_NAVER_ADS_API_KEY') && getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'));
+  return !!(
+    getSecret('NAVER_AD_API_KEY') &&
+    getSecret('NAVER_AD_SECRET') &&
+    getSecret('NAVER_AD_CUSTOMER_ID')
+  );
 }
 
+// 구글 Ads: OAuth refresh_token 흐름이므로 4가지 모두 필수
 export function isGoogleAdsConfigured(): boolean {
-  return !!getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN');
+  return !!(
+    getSecret('GOOGLE_ADS_DEVELOPER_TOKEN') &&
+    getSecret('GOOGLE_ADS_CLIENT_ID') &&
+    getSecret('GOOGLE_ADS_CLIENT_SECRET') &&
+    getSecret('GOOGLE_ADS_REFRESH_TOKEN') &&
+    getSecret('GOOGLE_ADS_CUSTOMER_ID')
+  );
 }
 
 // ── 공통 성과 데이터 타입 ────────────────────────────────

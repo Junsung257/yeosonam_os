@@ -116,8 +116,17 @@
 | `META_ACCESS_TOKEN` | Meta Ads 광고 API (배포 상태) |
 | `META_AD_ACCOUNT_ID` | Meta 광고 계정 |
 | `META_PAGE_ID` | Meta 페이지 |
-| `GOOGLE_ADS_*` | Google Ads API (미구현, 향후) |
-| `NAVER_AD_*` | 네이버 검색광고 API (미구현, 향후) |
+| `NAVER_AD_API_KEY` | 네이버 검색광고 API Access License Key (https://manage.searchad.naver.com → 도구 → API 사용 관리) |
+| `NAVER_AD_SECRET` | 네이버 검색광고 API Secret (HMAC-SHA256 서명용) |
+| `NAVER_AD_CUSTOMER_ID` | 네이버 검색광고 고객 ID (9~10자리 숫자) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API Developer Token (22자, Manager 계정 API Center → Basic Access 신청 후 발급) |
+| `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth 클라이언트 ID |
+| `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth 클라이언트 시크릿 |
+| `GOOGLE_ADS_REFRESH_TOKEN` | Google Ads OAuth refresh token (한 번 발급 후 영구) |
+| `GOOGLE_ADS_CUSTOMER_ID` | Google Ads 고객 ID (10자리 숫자) |
+
+> ⚠️ 광고 API 키는 모두 **서버 전용**입니다. 절대 `NEXT_PUBLIC_*` 접두사 금지 — 클라이언트 번들에 노출 시 광고 계정 탈취 위험.
+> 환경변수 미설정 시 광고 자동 최적화는 graceful fallback (mock 데이터 + 로그만) 으로 작동하며 외부 변경은 발생하지 않습니다.
 
 ### 성능 — 서드파티 스크립트 격리 (선택)
 
