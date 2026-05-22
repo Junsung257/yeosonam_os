@@ -15,8 +15,20 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 
+export type AlertCategory =
+  | 'policy_winner'
+  | 'feature_change'
+  | 'ltr_ready'
+  | 'general'
+  | 'register-backfill'
+  | 'catalog-split-fallback'
+  | 'register-learning'
+  | 'approve-post-processing'
+  | 'attractions-pexels'
+  | 'active-learning-reject';
+
 export interface AlertInput {
-  category: 'policy_winner' | 'feature_change' | 'ltr_ready' | 'general';
+  category: AlertCategory;
   severity?: 'info' | 'warning' | 'critical';
   title: string;
   message?: string;

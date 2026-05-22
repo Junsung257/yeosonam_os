@@ -20,6 +20,9 @@ import { z } from 'zod';
 import { llmCall } from '../../llm-gateway';
 import { callWithZodValidation } from '../../llm-validate-retry';
 import { KOREAN_DESTINATION_TO_ISO } from '../../destination-iso';
+import { looksLikeCommaSplitBroken } from '../deterministic/comma-split-signature';
+import { extractPriceMatrix } from '../deterministic/price-matrix';
+import { extractPriceTable } from '../deterministic/price-table';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  공통 헬퍼
@@ -306,6 +309,34 @@ JSON: {"rows":[{"date":"${year}-05-07","adult_price":779000,"note":"일~화"}, .
   return { success: true, rows: dedup };
 }
 
+/** L1 deterministic: 매트릭스 → 월별 카탈로그 순. 토큰 0. */
+function extractPriceDeterministicL1(rawText: string): PriceRow[] {
+  const matrix = extractPriceMatrix(rawText);
+  if (matrix.length > 0) {
+    return matrix.map(r => ({
+      date: r.date,
+      adult_price: r.adult_price,
+      child_price: r.child_price ?? null,
+      note: r.note ?? null,
+      status: r.status ?? 'available',
+    }));
+  }
+  const tiers = extractPriceTable(rawText);
+  const rows: PriceRow[] = [];
+  for (const t of tiers) {
+    for (const d of t.departure_dates ?? []) {
+      rows.push({
+        date: d,
+        adult_price: t.adult_price,
+        child_price: t.child_price ?? null,
+        note: t.note ?? t.period_label ?? null,
+        status: t.status ?? 'available',
+      });
+    }
+  }
+  return rows;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  ③ Inclusions / Excludes / Notices
 // ═══════════════════════════════════════════════════════════════════════════
@@ -390,6 +421,31 @@ JSON: {"inclusions":[...], "excludes":[...], "notices":[{"type":"...","title":".
 //  Orchestration — 패키지 1개에 3 함수 모두 적용 + DB UPDATE
 // ═══════════════════════════════════════════════════════════════════════════
 
+const MIN_BACKFILL_RAW_LEN = 100;
+
+/** travel_packages.raw_text → normalized_intakes → 정형 필드 합성 순으로 원문 확보 */
+async function resolveBackfillRawText(
+  packageId: string,
+  columnRaw?: string | null,
+): Promise<{ raw: string; source: string } | { raw: null; reason: string }> {
+  const fromColumn = (columnRaw ?? '').trim();
+  if (fromColumn.length >= MIN_BACKFILL_RAW_LEN) {
+    return { raw: fromColumn, source: 'travel_packages.raw_text' };
+  }
+
+  const { getPackageRawText } = await import('@/lib/packages/raw-text');
+  const resolved = await getPackageRawText(packageId);
+  if (!resolved.ok) {
+    return { raw: null, reason: resolved.error };
+  }
+
+  const raw = resolved.data.rawText.trim();
+  if (raw.length < MIN_BACKFILL_RAW_LEN) {
+    return { raw: null, reason: 'raw-text-empty' };
+  }
+  return { raw, source: resolved.data.source };
+}
+
 /**
  * 패키지 1개의 raw_text 로 7 도메인 LLM hierarchy 적용:
  *   ① Hero context (destination, display_title, product_summary, hero_tagline)
@@ -417,26 +473,84 @@ export async function backfillSectionsByPackageId(
 
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, raw_text, destination, display_title, product_summary, hero_tagline, price_dates, inclusions, excludes, notices_parsed')
+    .select('id, title, raw_text, destination, display_title, product_summary, hero_tagline, price_dates, price_tiers, inclusions, excludes, notices_parsed, surcharges, special_notes, itinerary_data')
     .eq('id', packageId)
     .maybeSingle();
   if (error || !pkg) return { ok: false, reason: error?.message ?? 'package-not-found' };
 
-  const raw = (pkg as { raw_text?: string | null }).raw_text;
-  if (!raw || raw.length < 100) return { ok: false, reason: 'raw-text-empty' };
+  const resolved = await resolveBackfillRawText(
+    packageId,
+    (pkg as { raw_text?: string | null }).raw_text,
+  );
+  if (!resolved.raw) return { ok: false, reason: 'reason' in resolved ? resolved.reason : 'raw-text-empty' };
+  const raw = resolved.raw;
 
   const p = pkg as {
+    title?: string | null;
     destination?: string | null; display_title?: string | null;
     product_summary?: string | null; hero_tagline?: string | null;
-    price_dates?: unknown; inclusions?: unknown; excludes?: unknown; notices_parsed?: unknown;
+    price_dates?: unknown; price_tiers?: unknown;
+    inclusions?: unknown; excludes?: unknown; notices_parsed?: unknown;
   };
   const force = options.force === true;
+  const noticesBroken = looksLikeCommaSplitBroken(p.inclusions as unknown[]) || looksLikeCommaSplitBroken(p.excludes as unknown[]);
+  const effectiveForce = force || noticesBroken;
+  const { inferTravelYearFromText } = await import('../../period-label-dates');
+  const travelYear = inferTravelYearFromText(p.title, p.display_title, raw.slice(0, 200));
+
+  // L0: price_tiers → price_dates (period_label hydrate 포함)
+  if (!effectiveForce && (!Array.isArray(p.price_dates) || (p.price_dates as unknown[]).length === 0)) {
+    const tiers = Array.isArray(p.price_tiers) ? p.price_tiers : [];
+    if (tiers.length > 0) {
+      const { hydratePriceTiers } = await import('../../period-label-dates');
+      const { tiersToDatePrices } = await import('../../price-dates');
+      const hydrated = hydratePriceTiers(tiers as import('../../parser').PriceTier[], { year: travelYear });
+      const fromTiers = tiersToDatePrices(hydrated, { year: travelYear });
+      if (fromTiers.length > 0) {
+        const priceDates = fromTiers.map(r => ({
+          date: r.date,
+          price: r.price,
+          child_price: r.child_price ?? null,
+          note: null,
+          status: r.confirmed ? 'confirmed' : 'available',
+        }));
+        const tierPatch = JSON.stringify(hydrated) !== JSON.stringify(tiers)
+          ? { price_tiers: hydrated }
+          : {};
+        const l0Update: Record<string, unknown> = {
+          price_dates: priceDates,
+          ...tierPatch,
+          updated_at: new Date().toISOString(),
+        };
+        const { sanitizePackageUpdate } = await import('../../customer-leak-sanitizer');
+        const l0San = sanitizePackageUpdate(l0Update, p as Record<string, unknown>);
+        Object.assign(l0Update, l0San.cleaned);
+        const { error: tierUpErr } = await supabaseAdmin
+          .from('travel_packages')
+          .update(l0Update)
+          .eq('id', packageId);
+        if (!tierUpErr) {
+          await refreshAuditAfterBackfill(packageId);
+          try {
+            const { revalidatePackagePaths } = await import('../../revalidate-helper');
+            await revalidatePackagePaths(packageId, { alsoServerContext: true });
+          } catch { /* no-op */ }
+          return {
+            ok: true,
+            price: { applied: true, rowCount: priceDates.length, reason: 'L0-price-tiers' },
+          };
+        }
+      }
+    }
+  }
 
   // 3 함수 병렬 호출 (cost ↓, 응답 시간 ↓)
-  const heroNeeded = force || !p.destination || p.destination.length < 2 ||
+  const heroNeeded = effectiveForce || !p.destination || p.destination.length < 2 ||
     !p.display_title || !p.product_summary || !p.hero_tagline;
-  const priceNeeded = force || !Array.isArray(p.price_dates) || (p.price_dates as unknown[]).length === 0;
-  const noticesNeeded = force || !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0 ||
+  const priceNeeded = effectiveForce || !Array.isArray(p.price_dates) || (p.price_dates as unknown[]).length === 0;
+  const noticesNeeded = effectiveForce || noticesBroken ||
+    !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0 ||
+    !Array.isArray(p.excludes) || (p.excludes as unknown[]).length === 0 ||
     !Array.isArray(p.notices_parsed) || (p.notices_parsed as unknown[]).length === 0;
 
   // 2026-05-18 박제 (CLAUDE.md §12-1 L1 rule):
@@ -444,7 +558,7 @@ export async function backfillSectionsByPackageId(
   //   force=true 면 L1 우회 (사장님이 직접 강제 재추출 요청한 경우).
   //   토큰 절감 ~30% (제목 명확한 신규 패키지 대다수).
   let heroL1Skipped = false;
-  const heroL1 = (heroNeeded && !force && (!p.destination || p.destination.length < 2 || !p.display_title))
+  const heroL1 = (heroNeeded && !effectiveForce && (!p.destination || p.destination.length < 2 || !p.display_title))
     ? extractHeroContextL1(raw)
     : null;
 
@@ -452,9 +566,12 @@ export async function backfillSectionsByPackageId(
   const heroL1Sufficient = !!(heroNeeded && heroL1?.confidence === 'high' && heroL1.destination && heroL1.display_title);
   if (heroL1Sufficient) heroL1Skipped = true;
 
+  const detPriceRows = priceNeeded ? extractPriceDeterministicL1(raw) : [];
+  const detPriceOk = detPriceRows.length > 0;
+
   const [heroR, priceR, noticeR] = await Promise.all([
     heroL1Sufficient ? Promise.resolve(null) : (heroNeeded ? extractHeroContextWithLLM(raw) : Promise.resolve(null)),
-    priceNeeded ? extractPriceTableWithLLM(raw) : Promise.resolve(null),
+    priceNeeded && !detPriceOk ? extractPriceTableWithLLM(raw) : Promise.resolve(null),
     noticesNeeded ? extractInclusionsExcludesNoticesWithLLM(raw) : Promise.resolve(null),
   ]);
 
@@ -471,14 +588,14 @@ export async function backfillSectionsByPackageId(
     // product_summary, hero_tagline 은 NULL 유지 (환각 차단 — 어드민 수동 입력)
     result.hero = { applied: true, reason: 'L1-rule' };
   } else if (heroR && heroR.success) {
-    if (force || !p.destination || p.destination.includes('명물') || p.destination.includes('순례')) {
+    if (effectiveForce || !p.destination || p.destination.includes('명물') || p.destination.includes('순례')) {
       update.destination = heroR.value.destination;
     }
-    if (force || !p.display_title) update.display_title = heroR.value.display_title;
-    if (force || !p.product_summary || p.product_summary.includes('명물') || p.product_summary.includes('순례')) {
+    if (effectiveForce || !p.display_title) update.display_title = heroR.value.display_title;
+    if (effectiveForce || !p.product_summary || p.product_summary.includes('명물') || p.product_summary.includes('순례')) {
       update.product_summary = heroR.value.product_summary;
     }
-    if (force || !p.hero_tagline) update.hero_tagline = heroR.value.hero_tagline;
+    if (effectiveForce || !p.hero_tagline) update.hero_tagline = heroR.value.hero_tagline;
     result.hero = { applied: true };
   } else if (heroR) {
     result.hero = { applied: false, reason: heroR.reason };
@@ -487,6 +604,16 @@ export async function backfillSectionsByPackageId(
   // ② Price
   if (!priceNeeded) {
     result.price = { applied: false, reason: 'already-filled' };
+  } else if (detPriceOk) {
+    const priceDates = detPriceRows.map(r => ({
+      date: r.date,
+      price: r.adult_price,
+      child_price: r.child_price ?? null,
+      note: r.note ?? null,
+      status: r.status ?? 'available',
+    }));
+    update.price_dates = priceDates;
+    result.price = { applied: true, rowCount: priceDates.length, reason: 'L1-matrix-or-table' };
   } else if (priceR && priceR.success) {
     // PriceRow → price_dates jsonb 형식
     const priceDates = priceR.rows.map(r => ({
@@ -506,18 +633,19 @@ export async function backfillSectionsByPackageId(
   if (!noticesNeeded) {
     result.notices = { applied: false, reason: 'already-filled' };
   } else if (noticeR && noticeR.success) {
-    if (force || !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0) {
+    if (effectiveForce || !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0 || noticesBroken) {
       update.inclusions = noticeR.value.inclusions;
     }
-    if (force || !Array.isArray(p.excludes) || (p.excludes as unknown[]).length === 0) {
+    if (effectiveForce || !Array.isArray(p.excludes) || (p.excludes as unknown[]).length === 0 || noticesBroken) {
       update.excludes = noticeR.value.excludes;
     }
-    if (force || !Array.isArray(p.notices_parsed) || (p.notices_parsed as unknown[]).length === 0) {
+    if (effectiveForce || !Array.isArray(p.notices_parsed) || (p.notices_parsed as unknown[]).length === 0) {
       update.notices_parsed = noticeR.value.notices;
     }
     result.notices = {
       applied: true,
       counts: { inc: noticeR.value.inclusions.length, exc: noticeR.value.excludes.length, not: noticeR.value.notices.length },
+      ...(noticesBroken && !force ? { reason: 'auto-force-comma-split-signature' } : {}),
     };
   } else if (noticeR) {
     result.notices = { applied: false, reason: noticeR.reason };
@@ -526,6 +654,13 @@ export async function backfillSectionsByPackageId(
   // UPDATE 가 실질 변경 1건 이상 있을 때만 (updated_at 만 있으면 skip)
   if (Object.keys(update).length <= 1) {
     return { ...result, ok: true, reason: 'no-changes' };
+  }
+
+  const { sanitizePackageUpdate } = await import('../../customer-leak-sanitizer');
+  const sanitized = sanitizePackageUpdate(update, p as Record<string, unknown>);
+  Object.assign(update, sanitized.cleaned);
+  if (sanitized.incidents.length > 0) {
+    console.warn(`[backfill-sections] Customer-Leak sanitizer ${sanitized.incidents.length}건:`, sanitized.incidents.map(i => i.patternId).join(', '));
   }
 
   const { error: upErr } = await supabaseAdmin

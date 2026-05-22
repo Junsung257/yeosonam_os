@@ -29,9 +29,21 @@ export interface RevalidateResult {
  */
 export async function revalidatePackagePaths(
   packageId: string,
-  options: { skipDev?: boolean; skipProd?: boolean; alsoServerContext?: boolean } = {},
+  options: {
+    skipDev?: boolean;
+    skipProd?: boolean;
+    alsoServerContext?: boolean;
+    /** `/lp/{shortCode}` 경로 — 미전달 시 DB 조회 시도 */
+    shortCode?: string | null;
+    skipShortCodeLookup?: boolean;
+  } = {},
 ): Promise<RevalidateResult> {
-  const paths = [`/packages/${packageId}`, `/m/packages/${packageId}`];
+  let shortCode = options.shortCode ?? null;
+  if (!options.skipShortCodeLookup && shortCode == null) {
+    shortCode = await resolvePackageShortCode(packageId);
+  }
+
+  const paths = buildPackageSurfacePaths(packageId, shortCode);
   const secret = process.env.REVALIDATE_SECRET;
   const result: RevalidateResult = {
     prod: { ok: false },
@@ -43,6 +55,8 @@ export async function revalidatePackagePaths(
     try {
       const { revalidatePath } = await import('next/cache');
       for (const p of paths) revalidatePath(p);
+      const { revalidateLandingPagesForPackage } = await import('./revalidate-lp-package');
+      revalidateLandingPagesForPackage(packageId, shortCode);
     } catch { /* not in server context */ }
   }
 
@@ -73,6 +87,29 @@ export async function revalidatePackagePaths(
   }
 
   return result;
+}
+
+function buildPackageSurfacePaths(packageId: string, shortCode?: string | null): string[] {
+  const paths = [`/packages/${packageId}`, `/m/packages/${packageId}`, `/lp/${packageId}`];
+  if (shortCode && shortCode !== packageId) {
+    paths.push(`/lp/${shortCode}`);
+  }
+  return paths;
+}
+
+async function resolvePackageShortCode(packageId: string): Promise<string | null> {
+  try {
+    const { supabaseAdmin, isSupabaseConfigured } = await import('./supabase');
+    if (!isSupabaseConfigured) return null;
+    const { data } = await supabaseAdmin
+      .from('travel_packages')
+      .select('short_code')
+      .eq('id', packageId)
+      .maybeSingle();
+    return (data as { short_code?: string | null } | null)?.short_code ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function callRevalidate(baseUrl: string, paths: string[], secret: string): Promise<{ ok: boolean; status?: number; error?: string }> {

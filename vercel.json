@@ -46,6 +46,10 @@
       "schedule": "45 1 * * *"
     },
     {
+      "path": "/api/cron/legacy-sections-backfill",
+      "schedule": "55 1 * * *"
+    },
+    {
       "path": "/api/cron/fill-attraction-photos",
       "schedule": "0 3 * * *"
     },

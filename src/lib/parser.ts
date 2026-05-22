@@ -938,15 +938,8 @@ export function extractTravelInfo(text: string, filename?: string): ExtractedDat
   const itineraryMatches = text.match(/(?:제?\d+일차?|Day\s*\d+)[\s:]*([^\n]+)/gi);
   if (itineraryMatches) data.itinerary = itineraryMatches.map(m => m.trim());
 
-  const inclusionsSection = text.match(/포함.*?(?=불포함|$)/is);
-  if (inclusionsSection) {
-    data.inclusions = inclusionsSection[0].split(/[,\n]/).map(s => s.trim()).filter(s => s.length > 2 && !s.includes('포함'));
-  }
-
-  const excludesSection = text.match(/불포함.*?(?=선택관광|$)/is);
-  if (excludesSection) {
-    data.excludes = excludesSection[0].split(/[,\n]/).map(s => s.trim()).filter(s => s.length > 2 && !s.includes('불포함'));
-  }
+  // inclusions/excludes SSOT: extractBullets (deterministic/bullets.ts) — upload/route.ts G2.
+  // 옛 regex split(콤마) 경로 삭제 (RC1, 2026-05-20). 공존 시 EOF까지 매치 + 커미션 누출.
 
   const minParticipantsMatch = text.match(/(\d+)\s*명\s*이상/);
   if (minParticipantsMatch) data.min_participants = parseInt(minParticipantsMatch[1]);

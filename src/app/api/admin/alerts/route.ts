@@ -14,6 +14,8 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) return NextResponse.json({ alerts: [], stats: null });
 
   const showAcked = req.nextUrl.searchParams.get('showAcked') === 'true';
+  const refId = req.nextUrl.searchParams.get('refId')?.trim() || null;
+  const category = req.nextUrl.searchParams.get('category')?.trim() || null;
 
   let q = supabaseAdmin
     .from('admin_alerts')
@@ -21,6 +23,8 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
     .order('created_at', { ascending: false })
     .limit(200);
   if (!showAcked) q = q.is('acknowledged_at', null);
+  if (refId) q = q.eq('ref_id', refId);
+  if (category) q = q.eq('category', category);
 
   const [alertsRes, allRes] = await Promise.all([
     q,

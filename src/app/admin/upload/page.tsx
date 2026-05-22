@@ -49,6 +49,7 @@ interface QueueItem {
     status: string;
     departure_days: string | null;
     mobile_url: string;
+    lp_url: string;
     a4_url: string;
   }>;
   verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'error';
@@ -673,7 +674,8 @@ export default function UploadPage() {
                                 {r.price != null && <span className="text-admin-muted">₩{r.price.toLocaleString()}</span>}
                                 {r.airline && <span className="text-blue-600">{r.airline}</span>}
                                 {r.departure_days && <span className="text-admin-muted-2">{r.departure_days}</span>}
-                                <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium ml-auto">📱 모바일</a>
+                                <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium ml-auto">📱 상세</a>
+                                <a href={r.lp_url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline font-medium">🔗 LP</a>
                                 <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
                               </div>
                             ))}
