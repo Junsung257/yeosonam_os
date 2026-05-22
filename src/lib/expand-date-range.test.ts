@@ -75,11 +75,13 @@ describe('expandDateRangeToArray', () => {
     expect(dates).toEqual([]);
   });
 
-  it('요일 없으면 → []', () => {
+  it('요일 없으면 → 기간 내 모든 날짜 (period_label hydrate fallback)', () => {
     const dates = expandDateRangeToArray({
       dateRange: { start: '2026-04-01', end: '2026-04-30' },
     });
-    expect(dates).toEqual([]);
+    expect(dates).toHaveLength(30);
+    expect(dates[0]).toBe('2026-04-01');
+    expect(dates[dates.length - 1]).toBe('2026-04-30');
   });
 
   it('상품 출발요일 fallback', () => {
