@@ -6,6 +6,7 @@
  */
 
 import type { PriceTier } from './parser';
+import { hydratePriceTiers } from './period-label-dates';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -47,12 +48,15 @@ function safeDay(dateStr: string): number {
 
 // ── 1. tiersToDatePrices: price_tiers → PriceDate[] (쓰기용) ──
 
-export function tiersToDatePrices(tiers: PriceTier[]): PriceDate[] {
+export function tiersToDatePrices(
+  tiers: PriceTier[],
+  ctx?: { year?: number; packageDepartureDays?: string },
+): PriceDate[] {
   const seen = new Set<string>();
   const result: PriceDate[] = [];
   const DOW_MAP: Record<string, number> = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
 
-  for (const tier of tiers) {
+  for (const tier of hydratePriceTiers(tiers, ctx)) {
     // soldout tier는 제외 (price_dates에 없는 날짜 = 출발제외일)
     if (tier.status === 'soldout') continue;
 

@@ -82,13 +82,14 @@ export function expandDateRangeToArray(opts: {
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
 
   const dayIndices = parseDayIndices(opts.departureDayOfWeek, opts.departureDays);
-  if (dayIndices.length === 0) return [];
+  // 요일 미지정 시 기간 내 모든 날짜 (period_label "2/28~3/10" 등)
+  const effectiveDays = dayIndices.length > 0 ? dayIndices : [0, 1, 2, 3, 4, 5, 6];
 
   const excluded = opts.periodLabel ? parseExcludedFromLabel(opts.periodLabel) : new Set<string>();
   const dates: string[] = [];
 
   for (const cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
-    if (!dayIndices.includes(cur.getDay())) continue;
+    if (!effectiveDays.includes(cur.getDay())) continue;
     const mm = cur.getMonth() + 1;
     const dd = cur.getDate();
     if (excluded.has(`${mm}/${dd}`)) continue;

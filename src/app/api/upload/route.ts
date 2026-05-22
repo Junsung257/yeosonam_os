@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
-import { revalidatePath } from 'next/cache';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
@@ -11,6 +11,7 @@ import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
 import { runUploadVerify } from '@/lib/upload-verify';
 import { normalizeOptionalTours } from '@/lib/package-acl';
 import { getRegistrationPolicy } from '@/lib/registration-policy';
+import { postAlert } from '@/lib/admin-alerts';
 void calculateConfidence; // V1 deprecated — V2 사용. unused import 경고 회피용.
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateMarketingCopies, type MarketingCopy } from '@/lib/ai';
@@ -24,6 +25,7 @@ import {
 } from '@/lib/upload-validator';
 import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { tiersToDatePrices } from '@/lib/price-dates';
+import { hydratePriceTiers } from '@/lib/period-label-dates';
 import { getRelevantReflections } from '@/lib/reflection-memory';
 import { getRegionCacheContext } from '@/lib/region-cache-context';
 import { getLandOperatorProfile, accumulateLandOperatorProfile } from '@/lib/land-operator-profile';
@@ -32,6 +34,8 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 import { extractPriceTable } from '@/lib/parser/deterministic/price-table';
+import { extractPriceMatrix } from '@/lib/parser/deterministic/price-matrix';
+import { looksLikeCommaSplitBroken } from '@/lib/parser/deterministic/comma-split-signature';
 import { detectFerry } from '@/lib/parser/deterministic/ferry-classifier';
 import { extractBullets } from '@/lib/parser/deterministic/bullets';
 import { extractNotices } from '@/lib/parser/deterministic/notices';
@@ -441,7 +445,7 @@ function extractDestinationFromFilename(name: string): string {
 
 // ─── API Route ───────────────────────────────────────────────────────────────
 
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   try {
     console.log('[Upload API] 요청 시작:', new Date().toISOString());
 
@@ -789,15 +793,14 @@ export async function POST(request: NextRequest) {
           };
           console.warn(`[Upload API] ⚠️ catalog split silent fallback — 헤더 ${headerCount}개 감지됐는데 1상품으로 처리됨`);
           if (isSupabaseConfigured) {
-            await supabaseAdmin.from('admin_alerts').insert({
+            void postAlert({
               category: 'catalog-split-fallback',
               severity: 'warning',
               title: `카탈로그 분리 실패: 헤더 ${headerCount}개 → 1상품 처리`,
               message: `${fileName ?? 'direct-text'}: 헤더 ${headerCount}개 감지됐으나 parseDocument 가 multiProducts 채우지 못함. 1상품으로 fallback 처리됨. 사장님 어드민에서 정정 필요 가능성.`,
               ref_type: 'upload',
-              ref_id: null,
               meta: { headerCount, fileName, raw_excerpt: catalogSplitWarning.raw_excerpt },
-            }).then(() => {}, () => {});
+            });
           }
         }
       } catch (e) {
@@ -892,9 +895,32 @@ export async function POST(request: NextRequest) {
           console.log(`[Upload API] Ferry 결정적 분류: ${ferry.matchedKeyword} → product_type=cruise, airline=${ferry.ferryName ?? 'kept'}`);
         }
 
-        // 2) 월·요일별 가격표 결정적 추출 — LLM 이 price_tiers 0 건이면 정규식으로 채움.
+        // 2) 월·요일별 / 기간×요일 매트릭스 가격표 결정적 추출 — LLM 이 price_tiers 0 건이면 정규식으로 채움.
         const llmPriceTiers = Array.isArray(ed.price_tiers) ? ed.price_tiers.length : 0;
         if (llmPriceTiers === 0) {
+          const matrixRows = extractPriceMatrix(rawForDeterm);
+          if (matrixRows.length > 0) {
+            const byKey = new Map<string, { price: number; note: string | null; dates: string[] }>();
+            for (const r of matrixRows) {
+              const key = `${r.adult_price}|${r.note ?? ''}`;
+              const g = byKey.get(key) ?? { price: r.adult_price, note: r.note ?? null, dates: [] };
+              g.dates.push(r.date);
+              byKey.set(key, g);
+            }
+            ed.price_tiers = [...byKey.values()].map(g => ({
+              period_label: g.note ?? `${g.dates.length}일`,
+              departure_dates: g.dates.sort(),
+              adult_price: g.price,
+              child_price: undefined,
+              status: 'available' as const,
+              note: g.note ?? undefined,
+            })) as typeof ed.price_tiers;
+            const lowest = matrixRows.map(r => r.adult_price).filter(p => p > 0);
+            if (lowest.length > 0 && (!ed.price || ed.price === 0)) {
+              ed.price = Math.min(...lowest);
+            }
+            console.log(`[Upload API] price_matrix 결정적 추출: ${matrixRows.length} 일자 (${byKey.size} 구간)`);
+          } else {
           const detTiers = extractPriceTable(rawForDeterm);
           if (detTiers.length > 0) {
             ed.price_tiers = detTiers as typeof ed.price_tiers;
@@ -907,15 +933,53 @@ export async function POST(request: NextRequest) {
             }
             console.log(`[Upload API] price_tiers 결정적 추출: ${detTiers.length} 행, 최저가 ${ed.price?.toLocaleString?.() ?? '?'} (LLM 0건 회복)`);
           }
+          }
         }
 
-        // 3) ▶ 불릿 inclusions/excludes 결정적 추출 — LLM 0건이면 정규식으로 채움.
+        // 2.5) LLM tier는 있으나 날짜 필드 없음(라벨-only) → deterministic 재시도 + period_label hydrate
+        if (Array.isArray(ed.price_tiers) && ed.price_tiers.length > 0 && rawForDeterm.length >= 100) {
+          const labelOnly = ed.price_tiers.every(
+            t => !(t.departure_dates?.length) && !(t as { date_range?: { start?: string } | null }).date_range?.start,
+          );
+          if (labelOnly) {
+            const matrixRows = extractPriceMatrix(rawForDeterm);
+            if (matrixRows.length > 0) {
+              const byKey = new Map<string, { price: number; note: string | null; dates: string[] }>();
+              for (const r of matrixRows) {
+                const key = `${r.adult_price}|${r.note ?? ''}`;
+                const g = byKey.get(key) ?? { price: r.adult_price, note: r.note ?? null, dates: [] };
+                g.dates.push(r.date);
+                byKey.set(key, g);
+              }
+              ed.price_tiers = [...byKey.values()].map(g => ({
+                period_label: g.note ?? `${g.dates.length}일`,
+                departure_dates: g.dates.sort(),
+                adult_price: g.price,
+                child_price: undefined,
+                status: 'available' as const,
+                note: g.note ?? undefined,
+              })) as typeof ed.price_tiers;
+              console.log(`[Upload API] label-only tier → price_matrix 회복: ${matrixRows.length} 일자`);
+            } else {
+              const detTiers = extractPriceTable(rawForDeterm);
+              if (detTiers.length > 0) {
+                ed.price_tiers = detTiers as typeof ed.price_tiers;
+                console.log(`[Upload API] label-only tier → price_table 회복: ${detTiers.length} 행`);
+              }
+            }
+          }
+          ed.price_tiers = hydratePriceTiers(ed.price_tiers, {
+            packageDepartureDays: ed.departure_days,
+          });
+        }
+
+        // 3) ▶ 불릿 inclusions/excludes 결정적 추출 — LLM 0건·콤마-split 깨짐 시 정규식으로 채움.
         const bullets = extractBullets(rawForDeterm);
-        if ((!ed.inclusions || ed.inclusions.length === 0) && bullets.inclusions.length > 0) {
+        if ((looksLikeCommaSplitBroken(ed.inclusions) || !ed.inclusions || ed.inclusions.length === 0) && bullets.inclusions.length > 0) {
           ed.inclusions = bullets.inclusions;
           console.log(`[Upload API] inclusions 결정적 추출: ${bullets.inclusions.length} 건`);
         }
-        if ((!ed.excludes || ed.excludes.length === 0) && bullets.excludes.length > 0) {
+        if ((looksLikeCommaSplitBroken(ed.excludes) || !ed.excludes || ed.excludes.length === 0) && bullets.excludes.length > 0) {
           ed.excludes = bullets.excludes;
           console.log(`[Upload API] excludes 결정적 추출: ${bullets.excludes.length} 건`);
         }
@@ -1098,15 +1162,14 @@ export async function POST(request: NextRequest) {
                 if (error) {
                   console.warn('[Upload API] V2 reflexion 적재 실패:', error.message);
                   if (isSupabaseConfigured) {
-                    supabaseAdmin.from('admin_alerts').insert({
+                    void postAlert({
                       category: 'register-learning',
                       severity: 'warning',
                       title: `V2 reflexion 적재 실패: ${title.slice(0, 40)}`,
                       message: `extractions_corrections INSERT 실패 — 학습 누적 안 됨. error: ${error.message.slice(0, 300)}`,
                       ref_type: 'upload',
-                      ref_id: null,
                       meta: { phase: 'v2-reflexion', land_operator_id: effectiveLandOperatorId, destination: ed.destination, rows: v2Rows.length },
-                    }).then(() => {}, () => {});
+                    });
                   }
                 }
               });
@@ -1516,8 +1579,8 @@ export async function POST(request: NextRequest) {
                 catch (e) {
                   const msg = e instanceof Error ? e.message : String(e);
                   console.warn('[Upload API] autoPhotoMatch 예외:', msg);
-                  if (isSupabaseConfigured) {
-                    await supabaseAdmin.from('admin_alerts').insert({
+                  if (isSupabaseConfigured && photoPkgId) {
+                    void postAlert({
                       category: 'register-backfill',
                       severity: 'warning',
                       title: `autoPhotoMatch 실패: ${photoArgs.internalCode}`,
@@ -1525,7 +1588,8 @@ export async function POST(request: NextRequest) {
                       ref_type: 'travel_package',
                       ref_id: photoPkgId,
                       meta: { phase: 'auto-photo-match', error: msg.slice(0, 500) },
-                    }).then(() => {}, () => {});
+                      dedupe: true,
+                    });
                   }
                 }
               });
@@ -1712,7 +1776,7 @@ export async function POST(request: NextRequest) {
                   const msg = e instanceof Error ? e.message : String(e);
                   console.warn('[Upload API] Bootstrap 예외:', msg);
                   if (isSupabaseConfigured) {
-                    await supabaseAdmin.from('admin_alerts').insert({
+                    void postAlert({
                       category: 'register-backfill',
                       severity: 'warning',
                       title: `bootstrapNewRegion 실패: ${trigPackageId.slice(0, 8)}`,
@@ -1720,7 +1784,8 @@ export async function POST(request: NextRequest) {
                       ref_type: 'travel_package',
                       ref_id: trigPackageId,
                       meta: { phase: 'bootstrap-new-region', region: firstSeedDest, error: msg.slice(0, 500) },
-                    }).then(() => {}, () => {});
+                      dedupe: true,
+                    });
                   }
                 }
               });
@@ -1757,7 +1822,7 @@ export async function POST(request: NextRequest) {
             const msg = e instanceof Error ? e.message : String(e);
             console.warn('[Upload API] L3 attractions 예외:', msg);
             if (isSupabaseConfigured) {
-              await supabaseAdmin.from('admin_alerts').insert({
+              void postAlert({
                 category: 'register-backfill',
                 severity: 'warning',
                 title: `attractions backfill 실패: ${pkgId.slice(0, 8)}`,
@@ -1765,7 +1830,8 @@ export async function POST(request: NextRequest) {
                 ref_type: 'travel_package',
                 ref_id: pkgId,
                 meta: { phase: 'attractions', error: msg.slice(0, 500) },
-              }).then(() => {}, () => {});
+                dedupe: true,
+              });
             }
           }
           try {
@@ -1775,7 +1841,7 @@ export async function POST(request: NextRequest) {
             // hero 또는 price 가 실패면 admin_alerts (사장님 인지 보장)
             if (!s.hero?.applied || !s.price?.applied) {
               if (isSupabaseConfigured) {
-                await supabaseAdmin.from('admin_alerts').insert({
+                void postAlert({
                   category: 'register-backfill',
                   severity: 'warning',
                   title: `sections backfill 부분 실패: ${pkgId.slice(0, 8)}`,
@@ -1783,14 +1849,15 @@ export async function POST(request: NextRequest) {
                   ref_type: 'travel_package',
                   ref_id: pkgId,
                   meta: { phase: 'sections', hero: s.hero, price: s.price, notices: s.notices },
-                }).then(() => {}, () => {});
+                  dedupe: true,
+                });
               }
             }
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             console.warn('[Upload API] L3 sections 예외:', msg);
             if (isSupabaseConfigured) {
-              await supabaseAdmin.from('admin_alerts').insert({
+              void postAlert({
                 category: 'register-backfill',
                 severity: 'warning',
                 title: `sections backfill 예외: ${pkgId.slice(0, 8)}`,
@@ -1798,7 +1865,8 @@ export async function POST(request: NextRequest) {
                 ref_type: 'travel_package',
                 ref_id: pkgId,
                 meta: { phase: 'sections', error: msg.slice(0, 500) },
-              }).then(() => {}, () => {});
+                dedupe: true,
+              });
             }
           }
         });
@@ -1894,6 +1962,7 @@ export async function POST(request: NextRequest) {
           status:       p.status,
           departure_days: p.departure_days,
           mobile_url:   baseUrl ? `${baseUrl}/packages/${p.id}` : `/packages/${p.id}`,
+          lp_url:       baseUrl ? `${baseUrl}/lp/${p.id}` : `/lp/${p.id}`,
           a4_url:       baseUrl ? `${baseUrl}/admin/packages/${p.id}/poster` : `/admin/packages/${p.id}/poster`,
         }));
       } catch { /* fail-soft */ }
@@ -1942,4 +2011,6 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+};
+
+export const POST = withAdminGuard(postHandler);

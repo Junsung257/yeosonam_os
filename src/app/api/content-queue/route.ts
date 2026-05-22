@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -9,7 +10,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  */
 
 // GET: 검수 큐 조회
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ queue: [] });
 
   const { searchParams } = request.nextUrl;
@@ -45,10 +46,10 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }
-}
+};
 
 // POST: 승인(publish) 또는 반려(archive)
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -133,4 +134,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '처리 실패' }, { status: 500 });
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);
+export const POST = withAdminGuard(postHandler);

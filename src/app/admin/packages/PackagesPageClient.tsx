@@ -879,6 +879,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [bulkLoading, setBulkLoading] = useState(false);
   const [imgGenerating, setImgGenerating] = useState(false);
   const [reextracting, setReextracting] = useState(false);
+  const [sectionBackfilling, setSectionBackfilling] = useState(false);
+  const [packageAlerts, setPackageAlerts] = useState<Array<{
+    id: number; title: string; message: string | null; severity: string; category: string; created_at: string;
+  }>>([]);
 
   // 랜드사 필터
   const [landOperatorFilter, setLandOperatorFilter] = useState('');
@@ -1152,6 +1156,46 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     }
     setSelected(pkg);
   }, []);
+
+  useEffect(() => {
+    if (!selected?.id) { setPackageAlerts([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/alerts?refId=${selected.id}&category=register-backfill&showAcked=true`);
+        const json = await res.json();
+        if (!cancelled && res.ok) setPackageAlerts(json.alerts ?? []);
+      } catch {
+        if (!cancelled) setPackageAlerts([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selected?.id]);
+
+  const handleSectionBackfill = useCallback(async (force: boolean) => {
+    if (!selected) return;
+    setSectionBackfilling(true);
+    try {
+      const res = await fetch(`/api/admin/packages/${selected.id}/backfill-sections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.reason || data.error || `HTTP ${res.status}`);
+      showToast('success', `Section 재추출 완료 (${force ? '강제' : '일반'})`);
+      load();
+      const refreshed = await fetch(`/api/packages?id=${selected.id}`).then(r => r.json());
+      if (refreshed.package) setSelected(refreshed.package as Package);
+      const alertRes = await fetch(`/api/admin/alerts?refId=${selected.id}&category=register-backfill&showAcked=true`);
+      const alertJson = await alertRes.json();
+      if (alertRes.ok) setPackageAlerts(alertJson.alerts ?? []);
+    } catch (err) {
+      showToast('error', 'Section 재추출 실패: ' + (err instanceof Error ? err.message : '오류'));
+    } finally {
+      setSectionBackfilling(false);
+    }
+  }, [selected, load, showToast]);
 
   // 감사(2026-05-11): debounce useEffect 제거 — SWR key 의존성이 자동 fetch.
   // SWR dedup 30s 가 빠른 키 변경(타이핑 등) 자체를 흡수.
@@ -1803,6 +1847,18 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-admin-sm">
+              {packageAlerts.length > 0 && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-1">
+                  <p className="text-[11px] font-semibold text-orange-800">등록 백필 알림 (register-backfill)</p>
+                  {packageAlerts.slice(0, 3).map(a => (
+                    <div key={a.id} className="text-[11px] text-orange-900">
+                      <span className="font-medium">{a.title}</span>
+                      {a.message ? ` — ${a.message}` : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {selected.product_summary && (
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-admin-sm text-blue-800">
                   {selected.product_summary}
@@ -1911,6 +1967,20 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             </div>
 
             <div className="p-4 border-t border-admin-border-mid flex gap-2 justify-end flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleSectionBackfill(false)}
+                disabled={sectionBackfilling}
+                className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-admin-sm hover:bg-amber-600 disabled:opacity-50"
+                title="hero / price_dates / inclusions / excludes / notices LLM·L1 backfill"
+              >{sectionBackfilling ? 'Section 추출 중...' : 'Section 재추출'}</button>
+              <button
+                type="button"
+                onClick={() => handleSectionBackfill(true)}
+                disabled={sectionBackfilling}
+                className="px-3 py-1.5 bg-amber-700 text-white rounded-lg text-admin-sm hover:bg-amber-800 disabled:opacity-50"
+                title="깨진 inclusions/excludes 포함 강제 덮어쓰기"
+              >강제 Section 재추출</button>
               {!!selected.itinerary_data ? (
                 <button
                   onClick={() => handleGenerateImage(selected, 'detail')}

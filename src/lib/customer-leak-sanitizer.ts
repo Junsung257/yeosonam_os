@@ -245,6 +245,43 @@ export function sanitizeForCustomer<T extends CustomerExposedFields>(
   return { cleaned, incidents, leakScore: computeLeakScore(incidents) };
 }
 
+/** backfill·PATCH UPDATE 직전 — upload 와 동일 leak 게이트 (기존 행 + patch 병합) */
+export function sanitizePackageUpdate(
+  update: Record<string, unknown>,
+  existing?: Record<string, unknown>,
+): { cleaned: Record<string, unknown>; incidents: LeakIncident[] } {
+  const payload: CustomerExposedFields = {};
+  const src = { ...existing, ...update };
+
+  if (src.destination != null) payload.destination = String(src.destination);
+  if (src.display_title != null) payload.display_title = String(src.display_title);
+  if (src.hero_tagline != null) payload.hero_tagline = String(src.hero_tagline);
+  if (src.product_summary != null) payload.product_summary = String(src.product_summary);
+  if (src.special_notes != null) payload.special_notes = String(src.special_notes);
+  if (Array.isArray(src.inclusions)) payload.inclusions = src.inclusions as string[];
+  if (Array.isArray(src.excludes)) payload.excludes = src.excludes as string[];
+  if (Array.isArray(src.notices_parsed)) {
+    payload.notices_parsed = src.notices_parsed as CustomerExposedFields['notices_parsed'];
+  }
+  if (Array.isArray(src.surcharges)) payload.surcharges = src.surcharges as SurchargeItem[];
+  if (src.itinerary_data != null) payload.itinerary_data = src.itinerary_data as CustomerExposedFields['itinerary_data'];
+
+  const { cleaned, incidents } = sanitizeForCustomer(payload);
+  const out = { ...update };
+  const triggerFields: (keyof CustomerExposedFields)[] = [
+    'destination', 'display_title', 'hero_tagline', 'product_summary', 'special_notes',
+    'inclusions', 'excludes', 'notices_parsed', 'surcharges', 'itinerary_data',
+  ];
+  for (const key of triggerFields) {
+    if (!(key in cleaned)) continue;
+    // DB 트리거는 UPDATE 시 기존 surcharges 등도 검사 → patch 없어도 정화본 반영
+    if (key in update || (existing && existing[key] != null)) {
+      (out as Record<string, unknown>)[key] = cleaned[key];
+    }
+  }
+  return { cleaned: out, incidents };
+}
+
 // ── B2B 용어 → 고객 표현 치환 (sanitize 단계에서 제거된 자리에 채움) ──────
 // 단순 삭제 시 PAYMENT 가 빈 칸이 되므로, 의미 동등한 고객 표현을 미리 매핑.
 function rewriteB2BTerms(text: string): string {

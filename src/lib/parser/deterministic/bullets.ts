@@ -16,7 +16,7 @@
 const BULLET_PREFIX_RE = /^[▶●•·◆◇■□★☆+\-○•▪●◦]+\s*/;
 const SECTION_INCLUDE_RE = /^[\s　]*(?:✅\s*)?(포함\s*사항|포함)\s*[:：]?\s*$/m;
 const SECTION_EXCLUDE_RE = /^[\s　]*(?:❌\s*)?(불포함\s*사항|불포함|미포함)\s*[:：]?\s*$/m;
-const SECTION_END_RE = /^[\s　]*(?:비\s*고|REMARK|특이\s*사항|쇼핑\s*센터|일\s*자|지\s*역|교통|상\s*세|취소|환불|발권|항공|호텔|예약\s*문의|선택\s*관광|특\s*전|구비|기타|문의)\b/i;
+const SECTION_END_RE = /^[\s　]*(?:비\s*고|REMARK|특이\s*사항|쇼핑\s*센터|일\s*자|지\s*역|교통|상\s*세|취소|환불|발권|항공|호텔|예약\s*문의|선택\s*관광|특\s*전|구비|기타|문의|제\s*\d+\s*일|DAY\s*\d+|Day\s*\d+)/i;
 
 /**
  * 한 줄을 콤마로 분리 — 단 괄호 안 콤마(예: "(1,099,000원)") 와 숫자 콤마(예: "159,000") 는 보존.
@@ -90,6 +90,7 @@ export function extractBullets(rawText: string): ExtractedBullets {
     for (let i = start; i < end; i++) {
       const line = lines[i].trim();
       if (!line) continue;
+      if (SECTION_END_RE.test(line)) break;
       const hasBullet = BULLET_PREFIX_RE.test(line);
       if (hasBullet) {
         foundAnyBullet = true;
@@ -100,6 +101,7 @@ export function extractBullets(rawText: string): ExtractedBullets {
           if (c.length >= 2 && c.length <= 200) items.push(c);
         }
       } else if (foundAnyBullet && /^[가-힣A-Za-z0-9]/.test(line)) {
+        if (SECTION_END_RE.test(line)) break;
         // 이전 항목의 연결줄 (들여쓰기) — 단 새 섹션 키워드면 stop
         const prev = items[items.length - 1];
         if (prev && prev.length + line.length < 200) {

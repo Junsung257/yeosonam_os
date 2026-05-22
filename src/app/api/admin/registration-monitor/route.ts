@@ -12,8 +12,9 @@
  *   - dailyTrend: 30일 일별 confidence 평균 + 등록 건수
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { getRegistrationPolicy, invalidateRegistrationPolicyCache, type RegistrationPolicy } from '@/lib/registration-policy';
 import { refreshConformalPolicy } from '@/lib/conformal-calibration';
 
@@ -70,7 +71,7 @@ interface MonitorResponse {
   }>;
 }
 
-export async function GET() {
+const getHandler = async () => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -298,13 +299,13 @@ export async function GET() {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
-}
+};
 
 /** POST: 정책 임계치 업데이트 또는 액션 트리거.
  *   body.action === 'recalibrate_conformal' → 강제 재보정 실행
  *   body.action === undefined / 정책 patch → 임계치 업데이트
  */
-export async function POST(req: Request) {
+const postHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   }
@@ -349,4 +350,7 @@ export async function POST(req: Request) {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);
+export const POST = withAdminGuard(postHandler);

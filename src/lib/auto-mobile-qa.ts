@@ -17,6 +17,7 @@
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { LEAK_PATTERNS } from '@/lib/customer-leak-sanitizer';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 
 interface QAIncident {
   id: string;
@@ -32,16 +33,20 @@ type ExpectedRender = {
   title: string | null;
   hotelNames: string[];
   hasOptionalTours: boolean;
+  status: string | null;
+  shortCode: string | null;
 };
 
 async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, itinerary_data, optional_tours')
+      .select('title, display_title, itinerary_data, optional_tours, status, short_code')
       .eq('id', packageId)
       .maybeSingle();
-    if (!data) return { title: null, hotelNames: [], hasOptionalTours: false };
+    if (!data) {
+      return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null };
+    }
 
     const title = (data as { display_title?: string | null; title?: string | null }).display_title
       || (data as { title?: string | null }).title
@@ -59,9 +64,15 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     const tours = (data as { optional_tours?: unknown[] }).optional_tours;
     const hasOptionalTours = Array.isArray(tours) && tours.length > 0;
 
-    return { title, hotelNames, hasOptionalTours };
+    return {
+      title,
+      hotelNames,
+      hasOptionalTours,
+      status: (data as { status?: string | null }).status ?? null,
+      shortCode: (data as { short_code?: string | null }).short_code ?? null,
+    };
   } catch {
-    return { title: null, hotelNames: [], hasOptionalTours: false };
+    return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null };
   }
 }
 
@@ -80,130 +91,150 @@ function extractCoreTitleTokens(title: string): string[] {
   return tokens.filter(t => !stopwords.has(t)).slice(0, 4);
 }
 
+function buildRevalidatePaths(packageId: string, shortCode?: string | null): string[] {
+  const paths = [`/packages/${packageId}`, `/m/packages/${packageId}`, `/lp/${packageId}`];
+  if (shortCode && shortCode !== packageId) paths.push(`/lp/${shortCode}`);
+  return paths;
+}
+
+function analyzeMobileHtml(
+  html: string,
+  expected: ExpectedRender,
+  surface: 'packages' | 'lp',
+): QAIncident[] {
+  const prefix = surface === 'lp' ? 'lp_' : 'mobile_';
+  const incidents: QAIncident[] = [];
+
+  for (const rule of LEAK_PATTERNS) {
+    const match = html.match(rule.pattern);
+    if (match && match.length > 0) {
+      incidents.push({
+        id: `${prefix}leak_${rule.id}`,
+        severity: rule.severity,
+        message: `[${surface}] HTML leak (${rule.description}): "${match[0]}"`,
+      });
+    }
+  }
+
+  const hasNoticesSection = /유의사항|중요\s*공지|결제\s*조건|현장\s*규정/.test(html);
+  const bulletCount = (html.match(/[•▶]\s/g) ?? []).length;
+  if (hasNoticesSection && bulletCount < 3) {
+    incidents.push({
+      id: `${prefix}notices_empty`,
+      severity: 'high',
+      message: `[${surface}] 유의사항 섹션 비어 보임 (불렛 ${bulletCount}개)`,
+    });
+  }
+
+  const hasFlightCard = /가는편|오는편/.test(html);
+  if (!hasFlightCard) {
+    incidents.push({
+      id: `${prefix}flight_card_missing`,
+      severity: 'high',
+      message: `[${surface}] 항공편 카드 (가는편/오는편) 누락`,
+    });
+  } else {
+    const flightTimes = html.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
+    if (flightTimes.length < 2) {
+      incidents.push({
+        id: `${prefix}flight_time_merged`,
+        severity: 'high',
+        message: `[${surface}] 항공편 출/도 시간 분리 안됨 (시간 토큰 ${flightTimes.length}개)`,
+      });
+    }
+  }
+
+  if (expected.title) {
+    const tokens = extractCoreTitleTokens(expected.title);
+    const missing = tokens.filter(t => !html.includes(t));
+    if (tokens.length > 0 && missing.length === tokens.length) {
+      incidents.push({
+        id: `${prefix}hero_title_missing`,
+        severity: 'critical',
+        message: `[${surface}] hero 제목 핵심 토큰 모두 누락 (expected: ${tokens.join('·')})`,
+      });
+    } else if (missing.length > tokens.length / 2 && tokens.length >= 2) {
+      incidents.push({
+        id: `${prefix}hero_title_partial`,
+        severity: 'medium',
+        message: `[${surface}] hero 제목 일부 누락 (missing: ${missing.join('·')})`,
+      });
+    }
+  }
+
+  if (expected.hotelNames.length > 0) {
+    const missingHotels = expected.hotelNames.filter(h => !html.includes(h));
+    if (missingHotels.length === expected.hotelNames.length) {
+      incidents.push({
+        id: `${prefix}hotel_all_missing`,
+        severity: 'critical',
+        message: `[${surface}] 모든 호텔명 렌더 누락 (${expected.hotelNames.length}개)`,
+      });
+    } else if (missingHotels.length > 0) {
+      incidents.push({
+        id: `${prefix}hotel_partial_missing`,
+        severity: 'high',
+        message: `[${surface}] 호텔명 일부 누락: ${missingHotels.slice(0, 3).join(', ')}${missingHotels.length > 3 ? ' …' : ''}`,
+      });
+    }
+  }
+
+  if (expected.hasOptionalTours && !/선택\s*관광|Optional|옵션\s*투어/.test(html)) {
+    incidents.push({
+      id: `${prefix}optional_tours_missing`,
+      severity: 'high',
+      message: `[${surface}] optional_tours DB 에 있으나 섹션 미렌더`,
+    });
+  }
+
+  return incidents;
+}
+
+async function fetchSurfaceHtml(pageUrl: string): Promise<string | null> {
+  const res = await fetch(pageUrl, { headers: { 'User-Agent': 'YeosonamAutoQA/1.0' } });
+  if (!res.ok) return null;
+  return res.text();
+}
+
 export async function runAutoMobileQA(packageId: string, baseUrl?: string): Promise<void> {
   if (!isSupabaseConfigured) return;
   const url = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yeosonam.com';
 
   try {
-    // 1) ISR revalidate (실패 시 stale snapshot 으로 QA 결과가 옛 페이지를 본 결과일 수 있음 — 로그 필수)
+    const expected = await loadExpectedRender(packageId);
+    if (!isCustomerVisibleStatus(expected.status)) {
+      console.log(`[AutoQA] ${packageId}: status=${expected.status ?? 'null'} — 고객 비노출, QA skip`);
+      return;
+    }
+
+    const revalidatePaths = buildRevalidatePaths(packageId, expected.shortCode);
+
     const secret = process.env.REVALIDATE_SECRET;
     if (secret) {
       void fetch(`${url}/api/revalidate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: [`/packages/${packageId}`], secret }),
+        body: JSON.stringify({ paths: revalidatePaths, secret }),
       }).catch((e) =>
         console.warn(`[AutoQA] revalidate fetch failed for ${packageId}:`, e?.message ?? e),
       );
     }
 
-    // ISR 빌드 대기
     await new Promise(r => setTimeout(r, 3000));
 
-    // 2) 페이지 fetch
-    const pageUrl = `${url}/packages/${packageId}`;
-    const res = await fetch(pageUrl, { headers: { 'User-Agent': 'YeosonamAutoQA/1.0' } });
-    if (!res.ok) {
-      console.warn(`[AutoQA] ${packageId}: fetch fail ${res.status}`);
-      return;
-    }
-    const html = await res.text();
+    const surfaces: Array<{ surface: 'packages' | 'lp'; pageUrl: string }> = [
+      { surface: 'packages', pageUrl: `${url}/packages/${packageId}` },
+      { surface: 'lp', pageUrl: `${url}/lp/${packageId}` },
+    ];
 
-    // 3) 검증
     const incidents: QAIncident[] = [];
-
-    // 4) DB SSOT 로드 — expected vs actual 대조용
-    const expected = await loadExpectedRender(packageId);
-
-    // leak 패턴 (sanitizer set 재사용)
-    for (const rule of LEAK_PATTERNS) {
-      const match = html.match(rule.pattern);
-      if (match && match.length > 0) {
-        incidents.push({
-          id: `mobile_leak_${rule.id}`,
-          severity: rule.severity,
-          message: `모바일 HTML 에 leak 노출 (${rule.description}): "${match[0]}"`,
-        });
+    for (const { surface, pageUrl } of surfaces) {
+      const html = await fetchSurfaceHtml(pageUrl);
+      if (!html) {
+        console.warn(`[AutoQA] ${packageId}: ${surface} fetch fail`);
+        continue;
       }
-    }
-
-    // notices 섹션 비어있는지
-    const hasNoticesSection = /유의사항|중요\s*공지|결제\s*조건|현장\s*규정/.test(html);
-    const bulletCount = (html.match(/[•▶]\s/g) ?? []).length;
-    if (hasNoticesSection && bulletCount < 3) {
-      incidents.push({
-        id: 'mobile_notices_empty',
-        severity: 'high',
-        message: `유의사항 섹션 비어 보임 (불렛 ${bulletCount}개)`,
-      });
-    }
-
-    // 항공편 카드 존재 여부 (가는편/오는편 텍스트)
-    const hasFlightCard = /가는편|오는편/.test(html);
-    if (!hasFlightCard) {
-      incidents.push({
-        id: 'mobile_flight_card_missing',
-        severity: 'high',
-        message: '항공편 카드 (가는편/오는편) 누락',
-      });
-    } else {
-      // 항공편 시간 분리 — 카드 영역에 \d{2}:\d{2} 패턴이 2회 이상 (출발/도착)
-      // "→" 한 토큰으로 병합된 레거시 표기는 시간이 1회만 나옴 → 깨진 카드 감지.
-      const flightTimes = html.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
-      if (flightTimes.length < 2) {
-        incidents.push({
-          id: 'mobile_flight_time_merged',
-          severity: 'high',
-          message: `항공편 출/도 시간 분리 안됨 (시간 토큰 ${flightTimes.length}개) — flight_segments 정규화 필요`,
-        });
-      }
-    }
-
-    // hero 제목 핵심 토큰 노출 — display_title/title 의 핵심 명사가 페이지에 등장하는지
-    if (expected.title) {
-      const tokens = extractCoreTitleTokens(expected.title);
-      const missing = tokens.filter(t => !html.includes(t));
-      if (tokens.length > 0 && missing.length === tokens.length) {
-        // 모든 핵심 토큰 누락 — hero 영역이 비어있거나 다른 상품 렌더 가능성
-        incidents.push({
-          id: 'mobile_hero_title_missing',
-          severity: 'critical',
-          message: `hero 제목 핵심 토큰 모두 누락 (expected: ${tokens.join('·')})`,
-        });
-      } else if (missing.length > tokens.length / 2 && tokens.length >= 2) {
-        incidents.push({
-          id: 'mobile_hero_title_partial',
-          severity: 'medium',
-          message: `hero 제목 일부 누락 (missing: ${missing.join('·')})`,
-        });
-      }
-    }
-
-    // 호텔명 노출 — 마지막날 제외한 호텔이 모두 HTML 에 나오는지
-    if (expected.hotelNames.length > 0) {
-      const missingHotels = expected.hotelNames.filter(h => !html.includes(h));
-      if (missingHotels.length === expected.hotelNames.length) {
-        incidents.push({
-          id: 'mobile_hotel_all_missing',
-          severity: 'critical',
-          message: `모든 호텔명 렌더 누락 (${expected.hotelNames.length}개) — hotel.name SSOT 미반영`,
-        });
-      } else if (missingHotels.length > 0) {
-        incidents.push({
-          id: 'mobile_hotel_partial_missing',
-          severity: 'high',
-          message: `호텔명 일부 누락: ${missingHotels.slice(0, 3).join(', ')}${missingHotels.length > 3 ? ' …' : ''}`,
-        });
-      }
-    }
-
-    // 선택관광 섹션 노출 — DB 에 있는데 페이지에 섹션 헤더 없으면 렌더 누락
-    if (expected.hasOptionalTours && !/선택\s*관광|Optional|옵션\s*투어/.test(html)) {
-      incidents.push({
-        id: 'mobile_optional_tours_missing',
-        severity: 'high',
-        message: 'optional_tours DB 에 있으나 모바일 섹션 미렌더',
-      });
+      incidents.push(...analyzeMobileHtml(html, expected, surface));
     }
 
     // G5 박제 (2026-05-15): 관광지 매칭률 검증 + admin_alerts 자동 적재

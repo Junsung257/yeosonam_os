@@ -61,7 +61,7 @@ export async function getPackageRawText(packageId: string): Promise<PackageRawTe
     .select(`
       id, title, destination, duration, nights,
       product_summary, product_highlights, inclusions, excludes,
-      itinerary_data, special_notes, optional_tours, departure_dates,
+      itinerary_data, special_notes, optional_tours, price_tiers, price_dates,
       products(selling_price, departure_region, internal_code)
     `)
     .eq('id', packageId)
@@ -86,7 +86,7 @@ export async function getPackageRawText(packageId: string): Promise<PackageRawTe
     nights: pkg.nights ?? null,
     price: sellingPrice,
     highlights: Array.isArray(pkg.product_highlights) ? pkg.product_highlights : [],
-    departureDates: Array.isArray(pkg.departure_dates) ? pkg.departure_dates : [],
+    departureDates: collectDepartureDates(pkg),
   };
 
   let rawText: string;
@@ -107,6 +107,34 @@ export async function getPackageRawText(packageId: string): Promise<PackageRawTe
   return { ok: true, data: { rawText, source, productMeta } };
 }
 
+function collectDepartureDates(pkg: {
+  price_tiers?: unknown;
+  price_dates?: unknown;
+}): string[] {
+  const dates = new Set<string>();
+
+  const tiers = Array.isArray(pkg.price_tiers) ? pkg.price_tiers : [];
+  for (const tier of tiers) {
+    if (!tier || typeof tier !== 'object') continue;
+    const dep = (tier as { departure_dates?: unknown }).departure_dates;
+    if (Array.isArray(dep)) {
+      for (const d of dep) {
+        if (typeof d === 'string' && d) dates.add(d);
+      }
+    }
+  }
+
+  const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+  for (const row of priceDates) {
+    if (!row || typeof row !== 'object') continue;
+    const d = (row as { date?: unknown; departure_date?: unknown }).date
+      ?? (row as { departure_date?: unknown }).departure_date;
+    if (typeof d === 'string' && d) dates.add(d);
+  }
+
+  return [...dates];
+}
+
 function synthesizeRawText(p: {
   title?: string | null;
   destination?: string | null;
@@ -121,7 +149,8 @@ function synthesizeRawText(p: {
   itinerary_data?: ItineraryDay[] | { days?: ItineraryDay[] } | null;
   special_notes?: string | string[] | null;
   optional_tours?: Array<string | { name?: string; price?: string | number }> | null;
-  departure_dates?: string[] | null;
+  price_tiers?: unknown;
+  price_dates?: unknown;
 }): string {
   const lines: string[] = [];
 
@@ -212,7 +241,7 @@ function synthesizeRawText(p: {
     }
   }
 
-  const departureDates = Array.isArray(p.departure_dates) ? p.departure_dates : [];
+  const departureDates = collectDepartureDates(p);
   if (departureDates.length) {
     lines.push('');
     lines.push(`출발일: ${departureDates.join(', ')}`);
