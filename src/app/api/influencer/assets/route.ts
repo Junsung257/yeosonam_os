@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
 import { getSecret } from '@/lib/secret-registry';
+import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 
 const supabaseAdmin = createClient(
   getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
@@ -9,17 +9,16 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-// GET: 마케팅 소재 — referral_code + PIN(헤더 x-influencer-pin) 필수
+// GET: 마케팅 소재 — JWT 쿠키 또는 PIN 헤더(x-influencer-pin)
 export async function GET(req: NextRequest) {
   try {
     const referral_code = req.nextUrl.searchParams.get('code');
     const packageId = req.nextUrl.searchParams.get('package_id');
     if (!referral_code) return NextResponse.json({ error: '코드 필요' }, { status: 400 });
 
-    const pin = req.headers.get('x-influencer-pin')?.trim();
-    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, pin);
+    const auth = await authInfluencer(req, referral_code);
     if (!auth.ok) {
-      return NextResponse.json({ error: auth.message }, { status: auth.status });
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     let cardNewsQuery = supabaseAdmin

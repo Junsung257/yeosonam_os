@@ -11,12 +11,73 @@ import {
   extractBalancedJsonObjectSubstring,
   splitCatalogByItineraryHeaders,
   splitCatalogSmart,
+  extractProductRawTextSection,
 } from './parser/catalog-pre-split';
 import { judgeCatalogProductCountConsistency } from './parser/upload-consistency-judge';
 import { getSecret } from '@/lib/secret-registry';
 import { lookupSemanticCache, storeSemanticCache } from '@/lib/semantic-cache';
 import { buildFewShotPromptFragment, retrieveSimilarExamples, type SimilarExample } from '@/lib/few-shot-retriever';
 import { buildProfilePromptFragment, type LandOperatorProfile } from '@/lib/land-operator-profile';
+
+// ── Phase 2 Gemini 재시도용 Itinerary 스키마 (P1-3 2026-05-24: 함수 외부 상수화) ──
+const itinSchema: ResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    meta: { type: SchemaType.OBJECT, properties: {
+      title: { type: SchemaType.STRING },
+      product_type: { type: SchemaType.STRING, nullable: true },
+      destination: { type: SchemaType.STRING },
+      nights: { type: SchemaType.INTEGER },
+      days: { type: SchemaType.INTEGER },
+      departure_airport: { type: SchemaType.STRING, nullable: true },
+      airline: { type: SchemaType.STRING, nullable: true },
+      flight_out: { type: SchemaType.STRING, nullable: true },
+      flight_in: { type: SchemaType.STRING, nullable: true },
+      departure_days: { type: SchemaType.STRING, nullable: true },
+      min_participants: { type: SchemaType.INTEGER },
+      room_type: { type: SchemaType.STRING, nullable: true },
+      ticketing_deadline: { type: SchemaType.STRING, nullable: true },
+      hashtags: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      brand: { type: SchemaType.STRING },
+    }},
+    highlights: { type: SchemaType.OBJECT, properties: {
+      inclusions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      excludes: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      shopping: { type: SchemaType.STRING, nullable: true },
+      remarks: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    }},
+    days: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+      day: { type: SchemaType.INTEGER },
+      regions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      meals: { type: SchemaType.OBJECT, properties: {
+        breakfast: { type: SchemaType.BOOLEAN },
+        lunch: { type: SchemaType.BOOLEAN },
+        dinner: { type: SchemaType.BOOLEAN },
+        breakfast_note: { type: SchemaType.STRING, nullable: true },
+        lunch_note: { type: SchemaType.STRING, nullable: true },
+        dinner_note: { type: SchemaType.STRING, nullable: true },
+      }},
+      schedule: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+        time: { type: SchemaType.STRING, nullable: true },
+        activity: { type: SchemaType.STRING },
+        transport: { type: SchemaType.STRING, nullable: true },
+        note: { type: SchemaType.STRING, nullable: true },
+        type: { type: SchemaType.STRING },
+      }}},
+      hotel: { type: SchemaType.OBJECT, properties: {
+        name: { type: SchemaType.STRING },
+        grade: { type: SchemaType.STRING, nullable: true },
+        note: { type: SchemaType.STRING, nullable: true },
+      }, nullable: true },
+    }}},
+    optional_tours: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: {
+      name: { type: SchemaType.STRING },
+      price_usd: { type: SchemaType.NUMBER, nullable: true },
+      price_krw: { type: SchemaType.NUMBER, nullable: true },
+      note: { type: SchemaType.STRING, nullable: true },
+    }}},
+  },
+};
 
 export interface ParseOptions {
   reflections?: CorrectionRecord[];
@@ -274,6 +335,49 @@ function estimateRequiredOutputTokens(inputText: string): number {
   return Math.min(65536, Math.max(16384, est));
 }
 
+// ── P1-4 (2026-05-24): 중요도 기반 텍스트 자르기 (가격 밀집도 우선) ──
+// 앞 maxLen*0.85 자 + 뒤쪽 가격 키워드 밀집 구간 maxLen*0.15 자 를 결합.
+function smartTruncateWithPricePriority(raw: string, maxLen: number): string {
+  if (raw.length <= maxLen) return raw;
+  const headLen = Math.floor(maxLen * 0.85);         // 앞 85%
+  const tailBudget = maxLen - headLen;                // 가격 밀집 구간용 15%
+  const head = raw.slice(0, headLen);
+
+  // 가격 키워드 밀집도 스코어링: 뒤쪽 텍스트를 슬라이딩 윈도우로 검색
+  const tailCandidate = raw.slice(headLen);           // 앞 85% 이후 전부
+  if (tailCandidate.length === 0 || tailBudget === 0) return head;  // 안전장치
+
+  const priceKeywords = ['￦', '가격', '요금', '금액', 'KRW',
+    '성인', '어른', '소인', '아동', '유아', '1인', '1인당',
+    '조식', '중식', '석식', '식비', '입장료'];
+  let bestScore = 0;
+  let bestStart = 0;
+  const windowSize = Math.min(tailBudget, tailCandidate.length);
+  const step = Math.max(1, Math.floor(tailCandidate.length / 200));  // 200 step sampling
+  for (let i = 0; i <= tailCandidate.length - windowSize; i += step) {
+    const window = tailCandidate.slice(i, i + windowSize);
+    let score = 0;
+    for (const kw of priceKeywords) {
+      let idx = 0;
+      while ((idx = window.indexOf(kw, idx)) !== -1) {
+        score += kw.length;
+        idx += kw.length;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestStart = i;
+    }
+  }
+
+  // 가격 키워드가 전혀 없으면 앞부분만 반환
+  if (bestScore === 0) return head;
+  const tailSlice = tailCandidate.slice(bestStart, bestStart + windowSize);
+  console.log(`[Parser] 중요도 기반 청크: head=${headLen} tail=+${tailSlice.length} (score=${bestScore}, offset=+${headLen + bestStart})`);
+  return head + '\n\n=== 중요 구간 ===\n\n' + tailSlice;
+}
+
+
 function getGeminiModel(apiKey: string, schema?: ResponseSchema, maxOutputTokens = 8192) {
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
@@ -307,11 +411,13 @@ async function callGeminiText(
   return result.response.text();
 }
 
-async function callGeminiTextTracked(apiKey: string, text: string, prompt: string, maxOutputTokens?: number): Promise<{ text: string; input: number; output: number }> {
-  const model = getGeminiModel(apiKey, undefined, maxOutputTokens ?? 16384);
+async function callGeminiTextTracked(apiKey: string, text: string, prompt: string, maxOutputTokens?: number, schema?: ResponseSchema): Promise<{ text: string; input: number; output: number }> {
+  const model = getGeminiModel(apiKey, schema, maxOutputTokens ?? (schema ? 24576 : 16384));
   const result = await model.generateContent(`${prompt}\n\n---\n\n${text}`);
   const meta = result.response.usageMetadata;
-  return { text: result.response.text(), input: meta?.promptTokenCount ?? 0, output: meta?.candidatesTokenCount ?? 0 };
+  const raw = result.response.text();
+  // response_schema 모드면 코드펜스 없이 순수 JSON. strip하지 않아도 되지만 안전하게.
+  return { text: raw, input: meta?.promptTokenCount ?? 0, output: meta?.candidatesTokenCount ?? 0 };
 }
 
 async function callGeminiVisionTracked(apiKey: string, base64Image: string, mimeType: string, prompt: string): Promise<{ text: string; input: number; output: number }> {
@@ -1187,6 +1293,8 @@ const MULTI_PRODUCT_PHASE2_PROMPT = `"{{PRODUCT_TITLE}}" 상품의 일정표만 
 export interface MultiProductResult {
   extractedData: ExtractedData;
   itineraryData: TravelItinerary | null;
+  /** 카탈로그 N분할 시 이 상품만의 원문 (없으면 full rawText) */
+  sectionRawText?: string;
 }
 
 /** LLM이 흔히 내는 비표준 JSON(후행 쉼표 등)만 최소한으로 완화 — 문자열 내부는 건드리지 않음 */
@@ -1404,7 +1512,10 @@ export async function extractMultipleProducts(
   const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) return [];
 
-  const truncatedText = rawText.slice(0, 30000);
+  // ── P1-4 (2026-05-24): 중요도 기반 텍스트 선택 ──
+  // 앞 30000자 + 가격 키워드 밀집 구간 포함 (가격 정보가 뒤쪽에 있을 때)
+  const truncatedText = smartTruncateWithPricePriority(rawText, 30000);
+
 
   // Reflexion + 지역 컨텍스트 prefix
   const reflectionBlock = options?.reflections?.length
@@ -1423,6 +1534,8 @@ export async function extractMultipleProducts(
       type: SchemaType.ARRAY,
       items: EXTRACTED_DATA_SCHEMA,
     };
+    // ── Phase 2 Gemini 재시도용 Itinerary 스키마 (P1-3 2026-05-24) ──
+    const ITINERARY_RESPONSE_SCHEMA: ResponseSchema = itinSchema;
     const phase1Prompt = injectToday(contextPrefix + MULTI_PRODUCT_PHASE1_PROMPT);
     const singleProductPhase1Prompt = injectToday(`${contextPrefix}${MULTI_PRODUCT_PHASE1_PROMPT}\n\n★★★ 이 사용자 메시지 구간에는 여행상품이 정확히 1개만 있습니다. JSON 배열 길이는 반드시 1이어야 합니다. ★★★\n`);
 
@@ -1550,6 +1663,10 @@ export async function extractMultipleProducts(
       let phase1Candidate: Record<string, unknown>[] | null = null;
       if (allChunksOk) {
         phase1Candidate = results as Record<string, unknown>[];
+      } else if (usedGemini) {
+        // ── 이미 Gemini 청크 재시도를 했다면 중복 호출 방지 (P0-1 2026-05-24) ──
+        console.warn('[Parser] Map-Reduce 일부 실패 — 이미 Gemini 청크 재시도 완료, partial로 fallback');
+        if (partial.length >= 2) phase1Candidate = partial;
       } else {
         console.warn('[Parser] Map-Reduce 일부 실패 — 전체 문서 Phase 1 복구 시도');
         const recovered = await tryMonolithicPhase1();
@@ -1704,8 +1821,18 @@ export async function extractMultipleProducts(
     let phase2CacheHit = 0;
     let phase2ProviderFinal: 'deepseek' | 'gemini' = base64Image ? 'gemini' : 'deepseek';
 
-    const phase2Promises = phase1Parsed.map(async (item) => {
+    const productSectionTexts = phase1Parsed.map((item, idx) =>
+      extractProductRawTextSection(
+        rawText,
+        (item.title as string) || undefined,
+        idx,
+        phase1Parsed.length,
+      ),
+    );
+
+    const phase2Promises = phase1Parsed.map(async (item, idx) => {
       const title = (item.title as string) || '상품명 미상';
+      const sectionText = productSectionTexts[idx].slice(0, 30000);
       const prompt = injectToday(MULTI_PRODUCT_PHASE2_PROMPT.replace(/\{\{PRODUCT_TITLE\}\}/g, title));
       try {
         let itinRaw: string;
@@ -1720,7 +1847,7 @@ export async function extractMultipleProducts(
           const dsResult = await llmCall({
             task: 'parse_travel_doc',
             systemPrompt: '여행 일정표를 정확히 JSON으로 추출하세요. 원문 텍스트를 1글자도 변경하지 마세요.',
-            userPrompt: `${prompt}\n\n---\n\n${truncatedText}`,
+            userPrompt: `${prompt}\n\n---\n\n${sectionText}`,
             maxTokens: 8192,
             temperature: 0.1,
             enableCaching: true,
@@ -1732,7 +1859,7 @@ export async function extractMultipleProducts(
             phase2CacheHit += dsResult._usage?.cache_hit ?? 0;
           } else if (apiKey) {
             console.warn(`[Parser] Phase 2 DeepSeek 실패 (${title}) — Gemini fallback`);
-            const tracked = await callGeminiTextTracked(apiKey, truncatedText, prompt, estimateRequiredOutputTokens(truncatedText));
+            const tracked = await callGeminiTextTracked(apiKey, sectionText, prompt, estimateRequiredOutputTokens(sectionText));
             itinRaw = tracked.text;
             phase2Input += tracked.input;
             phase2Output += tracked.output;
@@ -1744,11 +1871,11 @@ export async function extractMultipleProducts(
           }
         }
         let parsed = safeParseJsonObject(itinRaw);
-        // 텍스트 모드: DeepSeek 출력이 잘리거나 비 JSON이면 Gemini로 1회 재시도
+        // 텍스트 모드: DeepSeek 출력이 잘리거나 비 JSON이면 Gemini로 1회 재시도 (P1-3: response_schema 적용)
         if (!parsed && !base64Image && apiKey && !alreadyUsedGeminiText) {
-          console.warn(`[Parser] Phase 2 JSON 파싱 실패 (${title}) — Gemini 재시도`);
+          console.warn(`[Parser] Phase 2 JSON 파싱 실패 (${title}) — Gemini 재시도 (response_schema)`);
           try {
-            const tracked = await callGeminiTextTracked(apiKey, truncatedText, prompt, estimateRequiredOutputTokens(truncatedText));
+            const tracked = await callGeminiTextTracked(apiKey, sectionText, prompt, estimateRequiredOutputTokens(sectionText), ITINERARY_RESPONSE_SCHEMA);
             itinRaw = tracked.text;
             phase2Input += tracked.input;
             phase2Output += tracked.output;
@@ -1775,8 +1902,9 @@ export async function extractMultipleProducts(
 
     // ── 결합: Phase 1 기본정보 + Phase 2 일정표 ──
     const products = phase1Parsed.map((item, idx) => ({
-      extractedData: phase1ItemToExtractedData(item, rawText),
+      extractedData: phase1ItemToExtractedData(item, productSectionTexts[idx]),
       itineraryData: itineraries[idx] ?? null,
+      sectionRawText: productSectionTexts[idx],
     }));
     // phase1Usage + phase2 토큰을 첫 번째 product에 숨겨서 parseDocument로 전달
     if (products.length > 0 && (phase1Usage || phase2Input > 0)) {

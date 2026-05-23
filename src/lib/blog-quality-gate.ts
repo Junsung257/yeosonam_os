@@ -14,6 +14,7 @@
 import { supabaseAdmin } from './supabase';
 import { checkReadability } from './blog-readability';
 import { stripMarkup } from './blog-text-utils';
+import { slugifyTopic } from './slug-utils';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -321,7 +322,7 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   since.setDate(since.getDate() - DEDUP_WINDOW_DAYS);
   const sinceIso = since.toISOString();
 
-  // 1) slug 중복
+  // 1) slug 정확 일치 중복
   const slugQuery = supabaseAdmin
     .from('content_creatives')
     .select('id, slug')
@@ -343,9 +344,33 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
     };
   }
 
-  // 2) (destination + angle_type) 14일 내 중복
+  // 1b) slug prefix 기반 fuzzy 중복 — slugify 전 토픽 유사도
+  // "태국-입국-서류-정리"와 "태국-입국-서류-총정리-재작성-v2"가 slug는 다르지만 같은 주제
+  const slugPrefix = input.slug.split('-').slice(0, 2).join('-'); // 단어 2개만 사용 (짧은 목적지도 커버)
+  if (slugPrefix.length >= 4 && /^[a-z0-9-]+$/.test(slugPrefix)) {
+    // 순수 영문 prefix만 Postgres 문자열 범위 검색 (한글 포함 시 정렬이 다름)
+    const { data: prefixDupes } = await supabaseAdmin
+      .from('content_creatives')
+      .select('id, slug')
+      .eq('channel', 'naver_blog')
+      .in('status', ['published', 'scheduled', 'draft'])
+      .gte('slug', slugPrefix)
+      .lt('slug', slugPrefix + '~') // 문자열 범위 검색
+      .limit(1);
+
+    if (prefixDupes && prefixDupes.length > 0) {
+      return {
+        gate: 'duplicate',
+        passed: false,
+        reason: `유사 slug 존재: ${prefixDupes[0].slug} (prefix: ${slugPrefix})`,
+        evidence: { type: 'slug_prefix', existing_slug: prefixDupes[0].slug },
+      };
+    }
+  }
+
+  // 2) (destination + angle_type) 14일 내 중복 — travel_packages JOIN + content_creatives.destination 둘 다 확인
   if (input.destination && input.angle_type) {
-    // travel_packages JOIN — destination 필터
+    // 2a) travel_packages JOIN 경로 (상품 블로그)
     const { data: angleDupes } = await supabaseAdmin
       .from('content_creatives')
       .select('id, slug, travel_packages!inner(destination)')
@@ -362,6 +387,27 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
         passed: false,
         reason: `최근 ${DEDUP_WINDOW_DAYS}일 내 ${input.destination} + ${input.angle_type} 이미 발행됨`,
         evidence: { type: 'destination_angle', existing_slug: angleDupes[0].slug },
+      };
+    }
+
+    // 2b) 정보성 글(product_id=null)을 위한 content_creatives.destination 직접 비교
+    const { data: infoDupes } = await supabaseAdmin
+      .from('content_creatives')
+      .select('id, slug')
+      .eq('angle_type', input.angle_type)
+      .eq('destination', input.destination)
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .is('product_id', null) // 정보성 글만
+      .gte('published_at', sinceIso)
+      .limit(1);
+
+    if (infoDupes && infoDupes.length > 0) {
+      return {
+        gate: 'duplicate',
+        passed: false,
+        reason: `최근 ${DEDUP_WINDOW_DAYS}일 내 ${input.destination} + ${input.angle_type} 정보성 글 이미 발행됨`,
+        evidence: { type: 'destination_angle_info', existing_slug: infoDupes[0].slug },
       };
     }
   }

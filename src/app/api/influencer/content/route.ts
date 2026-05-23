@@ -27,11 +27,7 @@ export const maxDuration = 90;
 
 interface RequestBody {
   referral_code: string;
-  /**
-   * PIN 4자리 (어필리에이터 본인 인증 — referral_code 만으로는 무단 콘텐츠 생성 위험).
-   * /api/influencer/dashboard 와 동일 인증 패턴.
-   */
-  pin: string;
+  pin?: string;
   product_id: string;
   platform: 'blog_body' | 'instagram_caption' | 'threads_post';
 }
@@ -52,52 +48,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as RequestBody;
     const refCanon = normalizeAffiliateReferralCode(body.referral_code || '');
-    if (!refCanon || !body.pin || !body.product_id || !body.platform) {
-      return NextResponse.json({ error: 'referral_code, pin, product_id, platform 필수' }, { status: 400 });
+    if (!refCanon || !body.product_id || !body.platform) {
+      return NextResponse.json({ error: 'referral_code, product_id, platform 필수' }, { status: 400 });
     }
     if (!ALLOWED_PLATFORMS.includes(body.platform)) {
       return NextResponse.json({ error: '허용되지 않은 플랫폼' }, { status: 400 });
     }
 
     const { supabaseAdmin } = await import('@/lib/supabase');
+    const { authInfluencer } = await import('@/lib/affiliate/jwt-or-pin-auth');
 
-    // 1. 어필리에이터 검증 + PIN 일치 + brute-force 방어
-    // (LLM 비용이 발생하는 endpoint이므로 referral_code 단독 인증 금지 — /api/influencer/dashboard 와 동일 PIN 패턴)
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const identifier = `content_${refCanon}_${ip}`;
-    const PIN_WINDOW_MIN = 10;
-    const PIN_MAX = 5;
-    const windowStart = new Date(Date.now() - PIN_WINDOW_MIN * 60 * 1000).toISOString();
-    const { count: attemptCount } = await supabaseAdmin
-      .from('pin_attempts')
-      .select('*', { count: 'exact', head: true })
-      .eq('identifier', identifier)
-      .gte('attempted_at', windowStart);
-    if (attemptCount && attemptCount >= PIN_MAX) {
-      return NextResponse.json(
-        { error: `시도 횟수 초과. ${PIN_WINDOW_MIN}분 후 재시도해주세요.` },
-        { status: 429 },
-      );
+    // 1. JWT 우선 인증, 없으면 PIN
+    const auth = await authInfluencer(request, refCanon, body.pin);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    await supabaseAdmin.from('pin_attempts').insert({ identifier } as never);
 
-    const { data: aff } = await supabaseAdmin
-      .from('affiliates')
-      .select('id, name, referral_code, logo_url, channel_url, channel_type, grade_label, pin, phone, is_active')
-      .eq('referral_code', refCanon)
-      .maybeSingle();
-
-    if (!aff || (aff as { is_active: boolean }).is_active !== true) {
-      return NextResponse.json({ error: '어필리에이터를 찾을 수 없거나 비활성 상태' }, { status: 403 });
-    }
-    const a = aff as { id: string; pin: string | null; phone: string | null };
-    const storedPin = a.pin || (a.phone ? a.phone.replace(/[^0-9]/g, '').slice(-4) : null);
-    if (!storedPin || body.pin !== storedPin) {
-      return NextResponse.json({ error: 'PIN 불일치' }, { status: 401 });
-    }
-    // 인증 성공 시 시도 기록 정리
-    await supabaseAdmin.from('pin_attempts').delete().eq('identifier', identifier);
-    const affiliate = aff as {
+    const affiliate = auth.affiliate as {
       id: string;
       name: string;
       referral_code: string;

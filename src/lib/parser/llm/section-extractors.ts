@@ -218,7 +218,7 @@ export async function extractPriceTableWithLLM(
     if (i >= 0 && i < endIdx) endIdx = i;
   }
   // 가격 영역만 잡기 위해 비고/포함 섹션 직전까지 자름. "포 함", "비 고", "포함사항" 등.
-  const stopHints = ['포 함 사 항', '포함사항', '포 함', '비 고', '★출발 4주', '최소출발인원'];
+  const stopHints = ['포 함 사 항', '포함사항', '포 함', '비 고', '주의사항', '주의 사항', '★출발 4주', '최소출발인원'];
   let stopIdx = endIdx;
   for (const hint of stopHints) {
     const i = rawText.indexOf(hint);
@@ -368,7 +368,7 @@ export async function extractInclusionsExcludesNoticesWithLLM(
   if (!rawText || rawText.length < 50) return { success: false, reason: 'raw-text-too-short' };
 
   // "포 함" / "불포함" / "비 고" 섹션 ±2000자만 추출
-  const hints = ['포 함', '포함', '불포함', '비 고', '비고', '특전', '특별 약관'];
+  const hints = ['포 함', '포함', '불포함', '비 고', '비고', '주의사항', '주의 사항', '특전', '특별 약관'];
   const starts: number[] = [];
   for (const h of hints) {
     const i = rawText.indexOf(h);
@@ -548,6 +548,10 @@ export async function backfillSectionsByPackageId(
   const heroNeeded = effectiveForce || !p.destination || p.destination.length < 2 ||
     !p.display_title || !p.product_summary || !p.hero_tagline;
   const priceNeeded = effectiveForce || !Array.isArray(p.price_dates) || (p.price_dates as unknown[]).length === 0;
+  // P2-8 (2026-05-24): price_tiers만 있고 price_dates가 없으면 L0 retry 후에도 실패 시 LLM skip
+  //   (price_tiers는 이미 upload route에서 추출한 결과이므로 LLM 재추출 불필요)
+  const hasTiers = Array.isArray(p.price_tiers) && (p.price_tiers as unknown[]).length > 0;
+  const priceSkipFromTiers = hasTiers && priceNeeded && !effectiveForce;
   const noticesNeeded = effectiveForce || noticesBroken ||
     !Array.isArray(p.inclusions) || (p.inclusions as unknown[]).length === 0 ||
     !Array.isArray(p.excludes) || (p.excludes as unknown[]).length === 0 ||
@@ -571,7 +575,7 @@ export async function backfillSectionsByPackageId(
 
   const [heroR, priceR, noticeR] = await Promise.all([
     heroL1Sufficient ? Promise.resolve(null) : (heroNeeded ? extractHeroContextWithLLM(raw) : Promise.resolve(null)),
-    priceNeeded && !detPriceOk ? extractPriceTableWithLLM(raw) : Promise.resolve(null),
+    priceNeeded && !detPriceOk && !priceSkipFromTiers ? extractPriceTableWithLLM(raw) : Promise.resolve(null),
     noticesNeeded ? extractInclusionsExcludesNoticesWithLLM(raw) : Promise.resolve(null),
   ]);
 
@@ -584,7 +588,12 @@ export async function backfillSectionsByPackageId(
   } else if (heroL1Skipped && heroL1) {
     // L1 rule 적용: destination + display_title 만 박고 LLM skip (~30% 토큰 절감)
     if (!p.destination || p.destination.length < 2) update.destination = heroL1.destination;
-    if (!p.display_title) update.display_title = heroL1.display_title;
+    if (!p.display_title) {
+      const titleTrimmed = (p.title ?? '').trim();
+      update.display_title = titleTrimmed.length >= 5
+        ? titleTrimmed.slice(0, 40)
+        : heroL1.display_title;
+    }
     // product_summary, hero_tagline 은 NULL 유지 (환각 차단 — 어드민 수동 입력)
     result.hero = { applied: true, reason: 'L1-rule' };
   } else if (heroR && heroR.success) {
@@ -604,6 +613,10 @@ export async function backfillSectionsByPackageId(
   // ② Price
   if (!priceNeeded) {
     result.price = { applied: false, reason: 'already-filled' };
+  } else if (priceSkipFromTiers) {
+    // P2-8: price_tiers가 이미 존재 → LLM 재추출 불필요, L0 실패는 자체 처리
+    result.price = { applied: false, reason: 'skip-from-tiers' };
+    console.log(`[L3] priceSkipFromTiers: price_tiers=${(p.price_tiers as unknown[])?.length ?? 0}건, LLM skip`);
   } else if (detPriceOk) {
     const priceDates = detPriceRows.map(r => ({
       date: r.date,

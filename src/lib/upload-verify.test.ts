@@ -11,6 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { evaluateVerifyChecks } from './upload-verify';
+import { extractProductRawTextSection } from './parser/catalog-pre-split';
 
 function findCheck(result: ReturnType<typeof evaluateVerifyChecks>, id: string) {
   return result.checks.find(c => c.id === id);
@@ -178,12 +179,35 @@ describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {
     expect(findCheck(r, 'C11')?.status).toBe('warn');
   });
 
-  it('C11 hero 정상 (display+tagline 충분 길이) pass', () => {
+  it('C1 공유 raw_text 오탐 — 상품별 구간이면 pass (보홀 슬림팩)', () => {
+    const shared = `${'랜드사 안내 및 공통 약관 '.repeat(3)}
+PKG
+보홀 슬림팩 3박5일
+출 발 일 5/31 (일) 판 매 가 499,000/인
+제1일 부산 출발
+제2일 보홀 자유
+제3일 보홀 자유
+제4일 보홀 시내
+제5일 부산 도착
+PKG
+보홀 슬림팩 4박6일
+출 발 일 5/30 (토) 판 매 가 519,000/인
+제1일 부산 출발
+제2일 보홀
+제3일 보홀
+제4일 보홀
+제5일 보홀
+제6일 부산 도착
+필리핀여행상품 취소규정 안내`;
+    const section5 = extractProductRawTextSection(shared, '보홀 슬림팩 3박5일', 0, 2);
     const r = evaluateVerifyChecks({
-      id: 'pkg-good-hero',
-      display_title: '나트랑 LJ 5성 3박5일',
-      hero_tagline: '풀빌라 + 골프 + 특식 — 5성 풀패키지',
+      id: 'pkg-bohol-5d',
+      title: '보홀 슬림팩 3박5일',
+      display_title: '보홀 슬림팩 3박5일',
+      raw_text: section5,
+      itinerary_data: { days: [{}, {}, {}, {}, {}] },
     });
+    expect(findCheck(r, 'C1')?.status).toBe('pass');
     expect(findCheck(r, 'C11')?.status).toBe('pass');
   });
 });

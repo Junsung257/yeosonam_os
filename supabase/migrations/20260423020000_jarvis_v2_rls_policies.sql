@@ -40,7 +40,8 @@ BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'bookings','customers','payments','bank_transactions','message_logs',
     'settlements','jarvis_sessions','jarvis_tool_logs','jarvis_pending_actions',
-    'agent_actions'
+    'agent_actions','inventory_blocks','rfq_access','rfq_proposals',
+    'tenant_bot_profiles','jarvis_cost_ledger','customer_facts'
   ]) LOOP
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
       EXECUTE format('DROP POLICY IF EXISTS jarvis_v2_tenant_isolation ON %I', t);
@@ -61,8 +62,9 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
-    'travel_packages','error_patterns','customer_facts',
-    'content_creatives','content_daily_stats','content_insights'
+    'travel_packages','api_orders','error_patterns',
+    'content_creatives','content_daily_stats','content_insights',
+    'blog_posts','attractions','jarvis_knowledge_chunks'
   ]) LOOP
     IF EXISTS (
       SELECT 1 FROM information_schema.columns
@@ -101,9 +103,11 @@ BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'bookings','customers','payments','bank_transactions','message_logs',
     'settlements','jarvis_sessions','jarvis_tool_logs','jarvis_pending_actions',
-    'agent_actions',
-    'travel_packages','error_patterns','customer_facts',
-    'content_creatives','content_daily_stats','content_insights'
+    'agent_actions','inventory_blocks','rfq_access','rfq_proposals',
+    'tenant_bot_profiles','jarvis_cost_ledger','customer_facts',
+    'travel_packages','api_orders','error_patterns',
+    'content_creatives','content_daily_stats','content_insights',
+    'blog_posts','attractions','jarvis_knowledge_chunks'
   ]) LOOP
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
@@ -121,9 +125,11 @@ BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'bookings','customers','payments','bank_transactions','message_logs',
     'settlements','jarvis_sessions','jarvis_tool_logs','jarvis_pending_actions',
-    'agent_actions',
-    'travel_packages','error_patterns','customer_facts',
-    'content_creatives','content_daily_stats','content_insights'
+    'agent_actions','inventory_blocks','rfq_access','rfq_proposals',
+    'tenant_bot_profiles','jarvis_cost_ledger','customer_facts',
+    'travel_packages','api_orders','error_patterns',
+    'content_creatives','content_daily_stats','content_insights',
+    'blog_posts','attractions','jarvis_knowledge_chunks'
   ]) LOOP
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
       EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY', t);

@@ -107,6 +107,12 @@ describe('SKIP_PATTERN — 비관광 활동 차단', () => {
   });
 });
 
+const dadHoiAnAttractions: AttractionData[] = [
+  ...sampleAttractions,
+  attr({ name: '호이 안 에코 로지 & 스파', region: '호이안', country: '베트남', category: 'sightseeing' }),
+  attr({ name: '풍흥의 집', region: '호이안', country: '베트남' }),
+];
+
 describe('MATCH_STOP_WORDS — 도시명 spillover 방지 (ERR-LB-DAD-keyword-spillover)', () => {
   it('"호이안" 단독 키워드는 "호이안 바구니배" 매칭 트리거 안 됨', () => {
     // 다른 호이안 activity에 "호이안 바구니배"가 잘못 붙는 사고 재현 방지
@@ -124,6 +130,30 @@ describe('MATCH_STOP_WORDS — 도시명 spillover 방지 (ERR-LB-DAD-keyword-sp
   it('하지만 "메르데카 광장 야경"처럼 구체 키워드가 있으면 매칭', () => {
     const r = matchAttraction('메르데카 광장 야경', sampleAttractions, '쿠알라룸푸르');
     expect(r?.name).toBe('메르데카 광장');
+  });
+
+  it('997731d9: "호이 안 에코 로지" keyword "호이" → "호이안으로 이동" 오매칭 차단', () => {
+    const r = matchAttraction('호이안으로 이동 (약30분)', dadHoiAnAttractions, '다낭/호이안');
+    expect(r?.name).not.toBe('호이 안 에코 로지 & 스파');
+    expect(r).toBeNull();
+  });
+
+  it('997731d9: 못주스 activity → 에코 로지 카드 오매칭 차단', () => {
+    const r = matchAttraction(
+      '호이안의 특산 연꽃잎차 못주스 1잔 제공',
+      dadHoiAnAttractions,
+      '다낭/호이안',
+    );
+    expect(r?.name).not.toBe('호이 안 에코 로지 & 스파');
+  });
+
+  it('997731d9: 호이안 구시가지 → 풍흥의 집 정상 매칭 유지', () => {
+    const r = matchAttraction(
+      '▶호이안 구시가지 (풍흥의 집, 일본내원교, 떤키의 집) 유네스코 지정 전통거리 관광',
+      dadHoiAnAttractions,
+      '다낭/호이안',
+    );
+    expect(r?.name).toBe('풍흥의 집');
   });
 });
 

@@ -9,7 +9,9 @@ import { resolvePrimaryAttraction, type AttractionRefScheduleItem } from '@/lib/
 import { formatDepartureDays } from '@/lib/admin-utils';
 import { normalizeOptionalTourName, type OptionalTourInput, type NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { renderPackage, getAirlineName, type CanonicalView } from '@/lib/render-contract';
+import PackageTermsSection from '@/components/package/PackageTermsSection';
 import type { NoticeBlock } from '@/lib/standard-terms';
+import { dedupeNoticesForDisplay } from '@/lib/terms-presentation';
 import TransportBar from '@/components/itinerary/TransportBar';
 
 /**
@@ -1027,81 +1029,8 @@ const NOTICE_STYLES: Record<string, { bg: string; border: string; title: string;
 
 // 포함/불포함 + 추가요금 + 쇼핑 (마지막 페이지)
 // W1 CRC — 써차지 병합 / 쇼핑 출처 선택 / 내부메모 차단은 모두 view에서 이미 해결됨 (ERR-KUL-05)
-function IncludeExcludeInfo({ view }: {
-  view: CanonicalView;
-}) {
-  // Phase 1 CRC: view.inclusions 에서 이미 basic(iconized) / program 분류 완료.
-  // 로컬 classifyInclusions / getInclusionIcon 호출 제거.
-  const basicInc = view.inclusions.basic;
-  const programInc = view.inclusions.program;
-  const basicExc = view.excludes.basic;
-  const surchargeLines = view.surchargesMerged;
-  const cleanShopping = view.shopping.text;
-  if (basicInc.length === 0 && programInc.length === 0 && basicExc.length === 0 && !cleanShopping && surchargeLines.length === 0) return null;
-
-  return (
-    <div className="space-y-1.5 mb-1">
-      {/* ── 섹션 1: 기본 포함 (아이콘 그리드) ── */}
-      {(basicInc.length > 0 || programInc.length > 0) && (
-        <section className="bg-blue-50/60 p-2 rounded">
-          <h3 className="font-bold text-blue-900 mb-1.5 text-[11px]">포함 사항</h3>
-          {basicInc.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-              {basicInc.map((item, idx) => (
-                <span key={idx} className="text-[11px] text-admin-text-2 leading-snug break-keep">
-                  <span className="text-[10px] mr-0.5">{item.icon}</span>
-                  {item.text}
-                </span>
-              ))}
-            </div>
-          )}
-          {/* 프로그램/특전 항목이 있으면 구분선 아래 컴팩트 표시 */}
-          {programInc.length > 0 && (
-            <p className={`${basicInc.length > 0 ? 'mt-1.5 pt-1.5 border-t border-blue-100' : ''} text-[10px] text-admin-muted leading-snug break-keep`}>
-              ✅ {programInc.join(', ')}
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* ── 섹션 2: 기본 불포함 (인라인) ── */}
-      {basicExc.length > 0 && (
-        <section className="bg-red-50/60 p-2 rounded">
-          <h3 className="font-bold text-red-900 mb-1 text-[11px]">불포함 사항</h3>
-          <p {...E} className={`text-[11px] text-admin-text-2 leading-snug break-keep ${EC}`}>
-            {basicExc.map((item, idx) => (
-              <span key={idx}>
-                {idx > 0 && <span className="mx-1 text-admin-muted-2">|</span>}
-                {item}
-              </span>
-            ))}
-          </p>
-        </section>
-      )}
-
-      {/* ── 섹션 3: 추가 요금 (써차지/싱글 등 — 객체 배열 우선, excludes fallback) ── */}
-      {surchargeLines.length > 0 && (
-        <section className="bg-orange-50/60 p-2 rounded">
-          <h3 className="font-bold text-orange-900 mb-1 text-[11px]">💲 추가 요금 안내</h3>
-          <div className="space-y-0.5">
-            {surchargeLines.map((item, idx) => (
-              <p key={idx} className="text-[10px] text-admin-muted leading-snug break-keep">
-                • {item.label}
-              </p>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── 섹션 4: 쇼핑센터 ── */}
-      {cleanShopping && cleanShopping !== '노쇼핑' && (
-        <section className="bg-purple-50/60 p-2 rounded">
-          <h3 className="font-bold text-purple-900 mb-0.5 text-[11px]">🛍️ 쇼핑센터</h3>
-          <p {...E} className={`text-[11px] text-admin-text-2 leading-snug break-keep ${EC}`}>{cleanShopping}</p>
-        </section>
-      )}
-    </div>
-  );
+function IncludeExcludeInfo({ view }: { view: CanonicalView }) {
+  return <PackageTermsSection view={view} variant="a4" />;
 }
 
 // 유의사항 전용 페이지 (Page 1.5)
@@ -1623,9 +1552,10 @@ function ResolvedNoticesA4Page({ notices, packageId }: {
   notices: NoticeBlock[];
   packageId?: string;
 }) {
+  const deduped = dedupeNoticesForDisplay(notices);
   // A4 공간 제약: severity='critical' 만 노출, 나머지는 QR로 유도
-  const critical = notices.filter(n => (n.severity ?? 'standard') === 'critical');
-  const hasSpecial = notices.some(n => (n._tier ?? 1) >= 3);
+  const critical = deduped.filter(n => (n.severity ?? 'standard') === 'critical');
+  const hasSpecial = deduped.some(n => (n._tier ?? 1) >= 3);
 
   // QR: 모바일 약관 페이지 (상품 상세 #유의사항 앵커)
   // NEXT_PUBLIC_BASE_URL 우선 — admin 도메인에서 프리뷰 시에도 고객 접근 가능한 URL 고정 보장.

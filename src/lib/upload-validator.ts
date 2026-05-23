@@ -160,14 +160,19 @@ export function applyDeterministicExtractedDataFixes(ed: ExtractedData): void {
   //   title 에서 핵심 토큰 추출 (괄호 안 + #해시태그 제외, 14자 이내 권장).
   const dt = (ed as { display_title?: string | null }).display_title;
   if ((!dt || !dt.trim()) && ed.title) {
-    const titleClean = ed.title
-      .replace(/\[[^\]]*\]/g, '')           // [뜨거운 특가] 등 제거
-      .replace(/#[가-힣A-Za-z0-9]+/g, '')   // 해시태그 제거
-      .replace(/\d+박\s*\d+일?|\d+일/g, '')  // "3박5일" / "5일" 제거
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    if (titleClean.length >= 4) {
-      (ed as { display_title?: string | null }).display_title = titleClean.slice(0, 30);
+    const titleTrimmed = ed.title.trim();
+    if (titleTrimmed.length >= 5) {
+      (ed as { display_title?: string | null }).display_title = titleTrimmed.slice(0, 40);
+    } else {
+      const titleClean = titleTrimmed
+        .replace(/\[[^\]]*\]/g, '')
+        .replace(/#[가-힣A-Za-z0-9]+/g, '')
+        .replace(/\d+박\s*\d+일?|\d+일/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (titleClean.length >= 4) {
+        (ed as { display_title?: string | null }).display_title = titleClean.slice(0, 30);
+      }
     }
   }
 }

@@ -88,6 +88,31 @@ const GUEST_BLOCKED_TOOLS = new Set<string>([
   'propose_blog_draft',
   'propose_product_registration',
   'propose_merge_customers',
+  // Phase 2 추가 — operations
+  'update_guest_names',
+  'create_itinerary',
+  // Phase 2 추가 — finance
+  'export_settlement_report',
+  'propose_bulk_confirm_settlements',
+  // Phase 2 추가 — sales
+  'generate_affiliate_link',
+  'update_influencer_tier',
+  'create_rfq_proposal',
+  // Phase 2 추가 — products
+  'register_product_draft',
+  'update_package_field',
+  'delete_package',
+  'activate_policy',
+  // Phase 2 추가 — marketing
+  'approve_content',
+  // Phase 2 추가 — system
+  'update_system_config',
+  'trigger_cron_job',
+  'resolve_escalation',
+  'dismiss_alert',
+  'process_gdpr_request',
+  'resolve_fraud_case',
+  'toggle_integration',
 ]);
 
 type ToolLike = { name?: string } & Record<string, unknown>;

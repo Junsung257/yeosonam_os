@@ -146,6 +146,28 @@ describe('flattenItems — 콤마 분리 안전성', () => {
   it('빈 항목 / 공백만 → 제외', () => {
     expect(flattenItems(['항공권, , 호텔'])).toEqual(['항공권', '호텔']);
   });
+
+  it('일차 나열 콤마 보호 (ERR-BOH-meal-days)', () => {
+    expect(flattenItems(['3,4일차중식,석식', '5일차석식'])).toEqual([
+      '3·4일차 중식, 석식',
+      '5일차 석식',
+    ]);
+  });
+
+  it('일차+식사 한 줄 유지 (3박5일 불포함)', () => {
+    expect(flattenItems(['3일차중식,석식', '4일차석식'])).toEqual([
+      '3일차 중식, 석식',
+      '4일차 석식',
+    ]);
+  });
+
+  it('깨진 배열 복원', () => {
+    expect(flattenItems(['개인경비', '3', '4일차중식', '석식', '5일차석식'])).toEqual([
+      '개인경비',
+      '3·4일차 중식, 석식',
+      '5일차 석식',
+    ]);
+  });
 });
 
 describe('classifyExcludes — basic vs surcharge', () => {

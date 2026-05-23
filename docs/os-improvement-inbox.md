@@ -1,44 +1,182 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-22T09:30:04+09:00
-- actionable_changed_files: 32
+- generated_at_kst: 2026-05-24T06:56:16+09:00
+- actionable_changed_files: 170
 - todo_markers: 0
-- areas: LIB 17, API 6, ETC 6, APP 2, DOCS 1
+- areas: LIB 91, API 23, APP 16, DB 15, ETC 12, UI 9, DOCS 4
 
 ## 1) Actionable Changed Files
 
-- ` M` `src/app/admin/packages/PackagesPageClient.tsx`
-- ` M` `src/app/admin/upload/page.tsx`
-- ` M` `src/app/api/admin/alerts/route.ts`
-- ` M` `src/app/api/admin/registration-monitor/route.ts`
-- ` M` `src/app/api/content-queue/route.ts`
+- `M ` `docs/env-variables-reference.md`
+- ` M` `package-lock.json`
+- ` M` `package.json`
+- ` M` `src/app/admin/applications/page.tsx`
+- ` M` `src/app/admin/blog/BlogDataFetcher.tsx`
+- ` M` `src/app/admin/platform-learning/page.tsx`
+- ` M` `src/app/admin/tenants/page.tsx`
+- ` M` `src/app/api/card-news/render/route.ts`
+- ` M` `src/app/api/cron/blog-publisher/route.ts`
+- ` M` `src/app/api/influencer/assets/route.ts`
+- ` M` `src/app/api/influencer/content/route.ts`
+- ` M` `src/app/api/influencer/dashboard/route.ts`
+- ` M` `src/app/api/influencer/links/route.ts`
+- ` M` `src/app/api/influencer/playbook/route.ts`
+- ` M` `src/app/api/influencer/promo-codes/route.ts`
+- `M ` `src/app/api/jarvis/route.ts`
+- ` M` `src/app/api/jarvis/stream/route.ts`
+- ` M` `src/app/api/partner-apply/route.ts`
+- ` M` `src/app/api/register-via-ir/route.ts`
+- ` M` `src/app/api/settlements/[id]/pdf/route.ts`
 - ` M` `src/app/api/upload/route.ts`
-- ` M` `src/lib/admin-alerts.ts`
-- ` M` `src/lib/auto-mobile-qa.ts`
+- ` M` `src/app/blog/[slug]/page.tsx`
+- ` M` `src/app/influencer/[code]/assets/page.tsx`
+- ` M` `src/app/influencer/[code]/create-content/page.tsx`
+- ` M` `src/app/influencer/[code]/layout.tsx`
+- ` M` `src/app/influencer/[code]/page.tsx`
+- ` M` `src/app/influencer/[code]/playbook/page.tsx`
+- ` M` `src/app/influencer/[code]/products/page.tsx`
+- ` M` `src/app/m/chat/[token]/page.tsx`
+- ` M` `src/app/packages/[id]/DetailClient.tsx`
+- ` M` `src/app/packages/[id]/page.tsx`
+- ` M` `src/components/AdminLayout.tsx`
+- ` M` `src/components/BlogTracker.tsx`
+- ` M` `src/components/ChatWidget.tsx`
+- ` M` `src/components/admin/BookingGuideTemplate.tsx`
+- ` M` `src/components/admin/YeosonamA4Template.tsx`
+- ` M` `src/components/jarvis/MagicLinkChat.tsx`
+- ` M` `src/lib/attraction-matcher.test.ts`
+- ` M` `src/lib/attraction-matcher.ts`
+- ` M` `src/lib/blog-quality-gate.ts`
+- ` M` `src/lib/blog-scheduler.ts`
+- ` M` `src/lib/chat-store.ts`
 - ` M` `src/lib/customer-leak-sanitizer.ts`
-- ` M` `src/lib/expand-date-range.ts`
+- ` M` `src/lib/indexing.ts`
+- ` M` `src/lib/ir-canary.ts`
+- ` M` `src/lib/ir-to-package.ts`
+- ` M` `src/lib/itinerary-normalizer.ts`
+- ` M` `src/lib/jarvis/agents/concierge.ts`
+- ` M` `src/lib/jarvis/agents/finance.ts`
+- ` M` `src/lib/jarvis/agents/marketing.ts`
+- ` M` `src/lib/jarvis/agents/operations.ts`
+- ` M` `src/lib/jarvis/agents/products.ts`
+- ` M` `src/lib/jarvis/agents/sales.ts`
+- ` M` `src/lib/jarvis/agents/system.ts`
+- ` M` `src/lib/jarvis/guest-guardrail.ts`
+- ` M` `src/lib/jarvis/persona.ts`
+- ` M` `src/lib/jarvis/prompts.ts`
+- `M ` `src/lib/jarvis/scoped-client.ts`
+- `M ` `src/lib/jarvis/v2-dispatch.ts`
 - ` M` `src/lib/packages/raw-text.ts`
 - ` M` `src/lib/parser.ts`
+- ` M` `src/lib/parser/catalog-pre-split.test.ts`
+- ` M` `src/lib/parser/catalog-pre-split.ts`
+- ` M` `src/lib/parser/customer-ready-gate.ts`
 - ` M` `src/lib/parser/deterministic/bullets.ts`
+- ` M` `src/lib/parser/deterministic/comma-split-signature.ts`
+- ` M` `src/lib/parser/deterministic/day-table.test.ts`
+- ` M` `src/lib/parser/deterministic/day-table.ts`
+- ` M` `src/lib/parser/deterministic/notices.ts`
+- ` M` `src/lib/parser/deterministic/price-matrix.ts`
 - ` M` `src/lib/parser/llm/section-extractors.ts`
-- ` M` `src/lib/price-dates.ts`
-- ` M` `src/lib/revalidate-helper.ts`
+- ` M` `src/lib/parser/normalize-flight-segments.test.ts`
+- ` M` `src/lib/parser/normalize-flight-segments.ts`
+- ` M` `src/lib/render-contract.test.ts`
+- ` M` `src/lib/render-contract.ts`
+- ` M` `src/lib/standard-terms.test.ts`
+- ` M` `src/lib/standard-terms.ts`
+- ` M` `src/lib/upload-validator.ts`
+- ` M` `src/lib/upload-verify.test.ts`
+- `M ` `supabase/migrations/20260423020000_jarvis_v2_rls_policies.sql`
+- `A ` `supabase/migrations/20260524000000_phase0_enable_rls.sql`
 - ` M` `vercel.json`
 - `??` `UsersadminDesktop\354\227\254\354\206\214\353\202\250OS.tmp_pkg_resp.html`
-- `??` `db/backfill_legacy_sections.mjs`
-- `??` `docs/audits/2026-05-20-legacy-sections-broken.md`
-- `??` `scripts/audit-a1-remaining.ts`
-- `??` `scripts/audit-tier-expand.ts`
-- `??` `scripts/run-legacy-backfill.ts`
-- `??` `src/app/api/admin/packages/[id]/backfill-sections/`
-- `??` `src/app/api/cron/legacy-sections-backfill/`
-- `??` `src/lib/legacy-sections-backfill-batch.ts`
-- `??` `src/lib/parser/deterministic/comma-split-signature.ts`
-- `??` `src/lib/parser/deterministic/price-matrix.ts`
-- `??` `src/lib/period-label-dates.test.ts`
-- `??` `src/lib/period-label-dates.ts`
-- `??` `tests/unit/lib/legacy-sections-backfill-batch.spec.ts`
-- `??` `tests/unit/lib/parser/`
+- `??` `db/_audit_bohol.js`
+- `??` `db/_bohol_day1_raw.txt`
+- `??` `db/_dump_day1_schedule.ts`
+- `??` `db/_extract_day1_raw.ts`
+- `??` `db/_parse_full_raw.ts`
+- `??` `db/_verify_dad_postprocess.ts`
+- `??` `db/audit_mobile_landing_full.ts`
+- `??` `db/reverify_bohol.ts`
+- `??` `docs/audits/2026-05-22-mobile-landing-audit-real.json`
+- `??` `docs/audits/2026-05-22-mobile-landing-audit.json`
+- `??` `docs/jarvis-10year-architecture.md`
+- `??` `src/app/admin/marketing-intelligence/`
+- `??` `src/app/admin/mcp/`
+- `??` `src/app/api/admin/mcp/`
+- `??` `src/app/api/admin/platform-learning/corrections/`
+- `??` `src/app/api/admin/platform-learning/summary/`
+- `??` `src/app/api/content-review/`
+- `??` `src/app/api/cron/learning-flywheel/`
+- `??` `src/app/api/influencer/auth/`
+- `??` `src/app/api/marketing/`
+- `??` `src/app/api/mcp/`
+- `??` `src/app/api/qa/chat/v2/`
+- `??` `src/components/admin/ContentReviewPanel.tsx`
+- `??` `src/components/customer/PackageTermsBottomSheet.tsx`
+- `??` `src/components/package/`
+- `??` `src/lib/ab-test-auto-apply.ts`
+- `??` `src/lib/ab-test-engine.ts`
+- `??` `src/lib/affiliate/jwt-auth.ts`
+- `??` `src/lib/affiliate/jwt-or-pin-auth.ts`
+- `??` `src/lib/affiliate/settlement-pdf.tsx`
+- `??` `src/lib/attribution-engine.ts`
+- `??` `src/lib/blog-categories.ts`
+- `??` `src/lib/cardnews-render-notify.ts`
+- `??` `src/lib/competitor-ad-monitor.ts`
+- `??` `src/lib/content-gap-auto-heal.ts`
+- `??` `src/lib/content-review-notify.ts`
+- `??` `src/lib/content-review-workflow.ts`
+- `??` `src/lib/customer-segmentation.ts`
+- `??` `src/lib/itinerary-normalizer.test.ts`
+- `??` `src/lib/jarvis/mcp-server.ts`
+- `??` `src/lib/jarvis/mcp-types.ts`
+- `??` `src/lib/l1-customer-ready-gate.test.ts`
+- `??` `src/lib/l1-customer-ready-gate.ts`
+- `??` `src/lib/marketing-cost-accounting.ts`
+- `??` `src/lib/marketing-cron.ts`
+- `??` `src/lib/marketing-pipeline/agents/ad-publish-agent.ts`
+- `??` `src/lib/marketing-pipeline/agents/social-publish-agent.ts`
+- `??` `src/lib/mta-bid-feedback.ts`
+- `??` `src/lib/package-post-process.test.ts`
+- `??` `src/lib/package-post-process.ts`
+- `??` `src/lib/parser/deterministic/comma-split-safe.test.ts`
+- `??` `src/lib/parser/deterministic/comma-split-safe.ts`
+- `??` `src/lib/parser/deterministic/notices.test.ts`
+- `??` `src/lib/parser/deterministic/product-policy.test.ts`
+- `??` `src/lib/parser/deterministic/product-policy.ts`
+- `??` `src/lib/persist-intake-snapshot.test.ts`
+- `??` `src/lib/persist-intake-snapshot.ts`
+- `??` `src/lib/predictive-marketing.ts`
+- `??` `src/lib/registration-write-pipeline.test.ts`
+- `??` `src/lib/registration-write-pipeline.ts`
+- `??` `src/lib/rfm-email-campaign.ts`
+- `??` `src/lib/roi-simulator.ts`
+- `??` `src/lib/slug-utils.ts`
+- `??` `src/lib/social-oauth-refresh.ts`
+- `??` `src/lib/social-publisher.ts`
+- `??` `src/lib/standard-terms-client.ts`
+- `??` `src/lib/terms-catalog-render.test.ts`
+- `??` `src/lib/terms-catalog.test.ts`
+- `??` `src/lib/terms-catalog.ts`
+- `??` `src/lib/terms-presentation.test.ts`
+- `??` `src/lib/terms-presentation.ts`
+- `??` `src/lib/upload-ir-extract.test.ts`
+- `??` `src/lib/upload-ir-extract.ts`
+- `??` `src/lib/upload-ir-shadow.ts`
+- `??` `supabase/migrations/20260522100000_terms_tier1_p2_wording.sql`
+- `??` `supabase/migrations/20260524010000_add_applications_has_invite_code.sql`
+- `??` `supabase/migrations/20260524013000_add_attribution_chains.sql`
+- `??` `supabase/migrations/20260524013100_add_ab_tests.sql`
+- `??` `supabase/migrations/20260524013200_add_content_review_workflow.sql`
+- `??` `supabase/migrations/20260524013300_add_customer_segments.sql`
+- `??` `supabase/migrations/20260524013400_add_social_publish_fields.sql`
+- `??` `supabase/migrations/20260524013500_add_predictive_marketing.sql`
+- `??` `supabase/migrations/20260524013600_add_cta_text_to_creatives.sql`
+- `??` `supabase/migrations/20260524013700_add_segment_campaign_logs.sql`
+- `??` `supabase/migrations/20260524013800_add_competitor_ads.sql`
+- `??` `supabase/migrations/20260524020000_add_marketing_rpc_functions.sql`
+- `??` `supabase/migrations/20260524021000_add_pattern_hash_and_rpc.sql`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -46,7 +184,27 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P1 `??` `src/app/api/cron/legacy-sections-backfill/`
+- [ ] P0 ` M` `src/components/admin/BookingGuideTemplate.tsx`
+- [ ] P1 ` M` `src/app/api/cron/blog-publisher/route.ts`
+- [ ] P1 `??` `src/app/api/cron/learning-flywheel/`
+- [ ] P1 `??` `src/lib/affiliate/jwt-auth.ts`
+- [ ] P1 `??` `src/lib/affiliate/jwt-or-pin-auth.ts`
+- [ ] P1 `??` `src/lib/affiliate/settlement-pdf.tsx`
+- [ ] P1 `M ` `supabase/migrations/20260423020000_jarvis_v2_rls_policies.sql`
+- [ ] P1 `A ` `supabase/migrations/20260524000000_phase0_enable_rls.sql`
+- [ ] P1 `??` `supabase/migrations/20260522100000_terms_tier1_p2_wording.sql`
+- [ ] P1 `??` `supabase/migrations/20260524010000_add_applications_has_invite_code.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013000_add_attribution_chains.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013100_add_ab_tests.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013200_add_content_review_workflow.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013300_add_customer_segments.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013400_add_social_publish_fields.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013500_add_predictive_marketing.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013600_add_cta_text_to_creatives.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013700_add_segment_campaign_logs.sql`
+- [ ] P1 `??` `supabase/migrations/20260524013800_add_competitor_ads.sql`
+- [ ] P1 `??` `supabase/migrations/20260524020000_add_marketing_rpc_functions.sql`
+- [ ] P1 `??` `supabase/migrations/20260524021000_add_pattern_hash_and_rpc.sql`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

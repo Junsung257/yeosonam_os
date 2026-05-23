@@ -1,0 +1,162 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
+import type { NoticeBlock } from '@/lib/standard-terms-client';
+import { getSourceBadgeColor } from '@/lib/standard-terms-client';
+import {
+  groupNoticesForPresentation,
+  splitNoticeLines,
+  stripNoticeTitleEmoji,
+  type TermsPresentationGroup,
+} from '@/lib/terms-presentation';
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  notices: NoticeBlock[];
+  hasSpecialTerms?: boolean;
+  productTitle?: string;
+}
+
+function GroupSection({ group, defaultOpen }: { group: TermsPresentationGroup; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-2 px-4 py-3 text-left bg-gray-50/80 hover:bg-gray-50 transition"
+      >
+        <span className="text-base shrink-0">{group.icon}</span>
+        <span className="text-sm font-bold text-gray-800 flex-1">{group.title}</span>
+        <span className="text-gray-300 text-sm">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 pt-2 space-y-3 bg-white">
+          {group.notices.map((notice, idx) => {
+            const lines = splitNoticeLines(notice.text);
+            const badgeColor = getSourceBadgeColor(notice._source, notice._tier);
+            const showSource = (notice._tier ?? 1) >= 2 && notice._source;
+            return (
+              <div key={`${notice.type}-${idx}`}>
+                {notice.title && notice.title !== group.title && (
+                  <p className="text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-2 flex-wrap">
+                    <span>{stripNoticeTitleEmoji(notice.title)}</span>
+                    {showSource && (
+                      <span className={`text-[10px] font-bold ${badgeColor}`}>[{notice._source}]</span>
+                    )}
+                  </p>
+                )}
+                <div className="space-y-1">
+                  {lines.map((line, lineIdx) => (
+                    <p key={lineIdx} className="text-xs text-gray-600 leading-relaxed">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function PackageTermsBottomSheet({
+  open,
+  onClose,
+  notices,
+  hasSpecialTerms = false,
+  productTitle,
+}: Props) {
+  const groups = useMemo(() => groupNoticesForPresentation(notices), [notices]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-black/50 z-[60] transition-opacity"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        className="fixed inset-x-0 bottom-0 z-[70] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[88dvh]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="package-terms-sheet-title"
+      >
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </div>
+
+        <div className="flex items-start justify-between gap-3 px-5 pb-3 shrink-0 border-b border-gray-100">
+          <div className="min-w-0">
+            <h2 id="package-terms-sheet-title" className="text-base font-extrabold text-gray-900">
+              {hasSpecialTerms ? '특별약관 및 취소 규정' : '여행 약관 및 취소 규정'}
+            </h2>
+            {productTitle && (
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{productTitle}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 -mr-2 rounded-full hover:bg-gray-100 text-gray-500"
+            aria-label="닫기"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {hasSpecialTerms && (
+            <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5 leading-relaxed">
+              ※ 본 상품은 특별약관이 적용되며, 공정거래위원회 표준약관보다 우선합니다. 예약 시 동의한 것으로 간주합니다.
+            </p>
+          )}
+
+          {groups.map((group, idx) => (
+            <GroupSection key={group.id} group={group} defaultOpen={idx === 0} />
+          ))}
+
+          <p className="text-[11px] text-gray-400 leading-relaxed px-1 pt-1">
+            ※ 예약 확정 시점의 약관 전문이 [예약 안내문]으로 별도 발송됩니다.
+          </p>
+        </div>
+
+        <div
+          className="shrink-0 px-4 pt-3 pb-4 border-t border-gray-100 bg-white"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-3.5 rounded-xl bg-gray-900 text-white text-sm font-bold"
+          >
+            확인했습니다
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}

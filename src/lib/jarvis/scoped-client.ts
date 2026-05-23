@@ -95,8 +95,6 @@ export function scopedOrAdmin(ctx?: JarvisContext): SupabaseClient {
  *       SET LOCAL 을 RPC 로 감싸서 트랜잭션 범위로 제한할 것.
  */
 export async function applyRequestContext(ctx: JarvisContext): Promise<void> {
-  if (process.env.JARVIS_RLS_ENABLED !== 'true') return // Phase 3d 이전에는 비활성
-
   try {
     await supabaseAdmin.rpc('set_jarvis_request_context', {
       p_tenant_id: ctx.tenantId ?? null,

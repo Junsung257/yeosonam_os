@@ -11,6 +11,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 키 (서버) | `eyJhbGciOi...` |
 | `NEXT_PUBLIC_BASE_URL` | 사이트 루트 URL | `https://yeosonam.com` |
 | `NEXT_PUBLIC_CONSULT_PHONE` | 고객 QA 채팅 **전화 상담** 버튼용 (`tel:`). 미설정 시 전화 버튼 숨김 | `0511234567` 또는 `+82511234567` |
+| `CRON_SECRET` | 크론 작업 인증 Bearer 토큰 (Vercel Cron Jobs가 `Authorization: Bearer <CRON_SECRET>` 전송) | `랜덤 문자열` |
 | `GOOGLE_AI_API_KEY` | Gemini 2.5 Flash (블로그·카드뉴스·Pillar 생성) | `AIza...` |
 | `SUPABASE_JWT_SECRET` | Supabase **JWT 서명용 시크릿** (대시보드 → Project Settings → API → JWT Secret) | Base64 시크릿 |
 | `ADMIN_EMAILS` | **브라우저 쿠키 JWT**로 `/api` 어드민 호출 시 허용 이메일 (쉼표 구분, 대소문자 무시) | `admin@yeosonam.com` |
@@ -97,8 +98,8 @@
 
 | 키 | 용도 |
 |---|---|
-| `INDEX_NOW_KEY` | Bing/네이버 IndexNow API 키 |
-| `GOOGLE_INDEXING_CREDENTIALS` | Google Indexing API 서비스 계정 JSON |
+| `INDEXNOW_KEY` | Bing/Yandex/Seznam IndexNow 키 (색인 요청). `indexing.ts` 참조 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Indexing API / Search Console 서비스 계정 JSON |
 | `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
 | `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
 | `SLACK_ALERTS_WEBHOOK` | 어드민 알림 큐 critical/warning 푸시 (`admin-alerts`) |

@@ -51,6 +51,12 @@ interface ItineraryDataLike {
   [key: string]: unknown;
 }
 
+function timeToMinutes(t: string): number {
+  const m = t.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
 /** activity 텍스트가 "출발" / "도착" 의미인지 판정 */
 function classifyActivity(activity: string | null | undefined): 'depart' | 'arrive' | 'other' {
   if (!activity) return 'other';
@@ -146,14 +152,22 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
 
     const pair = flightItems[pairIdx];
     const dayDelta = pair.dayIdx - cur.dayIdx;
+    const depTime = cur.item.time ?? null;
+    const arrTime = pair.item.time ?? null;
+    // 같은 DAY 블록이어도 20:40→00:30 같은 red-eye는 익일 도착 (2026-05-22 보홀)
+    const redEyeSameDay =
+      dayDelta === 0 &&
+      depTime &&
+      arrTime &&
+      timeToMinutes(arrTime) < timeToMinutes(depTime);
     segments.push({
       leg:            segments.length === 0 ? 'outbound' : 'inbound',
       flight_no:      cur.item.transport ?? pair.item.transport ?? null,
       dep_airport:    cur.city,
-      dep_time:       cur.item.time ?? null,
+      dep_time:       depTime,
       arr_airport:    pair.city,
-      arr_time:       pair.item.time ?? null,
-      arr_day_offset: dayDelta >= 1 ? 1 : 0,
+      arr_time:       arrTime,
+      arr_day_offset: dayDelta >= 1 || redEyeSameDay ? 1 : 0,
       day_pair:       [cur.dayIdx, pair.dayIdx],
     });
     used.add(i);

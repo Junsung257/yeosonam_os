@@ -1,7 +1,5 @@
 /**
  * @file deterministic/bullets.ts — ▶ 불릿 inclusions/excludes 결정적 추출 (2026-05-14 박제)
- *
- * 박제 사유:
  *   부관훼리 케이스에서 LLM 이 inclusions 0건으로 깨졌는데, 원문에는
  *     ▶왕복훼리비, 부두세&유류세, 출국세, 관광지입장료, 가이드, 전용버스, 선내식1회, 여행자보험
  *   같이 ▶ 불릿이 명시되어 있음. 한국 여행사 카탈로그 표준이라 정규식 100%.
@@ -12,6 +10,8 @@
  *   - 각 섹션 안의 ▶/●/•/-/+/○ 으로 시작하는 라인 → 개별 항목
  *   - 콤마로 이어붙인 한 줄도 분리 (▶왕복훼리비, 부두세&유류세, 가이드 → 3개)
  */
+
+import { formatExcludeDisplayLabel, isMealDayExcludeLine, repairMealDayExcludeItems, shouldSplitAtComma } from './comma-split-safe';
 
 const BULLET_PREFIX_RE = /^[▶●•·◆◇■□★☆+\-○•▪●◦]+\s*/;
 const SECTION_INCLUDE_RE = /^[\s　]*(?:✅\s*)?(포함\s*사항|포함)\s*[:：]?\s*$/m;
@@ -30,10 +30,7 @@ function splitByCommaSafe(line: string): string[] {
     if (c === '(' || c === '（' || c === '[' || c === '【') depth++;
     else if (c === ')' || c === '）' || c === ']' || c === '】') depth--;
     if ((c === ',' || c === '，') && depth <= 0) {
-      // 숫자 콤마(앞뒤 모두 숫자) 면 분리 안 함
-      const prev = line[i - 1];
-      const next = line[i + 1];
-      if (/\d/.test(prev) && /\s*\d/.test(next ?? '')) {
+      if (!shouldSplitAtComma(line, i, depth)) {
         buf += c;
         continue;
       }
@@ -94,8 +91,13 @@ export function extractBullets(rawText: string): ExtractedBullets {
       const hasBullet = BULLET_PREFIX_RE.test(line);
       if (hasBullet) {
         foundAnyBullet = true;
-        // 콤마로 분리 (괄호·숫자 콤마 보호)
-        const subItems = splitByCommaSafe(line.replace(BULLET_PREFIX_RE, ''));
+        const body = line.replace(BULLET_PREFIX_RE, '');
+        if (isMealDayExcludeLine(body)) {
+          const c = cleanItem(body);
+          if (c.length >= 2 && c.length <= 200) items.push(formatExcludeDisplayLabel(c));
+          continue;
+        }
+        const subItems = splitByCommaSafe(body);
         for (const sub of subItems) {
           const c = cleanItem(sub);
           if (c.length >= 2 && c.length <= 200) items.push(c);
@@ -119,7 +121,7 @@ export function extractBullets(rawText: string): ExtractedBullets {
     ? collect(incStart, findSectionEnd(incStart, [SECTION_EXCLUDE_RE]))
     : [];
   const excludes = excStart >= 0
-    ? collect(excStart, findSectionEnd(excStart, [SECTION_INCLUDE_RE]))
+    ? repairMealDayExcludeItems(collect(excStart, findSectionEnd(excStart, [SECTION_INCLUDE_RE])))
     : [];
 
   return { inclusions, excludes };

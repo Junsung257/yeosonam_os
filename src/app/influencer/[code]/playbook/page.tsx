@@ -34,10 +34,7 @@ export default function InfluencerPlaybookPage() {
     const run = async () => {
       setLoading(true);
       try {
-        const pin = sessionStorage.getItem(`inf_pin_${code}`) || '';
-        const res = await fetch(`/api/influencer/playbook?code=${encodeURIComponent(code)}`, {
-          headers: pin ? { 'x-influencer-pin': pin } : {},
-        });
+        const res = await fetch(`/api/influencer/playbook?code=${encodeURIComponent(code)}`);
         const json = await res.json();
         setBest(json.best_practices || []);
         setScripts(json.cs_scripts || []);

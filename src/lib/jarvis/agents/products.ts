@@ -217,7 +217,7 @@ const PRODUCTS_TOOLS_RAW = [
   },
   {
     name: 'propose_product_registration',
-    description: '신규 상품 등록을 기안합니다. (승인 필요) agent_actions 에 기록 → 관리자가 /register 파이프라인으로 승격.',
+    description: '신규 상품 등록을 기안합니다. agent_actions 에 기록 → 관리자가 /register 파이프라인으로 승격.',
     input_schema: {
       type: 'object' as const,
       required: ['title', 'destination', 'duration_days'],
@@ -230,6 +230,57 @@ const PRODUCTS_TOOLS_RAW = [
         departure_date: { type: 'string', description: '출발일 YYYY-MM-DD' },
         source_url: { type: 'string', description: '원문 URL (랜드사 블로그 등)' },
         raw_notes: { type: 'string', description: '자유 메모 — LLM 이 파악한 원문 요약' },
+      },
+    },
+  },
+  {
+    name: 'register_product_draft',
+    description: '신규 상품을 DRAFT 상태로 travel_packages 에 직접 생성합니다. (HITL — 사장님 승인 후 ACTIVE/APPROVED 전환) 최초 등록 시 사용. country, title, destination, duration, price 등 최소 필수값 필요.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['title', 'destination', 'country', 'duration_days'],
+      properties: {
+        title: { type: 'string', description: '상품명 (예: "[부산출발] 다낭/호이안 3박5일 스탠다드")' },
+        destination: { type: 'string', description: '목적지 (예: 다낭, 장가계)' },
+        country: { type: 'string', description: '국가 (예: 베트남, 중국)' },
+        duration_days: { type: 'number', description: '일수 (예: 5)' },
+        nights: { type: 'number', description: '박수 (예: 3, 생략 시 duration_days - 1)' },
+        base_price: { type: 'number', description: '기본 판매가 (원, KRW)' },
+        departure_airport: { type: 'string', description: '출발 공항 (예: 부산, 인천)' },
+        departure_days: { type: 'string', description: '출발 요일/날짜 설명' },
+        airline: { type: 'string', description: '항공사 (예: 티웨이항공, 제주항공)' },
+        product_type: { type: 'string', description: '상품 유형 (노옵션/에어텔/일반 등)' },
+        inclusions: { type: 'string', description: '포함 사항 요약 (쉼표 구분)' },
+        excludes: { type: 'string', description: '불포함 사항 요약' },
+        itinerary_summary: { type: 'string', description: '일정 요약 (예: "1일: 부산출발-다낭도착, 2일: 바나힐, 3일: 호이안, 4일: 자유시간, 5일: 다낭출발-부산도착")' },
+        highlights: { type: 'string', description: '상품 특징 (쉼표 구분, 예: "노팁노옵션,5성호텔,직항")' },
+        land_operator_name: { type: 'string', description: '랜드사명 (있으면 함께 조회해 ID 매핑)' },
+        source_url: { type: 'string', description: '원문 URL' },
+      },
+    },
+  },
+  {
+    name: 'update_package_field',
+    description: 'travel_packages 의 단일 필드를 수정합니다. (HITL — 사장님 재확인 필수) package_id 와 수정할 field (컬럼명), value (새 값) 필요.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['package_id', 'field', 'value'],
+      properties: {
+        package_id: { type: 'string', description: '패키지 UUID' },
+        field: { type: 'string', description: '수정할 컬럼명 (예: title, base_price, status, destination, highlights 등)' },
+        value: { type: 'string', description: '새 값 (문자열로 전달, 내부에서 타입 변환)' },
+      },
+    },
+  },
+  {
+    name: 'delete_package',
+    description: 'travel_packages 에서 패키지를 삭제합니다. (HITL — 사장님 최종 확인 필요) 삭제 전 confirm 메시지를 보내고, package_id 확인 후 실행.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['package_id'],
+      properties: {
+        package_id: { type: 'string', description: '삭제할 패키지 UUID' },
+        reason: { type: 'string', description: '삭제 사유' },
       },
     },
   },
@@ -602,6 +653,148 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         summary,
         next_step: '관리자가 /register 또는 /register-via-ir 로 실제 등록 수행',
       }
+    }
+    case 'register_product_draft': {
+      const nights = args.nights ?? (args.duration_days > 1 ? args.duration_days - 1 : 0)
+      const insertData: Record<string, unknown> = {
+        title: args.title,
+        destination: args.destination,
+        country: args.country,
+        duration: args.duration_days,
+        nights,
+        base_price: args.base_price ?? null,
+        price: args.base_price ?? null,
+        departure_airport: args.departure_airport ?? null,
+        departure_days: args.departure_days ?? null,
+        airline: args.airline ?? null,
+        product_type: args.product_type ?? null,
+        inclusions: args.inclusions ? args.inclusions.split(',').map((s: string) => s.trim()) : [],
+        excludes: args.excludes ? [args.excludes] : [],
+        highlights: args.highlights ? args.highlights.split(',').map((s: string) => s.trim()) : [],
+        itinerary_summary: args.itinerary_summary ?? null,
+        status: 'DRAFT',
+        source: args.source_url ?? null,
+        product_highlights: args.highlights ? args.highlights.split(',').map((s: string) => s.trim()) : [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      // 랜드사명 → ID 매핑
+      if (args.land_operator_name) {
+        const { data: lo } = await supabaseAdmin
+          .from('land_operators')
+          .select('id')
+          .ilike('name', `%${args.land_operator_name}%`)
+          .limit(1)
+        if (lo && lo.length > 0) {
+          insertData.land_operator_id = lo[0].id
+        }
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('travel_packages')
+        .insert(insertData)
+        .select()
+      if (error) throw error
+
+      const pkg = data?.[0]
+      // 관리자 알림
+      try {
+        const { postAlert } = await import('@/lib/admin-alerts')
+        await postAlert({
+          category: 'general',
+          severity: 'info',
+          title: `자비스가 신규 상품 등록: ${args.title}`,
+          message: `${args.destination} ${args.duration_days}일 · ${args.base_price ? args.base_price.toLocaleString() + '원' : '가격 미지정'} · DRAFT 상태`,
+          ref_type: 'package',
+          ref_id: pkg?.id,
+        })
+      } catch { /* alert 실패 무시 */ }
+
+      return {
+        ok: true,
+        package_id: pkg?.id,
+        title: args.title,
+        status: 'DRAFT',
+        next_step: '관리자가 승인 후 ACTIVE/APPROVED 로 전환 가능. "이 상품 승인해줘" 라고 말씀하세요.',
+      }
+    }
+    case 'update_package_field': {
+      if (!args.package_id || !args.field) throw new Error('package_id, field 필수')
+      const allowedFields = ['title', 'base_price', 'price', 'status', 'destination', 'country',
+        'duration', 'nights', 'highlights', 'inclusions', 'excludes', 'itinerary_summary',
+        'departure_airport', 'departure_days', 'airline', 'product_type', 'product_highlights',
+        'source', 'description', 'trip_style']
+      if (!allowedFields.includes(args.field)) {
+        throw new Error(`허용되지 않은 필드: ${args.field}. 허용: ${allowedFields.join(', ')}`)
+      }
+
+      let value: unknown = args.value
+      // 숫자 필드 변환
+      if (['base_price', 'price', 'duration', 'nights'].includes(args.field)) {
+        value = Number(args.value)
+        if (isNaN(value as number)) throw new Error(`${args.field}는 숫자여야 합니다`)
+      }
+      // JSON 배열 필드 변환
+      if (['highlights', 'product_highlights', 'inclusions'].includes(args.field)) {
+        value = String(args.value).split(',').map((s: string) => s.trim())
+      }
+
+      // before 스냅샷 (변경 전 값 저장)
+      const { data: before } = await supabaseAdmin
+        .from('travel_packages')
+        .select(args.field)
+        .eq('id', args.package_id)
+        .limit(1)
+
+      const { error } = await supabaseAdmin
+        .from('travel_packages')
+        .update({ [args.field]: value, updated_at: new Date().toISOString() })
+        .eq('id', args.package_id)
+      if (error) throw error
+
+      // 알림
+      try {
+        const { postAlert } = await import('@/lib/admin-alerts')
+        await postAlert({
+          category: 'general',
+          severity: 'info',
+          title: `자비스가 상품 필드 수정: ${args.field}`,
+          message: `${args.package_id.slice(0, 8)} — ${args.field}: ${JSON.stringify(before?.[0]?.[args.field] ?? '(없음)')} → ${JSON.stringify(value)}`,
+          ref_type: 'package',
+          ref_id: args.package_id,
+        })
+      } catch { /* ignore */ }
+
+      return { ok: true, package_id: args.package_id, field: args.field, old_value: before?.[0]?.[args.field] ?? null, new_value: value }
+    }
+    case 'delete_package': {
+      if (!args.package_id) throw new Error('package_id 필수')
+      const { data: pkg } = await supabaseAdmin
+        .from('travel_packages')
+        .select('id, title')
+        .eq('id', args.package_id)
+        .limit(1)
+      if (!pkg || pkg.length === 0) throw new Error('패키지를 찾을 수 없습니다')
+
+      const { error } = await supabaseAdmin
+        .from('travel_packages')
+        .delete()
+        .eq('id', args.package_id)
+      if (error) throw error
+
+      try {
+        const { postAlert } = await import('@/lib/admin-alerts')
+        await postAlert({
+          category: 'general', severity: 'warn',
+          title: `자비스가 상품 삭제: ${pkg[0].title}`,
+          message: `삭제 사유: ${args.reason ?? '사유 미지정'}`,
+          ref_type: 'package',
+          ref_id: args.package_id,
+        })
+      } catch { /* ignore */ }
+
+      return { ok: true, deleted_package_id: args.package_id, deleted_title: pkg[0].title }
     }
     default:
       throw new Error(`Unknown tool: ${toolName}`)

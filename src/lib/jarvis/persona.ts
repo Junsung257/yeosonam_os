@@ -22,6 +22,10 @@ interface BotProfile {
     forbidden_phrases?: string[]
     require_hitl_for?: string[]
   }
+  knowledge_scope: {
+    include_shared?: boolean
+    source_types?: string[]
+  } | null
   monthly_token_quota: number
   is_active: boolean
 }
@@ -37,7 +41,7 @@ async function fetchProfile(tenantId: string): Promise<BotProfile | null> {
 
   const { data, error } = await supabaseAdmin
     .from('tenant_bot_profiles')
-    .select('bot_name, greeting, persona_prompt, allowed_agents, guardrails, monthly_token_quota, is_active')
+    .select('bot_name, greeting, persona_prompt, allowed_agents, guardrails, knowledge_scope, monthly_token_quota, is_active')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .maybeSingle()
@@ -113,4 +117,17 @@ export async function getBotName(ctx: JarvisContext): Promise<string> {
   if (!ctx.tenantId) return '자비스'
   const profile = await fetchProfile(ctx.tenantId)
   return profile?.bot_name ?? '자비스'
+}
+
+/** 테넌트의 knowledge_scope 반환 (RAG 검색 범위 제어) */
+export async function getKnowledgeScope(ctx: JarvisContext): Promise<{
+  include_shared: boolean
+  source_types?: string[]
+}> {
+  if (!ctx.tenantId) return { include_shared: true }
+  const profile = await fetchProfile(ctx.tenantId)
+  return {
+    include_shared: profile?.knowledge_scope?.include_shared ?? true,
+    source_types: profile?.knowledge_scope?.source_types,
+  }
 }

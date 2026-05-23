@@ -12,28 +12,22 @@
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
+import type { NoticeBlock, NoticeSurface, NoticeSeverity } from './standard-terms-client';
+import {
+  hasProductSpecialCancelPolicy,
+  hasSpecialTermsBanner,
+  shouldSuppressStandardCancelTable,
+} from './standard-terms-client';
 
-// ── 타입 ─────────────────────────────────────────────────────
-export type NoticeSurface = 'a4' | 'mobile' | 'booking_guide';
-export type NoticeSeverity = 'critical' | 'standard' | 'info';
-
-export interface NoticeBlock {
-  type: string;
-  title: string;
-  text: string;
-  surfaces?: NoticeSurface[];
-  severity?: NoticeSeverity;
-  /**
-   * 이 블록이 명시적으로 대체하는 하위 tier 블록 type 목록.
-   * 예: 특약 PAYMENT 블록이 플랫폼 RESERVATION 을 대체할 때 ['RESERVATION'].
-   * 비워두면 동일 type 만 대체.
-   */
-  replaces?: string[];
-  /** 런타임에 채워지는 출처 (UI 배지용). DB에는 저장 X */
-  _source?: string;
-  /** 런타임 tier 태그 (1~4). DB에는 저장 X */
-  _tier?: 1 | 2 | 3 | 4;
-}
+export type { NoticeBlock, NoticeSurface, NoticeSeverity } from './standard-terms-client';
+export {
+  hasProductSpecialCancelPolicy,
+  hasSpecialTermsBanner,
+  shouldSuppressStandardCancelTable,
+  getSourceBadgeColor,
+  NOTICE_DOT_COLOR,
+  NOTICE_CARD_TONE,
+} from './standard-terms-client';
 
 export interface TermsTemplate {
   id: string;
@@ -145,21 +139,6 @@ function normalizeProductNotices(raw: unknown): NoticeBlock[] {
   return result;
 }
 
-// ── 특약 탐지: 상위 tier(3+)의 블록 중 취소/환불/수수료/파이널 관련 PAYMENT
-//    또는 "특약" 시그니처가 있으면 하위 tier 의 RESERVATION(예약 및 취소 규정) 자동 제외.
-//    Why: 특약 취소 규정(예: "파이널 후 100%")과 표준약관("30일 전 전액 환불")이
-//    동시 노출되면 약관규제법 §6(2) 에 의해 소비자에게 유리하게 해석 → 여행사 패소.
-//    ERR-FUK-clause-duplication(2026-04-19) 재발 방지.
-//    False positive 방지: 단순 싱글차지 PAYMENT 는 취소 문맥 아니므로 제외.
-function hasSpecialCancelPolicy(notices: readonly NoticeBlock[]): boolean {
-  return notices.some(n => {
-    const combined = `${n.title ?? ''} ${n.text ?? ''}`;
-    if (/특별\s*약관|특약|파이널\s*후|취소\s*불가/.test(combined)) return true;
-    if (n.type === 'PAYMENT' && /취소|환불|수수료|위약|공제|파이널/.test(combined)) return true;
-    return false;
-  });
-}
-
 // ── 메인: 4-level 머지 ───────────────────────────────────────
 export async function resolveTermsForPackage(
   pkg: PackageForTerms,
@@ -212,8 +191,8 @@ export async function resolveTermsForPackage(
       for (const replaced of (n.replaces ?? [])) tierTypes.add(replaced);
     }
 
-    // ERR-FUK 암묵 규칙: tier>=3 에 특약 시그니처가 있으면 하위의 RESERVATION 제외
-    if (tier >= 3 && hasSpecialCancelPolicy(tierBlocks)) {
+    // ERR-FUK: tier 3+ · tier 4 상품 특약이 취소 맥락이면 하위 RESERVATION 제외
+    if (tier >= 3 && hasProductSpecialCancelPolicy(tierBlocks)) {
       tierTypes.add('RESERVATION');
     }
 
@@ -223,11 +202,25 @@ export async function resolveTermsForPackage(
   // 결과 순서: tier 4(특약) 먼저, tier 1(표준) 마지막 — 기존 mergeNotices 동작 보존.
   //   push 순서가 이미 tier 4 → 3 → 2 → 1 이므로 추가 sort 불필요.
 
-  // surface 필터
-  return result.filter(n => {
+  return filterNoticesForSurface(result, surface);
+}
+
+/** surface 태그 + P0 표준 일수표 억제 규칙 (테스트·프리뷰 공용) */
+export function filterNoticesForSurface(
+  notices: readonly NoticeBlock[],
+  surface: NoticeSurface,
+): NoticeBlock[] {
+  let filtered = notices.filter(n => {
     const surfaces = n.surfaces ?? ['mobile', 'booking_guide'];
     return surfaces.includes(surface);
   });
+
+  // mobile/booking_guide: AUTO_TICKETING·특약과 표준 일수표 동시 노출 금지 (A4·예약 스냅샷 전문은 유지)
+  if (surface !== 'a4' && shouldSuppressStandardCancelTable(filtered)) {
+    filtered = filtered.filter(n => n.type !== 'RESERVATION');
+  }
+
+  return filtered;
 }
 
 // ── 스냅샷: 예약 시점 약관 freeze ────────────────────────────
@@ -251,9 +244,7 @@ export async function buildTermsSnapshot(
         .filter((s): s is string => !!s && s !== '상품 특약'),
     ),
   );
-  const hasSpecialTerms = notices.some(
-    n => (n._tier ?? 1) >= 3 || n.type === 'PAYMENT' || n.severity === 'critical',
-  );
+  const hasSpecialTerms = hasSpecialTermsBanner(notices);
   return {
     resolved_at: new Date().toISOString(),
     surface,
@@ -309,48 +300,3 @@ export function formatCancellationDates(
   });
 }
 
-// ── UI 헬퍼 ──────────────────────────────────────────────────
-export const NOTICE_DOT_COLOR: Record<string, string> = {
-  RESERVATION: 'bg-purple-500',
-  PAYMENT: 'bg-orange-500',
-  PASSPORT: 'bg-amber-500',
-  LIABILITY: 'bg-slate-500',
-  COMPLAINT: 'bg-emerald-500',
-  NOSHOW: 'bg-red-500',
-  PANDEMIC: 'bg-blue-500',
-  SURCHARGE: 'bg-rose-500',
-  AUTO_TICKETING: 'bg-red-600',
-  BUSINESS_HOURS: 'bg-orange-600',
-  MIN_PARTICIPANTS: 'bg-gray-400',
-  CRITICAL: 'bg-red-500',
-  POLICY: 'bg-blue-500',
-  INFO: 'bg-gray-400',
-};
-
-// P2 #2 (2026-04-27): 유의사항 카드 type 별 좌측 보더 + 배경 톤.
-// 아코디언이 닫혀 있어도 한눈에 type 구분 가능. 모든 항목이 동일한 "[상품 특약]" 라벨이어도
-// CRITICAL(빨강) / PAYMENT(주황) / POLICY(파랑) / INFO(회색) 차별화로 우선순위 시각화.
-export const NOTICE_CARD_TONE: Record<string, { border: string; bg: string }> = {
-  RESERVATION:      { border: 'border-l-purple-400', bg: 'bg-purple-50/40' },
-  PAYMENT:          { border: 'border-l-orange-400', bg: 'bg-orange-50/40' },
-  PASSPORT:         { border: 'border-l-amber-400',  bg: 'bg-amber-50/40' },
-  LIABILITY:        { border: 'border-l-slate-400',  bg: 'bg-slate-50/60' },
-  COMPLAINT:        { border: 'border-l-emerald-400',bg: 'bg-emerald-50/40' },
-  NOSHOW:           { border: 'border-l-red-400',    bg: 'bg-red-50/40' },
-  PANDEMIC:         { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
-  SURCHARGE:        { border: 'border-l-rose-400',   bg: 'bg-rose-50/40' },
-  AUTO_TICKETING:   { border: 'border-l-red-500',    bg: 'bg-red-50/60' },
-  BUSINESS_HOURS:   { border: 'border-l-orange-500', bg: 'bg-orange-50/50' },
-  MIN_PARTICIPANTS: { border: 'border-l-gray-300',   bg: 'bg-gray-50/60' },
-  CRITICAL:         { border: 'border-l-red-500',    bg: 'bg-red-50/60' },
-  POLICY:           { border: 'border-l-blue-400',   bg: 'bg-blue-50/40' },
-  INFO:             { border: 'border-l-gray-300',   bg: 'bg-white' },
-};
-
-export function getSourceBadgeColor(source?: string, tier?: number): string {
-  if (!source || tier === 1) return 'text-gray-400';
-  if (tier === 2) return 'text-blue-600';
-  if (tier === 3) return 'text-purple-600';
-  if (tier === 4 || source === '상품 특약') return 'text-red-600';
-  return 'text-gray-400';
-}

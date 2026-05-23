@@ -135,7 +135,19 @@ function collectDepartureDates(pkg: {
   return [...dates];
 }
 
-function synthesizeRawText(p: {
+/** backfill·카드뉴스용 필드 합성 raw — 등록 원문 SSOT 아님 */
+export function isSynthesizedRawText(raw: string | null | undefined): boolean {
+  const text = (raw ?? '').trim();
+  if (text.length < 10) return false;
+  const head = text.slice(0, 600);
+  return (
+    text.startsWith('# ') &&
+    /^목적지:/m.test(head) &&
+    (/^## 상품 소개/m.test(text) || /^## 포함 사항/m.test(text))
+  );
+}
+
+export function synthesizeRawText(p: {
   title?: string | null;
   destination?: string | null;
   departureRegion?: string | null;

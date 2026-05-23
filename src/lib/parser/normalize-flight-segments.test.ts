@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeFlightSegments } from './normalize-flight-segments';
+import { normalizeFlightSegments, type FlightSegment } from './normalize-flight-segments';
+import { enrichItineraryForDisplay } from '../itinerary-normalizer';
 
 /**
  * 2026-05-19 박제 (FIX-3): normalize-flight-segments 회귀 fixture.
@@ -29,6 +30,20 @@ describe('normalizeFlightSegments — flight pair 정규화 (FIX-3)', () => {
       expect(seg.arr_day_offset).toBe(0);
       expect(seg.day_pair).toEqual([0, 0]);
       expect(seg.flight_no).toBe('BX793');
+    });
+
+    it('같은 day red-eye (20:40→00:30) → arr_day_offset=1 (보홀)', () => {
+      const itin = {
+        days: [{
+          day: 1,
+          schedule: [
+            { type: 'flight', activity: '부산 김해 국제공항 출발', time: '20:40', transport: '7C2157' },
+            { type: 'flight', activity: '보홀 팡라오 국제공항 도착', time: '00:30', transport: '7C2157' },
+          ],
+        }],
+      };
+      const r = normalizeFlightSegments(itin);
+      expect(r?.flight_segments?.[0].arr_day_offset).toBe(1);
     });
   });
 
@@ -147,6 +162,20 @@ describe('normalizeFlightSegments — flight pair 정규화 (FIX-3)', () => {
       };
       const r = normalizeFlightSegments(itin);
       expect(r?.flight_segments).toBeUndefined();
+    });
+
+    it('type normal 공항 도착도 coerce 후 페어링 (enrichItineraryForDisplay 경유)', () => {
+      const itin = enrichItineraryForDisplay({
+        days: [{
+          day: 1,
+          schedule: [
+            { type: 'flight', activity: '김해 국제공항 출발', time: '20:50', transport: 'BX773' },
+            { type: 'normal', activity: '다낭 국제공항 도착', time: '23:50', transport: 'BX773' },
+          ],
+        }],
+        flight_segments: [] as FlightSegment[],
+      }, normalizeFlightSegments);
+      expect(itin?.flight_segments?.[0]?.arr_time).toBe('23:50');
     });
 
     it('두 단어 공항명 추출 ("타이페이 타오위안 국제공항 출발") → 첫 단어 "타이페이"', () => {

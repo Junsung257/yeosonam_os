@@ -47,6 +47,27 @@ export function getIrCanaryRolloutPct(): number {
   return Math.min(100, Math.max(0, n));
 }
 
+/** 복수 PKG 카탈로그 IR primary 추출 (기본 on, IR_CANARY_MULTI=0 으로 끔) */
+export function isIrCanaryMultiEnabled(): boolean {
+  return process.env.IR_CANARY_MULTI !== '0';
+}
+
+/** 카탈로그 IR 추출 상한 (기본 8) */
+export function getIrCanaryMaxProducts(): number {
+  const raw = process.env.IR_CANARY_MAX_PRODUCTS;
+  const n = raw ? parseInt(raw, 10) : 8;
+  if (!Number.isFinite(n) || n < 1) return 8;
+  return Math.min(16, n);
+}
+
+/** 섹션별 normalize 동시 실행 수 (기본 2) */
+export function getIrCanaryConcurrency(): number {
+  const raw = process.env.IR_CANARY_CONCURRENCY;
+  const n = raw ? parseInt(raw, 10) : 2;
+  if (!Number.isFinite(n) || n < 1) return 2;
+  return Math.min(6, n);
+}
+
 function fnv1a(input: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {

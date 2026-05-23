@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
-import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { getSecret } from '@/lib/secret-registry';
 
@@ -13,49 +12,21 @@ const supabaseAdmin = createClient(
 
 const { PIN_MAX_ATTEMPTS, PIN_WINDOW_MINUTES, PIN_LOCKOUT_MINUTES } = AFFILIATE_CONFIG;
 
-// PIN 인증 + 대시보드 데이터 (PIN 없이 민감 정보 반환 금지)
+// POST /api/influencer/dashboard
+// 인증: JWT 쿠키(inf_token) 우선, 없으면 PIN 검증
 export async function POST(req: NextRequest) {
   try {
-    const { referral_code, pin } = await req.json();
+    const body = await req.json();
+    const referral_code: string | undefined = body.referral_code;
     if (!referral_code) {
       return NextResponse.json({ error: '코드 필요' }, { status: 400 });
     }
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const codeKey = normalizeAffiliateReferralCode(referral_code);
-    if (!codeKey) {
-      return NextResponse.json({ error: '코드 필요' }, { status: 400 });
-    }
-
-    const identifier = `${codeKey}_${ip}`;
-    const windowStart = new Date(Date.now() - PIN_WINDOW_MINUTES * 60 * 1000).toISOString();
-
-    const { count: attemptCount } = await supabaseAdmin
-      .from('pin_attempts')
-      .select('*', { count: 'exact', head: true })
-      .eq('identifier', identifier)
-      .gte('attempted_at', windowStart);
-
-    if (attemptCount && attemptCount >= PIN_MAX_ATTEMPTS) {
-      return NextResponse.json(
-        { error: `PIN 시도 횟수를 초과했습니다. ${PIN_LOCKOUT_MINUTES}분 후 다시 시도해주세요.` },
-        { status: 429 }
-      );
-    }
-
-    await supabaseAdmin.from('pin_attempts').insert({ identifier });
-
-    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, pin);
+    const { authInfluencer } = await import('@/lib/affiliate/jwt-or-pin-auth');
+    const auth = await authInfluencer(req, referral_code, body.pin);
     if (!auth.ok) {
-      const remaining = PIN_MAX_ATTEMPTS - (attemptCount || 0) - 1;
-      const msg =
-        auth.status === 401
-          ? `PIN이 일치하지 않습니다. 남은 시도: ${remaining}회`
-          : auth.message;
-      return NextResponse.json({ error: msg }, { status: auth.status });
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-
-    await supabaseAdmin.from('pin_attempts').delete().eq('identifier', identifier);
 
     return await buildDashboardResponse(auth.affiliate, true);
   } catch (err) {

@@ -289,8 +289,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     if (!error) productAdded = (inserted ?? []).length;
   }
 
-  // 이제 targetPublishAt 배정
-  await assignPublishSlots(postsPerDay);
+  // assignPublishSlots는 route.ts(cron 엔트리)에서 호출하므로 여기서는 생략
 
   return {
     seasonal_added: seasonalAdded,

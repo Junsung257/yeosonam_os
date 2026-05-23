@@ -3,8 +3,12 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
-import { normalizeFlightSegments } from '@/lib/parser/normalize-flight-segments';
-import { normalizeItinerary } from '@/lib/itinerary-normalizer';
+import { postProcessCatalogFields, postProcessItineraryData } from '@/lib/package-post-process';
+import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
+import { persistIntakeSnapshot } from '@/lib/persist-intake-snapshot';
+import { runUploadIrShadowIfSampled } from '@/lib/upload-ir-shadow';
+import { tryExtractUploadViaIr } from '@/lib/upload-ir-extract';
+import { getIrCanaryStatus, shouldSampleToIrCanary } from '@/lib/ir-canary';
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
@@ -18,11 +22,11 @@ import { generateMarketingCopies, type MarketingCopy } from '@/lib/ai';
 import {
   validateExtractedProduct,
   priceTiersToRows,
-  determineProductStatus,
   classifyUploadGate,
   applyDeterministicExtractedDataFixes,
   type UploadGate,
 } from '@/lib/upload-validator';
+import { extractProductRawTextSection } from '@/lib/parser/catalog-pre-split';
 import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { tiersToDatePrices } from '@/lib/price-dates';
 import { hydratePriceTiers } from '@/lib/period-label-dates';
@@ -38,7 +42,6 @@ import { extractPriceMatrix } from '@/lib/parser/deterministic/price-matrix';
 import { looksLikeCommaSplitBroken } from '@/lib/parser/deterministic/comma-split-signature';
 import { detectFerry } from '@/lib/parser/deterministic/ferry-classifier';
 import { extractBullets } from '@/lib/parser/deterministic/bullets';
-import { extractNotices } from '@/lib/parser/deterministic/notices';
 import { maybeTriggerMrtSync } from '@/lib/parser/mrt-lazy-sync';
 import { recordHotelsFromItinerary } from '@/lib/parser/hotel-canonical-learner';
 import { detectIssues as detectCriticIssues, autoFixIssues as autoFixCriticIssues } from '@/lib/parser/critic';
@@ -759,6 +762,47 @@ const postHandler = async (request: NextRequest) => {
       departure: parsedDocument.extractedData.departure_airport, departingLocationId,
     });
 
+    // P1 — IR canary: 단일·복수 PKG 카탈로그 forward IR 추출로 parseDocument 결과 대체
+    let irCanaryPrimary = false;
+    const irLandOperatorName =
+      landOps?.find((lo: { id: string; name: string }) => lo.id === effectiveLandOperatorId)?.name
+      ?? filenameRule.supplierRaw
+      ?? effectiveSupplierCode
+      ?? '';
+    if (
+      isSupabaseConfigured &&
+      shouldSampleToIrCanary(normalizedCatalogHash) &&
+      irLandOperatorName
+    ) {
+      const irExtract = await tryExtractUploadViaIr({
+        rawText: parsedDocument.rawText ?? '',
+        landOperator: irLandOperatorName,
+        commissionRate: marginRate * 100,
+        sb: supabaseAdmin,
+        filename: fileName,
+      });
+      if (irExtract.ok) {
+        parsedDocument.multiProducts = irExtract.products;
+        parsedDocument.extractedData = irExtract.products[0].extractedData;
+        parsedDocument.itineraryData = irExtract.products[0].itineraryData;
+        parsedDocument.confidence = irExtract.confidence;
+        irCanaryPrimary = true;
+        console.log(
+          '[Upload API] IR canary primary extraction:',
+          irExtract.engine,
+          'products=',
+          irExtract.products.length,
+          'confidence=',
+          irExtract.confidence,
+        );
+      } else {
+        console.warn(
+          '[Upload API] IR canary extract failed — parseDocument fallback:',
+          irExtract.errors?.slice(0, 2).join('; '),
+        );
+      }
+    }
+
     // ── [G] 각 상품별 내부코드 생성 + 이중 저장 루프 ────────────────────────
 
     // 2026-05-19 박제 (catalog split silent fallback 사고 차단):
@@ -836,9 +880,18 @@ const postHandler = async (request: NextRequest) => {
       activeAttractions = (attrRows || []) as AttractionData[];
     }
 
-    for (const product of productsToSave) {
+    for (let productIndex = 0; productIndex < productsToSave.length; productIndex++) {
+      const product = productsToSave[productIndex];
       const ed = product.extractedData;
       const title = ed.title || filenameRule.cleanName || fileName;
+      const productRawText =
+        (product as { sectionRawText?: string }).sectionRawText
+        ?? extractProductRawTextSection(
+          parsedDocument.rawText ?? '',
+          title,
+          productIndex,
+          productsToSave.length,
+        );
 
       // 보상 트랜잭션을 위한 상태 추적
       let internalCode: string | null = null;
@@ -880,8 +933,8 @@ const postHandler = async (request: NextRequest) => {
 
         // ── Hybrid v2 Stage 1: Deterministic Layer (2026-05-14 박제) ────────────
         //   LLM 이 못 잡거나 잘못 잡은 결정적 필드를 정규식으로 회복. 빈 필드만 채움 (기존값 보존).
-        //   부관훼리·베트남 같은 ferry/카탈로그 케이스에서 핵심 효과.
-        const rawForDeterm = parsedDocument.rawText ?? '';
+        //   복수 PKG 카탈로그는 상품별 raw 구간만 사용 (전체 raw → 2번째 상품 오염 방지).
+        const rawForDeterm = productRawText || parsedDocument.rawText || '';
 
         // 1) Ferry/Cruise 자동 분류 — title/본문 키워드 매칭. 이미 LLM 이 'cruise' 잡으면 그대로.
         const ferry = detectFerry(rawForDeterm, ed.title);
@@ -984,30 +1037,24 @@ const postHandler = async (request: NextRequest) => {
           console.log(`[Upload API] excludes 결정적 추출: ${bullets.excludes.length} 건`);
         }
 
-        // 4) notices_parsed 4-type 결정적 분류 — Cross-validation 룰 C3 통과 핵심.
-        //    LLM 이 4 타입 분류를 자주 빼먹어 confidence 점수 하락 원인이 됨.
-        const detNotices = extractNotices(rawForDeterm);
-        const llmNoticesRaw: unknown[] = Array.isArray(ed.notices_parsed) ? ed.notices_parsed : [];
-        // type narrowing: notices_parsed 가 string|NoticeItem union 이라 object 만 추출
-        const llmNoticeTypes = new Set<string>();
-        for (const n of llmNoticesRaw) {
-          if (n && typeof n === 'object' && 'type' in n) {
-            const t = (n as { type?: unknown }).type;
-            if (typeof t === 'string') llmNoticeTypes.add(t);
-          }
+        // 4) notices · excludes · 노팁 정책 — upload·상세·IR 공통 SSOT (package-post-process)
+        const catalogPost = postProcessCatalogFields({
+          title: ed.title,
+          product_type: ed.product_type,
+          inclusions: ed.inclusions,
+          excludes: ed.excludes,
+          notices_parsed: ed.notices_parsed,
+          raw_text: rawForDeterm,
+        });
+        ed.inclusions = catalogPost.inclusions;
+        ed.excludes = catalogPost.excludes;
+        ed.notices_parsed = catalogPost.notices_parsed as typeof ed.notices_parsed;
+        if (catalogPost.product_type) {
+          ed.product_type = catalogPost.product_type;
         }
-        let appended = 0;
-        const additional: typeof detNotices = [];
-        for (const dn of detNotices) {
-          if (llmNoticeTypes.has(dn.type)) continue;
-          additional.push(dn);
-          llmNoticeTypes.add(dn.type);
-          appended++;
-        }
-        if (appended > 0) {
-          ed.notices_parsed = [...llmNoticesRaw, ...additional] as typeof ed.notices_parsed;
-          console.log(`[Upload API] notices_parsed 결정적 보완: +${appended} type (전체 ${(ed.notices_parsed as unknown[]).length}/4)`);
-        }
+        console.log(
+          `[Upload API] catalog post-process: notices=${catalogPost.notices_parsed.length} type, excludes=${catalogPost.excludes.length}`,
+        );
 
         // 5) Critic Agent — cross-field consistency 결정적 검증 (DocSync 2605.02163 패턴, 2026-05-14).
         //    title↔destination, ferry↔airline, days↔nights, price-range 자동 검증 + 자동 수정 가능 항목 적용.
@@ -1178,6 +1225,65 @@ const postHandler = async (request: NextRequest) => {
 
         const priceRows  = priceTiersToRows(ed);
 
+        // ── 가격 행 0건 → Gemini 재시도 (2026-05-24: LLM+deterministic 모두 실패 시) ──
+        if (priceRows.length === 0 && parsedDocument.rawText) {
+          try {
+            const geminiKey = getSecret('GOOGLE_AI_API_KEY');
+            if (geminiKey) {
+              const { GoogleGenerativeAI } = await import('@google/generative-ai');
+              const genAI = new GoogleGenerativeAI(geminiKey);
+              const model = genAI.getGenerativeModel({
+                model: 'gemini-2.5-flash',
+                generationConfig: { temperature: 0, maxOutputTokens: 1024 },
+              });
+              const prompt = `다음 여행상품 원문에서 가격 정보(price_tiers)를 추출하세요.
+각 tier는 adult_price(원화 정수), departure_dates(YYYY-MM-DD 배열), departure_day_of_week(optional), period_label을 포함합니다.
+
+원문:
+---
+${parsedDocument.rawText.slice(0, 6000)}
+---
+
+JSON 배열로 응답:
+[{ "period_label": "...", "departure_dates": ["2026-05-27"], "adult_price": 1059000 }]`;
+              const res = await model.generateContent(prompt);
+              const txt = res.response.text();
+              const jsonMatch = txt.match(/\[[\s\S]*\]/);
+              if (jsonMatch) {
+                const geminiTiers = JSON.parse(jsonMatch[0]) as Array<{
+                  period_label?: string;
+                  departure_dates?: string[];
+                  departure_day_of_week?: string;
+                  adult_price: number;
+                }>;
+                if (Array.isArray(geminiTiers) && geminiTiers.length > 0) {
+                  ed.price_tiers = geminiTiers.map(t => ({
+                    period_label: t.period_label ?? '',
+                    departure_dates: t.departure_dates ?? [],
+                    departure_day_of_week: t.departure_day_of_week ?? undefined,
+                    date_range: null as unknown as { start: string; end: string } | undefined,
+                    adult_price: t.adult_price,
+                    child_price: undefined,
+                    status: 'available' as const,
+                    note: undefined,
+                  }));
+                  const retryRows = priceTiersToRows(ed);
+                  if (retryRows.length > 0) {
+                    priceRows.splice(0, priceRows.length, ...retryRows);
+                    const prices = (ed.price_tiers ?? []).filter(Boolean)
+                      .map(t => t.adult_price)
+                      .filter((p): p is number => typeof p === 'number' && p > 0);
+                    if (prices.length > 0) netPrice = Math.min(...prices);
+                    console.log(`[Upload API] Gemini 가격 재추출 성공: ${retryRows.length} 행, netPrice=${netPrice.toLocaleString()}`);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[Upload API] Gemini 가격 재추출 실패 (무시):', (e as Error).message);
+          }
+        }
+
         console.log(`[Upload API] 가격 행 ${priceRows.length}개 변환됨 (product_prices)`);
 
         // ── G3-B. 4단계 업로드 게이트 분류 ───────────────────────────────────
@@ -1241,43 +1347,132 @@ const postHandler = async (request: NextRequest) => {
             .then(() => {}).catch(() => {});
         }
 
-        // ── G4. 상태 결정 ────────────────────────────────────────────────────
+        // ── G3.5. 등록 write pipeline (일정 보강 + postProcess + sanitize + L1) ──
+        //   G5(products)·G8(travel_packages) INSERT 전에 status·draftRow SSOT 확정.
 
-        let productStatus = determineProductStatus({
-          confidence,
-          netPrice,
-          priceRowCount:    priceRows.length,
-          isTravel:         classification.isTravel,
-          departureDateStr: ed.ticketing_deadline ?? null,
+        let itineraryInput = (product.itineraryData ?? null) as ItineraryDataLike | null;
+        if (!itineraryInput?.days?.length && parsedDocument.rawText) {
+          try {
+            const { parseDayTable } = await import('@/lib/parser/deterministic/day-table');
+            const detResult = parseDayTable(parsedDocument.rawText);
+            if (detResult.days.length > 0 && detResult.confidence >= 0.4) {
+              console.log(`[Upload API] Phase 2 LLM 실패 → day-table deterministic fallback: ${detResult.days.length} days (conf=${detResult.confidence.toFixed(2)})`);
+              itineraryInput = detResult as unknown as ItineraryDataLike;
+              if (!ed.airline && detResult.meta.airline) {
+                (ed as { airline?: string | null }).airline = detResult.meta.airline;
+              }
+            }
+          } catch (e) {
+            console.warn('[Upload API] day-table fallback 실패(무시):', e instanceof Error ? e.message : e);
+          }
+        }
+        const enrichment = enrichItineraryWithAttractionReferences(
+          itineraryInput,
+          activeAttractions,
+          ed.destination,
+        );
+
+        let scheduleItemCount = 0;
+        for (const day of itineraryInput?.days ?? []) {
+          for (const s of day.schedule ?? []) {
+            if (!s.activity) continue;
+            const t = (s as { type?: string }).type;
+            if (t === 'flight' || t === 'hotel' || t === 'shopping') continue;
+            scheduleItemCount++;
+          }
+        }
+        const v2WithAttraction = calculateConfidenceV2(ed, {
+          leakScore: sanitizeResult.leakScore,
+          itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
+          policy: autoGatePolicy,
+          attractionStats: {
+            matchedCount: enrichment.matchedCanonicalNames.length,
+            unmatchedCount: enrichment.unmatchedCandidates.length,
+            scheduleItemCount,
+          },
         });
+        const confidenceV3 = v2WithAttraction.confidence;
+        const v3Checks = v2WithAttraction.checks;
+        const v3FailedChecks = v3Checks.filter(c => !c.passed);
+        const itineraryDataToSave = postProcessItineraryData(
+          (enrichment.itineraryData ?? product.itineraryData ?? null) as Parameters<
+            typeof postProcessItineraryData
+          >[0],
+        );
+        enrichment.matchedCanonicalNames.forEach(name => matchedCanonicalNames.add(name));
+        for (const day of itineraryDataToSave?.days ?? []) {
+          for (const s of day.schedule ?? []) {
+            if (s.type === 'flight' || s.type === 'hotel' || !s.activity) continue;
+            const cands = extractAttractionCandidates(s.activity, s.note);
+            for (const c of cands) extractedCandidateRows.push({ activity: c, destination: ed.destination });
+          }
+        }
 
-        // 2026-05-15 INT-3: Customer-Ready Gate — data + UX + paraphrase 통과 시 status='approved' 자동.
-        //   사장님 손 떼기 (UX-6). 실패 사유는 BLOCK / 권고는 WARN 으로 분리.
+        let legacyProductsGate: import('@/lib/parser/customer-ready-gate').GateResult | undefined;
         try {
           const { evaluateCustomerReadyGate } = await import('@/lib/parser/customer-ready-gate');
-          const gate = evaluateCustomerReadyGate({
+          legacyProductsGate = evaluateCustomerReadyGate({
             ed,
             netPrice,
             priceRowCount: priceRows.length,
-            confidence,
-            hasItinerary: !!product.itineraryData?.days?.length,
-            hasThumbnail: false, // auto-photo-match 이후 채워짐 (지금 단계에선 unknown)
+            confidence: confidenceV3,
+            hasItinerary: !!itineraryDataToSave?.days?.length,
+            hasThumbnail: false,
           });
-          if (gate.ready) {
-            productStatus = 'approved' as typeof productStatus;
-            console.log(`[Upload API] Customer-Ready Gate: ✅ APPROVED 자동 활성화`);
-          } else {
-            const summary = [
-              gate.reasons.length > 0 ? `reasons: ${gate.reasons.join(', ')}` : null,
-              gate.warnings.length > 0 ? `warnings: ${gate.warnings.join(', ')}` : null,
-            ].filter(Boolean).join(' | ');
-            console.log(`[Upload API] Customer-Ready Gate: ${gate.reasons.length > 0 ? '🔴' : '🟡'} ${summary}`);
-          }
         } catch (e) {
           console.warn('[Upload API] Customer-Ready Gate 실패 (무시):', (e as Error).message);
         }
 
-        console.log(`[Upload API] 상태 결정: ${productStatus} (confidence=${(confidence * 100).toFixed(0)}%)`);
+        const regWrite = prepareRegistrationWrite({
+          row: {
+            title,
+            destination: ed.destination,
+            product_type: ed.product_type,
+            raw_text: productRawText,
+            inclusions: ed.inclusions ?? [],
+            excludes: ed.excludes ?? [],
+            notices_parsed: ed.notices_parsed ?? [],
+            itinerary_data: itineraryDataToSave,
+            surcharges: ed.surcharges ?? [],
+            customer_notes: (ed as { customer_notes?: string | null }).customer_notes,
+            internal_notes: (ed as { internal_notes?: string | null }).internal_notes,
+          },
+          rawText: productRawText,
+          internalCode: internalCode ?? null,
+          confidence: confidenceV3,
+          legacyProductsGate,
+        });
+        const draftRow = regWrite.row;
+        const l1Gate = regWrite.l1;
+        let productStatus = regWrite.productsStatus;
+        let pkgStatus = regWrite.travelPackageStatus;
+        if (uploadGate === 'BLOCKED') {
+          productStatus = 'REVIEW_NEEDED';
+          pkgStatus = 'pending_review';
+        }
+        if (l1Gate.reasons.length > 0) {
+          console.warn('[Upload API] L1 Gate BLOCK:', l1Gate.codes.join(','), '—', l1Gate.reasons.join('; '));
+        } else if (l1Gate.warnings.length > 0) {
+          console.log('[Upload API] L1 Gate WARN:', l1Gate.warnings.slice(0, 3).join('; '));
+        }
+        if (legacyProductsGate) {
+          const legacySummary = [
+            legacyProductsGate.reasons.length > 0 ? `reasons: ${legacyProductsGate.reasons.join(', ')}` : null,
+            legacyProductsGate.warnings.length > 0 ? `warnings: ${legacyProductsGate.warnings.join(', ')}` : null,
+          ].filter(Boolean).join(' | ');
+          if (legacySummary) {
+            console.log(`[Upload API] Customer-Ready (products): ${legacySummary} → ${productStatus}`);
+          }
+        }
+
+        // ── G4. 상태 결정 ────────────────────────────────────────────────────
+
+        if (uploadGate === 'REVIEW_NEEDED' && productStatus === 'approved') {
+          productStatus = 'draft';
+          pkgStatus = 'pending_review';
+        }
+
+        console.log(`[Upload API] 상태 결정: products=${productStatus}, travel_packages=${pkgStatus} (confidence=${(confidenceV3 * 100).toFixed(0)}%)`);
 
         // ── G5. products 테이블 INSERT (Phase 1 + Phase 2 신규 컬럼 포함) ────
 
@@ -1356,75 +1551,7 @@ const postHandler = async (request: NextRequest) => {
         }
 
         // ── G8. travel_packages 테이블 INSERT (고객 노출용 + FK 연결) ─────────
-
-        // L2 박제 (2026-05-16): Phase 2 LLM 추출 실패 시 deterministic day-table 파서 fallback.
-        //   사장님 솔루션: "표 형식 텍스트 파싱 약하면 나눠서 처리". 트립박스 ERP 표준.
-        //   청도 사고 (itinerary_data=null) 재발 차단.
-        let itineraryInput = (product.itineraryData ?? null) as ItineraryDataLike | null;
-        if (!itineraryInput?.days?.length && parsedDocument.rawText) {
-          try {
-            const { parseDayTable } = await import('@/lib/parser/deterministic/day-table');
-            const detResult = parseDayTable(parsedDocument.rawText);
-            if (detResult.days.length > 0 && detResult.confidence >= 0.4) {
-              console.log(`[Upload API] Phase 2 LLM 실패 → day-table deterministic fallback: ${detResult.days.length} days (conf=${detResult.confidence.toFixed(2)})`);
-              itineraryInput = detResult as unknown as ItineraryDataLike;
-              // ed 의 airline 도 보강 (null 이면)
-              if (!ed.airline && detResult.meta.airline) {
-                (ed as { airline?: string | null }).airline = detResult.meta.airline;
-              }
-            }
-          } catch (e) {
-            console.warn('[Upload API] day-table fallback 실패(무시):', e instanceof Error ? e.message : e);
-          }
-        }
-        const enrichment = enrichItineraryWithAttractionReferences(
-          itineraryInput,
-          activeAttractions,
-          ed.destination,
-        );
-
-        // C1 박제 (2026-05-15): 신뢰도 V3 — schedule 매칭률을 V2 산식에 반영.
-        //   enrichment 결과로 schedule item count 계산 → V2 재호출 with attractionStats.
-        //   비용 0 (deterministic 재실행). 사장님 비전 "100% 신뢰도 거짓 신호" 차단.
-        let scheduleItemCount = 0;
-        for (const day of itineraryInput?.days ?? []) {
-          for (const s of day.schedule ?? []) {
-            if (!s.activity) continue;
-            const t = (s as { type?: string }).type;
-            if (t === 'flight' || t === 'hotel' || t === 'shopping') continue;
-            scheduleItemCount++;
-          }
-        }
-        const v2WithAttraction = calculateConfidenceV2(ed, {
-          leakScore: sanitizeResult.leakScore,
-          itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
-          policy: autoGatePolicy,
-          attractionStats: {
-            matchedCount: enrichment.matchedCanonicalNames.length,
-            unmatchedCount: enrichment.unmatchedCandidates.length,
-            scheduleItemCount,
-          },
-        });
-        // V3 confidence 가 V2 보다 낮으면 사장님이 보는 신뢰도도 V3 로 갱신
-        const confidenceV3 = v2WithAttraction.confidence;
-        const v3Checks = v2WithAttraction.checks;
-        const v3FailedChecks = v3Checks.filter(c => !c.passed);
-        // flight_segments 정규화: schedule[type='flight'] 흩어진 항공편을 정규 필드로
-        // 박제 사유 (2026-05-13): 익일 도착·도착시간 누락으로 카드 깨짐 영구 차단
-        // P10-3 박제 (2026-05-13): itinerary 정규화 — 호텔 grade / 식사 카운트 / 호텔명 dedupe / regions
-        const _rawItin = (enrichment.itineraryData ?? product.itineraryData ?? null) as unknown;
-        const _normalized = normalizeItinerary(_rawItin as Parameters<typeof normalizeItinerary>[0]);
-        const itineraryDataToSave = normalizeFlightSegments(
-          _normalized as unknown as Parameters<typeof normalizeFlightSegments>[0]
-        ) ?? null;
-        enrichment.matchedCanonicalNames.forEach(name => matchedCanonicalNames.add(name));
-        for (const day of itineraryDataToSave?.days ?? []) {
-          for (const s of day.schedule ?? []) {
-            if (s.type === 'flight' || s.type === 'hotel' || !s.activity) continue;
-            const cands = extractAttractionCandidates(s.activity, s.note);
-            for (const c of cands) extractedCandidateRows.push({ activity: c, destination: ed.destination });
-          }
-        }
+        //   draftRow · pkgStatus · confidenceV3 는 G3.5 registration write pipeline 에서 확정.
 
         if (isSupabaseConfigured) {
           const { data: pkgResult, error: pkgError } = await supabaseAdmin
@@ -1436,18 +1563,20 @@ const postHandler = async (request: NextRequest) => {
               price:                 ed.price,
               filename:              fileName,
               file_type:             parsedDocument.fileType,
-              raw_text:              parsedDocument.rawText,
+              raw_text:              productRawText,
               // X3 박제 (2026-05-15): SKILL.md Rule Zero — raw_text_hash 자동 박제. 사후 변조 탐지용.
-              raw_text_hash:         createHash('sha256').update(parsedDocument.rawText ?? '').digest('hex'),
+              raw_text_hash:         createHash('sha256').update(productRawText ?? '').digest('hex'),
+              display_title:         (ed as { display_title?: string | null }).display_title?.trim() || title,
+              hero_tagline:          (ed as { hero_tagline?: string | null }).hero_tagline ?? null,
               itinerary:             ed.itinerary        ?? [],
-              inclusions:            ed.inclusions       ?? [],
-              excludes:              ed.excludes         ?? [],
+              inclusions:            draftRow.inclusions       ?? [],
+              excludes:              draftRow.excludes         ?? [],
               accommodations:        ed.accommodations   ?? [],
               special_notes:         ed.specialNotes,
-              notices_parsed:        ed.notices_parsed    ?? [],
+              notices_parsed:        draftRow.notices_parsed    ?? [],
               confidence:            confidenceV3,
               category:              ed.category         ?? 'package',
-              product_type:          ed.product_type,
+              product_type:          draftRow.product_type ?? ed.product_type,
               trip_style:            ed.trip_style,
               departure_days:        ed.departure_days,
               departure_airport:     ed.departure_airport ?? '부산(김해)',
@@ -1474,13 +1603,9 @@ const postHandler = async (request: NextRequest) => {
               product_tags:          ed.product_tags      ?? [],
               product_highlights:    ed.product_highlights ?? [],
               product_summary:       ed.product_summary   ?? null,
-              itinerary_data:        itineraryDataToSave,
-              // X3 박제 (2026-05-15 SKILL.md Step 7-A): audit_status=clean + V3 신뢰도 ≥ 0.85 자동 approve.
-              // 사장님 비전 "사장님은 PDF 만 붙여넣음 — 등록·감사·승인 전부 Agent" 달성.
-              // V3 신뢰도 낮거나 critical fail 있으면 pending_review (사장님 force 결정 필요).
-              status:                (confidenceV3 >= 0.85 && v3FailedChecks.filter(c => c.severity === 'critical').length === 0)
-                                       ? 'approved'
-                                       : 'pending_review',
+              itinerary_data:        draftRow.itinerary_data,
+              parser_version:        (draftRow as { parser_version?: string }).parser_version ?? null,
+              status:                pkgStatus,
               marketing_copies:      marketingCopies,
               internal_code:         internalCode ?? null,
               // 2026-05-19 박제 (P2-A): 같은 카탈로그 N 패키지 그룹핑 ID. 1상품이면 null.
@@ -1535,6 +1660,15 @@ const postHandler = async (request: NextRequest) => {
             //   Next.js 15.5 stable `after` API — Vercel serverless 응답 반환 후도 백그라운드 task 완수 보장.
             //   기존 `void` fire-and-forget 은 함수 종료 시 죽었음 → admin_alerts 적재 silent fail.
             const pkgIdForAudit = pkgResult.id;
+            const intakeLandOperatorName =
+              landOps?.find((lo: { id: string; name: string }) => lo.id === effectiveLandOperatorId)?.name
+              ?? filenameRule.supplierRaw
+              ?? effectiveSupplierCode
+              ?? '(unknown)';
+            const intakeCommissionRate =
+              filenameRule.marginRate != null ? filenameRule.marginRate * 100 : marginRate * 100;
+            const intakeRawText = productRawText ?? parsedDocument.rawText ?? '';
+            const intakeRawHash = createHash('sha256').update(intakeRawText).digest('hex');
             nextAfter(async () => {
               try {
                 await Promise.allSettled([
@@ -1546,6 +1680,42 @@ const postHandler = async (request: NextRequest) => {
                 console.warn('[upload-after] post-audit 묶음 실패:', e instanceof Error ? e.message : e);
               }
             });
+
+            // P1 — upload → normalized_intakes 역변환 SSOT + IR canary shadow (샘플만 forward LLM)
+            if (isSupabaseConfigured) {
+              const intakePkgRow = pkgResult;
+              nextAfter(async () => {
+                try {
+                  const snap = await persistIntakeSnapshot(supabaseAdmin, {
+                    packageId: pkgIdForAudit,
+                    pkg: intakePkgRow,
+                    landOperatorName: intakeLandOperatorName,
+                    source: 'upload',
+                  });
+                  if (snap.warnings.length > 0) {
+                    console.log(
+                      '[upload-after] intake snapshot:',
+                      snap.intakeId ?? 'skip',
+                      snap.warnings.slice(0, 2).join('; '),
+                    );
+                  }
+                  if (intakeRawText.length >= 50 && intakeLandOperatorName !== '(unknown)' && !irCanaryPrimary) {
+                    const shadow = await runUploadIrShadowIfSampled(supabaseAdmin, {
+                      rawText: intakeRawText,
+                      rawTextHash: intakeRawHash,
+                      packageId: pkgIdForAudit,
+                      landOperator: intakeLandOperatorName,
+                      commissionRate: intakeCommissionRate,
+                    });
+                    if (shadow.sampled && getIrCanaryStatus().enabled) {
+                      console.log('[upload-after] IR canary shadow:', shadow.intakeId ?? shadow.errors?.[0] ?? 'ok');
+                    }
+                  }
+                } catch (e) {
+                  console.warn('[upload-after] intake snapshot 실패:', e instanceof Error ? e.message : e);
+                }
+              });
+            }
 
             // 랜드사 프로파일 자동 누적도 after 로 — 응답 반환 후 안전 실행
             if (effectiveLandOperatorId) {
@@ -1599,18 +1769,11 @@ const postHandler = async (request: NextRequest) => {
             savedInternalCodes.push(internalCode);
           }
 
-          console.log('[Upload API] travel_packages INSERT 완료:', pkgResult?.id, '← FK:', internalCode);
+          console.log('[Upload API] travel_packages INSERT 완료:', pkgResult?.id, '← FK:', internalCode, `(${pkgStatus})`);
 
-          // MRT 3-Tier Hybrid: Tier 2 Lazy On-Demand (2026-05-14 박제)
-          //   destination 의 MRT canonical attraction 이 부족하면 백그라운드로 sync 트리거.
-          //   다음 등록부터 fast match. fire-and-forget — 등록 흐름 지연 0.
           void maybeTriggerMrtSync(ed.destination ?? null);
-
-          // 호텔 빈도 기반 canonical 학습 (사장님 인사이트, 2026-05-14 박제)
-          //   itinerary_data.days[].hotel.name 을 hotel_canonical 테이블에 누적 →
-          //   3회 이상 등장 → 자동 canonical 승격. fuzzy 0.85 로 표기 변형 흡수.
           void recordHotelsFromItinerary({
-            itineraryData: product.itineraryData,
+            itineraryData: itineraryDataToSave ?? product.itineraryData,
             destination: ed.destination ?? null,
             country: null,
           });

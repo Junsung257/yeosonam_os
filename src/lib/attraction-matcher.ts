@@ -57,7 +57,36 @@ const MATCH_STOP_WORDS = new Set([
   '일본', '필리핀', '인도네시아', '호주', '몽골', '라오스',
   '센토사', '페트로나스', '가든스', 'KLCC', '마리나베이', '마리나',
   '차이나타운', '야류', '지우펀', '스펀',
+  // ERR-LB-DAD-keyword-spillover@2026-05-22 — "호이 안 에코 로지 & 스파" keyword split 시
+  // "호이"(2자)가 "호이안" activity 전반에 오매칭. 접두 가드와 함께 이중 차단.
+  '호이', '로지',
 ]);
+
+/** 숙소·리조트명이 sightseeing 으로 잘못 등록된 경우 keyword split 제외 (997731d9 사례) */
+const LODGING_KEYWORD_SPLIT_SKIP = /(?:로지|리조트|호텔|resort|hotel|villa|빌라|펜션|guesthouse|민박)/i;
+
+/**
+ * keyword split: stop word(주로 도시명)의 짧은 접두만 activity 에 걸린 경우 오매칭.
+ * 예) attraction "호이 안 에코 로지" → keyword "호이" → activity "호이안으로 이동"
+ */
+function isKeywordPrefixSpillover(
+  keyword: string,
+  actLower: string,
+  actLowerNoSpace: string,
+): boolean {
+  const kLower = keyword.toLowerCase();
+  if (kLower.length < 2) return false;
+  for (const sw of MATCH_STOP_WORDS) {
+    if (sw.length <= kLower.length) continue;
+    const swLower = sw.toLowerCase();
+    if (!swLower.startsWith(kLower)) continue;
+    const swNoSpace = swLower.replace(/\s+/g, '');
+    if (actLower.includes(swLower) || actLowerNoSpace.includes(swNoSpace)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // 비관광 활동 패턴 (매칭 시도하지 않음)
 const SKIP_PATTERN = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
@@ -173,10 +202,12 @@ export function matchAttractionIndexed(
   if (index.degraded) return null;
   for (const a of index.filtered) {
     if (!a.name) continue;
+    if (LODGING_KEYWORD_SPLIT_SKIP.test(a.name)) continue;
     const keywords = a.name.split(/[&,+/\s()（）]+/)
       .map(k => k.trim())
       .filter(k => k.length >= 2 && !MATCH_STOP_WORDS.has(k));
     for (const k of keywords) {
+      if (isKeywordPrefixSpillover(k, actLower, actLowerNoSpace)) continue;
       const kLower = k.toLowerCase();
       if (actLower.includes(kLower) || actLowerNoSpace.includes(kLower)) return a;
     }

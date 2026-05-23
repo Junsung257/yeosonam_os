@@ -83,12 +83,6 @@ export default function CreateContentPage() {
 
   const handleGenerate = async () => {
     if (!selected) return;
-    let pin = '';
-    try { pin = sessionStorage.getItem(`inf_pin_${code}`) || ''; } catch { /* */ }
-    if (!pin) {
-      showToast('대시보드에서 다시 로그인해주세요 (PIN 세션 만료)');
-      return;
-    }
     setGenerating(true);
     setResult(null);
     try {
@@ -97,7 +91,6 @@ export default function CreateContentPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           referral_code: code,
-          pin,
           product_id: selected.id,
           platform,
         }),

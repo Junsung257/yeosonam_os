@@ -55,7 +55,7 @@ export interface DayTableResult {
 
 const DAY_HEADER_RE = /제\s*(\d+)\s*일/g;
 const TIME_RE = /(\d{1,2}:\d{2})(\+\d)?/g;
-const FLIGHT_CODE_RE = /\b([A-Z]{2})\s*(\d{3,4})\b/;
+const FLIGHT_CODE_RE = /\b([A-Z0-9]{2})\s*(\d{3,4})\b/;
 const MEAL_RE = /(조|중|석)\s*:\s*([^\n]+?)(?=$|\s{2,})/g;
 const HOTEL_RE = /([가-힣A-Za-z0-9\s·]+?)\s*(?:호텔|리조트|레지던스)\s*(?:또는\s*동급)?(?:\s*\(([^)]+)\))?/;
 const HOTEL_GRADE_RE = /\((\d성|준\d성)\)/;
@@ -146,30 +146,48 @@ function extractHotel(body: string): DayTableDay['hotel'] {
   return { name: null, grade: null };
 }
 
+/** 표 상단 dep/arr 컬럼(20:40·00:30) — 출발·도착 공항 행에만 매핑 (2026-05-22 보홀 슬림팩) */
 function extractSchedule(body: string, dayFlightCode: string | null, dayTimes: string[]): DayTableSchedule[] {
   const out: DayTableSchedule[] = [];
   const lines = body.split('\n').map(l => l.trim()).filter(l => l.length >= 2);
+  const depTime = dayTimes[0] ?? null;
+  const arrTime = dayTimes[1] ?? null;
 
-  let flightIdx = 0;
   for (const line of lines) {
     if (/^제\s*\d+\s*일/.test(line)) continue; // 헤더 자체 skip
     if (HOTEL_RE.test(line) && /또는\s*동급/.test(line)) continue; // 호텔 라인은 별도 처리
-    if (/^[가-힣]{2,3}$/.test(line) && REGION_KEYWORDS.has(line)) continue; // 지역명 단독
-    if (/^[A-Z]{2}\d{3,4}$/.test(line)) continue; // 항공편 코드 단독 라인
+    if (/^HOTEL\s*:/i.test(line)) continue; // HOTEL: 마커 (별도 extractHotel)
+    if (/^[가-힣]{2,3}$/.test(line)) {
+      const normalized = line.replace(/\s+/g, '');
+      if (REGION_KEYWORDS.has(line) || REGION_KEYWORDS.has(normalized)) continue;
+    }
+    if (/^[A-Z0-9]{2}\d{3,4}$/.test(line)) continue; // 항공편 코드 단독 라인
     if (/^\d{1,2}:\d{2}(\+\d)?$/.test(line)) continue; // 시간 단독 라인
     if (/^전\s*일$/.test(line)) continue; // "전일" 단독
     if (/^전용\s*차량$/.test(line)) continue;
     if (/^(조|중|석)\s*:/.test(line)) continue; // 식사 라인 (별도 처리)
 
-    // 출발/도착 라인 + 시간 매핑
-    if (/(출발|도착|출국|입국|미팅|투숙|체크\s*[인아])/.test(line)) {
-      const t = dayTimes[flightIdx];
-      flightIdx++;
+    // 미팅·수속 안내 — 표 시간 컬럼과 무관 (출발 N시간 전은 별도 시각)
+    if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층/.test(line)) {
+      out.push({ activity: line });
+      continue;
+    }
+
+    // 공항 출발·도착 — dep/arr 컬럼 시간 고정 매핑
+    const isAirportDep = /(국제)?\s*공항\s*출발/.test(line) || (/출발/.test(line) && !/도착/.test(line) && /공항|김해|인천|김포/.test(line));
+    const isAirportArr = /(국제)?\s*공항\s*도착/.test(line) || (/도착/.test(line) && !/출발/.test(line) && /공항|팡라오|김해|인천/.test(line));
+    if (isAirportDep || isAirportArr) {
       out.push({
-        time: t,
+        time: isAirportDep ? depTime : arrTime,
         activity: line,
-        ...(dayFlightCode && /(출발|도착)/.test(line) ? { type: 'flight' as const, transport: dayFlightCode } : {}),
+        ...(dayFlightCode ? { type: 'flight' as const, transport: dayFlightCode } : {}),
       });
+      continue;
+    }
+
+    // 호텔 투숙/체크 — 시간 없음
+    if (/투숙|체크\s*[인아웃]/.test(line)) {
+      out.push({ activity: line });
       continue;
     }
 

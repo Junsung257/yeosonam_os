@@ -6,20 +6,21 @@
  * 설계 결정:
  *   - 모바일 우선. 화면 전체를 챗 UI 로 채움.
  *   - V2 SSE 스트리밍 (useJarvisStream 재사용).
- *   - 시작 시 컨텍스트 기반 인사 + Quick Reply 3개 (글로벌 OTA 패턴).
+ *   - 시작 시 컨텍스트 기반 인사 + Quick Reply (action_type 에 따라 동적)
  *   - Generative UI v1: pendingAction 발생 시 "확인이 필요해요" 카드 + 상세 화면 링크.
  *     실제 generative UI (폼·결제카드 inline 렌더링) 는 S6 에서 확장.
  *   - 자비스 발언은 "이건 확정 답변이 아닐 수 있어요. 정확한 정보는 담당자에게 확인 부탁드려요."
  *     이라는 가드 텍스트를 매 응답 하단에 노출 (Air Canada 패턴 명시 회피).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useJarvisStream } from '@/lib/jarvis/useJarvisStream';
 
 export interface MagicLinkChatContext {
   bookingNo?: string | null;
   bookingDestination?: string | null;
   bookingDepartureDate?: string | null;
+  bookingReturnDate?: string | null;
   customerName?: string | null;
   actionLabel?: string | null;
   /** 자비스가 첫 메시지에 참조할 액션 종류 — system prompt 분기 신호 */
@@ -39,11 +40,96 @@ interface ChatBubble {
   isStreaming?: boolean;
 }
 
-const DEFAULT_QUICK_REPLIES = [
-  '내 예약 정보 확인',
-  '일정 다시 보내줘',
-  '여행 준비물 알려줘',
-];
+// action_type 별 동적 퀵 리플라이
+function quickRepliesForAction(actionType?: string): string[] {
+  switch (actionType) {
+    case 'booking_portal':
+      return [
+        '내 예약 정보 확인',
+        '일정 다시 보내줘',
+        '여행 준비물 알려줘',
+      ];
+    case 'guidebook':
+      return [
+        '가이드북 보기',
+        '현지 추천 맛집',
+        '호텔 정보 알려줘',
+      ];
+    case 'payment_balance':
+      return [
+        '잔금 결제 방법',
+        '결제 금액 확인',
+        '결제 마감일 언제야?',
+      ];
+    case 'itinerary_consent':
+      return [
+        '변경된 내용 알려줘',
+        '왜 변경됐어?',
+        '거절하면 어떻게 돼?',
+      ];
+    case 'passport_upload':
+      return [
+        '여권이 필요한 이유',
+        '어떤 정보가 필요해?',
+        '마감일이 언제야?',
+      ];
+    case 'review_request':
+      return [
+        '후기 작성 방법',
+        '여행 사진 공유',
+        '별점 어떻게 남겨?',
+      ];
+    case 'companion_input':
+      return [
+        '동반자 정보 입력 방법',
+        '필수 정보가 뭐야?',
+        '언제까지 입력해야 해?',
+      ];
+    case 'jarvis_session':
+    default:
+      return [
+        '내 예약 정보 확인',
+        '일정 다시 보내줘',
+        '여행 준비물 알려줘',
+      ];
+  }
+}
+
+// 환영 메시지에 action_type 과 booking 정보를 결합
+function buildDefaultGreeting(ctx: MagicLinkChatContext): string {
+  const name = ctx.customerName ? `${ctx.customerName}님, ` : '';
+  const dest = ctx.bookingDestination ? `${ctx.bookingDestination} ` : '';
+  const date = ctx.bookingDepartureDate ? `(${ctx.bookingDepartureDate} 출발) ` : '';
+  const action = ctx.actionLabel ? ctx.actionLabel : '여행';
+
+  const head = `${name}안녕하세요. 여소남 안내입니다.`;
+  const body = `${dest}${date}${action} 관련해서 궁금한 점을 자유롭게 물어봐 주세요.`;
+  const tip = '예약 정보·일정·준비물·현지 정보 등을 안내해 드려요.';
+
+  // action_type 이 결제 관련이면 결제 안내 추가
+  if (ctx.actionType === 'payment_balance') {
+    return [
+      head,
+      `${dest}${date}잔금 결제 관련 안내입니다.`,
+      '결제 금액·방법·마감일을 확인하실 수 있어요.',
+      '',
+      tip,
+    ].join('\n');
+  }
+
+  // action_type 이 동의 관련이면
+  if (ctx.actionType === 'itinerary_consent') {
+    return [
+      head,
+      `${dest}${date}일정 변경 동의 관련 안내입니다.`,
+      '변경 사유와 내용을 확인하시고, 결정을 도와드릴게요.',
+      '',
+      tip,
+    ].join('\n');
+  }
+
+  return [head, body, '', tip].join('\n');
+}
 
 interface Props {
   context: MagicLinkChatContext;
@@ -54,7 +140,7 @@ interface Props {
 export default function MagicLinkChat({
   context,
   greeting,
-  quickReplies = DEFAULT_QUICK_REPLIES,
+  quickReplies,
 }: Props) {
   const stream = useJarvisStream({});
   const [bubbles, setBubbles] = useState<ChatBubble[]>(() => [
@@ -67,6 +153,12 @@ export default function MagicLinkChat({
   const [input, setInput] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // action_type 기반 퀵 리플라이 (리스트 메모이제이션)
+  const dynamicQuickReplies = useMemo(
+    () => quickReplies ?? quickRepliesForAction(context.actionType),
+    [quickReplies, context.actionType],
+  );
 
   // 스트리밍 중인 어시스턴트 메시지 — text 가 늘어날 때마다 마지막 bubble 업데이트
   useEffect(() => {
@@ -174,10 +266,10 @@ export default function MagicLinkChat({
         )}
       </div>
 
-      {/* Quick Replies */}
+      {/* Quick Replies — 각 action_type 에 맞춘 첫 인사 옵션 */}
       {showQuickReplies && !stream.streaming && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
-          {quickReplies.map((q) => (
+          {dynamicQuickReplies.map((q) => (
             <button
               key={q}
               onClick={() => send(q)}
@@ -272,16 +364,4 @@ function TypingDots() {
       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
     </span>
   );
-}
-
-function buildDefaultGreeting(ctx: MagicLinkChatContext): string {
-  const name = ctx.customerName ? `${ctx.customerName}님, ` : '';
-  const dest = ctx.bookingDestination ? `${ctx.bookingDestination} ` : '';
-  const date = ctx.bookingDepartureDate ? `(${ctx.bookingDepartureDate} 출발) ` : '';
-  const action = ctx.actionLabel ? ctx.actionLabel : '여행';
-
-  const head = `${name}안녕하세요. 여소남 안내입니다.`;
-  const body = `${dest}${date}${action} 관련해서 궁금한 점을 자유롭게 물어봐 주세요.`;
-  const tip = '예약 정보·일정·준비물·현지 정보 등을 안내해 드려요.';
-  return [head, body, '', tip].join('\n');
 }

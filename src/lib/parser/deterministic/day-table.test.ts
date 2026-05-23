@@ -117,3 +117,75 @@ describe('parseDayTable (청도 회귀 fixture)', () => {
     expect(r.days).toHaveLength(0);
   });
 });
+
+// 보홀 슬림팩 DAY1 — 표 시간 컬럼(20:40/00:30)이 미팅 줄에 붙던 사고 (2026-05-22)
+const BOHOL_DAY1 = `제1일
+
+부 산
+보 홀
+
+7C2157
+
+20:40
+00:30
+
+
+ 출발2시간전 김해공항 국제선 1층에서 미팅 후 수속 
+ 부산 김해 국제공항 출발  
+ 보홀 팡라오 국제공항 도착
+ 가이드와 미팅하여 리조트로 이동 
+ 리조트 투숙 및 휴식 
+
+HOTEL: 더스토리 리조트 (준4성급) 
+
+제2일
+보홀
+`;
+
+describe('parseDayTable (다낭 BX DAY1 항공 시간)', () => {
+  const DANANG_DAY1 = `제1일
+
+부 산
+다 낭
+
+BX773
+
+20:50
+23:50
+
+
+ 출발2시간전 김해공항 국제선 1층에서 미팅 후 수속 
+ 김해 국제공항 출발 (증편 BX7315 22:05-01:10)
+ 다낭 국제공항 도착
+ 호텔 투숙 및 휴식 
+
+HOTEL: 센터포인트 다낭 또는 멜리아빈펄 호텔 또는 동급 (5성급)
+`;
+
+  it('미팅 줄 시간 없음, 김해 출발 20:50·다낭 도착 23:50', () => {
+    const r = parseDayTable(DANANG_DAY1);
+    const s = r.days[0].schedule;
+    const meeting = s.find(x => x.activity.includes('미팅 후 수속'));
+    const dep = s.find(x => /김해.*출발/.test(x.activity));
+    const arr = s.find(x => /다낭.*도착/.test(x.activity));
+    expect(meeting?.time).toBeUndefined();
+    expect(dep).toMatchObject({ time: '20:50', type: 'flight', transport: 'BX773' });
+    expect(arr).toMatchObject({ time: '23:50', type: 'flight', transport: 'BX773' });
+    expect(r.meta.flight_out_time).toBe('20:50');
+  });
+});
+
+describe('parseDayTable (보홀 슬림팩 DAY1 항공 시간)', () => {
+  it('미팅·가이드 줄에는 시간 없음, 출발·도착만 20:40/00:30', () => {
+    const r = parseDayTable(BOHOL_DAY1);
+    const s = r.days[0].schedule;
+    const meeting = s.find(x => x.activity.includes('미팅 후 수속'));
+    const dep = s.find(x => x.activity.includes('부산 김해') && x.activity.includes('출발'));
+    const arr = s.find(x => x.activity.includes('팡라오') && x.activity.includes('도착'));
+    const guide = s.find(x => x.activity.includes('가이드와 미팅'));
+    expect(meeting?.time).toBeUndefined();
+    expect(guide?.time).toBeUndefined();
+    expect(dep).toMatchObject({ time: '20:40', type: 'flight', transport: '7C2157' });
+    expect(arr).toMatchObject({ time: '00:30', type: 'flight', transport: '7C2157' });
+  });
+});

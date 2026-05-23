@@ -17,6 +17,10 @@ export interface ChatMessage {
   ctaLinks?: { label: string; href: string }[];
   timestamp: Date;
   isStreaming?: boolean;
+  /** V2 전용: 어떤 Agent 가 생성했는지 */
+  agent?: string;
+  /** V2 전용: 사용된 도구 목록 */
+  toolsUsed?: string[];
 }
 
 interface ChatStore {

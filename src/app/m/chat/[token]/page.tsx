@@ -56,12 +56,12 @@ export default async function MagicLinkChatPage({ params }: PageParams) {
   }
 
   // ── 4) booking 컨텍스트 로드 (선택) ─────────────────────────
-  let bookingCtx: Pick<MagicLinkChatContext, 'bookingNo' | 'bookingDestination' | 'bookingDepartureDate' | 'customerName'> = {};
+  let bookingCtx: Pick<MagicLinkChatContext, 'bookingNo' | 'bookingDestination' | 'bookingDepartureDate' | 'bookingReturnDate' | 'customerName'> = {};
 
   if (payload.bid) {
     const { data } = await supabaseAdmin
       .from('bookings')
-      .select('booking_no, destination, departure_date, lead_customer_id, customers:lead_customer_id(name)')
+      .select('booking_no, destination, departure_date, return_date, lead_customer_id, customers:lead_customer_id(name)')
       .eq('id', payload.bid)
       .limit(1);
     const b = data?.[0] as
@@ -69,6 +69,7 @@ export default async function MagicLinkChatPage({ params }: PageParams) {
           booking_no?: string | null;
           destination?: string | null;
           departure_date?: string | null;
+          return_date?: string | null;
           customers?: { name?: string | null } | null;
         }
       | undefined;
@@ -77,6 +78,7 @@ export default async function MagicLinkChatPage({ params }: PageParams) {
         bookingNo: b.booking_no ?? null,
         bookingDestination: b.destination ?? null,
         bookingDepartureDate: b.departure_date ?? null,
+        bookingReturnDate: b.return_date ?? null,
         customerName: b.customers?.name ?? null,
       };
     }

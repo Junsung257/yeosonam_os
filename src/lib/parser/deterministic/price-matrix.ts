@@ -18,6 +18,8 @@ const DOW_MAP: Record<string, number> = {
 const DOW_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
 const PERIOD_RE = /(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(\d{1,2})[./](\d{1,2})/;
+/** 단일일 또는 쉼표 구분 개별일 — e.g. "6/3", "10/3,10/9" */
+const SINGLE_DATE_RE = /^(\d{1,2})[./](\d{1,2})(?:,\s*(\d{1,2})[./](\d{1,2}))*$/;
 const DOW_LINE_RE = /^([일월화수목금토](?:[~\-][일월화수목금토])?|매일)\s*$/;
 const PRICE_RE = /^([\d,]{3,10})(?:\s*[,\-]|\s*원)?\s*$/;
 const SPOT_LINE_RE = /^(\d{1,2})[./](\d{1,2})\s+([\d,]{3,10})/;
@@ -105,9 +107,18 @@ function slicePriceRegion(rawText: string): string {
   return rawText.slice(0, stopIdx);
 }
 
+interface PeriodSlot {
+  start: { m: number; d: number };
+  end: { m: number; d: number };
+  year: number;
+}
+
 /**
  * 기간×요일 매트릭스 → 일자별 price_dates row.
  * 패턴 미매칭 시 [] (LLM fallback 으로).
+ *
+ * 다중 기간 누적 지원: 여러 기간 라인이 하나의 요일+가격 블록을 공유하는 패턴 처리
+ * (e.g. 기간1\n기간2\n기간3\n일,월,화\n1,059,-)
  */
 export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixPriceRow[] {
   if (!rawText || rawText.length < 30) return [];
@@ -118,11 +129,12 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
   const rows: MatrixPriceRow[] = [];
   const excludedDates = new Set<string>();
 
-  let periodStart: { m: number; d: number } | null = null;
-  let periodEnd: { m: number; d: number } | null = null;
-  let year = todayYear ?? new Date().getFullYear();
+  /** 누적 기간 스택 — 동일 요일+가격 블록을 공유하는 모든 기간 */
+  let periods: PeriodSlot[] = [];
   let pendingDow: number[] = [];
   let inSpotSection = false;
+  /** 가격 행이 한 번이라도 전개된 적이 있는지 — 새 기간 블록 시작 감지용 */
+  let priceGenerated = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -131,7 +143,7 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
       const spots = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
       for (const s of spots) {
         const m = +s[1], d = +s[2];
-        const y = inferYear(m, year);
+        const y = inferYear(m);
         const iso = toIso(y, m, d);
         if (iso) excludedDates.add(iso);
       }
@@ -140,9 +152,38 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
 
     const periodM = line.match(PERIOD_RE);
     if (periodM) {
-      periodStart = { m: +periodM[1], d: +periodM[2] };
-      periodEnd = { m: +periodM[3], d: +periodM[4] };
-      year = inferYear(periodStart.m, todayYear);
+      // 이전 가격 블록 이후 새 기간이면 스택 초기화 (가격 블록 구분)
+      if (priceGenerated) {
+        periods = [];
+        priceGenerated = false;
+      }
+      const ps = { m: +periodM[1], d: +periodM[2] };
+      const pe = { m: +periodM[3], d: +periodM[4] };
+      const y = inferYear(ps.m, todayYear);
+      periods.push({ start: ps, end: pe, year: y });
+      pendingDow = [];
+      inSpotSection = false;
+      continue;
+    }
+
+    /** 단일일 또는 쉼표 구분 개별일 — e.g. "6/3", "10/3,10/9" */
+    const singleM = line.match(SINGLE_DATE_RE);
+    if (singleM) {
+      if (priceGenerated) {
+        periods = [];
+        priceGenerated = false;
+      }
+      const dates: { m: number; d: number }[] = [];
+      for (let g = 1; g < singleM.length; g += 2) {
+        const m = +singleM[g], d = +singleM[g + 1];
+        if (Number.isFinite(m) && Number.isFinite(d)) {
+          dates.push({ m, d });
+        }
+      }
+      for (const dt of dates) {
+        const yy = inferYear(dt.m, todayYear);
+        periods.push({ start: dt, end: dt, year: yy });
+      }
       pendingDow = [];
       inSpotSection = false;
       continue;
@@ -159,7 +200,7 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
       if (spotM) {
         const m = +spotM[1], d = +spotM[2];
         const price = parsePrice(spotM[3]);
-        const y = inferYear(m, year);
+        const y = inferYear(m);
         const iso = toIso(y, m, d);
         if (iso && price > 0) {
           rows.push({ date: iso, adult_price: price, child_price: null, note: '스팟특가', status: 'available' });
@@ -168,7 +209,7 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
       continue;
     }
 
-    if (!periodStart || !periodEnd) continue;
+    if (periods.length === 0) continue;
 
     if (DOW_LINE_RE.test(line)) {
       pendingDow = expandDow(line);
@@ -180,14 +221,17 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
       const price = parsePrice(priceM[1]);
       if (price > 0) {
         const note = pendingDow.length === 7 ? '매일' : DOW_NAMES.filter((_, idx) => pendingDow.includes(idx)).join('');
-        rows.push(...expandPeriod(
-          year,
-          periodStart.m, periodStart.d,
-          periodEnd.m, periodEnd.d,
-          pendingDow,
-          price,
-          note,
-        ));
+        for (const p of periods) {
+          rows.push(...expandPeriod(
+            p.year,
+            p.start.m, p.start.d,
+            p.end.m, p.end.d,
+            pendingDow,
+            price,
+            note,
+          ));
+        }
+        priceGenerated = true;
       }
     }
   }

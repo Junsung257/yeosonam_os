@@ -24,6 +24,8 @@ import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from
 import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 import { getSecret } from '@/lib/secret-registry';
+import { slugifyTopic, romanize } from '@/lib/slug-utils';
+import { VALID_CATEGORIES } from '@/lib/blog-categories';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -122,25 +124,31 @@ async function runBlogPublisher(request: NextRequest) {
       .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
       .map(r => r.reason);
 
+    // notifyIndexing + revalidatePath — allSettled로 모든 결과를 기다림
+    const indexingPromises: Promise<void>[] = [];
     for (const r of results) {
       if (r.status === 'published' && r.reason) {
         const slug = r.reason;
-        notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
-          .then(report => {
-            return supabaseAdmin.from('indexing_reports').insert({
-              url: report.url,
-              google_status: report.google,
-              google_error: report.google_error ?? null,
-              indexnow_status: report.indexnow,
-              indexnow_error: report.indexnow_error ?? null,
-              sitemap_pings: report.sitemap_pings,
-              duration_ms: report.duration_ms,
-            });
-          })
-          .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ });
+        indexingPromises.push(
+          notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
+            .then(report => {
+              return supabaseAdmin.from('indexing_reports').insert({
+                url: report.url,
+                google_status: report.google,
+                google_error: report.google_error ?? null,
+                indexnow_status: report.indexnow,
+                indexnow_error: report.indexnow_error ?? null,
+                sitemap_pings: report.sitemap_pings,
+                duration_ms: report.duration_ms,
+              });
+            })
+            .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
+        );
         try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
       }
     }
+    const indexingResults = await Promise.allSettled(indexingPromises);
+    const indexingFailed = indexingResults.filter(r => r.status === 'rejected').length;
 
     if (publishedSlugs.length > 0) {
       try {
@@ -359,7 +367,7 @@ async function processQueueItem(
       seo_description: generated.seo_description,
       og_image_url: generated.og_image_url,
       product_id: item.product_id ?? null,
-      category: item.category || (item.product_id ? 'product_intro' : 'travel_tips'),
+      category: VALID_CATEGORIES.includes(item.category as any) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: item.angle_type || 'value',
       status: 'published' as const,
@@ -637,27 +645,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
   };
 }
 
-function romanize(dest: string): string {
-  const MAP: Record<string, string> = {
-    '다낭': 'danang', '나트랑': 'nhatrang', '방콕': 'bangkok', '타이베이': 'taipei',
-    '도쿄': 'tokyo', '오사카': 'osaka', '후쿠오카': 'fukuoka', '삿포로': 'sapporo', '북해도': 'hokkaido',
-    '홍콩': 'hongkong', '마카오': 'macau', '싱가포르': 'singapore',
-    '호찌민': 'hochiminh', '하노이': 'hanoi', '세부': 'cebu', '보라카이': 'boracay',
-    '푸켓': 'phuket', '발리': 'bali', '호화호특': 'hohhot', '후허하오터': 'hohhot',
-    '장가계': 'zhangjiajie', '황산': 'huangshan', '서안': 'xian', '청도': 'qingdao', '칭다오': 'qingdao',
-    '하얼빈': 'harbin', '상하이': 'shanghai', '베이징': 'beijing',
-  };
-  return MAP[dest] || dest.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-}
-
-function slugifyTopic(topic: string): string {
-  return topic
-    .toLowerCase()
-    .replace(/[^a-z0-9가-힣\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .substring(0, 80);
-}
+// romanize()와 slugifyTopic()은 src/lib/slug-utils.ts로 이관 (SSOT 통합)
 
 async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   const { data: pkg, error } = await supabaseAdmin

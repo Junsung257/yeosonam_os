@@ -24,6 +24,8 @@ import type { StreamEvent } from '@/lib/jarvis/stream-encoder'
 import type { AgentRunResult } from '@/lib/jarvis/types'
 import { mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
 import { recordPlatformLearningEvent } from '@/lib/platform-learning'
+import { critiqueReply, applyCritique } from '@/lib/jarvis/response-critic'
+import { recordCritiqueResult } from '@/lib/response-learning'
 import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
 import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
@@ -193,6 +195,54 @@ export async function POST(req: NextRequest) {
               updated_at: new Date().toISOString(),
             })
             .eq('id', session.id)
+
+          // Phase 4a: response-critic 자동 검증 + 피드백 루프 (V2 스트림)
+          try {
+            if (!finalResult.pendingActionId) {
+              const critique = await critiqueReply({
+                userQuestion: message,
+                packageContext: '',
+                reply: finalResult.response,
+                recommendedPackageIds: [],
+                validPackageIds: [],
+              })
+              const { reply: appliedReply, escalate, wasGated } = applyCritique(
+                finalResult.response,
+                false,
+                critique,
+              )
+              void recordCritiqueResult({
+                source: 'jarvis_v2',
+                sessionId: session.id,
+                tenantId: ctx.tenantId ?? null,
+                severity: critique.severity,
+                issues: critique.issues,
+                userQuestion: message,
+                reply: finalResult.response,
+                correctedReply: critique.correctedReply,
+                wasGated,
+                metadata: {
+                  agent: dispatch.agentType,
+                  specialist_id: dispatch.specialistPick.specialistId,
+                  trace_id: traceId,
+                  is_guest: isGuest,
+                  escalated: escalate,
+                },
+              })
+              if (wasGated) {
+                void supabaseAdmin.from('jarvis_sessions').insert({
+                  id: crypto.randomUUID(),
+                  messages: [
+                    { role: 'user', content: '[critique-gated] 검증 게이트 발동', timestamp: new Date().toISOString() },
+                    { role: 'assistant', content: appliedReply, timestamp: new Date().toISOString() },
+                  ],
+                  context: session?.context ?? {},
+                } as never)
+              }
+            }
+          } catch (e) {
+            console.warn('[jarvis-stream] critique 실패 (non-fatal):', e)
+          }
 
           recordPlatformLearningEvent({
             source: 'jarvis_v2_stream',
