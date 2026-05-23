@@ -11,8 +11,12 @@
 
 import { requestGoogleIndexing, IndexingResult } from './gsc-client';
 import { getSecret } from '@/lib/secret-registry';
+import { logWarning } from './sentry-logger';
 
-const INDEXNOW_KEY = getSecret('INDEXNOW_KEY') ?? '';
+// 모듈 톱레벨이 아니라 함수 내부에서 getSecret() 호출로 변경 (서버 재시작 없이 env 변경 반영)
+function getIndexNowKey(): string {
+  return getSecret('INDEXNOW_KEY') ?? '';
+}
 
 export interface IndexingReport {
   url: string;
@@ -71,8 +75,9 @@ export async function notifyIndexing(
   report.google = googleResult.ok ? 'success' : 'failed';
   if (!googleResult.ok) report.google_error = googleResult.error;
 
-  // 2. IndexNow (Bing/Yandex/Seznam 통합) — INDEXNOW_KEY 미설정 시 스킵
-  if (!INDEXNOW_KEY) {
+  // 2. IndexNow (Bing/Yandex/Seznam 통합)
+  const indexNowKey = getIndexNowKey();
+  if (!indexNowKey) {
     report.indexnow = 'skipped';
     report.indexnow_error = 'INDEXNOW_KEY 미설정';
   } else {
@@ -82,8 +87,8 @@ export async function notifyIndexing(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           host,
-          key: INDEXNOW_KEY,
-          keyLocation: `${baseUrl}/${INDEXNOW_KEY}.txt`,
+          key: indexNowKey,
+          keyLocation: `${baseUrl}/${indexNowKey}.txt`,
           urlList: [url],
         }),
       });
@@ -150,23 +155,28 @@ export async function notifyIndexingBatch(
   );
 
   // IndexNow batch (한 번에 최대 10,000 URL)
+  const indexNowKey = getIndexNowKey();
   let indexnowOk = false;
   let indexnowError: string | undefined;
-  try {
-    const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        host,
-        key: INDEXNOW_KEY,
-        keyLocation: `${baseUrl}/${INDEXNOW_KEY}.txt`,
-        urlList: urls,
-      }),
-    });
-    indexnowOk = indexnowRes.status === 200 || indexnowRes.status === 202;
-    if (!indexnowOk) indexnowError = `HTTP ${indexnowRes.status}`;
-  } catch (err) {
-    indexnowError = err instanceof Error ? err.message : String(err);
+  if (indexNowKey) {
+    try {
+      const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host,
+          key: indexNowKey,
+          keyLocation: `${baseUrl}/${indexNowKey}.txt`,
+          urlList: urls,
+        }),
+      });
+      indexnowOk = indexnowRes.status === 200 || indexnowRes.status === 202;
+      if (!indexnowOk) indexnowError = `HTTP ${indexnowRes.status}`;
+    } catch (err) {
+      indexnowError = err instanceof Error ? err.message : String(err);
+    }
+  } else {
+    indexnowError = 'INDEXNOW_KEY 미설정';
   }
 
   return urls.map((url, idx) => ({
@@ -180,4 +190,4 @@ export async function notifyIndexingBatch(
   }));
 }
 
-export { INDEXNOW_KEY };
+export type { IndexingResult } from './gsc-client';

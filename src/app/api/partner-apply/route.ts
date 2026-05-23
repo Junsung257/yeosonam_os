@@ -15,17 +15,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '이름, 연락처, 채널유형, 채널URL은 필수입니다.' }, { status: 400 });
     }
 
-    // Invite-only 운영: AFFILIATE_INVITE_CODES="CODE1,CODE2"
+    // 초대 코드 정책 (하이브리드):
+    // - AFFILIATE_INVITE_CODES 가 설정되어 있으면 해당 코드 보유자는 우선심사
+    // - 초대 코드가 없어도 신청 가능 (has_invite_code=false 로 기록)
     const invitePolicy = (getSecret('AFFILIATE_INVITE_CODES') || '').trim();
+    const submittedCode = String(invite_code || '').trim().toUpperCase();
     if (invitePolicy) {
       const allow = invitePolicy
         .split(',')
         .map((v) => v.trim().toUpperCase())
         .filter(Boolean);
-      const submitted = String(invite_code || '').trim().toUpperCase();
-      if (!submitted || !allow.includes(submitted)) {
+      if (submittedCode && !allow.includes(submittedCode)) {
         return NextResponse.json(
-          { error: '초대 코드가 필요하거나 유효하지 않습니다. 운영팀 초대 코드를 확인해 주세요.' },
+          { error: '초대 코드가 유효하지 않습니다. 운영팀 코드를 확인해 주세요.' },
           { status: 403 }
         );
       }
@@ -57,6 +59,7 @@ export async function POST(request: NextRequest) {
         intro: intro || null,
         business_type: business_type || 'individual',
         business_number: business_number || null,
+        has_invite_code: !!submittedCode,
       })
       .select()
       .single();

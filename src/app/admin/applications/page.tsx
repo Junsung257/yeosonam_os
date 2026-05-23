@@ -20,6 +20,7 @@ interface Application {
   reject_reason: string | null;
   applied_at: string;
   reviewed_at: string | null;
+  has_invite_code?: boolean;
 }
 
 const STATUS_BADGE: Record<string, { label: string; color: string }> = {
@@ -36,13 +37,62 @@ const CHANNEL_LABELS: Record<string, string> = {
   other: '기타',
 };
 
+/** 채널 URL에서 핸들러/채널명 추출 */
+function extractChannelHandle(url: string): string {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    return parts[parts.length - 1] || url;
+  } catch {
+    return url;
+  }
+}
+
+/** 팔로워 수 기반 영향력 점수 (0~100) */
+function influenceScore(app: Application): number {
+  const fc = app.follower_count || 0;
+  // 인스타: 1천=20, 5천=40, 1만=60, 5만=80, 10만+=100
+  if (app.channel_type === 'instagram') {
+    if (fc >= 100000) return 95;
+    if (fc >= 50000) return 80;
+    if (fc >= 10000) return 60;
+    if (fc >= 5000) return 40;
+    if (fc >= 1000) return 20;
+    return 5;
+  }
+  // 유튜브: 더 높은 기준
+  if (app.channel_type === 'youtube') {
+    if (fc >= 500000) return 95;
+    if (fc >= 100000) return 80;
+    if (fc >= 50000) return 60;
+    if (fc >= 10000) return 40;
+    if (fc >= 5000) return 20;
+    return 5;
+  }
+  // 블로그/기타
+  if (fc >= 100000) return 80;
+  if (fc >= 50000) return 60;
+  if (fc >= 10000) return 40;
+  if (fc >= 1000) return 20;
+  return 5;
+}
+
+function scoreLabel(score: number): { label: string; color: string } {
+  if (score >= 80) return { label: '상', color: 'bg-green-100 text-green-700' };
+  if (score >= 40) return { label: '중', color: 'bg-yellow-100 text-yellow-700' };
+  return { label: '보통', color: 'bg-gray-100 text-gray-500' };
+}
+
 export default function ApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('');
+  const [inviteFilter, setInviteFilter] = useState<string>(''); // ''=all, 'invited', 'open'
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+  const [showChecklist, setShowChecklist] = useState<string | null>(null);
   const [approveSuccess, setApproveSuccess] = useState<{
     referralCode: string;
     affiliateId: string;
@@ -62,6 +112,12 @@ export default function ApplicationsPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
   useEffect(() => { load(); }, [filter]);
+
+  const filteredApps = applications.filter(app => {
+    if (inviteFilter === 'invited') return app.has_invite_code;
+    if (inviteFilter === 'open') return !app.has_invite_code;
+    return true;
+  });
 
   const handleApprove = async (id: string) => {
     if (!confirm('이 신청을 승인하시겠습니까? 파트너 계정이 자동 생성됩니다.')) return;
@@ -111,6 +167,16 @@ export default function ApplicationsPage() {
     }
   };
 
+  const openChecklist = (app: Application) => {
+    setChecklist({
+      channel_valid: true,
+      follower_quality: (app.follower_count || 0) >= 1000,
+      intro_adequate: !!app.intro && app.intro.length >= 10,
+      no_duplicate: true,
+    });
+    setShowChecklist(app.id);
+  };
+
   return (
       <div className="space-y-4">
         {approveSuccess && (
@@ -152,7 +218,7 @@ export default function ApplicationsPage() {
           title="파트너 신청 관리"
           subtitle="인플루언서·파트너 가입 신청을 검토하고 승인합니다"
           actions={
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 flex-wrap">
               {['', 'PENDING', 'APPROVED', 'REJECTED'].map(s => (
                 <button
                   key={s}
@@ -164,6 +230,24 @@ export default function ApplicationsPage() {
                   }`}
                 >
                   {s === '' ? '전체' : STATUS_BADGE[s]?.label || s}
+                </button>
+              ))}
+              <span className="w-px bg-admin-border-mid mx-1" />
+              {[
+                { key: '', label: '전체 유입' },
+                { key: 'invited', label: '📩 초대' },
+                { key: 'open', label: '📢 자유' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setInviteFilter(key)}
+                  className={`h-8 px-2.5 rounded-admin-sm text-admin-xs font-medium transition-colors ${
+                    inviteFilter === key
+                      ? 'bg-brand/10 text-brand border border-brand/30'
+                      : 'bg-admin-surface border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2'
+                  }`}
+                >
+                  {label}
                 </button>
               ))}
             </div>
@@ -183,14 +267,17 @@ export default function ApplicationsPage() {
               </div>
             ))}
           </div>
-        ) : applications.length === 0 ? (
+        ) : filteredApps.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-14">
             <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" /></svg>
-            <p className="text-admin-sm font-medium text-admin-muted">신청 내역이 없습니다.</p>
+            <p className="text-admin-sm font-medium text-admin-muted">조건에 맞는 신청 내역이 없습니다.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {applications.map(app => (
+            {filteredApps.map(app => {
+              const score = influenceScore(app);
+              const sLabel = scoreLabel(score);
+              return (
               <div key={app.id} className="bg-white rounded-admin-md border border-admin-border-mid p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -199,11 +286,26 @@ export default function ApplicationsPage() {
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[app.status]?.color}`}>
                         {STATUS_BADGE[app.status]?.label}
                       </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${sLabel.color}`}>
+                        영향력 {sLabel.label} ({score})
+                      </span>
+                      {app.has_invite_code ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">📩 초대</span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 font-medium">📢 자유신청</span>
+                      )}
                     </div>
                     <p className="text-xs text-admin-muted mt-0.5">{app.phone} · 신청일 {fmtDateISO(app.applied_at)}</p>
                   </div>
                   {app.status === 'PENDING' && (
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          openChecklist(app);
+                        }}
+                        disabled={processingId === app.id}
+                        className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium disabled:opacity-50 hover:bg-blue-100"
+                      >심사</button>
                       <button
                         onClick={() => handleApprove(app.id)}
                         disabled={processingId === app.id}
@@ -223,7 +325,7 @@ export default function ApplicationsPage() {
                   <div className="col-span-2">
                     <span className="text-admin-muted-2">URL: </span>
                     <a href={app.channel_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      {app.channel_url}
+                      {extractChannelHandle(app.channel_url)}
                     </a>
                   </div>
                   {app.intro && <div className="col-span-2"><span className="text-admin-muted-2">소개: </span>{app.intro}</div>}
@@ -243,9 +345,56 @@ export default function ApplicationsPage() {
                   )}
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
+
+        {/* 심사 체크리스트 모달 */}
+        {showChecklist && (() => {
+          const app = applications.find(a => a.id === showChecklist);
+          if (!app) return null;
+          const allChecked = Object.values(checklist).every(Boolean);
+          return (
+          <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
+            <div className="admin-scope bg-admin-surface rounded-admin-md shadow-admin-xl border border-admin-border-mid p-6 max-w-md w-full">
+              <h3 className="text-admin-h3 text-admin-text mb-1">심사 체크리스트</h3>
+              <p className="text-xs text-admin-muted mb-4">{app.name} · {CHANNEL_LABELS[app.channel_type] || app.channel_type}</p>
+              <div className="space-y-2 mb-4">
+                {[
+                  { key: 'channel_valid', label: '채널 URL 유효함 (접속 가능)' },
+                  { key: 'follower_quality', label: `팔로워 ${(app.follower_count || 0).toLocaleString()}명 — ${influenceScore(app) >= 40 ? '✅ 충분' : '⚠️ 적음'}` },
+                  { key: 'intro_adequate', label: '자기소개 10자 이상 작성' },
+                  { key: 'no_duplicate', label: '중복 신청 아님 (전화번호 기준)' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checklist[key] || false}
+                      onChange={(e) => setChecklist(prev => ({ ...prev, [key]: e.target.checked }))}
+                      className="mt-0.5"
+                    />
+                    <span className="text-sm text-admin-text">{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowChecklist(null)}>닫기</Button>
+                <Button
+                  variant="primary"
+                  disabled={!allChecked}
+                  onClick={() => {
+                    setShowChecklist(null);
+                    handleApprove(app.id);
+                  }}
+                >
+                  {allChecked ? '✅ 체크 완료 — 승인 진행' : '모든 항목 체크 필요'}
+                </Button>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
 
         {/* 거절 사유 모달 */}
         {rejectTarget && (

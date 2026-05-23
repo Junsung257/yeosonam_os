@@ -41,7 +41,7 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(500);
+      .limit(2000);
     const rows = (data || []) as Array<{ slug: string | null }>;
     return rows
       .map((r) => r.slug)

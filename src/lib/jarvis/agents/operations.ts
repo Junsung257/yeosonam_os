@@ -171,9 +171,81 @@ const OPERATIONS_TOOLS_RAW = [
       }
     }
   },
+  // ── Phase 2 신규: 보험/일정표/투숙객/비자 ──
+  {
+    name: 'list_travel_insurances',
+    description: '예약에 가입된 여행자 보험 정보를 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        booking_id: { type: 'string', description: '예약 ID' },
+        status: { type: 'string', description: '가입 상태 (active/cancelled)' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'create_itinerary',
+    description: '예약 기반 일정표(Itinerary)를 생성합니다. (HITL 필요, 위험도 보통)',
+    input_schema: {
+      type: 'object' as const,
+      required: ['booking_id'],
+      properties: {
+        booking_id: { type: 'string' },
+        format: { type: 'string', description: 'A4(기본) / mobile' },
+        include_map: { type: 'boolean', description: '관광지 지도 포함 여부' },
+      },
+    },
+  },
+  {
+    name: 'get_visa_info',
+    description: '목적지 국가별 비자 정보를 조회합니다. (읽기 전용)',
+    input_schema: {
+      type: 'object' as const,
+      required: ['destination_country'],
+      properties: {
+        destination_country: { type: 'string', description: '목적지 국가 (영문/한글)' },
+        nationality: { type: 'string', description: '여권 국적 (기본: 대한민국)' },
+      },
+    },
+  },
+  {
+    name: 'list_guest_names',
+    description: '예약의 투숙객명단(룸링)을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['booking_id'],
+      properties: {
+        booking_id: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'update_guest_names',
+    description: '투숙객명단을 수정합니다. (HITL 필요)',
+    input_schema: {
+      type: 'object' as const,
+      required: ['booking_id', 'guests'],
+      properties: {
+        booking_id: { type: 'string' },
+        guests: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              birth_date: { type: 'string' },
+              passport_no: { type: 'string' },
+              room_index: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  },
 ]
 
-const OPERATIONS_TOOLS = OPERATIONS_TOOLS_RAW
+const OPERATIONS_TOOLS = OPERATIONS_TOOLS_RAW as any
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -360,6 +432,58 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       if (error) throw error
       return { proposed: true, action_id: action?.[0]?.id, summary }
     }
+
+    // ── Phase 2 신규 Tool ──
+    case 'list_travel_insurances': {
+      let query = supabaseAdmin
+        .from('travel_insurances')
+        .select('id, booking_id, policy_no, provider, insured_names, coverage_amount, premium, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(args.limit || 20)
+      if (args.booking_id) query = query.eq('booking_id', args.booking_id)
+      if (args.status) query = query.eq('status', args.status)
+      const { data, error } = await query
+      if (error) throw error
+      return data ?? []
+    }
+    case 'get_visa_info': {
+      const { data, error } = await supabaseAdmin
+        .from('visa_requirements')
+        .select('*')
+        .ilike('country', args.destination_country)
+      if (error) throw error
+      return data?.[0] ?? { note: `${args.destination_country} 비자 정보를 찾을 수 없습니다. 정확한 정보는 여권과 대사관에 확인하세요.` }
+    }
+    case 'list_guest_names': {
+      const { data, error } = await supabaseAdmin
+        .from('booking_guests')
+        .select('id, name, birth_date, passport_no, room_index, room_type')
+        .eq('booking_id', args.booking_id)
+        .order('room_index', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    }
+    case 'create_itinerary':
+    case 'update_guest_names': {
+      const actionType = toolName === 'create_itinerary' ? 'create_itinerary' : 'update_guest_names'
+      const summary = toolName === 'create_itinerary'
+        ? `[일정표 생성] 예약 ${args.booking_id} — ${args.format || 'A4'}`
+        : `[투숙객명단 수정] 예약 ${args.booking_id} — ${args.guests?.length}명`
+      const { data: action, error } = await supabaseAdmin
+        .from('agent_actions')
+        .insert({
+          agent_type: 'operations',
+          action_type: actionType,
+          summary,
+          payload: { ...args, requested_at: new Date().toISOString() },
+          requested_by: 'jarvis',
+          priority: 'normal',
+        })
+        .select()
+      if (error) throw error
+      return { proposed: true, action_id: action?.[0]?.id, summary }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }

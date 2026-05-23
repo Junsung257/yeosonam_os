@@ -1,6 +1,8 @@
 'use client';
 
-import type { NoticeBlock } from '@/lib/standard-terms';
+import type { NoticeBlock } from '@/lib/standard-terms-client';
+import { hasSpecialTermsBanner, shouldSuppressStandardCancelTable } from '@/lib/standard-terms-client';
+import { dedupeNoticesForDisplay } from '@/lib/terms-presentation';
 
 /**
  * 여소남 OS — 예약 안내문 (공통 + 상품별 특별약관)
@@ -26,6 +28,19 @@ interface BookingGuideProps {
 }
 
 export default function BookingGuideTemplate({ resolvedNotices, packageTitle, packageId }: BookingGuideProps = {}) {
+  const displayNotices = resolvedNotices ? dedupeNoticesForDisplay(resolvedNotices) : undefined;
+  const suppressStandardCancel = displayNotices
+    ? shouldSuppressStandardCancelTable(displayNotices)
+    : false;
+  const hasSpecialTerms = displayNotices ? hasSpecialTermsBanner(displayNotices) : false;
+  const standardCancelNotice = displayNotices?.find(n => n.type === 'RESERVATION');
+  const standardCancelLines = (standardCancelNotice?.text ?? '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    .filter(l => /[0-9]+일|전액|%|공제/.test(l))
+    .slice(0, 5);
+
   return (
     <div className="flex flex-col items-center gap-10">
       <article className="a4-export-page" style={PAGE_STYLE}>
@@ -82,18 +97,44 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
             <section>
               <h2 className="text-admin-base font-extrabold text-[#001f3f] mb-3 pb-1 border-b border-admin-border-mid">🚫 취소 및 환불 규정</h2>
               <div className="space-y-2 text-[11px] text-admin-text-2 leading-relaxed">
-                <div className="bg-red-50 border border-red-200 rounded p-3">
-                  <p className="font-bold text-red-800 mb-1">⚠️ 특별약관 적용 상품</p>
-                  <p className="text-red-700">본 행사는 <span className="font-bold">특별약관이 적용</span>되며, 취소 시 상품별 특별약관에 따른 취소수수료가 부과됩니다. 상세 취소수수료율은 상품 일정표를 참고하시기 바랍니다.</p>
-                </div>
-                <div className="flex gap-2 items-start">
-                  <span className="shrink-0 text-admin-muted font-bold">•</span>
-                  <p>취소 문의는 <span className="font-bold">평일 09시~18시</span>까지 상담 가능하며, 공휴일(토/일) 및 국가 지정 휴무일에는 취소 처리가 되지 않습니다.</p>
-                </div>
-                <div className="flex gap-2 items-start">
-                  <span className="shrink-0 text-admin-muted font-bold">•</span>
-                  <p>업무 종료시간인 <span className="font-bold">18시 이후 취소 시 익일</span>로 계산됩니다.</p>
-                </div>
+                {displayNotices ? (
+                  suppressStandardCancel ? (
+                    <div className="bg-red-50 border border-red-200 rounded p-3">
+                      <p className="font-bold text-red-800 mb-1">⚠️ 특별약관 적용 상품</p>
+                      <p className="text-red-700">
+                        예약 확정(발권·파이널) 이후 취소 시, 시점과 무관하게 항공·호텔 실제 위약금이{' '}
+                        <span className="font-bold">최대 100% 청구</span>될 수 있습니다.
+                      </p>
+                      <p className="text-[10px] text-red-600 mt-1.5">상세 약관 전문은 2페이지를 확인하세요.</p>
+                    </div>
+                  ) : standardCancelLines.length > 0 ? (
+                    <ul className="space-y-1">
+                      {standardCancelLines.map((line, i) => (
+                        <li key={i} className="flex gap-2 items-start">
+                          <span className="shrink-0 text-admin-muted font-bold">•</span>
+                          <span>{line.replace(/^[•·▪\-]\s*/, '')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-admin-muted">취소 규정은 2페이지 약관 전문을 확인하세요.</p>
+                  )
+                ) : (
+                  <>
+                    <div className="bg-red-50 border border-red-200 rounded p-3">
+                      <p className="font-bold text-red-800 mb-1">⚠️ 특별약관 적용 상품</p>
+                      <p className="text-red-700">본 행사는 <span className="font-bold">특별약관이 적용</span>되며, 취소 시 상품별 특별약관에 따른 취소수수료가 부과됩니다. 상세 취소수수료율은 상품 일정표를 참고하시기 바랍니다.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="shrink-0 text-admin-muted font-bold">•</span>
+                      <p>취소 문의는 <span className="font-bold">평일 09시~18시</span>까지 상담 가능하며, 공휴일(토/일) 및 국가 지정 휴무일에는 취소 처리가 되지 않습니다.</p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <span className="shrink-0 text-admin-muted font-bold">•</span>
+                      <p>업무 종료시간인 <span className="font-bold">18시 이후 취소 시 익일</span>로 계산됩니다.</p>
+                    </div>
+                  </>
+                )}
               </div>
             </section>
           </div>
@@ -165,7 +206,7 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
       </article>
 
       {/* ═══ Page 2+: 4-level 머지된 약관 풀 텍스트 (법적 증빙용 immutable 스냅샷) ═══ */}
-      {resolvedNotices && resolvedNotices.length > 0 && (
+      {displayNotices && displayNotices.length > 0 && (
         <article className="a4-export-page" style={PAGE_STYLE}>
           <header className="w-full pt-8 pb-4 px-10 border-b-2 border-[#001f3f]">
             <div className="flex items-baseline justify-between">
@@ -178,9 +219,14 @@ export default function BookingGuideTemplate({ resolvedNotices, packageTitle, pa
               ※ 아래는 플랫폼 기본약관 · 랜드사 공통 · 랜드사 상품타입별 특약 · 상품 개별 특약을 4단계 우선순위로 해소한 전체 약관입니다.
               상위 tier가 같은 항목을 덮어쓴 경우 [출처] 배지로 표시됩니다.
             </p>
+            {hasSpecialTerms && (
+              <p className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1.5 mt-2">
+                ※ 본 상품은 특별약관이 적용되며, 공정거래위원회 표준약관보다 우선합니다.
+              </p>
+            )}
           </header>
           <main className="flex-1 px-10 py-5 text-[#0b1c30] space-y-3 overflow-hidden">
-            {resolvedNotices.map((notice, idx) => {
+            {displayNotices.map((notice, idx) => {
               const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
               const isOverride = (notice._tier ?? 1) >= 2;
               const tierColor: Record<number, string> = {

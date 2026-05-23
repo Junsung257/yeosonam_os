@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
 import { getSecret } from '@/lib/secret-registry';
+import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 
 const supabaseAdmin = createClient(
   getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
@@ -9,21 +9,15 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-function readPin(req: NextRequest, body?: { pin?: string }): string | undefined {
-  const h = req.headers.get('x-influencer-pin');
-  if (h?.trim()) return h.trim();
-  return typeof body?.pin === 'string' ? body.pin.trim() : undefined;
-}
-
-// GET: 링크 목록 — PIN 필수 (헤더 x-influencer-pin)
+// GET: 링크 목록 — JWT 쿠키 또는 PIN 헤더(x-influencer-pin)
 export async function GET(req: NextRequest) {
   try {
     const referral_code = req.nextUrl.searchParams.get('code');
     if (!referral_code) return NextResponse.json({ error: '코드 필요' }, { status: 400 });
 
-    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, readPin(req));
+    const auth = await authInfluencer(req, referral_code);
     if (!auth.ok) {
-      return NextResponse.json({ error: auth.message }, { status: auth.status });
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const canon = (auth.affiliate as { referral_code: string }).referral_code;
@@ -55,9 +49,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '필수 필드 누락' }, { status: 400 });
     }
 
-    const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referral_code, readPin(req, { pin }));
+    const auth = await authInfluencer(req, referral_code, pin);
     if (!auth.ok) {
-      return NextResponse.json({ error: auth.message }, { status: auth.status });
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const affiliate = auth.affiliate as { id: string; referral_code: string };

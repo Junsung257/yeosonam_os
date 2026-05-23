@@ -8,6 +8,7 @@ import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionI
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { destinationToIsoSet, extractDestinationTokens } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
+import { POSTPROCESS_VERSION, postProcessPackageRow } from '@/lib/package-post-process';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
@@ -220,10 +221,31 @@ export default async function PackageDetailPage({
   // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
   const attrResult = { data: relevantAttractions.length > 0 ? relevantAttractions : lightAttractions };
 
-  const normalizedPkg = pkg ? {
-    ...pkg,
-    products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
-  } : null;
+  // raw_text — 고객 응답에는 포함하지 않고 서버에서만 주의사항·추가요금 enrichment
+  let rawTextForEnrichment = '';
+  if (pkg?.id) {
+    const { data: rawRow } = await sb
+      .from('travel_packages')
+      .select('raw_text')
+      .eq('id', id)
+      .maybeSingle();
+    rawTextForEnrichment = String((rawRow as { raw_text?: string } | null)?.raw_text ?? '');
+  }
+
+  const parserVersion = String((pkg as { parser_version?: string } | null)?.parser_version ?? '');
+  const writeTimeProcessed = parserVersion.includes(POSTPROCESS_VERSION);
+  const pkgWithRaw = pkg
+    ? {
+        ...pkg,
+        raw_text: rawTextForEnrichment || (pkg as { raw_text?: string }).raw_text,
+        products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
+      }
+    : null;
+  const normalizedPkg = pkgWithRaw
+    ? writeTimeProcessed
+      ? pkgWithRaw
+      : postProcessPackageRow(pkgWithRaw)
+    : null;
 
   // 관련 블로그 글 조회 (1) — 이 상품을 홍보하는 글 (product_id 직접 매칭)
   let relatedBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string }[] = [];

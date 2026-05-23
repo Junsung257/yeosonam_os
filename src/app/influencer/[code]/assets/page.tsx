@@ -40,16 +40,7 @@ export default function InfluencerAssets() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      let pinHeader: Record<string, string> = {};
-      try {
-        const p = sessionStorage.getItem(`inf_pin_${code}`);
-        if (p) pinHeader = { 'x-influencer-pin': p };
-      } catch {
-        /* ignore */
-      }
-      const res = await fetch(`/api/influencer/assets?code=${encodeURIComponent(code)}`, {
-        headers: pinHeader,
-      });
+      const res = await fetch(`/api/influencer/assets?code=${encodeURIComponent(code)}`);
       const json = await res.json();
       setCardNews(json.assets?.card_news || []);
       setCopies(json.assets?.marketing_copies || []);

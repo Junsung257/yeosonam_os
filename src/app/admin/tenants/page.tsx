@@ -211,6 +211,13 @@ export default function TenantsPage() {
                   <Button variant="secondary" onClick={() => openEdit(t)}>
                     수정
                   </Button>
+                  <button
+                    onClick={() => router.push(`/admin/tenants/${t.id}/bot`)}
+                    className="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded border border-purple-200 hover:bg-purple-100 transition-colors"
+                    title="자비스 봇 설정"
+                  >
+                    봇 설정
+                  </button>
                 </div>
               </div>
             );

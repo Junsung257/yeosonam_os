@@ -18,6 +18,10 @@ import {
   type NoticeBlock,
   formatCancellationDates,
   getSourceBadgeColor,
+  hasProductSpecialCancelPolicy,
+  hasSpecialTermsBanner,
+  shouldSuppressStandardCancelTable,
+  filterNoticesForSurface,
   NOTICE_DOT_COLOR,
   NOTICE_CARD_TONE,
 } from './standard-terms';
@@ -25,6 +29,85 @@ import {
 const notice = (overrides: Partial<NoticeBlock> & { type: string; text: string }): NoticeBlock => ({
   title: '취소 안내',
   ...overrides,
+});
+
+describe('shouldSuppressStandardCancelTable — P0 법적 충돌 방지', () => {
+  it('AUTO_TICKETING 블록만 있어도 표준 일수표 숨김', () => {
+    const notices = [
+      notice({ type: 'AUTO_TICKETING', text: '발권 후 실비 위약금 최대 100%' }),
+      notice({ type: 'RESERVATION', text: '출발 30일 전까지: 전액 환불' }),
+    ];
+    expect(shouldSuppressStandardCancelTable(notices)).toBe(true);
+  });
+
+  it('tier 4 취소/환불 제목 — 표준 일수표 숨김', () => {
+    const notices = [
+      notice({
+        type: 'POLICY',
+        text: '취소수수료 규정 안내서 참고',
+        title: '취소/환불/여권/쇼핑',
+        _tier: 4,
+      }),
+    ];
+    expect(hasProductSpecialCancelPolicy(notices)).toBe(true);
+    expect(shouldSuppressStandardCancelTable(notices)).toBe(true);
+  });
+
+  it('일반 RESERVATION만 — 표준 일수표 노출', () => {
+    const notices = [notice({ type: 'RESERVATION', text: '출발 30일 전까지: 전액 환불' })];
+    expect(shouldSuppressStandardCancelTable(notices)).toBe(false);
+  });
+
+  it('hasSpecialTermsBanner — AUTO_TICKETING 단독은 배너 미노출', () => {
+    const notices = [notice({ type: 'AUTO_TICKETING', text: '실비 청구' })];
+    expect(hasSpecialTermsBanner(notices)).toBe(false);
+    expect(shouldSuppressStandardCancelTable(notices)).toBe(true);
+  });
+
+  it('hasSpecialTermsBanner — tier 4 상품 특약은 배너 노출', () => {
+    const notices = [
+      notice({ type: 'POLICY', title: '취소/환불/여권/쇼핑', text: '안내', _tier: 4 }),
+    ];
+    expect(hasSpecialTermsBanner(notices)).toBe(true);
+  });
+});
+
+describe('filterNoticesForSurface — P2 A4·예약안내문·모바일 surface 분리', () => {
+  const base = [
+    notice({ type: 'AUTO_TICKETING', text: '발권 후 실비 100%', surfaces: ['mobile', 'booking_guide', 'a4'] }),
+    notice({ type: 'RESERVATION', text: '출발 30일 전까지: 전액 환불', surfaces: ['a4', 'mobile', 'booking_guide'] }),
+    notice({ type: 'PASSPORT', text: '6개월', surfaces: ['a4'] }),
+  ];
+
+  it('mobile — 특약 상품 RESERVATION 제거', () => {
+    const r = filterNoticesForSurface(base, 'mobile');
+    expect(r.some(n => n.type === 'RESERVATION')).toBe(false);
+    expect(r.some(n => n.type === 'AUTO_TICKETING')).toBe(true);
+  });
+
+  it('booking_guide — mobile과 동일 억제', () => {
+    const r = filterNoticesForSurface(base, 'booking_guide');
+    expect(r.some(n => n.type === 'RESERVATION')).toBe(false);
+  });
+
+  it('a4 — RESERVATION·AUTO_TICKETING 모두 유지 (전문 참조)', () => {
+    const r = filterNoticesForSurface(base, 'a4');
+    expect(r.some(n => n.type === 'RESERVATION')).toBe(true);
+    expect(r.some(n => n.type === 'AUTO_TICKETING')).toBe(true);
+    expect(r.some(n => n.type === 'PASSPORT')).toBe(true);
+  });
+
+  it('surface 태그 없는 블록 — mobile·booking_guide 기본', () => {
+    const r = filterNoticesForSurface(
+      [notice({ type: 'PAYMENT', text: '잔금' })],
+      'mobile',
+    );
+    expect(r).toHaveLength(1);
+    expect(filterNoticesForSurface(
+      [notice({ type: 'PAYMENT', text: '잔금' })],
+      'a4',
+    )).toHaveLength(0);
+  });
 });
 
 describe('formatCancellationDates — 출발일 기준 날짜 자동 병기', () => {

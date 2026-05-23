@@ -78,6 +78,8 @@ function sanitizeString(
   fieldPath: string,
   incidents: LeakIncident[],
 ): string {
+  if (input == null) return '';
+  if (typeof input !== 'string') input = String(input);
   if (!input) return input;
   let out = input;
   for (const rule of LEAK_PATTERNS) {

@@ -34,6 +34,21 @@ import {
   type NormalizedOptionalTour,
   type OptionalTourGroup,
 } from './itinerary-render';
+import {
+  formatExcludeDisplayLabel,
+  isMealDayExcludeLine,
+  repairMealDayExcludeItems,
+  shouldSplitAtComma,
+} from '@/lib/parser/deterministic/comma-split-safe';
+import {
+  normalizeCatalogInclusions,
+  normalizeCatalogExcludes,
+  normalizeCatalogSurchargeLine,
+  parseShoppingText,
+  SHOPPING_POLICY_NOTE,
+  formatTermLine,
+  type NormalizedTermLine,
+} from '@/lib/terms-catalog';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Input / Output 타입
@@ -136,32 +151,44 @@ export interface AirlineHeader {
 }
 
 export interface MergedSurcharge {
-  /** 렌더용 완성 라벨: "청명절 (4/3 ~ 4/6): $10/인/박" */
+  /** 렌더용 완성 라벨 (레거시·비정형 fallback) */
   label: string;
-  /** 구조화 원본 — 객체 배열에서 왔으면 존재 */
+  /** 카탈로그 정형 라벨 + remainder */
+  display: NormalizedTermLine | null;
   structured: SurchargeObject | null;
-  /** 원본 문자열 — excludes 문자열에서 왔으면 존재 */
   raw: string | null;
-  /** 구조화에서 추출된 필드들 */
   name: string | null;
-  period: string | null;      // "4/3 ~ 4/6"
-  priceLabel: string | null;  // "$10/인/박"
+  period: string | null;
+  priceLabel: string | null;
 }
 
 export interface CanonicalExcludes {
-  /** 써차지 관련 문구 제거 후 남은 일반 불포함 항목 */
+  /** 렌더용 정형 라인 (카탈로그 + remainder) */
+  display: NormalizedTermLine[];
+  /** 하위 호환 — display를 한 줄 문자열로 펼친 배열 */
   basic: string[];
-  /** excludes 중 써차지로 판정되었으나 surcharges 객체와 중복이 아닌 라벨 */
+  /** excludes 중 써차지로 판정되었으나 surcharges 객체와 중복이 아닌 라인 */
   remainingSurchargeLines: string[];
 }
 
 export interface CanonicalShopping {
-  /** 고객 노출용 텍스트. null이면 섹션 숨김. */
+  /** 원문 (감사용) */
   text: string | null;
-  /** 출처 (감사/디버깅용) */
+  /** 쇼핑 섹션 본문 — "2회 — 잡화, 토속품 등" */
+  displayLine: string | null;
+  count: number | null;
+  items: string[];
+  /** 카탈로그 형식 밖 나머지 → termsMisc */
+  remainder: string | null;
+  /** 원문에서 분리된 환불 정책 → termsMisc (쇼핑 섹션에 노출 X) */
+  policyNote: string | null;
   source: 'highlights' | 'customer_notes' | null;
-  /** 내부 키워드(커미션/정산) 감지로 차단된 경우 true (FIELD_POLICY) */
   blocked: boolean;
+}
+
+/** 포함/쇼핑과 분리된 하단 기타 안내 (부정적·법적 문구) */
+export interface CanonicalTermsMisc {
+  items: string[];
 }
 
 export interface CanonicalOptionalTours {
@@ -173,7 +200,8 @@ export interface CanonicalOptionalTours {
 /** 아이콘이 매칭된 인클루전 토큰 */
 export interface IconizedInclusion {
   text: string;
-  icon: string; // "✈️" | "🏨" | ... | "✅" (fallback)
+  icon: string;
+  remainder?: string | null;
 }
 
 export interface CanonicalInclusions {
@@ -267,6 +295,8 @@ export interface CanonicalView {
   surchargesMerged: MergedSurcharge[];
   excludes: CanonicalExcludes;
   shopping: CanonicalShopping;
+  /** 쇼핑 환불 등 — 메인 약관 섹션과 분리된 하단 안내 */
+  termsMisc: CanonicalTermsMisc;
   /** 인클루전 아이콘 매칭 + 기본/프로그램 분류 — A4·Mobile 공용 (Phase 1 확장) */
   inclusions: CanonicalInclusions;
   /** 일차별 정규화 — flight 병합·호텔 카드 분리 (Phase 1 확장) */
@@ -404,12 +434,18 @@ function isBareSurcharge(s: string): boolean {
  * 배열 항목 평탄화: 콤마로 이어붙인 단일 문자열도 개별 항목으로 분리.
  * ERR-20260418-26 — 괄호 내부 콤마는 분리하지 말 것.
  * ERR-FUK-comma-number — "2,000엔" 같은 숫자 천단위 콤마 분리 방지.
+ * ERR-BOH-meal-days — "3일차 중식, 석식" 은 한 줄 유지 + 가독 포맷.
  */
 export function flattenItems(items: string[]): string[] {
+  const repaired = repairMealDayExcludeItems(items);
   const result: string[] = [];
-  for (const item of items) {
+  for (const item of repaired) {
     if (SURCHARGE_RE.test(item)) {
       result.push(item.trim());
+      continue;
+    }
+    if (isMealDayExcludeLine(item)) {
+      result.push(formatExcludeDisplayLabel(item));
       continue;
     }
     const parts: string[] = [];
@@ -420,11 +456,8 @@ export function flattenItems(items: string[]): string[] {
       const ch = chars[i];
       if (ch === '(' || ch === '[' || ch === '{') depth++;
       else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
-      if (ch === ',' && depth === 0) {
-        const prev = buf.slice(-1);
-        const next3 = chars.slice(i + 1, i + 4).join('');
-        const isNumberComma = /\d/.test(prev) && /^\d{3}/.test(next3);
-        if (isNumberComma) {
+      if ((ch === ',' || ch === '，') && depth === 0) {
+        if (!shouldSplitAtComma(item, i, depth)) {
           buf += ch;
           continue;
         }
@@ -448,6 +481,8 @@ export function classifyExcludes(items: string[]): { basic: string[]; surcharges
   const basic: string[] = [];
   const surcharges: string[] = [];
   for (const item of flat) {
+    // 쇼핑 불참 패널티 — 유의사항(CRITICAL) 전용, 불포함·추가요금 UI 아님
+    if (/패널티|쇼핑\s*샵|쇼핑샵|쇼핑.*불참|참여\s*하지\s*않/.test(item)) continue;
     if (SURCHARGE_RE.test(item)) surcharges.push(item);
     else basic.push(item);
   }
@@ -477,7 +512,12 @@ function formatSurchargeObject(s: SurchargeObject): MergedSurcharge {
   })();
   const priceLabel = fmtAmount ? `${fmtAmount}${s.unit ? `/${s.unit}` : ''}` : null;
   const label = `${name}${period ? ` (${period})` : ''}${priceLabel ? `: ${priceLabel}` : ''}`;
-  return { label, structured: s, raw: null, name, period, priceLabel };
+  const syntheticRaw = `${name}${priceLabel ? ` ${priceLabel}` : ''}`;
+  const display = normalizeCatalogSurchargeLine(syntheticRaw);
+  if (!display.slug) {
+    display.text = label;
+  }
+  return { label, display, structured: s, raw: null, name, period, priceLabel };
 }
 
 export function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
@@ -498,13 +538,28 @@ export function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
   const remainingSurchargeLines = classified.surcharges.filter(
     s => !(hasObjects && isBareSurcharge(s)),
   );
-  const fromExcludesMerged: MergedSurcharge[] = remainingSurchargeLines.map(raw => ({
-    label: raw, structured: null, raw, name: null, period: null, priceLabel: null,
-  }));
+  const fromExcludesMerged: MergedSurcharge[] = remainingSurchargeLines.map(raw => {
+    const normalized = normalizeCatalogSurchargeLine(raw);
+    return {
+      label: formatTermLine(normalized),
+      display: normalized,
+      structured: null,
+      raw,
+      name: null,
+      period: null,
+      priceLabel: null,
+    };
+  });
+
+  const excludeDisplay = normalizeCatalogExcludes(classified.basic);
 
   return {
     merged: [...fromObjects, ...fromExcludesMerged],
-    excludes: { basic: classified.basic, remainingSurchargeLines },
+    excludes: {
+      display: excludeDisplay,
+      basic: excludeDisplay.map(formatTermLine),
+      remainingSurchargeLines,
+    },
   };
 }
 
@@ -525,27 +580,88 @@ const INTERNAL_KEYWORDS = /커미션|commission_rate|정산|LAND_OPERATOR|스키
  *   2) customer_notes (고객 노출 OK 검증 통과 자유 텍스트)
  *   3) special_notes는 더 이상 fallback 출처가 아님 (ERR-special-notes-leak 차단)
  */
-export function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
-  const fromHighlights = pkg.itinerary_data?.highlights?.shopping?.trim();
-  if (fromHighlights) {
+function buildCanonicalShopping(
+  raw: string,
+  source: CanonicalShopping['source'],
+): CanonicalShopping {
+  const text = raw.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null;
+  if (!text) {
     return {
-      text: fromHighlights.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null,
-      source: 'highlights',
+      text: null,
+      displayLine: null,
+      count: null,
+      items: [],
+      remainder: null,
+      policyNote: null,
+      source,
       blocked: false,
     };
   }
+  const parsed = parseShoppingText(text);
+  return {
+    text,
+    displayLine: parsed.displayLine,
+    count: parsed.count,
+    items: parsed.items,
+    remainder: parsed.remainder,
+    policyNote: parsed.policyNote,
+    source,
+    blocked: false,
+  };
+}
+
+export function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
+  const fromHighlights = pkg.itinerary_data?.highlights?.shopping?.trim();
+  if (fromHighlights) {
+    return buildCanonicalShopping(fromHighlights, 'highlights');
+  }
   const fallback = pkg.customer_notes?.trim();
-  if (!fallback) return { text: null, source: null, blocked: false };
+  if (!fallback) {
+    return {
+      text: null,
+      displayLine: null,
+      count: null,
+      items: [],
+      remainder: null,
+      policyNote: null,
+      source: null,
+      blocked: false,
+    };
+  }
 
   // 내부 키워드 감지 시 차단 — 렌더 시점 2중 가드
   if (INTERNAL_KEYWORDS.test(fallback)) {
-    return { text: null, source: 'customer_notes', blocked: true };
+    return {
+      text: null,
+      displayLine: null,
+      count: null,
+      items: [],
+      remainder: null,
+      policyNote: null,
+      source: 'customer_notes',
+      blocked: true,
+    };
   }
-  return {
-    text: fallback.replace(/^쇼핑\s*[:：]\s*/i, '').trim() || null,
-    source: 'customer_notes',
-    blocked: false,
-  };
+  return buildCanonicalShopping(fallback, 'customer_notes');
+}
+
+export function resolveTermsMisc(shopping: CanonicalShopping): CanonicalTermsMisc {
+  const items: string[] = [];
+  const line = shopping.displayLine ?? shopping.text;
+  const isNoShopping = line ? /노쇼핑/.test(line) : false;
+
+  if (shopping.count != null && shopping.count > 0 && !isNoShopping) {
+    items.push(SHOPPING_POLICY_NOTE);
+  }
+
+  if (shopping.remainder?.trim()) {
+    const r = shopping.remainder.trim();
+    if (!/교환|환불|수수료\s*발생|한\s*달|한달/.test(r)) {
+      items.push(r);
+    }
+  }
+
+  return { items };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -614,19 +730,27 @@ export function getInclusionIcon(text: string): string {
  */
 export function classifyInclusions(items: string[]): CanonicalInclusions {
   const flat = flattenItems(items);
-  const basic: IconizedInclusion[] = [];
+  const basicRaw: string[] = [];
   const program: string[] = [];
   for (const item of flat) {
     if (BASIC_INC_RE.test(item)) {
-      basic.push({ text: item, icon: getInclusionIcon(item) });
+      basicRaw.push(item);
     } else if (PERK_WHITELIST_RE.test(item) && !NOT_PERK_RE.test(item)) {
       // 진짜 특전 (보너스성 키워드 매치)
       program.push(item);
     } else {
       // 분류 모호 → basic 으로 안전 fallback (특전 섹션 환각 차단)
-      basic.push({ text: item, icon: getInclusionIcon(item) });
+      basicRaw.push(item);
     }
   }
+
+  const catalogLines = normalizeCatalogInclusions(basicRaw);
+  const basic: IconizedInclusion[] = catalogLines.map(line => ({
+    text: line.text,
+    icon: line.icon ?? getInclusionIcon(line.text),
+    remainder: line.remainder,
+  }));
+
   return { basic, program, flat };
 }
 
@@ -846,6 +970,7 @@ export function renderPackage(
   const { merged, excludes } = resolveSurchargesAndExcludes(pkg);
   const days = resolveDays(pkg);
   const optionalTours = resolveOptionalTours(pkg);
+  const shopping = resolveShopping(pkg);
   return {
     airlineHeader: resolveAirlineHeader(pkg),
     flightHeader: resolveFlightHeader(days, pkg),
@@ -854,7 +979,8 @@ export function renderPackage(
     optionalToursByRegion: optionalTours.groups,
     surchargesMerged: merged,
     excludes,
-    shopping: resolveShopping(pkg),
+    shopping,
+    termsMisc: resolveTermsMisc(shopping),
     inclusions: resolveInclusions(pkg),
     days,
     affiliateView: options?.affiliate ?? null,
@@ -916,10 +1042,21 @@ function resolveFlightHeader(days: CanonicalDay[], pkg?: RenderPackageInput): Fl
     });
     const outboundSeg = segments.find(s => s.leg === 'outbound') ?? segments[0];
     const inboundSeg  = segments.find(s => s.leg === 'inbound')  ?? (segments.length > 1 ? segments[segments.length - 1] : null);
-    return {
-      outbound: outboundSeg ? toFlight(outboundSeg) : null,
-      inbound:  inboundSeg  ? toFlight(inboundSeg)  : null,
-    };
+    const outbound = outboundSeg ? toFlight(outboundSeg) : null;
+    const inbound  = inboundSeg  ? toFlight(inboundSeg)  : null;
+    // segment arr_time 누락 시 day.flight(mergeLegacyFlightPair) 백필 — 헤더·타임라인 불일치 방지
+    if (outbound && !outbound.arrTime && days[0]?.flight?.arrTime) {
+      outbound.arrTime = days[0].flight.arrTime;
+      if (!outbound.arrCity && days[0].flight.arrCity) outbound.arrCity = days[0].flight.arrCity;
+    }
+    const lastDay = days[days.length - 1];
+    const beforeLast = days.length >= 2 ? days[days.length - 2] : null;
+    const legacyInbound = lastDay?.flight ?? beforeLast?.flight ?? null;
+    if (inbound && !inbound.arrTime && legacyInbound?.arrTime) {
+      inbound.arrTime = legacyInbound.arrTime;
+      if (!inbound.arrCity && legacyInbound.arrCity) inbound.arrCity = legacyInbound.arrCity;
+    }
+    return { outbound, inbound };
   }
 
   // 2차: legacy fallback

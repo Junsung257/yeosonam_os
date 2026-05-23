@@ -7,7 +7,7 @@ import useSWR from 'swr';
 import {
   LayoutDashboard, Inbox, BookOpenCheck, Users, Wallet, FileText,
   Package, ClipboardCheck, Upload, Building2, ScrollText, MapPinned, Mountain, Globe,
-  Handshake, BarChart3, UserPlus, FileQuestion, Headset, Layers, Compass,
+  Handshake, BarChart3, BarChart4, UserPlus, FileQuestion, Headset, Layers, Compass,
   BookCopy, Coins, Calculator,
   Megaphone, Sparkles as Sparkle, Newspaper, FolderKanban, ListChecks, TrendingUp, AlertTriangle, Search as SearchIcon, BookOpen,
   Bot, Wand2, MessageCircle, MessageSquare, FilePlus2, LibraryBig,
@@ -135,6 +135,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/tmp-pipeline',           label: 'TMP 파이프라인', icon: GitBranch },
       { href: '/admin/band-import',            label: '밴드 임포트',  icon: FilePlus2 },
       { href: '/admin/tenant-tokens',          label: 'API 토큰 관리', icon: SlidersHorizontal },
+      { href: '/admin/marketing-intelligence', label: '마케팅 인텔리전스', icon: BarChart4 },
       { divider: true as const, label: '콘텐츠' },
       { href: '/admin/content-hub',            label: '콘텐츠 허브',  icon: FolderKanban },
       { href: '/admin/content-queue',          label: '콘텐츠 검수',  icon: ListChecks },
@@ -157,6 +158,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/admin/jarvis',                  label: '자비스 AI',         icon: Bot },
       { href: '/admin/jarvis/rag',              label: 'RAG 검색',          icon: SearchIcon },
+      { href: '/admin/mcp',                     label: 'MCP 게이트웨이',    icon: Link2 },
       { href: '/admin/generate',                label: 'AI 생성',           icon: Wand2 },
       { href: '/admin/qa',                      label: 'Q&A 챗봇',          icon: MessageCircle },
       { href: '/admin/platform-learning',       label: 'AI 플라이휠',       icon: LibraryBig },

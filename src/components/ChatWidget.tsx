@@ -32,7 +32,7 @@ export default function ChatWidget() {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
-  // admin 페이지에서는 자비스 플로팅 위젯을 사용하므로 숨김 (모든 hook 이후 early return — react-hooks/rules-of-hooks)
+  // admin 페이지에서는 자비스 플로팅 위젯을 사용하므로 숨김
   if (pathname.startsWith('/admin')) return null;
 
   const handleSend = async () => {
@@ -192,9 +192,9 @@ export default function ChatWidget() {
 }
 
 // ── 스트리밍 API 호출 ──────────────────────────────────
-// 프로토콜: NDJSON (application/x-ndjson). 각 라인 = {type:'text'|'meta'|'error'|'done', ...}
+// V2 (SSE) → 실패 시 V1 (NDJSON) 폴백
 
-type StreamEvent =
+type StreamEventV1 =
   | { type: 'text'; content: string }
   | { type: 'text_final'; content: string }
   | {
@@ -214,10 +214,128 @@ type StreamEvent =
   | { type: 'done' };
 
 async function streamChat(text: string) {
+  // V2 우선 시도
+  const v2Ok = await tryV2Stream(text);
+  if (v2Ok) return;
+
+  // V2 폴백 → V1 NDJSON
+  await streamV1(text);
+}
+
+/** V2 SSE 엔드포인트 시도 — 성공 시 true */
+async function tryV2Stream(text: string): Promise<boolean> {
   const { sessionId, addMessage, appendToMessage, updateMessage, setTyping } = useChatStore.getState();
   setTyping(true);
 
-  // 스트림이 시작되면 표시될 빈 assistant 메시지
+  let assistantId: string | null = null;
+  let firstChunkReceived = false;
+  let metaEscalate = false;
+
+  const ensureMessage = () => {
+    if (!assistantId) {
+      assistantId = addMessage({ role: 'assistant', content: '', type: 'text', isStreaming: true });
+    }
+    if (!firstChunkReceived) {
+      firstChunkReceived = true;
+      setTyping(false);
+    }
+  };
+
+  try {
+    const res = await fetch('/api/qa/chat/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        sessionId,
+        referrer: getReferrer(),
+        affiliateRef: getReferrer(),
+        history: buildQaChatHistory(useChatStore.getState().messages, 10),
+      }),
+    });
+
+    if (!res.ok || !res.body) return false;
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const raw of lines) {
+        const line = raw.replace(/\r$/, '');
+        if (line === '') {
+          currentEvent = '';
+          continue;
+        }
+        if (line.startsWith(':')) continue; // keepalive
+        if (line.startsWith('event:')) {
+          currentEvent = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+
+          let parsed: any;
+          try {
+            parsed = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+
+          // V2 fallback 감지
+          if (currentEvent === 'agent_picked' && parsed.fallback === 'v1') {
+            return false;
+          }
+
+          // text or text_final
+          if (currentEvent === 'text' && parsed.content != null) {
+            ensureMessage();
+            appendToMessage(assistantId!, parsed.content);
+          } else if (currentEvent === 'tool_use_start') {
+            ensureMessage();
+            const name = parsed?.name ?? parsed?.toolName ?? '';
+            appendToMessage(assistantId!, `[${name} 검색 중...]`);
+          } else if (currentEvent === 'tool_result') {
+            // tool result는 표시하지 않음 (에이전트 내부)
+          } else if (currentEvent === 'meta') {
+            metaEscalate = !!parsed.escalate;
+          } else if (currentEvent === 'error') {
+            ensureMessage();
+            updateMessage(assistantId!, {
+              content: parsed.message || '죄송합니다. 다시 시도해주세요.',
+              isStreaming: false,
+            });
+          } else if (currentEvent === 'done') {
+            if (assistantId) {
+              updateMessage(assistantId!, { isStreaming: false });
+            }
+            if (metaEscalate) {
+              addEscalationMessage();
+            }
+          }
+        }
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    setTyping(false);
+  }
+}
+
+/** V1 NDJSON 엔드포인트 (기존) */
+async function streamV1(text: string) {
+  const { sessionId, addMessage, appendToMessage, updateMessage, setTyping } = useChatStore.getState();
+  setTyping(true);
+
   let assistantId: string | null = null;
   let firstChunkReceived = false;
 
@@ -266,9 +384,9 @@ async function streamChat(text: string) {
         buffer = buffer.slice(newlineIdx + 1);
         if (!line) continue;
 
-        let ev: StreamEvent;
+        let ev: StreamEventV1;
         try {
-          ev = JSON.parse(line) as StreamEvent;
+          ev = JSON.parse(line) as StreamEventV1;
         } catch {
           continue;
         }
@@ -293,7 +411,6 @@ async function streamChat(text: string) {
             isStreaming: false,
           });
         } else if (ev.type === 'done') {
-          // 스트림 종료 — 메타 반영
           if (assistantId) {
             if (metaPackages.length > 0) {
               updateMessage(assistantId, {
@@ -326,18 +443,7 @@ async function streamChat(text: string) {
             });
           }
           if (metaEscalate) {
-            const buttonActions: { action: EscalationButtonAction; label: string }[] = [
-              ...(hasConsultPhoneConfigured()
-                ? [{ action: 'phone' as const, label: '전화 상담 요청' }]
-                : []),
-              { action: 'kakao', label: '카카오톡 상담' },
-            ];
-            addMessage({
-              role: 'assistant',
-              content: '더 정확한 안내를 위해 전문 상담사와 연결해드릴까요?',
-              type: 'buttons',
-              buttonActions,
-            });
+            addEscalationMessage();
           }
         }
       }
@@ -360,6 +466,22 @@ async function streamChat(text: string) {
   }
 }
 
+/** 에스컬레이션 메시지 추가 (전화/카톡) */
+function addEscalationMessage() {
+  const buttonActions: { action: EscalationButtonAction; label: string }[] = [
+    ...(hasConsultPhoneConfigured()
+      ? [{ action: 'phone' as const, label: '전화 상담 요청' }]
+      : []),
+    { action: 'kakao', label: '카카오톡 상담' },
+  ];
+  useChatStore.getState().addMessage({
+    role: 'assistant',
+    content: '더 정확한 안내를 위해 전문 상담사와 연결해드릴까요?',
+    type: 'buttons',
+    buttonActions,
+  });
+}
+
 function MessageBubble({
   message,
   onButtonClick,
@@ -380,9 +502,19 @@ function MessageBubble({
             : 'bg-gray-100 text-gray-900 rounded-bl-sm'
         }`}
       >
+        {/* agent 이름 표시 (V2 전용) */}
+        {!isUser && (message as any).agent && (
+          <div className="text-[10px] text-violet-500 font-medium mb-1">
+            {(message as any).agent === 'products' ? '컨시어지' : (message as any).agent}
+          </div>
+        )}
+
         {/* 텍스트 메시지 */}
         {(!message.type || message.type === 'text') && (
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">
+            {message.content}
+            {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-violet-600 ml-0.5 animate-pulse" />}
+          </p>
         )}
 
         {/* 상품 카드 */}
@@ -409,7 +541,7 @@ function MessageBubble({
           </div>
         )}
 
-        {/* 버튼형 — buttonActions(에스컬레이션) 우선, 없으면 레거시 문자열 → AI 재전송 */}
+        {/* 버튼형 — 에스컬레이션 */}
         {message.type === 'buttons' && (message.buttonActions?.length || message.buttons?.length) && (
           <div>
             <p className="text-sm mb-2">{message.content}</p>

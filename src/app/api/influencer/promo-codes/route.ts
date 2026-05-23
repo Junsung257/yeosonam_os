@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-
-function readPin(req: NextRequest, body?: { pin?: string }): string | undefined {
-  const h = req.headers.get('x-influencer-pin');
-  if (h?.trim()) return h.trim();
-  return body?.pin?.trim();
-}
+import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ promo_codes: [] });
   const code = req.nextUrl.searchParams.get('code');
   if (!code) return NextResponse.json({ error: 'code 필요' }, { status: 400 });
 
-  const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, code, readPin(req));
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const auth = await authInfluencer(req, code);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { data, error } = await supabaseAdmin
     .from('affiliate_promo_codes')
@@ -31,8 +25,8 @@ export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   const body = await req.json();
   const referralCode = String(body.referral_code || '');
-  const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, referralCode, readPin(req, body));
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const auth = await authInfluencer(req, referralCode, body.pin);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const affiliate = auth.affiliate as { id: string; referral_code: string };
   const normalized = normalizeAffiliateReferralCode(String(body.code || '').trim());

@@ -18,6 +18,7 @@ import { YEOSONAM_BUSINESS_RULES } from '../prompts'
 import type { AgentRunParams, AgentRunResult, JarvisContext } from '../types'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recommendBestPackages } from '@/lib/scoring/recommend'
+import { getKnowledgeScope } from '../persona'
 
 const CONCIERGE_PROMPT = `당신은 여소남 여행사의 AI 컨시어지입니다. 고객의 여행 상담을 돕습니다.
 
@@ -133,13 +134,18 @@ const CONCIERGE_TOOLS = CONCIERGE_TOOLS_RAW as any
  * 이렇게 하면 V1 루프의 `(name, args) => Promise<any>` 시그니처와 호환.
  */
 function buildExecutor(ctx: JarvisContext) {
+  // 테넌트 knowledge_scope 캐시 (빌드 시점 1회 조회)
+  const scopePromise = getKnowledgeScope(ctx)
+
   return async function executeConciergeTool(toolName: string, args: any): Promise<any> {
     switch (toolName) {
       case 'knowledge_search': {
+        const scope = await scopePromise
+        const sourceTypes = args.source_types ?? scope.source_types
         const hits = await retrieve({
           query: args.query,
-          tenantId: ctx.tenantId,
-          sourceTypes: args.source_types,
+          tenantId: scope.include_shared ? ctx.tenantId : null,
+          sourceTypes: sourceTypes,
           limit: Math.min(args.limit ?? 5, 10),
           rerank: true,
         })

@@ -15,31 +15,37 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
 
   const [affiliate, setAffiliate] = useState<AffiliateInfo | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [initialCheck, setInitialCheck] = useState(true);
 
-  // sessionStorage에서 인증 상태 복원
+  // 페이지 로드 시 JWT 쿠키 확인
   useEffect(() => {
-    const stored = sessionStorage.getItem(`inf_auth_${code}`);
-    if (stored) {
+    const checkAuth = async () => {
       try {
-        const parsed = JSON.parse(stored);
-        setAffiliate(parsed);
-        setAuthenticated(true);
-      } catch { /* ignore */ }
-    }
-  }, [code]);
+        const res = await fetch('/api/influencer/auth');
+        const data = await res.json();
+        if (data.authenticated && data.affiliate) {
+          setAffiliate(data.affiliate);
+          setAuthenticated(true);
+        }
+      } catch {
+        // 서버 연결 실패 — 인증 없이 진행
+      } finally {
+        setInitialCheck(false);
+      }
+    };
+    checkAuth();
+  }, []);
 
   const handleSetAuth = (a: AffiliateInfo) => {
     setAffiliate(a);
     setAuthenticated(true);
-    sessionStorage.setItem(`inf_auth_${code}`, JSON.stringify(a));
   };
 
-  const clearAuth = () => {
+  const clearAuth = async () => {
     try {
-      sessionStorage.removeItem(`inf_auth_${code}`);
-      sessionStorage.removeItem(`inf_pin_${code}`);
+      await fetch('/api/influencer/auth', { method: 'DELETE' });
     } catch {
-      /* ignore */
+      // 오프라인 상황 대비
     }
     setAffiliate(null);
     setAuthenticated(false);
@@ -137,7 +143,13 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
 
         {/* 메인 콘텐츠 */}
         <main className="max-w-6xl mx-auto px-4 py-6">
-          {children}
+          {initialCheck ? (
+            <div className="flex items-center justify-center min-h-[40vh]">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+            </div>
+          ) : (
+            children
+          )}
         </main>
 
         {/* 푸터 */}

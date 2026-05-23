@@ -27,6 +27,8 @@ import { normalizeWithLlm } from '@/lib/normalize-with-llm';
 import { convertIntakeToPackage, queueUnmatchedSegments } from '@/lib/ir-to-package';
 import { validateIntake, NORMALIZER_VERSION, type NormalizedIntake } from '@/lib/intake-normalizer';
 import { getIrCanaryStatus, pickCanaryEngine } from '@/lib/ir-canary';
+import { isSynthesizedRawText } from '@/lib/packages/raw-text';
+import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Normalizer LLM 이 수 십 초 걸릴 수 있음
@@ -128,6 +130,12 @@ export async function POST(req: NextRequest) {
     if (effectiveRaw.length < 50) {
       return NextResponse.json({ ok: false, error: 'rawText 50자 이상 필수 (Rule Zero)' }, { status: 400 });
     }
+    if (isSynthesizedRawText(effectiveRaw)) {
+      return NextResponse.json(
+        { ok: false, error: '합성 raw_text는 등록 불가 — PDF 원문을 붙여넣어 주세요' },
+        { status: 422 },
+      );
+    }
     providedIr.rawText = effectiveRaw;
     providedIr.rawTextHash = crypto.createHash('sha256').update(effectiveRaw).digest('hex');
     providedIr.normalizerVersion = providedIr.normalizerVersion || `${NORMALIZER_VERSION}-direct`;
@@ -149,6 +157,12 @@ export async function POST(req: NextRequest) {
     // ── LLM 모드 (DeepSeek/Gemini/Claude) ──
     if (!rawText || rawText.length < 50) {
       return NextResponse.json({ ok: false, error: 'rawText 누락 또는 50자 미만 (Rule Zero)' }, { status: 400 });
+    }
+    if (isSynthesizedRawText(rawText)) {
+      return NextResponse.json(
+        { ok: false, error: '합성 raw_text는 등록 불가 — PDF 원문을 붙여넣어 주세요' },
+        { status: 422 },
+      );
     }
     if (!landOperator || commissionRate == null) {
       return NextResponse.json({ ok: false, error: 'landOperator·commissionRate 필수' }, { status: 400 });
@@ -248,13 +262,26 @@ export async function POST(req: NextRequest) {
   }, 0);
   const shortCode = `${prefix}${String(maxSeq + 1).padStart(2, '0')}`;
 
+  const regWrite = prepareRegistrationWrite({
+    row: conversion.pkg,
+    rawText: ir.rawText,
+    shortCode,
+    confidence: conversion.pkg.confidence ?? 0.95,
+  });
+  if (regWrite.l1.reasons.length > 0) {
+    console.warn('[register-via-ir] L1 BLOCK:', regWrite.l1.codes.join(','));
+  }
+
   const insertPayload = {
     ...conversion.pkg,
+    ...regWrite.row,
     short_code: shortCode,
     land_operator_id: op.uuid,
     commission_rate: effectiveMargin,
     price_dates: tiersToDatePrices(conversion.pkg.price_tiers),
     baseline_requested_at: new Date().toISOString(),
+    status: regWrite.travelPackageStatus,
+    parser_version: regWrite.row.parser_version,
   };
 
   const { data: inserted, error: insErr } = await supabaseAdmin

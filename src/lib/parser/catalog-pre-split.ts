@@ -167,6 +167,75 @@ export function extractBalancedJsonObjectSubstring(s: string): string | null {
   return null;
 }
 
+/** 랜드사 카탈로그 "PKG\\n상품명 N박M일" 블록 시작 위치 (2026-05-22 보홀 슬림팩 사고) */
+export function collectPkgBlockStarts(raw: string): number[] {
+  const text = raw.replace(/\r\n/g, '\n');
+  const starts: number[] = [];
+  const re = /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const g1 = m[1];
+    if (!g1) continue;
+    const offsetInFull = m[0].indexOf(g1[0]);
+    starts.push(m.index + offsetInFull);
+  }
+  return [...new Set(starts)].sort((a, b) => a - b);
+}
+
+/**
+ * 복수 상품 카탈로그에서 한 상품에 해당하는 raw_text 구간만 반환.
+ * INSERT·C1 대조·hero backfill 이 전체 원문을 공유하면 2번째 상품 일차가 1번째 감사를 오염시킴.
+ */
+export function extractProductRawTextSection(
+  fullRaw: string,
+  productTitle: string | null | undefined,
+  productIndex: number,
+  totalProducts: number,
+): string {
+  if (!fullRaw || totalProducts <= 1) return fullRaw;
+  const text = fullRaw.replace(/\r\n/g, '\n');
+  const idx = Math.max(0, Math.min(productIndex, totalProducts - 1));
+
+  const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(text);
+  if (sections.length >= totalProducts && sections.length >= 2) {
+    const section = sections[idx] ?? sections[sections.length - 1];
+    return ((sharedPrefix ? `${sharedPrefix}\n\n---\n\n` : '') + section).trim();
+  }
+
+  const pkgStarts = collectPkgBlockStarts(text);
+  if (pkgStarts.length >= totalProducts && pkgStarts.length >= 2) {
+    const start = pkgStarts[idx] ?? pkgStarts[pkgStarts.length - 1];
+    const end = idx + 1 < pkgStarts.length ? pkgStarts[idx + 1] : text.length;
+    return text.slice(start, end).trim();
+  }
+
+  const title = (productTitle ?? '').trim();
+  if (title.length >= 4) {
+    const positions: number[] = [];
+    let from = 0;
+    while (from < text.length) {
+      const pos = text.indexOf(title, from);
+      if (pos < 0) break;
+      positions.push(pos);
+      from = pos + title.length;
+    }
+    if (positions.length >= totalProducts) {
+      const start = positions[idx] ?? positions[positions.length - 1];
+      const nextStart = idx + 1 < positions.length ? positions[idx + 1] : text.length;
+      return text.slice(start, nextStart).trim();
+    }
+    if (positions.length === 1) {
+      const start = positions[0];
+      const tail = text.slice(start);
+      const nextTitle = tail.slice(title.length).search(/\n(?:PKG\s*\n|[^\n]{4,80}\d+박\s*\d+일)/);
+      const end = nextTitle >= 0 ? start + title.length + nextTitle : text.length;
+      return text.slice(start, end).trim();
+    }
+  }
+
+  return fullRaw;
+}
+
 export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult {
   const text = raw.replace(/\r\n/g, '\n');
   const starts = collectItineraryHeaderStarts(text);

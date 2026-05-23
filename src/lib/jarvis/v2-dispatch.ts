@@ -49,6 +49,7 @@ import {
 
 // S1 매직링크 통합 — 게스트 모드 가드레일 (Air Canada 방지) + tool whitelist (defense-in-depth)
 import { applyGuestGuardrail, filterGuestTools } from './guest-guardrail'
+import { applyRequestContext } from './scoped-client'
 
 /**
  * agent type → V2 config 조립. 전 agent V2 지원 (Phase 6 확장 완료).
@@ -143,6 +144,9 @@ export interface DispatchResult {
 
 /** 라우팅 + config 조립만 먼저 반환 (SSE 라우트가 agent_picked 이벤트 먼저 보낼 수 있게) */
 export async function prepareDispatch(input: DispatchInput): Promise<DispatchResult> {
+  // Phase 0: 요청 컨텍스트 설정 (RLS tenant 격리 + 감사)
+  await applyRequestContext(input.ctx)
+
   const routerResult = await routeMessage(input.message, input.session?.context ?? {})
   const agentType = routerResult.agent
   const config = await buildConfig(agentType, input.ctx)

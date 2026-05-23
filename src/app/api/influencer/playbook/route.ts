@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { verifyAffiliateReferralAndPin } from '@/lib/influencer-pin-auth';
+import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 
 const DEFAULT_BEST = [
   {
@@ -30,10 +30,6 @@ const DEFAULT_CS = [
   },
 ];
 
-function readPin(req: NextRequest): string | undefined {
-  return req.headers.get('x-influencer-pin')?.trim() || undefined;
-}
-
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ best_practices: DEFAULT_BEST, cs_scripts: DEFAULT_CS });
@@ -41,8 +37,8 @@ export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   if (!code) return NextResponse.json({ error: 'code 필요' }, { status: 400 });
 
-  const auth = await verifyAffiliateReferralAndPin(supabaseAdmin, code, readPin(req));
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const auth = await authInfluencer(req, code);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { data: best } = await supabaseAdmin
     .from('affiliate_best_practices')

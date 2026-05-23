@@ -118,6 +118,39 @@ function normalizeRegions(regions: string[] | undefined): string[] {
   return Array.from(new Set(cleaned));
 }
 
+/** LLM이 공항 출발/도착을 type=normal 로 두는 경우 flight 로 보정 (flight_segments·헤더 카드 SSOT) */
+export function coerceAirportScheduleTypes(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
+  if (!Array.isArray(schedule)) return [];
+  return schedule.map(item => {
+    if (item.type === 'flight') return item;
+    const act = (item.activity ?? '').trim();
+    if (!act) return item;
+
+    // 미팅·수속 — flight 아님 (sanitizeFlightScheduleTimes 가 time 제거)
+    if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층/.test(act)) {
+      return item;
+    }
+
+    const isArrowFlight = /[→↦⇒]/.test(act) && /출발/.test(act) && /도착/.test(act);
+    const isDep =
+      /(국제)?\s*공항\s*출발/.test(act) ||
+      (/출발/.test(act) && !/도착/.test(act) && /공항|김해|인천|김포|부산/.test(act));
+    const isArr =
+      /(국제)?\s*공항\s*도착/.test(act) ||
+      (/도착/.test(act) && !/출발/.test(act) && /공항/.test(act));
+    const isSimpleDep =
+      /^[\w가-힣]+(?:\s+[\w가-힣]+)?\s*출발$/.test(act) &&
+      !/미팅|수속|층/.test(act);
+    const isSimpleArr =
+      /^[\w가-힣]+(?:\s+[\w가-힣]+)?\s*도착$/.test(act);
+
+    if (isArrowFlight || isDep || isArr || isSimpleDep || isSimpleArr) {
+      return { ...item, type: 'flight' };
+    }
+    return item;
+  });
+}
+
 /** schedule 정제 — 빈 항목 제거 + ▶ 접두사 제거 + 한 덩어리로 합쳐진 activity 줄별 분할.
  *  2026-05-15 박제 (부관훼리 DAY 2 한 덩어리 사고): LLM 이 여러 활동을 한 activity 에 합쳐서 박는 경우,
  *  ▶로 시작하는 부분 + 줄바꿈 으로 분할하여 별도 schedule item 으로 정형화. */
@@ -153,6 +186,57 @@ function cleanSchedule(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
   return out;
 }
 
+/** 항공 dep/arr 시간이 미팅·수속 줄에 잘못 붙은 경우 제거 (2026-05-22 보홀·다낭) */
+function sanitizeFlightScheduleTimes(schedule: ScheduleItem[]): ScheduleItem[] {
+  if (!Array.isArray(schedule) || schedule.length === 0) return schedule;
+
+  const depFlight = schedule.find(s => s.type === 'flight' && /출발/.test(s.activity || '') && !/도착/.test(s.activity || ''));
+  const arrFlight = schedule.find(s => s.type === 'flight' && /도착/.test(s.activity || '') && !/출발/.test(s.activity || ''));
+
+  return schedule.map(item => {
+    if (item.type === 'flight') return item;
+    const act = (item.activity ?? '').trim();
+    if (!act || !item.time) return item;
+
+    // 미팅·수속·층 안내 — 시계 시간 표시 금지 (출발 N시간 전 계산값 18:50 포함)
+    if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층/.test(act)) {
+      return { ...item, time: null };
+    }
+
+    if (
+      arrFlight?.time &&
+      item.time === arrFlight.time &&
+      !/(국제)?\s*공항\s*도착/.test(act)
+    ) {
+      return { ...item, time: null };
+    }
+
+    if (
+      depFlight?.time &&
+      item.time === depFlight.time &&
+      !/(국제)?\s*공항\s*출발/.test(act) &&
+      !/출발/.test(act)
+    ) {
+      return { ...item, time: null };
+    }
+
+    return item;
+  });
+}
+
+/** 업로드·고객 상세 공통 — itinerary_data 후처리 + flight_segments SSOT */
+export function enrichItineraryForDisplay<T extends ItineraryDataBlock | null | undefined>(
+  itin: T,
+  normalizeFlights?: (data: ItineraryDataBlock) => ItineraryDataBlock | null | undefined,
+): T {
+  if (!itin) return itin;
+  const normalized = normalizeItinerary(itin) as ItineraryDataBlock;
+  if (typeof normalizeFlights === 'function') {
+    return (normalizeFlights(normalized) ?? normalized) as T;
+  }
+  return normalized as T;
+}
+
 /** 메인 정규화 — itinerary_data 통째로 후처리 */
 export function normalizeItinerary(itin: ItineraryDataBlock | null | undefined): ItineraryDataBlock | null | undefined {
   if (!itin || !Array.isArray(itin.days)) return itin;
@@ -161,7 +245,7 @@ export function normalizeItinerary(itin: ItineraryDataBlock | null | undefined):
   let normalizedDays: DayBlock[] = itin.days.map(day => ({
     ...day,
     regions: normalizeRegions(day.regions),
-    schedule: cleanSchedule(day.schedule),
+    schedule: sanitizeFlightScheduleTimes(cleanSchedule(coerceAirportScheduleTypes(day.schedule))),
     hotel: day.hotel ? {
       ...day.hotel,
       grade: normalizeHotelGrade(day.hotel.grade),

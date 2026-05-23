@@ -26,7 +26,9 @@ const KEYWORD_TO_TYPE: Array<{ kw: RegExp; type: NoticeItem['type'] }> = [
   { kw: /취소|환불|위약|벌금|패널티|탑승\s*거부/, type: 'CRITICAL' },
   { kw: /여권|비자|만료|6개월|입국\s*불가|반입\s*금지/, type: 'CRITICAL' },
   { kw: /쇼핑(센터)?(\s*\d+회)?|쇼핑\s*없음|면세점/, type: 'CRITICAL' },
-  { kw: /연령\s*제한|미성년|만\s*\d+세\s*이상/, type: 'CRITICAL' },
+  { kw: /연령\s*제한|미성년|만\s*\d+세\s*이상|가족관계증명/, type: 'CRITICAL' },
+  { kw: /GV2|GV\s*깨|전자담배|아이코스|히츠/, type: 'CRITICAL' },
+  { kw: /패키지\s*행사.*환불/, type: 'CRITICAL' },
   // PAYMENT — 돈
   { kw: /추가\s*요금|할증|써차지|surcharge|싱글\s*차지|발권/, type: 'PAYMENT' },
   { kw: /유류세|공항\s*이용료|관광세|시(\s)?티택스|호텔세/, type: 'PAYMENT' },
@@ -35,53 +37,59 @@ const KEYWORD_TO_TYPE: Array<{ kw: RegExp; type: NoticeItem['type'] }> = [
   { kw: /지각|단독\s*행동|개별\s*행동|이탈|불참|미참여/, type: 'POLICY' },
   { kw: /흡연|음주|주류|반입|복장|드레스\s*코드/, type: 'POLICY' },
   { kw: /가이드\s*지시|일정\s*변경|차량\s*통제/, type: 'POLICY' },
+  { kw: /한국인\s*가이드|현지인\s*가이드|현지\s*가이드/, type: 'POLICY' },
   // INFO — 일반 안내
   { kw: /출입국|입국\s*수속|세관|면세\s*한도/, type: 'INFO' },
+  { kw: /\d+\s*명\s*이하|\d+명이하/, type: 'INFO' },
   { kw: /시차|통화|환전|날씨|기후|기온/, type: 'INFO' },
   { kw: /유심|와이파이|로밍|콘센트|전압/, type: 'INFO' },
   { kw: /이동\s*시간|소요\s*시간|차량|버스/, type: 'INFO' },
 ];
 
-const TITLE_BY_TYPE: Record<NoticeItem['type'], string> = {
+export const TITLE_BY_TYPE: Record<NoticeItem['type'], string> = {
   CRITICAL: '필수 확인 사항',
   PAYMENT: '추가 비용 안내',
   POLICY: '현지 규정 및 매너',
   INFO: '여행 준비 안내',
 };
 
-/**
- * 본문에서 REMARK/비고/특이사항/주의사항 섹션의 문장을 추출해 4-type 으로 분류.
- * 매칭된 문장은 type 별 bucket 에 추가, "• " 불릿 형식으로 합쳐 text 생성.
- */
-export function extractNotices(rawText: string): NoticeItem[] {
+const SECTION_START_RE = /^[\s*]*(?:주\s*의\s*사\s*항|주의사항|비\s*고|비고|특\s*이\s*사\s*항|특이사항)\s*$/i;
+const SECTION_STOP_RE = /^(?:일\s*자|제\s*\d+\s*일|DAY\s*\d+|일정표|포\s*함|불포함)/i;
+
+/** 주의사항·비고 섹션 본문 라인만 추출 (일정표 직전까지) */
+function extractRemarkSectionLines(rawText: string): string[] {
   if (!rawText) return [];
-  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const lines = rawText.split(/\r?\n/);
+  const out: string[] = [];
+  let inSection = false;
 
-  const buckets: Record<NoticeItem['type'], string[]> = {
-    CRITICAL: [],
-    PAYMENT: [],
-    POLICY: [],
-    INFO: [],
-  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (SECTION_START_RE.test(line.replace(/\s+/g, ' ')) || SECTION_START_RE.test(line.replace(/\s+/g, ''))) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && SECTION_STOP_RE.test(line.replace(/\s+/g, ' '))) break;
+    if (!inSection) continue;
+    const cleaned = line.replace(/^[\s*•·\-]+/, '').trim();
+    if (cleaned.length >= 8 && cleaned.length <= 400) out.push(cleaned);
+  }
+  return out;
+}
 
-  for (const line of lines) {
-    // 너무 짧으면 (≤8자) skip
-    if (line.length < 8 || line.length > 300) continue;
-    // 불릿 prefix 제거 후 분류 시도
-    const cleaned = line.replace(/^[▶●•·◆◇■□★☆+\-○•▪●◦]+\s*/, '').trim();
-    if (cleaned.length < 8) continue;
-
-    for (const { kw, type } of KEYWORD_TO_TYPE) {
-      if (kw.test(cleaned)) {
-        // 동일 type bucket 에 중복 라인 방지
-        if (!buckets[type].some(x => x.includes(cleaned.slice(0, 30)))) {
-          buckets[type].push(cleaned);
-        }
-        break; // 첫 매칭된 type 으로만 분류 (KEYWORD 우선순위 = 작성 순서)
+function classifyLine(cleaned: string, buckets: Record<NoticeItem['type'], string[]>): void {
+  for (const { kw, type } of KEYWORD_TO_TYPE) {
+    if (kw.test(cleaned)) {
+      if (!buckets[type].some(x => x.includes(cleaned.slice(0, 30)))) {
+        buckets[type].push(cleaned);
       }
+      break;
     }
   }
+}
 
+function bucketsToNotices(buckets: Record<NoticeItem['type'], string[]>): NoticeItem[] {
   const out: NoticeItem[] = [];
   (['CRITICAL', 'PAYMENT', 'POLICY', 'INFO'] as const).forEach(type => {
     const items = buckets[type];
@@ -93,6 +101,113 @@ export function extractNotices(rawText: string): NoticeItem[] {
       });
     }
   });
-
   return out;
+}
+
+function parseBulletLines(text: string): string[] {
+  return text
+    .split(/\n/)
+    .map(l => l.replace(/^[\s*•·\-]+/, '').trim())
+    .filter(l => l.length >= 8);
+}
+
+/** LLM notices + 결정적 notices type별 bullet 병합 (동일 type skip 금지) */
+export function mergeNoticesParsed(
+  llmNotices: unknown[],
+  detNotices: NoticeItem[],
+): NoticeItem[] {
+  const byType = new Map<NoticeItem['type'], { title: string; lines: string[] }>();
+
+  for (const raw of llmNotices) {
+    if (!raw || typeof raw !== 'object' || !('type' in raw)) continue;
+    const n = raw as { type?: string; title?: string; text?: string };
+    const type = n.type as NoticeItem['type'];
+    if (!['CRITICAL', 'PAYMENT', 'POLICY', 'INFO'].includes(type)) continue;
+    const entry = byType.get(type) ?? { title: n.title ?? TITLE_BY_TYPE[type], lines: [] };
+    for (const line of parseBulletLines(String(n.text ?? ''))) {
+      if (!entry.lines.some(x => x.includes(line.slice(0, 30)))) entry.lines.push(line);
+    }
+    byType.set(type, entry);
+  }
+
+  for (const dn of detNotices) {
+    const entry = byType.get(dn.type) ?? { title: dn.title, lines: [] };
+    for (const line of parseBulletLines(dn.text)) {
+      if (!entry.lines.some(x => x.includes(line.slice(0, 30)))) entry.lines.push(line);
+    }
+    byType.set(dn.type, entry);
+  }
+
+  return (['CRITICAL', 'PAYMENT', 'POLICY', 'INFO'] as const)
+    .map(type => {
+      const entry = byType.get(type);
+      if (!entry || entry.lines.length === 0) return null;
+      return {
+        type,
+        title: entry.title,
+        text: entry.lines.map(x => `• ${x}`).join('\n'),
+      } satisfies NoticeItem;
+    })
+    .filter((x): x is NoticeItem => x != null);
+}
+
+/** 비고·주의사항에서 $ 금액이 있는 추가요금 라인 → excludes 보완 */
+export function enrichExcludesFromRemarks(
+  excludes: string[] | null | undefined,
+  ...textSources: (string | null | undefined)[]
+): string[] {
+  const base = Array.isArray(excludes) ? [...excludes] : [];
+  const combined = textSources.filter(Boolean).join('\n');
+  if (!combined) return base;
+
+  for (const line of extractRemarkSectionLines(combined)) {
+    // 쇼핑 불참 패널티 등 — CRITICAL(주의사항) 전용, 추가요금·불포함 아님
+    if (/패널티|쇼핑\s*샵|쇼핑샵|쇼핑.*불참|참여\s*하지\s*않/.test(line)) continue;
+    if (!/\$\d+|싱글\s*차지|써차지|할증|추가\s*요금/i.test(line)) continue;
+    if (base.some(x => x.includes(line.slice(0, 25)))) continue;
+    base.push(line);
+  }
+  return base;
+}
+
+/** notices_parsed + 원문/메모 필드 결합 enrichment (기등록 상품 런타임 보완) */
+export function enrichNoticesForPackage(input: {
+  notices_parsed?: unknown;
+  customer_notes?: string | null;
+  internal_notes?: string | null;
+  raw_text?: string | null;
+}): NoticeItem[] {
+  const corpus = [input.raw_text, input.customer_notes, input.internal_notes].filter(Boolean).join('\n\n');
+  const det = extractNotices(corpus);
+  const llm = Array.isArray(input.notices_parsed) ? input.notices_parsed : [];
+  return mergeNoticesParsed(llm, det);
+}
+
+/**
+ * 본문에서 REMARK/비고/특이사항/주의사항 섹션의 문장을 추출해 4-type 으로 분류.
+ * 섹션 우선 스캔 후 전문 키워드 스캔으로 누락 보완.
+ */
+export function extractNotices(rawText: string): NoticeItem[] {
+  if (!rawText) return [];
+
+  const buckets: Record<NoticeItem['type'], string[]> = {
+    CRITICAL: [],
+    PAYMENT: [],
+    POLICY: [],
+    INFO: [],
+  };
+
+  for (const line of extractRemarkSectionLines(rawText)) {
+    classifyLine(line, buckets);
+  }
+
+  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (line.length < 8 || line.length > 300) continue;
+    const cleaned = line.replace(/^[▶●•·◆◇■□★☆+\-○•▪●◦*]+\s*/, '').trim();
+    if (cleaned.length < 8) continue;
+    classifyLine(cleaned, buckets);
+  }
+
+  return bucketsToNotices(buckets);
 }

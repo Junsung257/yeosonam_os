@@ -32,6 +32,7 @@ import {
   type AttractionIndex,
 } from './attraction-matcher';
 import { resolveRequiredTerms, mergeNotices } from './terms-library';
+import { computeWriteTimePackageState } from './package-post-process';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  pkg 출력 타입 (travel_packages 컬럼 부분집합)
@@ -401,8 +402,25 @@ export async function convertIntakeToPackage(
   // 8) product_summary — 간단 요약 (LLM 없이)
   const summary = `${ir.meta.region} ${ir.meta.tripStyle} 상품입니다. ${ir.hotels[0]?.name || ''} (${ir.hotels[0]?.grade || ''}) 기준, ${ir.meta.airline} 이용. ${ir.meta.productType} 타입으로 구성되어 있어 ${ir.meta.productType === '노쇼핑' ? '쇼핑 부담 없이 일정에 집중하실 수 있습니다.' : '알차게 준비된 일정입니다.'}`;
 
-  // 9) 최종 PackageDraft
-  const pkg: PackageDraft = {
+  // 9) 최종 PackageDraft — itinerary·catalog 공통 후처리 SSOT
+  const rawItinerary = {
+    meta,
+    highlights: {
+      inclusions: ir.inclusions,
+      excludes: ir.excludes,
+      shopping: ir.meta.productType === '노쇼핑' ? '노쇼핑' : null,
+      remarks: [],
+    },
+    days: pkgDays,
+    optional_tours: ir.optionalTours.map((ot) => ({
+      name: ot.name,
+      region: ot.region,
+      price: ot.priceLabel,
+      note: ot.note,
+    })),
+  };
+
+  const pkg: PackageDraft = computeWriteTimePackageState({
     title,
     destination: ir.meta.region,
     country: ir.meta.country,
@@ -436,22 +454,7 @@ export async function convertIntakeToPackage(
     ],
     product_summary: summary,
     product_tags: [`#${ir.meta.region}`, `#${ir.meta.productType}`],
-    itinerary_data: {
-      meta,
-      highlights: {
-        inclusions: ir.inclusions,
-        excludes: ir.excludes,
-        shopping: ir.meta.productType === '노쇼핑' ? '노쇼핑' : null,
-        remarks: [],
-      },
-      days: pkgDays,
-      optional_tours: ir.optionalTours.map((ot) => ({
-        name: ot.name,
-        region: ot.region,
-        price: ot.priceLabel,
-        note: ot.note,
-      })),
-    },
+    itinerary_data: rawItinerary as Record<string, unknown>,
     itinerary: itineraryStrings,
     accommodations,
     raw_text: ir.rawText,
@@ -461,7 +464,7 @@ export async function convertIntakeToPackage(
     filename: filename || `ir-${Date.now()}`,
     file_type: 'ir',
     confidence: 0.95,
-  };
+  }) as PackageDraft;
 
   return {
     pkg,

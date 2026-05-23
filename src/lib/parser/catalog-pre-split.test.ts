@@ -6,6 +6,8 @@ import {
   applyLLMSplit,
   detectCatalogBoundariesWithLLM,
   splitCatalogSmart,
+  collectPkgBlockStarts,
+  extractProductRawTextSection,
   type LLMSplitResult,
 } from './catalog-pre-split';
 
@@ -254,6 +256,51 @@ ${'일정 본문 '.repeat(30)}`;
       const r = await splitCatalogSmart(raw);
       expect(r.source).toBe('single');
       expect(r.sections).toHaveLength(1);
+    });
+  });
+
+  describe('PKG 블록 분할 (2026-05-22 보홀 슬림팩)', () => {
+    const boholCatalog = `PKG
+보홀 슬림팩 3박5일
+출 발 일
+5/31 (일)
+판 매 가
+499,000/인
+제1일 부산 출발
+제2일 보홀
+제3일 보홀
+제4일 보홀
+제5일 부산 도착
+
+PKG
+보홀 슬림팩 4박6일
+출 발 일
+5/30 (토)
+판 매 가
+519,000/인
+제1일 부산 출발
+제2일 보홀
+제3일 보홀
+제4일 보홀
+제5일 보홀
+제6일 부산 도착
+
+필리핀여행상품 취소규정 안내`;
+
+    it('collectPkgBlockStarts: PKG 헤더 2건', () => {
+      const starts = collectPkgBlockStarts(boholCatalog);
+      expect(starts).toHaveLength(2);
+    });
+
+    it('extractProductRawTextSection: 상품별 일차 max가 분리됨', () => {
+      const s0 = extractProductRawTextSection(boholCatalog, '보홀 슬림팩 3박5일', 0, 2);
+      const s1 = extractProductRawTextSection(boholCatalog, '보홀 슬림팩 4박6일', 1, 2);
+      expect(s0).toContain('3박5일');
+      expect(s0).not.toContain('4박6일');
+      expect([...s0.matchAll(/제\s*(\d+)\s*일/g)].map(m => parseInt(m[1]))).toEqual([1, 2, 3, 4, 5]);
+      expect(s1).toContain('4박6일');
+      expect(s1).not.toMatch(/3박5일/);
+      expect([...s1.matchAll(/제\s*(\d+)\s*일/g)].map(m => parseInt(m[1]))).toEqual([1, 2, 3, 4, 5, 6]);
     });
   });
 });

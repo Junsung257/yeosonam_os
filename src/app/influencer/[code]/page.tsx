@@ -109,22 +109,39 @@ export default function InfluencerDashboard() {
   const [settlementPdfErr, setSettlementPdfErr] = useState('');
   const [coBrandCopied, setCoBrandCopied] = useState(false);
 
-  const fetchDashboard = useCallback(async (withPin?: string) => {
+  // PIN 인증 → JWT 발급
+  const handlePinLogin = useCallback(async (enteredPin: string) => {
     setLoading(true);
     setPinError('');
-    let pinToSend = withPin;
-    if (pinToSend === undefined && typeof window !== 'undefined') {
-      try {
-        pinToSend = sessionStorage.getItem(`inf_pin_${code}`) ?? undefined;
-      } catch {
-        pinToSend = undefined;
+    try {
+      const res = await fetch('/api/influencer/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, pin: enteredPin }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPinError(json.error || '인증 실패');
+        return;
       }
+      if (json.affiliate) {
+        setAuth(json.affiliate);
+      }
+    } catch {
+      setPinError('서버 연결 실패');
+    } finally {
+      setLoading(false);
     }
+  }, [code, setAuth]);
+
+  const fetchDashboard = useCallback(async () => {
+    setLoading(true);
+    setPinError('');
     try {
       const res = await fetch('/api/influencer/dashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referral_code: code, pin: pinToSend }),
+        body: JSON.stringify({ referral_code: code }),
       });
       const json = await res.json();
 
@@ -137,13 +154,6 @@ export default function InfluencerDashboard() {
       setData(json);
       if (json.affiliate) {
         setAuth(json.affiliate);
-        if (pinToSend) {
-          try {
-            sessionStorage.setItem(`inf_pin_${code}`, pinToSend);
-          } catch {
-            /* ignore */
-          }
-        }
       }
     } catch {
       setPinError('서버 연결 실패');
@@ -153,38 +163,29 @@ export default function InfluencerDashboard() {
   }, [code, setAuth, clearAuth]);
 
   const openSettlementPdf = useCallback(
-    async (settlementId: string, referralCode: string) => {
+    async (settlementId: string, _referralCode: string) => {
       setSettlementPdfErr('');
-      const storedPin = (() => {
-        try {
-          return sessionStorage.getItem(`inf_pin_${referralCode}`) || pin || '';
-        } catch {
-          return pin || '';
-        }
-      })();
       try {
-        const res = await fetch(`/api/settlements/${settlementId}/pdf`, {
-          headers: {
-            'x-referral-code': referralCode,
-            'x-pin': storedPin.replace(/\D/g, '').slice(0, 4),
-          },
-        });
+        const res = await fetch(`/api/settlements/${settlementId}/pdf`);
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
           setSettlementPdfErr((j as { error?: string }).error || `열기 실패 (${res.status})`);
           return;
         }
-        const html = await res.text();
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        const w = window.open(url, '_blank', 'noopener,noreferrer');
-        if (!w) setSettlementPdfErr('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
-        else setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '정산내역서.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } catch {
         setSettlementPdfErr('네트워크 오류');
       }
     },
-    [pin],
+    [],
   );
 
   // 인증 완료 상태면 자동 로드
@@ -219,7 +220,7 @@ export default function InfluencerDashboard() {
                 maxLength={4}
                 value={pin}
                 onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-                onKeyDown={e => e.key === 'Enter' && pin.length === 4 && fetchDashboard(pin)}
+                onKeyDown={e => e.key === 'Enter' && pin.length === 4 && handlePinLogin(pin)}
                 className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-center text-2xl tracking-[0.5em] font-bold focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 placeholder="••••"
                 autoFocus
@@ -227,7 +228,7 @@ export default function InfluencerDashboard() {
             </div>
             {pinError && <p className="text-red-500 text-sm text-center">{pinError}</p>}
             <button
-              onClick={() => fetchDashboard(pin)}
+              onClick={() => handlePinLogin(pin)}
               disabled={pin.length !== 4 || loading}
               className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >

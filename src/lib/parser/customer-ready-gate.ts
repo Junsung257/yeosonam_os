@@ -2,11 +2,19 @@
  * @file customer-ready-gate.ts — 자동 approve 게이트 (사장님 손 떼기, 2026-05-14 UX-6)
  *
  * 데이터 + UX + paraphrase + photo 모두 통과해야 status='approved' 자동.
- * 1개라도 실패 → status='review_required' + 정확한 보완 안내.
+ * 1개라도 실패 → status='REVIEW_NEEDED' + 정확한 보완 안내.
+ *
+ * L1 모바일 CRC 게이트: `@/lib/l1-customer-ready-gate` (INSERT 직전 SSOT)
  */
 
 import type { ExtractedData } from '@/lib/parser';
 import { isWeakCopy } from './recommendation-copy';
+
+export type { L1GateResult } from '@/lib/l1-customer-ready-gate';
+export {
+  evaluateL1CustomerReadyGate,
+  decidePackageStatusFromL1,
+} from '@/lib/l1-customer-ready-gate';
 
 export type GateResult = {
   ready: boolean;
@@ -72,11 +80,11 @@ export function evaluateCustomerReadyGate(input: GateInput): GateResult {
 /**
  * 게이트 결과 → status 자동 결정.
  *   ready=true → 'approved' (모바일 노출)
- *   reasons 있으면 → 'review_required'
+ *   reasons 있으면 → 'REVIEW_NEEDED'
  *   warnings 만 있으면 → 'draft' (사장님 검수 권장)
  */
-export function decideStatusFromGate(gate: GateResult): 'approved' | 'review_required' | 'draft' {
-  if (gate.reasons.length > 0) return 'review_required';
+export function decideStatusFromGate(gate: GateResult): 'approved' | 'REVIEW_NEEDED' | 'draft' {
+  if (gate.reasons.length > 0) return 'REVIEW_NEEDED';
   if (gate.warnings.length > 0) return 'draft';
   return 'approved';
 }

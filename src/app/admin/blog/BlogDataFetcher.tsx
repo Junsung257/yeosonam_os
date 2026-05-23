@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { CAT_LABELS, VALID_CATEGORIES } from '@/lib/blog-categories';
+import type { BlogCategory } from '@/lib/blog-categories';
 
 const STATUS_BADGE: Record<string, string> = {
   published: 'bg-emerald-50 text-emerald-700',
@@ -7,14 +9,7 @@ const STATUS_BADGE: Record<string, string> = {
   archived: 'bg-admin-surface-2 text-admin-muted',
 };
 
-const CAT_LABELS: Record<string, string> = {
-  product_intro: '상품 소개',
-  travel_tips: '여행팁',
-  visa_info: '비자·입국',
-  itinerary: '추천일정',
-  preparation: '여행준비',
-  local_info: '현지정보',
-};
+// BlogDataFetcher 내부에서만 사용 (ssot는 lib/blog-categories.ts)
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -129,6 +124,11 @@ export default async function BlogDataFetcher({
                 <td>
                   <span className="text-admin-2xs text-admin-muted">
                     {CAT_LABELS[post.category || ''] || post.travel_packages?.destination || '—'}
+                  {post.category && !CAT_LABELS[post.category] && (
+                    <span className="ml-1 px-1 py-0.5 text-[9px] bg-red-100 text-red-600 rounded-admin-xs font-semibold" title="정의되지 않은 카테고리">
+                      !{post.category}
+                    </span>
+                  )}
                   </span>
                   {post.topic_source && post.topic_source !== 'manual' && (
                     <span className="ml-1 px-1 py-0.5 text-[9px] bg-brand-light text-brand rounded-admin-xs font-semibold uppercase">

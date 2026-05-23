@@ -101,9 +101,73 @@ const FINANCE_TOOLS_RAW = [
       }
     }
   },
+  // ── Phase 2 신규: 부가세/카드매출/지출증빙/손익 ──
+  {
+    name: 'get_vat_report_data',
+    description: '부가세 신고자료를 추출합니다. (읽기 전용) — 과세/면세 매출 및 매입내역',
+    input_schema: {
+      type: 'object' as const,
+      required: ['year', 'quarter'],
+      properties: {
+        year: { type: 'number', description: '조회 연도' },
+        quarter: { type: 'number', description: '분기 (1-4)' },
+      },
+    },
+  },
+  {
+    name: 'get_card_sales',
+    description: '카드 매출 내역을 조회합니다. (PG사/카드사별)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date_from: { type: 'string', description: '시작일 (YYYY-MM-DD)' },
+        date_to: { type: 'string', description: '종료일 (YYYY-MM-DD)' },
+        pg_provider: { type: 'string', description: 'PG사 (inicis/toss/nice 등)' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_expense_receipts',
+    description: '지출 증빙/영수증 목록을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date_from: { type: 'string' },
+        date_to: { type: 'string' },
+        status: { type: 'string', description: 'pending/approved/rejected' },
+        category: { type: 'string' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'get_profit_loss_summary',
+    description: '월별 손익 요약을 조회합니다. (매출 - 매입 = 손익)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        month: { type: 'string', description: '조회 월 (YYYY-MM, 기본 이번달)' },
+      },
+    },
+  },
+  {
+    name: 'export_settlement_report',
+    description: '정산 리포트를 생성합니다. (HITL 필요) — 엑셀/CSV 다운로드 링크 제공',
+    input_schema: {
+      type: 'object' as const,
+      required: ['target_type', 'period_from', 'period_to'],
+      properties: {
+        target_type: { type: 'string', description: 'land_operator / affiliate / all' },
+        period_from: { type: 'string' },
+        period_to: { type: 'string' },
+        format: { type: 'string', description: 'xlsx(기본) / csv' },
+      },
+    },
+  },
 ]
 
-const FINANCE_TOOLS = FINANCE_TOOLS_RAW
+const FINANCE_TOOLS = FINANCE_TOOLS_RAW as any
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -232,6 +296,80 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       if (error) throw error
       return { proposed: true, action_id: action?.[0]?.id, summary, total: args.booking_ids.length }
     }
+
+    // ── Phase 2 신규 Tool ──
+    case 'get_vat_report_data': {
+      const { year, quarter } = args
+      const startMonth = (quarter - 1) * 3 + 1
+      const dateFrom = `${year}-${String(startMonth).padStart(2, '0')}-01`
+      const dateTo = quarter < 4
+        ? `${year}-${String(startMonth + 3).padStart(2, '0')}-01`
+        : `${year + 1}-01-01`
+      const [salesResult, expenseResult] = await Promise.all([
+        supabaseAdmin.from('bookings').select('total_price, paid_amount, status')
+          .gte('created_at', dateFrom).lt('created_at', dateTo),
+        supabaseAdmin.from('expenses').select('amount, vat_amount, category')
+          .gte('created_at', dateFrom).lt('created_at', dateTo),
+      ])
+      const taxableSales = (salesResult.data ?? []).reduce((s: number, b: any) => s + (b.paid_amount || 0), 0)
+      const totalPurchases = (expenseResult.data ?? []).reduce((s: number, e: any) => s + (e.amount || 0), 0)
+      const totalVatInput = (expenseResult.data ?? []).reduce((s: number, e: any) => s + (e.vat_amount || 0), 0)
+      return {
+        year, quarter,
+        taxable_sales: taxableSales,
+        vat_output: Math.round(taxableSales * 0.1),
+        total_purchases: totalPurchases,
+        vat_input: totalVatInput,
+        vat_due: Math.round(taxableSales * 0.1) - totalVatInput,
+        note: '※ 추정치입니다. 정확한 신고는 세무사와 협의하세요.',
+      }
+    }
+    case 'get_card_sales': {
+      let query = supabaseAdmin.from('card_sales').select('*').order('approved_at', { ascending: false }).limit(args.limit || 30)
+      if (args.date_from) query = query.gte('approved_at', args.date_from)
+      if (args.date_to) query = query.lte('approved_at', args.date_to)
+      if (args.pg_provider) query = query.eq('pg_provider', args.pg_provider)
+      const { data, error } = await query
+      if (error) throw error
+      return data ?? []
+    }
+    case 'list_expense_receipts': {
+      let query = supabaseAdmin.from('expense_receipts').select('*').order('created_at', { ascending: false }).limit(args.limit || 30)
+      if (args.date_from) query = query.gte('created_at', args.date_from)
+      if (args.date_to) query = query.lte('created_at', args.date_to)
+      if (args.status) query = query.eq('status', args.status)
+      if (args.category) query = query.eq('category', args.category)
+      const { data, error } = await query
+      if (error) throw error
+      return data ?? []
+    }
+    case 'get_profit_loss_summary': {
+      const month = args.month || new Date().toISOString().slice(0, 7)
+      const startDate = `${month}-01`
+      const year = parseInt(month.slice(0, 4))
+      const mon = parseInt(month.slice(5, 7))
+      const endDate = mon < 12 ? `${year}-${String(mon + 1).padStart(2, '0')}-01` : `${year + 1}-01-01`
+      const [revenueRes, costRes, expenseRes] = await Promise.all([
+        supabaseAdmin.from('bookings').select('total_price, paid_amount').gte('created_at', startDate).lt('created_at', endDate),
+        supabaseAdmin.from('settlements').select('amount').gte('created_at', startDate).lt('created_at', endDate),
+        supabaseAdmin.from('expenses').select('amount, category').gte('created_at', startDate).lt('created_at', endDate),
+      ])
+      const revenue = (revenueRes.data ?? []).reduce((s: number, b: any) => s + (b.paid_amount || 0), 0)
+      const cost = (costRes.data ?? []).reduce((s: number, c: any) => s + (c.amount || 0), 0)
+      const expense = (expenseRes.data ?? []).reduce((s: number, e: any) => s + (e.amount || 0), 0)
+      return { month, revenue, cost_of_goods: cost, gross_profit: revenue - cost, operating_expense: expense, net_profit: revenue - cost - expense }
+    }
+    case 'export_settlement_report': {
+      const summary = `[정산리포트 생성] ${args.target_type} — ${args.period_from} ~ ${args.period_to}`
+      const { data: action, error } = await supabaseAdmin.from('agent_actions').insert({
+        agent_type: 'finance', action_type: 'export_report', summary,
+        payload: { ...args, requested_at: new Date().toISOString() },
+        requested_by: 'jarvis', priority: 'normal',
+      }).select()
+      if (error) throw error
+      return { proposed: true, action_id: action?.[0]?.id, summary }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }

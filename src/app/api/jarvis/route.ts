@@ -23,6 +23,7 @@ import { recordPlatformLearningEvent } from '@/lib/platform-learning'
 import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
 import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
 import { rateLimitAI } from '@/lib/rate-limiter'
+import { applyRequestContext } from '@/lib/jarvis/scoped-client'
 
 export async function POST(req: NextRequest) {
   const limited = await rateLimitAI(req)
@@ -43,6 +44,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '인증이 필요합니다.', reason: auth.reason }, { status: 401 })
     }
     const ctx: JarvisContext = auth.ctx
+
+    // Phase 0: RLS 격리 + 감사 컨텍스트 설정
+    await applyRequestContext(ctx)
 
     // 1. 세션 가져오기 또는 생성 — 게스트 격리 적용
     let session: any = null

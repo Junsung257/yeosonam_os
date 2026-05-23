@@ -13,8 +13,10 @@ import {
   parseCityFromActivity, parseFlightActivity, formatFlightLabel,
   type CanonicalView,
 } from '@/lib/render-contract';
-import type { NoticeBlock } from '@/lib/standard-terms';
-import { NOTICE_DOT_COLOR, NOTICE_CARD_TONE, getSourceBadgeColor } from '@/lib/standard-terms';
+import PackageTermsSection from '@/components/package/PackageTermsSection';
+import PackageTermsBottomSheet from '@/components/customer/PackageTermsBottomSheet';
+import type { NoticeBlock } from '@/lib/standard-terms-client';
+import { hasSpecialTermsBanner, shouldSuppressStandardCancelTable } from '@/lib/standard-terms-client';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
@@ -264,7 +266,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
-  const [programExpanded, setProgramExpanded] = useState(false);
 
   // CSR 네비게이션 시 referrer가 홈으로 고정되는 문제 대응 — 현재 URL을 sessionStorage에 저장
   useEffect(() => {
@@ -283,16 +284,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [activeSection, setActiveSection] = useState('상품정보');
   const [activeDay, setActiveDay] = useState(1);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  // ERR-20260418-20 — 유의사항 독립 토글 (다중 열림 가능)
-  const [expandedNotices, setExpandedNotices] = useState<Set<number>>(new Set());
-  const toggleNotice = (idx: number) => {
-    setExpandedNotices(prev => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  };
+  const [termsSheetOpen, setTermsSheetOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -1170,122 +1162,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 포함/불포함/써차지 ═══ */}
-      {/* Phase 1 CRC: view.inclusions 소비 — 아이콘 매칭 완료된 basic + 프로그램 분류 */}
-      {(view.inclusions.basic.length || view.inclusions.program.length || view.excludes.basic.length || view.surchargesMerged.length) ? (
-        <div className="px-4 py-6 space-y-3">
-          {(view.inclusions.basic.length > 0 || view.inclusions.program.length > 0) && (
-            <div className="bg-brand-light/50 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-text-primary mb-3">✅ 포함 사항</h3>
-              {view.inclusions.basic.length > 0 && (
-                <ul className="space-y-1.5">
-                  {view.inclusions.basic.map((item, i) => (
-                    <li key={i} className="text-sm text-text-primary flex gap-2 leading-relaxed">
-                      <span className="shrink-0 text-base leading-snug">{item.icon}</span>{item.text}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {view.inclusions.program.length > 0 && (() => {
-                const cleaned = view.inclusions.program
-                  .map(item => item
-                    .replace(/^[\s▶■★◈◆·\-]+/u, '')
-                    .replace(/^특전\s*\d+[.)]\s*/u, '')
-                    .replace(/^<[^>]+>\s*/u, '')
-                    .replace(/☞/gu, '—')
-                    .trim()
-                  )
-                  .filter(Boolean);
-                if (cleaned.length === 0) return null;
-                return (
-                  <div className={`${view.inclusions.basic.length > 0 ? 'mt-3 pt-3 border-t border-brand-light' : ''}`}>
-                    <button
-                      type="button"
-                      onClick={() => setProgramExpanded(prev => !prev)}
-                      aria-expanded={programExpanded}
-                      className="w-full flex items-center justify-between text-left active:scale-[0.98] transition py-1"
-                    >
-                      <span className="text-sm font-bold text-brand flex items-center gap-1.5">
-                        <span>✨</span>
-                        <span>특전 {cleaned.length}가지 둘러보기</span>
-                      </span>
-                      <span className="text-xs font-semibold text-brand">
-                        {programExpanded ? '▲ 접기' : '▼ 펼치기'}
-                      </span>
-                    </button>
-                    {programExpanded && (
-                      <ul className="mt-3 space-y-1.5 pl-1">
-                        {cleaned.map((item, i) => (
-                          <li key={i} className="text-sm text-text-primary flex gap-2 leading-relaxed">
-                            <span className="shrink-0 text-brand mt-0.5">•</span>
-                            <span className="break-keep">{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-          {/* W1 CRC — 불포함/써차지 병합은 view에서 이미 해결됨 (ERR-20260418-14/24) */}
-          {view.excludes.basic.length > 0 && (
-            <div className="bg-red-50/30 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-red-800 mb-3">❌ 불포함 사항</h3>
-              <ul className="space-y-1.5">
-                {view.excludes.basic.map((item, i) => (
-                  <li key={i} className="text-sm text-red-700 flex gap-2 leading-relaxed">
-                    <span className="shrink-0 text-red-300">•</span>
-                    <span>
-                      {item}
-                      {/* 2026-05-18 박제 (ERR-hardcoded-default-tip @ b68b08fe 나트랑):
-                          매너팁/가이드팁/마사지팁 default 금액 자동 suffix 제거.
-                          원문에 명시 안 한 사실 자동 추가는 환각 ([[feedback_card_news_faithfulness]]).
-                          금액 노출은 사장님이 원문 박은 그대로만 (excludes 본문 또는 notices_parsed). */}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {view.surchargesMerged.length > 0 && (() => {
-            // 기간(start/end)이 있는 써차지가 하나라도 있으면 "기간별" 제목 + 안내문구 표시
-            const hasPeriod = view.surchargesMerged.some(s => s.structured?.start);
-            return (
-              <div className="bg-orange-50/50 rounded-2xl p-4">
-                <h3 className="text-xs font-bold text-orange-800 mb-3">💲 {hasPeriod ? '기간별 추가 요금' : '추가 요금'}</h3>
-                <ul className="space-y-1.5">
-                  {view.surchargesMerged.map((s, i) => (
-                    <li key={i} className="text-sm text-orange-800 flex gap-2 leading-relaxed">
-                      <span className="shrink-0 text-orange-300">•</span>
-                      {s.structured ? (
-                        <span>
-                          <b>{s.name || '추가요금'}</b>
-                          {s.period && <span className="text-orange-600"> ({s.period})</span>}
-                          {s.priceLabel && <span className="font-semibold">: {s.priceLabel}</span>}
-                        </span>
-                      ) : (
-                        <span>{s.label}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                {hasPeriod && (
-                  <p className="text-[11px] text-orange-600 mt-2 italic">※ 위 기간 출발 시 1박당 해당 금액이 추가됩니다.</p>
-                )}
-              </div>
-            );
-          })()}
-          {/* ERR-HET-mobile-shopping-missing@2026-04-22 — A4 에는 있지만 모바일엔 쇼핑센터 섹션이 누락돼
-              품격 상품의 "쇼핑 3회" 정보가 고객 화면에 안 노출됨. view.shopping(CRC) 를 소비해 추가. */}
-          {view.shopping.text && !/노쇼핑/.test(view.shopping.text) && (
-            <div className="bg-brand-light/50 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-text-primary mb-2">🛍️ 쇼핑센터</h3>
-              <p className="text-sm text-text-primary leading-relaxed">{view.shopping.text}</p>
-            </div>
-          )}
-        </div>
-      ) : null}
+      {/* ═══ 포함/불포함/써차지/쇼핑 — CRC + terms-catalog ═══ */}
+      {view && <PackageTermsSection view={view} />}
 
       {/* ═══ 일정표 ═══ */}
       {days.length > 0 && (
@@ -1751,58 +1629,44 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         })}
       />
 
-      {/* ═══ 유의사항 (독립 토글 다중 열림) + 예약 약관 ═══ */}
+      {/* ═══ 유의사항 · 예약 약관 (본문은 미리보기, 전문은 바텀시트) ═══ */}
       <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-[108px]">
         {(() => {
-          // 4-level 약관 해소 결과를 서버(page.tsx)에서 initialNotices 로 주입.
-          //   Tier 1 플랫폼 → Tier 2 랜드사 공통 → Tier 3 랜드사×상품타입 → Tier 4 상품 특약.
-          //   같은 notice.type 이면 상위 tier 가 override. 새 type 은 append.
           if (initialNotices.length === 0 && !pkg.customer_notes) return null;
-          const hasSpecialTerms = initialNotices.some(n => (n._tier ?? 1) >= 3);
+          const hasSpecialTerms = hasSpecialTermsBanner(initialNotices);
           return (
             <div>
-              <h2 className="text-lg font-extrabold text-gray-900 mb-1">유의사항 · 예약 약관</h2>
-              {hasSpecialTerms && (
-                <p className="text-xs font-bold text-red-600 mb-4">
-                  ※ 본 상품은 <span className="underline">특별약관</span>이 적용되며, 표준약관보다 우선 적용됩니다. 예약 시 동의한 것으로 간주합니다.
-                </p>
-              )}
+              <h2 className="text-lg font-extrabold text-gray-900 mb-3">유의사항 · 예약 약관</h2>
               {initialNotices.length > 0 ? (
-                <div className="space-y-2">
-                  {initialNotices.map((notice, idx) => {
-                    const isOpen = expandedNotices.has(idx);
-                    const lines = (notice.text || '').split('\n').map(l => l.trim()).filter(Boolean);
-                    const badgeColor = getSourceBadgeColor(notice._source, notice._tier);
-                    const isOverride = (notice._tier ?? 1) >= 2;
-                    const tone = NOTICE_CARD_TONE[notice.type] || NOTICE_CARD_TONE.INFO;
-                    return (
-                      <div key={idx} className={`border border-gray-100 border-l-4 ${tone.border} ${tone.bg} rounded-xl overflow-hidden`}>
-                        <button onClick={() => toggleNotice(idx)}
-                          className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-white/60 transition">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${NOTICE_DOT_COLOR[notice.type] || NOTICE_DOT_COLOR.INFO}`} />
-                          <span className="text-xs font-bold text-gray-700 flex-1">{notice.title}</span>
-                          {isOverride && notice._source && (
-                            <span className={`text-[10px] font-bold ${badgeColor} bg-gray-50 px-1.5 py-0.5 rounded`}>
-                              [{notice._source}]
-                            </span>
-                          )}
-                          <span className="text-gray-300 text-sm">{isOpen ? '▲' : '▼'}</span>
-                        </button>
-                        {isOpen && (
-                          <div className="px-4 pb-3 pt-0">
-                            {lines.map((line, lIdx) => (
-                              <p key={lIdx} className="text-sm text-gray-500 leading-relaxed">{line.startsWith('•') ? line : `• ${line}`}</p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <p className="text-xs text-gray-500 italic mt-2">※ 본 약관은 여행상품 표준 기준에 상품·랜드사별 특약을 반영해 해소된 결과입니다. 예약 시점 스냅샷이 별도 [예약 안내문]으로 발송됩니다.</p>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-gray-900 mb-1.5">📋 예약 전 꼭 확인해 주세요</p>
+                  {hasSpecialTerms ? (
+                    <p className="text-xs text-red-700 leading-relaxed mb-3">
+                      <span className="font-bold">특별약관 적용 상품</span>
+                      {' — '}
+                      예약 확정(발권·파이널) 이후 취소 시, 시점과 무관하게 항공·호텔 실제 위약금이{' '}
+                      <span className="font-bold">최대 100% 청구</span>될 수 있습니다.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-600 leading-relaxed mb-3">
+                      항공·숙박·취소 규정이 포함된 상품입니다. 예약 전 약관 확인이 필요합니다.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setTermsSheetOpen(true)}
+                    className={`text-sm font-semibold hover:underline ${
+                      hasSpecialTerms ? 'text-red-700' : 'text-brand'
+                    }`}
+                  >
+                    {hasSpecialTerms
+                      ? '🚨 특별약관 및 취소 규정 전체 보기 →'
+                      : '여행 약관 및 취소 규정 전체 보기 →'}
+                  </button>
                 </div>
-              ) : pkg.customer_notes ? (
+              ) : (
                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.customer_notes}</p>
-              ) : null}
+              )}
             </div>
           );
         })()}
@@ -1877,13 +1741,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 취소·환불 요약 카드 — CTA 직전 (불안 제거, 신뢰↑) ═══ */}
+      {/* ═══ 취소·환불 요약 카드 — CTA 직전 ═══ */}
       {(() => {
-        // initialNotices에서 취소 수수료 항목 탐색
-        const cancelNotice = initialNotices.find(n =>
-          n.type === 'CANCEL_FEE' || /취소.*수수료|환불.*규정|cancell/i.test(n.title || '')
-        );
-        // 취소 약관 텍스트에서 핵심 줄만 추출 (숫자+일 패턴)
+        const suppressStandardCancel = shouldSuppressStandardCancelTable(initialNotices);
+
+        // 특별약관 상품: 유의사항 섹션에서 이미 안내 → CTA 직전 중복 카드 생략
+        if (suppressStandardCancel) {
+          return null;
+        }
+
+        const cancelNotice = initialNotices.find(n => n.type === 'RESERVATION');
         const lines = (cancelNotice?.text || '').split('\n')
           .map(l => l.trim()).filter(Boolean)
           .filter(l => /[0-9]+일|전액|무료|%|수수료/.test(l))
@@ -1905,10 +1772,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               </ul>
               <button
                 type="button"
-                onClick={() => {
-                  // 유의사항 섹션으로 스크롤
-                  sectionRefs.current['유의사항']?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
+                onClick={() => setTermsSheetOpen(true)}
                 className="mt-2.5 text-[11px] text-brand font-medium hover:underline"
               >
                 전체 약관 보기 →
@@ -1933,14 +1797,25 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약하기 (Jiwonnote 분석 P3) ═══ */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-40 border-t border-gray-100 safe-area-bottom">
-        {/* 신뢰 배너 — 상품 타입별 보장 문구 */}
-        <div className="bg-brand-light text-blue-700 text-[10px] text-center py-1.5 font-semibold flex items-center justify-center gap-2.5 flex-wrap px-3">
-          <span>✅ 숨은 수수료 없음</span>
-          {pkg.product_type && /노팁|no.?tip/i.test(pkg.product_type) && <span>✅ 팁 없음</span>}
-          {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
-          {pkg.product_type && /노옵션|no.?option/i.test(pkg.product_type) && <span>✅ 선택관광 강요 없음</span>}
-          <span>✅ {nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약'}</span>
-        </div>
+        {/* 신뢰 배너 — 특약 상품은 방어형 카피, 일반 상품은 전환형 카피 */}
+        {(() => {
+          const specialTermsProduct = hasSpecialTermsBanner(initialNotices);
+          return (
+            <div className={`text-[10px] text-center py-1.5 font-semibold flex items-center justify-center gap-2.5 flex-wrap px-3 ${
+              specialTermsProduct ? 'bg-amber-50 text-amber-900' : 'bg-brand-light text-blue-700'
+            }`}>
+              <span>{specialTermsProduct ? '✅ 현지 필수비용 투명 공개' : '✅ 숨은 수수료 없음'}</span>
+              {pkg.product_type && /노팁|no.?tip/i.test(pkg.product_type) && <span>✅ 팁 없음</span>}
+              {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
+              {pkg.product_type && /노옵션|no.?option/i.test(pkg.product_type) && <span>✅ 선택관광 강요 없음</span>}
+              <span>
+                ✅ {specialTermsProduct
+                  ? '예약 즉시 항공·숙박 확보'
+                  : (nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약')}
+              </span>
+            </div>
+          );
+        })()}
         <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-4 pt-3 flex items-center gap-2">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
           <div className="flex-1 min-w-0">
@@ -2103,6 +1978,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
         </div>
       )}
+
+      <PackageTermsBottomSheet
+        open={termsSheetOpen}
+        onClose={() => setTermsSheetOpen(false)}
+        notices={initialNotices}
+        hasSpecialTerms={hasSpecialTermsBanner(initialNotices)}
+        productTitle={pkg.title}
+      />
     </main>
     </>
   );

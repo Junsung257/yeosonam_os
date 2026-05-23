@@ -35,11 +35,11 @@ export function readLastContentCreativeId(): string | null {
 export default function BlogTracker({ contentCreativeId }: { contentCreativeId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // PIPA: First-touch 콘텐츠 어트리뷰션은 동의 후에만 기록.
+    // 조회수는 비식별 통계 — 동의와 무관하게 항상 기록 (PIPA/GDPR 준수)
+    trackContentView(contentCreativeId);
+
+    // PIPA: 상세 어트리뷰션(UTM/세션/사용자 식별)은 동의 후에만 기록.
     // 익명 engagement (체류시간/스크롤)은 비식별 통계 — 그대로 진행.
-    if (hasAnalyticsConsent()) {
-      trackContentView(contentCreativeId);
-    }
 
     // last-touch attribution: 예약 시 booking.content_creative_id 매칭용 24h 캐시
     try {
