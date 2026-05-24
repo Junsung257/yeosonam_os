@@ -82,20 +82,34 @@ export default function SearchAdsPage() {
     setSyncing(true);
     try {
       const perf = await fetchAllPerformance(keywords);
+      const syncPromises: Promise<void>[] = [];
       const updated = keywords.map(k => {
         const p = perf.find(pp => pp.keywordId === k.id);
         if (!p) return k;
-        // 아카이브에 누적
+        // Supabase + localStorage에 누적
         if (k.tier !== 'negative') {
           const dest = packages.find(pkg => pkg.id === k.productId)?.destination || '';
-          if (dest) archivePerformance(dest, k.keyword, { impressions: p.impressions, clicks: p.clicks, ctr: p.ctr, cpc: p.cpc, conversions: p.conversions, spend: p.spend, roas: 0 });
+          if (dest) {
+            const metrics = { impressions: p.impressions, clicks: p.clicks, ctr: p.ctr, cpc: p.cpc, conversions: p.conversions, spend: p.spend, roas: 0 };
+            archivePerformance(dest, k.keyword, metrics);
+            // Supabase 동기화
+            syncPromises.push(
+              fetch('/api/admin/keyword-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ destination: dest, keyword: k.keyword, platform: k.platform, metrics }),
+              }).catch(() => {/* silent */}),
+            );
+          }
         }
         return { ...k, impressions: p.impressions, clicks: p.clicks, ctr: p.ctr, cpc: p.cpc, conversions: p.conversions, spend: p.spend };
       });
+      // 모든 Supabase 저장 완료 대기
+      await Promise.allSettled(syncPromises);
       setKeywords(updated);
       saveKeywords(updated);
-      setLastSync(new Date().toISOString().slice(11, 16)); // HH:mm (locale-stable)
-      showToast('성과 동기화 완료');
+      setLastSync(new Date().toISOString().slice(11, 16));
+      showToast(`성과 동기화 완료 (${syncPromises.length}건 Supabase 저장)`);
     } catch { showToast('동기화 실패'); }
     finally { setSyncing(false); }
   }, [keywords, packages, showToast]);
