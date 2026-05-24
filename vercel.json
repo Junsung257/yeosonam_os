@@ -356,6 +356,10 @@
     {
       "path": "/api/cron/learning-flywheel",
       "schedule": "18 2 * * 1"
+    },
+    {
+      "path": "/api/admin/optimization",
+      "schedule": "0 21 * * *"
     }
   ],
   "functions": {

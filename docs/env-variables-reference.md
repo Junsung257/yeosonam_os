@@ -247,3 +247,56 @@ REVALIDATE_SECRET=your_random_secret
 # UNMATCHED_BOOTSTRAP_SCORE_MIN=75
 # UNMATCHED_BOOTSTRAP_SCORE_MAX=94
 ```
+
+---
+
+## 🆕 작업 완료 후 신규 추가된 환경변수 (2026-05-24)
+
+아래 변수들은 마케팅 자동화 전면 활성화 작업 중 새로 추가되었거나, 기존 코드에서 사용 중이나 `.env.local`/Vercel에 누락된 항목입니다.
+
+### 필수 — 광고/소셜 게시 활성화하려면 반드시 설정
+
+| 키 | 용도 | 출처/발급처 |
+|---|---|---|
+| `NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API Developer Token | [Google Ads 개발자 토큰](https://developers.google.com/google-ads/api/docs/first-call/dev-token) |
+| `NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID` | Google Ads 계정 ID (예: `123-456-7890`) | Google Ads 대시보드 |
+| `NEXT_PUBLIC_NAVER_ADS_API_KEY` | 네이버 검색광고 API Key | [네이버 SearchAd 매니저](https://manage.searchad.naver.com) → 도구 → API Key |
+| `NEXT_PUBLIC_NAVER_ADS_SECRET_KEY` | 네이버 검색광고 Secret Key (HMAC 서명용) | 위와 동일 |
+| `NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID` | 네이버 검색광고 고객 ID (숫자) | 위와 동일 |
+| `TWITTER_BEARER_TOKEN` | Twitter/X API v2 Bearer Token | [Twitter Developer Portal](https://developer.twitter.com) → Projects → Keys and tokens |
+| `NAVER_CAFE_ID` | 네이버 카페 고유 ID (카페 URL에서 숫자 부분) | 네이버 카페 관리 페이지 |
+| `INSTAGRAM_BUSINESS_ACCOUNT_ID` | Instagram 비즈니스 계정 ID (IG User ID와 다를 수 있음) | Meta Business Suite → Instagram 계정 설정 |
+
+### 선택 — 광고 안전 장치 (기본값 dry-run)
+
+| 키 | 용도 | 기본값 |
+|---|---|---|
+| `META_ADS_DRY_RUN` | `1`이면 Meta/Google 광고 API 실제 호출 안 함 (DB 로그만) | `1` |
+| `META_ADS_TEST_MODE` | `1`이면 Meta 광고를 PAUSED 상태로 생성 | `1` |
+| `NEXT_PUBLIC_DEFAULT_TENANT_ID` | 마케팅 파이프라인 기본 테넌트 ID | `default` |
+| `AFFILIATE_JWT_SECTET` | 제휴 JWT 서명용 시크릿 | fallback: `'yeosonam-dev-jwt-secret-fallback'` |
+---
+### Phase 1 — 키워드 최적화 API (2026-05-24)
+
+`CRON_SECRET`과 `SUPABASE_SERVICE_ROLE_KEY`는 위 「필수」 항목에 문서화되어 있습니다. Phase 1에서 추가된 Cron Job:
+
+```json
+{
+  "path": "/api/admin/optimization",
+  "schedule": "0 21 * * *"
+}
+```
+
+- 매일 **21:00 UTC (= 06:00 KST)** 키워드 최적화 루프 실행
+- 키워드 성과 수집 → Search Terms 분석 → negative 자동 추가 → 입찰 최적화
+- Vercel이 `Authorization: Bearer $CRON_SECRET` 자동 전송
+
+새로운 API 엔드포인트:
+
+| 엔드포인트 | 용도 | 인증 |
+|---|---|---|
+| `POST /api/admin/optimization` | 최적화 루프 수동/크론 실행 | `Bearer $CRON_SECRET` |
+| `GET /api/admin/optimization` | 상태 확인 | `Bearer $CRON_SECRET` |
+| `GET /api/admin/keyword-stats` | 키워드 성과 요약 | `Bearer $CRON_SECRET` |
+| `GET /api/admin/keyword-stats/top` | 성과 상위/하위 키워드 | `Bearer $CRON_SECRET` |
+| `GET /api/admin/keyword-stats/search-terms` | 검색어 현황 + negative 추천 | `Bearer $CRON_SECRET` |
