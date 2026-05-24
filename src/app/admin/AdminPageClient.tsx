@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
 import { fmtNum as fmtComma } from '@/lib/admin-utils';
-const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
+const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });\nconst AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
 const ComposedChart = nextDynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
 const Bar = nextDynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
@@ -1568,6 +1568,9 @@ export default function AdminPage({
       {/* AI 인사이트 (ROAS 포함) */}
       <AIInsights packages={packages} chartData={chartData} />
 
+      {/* 검색광고 성과 */}
+      <AdKpiWidget />
+
       {/* SNS 채널 현황 */}
       <SocialMetricsWidget />
 
@@ -1600,6 +1603,7 @@ export default function AdminPage({
               { href: '/admin/marketing', label: '마케팅' },
               { href: '/admin/marketing/card-news', label: '카드뉴스' },
               { href: '/admin/search-ads', label: '검색광고' },
+              { href: '/admin/keyword-stats', label: '키워드 성과' },
               { href: '/admin/jarvis', label: '자비스 AI' },
             ]},
             { title: '재무', links: [

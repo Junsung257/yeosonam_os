@@ -142,6 +142,8 @@ const navGroups: NavGroup[] = [
       { href: '/admin/content-analytics',      label: '콘텐츠 성과',  icon: TrendingUp },
       { href: '/admin/content-gaps',           label: '콘텐츠 갭',    icon: AlertTriangle },
       { href: '/admin/search-ads',             label: '검색광고',     icon: SearchIcon },
+      { href: '/admin/keyword-stats',          label: '키워드 성과',   icon: BarChart3 },
+      { href: '/admin/keyword-optimization',   label: '최적화 로그',   icon: Activity },
       { divider: true as const, label: '블로그' },
       { href: '/admin/blog',                   label: '블로그',       icon: BookOpen },
       { href: '/admin/blog/queue',             label: '발행 큐',      icon: ListChecks },
