@@ -360,6 +360,10 @@
     {
       "path": "/api/admin/optimization",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/trend-cleanup",
+      "schedule": "30 3 * * *"
     }
   ],
   "functions": {
