@@ -208,6 +208,80 @@ const MARKETING_TOOLS_RAW = [
       },
     },
   },
+  // ── 신규: 키워드 성과 + 최적화 (Phase 3) ──
+  {
+    name: 'get_keyword_stats',
+    description: '키워드별 광고 성과 통계 조회 (클릭, 노출, CTR, CPC, 전환)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        keyword: { type: 'string', description: '검색어 (부분일치)' },
+        platform: { type: 'string', description: 'naver/google/meta' },
+        date_from: { type: 'string' },
+        date_to: { type: 'string' },
+        limit: { type: 'number' },
+        order_by: { type: 'string', description: 'clicks/impressions/cost/conversions/date' },
+      },
+    },
+  },
+  {
+    name: 'get_optimization_logs',
+    description: '자동 최적화 실행 로그 조회',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: { type: 'number' },
+        status: { type: 'string', description: 'success/failed/running' },
+        date_from: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'get_ad_budget_summary',
+    description: '광고비 지출 요약 조회 (기간별/플랫폼별)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date_from: { type: 'string' },
+        date_to: { type: 'string' },
+        group_by: { type: 'string', description: 'day/platform/campaign' },
+        platform: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'run_ad_optimization',
+    description: '광고 최적화 루프를 실행합니다. (HITL 필요)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        platform: { type: 'string', description: 'naver/google/meta (비우면 전체)' },
+        dry_run: { type: 'boolean', description: 'true면 실제 변경 없이 시뮬레이션' },
+      },
+    },
+  },
+  {
+    name: 'get_content_performance_summary',
+    description: '콘텐츠 허브 전체 성과 요약 (발행수, 조회수, 전환율)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date_from: { type: 'string' },
+        date_to: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'list_admin_alerts_marketing',
+    description: '마케팅 관련 관리자 알림/경고 조회',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        severity: { type: 'string', description: 'low/medium/high/critical' },
+        limit: { type: 'number' },
+      },
+    },
+  },
 ]
 
 const MARKETING_TOOLS = MARKETING_TOOLS_RAW as any
@@ -366,6 +440,121 @@ async function executeTool(toolName: string, args: any, ctx?: JarvisContext): Pr
       let query = sb.from('content_analytics').select('*').order('date', { ascending: false }).limit(30)
       if (args.date_from) query = query.gte('date', args.date_from)
       if (args.date_to) query = query.lte('date', args.date_to)
+      const { data, error } = await query
+      if (error) throw error
+      return data
+    }
+
+    // ── 신규 Phase 3: 키워드 통계 ──
+    case 'get_keyword_stats': {
+      let query = sb.from('keyword_performances').select('*').order(args.order_by || 'date', { ascending: false }).limit(args.limit || 30)
+      if (args.keyword) query = query.ilike('keyword', `%${args.keyword}%`)
+      if (args.platform) query = query.eq('platform', args.platform)
+      if (args.date_from) query = query.gte('date', args.date_from)
+      if (args.date_to) query = query.lte('date', args.date_to)
+      const { data, error } = await query
+      if (error) throw error
+      const summary = {
+        totalKeywords: data?.length || 0,
+        totalClicks: data?.reduce((s: number, d: any) => s + (d.clicks || 0), 0) || 0,
+        totalImpressions: data?.reduce((s: number, d: any) => s + (d.impressions || 0), 0) || 0,
+        totalCost: data?.reduce((s: number, d: any) => s + (d.cost || 0), 0) || 0,
+        totalConversions: data?.reduce((s: number, d: any) => s + (d.conversions || 0), 0) || 0,
+        avgCtr: data?.length ? (data.reduce((s: number, d: any) => s + (d.ctr || 0), 0) / data.length).toFixed(2) : 0,
+        avgCpc: data?.length ? (data.reduce((s: number, d: any) => s + (d.cpc || 0), 0) / data.length).toFixed(2) : 0,
+      }
+      return { summary, details: data }
+    }
+
+    // ── 최적화 로그 ──
+    case 'get_optimization_logs': {
+      let query = sb.from('optimization_logs').select('*').order('created_at', { ascending: false }).limit(args.limit || 20)
+      if (args.status) query = query.eq('status', args.status)
+      if (args.date_from) query = query.gte('created_at', args.date_from)
+      const { data, error } = await query
+      if (error) throw error
+      return data
+    }
+
+    // ── 광고비 요약 ──
+    case 'get_ad_budget_summary': {
+      let query = sb.from('ad_performances').select('*').order('date', { ascending: false }).limit(90)
+      if (args.date_from) query = query.gte('date', args.date_from)
+      if (args.date_to) query = query.lte('date', args.date_to)
+      if (args.platform) query = query.eq('platform', args.platform)
+      const { data, error } = await query
+      if (error) throw error
+
+      // 그룹화
+      const groupBy = args.group_by || 'day'
+      let grouped: Record<string, any> = {}
+      for (const row of data || []) {
+        const key = groupBy === 'platform' ? row.platform
+          : groupBy === 'campaign' ? row.campaign_name || '기타'
+          : row.date
+        if (!grouped[key]) grouped[key] = { key, spend: 0, revenue: 0, clicks: 0, conversions: 0 }
+        grouped[key].spend += row.spend || 0
+        grouped[key].revenue += row.revenue || 0
+        grouped[key].clicks += row.clicks || 0
+        grouped[key].conversions += row.conversions || 0
+      }
+      const totalSpend = Object.values(grouped).reduce((s: number, g: any) => s + g.spend, 0)
+      const totalRevenue = Object.values(grouped).reduce((s: number, g: any) => s + g.revenue, 0)
+      return {
+        totalSpend,
+        totalRevenue,
+        roas: totalSpend > 0 ? (totalRevenue / totalSpend).toFixed(2) : '0',
+        period: `${args.date_from || '최근'} ~ ${args.date_to || '최근'}`,
+        breakdown: Object.values(grouped),
+      }
+    }
+
+    // ── 광고 최적화 실행 ──
+    case 'run_ad_optimization': {
+      const { data, error } = await sb.from('agent_actions').insert({
+        agent_type: 'marketing',
+        action_type: 'ad_optimization',
+        summary: `광고 최적화 실행: ${args.platform || '전체'}${args.dry_run ? ' (시뮬레이션)' : ''}`,
+        payload: { platform: args.platform || null, dry_run: args.dry_run || false },
+        requested_by: 'jarvis',
+        priority: 'high',
+      }).select()
+      if (error) throw error
+      return {
+        action_id: data?.[0]?.id,
+        requested: true,
+        dry_run: args.dry_run || false,
+        platform: args.platform || 'all',
+        next_step: args.dry_run
+          ? '시뮬레이션 결과는 곧 확인 가능합니다'
+          : '관리자 승인 후 최적화가 실행됩니다',
+      }
+    }
+
+    // ── 콘텐츠 성과 요약 ──
+    case 'get_content_performance_summary': {
+      let query = sb.from('content_analytics').select('*').order('date', { ascending: false }).limit(30)
+      if (args.date_from) query = query.gte('date', args.date_from)
+      if (args.date_to) query = query.lte('date', args.date_to)
+      const { data, error } = await query
+      if (error) throw error
+      const totalViews = data?.reduce((s: number, d: any) => s + (d.views || 0), 0) || 0
+      const totalShares = data?.reduce((s: number, d: any) => s + (d.shares || 0), 0) || 0
+      const totalConversions = data?.reduce((s: number, d: any) => s + (d.conversions || 0), 0) || 0
+      return {
+        totalPosts: data?.length || 0,
+        totalViews,
+        totalShares,
+        totalConversions,
+        conversionRate: totalViews > 0 ? ((totalConversions / totalViews) * 100).toFixed(2) + '%' : '0%',
+        details: data,
+      }
+    }
+
+    // ── 마케팅 알림 ──
+    case 'list_admin_alerts_marketing': {
+      let query = sb.from('admin_alerts').select('*').order('created_at', { ascending: false }).limit(args.limit || 20)
+      if (args.severity) query = query.eq('severity', args.severity)
       const { data, error } = await query
       if (error) throw error
       return data

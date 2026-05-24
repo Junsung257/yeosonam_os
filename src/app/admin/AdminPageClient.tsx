@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
 import { fmtNum as fmtComma } from '@/lib/admin-utils';
-const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });\nconst AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
+const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
+const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
 const ComposedChart = nextDynamic(() => import('recharts').then(m => ({ default: m.ComposedChart })), { ssr: false });
 const Bar = nextDynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
@@ -1588,22 +1589,22 @@ export default function AdminPage({
             { title: '운영', links: [
               { href: '/admin/bookings', label: '예약 관리' },
               { href: '/admin/customers', label: '고객 관리' },
-              { href: '/admin/payments', label: '입금 관리' },
-              { href: '/admin/upload', label: '업로드' },
+              { href: '/admin/payments', label: '입금/정산' },
+              { href: '/admin/inbox', label: '고객 문의' },
             ]},
             { title: '상품', links: [
               { href: '/admin/packages', label: '상품 관리' },
-              { href: '/admin/products/review', label: '상품 검수' },
+              { href: '/admin/upload', label: '업로드' },
               { href: '/admin/registration-monitor', label: '등록 모니터' },
               { href: '/admin/fraud-quarantine', label: '자동 격리 검토' },
               { href: '/admin/land-operators', label: '랜드사 관리' },
-              { href: '/admin/departing-locations', label: '출발지 관리' },
+              { href: '/admin/destinations', label: '출발지 관리' },
             ]},
             { title: 'AI/마케팅', links: [
-              { href: '/admin/marketing', label: '마케팅' },
+              { href: '/admin/marketing', label: '마케팅 대시' },
               { href: '/admin/marketing/card-news', label: '카드뉴스' },
+              { href: '/admin/content-hub', label: '콘텐츠' },
               { href: '/admin/search-ads', label: '검색광고' },
-              { href: '/admin/keyword-stats', label: '키워드 성과' },
               { href: '/admin/jarvis', label: '자비스 AI' },
             ]},
             { title: '재무', links: [

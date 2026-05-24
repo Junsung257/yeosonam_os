@@ -75,29 +75,55 @@ export async function notifyIndexing(
   report.google = googleResult.ok ? 'success' : 'failed';
   if (!googleResult.ok) report.google_error = googleResult.error;
 
-  // 2. IndexNow (Bing/Yandex/Seznam 통합)
+  // 2. IndexNow (Bing/Yandex/Seznam/Naver 통합)
   const indexNowKey = getIndexNowKey();
   if (!indexNowKey) {
     report.indexnow = 'skipped';
     report.indexnow_error = 'INDEXNOW_KEY 미설정';
   } else {
+    const indexNowPayload = {
+      host,
+      key: indexNowKey,
+      keyLocation: `${baseUrl}/${indexNowKey}.txt`,
+      urlList: [url],
+    };
+    // 글로벌 IndexNow (Bing, Yandex, Seznam 등)
     try {
-      const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
+      const globalRes = await fetch('https://api.indexnow.org/indexnow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host,
-          key: indexNowKey,
-          keyLocation: `${baseUrl}/${indexNowKey}.txt`,
-          urlList: [url],
-        }),
+        body: JSON.stringify(indexNowPayload),
       });
-      report.indexnow = indexnowRes.status === 200 || indexnowRes.status === 202 ? 'success' : 'failed';
+      report.indexnow = globalRes.status === 200 || globalRes.status === 202 ? 'success' : 'failed';
       if (report.indexnow !== 'success') {
-        report.indexnow_error = `HTTP ${indexnowRes.status}`;
+        report.indexnow_error = `global HTTP ${globalRes.status}`;
       }
     } catch (err) {
       report.indexnow_error = err instanceof Error ? err.message : String(err);
+    }
+    // 네이버 전용 IndexNow (별도 엔드포인트 — 동일 key 사용)
+    try {
+      const naverRes = await fetch('https://searchadvisor.naver.com/indexnow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(indexNowPayload),
+      });
+      // 성공 시 indexnow 상태 유지, 실패 시에도 전체 실패로 처리하지 않음
+      const naverOk = naverRes.status === 200 || naverRes.status === 202;
+      if (!naverOk) {
+        // naver 실패는 별도 로그만 (Bing/Yandex 경로는 이미 성공했을 수 있음)
+        report.indexnow_error = report.indexnow_error
+          ? `${report.indexnow_error}; naver HTTP ${naverRes.status}`
+          : `naver HTTP ${naverRes.status}`;
+        if (report.indexnow === 'success') {
+          // 글로벌은 성공했으니 naver 실패는 부차 정보로만 남김
+        }
+      }
+    } catch (err) {
+      const naverErr = err instanceof Error ? err.message : String(err);
+      report.indexnow_error = report.indexnow_error
+        ? `${report.indexnow_error}; naver ${naverErr}`
+        : `naver ${naverErr}`;
     }
   }
 
@@ -108,6 +134,7 @@ export async function notifyIndexing(
     const rssUrl = `${baseUrl}/api/rss`;
     const pings = [
       { name: 'bing', url: `https://www.bing.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}` },
+      { name: 'naver', url: `https://searchadvisor.naver.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}` },
     ];
     for (const p of pings) {
       try {
@@ -154,26 +181,47 @@ export async function notifyIndexingBatch(
     urls.map(url => requestGoogleIndexing(url, type)),
   );
 
-  // IndexNow batch (한 번에 최대 10,000 URL)
+  // IndexNow batch (글로벌 + 네이버, 한 번에 최대 10,000 URL)
   const indexNowKey = getIndexNowKey();
   let indexnowOk = false;
   let indexnowError: string | undefined;
   if (indexNowKey) {
+    const indexNowPayload = {
+      host,
+      key: indexNowKey,
+      keyLocation: `${baseUrl}/${indexNowKey}.txt`,
+      urlList: urls,
+    };
+    // 글로벌 IndexNow (Bing, Yandex, Seznam)
     try {
-      const indexnowRes = await fetch('https://api.indexnow.org/indexnow', {
+      const globalRes = await fetch('https://api.indexnow.org/indexnow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host,
-          key: indexNowKey,
-          keyLocation: `${baseUrl}/${indexNowKey}.txt`,
-          urlList: urls,
-        }),
+        body: JSON.stringify(indexNowPayload),
       });
-      indexnowOk = indexnowRes.status === 200 || indexnowRes.status === 202;
-      if (!indexnowOk) indexnowError = `HTTP ${indexnowRes.status}`;
+      indexnowOk = globalRes.status === 200 || globalRes.status === 202;
+      if (!indexnowOk) indexnowError = `global HTTP ${globalRes.status}`;
     } catch (err) {
       indexnowError = err instanceof Error ? err.message : String(err);
+    }
+    // 네이버 전용 IndexNow
+    try {
+      const naverRes = await fetch('https://searchadvisor.naver.com/indexnow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(indexNowPayload),
+      });
+      const naverOk = naverRes.status === 200 || naverRes.status === 202;
+      if (!naverOk) {
+        indexnowError = indexnowError
+          ? `${indexnowError}; naver HTTP ${naverRes.status}`
+          : `naver HTTP ${naverRes.status}`;
+      }
+    } catch (err) {
+      const naverErr = err instanceof Error ? err.message : String(err);
+      indexnowError = indexnowError
+        ? `${indexnowError}; naver ${naverErr}`
+        : `naver ${naverErr}`;
     }
   } else {
     indexnowError = 'INDEXNOW_KEY 미설정';

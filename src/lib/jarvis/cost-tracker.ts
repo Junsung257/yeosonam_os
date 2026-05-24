@@ -33,10 +33,11 @@ const PRICING: Record<string, PricePair> = {
   'gemini-embedding-001':  { input: 0.025, output: 0,     cacheRead: 0     },
 }
 
-// $/1M tokens — DeepSeek V4 (추정값)
+// $/1M tokens — DeepSeek V4 (추정값, 2026-05 기준)
 const DEEPSEEK_PRICING: Record<string, PricePair> = {
-  'deepseek-v4-flash': { input: 0.014, output: 0.028, cacheRead: 0.0014 },
-  'deepseek-v4-pro':   { input: 0.14,  output: 0.28,  cacheRead: 0.014  },
+  'deepseek-v4-flash-lite': { input: 0.008, output: 0.016, cacheRead: 0.0008 },
+  'deepseek-v4-flash':      { input: 0.014, output: 0.028, cacheRead: 0.0014 },
+  'deepseek-v4-pro':        { input: 0.14,  output: 0.28,  cacheRead: 0.014  },
 }
 
 export interface GeminiUsage {

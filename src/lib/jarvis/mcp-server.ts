@@ -120,12 +120,18 @@ const TOOL_SCOPE_MAP: Record<string, { scope: McpToolScope; hitl: boolean }> = {
   propose_bulk_confirm_settlements: { scope: 'admin', hitl: true },
 
   // --- marketing ---
-  generate_card_news:        { scope: 'write', hitl: false },
-  generate_sns_copy:         { scope: 'write', hitl: false },
-  get_ad_performance:        { scope: 'read', hitl: false },
-  list_campaigns:            { scope: 'read', hitl: false },
-  get_keyword_performance:   { scope: 'read', hitl: false },
-  propose_blog_draft:        { scope: 'write', hitl: true },
+  generate_card_news:              { scope: 'write', hitl: false },
+  generate_sns_copy:               { scope: 'write', hitl: false },
+  get_ad_performance:              { scope: 'read', hitl: false },
+  list_campaigns:                  { scope: 'read', hitl: false },
+  get_keyword_performance:         { scope: 'read', hitl: false },
+  propose_blog_draft:              { scope: 'write', hitl: true },
+  get_keyword_stats:               { scope: 'read', hitl: false },
+  get_optimization_logs:           { scope: 'read', hitl: false },
+  get_ad_budget_summary:           { scope: 'read', hitl: false },
+  run_ad_optimization:             { scope: 'write', hitl: true },
+  get_content_performance_summary: { scope: 'read', hitl: false },
+  list_admin_alerts_marketing:     { scope: 'read', hitl: false },
 
   // --- sales ---
   list_affiliates:           { scope: 'read', hitl: false },

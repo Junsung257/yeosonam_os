@@ -1448,7 +1448,7 @@ JSON 배열로 응답:
         let pkgStatus = regWrite.travelPackageStatus;
         if (uploadGate === 'BLOCKED') {
           productStatus = 'REVIEW_NEEDED';
-          pkgStatus = 'pending_review';
+          pkgStatus = 'pending';  // ★ 변경: pending_review → pending (어드민 목록에 보이도록)
         }
         if (l1Gate.reasons.length > 0) {
           console.warn('[Upload API] L1 Gate BLOCK:', l1Gate.codes.join(','), '—', l1Gate.reasons.join('; '));
@@ -1466,10 +1466,17 @@ JSON 배열로 응답:
         }
 
         // ── G4. 상태 결정 ────────────────────────────────────────────────────
+        // 2026-05-24 박제 (ERR-pending-review-404): 기존 pending_review → pending 으로 변경.
+        //   이유:
+        //     1) 'pending_review' 는 isCustomerVisibleStatus() 에서 무조건 404 (고객 노출 불가).
+        //     2) 어드민 상품관리 /admin/pages 의 pending 탭에도 포함되지 않음 (보이지도 않음).
+        //     3) 이 상태로 DB 에 쌓이면 사장님이 어드민에서 찾을 수조차 없어 영구 방치됨.
+        //   해결: 등록 직후는 일단 'pending' (어드민 상품관리 목록에 보임) 으로 하고,
+        //     audit_status='clean' 이면 'active' 로 자동 승격 (G8 후처리에서 처리).
 
         if (uploadGate === 'REVIEW_NEEDED' && productStatus === 'approved') {
           productStatus = 'draft';
-          pkgStatus = 'pending_review';
+          pkgStatus = 'pending';  // ★ 변경: pending_review → pending
         }
 
         console.log(`[Upload API] 상태 결정: products=${productStatus}, travel_packages=${pkgStatus} (confidence=${(confidenceV3 * 100).toFixed(0)}%)`);
@@ -1792,6 +1799,30 @@ JSON 배열로 응답:
           }
         }
 
+        // ★ 2026-05-24 박제 (ERR-pending-review-404):
+        //   nextAfter 에서 post_register_audit.js 가 실행되어 audit_status 가 설정됐을 수 있음.
+        //   audit_status='clean' or 'info' 이면 status='active' 로 즉시 승격 (고객 노출).
+        //   post_register_audit.js 내부에서도 동일 로직 수행하지만, 여기서도 한 번 더 확인해
+        //   응답 반환 전에 이미 감사가 완료된 케이스를 대비.
+        if (pkgResult?.id && isSupabaseConfigured) {
+          try {
+            const { data: check } = await supabaseAdmin
+              .from('travel_packages')
+              .select('audit_status, status')
+              .eq('id', pkgResult.id)
+              .single();
+            if (check && (check.audit_status === 'clean' || check.audit_status === 'info') && check.status !== 'active') {
+              await supabaseAdmin
+                .from('travel_packages')
+                .update({ status: 'active', updated_at: new Date().toISOString() })
+                .eq('id', pkgResult.id);
+              console.log(`[Upload API] ✅ audit_status=${check.audit_status} — status→active 자동 승격 (고객 노출 가능): ${pkgResult.id}`);
+            }
+          } catch (_e) {
+            // fail-soft — post_register_audit.js 가 백그라운드에서 처리하므로 실패해도 무방
+          }
+        }
+
       } catch (saveErr) {
         // ── 보상 트랜잭션: products만 삽입됐으면 롤백 ──────────────────────
         if (productInserted && internalCode && isSupabaseConfigured) {
@@ -1879,80 +1910,151 @@ JSON 배열로 응답:
               .then(undefined, () => {});
           }
 
-          // ── STRICT SSOT 정책 (2026-05-16, 옵션 1 박제) ──────────────────────
-          //   사장님 의도: attractions 테이블 = 사장님이 관리하는 SSOT. 매칭만 시키고,
-          //   매칭 실패 시 신규 INSERT 하지 않음. unmatched_activities 큐에 적재 → 사장님이
-          //   어드민에서 alias 추가 또는 신규 attraction 등록 결정.
+          // ── P11-3: Wikibase Reconcile 기반 신규 관광지 자동 등록 (2026-05-24) ──────
+          //   STRICT SSOT 정책 → "완전 자동 등록" (사장님 결정):
+          //   외부 POI 명칭을 Wikibase Reconciliation API 로 QID 정규화 → attractions 자동 INSERT.
+          //   동일명칭 | alias 정규화로 "바나산테마파크" = "바나산공원" = 동일 QID 매핑.
+          //   📌 정책 변경 근거: 사장님 "손 안 대도 되는 수준" 요청.
           //
-          //   ⚠️ 폐기된 자동 시드 (autoSeedAttraction): Wikidata/Wikipedia/LLM paraphrase 통과 시
-          //   자동 INSERT 하던 로직. verbatim 라인이 paraphrase 흡사로 통과해 DB 오염
-          //   ("중국보존건축물중 가장 완전한 서안성벽+함광문유적지박물관" 등 박힘 사고).
-          //   ERR-XIY-2026-05-16: 사장님이 2달간 "이미 등록된 attraction 에 매칭만, 새거면
-          //   사장님이 직접 등록한다" 지시를 정규식 가드로 우회하던 패턴 종결.
-          //
-          //   유지: matched canonical mention_count 증가 / unmatched_activities 적재 / alias 자동학습.
-          //   비활성: autoSeedAttraction 호출, Same-Session Seed-Reflect (시드가 없으므로 무용).
-          //
-          //   향후 신규 시드 경로: 사장님 어드민 UI 직접 등록 또는 외부 카탈로그 paste 도구.
+          //   1) reconcilePlaceName 으로 QID 조회
+          //   2) 성공 → qid 중복 체크 → attractions INSERT (aliases+photos+descriptions)
+          //   3) 실패 → 기존처럼 unmatched 큐 적재 (fallback)
+          //   4) fire-and-forget: photo + description 백그라운드 생성
           if (newActivities.length > 0) {
             const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
-            // 2026-05-17 박제 (ERR-shizuoka-country-destination):
-            //   기존 `country: firstSeedDest` 가 '시즈오카' 같은 한글 도시명을 country 컬럼에 박아
-            //   attractions.country='시즈오카'(ISO 아님) → page.tsx OR clause 매칭 실패 → 모바일
-            //   카드 0건 사고. country 는 ISO2, region 은 한글 destination 으로 분리.
             const { inferCountryFromDestination } = await import('@/lib/destination-iso');
             const firstSeedCountry = inferCountryFromDestination(firstSeedDest);
             const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 30);
-            for (const kw of uniqueNew) {
-              await supabaseAdmin.from('unmatched_activities').upsert({
-                activity: kw,
-                package_id: savedIds[0] ?? '',
-                package_title: savedTitles[0] ?? '',
-                day_number: 0,
-                country: firstSeedCountry,
-                region: firstSeedDest,
-                occurrence_count: 1,
-                status: 'pending',
-              }, { onConflict: 'activity' });
-            }
-            console.log(`[Upload API] STRICT SSOT: ${uniqueNew.length}건 unmatched 큐 적재 (자동 시드 비활성)`);
 
-            // PR #94 갭 D — 신규 지역 부트스트랩 자동화.
-            //   시즈오카 사고 (모바일 attraction 카드 0개) 영구 차단.
-            //   백그라운드 DeepSeek 으로 카드 분해 → unmatched_activities.suggested_card 적재.
-            //   사장님 어드민 ☑ 한 번 → 일괄 attractions INSERT → reEnrichAffectedPackages → 모바일 즉시 반영.
-            //   fire-and-forget (사장님 응답 블로킹 X).
-            // 2026-05-18 박제 (ERR-fire-and-forget-silent-fail 연쇄): void → nextAfter 통일.
-            const trigPackageId = savedIds[0];
-            if (trigPackageId && uniqueNew.length > 0) {
-              nextAfter(async () => {
-                try {
-                  const { bootstrapNewRegionAsync } = await import('@/lib/auto-bootstrap-new-region');
-                  const r = await bootstrapNewRegionAsync({
-                    packageId: trigPackageId,
-                    region: firstSeedDest,
-                    country: firstSeedCountry,
-                    activities: uniqueNew,
-                  });
-                  console.log(`[Upload API] Bootstrap: ${r.suggested}건 suggested_card 적재 (alert=${r.alerted})`);
-                } catch (e) {
-                  const msg = e instanceof Error ? e.message : String(e);
-                  console.warn('[Upload API] Bootstrap 예외:', msg);
-                  if (isSupabaseConfigured) {
-                    void postAlert({
-                      category: 'register-backfill',
-                      severity: 'warning',
-                      title: `bootstrapNewRegion 실패: ${trigPackageId.slice(0, 8)}`,
-                      message: msg.slice(0, 500),
-                      ref_type: 'travel_package',
-                      ref_id: trigPackageId,
-                      meta: { phase: 'bootstrap-new-region', region: firstSeedDest, error: msg.slice(0, 500) },
-                      dedupe: true,
+            const { reconcilePlaceName } = await import('@/lib/wikidata-reconcile');
+            const { inferCategory } = await import('@/lib/parser/attraction-category');
+
+            let autoInserted = 0;
+            let reconcileFailed: string[] = [];
+
+            for (const kw of uniqueNew) {
+              const reconciled = await reconcilePlaceName(kw, {
+                country: firstSeedCountry || undefined,
+                typeId: 'Q570',
+                topRes: 3,
+              });
+
+              if (reconciled.length > 0) {
+                const top = reconciled[0];
+                // qid 기반 중복 체크
+                const { data: existing } = await supabaseAdmin
+                  .from('attractions')
+                  .select('id, aliases')
+                  .eq('qid', top.qid)
+                  .maybeSingle();
+
+                if (existing) {
+                  // 기존 attraction 에 alias 만 추가 (원래 activity 명칭을 alias 로)
+                  const existingAliases: string[] = (existing as any).aliases ?? [];
+                  if (!existingAliases.includes(kw) && kw !== top.label_ko && kw !== top.label_en) {
+                    await supabaseAdmin
+                      .from('attractions')
+                      .update({
+                        aliases: [...new Set([...existingAliases, kw])],
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('id', (existing as any).id);
+                    console.log(`[Upload P11-3] 기존 ${top.qid} 에 alias 추가: "${kw}"`);
+                  }
+                  // unmatched 큐 제거 (status='added')
+                  await supabaseAdmin
+                    .from('unmatched_activities')
+                    .update({ status: 'added', note: `auto-matched: ${top.qid}` })
+                    .eq('activity', kw);
+                } else {
+                  // 신규 관광지 auto INSERT
+                  const category = inferCategory(kw, top.type_qid || undefined);
+                  const aliasSet = new Set<string>([kw]);
+                  if (top.label_ko) aliasSet.add(top.label_ko);
+                  if (top.label_en && top.label_en !== top.label_ko) aliasSet.add(top.label_en);
+                  for (const a of top.aliases) {
+                    if (a !== top.label_ko && a !== top.label_en) aliasSet.add(a);
+                  }
+
+                  const { data: inserted } = await supabaseAdmin
+                    .from('attractions')
+                    .insert({
+                      name: top.label_ko || top.label_en || kw,
+                      qid: top.qid,
+                      aliases: [...aliasSet].filter(Boolean),
+                      short_desc: top.description?.slice(0, 30) || null,
+                      long_desc: top.description || null,
+                      country: firstSeedCountry,
+                      region: firstSeedDest,
+                      category,
+                      photos: top.image_url
+                        ? [{ src_medium: top.image_url, src_large: top.image_url, photographer: 'Wikimedia Commons', source: 'wikimedia' }]
+                        : [],
+                      mention_count: 1,
+                      is_active: true,
+                    })
+                    .select('id')
+                    .single();
+
+                  if (inserted) {
+                    autoInserted++;
+                    console.log(`[Upload P11-3] 신규 관광지 자동 등록: "${top.label_ko || top.label_en || kw}" (${top.qid})`);
+                    // unmatched 큐 제거
+                    await supabaseAdmin
+                      .from('unmatched_activities')
+                      .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})` })
+                      .eq('activity', kw);
+
+                    // fire-and-forget: 사진 + 설명 백그라운드 생성
+                    const newId = (inserted as any).id;
+                    nextAfter(async () => {
+                      try {
+                        // 설명 생성
+                        const { generateAttractionDescription } = await import('@/lib/attraction-desc-gen');
+                        const desc = await generateAttractionDescription(top.label_ko || top.label_en || kw, {
+                          qid: top.qid,
+                          wdDescription: top.description,
+                          destination: firstSeedDest,
+                        });
+                        await supabaseAdmin
+                          .from('attractions')
+                          .update({ short_desc: desc.short_desc, updated_at: new Date().toISOString() })
+                          .eq('id', newId);
+                        console.log(`[Upload P11-3] 설명 생성 완료: ${newId.slice(0, 8)}`);
+
+                        // 사진 검색 (기존 photos 비어있을 때만)
+                        const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
+                        await runAttractionPhotoMatch(newId, {
+                          keywords: [top.label_ko || '', top.label_en || '', kw, ...top.aliases].filter(Boolean),
+                          qid: top.qid,
+                          maxPhotos: 5,
+                        });
+                      } catch (e2) {
+                        console.warn(`[Upload P11-3] 백그라운드 처리 실패: ${newId.slice(0, 8)}:`, e2 instanceof Error ? e2.message : e2);
+                      }
                     });
                   }
                 }
-              });
+              } else {
+                // Reconcile 실패 → 기존처럼 unmatched 큐 적재
+                reconcileFailed.push(kw);
+                await supabaseAdmin.from('unmatched_activities').upsert({
+                  activity: kw,
+                  package_id: savedIds[0] ?? '',
+                  package_title: savedTitles[0] ?? '',
+                  day_number: 0,
+                  country: firstSeedCountry,
+                  region: firstSeedDest,
+                  occurrence_count: 1,
+                  status: 'pending',
+                }, { onConflict: 'activity' });
+              }
+
+              // rate limit 100ms
+              await new Promise(r => setTimeout(r, 100));
             }
+
+            console.log(`[Upload API] P11-3: ${autoInserted}건 자동 등록, ${reconcileFailed.length}건 unmatched fallback`);
           }
         }
       } catch (attrError) {

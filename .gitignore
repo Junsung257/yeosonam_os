@@ -151,4 +151,12 @@ db/bulk_backfill_*.ts
 db/bulk_resolve_*.ts
 db/backfill_*.ts
 db/test_set_*.ts
+# 스크립트 — 서비스 계정 키 / OAuth 시크릿 (절대 git에 들어가면 안 됨)
+scripts/google-sa-value.txt
+scripts/*sa-value*.txt
+scripts/oauth-*.mjs
+scripts/*client-secret*.mjs
+scripts/gsc-owner-delegate.html
+
 dev-server.log
+.gstack/

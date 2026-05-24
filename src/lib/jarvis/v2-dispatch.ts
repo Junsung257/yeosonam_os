@@ -55,6 +55,12 @@ import { applyRequestContext } from './scoped-client'
  * agent type → V2 config 조립. 전 agent V2 지원 (Phase 6 확장 완료).
  * ctx 는 concierge 등 tenant 스코프 executor 생성에 사용.
  *
+ * 모델 전략 (V4, 2026-05-24):
+ *   - Flash 기본: operations / products / marketing / sales / concierge
+ *     → 고객 응대 + 조회 위주, 빠른 TTFT 가 사용자 경험
+ *   - Pro 유지: finance / system
+ *     → 정산/회계 정확도 + 시스템 명령 파급력 고려
+ *
  * 라우팅 전략 (Phase 6):
  *   - products 는 surface 에 따라 분기:
  *       · surface='customer' → concierge (RAG 상품 검색 + 고객 톤)
@@ -66,9 +72,17 @@ async function buildConfig(agentType: AgentType, ctx: JarvisContext): Promise<De
   // S1: 게스트(매직링크 진입 고객) — systemPrompt 가드레일 + mutating tool 화이트리스트
   return {
     ...config,
+    model: resolveAgentModel(agentType),
     systemPrompt: applyGuestGuardrail(config.systemPrompt, ctx),
     tools: filterGuestTools(config.tools as Array<{ name?: string } & Record<string, unknown>>, ctx) as typeof config.tools,
   }
+}
+
+/** agent 특성에 따라 Flash / Pro 결정 */
+function resolveAgentModel(agentType: AgentType): string {
+  // 정확도가 생명인 도메인만 Pro, 나머진 Flash (속도 + 비용 최적화)
+  if (agentType === 'finance' || agentType === 'system') return 'deepseek-v4-pro'
+  return 'deepseek-v4-flash'
 }
 
 async function buildConfigRaw(agentType: AgentType, ctx: JarvisContext): Promise<DeepSeekAgentV2Config | null> {

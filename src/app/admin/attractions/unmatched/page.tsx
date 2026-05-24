@@ -20,9 +20,29 @@ interface UnmatchedItem {
   region: string | null;
   occurrence_count: number;
   status: string;
+  note: string | null;  // P11-3: Wikidata 제안 JSON / 관리자 메모
   created_at: string;
   suggested_card?: SuggestedCard | null;
   suggested_at?: string | null;
+}
+
+/** note 컬럼이 Wikidata 제안 JSON인지 확인 */
+function parseNote(note: string | null): { qid?: string; label?: string; confidence?: number } | null {
+  if (!note) return null;
+  // auto-inserted or auto-matched -> Wikidata qid 포함
+  const match = note.match(/^auto-(inserted|matched):\s*(Q\d+)/);
+  if (match) {
+    return { qid: match[2], label: undefined, confidence: 1.0 };
+  }
+  // JSON 형식 (Wikidata suggestion blob) — "[WIKIDATA] {...}" 접두사 대응
+  const jsonStr = note.replace(/^\[WIKIDATA\]\s*/, '');
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && typeof parsed === 'object' && parsed.qid) {
+      return { qid: parsed.qid, label: parsed.label ?? parsed.name, confidence: parsed.confidence };
+    }
+  } catch { /* not JSON */ }
+  return null;
 }
 
 interface UnmatchedSummary {
@@ -618,10 +638,48 @@ export default function UnmatchedPage() {
                     {item.country && <span>🌍 {item.country}</span>}
                     {item.region && <span>📍 {item.region}</span>}
                     <span className="font-bold text-blue-600">등장 {item.occurrence_count}회</span>
+                    {/* P11-3: Wikidata note badge */}
+                    {(() => {
+                      const parsed = parseNote(item.note);
+                      if (!parsed) return null;
+                      return (
+                        <a href={`https://www.wikidata.org/wiki/${parsed.qid}`} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded text-[10px] font-medium hover:bg-sky-200"
+                          title={`Wikidata ${parsed.qid} (conf=${parsed.confidence?.toFixed(2) ?? '?'})`}>
+                          🌐 {parsed.qid} {parsed.label ? `· ${parsed.label}` : ''}
+                        </a>
+                      );
+                    })()}
                   </div>
+                  {item.note && item.note.startsWith('auto-') && (
+                    <p className="text-[10px] text-emerald-600 mt-0.5">✓ {item.note}</p>
+                  )}
+                  {item.note && !item.note.startsWith('auto-') && (
+                    <p className="text-[10px] text-admin-muted-2 mt-0.5 line-clamp-2">{item.note}</p>
+                  )}
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  {/* P11-3: 1-click reconcile (Wikidata 자동 검색) */}
+                  {item.status === 'pending' && !item.note?.startsWith('auto-') && (
+                    <button onClick={async () => {
+                      const res = await fetch('/api/unmatched', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: item.id, action: 'reconcile_auto_insert' }),
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        alert(data.message || '처리 완료');
+                        load();
+                      } else {
+                        alert(data.error || 'reconcile 실패');
+                      }
+                    }}
+                      className="px-3 py-1.5 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600 font-medium">
+                      🪄 1-click reconcile
+                    </button>
+                  )}
                   <button onClick={() => loadSuggestions(item.id)}
                     className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 font-medium">
                     {suggestingId === item.id ? '접기' : '🤖 자동 추천'}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import ContentSubNav from '../content-hub/ContentSubNav';
 
 interface GapItem {
   id: string;
@@ -47,6 +48,7 @@ export default function ContentGapsPage() {
 
   return (
     <div className="space-y-4">
+      <ContentSubNav />
       <div>
         <h1 className="text-admin-lg font-semibold text-admin-text-2">콘텐츠 갭 분석</h1>
         <p className="text-[11px] text-admin-muted mt-0.5">블로그/카드뉴스/광고카피가 없는 상품을 찾아 우선 생성</p>

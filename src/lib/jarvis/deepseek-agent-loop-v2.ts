@@ -1,6 +1,10 @@
 /**
  * 여소남 OS — DeepSeek Agent Loop V2 (streaming + parallel tools)
  * 
+ * V4 (2026-05-24): Flash 기본 전환 — agent config 에서 model 명시 시 오버라이드
+ *   - 대부분의 에이전트는 Flash 로 충분 (고객 응대 속도 + 비용 최적화)
+ *   - finance/system 등 정확도가 중요한 에이전트만 Pro 사용
+ * 
  * V3 (2026-05-01): Gemini → DeepSeek V4-Pro 전환
  * 
  * 특징:
@@ -80,7 +84,7 @@ export async function* runDeepSeekAgentLoopV2(
   params: V2RunParams,
 ): AsyncGenerator<StreamEvent, AgentRunResult> {
   const client = getDeepSeek();
-  const model = config.model ?? process.env.JARVIS_V2_AGENT_MODEL ?? 'deepseek-v4-pro';
+  const model = config.model ?? process.env.JARVIS_V2_AGENT_MODEL ?? 'deepseek-v4-flash';
   const maxRounds = config.maxRounds ?? MAX_ROUNDS;
   const startedAt = Date.now();
   const totalUsage = { promptTokenCount: 0, candidatesTokenCount: 0, cachedContentTokenCount: 0, thoughtsTokenCount: 0 };

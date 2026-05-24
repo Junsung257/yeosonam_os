@@ -17,6 +17,7 @@ import {
   type SearchAdKeyword, type Platform, type KeywordTier, type BidRecommendation,
 } from '@/lib/keyword-brain';
 import { fetchAllPerformance } from '@/lib/search-ads-api';
+import SubNav from '@/components/admin/SubNav';
 
 // ── 탭/필터 상수 ─────────────────────────────────────────
 const TIER_LABELS: Record<KeywordTier, string> = { core: '핵심', mid: '중위', longtail: '세부', negative: '제외' };
@@ -25,7 +26,19 @@ const TIER_COLORS: Record<KeywordTier, string> = { core: 'bg-blue-50 text-blue-7
 interface Package { id: string; title: string; destination?: string; duration?: number; airline?: string; departure_airport?: string; product_type?: string; price?: number; inclusions?: string[]; price_tiers?: { adult_price?: number }[]; display_name?: string; }
 
 export default function SearchAdsPage() {
-  const [keywords, setKeywords] = useState<SearchAdKeyword[]>([]);
+  return (
+    <div className="max-w-7xl mx-auto px-2 py-4 space-y-4">
+      <SubNav basePath="/admin/search-ads" tabs={[
+        { href: '/admin/search-ads', label: '캠페인/키워드' },
+        { href: '/admin/keyword-stats', label: '키워드 성과' },
+        { href: '/admin/keyword-optimization', label: '최적화 로그' },
+      ]} />
+      <SearchAdsContent />
+    </div>
+  );
+}
+
+function SearchAdsContent() {
   const [platform, setPlatform] = useState<Platform>('naver');
   const [tierFilter, setTierFilter] = useState<KeywordTier | 'all'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -41,6 +54,7 @@ export default function SearchAdsPage() {
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
   const [extractedPreview, setExtractedPreview] = useState<ReturnType<typeof extractKeywords>>([]);
   const [recommendations, setRecommendations] = useState<BidRecommendation[]>([]);
+  const [keywords, setKeywords] = useState<SearchAdKeyword[]>([]);
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info'),
@@ -82,7 +96,7 @@ export default function SearchAdsPage() {
     setSyncing(true);
     try {
       const perf = await fetchAllPerformance(keywords);
-      const syncPromises: Promise<void>[] = [];
+      const syncPromises: Promise<unknown>[] = [];
       const updated = keywords.map(k => {
         const p = perf.find(pp => pp.keywordId === k.id);
         if (!p) return k;

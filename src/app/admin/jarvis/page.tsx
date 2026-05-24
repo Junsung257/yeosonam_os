@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { ActionCard } from './components/ActionCard'
 import AgentActionsPanel from './components/AgentActionsPanel'
 import JarvisRagStatusCard from '@/components/admin/JarvisRagStatusCard'
+import McpToolGuide from './components/McpToolGuide'
 
 const AGENT_LABELS: Record<string, string> = {
   operations: '운영',
@@ -17,9 +18,10 @@ const AGENT_LABELS: Record<string, string> = {
 const QUICK_COMMANDS = [
   '오늘 미매칭 입금 보여줘',
   '이번달 매출 현황 알려줘',
-  '다낭 5월 상품 찾아줘',
-  '최근 예약 10개 보여줘',
-  '미해결 에스컬레이션 있어?',
+  '키워드 성과 알려줘',
+  '광고비 얼마 썼어?',
+  '최적화 잘 되고 있어?',
+  '콘텐츠 성과 종합',
 ]
 
 interface Message {
@@ -140,13 +142,15 @@ export default function JarvisPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* RAG 색인 상태 */}
-      <div className="mb-4">
-        <JarvisRagStatusCard />
-      </div>
-      {/* 헤더 */}
-      <div className="flex items-center gap-3 mb-4">
+    <div className="flex h-[calc(100vh-8rem)]">
+      {/* 왼쪽: 채팅/결재함 */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* RAG 색인 상태 */}
+        <div className="mb-4">
+          <JarvisRagStatusCard />
+        </div>
+        {/* 헤더 */}
+        <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 rounded-full bg-brand flex items-center justify-center text-white font-bold text-admin-base">J</div>
         <div>
           <h1 className="text-admin-h3 text-admin-text leading-tight">자비스 AI</h1>
@@ -293,6 +297,10 @@ export default function JarvisPage() {
           <p className="text-admin-xs text-admin-muted-2 mt-1.5">Enter 전송 / Shift+Enter 줄바꿈</p>
         </>
       )}
+      </div> {/* /채팅/결재함 영역 */}
+
+      {/* 오른쪽: MCP 도구 가이드 */}
+      <McpToolGuide />
     </div>
   )
 }

@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS social_platform_configs (
     CHECK (platform IN ('instagram', 'facebook', 'threads', 'twitter', 'naver_cafe')),
   enabled           BOOLEAN DEFAULT false,
   account_id        TEXT,
-  access_token      TEXT,
+  access_token      TEXT,  -- ⚠️ 평문 저장. Phase 2에서 Vault/pgcrypto 암호화 권장
   token_expires_at  TIMESTAMPTZ,
   default_post_type TEXT DEFAULT 'image',
   daily_post_limit  INTEGER DEFAULT 3,

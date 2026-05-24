@@ -47,7 +47,7 @@ interface BuildSlideInput {
  *   - filter / mixBlendMode 미지원
  *   - position: absolute + top/left/width/height 로 요소 배치
  */
-function buildSlideJsx({ slide, width, height }: BuildSlideInput): React.ReactElement {
+function buildSlideJsx({ slide, width, height }: BuildSlideInput) {
   const { w, h } = { w: width, h: height };
 
   // 배경색 (없으면 navy fallback)
@@ -287,8 +287,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
 
+  let card_news_id: string | undefined;
+
   try {
-    const { card_news_id } = (await request.json()) as { card_news_id?: string };
+    ({ card_news_id } = (await request.json()) as { card_news_id?: string });
     if (!card_news_id) {
       return NextResponse.json({ error: 'card_news_id 필수' }, { status: 400 });
     }
@@ -393,7 +395,7 @@ export async function POST(request: NextRequest) {
 
     // Notify Slack about failed render (non-blocking)
     notifyCardNewsRenderComplete({
-      cardNewsId: card_news_id,
+      cardNewsId: card_news_id ?? 'unknown',
       slideCount: 0,
       duration: Date.now() - startTime,
       success: false,

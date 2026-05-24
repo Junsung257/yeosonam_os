@@ -466,6 +466,124 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    // P11-3: 1-click reconcile (Wikidata 자동 검색 -> auto INSERT)
+    //   upload route.ts 의 P11-3 로직과 동일,
+    //   어드민 UI에서 "🪄 1-click reconcile" 버튼으로 호출
+    if (body.action === 'reconcile_auto_insert') {
+      const { data: unmatched } = await supabaseAdmin
+        .from('unmatched_activities')
+        .select('id, activity, region, country')
+        .eq('id', id)
+        .single();
+      if (!unmatched) return NextResponse.json({ error: '항목 없음' }, { status: 404 });
+
+      const { reconcilePlaceName } = await import('@/lib/wikidata-reconcile');
+      const { inferCategory } = await import('@/lib/parser/attraction-category');
+
+      const reconciled = await reconcilePlaceName(unmatched.activity, {
+        country: (unmatched.country as string | undefined),
+        typeId: 'Q570',
+        topRes: 3,
+      });
+
+      if (reconciled.length === 0) {
+        return NextResponse.json({ error: 'Wikidata 에서 일치하는 POI를 찾을 수 없습니다. 수동 등록 또는 별칭 연결을 이용하세요.' }, { status: 404 });
+      }
+
+      const top = reconciled[0];
+
+      // qid 중복 체크
+      const { data: existing } = await supabaseAdmin
+        .from('attractions')
+        .select('id, aliases')
+        .eq('qid', top.qid)
+        .maybeSingle();
+
+      const now = new Date().toISOString();
+
+      if (existing) {
+        // 기존 attraction 에 alias 만 추가
+        const existingAliases: string[] = (existing as any).aliases ?? [];
+        if (!existingAliases.includes(unmatched.activity)) {
+          await supabaseAdmin
+            .from('attractions')
+            .update({ aliases: [...new Set([...existingAliases, unmatched.activity])], updated_at: now })
+            .eq('id', (existing as any).id);
+        }
+        await supabaseAdmin
+          .from('unmatched_activities')
+          .update({ status: 'added', note: `auto-matched: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: (existing as any).id, resolved_by: 'admin_api' })
+          .eq('id', id);
+
+        // resweep + re-enrich
+        try {
+          await resweepUnmatchedActivities([(existing as any).id]);
+          void reEnrichAffectedPackages([(existing as any).id], { maxPackages: 50 }).catch(() => {});
+        } catch {}
+
+        return NextResponse.json({ success: true, message: `기존 "${top.label_ko || top.label_en || top.qid}" 에 alias 연결 완료` });
+      }
+
+      // 신규 INSERT
+      const aliasSet = new Set<string>([unmatched.activity, top.label_ko || '', top.label_en || ''].filter(Boolean));
+      for (const a of top.aliases) {
+        if (a !== top.label_ko && a !== top.label_en) aliasSet.add(a);
+      }
+
+      const category = inferCategory(unmatched.activity, top.type_qid || undefined);
+      const photos = top.image_url
+        ? [{ src_medium: top.image_url, src_large: top.image_url, photographer: 'Wikimedia Commons', source: 'wikimedia' }]
+        : [];
+
+      const { data: created, error: insErr } = await supabaseAdmin
+        .from('attractions')
+        .insert({
+          name: top.label_ko || top.label_en || unmatched.activity,
+          qid: top.qid,
+          aliases: [...aliasSet].filter(Boolean),
+          short_desc: top.description?.slice(0, 30) || null,
+          country: unmatched.country,
+          region: unmatched.region,
+          category,
+          photos,
+          mention_count: 1,
+          is_active: true,
+        })
+        .select('id, name')
+        .single();
+      if (insErr || !created) return NextResponse.json({ error: insErr?.message || 'INSERT 실패' }, { status: 500 });
+
+      await supabaseAdmin
+        .from('unmatched_activities')
+        .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: (created as any).id, resolved_by: 'admin_api' })
+        .eq('id', id);
+
+      // fire-and-forget: photo + description 백그라운드
+      void (async () => {
+        try {
+          const { generateAttractionDescription } = await import('@/lib/attraction-desc-gen');
+          const desc = await generateAttractionDescription(top.label_ko || top.label_en || unmatched.activity, {
+            qid: top.qid, wdDescription: top.description, destination: unmatched.region,
+          });
+          await supabaseAdmin.from('attractions').update({ short_desc: desc.short_desc, updated_at: now }).eq('id', (created as any).id);
+
+          const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
+          await runAttractionPhotoMatch((created as any).id, {
+            keywords: [top.label_ko || '', top.label_en || '', unmatched.activity, ...top.aliases].filter(Boolean),
+            qid: top.qid, maxPhotos: 5,
+          });
+        } catch {}
+      })();
+
+      // resweep + re-enrich
+      try {
+        await resweepUnmatchedActivities([(created as any).id]);
+        void reEnrichAffectedPackages([(created as any).id], { maxPackages: 50 }).catch(() => {});
+      } catch {}
+
+      return NextResponse.json({ success: true, message: `신규 등록: "${(created as any).name}" (${top.qid})`, attraction_id: (created as any).id });
+    }
+
     // 단순 상태 변경 모드
     const { status } = body;
     if (!status) return NextResponse.json({ error: 'status 필요' }, { status: 400 });

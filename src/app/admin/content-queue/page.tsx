@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/Toast';
 import { marked } from 'marked';
 import Link from 'next/link';
 import { fmtDateISO } from '@/lib/admin-utils';
+import ContentSubNav from '../content-hub/ContentSubNav';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',
@@ -179,6 +180,7 @@ export default function ContentQueuePage() {
 
   return (
     <div className="space-y-4">
+      <ContentSubNav />
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>

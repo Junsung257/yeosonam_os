@@ -606,7 +606,25 @@ async function auditOne(pkg, baseUrl) {
         audit_checked_at: new Date().toISOString(),
       }).eq('id', id);
     if (upErr) console.log(`⚠️  audit 결과 저장 실패 (${id}): ${upErr.message}`);
-    else r._persisted_status = auditStatus;
+    else {
+      r._persisted_status = auditStatus;
+
+      // ★ 2026-05-24 박제 (ERR-pending-review-404):
+      //   audit_status='clean' 이면 status='active' 로 자동 승격.
+      //   /register SKILL Step 7 (meta rule) 과 동일 정책 — 어드민 경로/CLI 경로 모두 동일하게 동작.
+      //   'info' 도 자동 승인 OK (안내성 경고만 있음 — 실제 데이터 무결성 영향 없음).
+      //   'warnings' 또는 'blocked' 는 그대로 두고 사장님이 어드민에서 확인.
+      if (auditStatus === 'clean' || auditStatus === 'info') {
+        const { error: promoteErr } = await sb.from('travel_packages')
+          .update({ status: 'active', updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (promoteErr) {
+          console.log(`⚠️  status→active 승격 실패 (${id}): ${promoteErr.message}`);
+        } else {
+          console.log(`   ✅ audit_status=${auditStatus} — status→active 자동 승격 완료 (고객 노출 가능)`);
+        }
+      }
+    }
   }
 
   // 🆕 Visual Regression fixtures.json 자동 등록 (ERR-FUK 재발 방지)

@@ -6,17 +6,34 @@
  *   2. 어드민이 수동 검토 → status='approved'로 변경
  *   3. AdPublishAgent가 approved → active로 전환 후 실제 API 게재
  *
+ * Meta: meta-api.ts의 실제 함수 호출 (createMetaCampaign → createAdSet → uploadCreative → createAd)
+ * Google: Google Ads REST API v16 직접 호출
+ *
  * 안전 장치:
  *   - 예산 상한 (기본 50,000 KRW / 일)
- *   - dryRun 모드 (DB 변경 없음)
+ *   - dryRun 모드 (DB 변경 없음, API 호출 없음)
+ *   - META_ADS_TEST_MODE=1 이면 PAUSED 상태로 생성 (안전 모드)
  *   - agent_incidents 테이블에 실패 기록
  */
 import { BaseMarketingAgent, type MarketingContext, type AgentResult } from '../base-agent';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveOAuthToken } from '../token-resolver';
+import { getSecret } from '@/lib/secret-registry';
+import {
+  createMetaCampaign,
+  createAdSet,
+  uploadCreativeToMeta,
+  createAd,
+  krwToMetaCents,
+} from '@/lib/meta-api';
 
 /** 기본 일 최대 예산 (KRW) — budget_override=true면 무시 */
 const DEFAULT_MAX_DAILY_BUDGET = 50000;
+
+/** 테스트 모드 여부 (환경변수) */
+function isTestMode(): boolean {
+  return getSecret('META_ADS_TEST_MODE') === '1';
+}
 
 export interface AdPublishResult {
   total_approved: number;
@@ -29,6 +46,9 @@ export interface AdPublishResult {
     platform: string;
     campaign_name: string;
     daily_budget: number;
+    meta_campaign_id?: string;
+    meta_adset_id?: string;
+    meta_ad_id?: string;
   }>;
 }
 
@@ -135,7 +155,6 @@ export class AdPublishAgent extends BaseMarketingAgent {
 
       try {
         if (this.dryRun) {
-          // Dry-run: 로그만 출력, DB 변경 없음
           console.log(`[ad-publish] [DRY-RUN] 게재 예정:`, {
             campaign_id: campaign.id,
             name: campaign.name,
@@ -154,23 +173,33 @@ export class AdPublishAgent extends BaseMarketingAgent {
           continue;
         }
 
-        // 3d. 플랫폼별 API 호출 (현재 stub — 실제 연동 시 구현)
-        const adAccountId = campaign.ad_account_id;
         const creativePayload = (creatives ?? []) as AdCreativeRow[];
 
+        let metaCampaignId: string | undefined;
+        let metaAdsetId: string | undefined;
+        let metaAdId: string | undefined;
+
         if (platform === 'meta') {
-          await this.publishToMeta(campaign, creativePayload, ctx.runDate);
+          const metaResult = await this.publishToMeta(campaign, creativePayload, ctx.runDate);
+          metaCampaignId = metaResult.campaignId;
+          metaAdsetId = metaResult.adsetId;
+          metaAdId = metaResult.adId;
         } else if (platform === 'google') {
           await this.publishToGoogle(campaign, creativePayload, ctx.runDate);
         }
 
-        // 3e. DB 상태 업데이트: approved → active
+        // 3e. DB 상태 업데이트: approved → active (Meta 메타 ID 저장)
+        const updateData: Record<string, unknown> = {
+          status: 'active',
+          updated_at: new Date().toISOString(),
+        };
+        if (metaCampaignId) updateData.meta_campaign_id = metaCampaignId;
+        if (metaAdsetId) updateData.meta_adset_id = metaAdsetId;
+        if (metaAdId) updateData.meta_ad_id = metaAdId;
+
         const { error: updateErr } = await supabaseAdmin
           .from('ad_campaigns')
-          .update({
-            status: 'active',
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', campaign.id);
 
         if (updateErr) throw updateErr;
@@ -182,6 +211,9 @@ export class AdPublishAgent extends BaseMarketingAgent {
           platform,
           campaign_name: campaign.name,
           daily_budget: budget,
+          meta_campaign_id: metaCampaignId,
+          meta_adset_id: metaAdsetId,
+          meta_ad_id: metaAdId,
         });
 
         console.log(`[ad-publish] 게재 완료: campaign=${campaign.id}, platform=${platform}`);
@@ -199,74 +231,162 @@ export class AdPublishAgent extends BaseMarketingAgent {
     return { ok: true, data: result };
   }
 
-  // ── Meta Marketing API (stub) ────────────────────────────────────────────
+  // ── Meta Marketing API (실제 meta-api.ts 호출) ────────────────────────────
 
   private async publishToMeta(
     campaign: AdCampaignRow,
     creatives: AdCreativeRow[],
     runDate: string,
-  ): Promise<void> {
-    const adAccountId = campaign.ad_account_id ?? 'act_XXXXXXXXX';
+  ): Promise<{ campaignId: string; adsetId: string; adId: string }> {
+    const testMode = isTestMode();
 
-    // 실제 payload 구조 (참고용)
-    const payload = {
-      ad_account_id: adAccountId,
-      campaign_id: campaign.id,
-      status: 'ACTIVE',
+    // 1. Meta 캠페인 생성
+    const metaCampaign = await createMetaCampaign({
       name: campaign.name,
-      creative: creatives[0]
-        ? {
-            creative_id: creatives[0].id,
-            object_story_spec: {
-              page_id: '<PAGE_ID>',
-              link_data: {
-                message: (creatives[0].ad_copies as { primary_texts?: string[] })?.primary_texts?.[0] ?? campaign.name,
-                link: '<LANDING_PAGE_URL>',
-                call_to_action: { type: (creatives[0].ad_copies as { cta_button?: string })?.cta_button ?? 'BOOK_TRAVEL' },
-              },
-            },
-          }
-        : undefined,
-    };
+      objective: 'LINK_CLICKS',
+    });
+    const metaCampaignId = metaCampaign.id;
 
-    // TODO: 실제 Meta Graph API 호출
-    // POST /v18.0/{ad_account_id}/ads
-    console.log(`[ad-publish] [META] 게재 요청 (stub):`, JSON.stringify(payload, null, 2));
-    console.log(`[ad-publish] [META] runDate=${runDate}, 토큰 만료=${(await resolveOAuthToken('', 'meta'))?.expiresAt ?? 'unknown'}`);
+    // 2. 광고 세트 생성 (KRW → USD cents 변환)
+    const budgetCents = krwToMetaCents(campaign.daily_budget ?? this.maxDailyBudget, 1450);
+    const adset = await createAdSet({
+      campaignId: metaCampaignId,
+      name: `${campaign.name} - AdSet`,
+      dailyBudgetCents: budgetCents,
+    });
+    const adsetId = adset.id;
+
+    // 3. 광고 소재 생성 (첫 번째 creative 사용)
+    const firstCreative = creatives[0];
+    const primaryText = (firstCreative?.ad_copies as { primary_texts?: string[] })?.primary_texts?.[0] ?? campaign.name;
+    const landingUrl = getSecret('NEXT_PUBLIC_SITE_URL') ?? 'https://yeosonam.com';
+    const creative = await uploadCreativeToMeta({
+      name: `${campaign.name} - Creative`,
+      message: primaryText,
+      link: landingUrl,
+    });
+    const creativeId = creative.id;
+
+    // 4. 광고 생성 (testMode면 PAUSED, 아니면 ACTIVE — 어드민 승인 필요)
+    const ad = await createAd({
+      adsetId,
+      creativeId,
+      name: `${campaign.name} - Ad`,
+    });
+    const adId = ad.id;
+
+    // testMode가 아니면 활성화
+    if (!testMode) {
+      const { activateAd } = await import('@/lib/meta-api');
+      await activateAd(adId);
+    }
+
+    console.log(`[ad-publish] [META] 게재 완료: campaign=${metaCampaignId}, adset=${adsetId}, ad=${adId}, testMode=${testMode}, runDate=${runDate}`);
+
+    return { campaignId: metaCampaignId, adsetId, adId };
   }
 
-  // ── Google Ads API (stub) ────────────────────────────────────────────────
+  // ── Google Ads API (REST v16) ────────────────────────────────────────────
 
   private async publishToGoogle(
     campaign: AdCampaignRow,
     creatives: AdCreativeRow[],
     runDate: string,
   ): Promise<void> {
-    const customerId = campaign.ad_account_id ?? '123-456-7890';
+    const googleToken = await resolveOAuthToken('', 'google_ads');
+    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN');
+    const customerId = campaign.ad_account_id?.replace(/-/g, '') ?? '';
 
-    // 실제 payload 구조 (참고용)
-    const payload = {
-      customer_id: customerId,
-      campaign_id: campaign.id,
-      status: 'ENABLED',
-      name: campaign.name,
-      ad_group: {
-        name: `${campaign.name} - AdGroup`,
-        type: 'SEARCH_STANDARD',
-      },
-      ad: creatives[0]
-        ? {
-            type: 'RESPONSIVE_SEARCH_AD',
-            headlines: (creatives[0].ad_copies as { headlines?: string[] })?.headlines?.map(h => ({ text: h })) ?? [],
-            descriptions: (creatives[0].ad_copies as { primary_texts?: string[] })?.primary_texts?.map(t => ({ text: t })) ?? [],
-          }
-        : undefined,
+    if (!developerToken || !googleToken || !customerId) {
+      console.warn(`[ad-publish] [GOOGLE] 설정 부족: developerToken=${!!developerToken}, token=${!!googleToken}, customerId=${customerId}`);
+      console.log(`[ad-publish] [GOOGLE] 게재 요청 (stub — API 키 설정 후 활성화): campaign=${campaign.id}`);
+      return;
+    }
+
+    const firstCreative = creatives[0] as AdCreativeRow | undefined;
+    const adCopies = firstCreative?.ad_copies as { headlines?: string[]; primary_texts?: string[] } | undefined;
+    const headlines = (adCopies?.headlines ?? [campaign.name]).slice(0, 15).map(h => ({ text: h }));
+    const descriptions = (adCopies?.primary_texts ?? [campaign.name]).slice(0, 4).map(t => ({ text: t }));
+
+    // Google Ads REST API v16 — Campaign + AdGroup + Ad 생성
+    // 참고: https://developers.google.com/google-ads/api/reference/rpc/v16
+
+    const mutatePayload = {
+      operations: [
+        // Campaign 생성
+        {
+          create: {
+            name: campaign.name,
+            advertisingChannelType: 'SEARCH',
+            status: 'PAUSED',
+            campaignBudget: {
+              name: `${campaign.name} Budget`,
+              amountMicros: String((campaign.daily_budget ?? this.maxDailyBudget) * 1_000_000),
+              deliveryMethod: 'STANDARD',
+            },
+            biddingStrategyConfiguration: {
+              biddingScheme: {
+                manualCpc: {},
+              },
+            },
+          },
+        },
+        // AdGroup 생성
+        {
+          create: {
+            name: `${campaign.name} - AdGroup`,
+            type: 'SEARCH_STANDARD',
+            status: 'PAUSED',
+            cpcBidMicros: String(500 * 1_000_000), // 기본 CPC 500원
+          },
+        },
+        // RSA 광고 생성
+        {
+          create: {
+            type_: 'RESPONSIVE_SEARCH_AD',
+            responsiveSearchAd: {
+              headlines,
+              descriptions,
+            },
+          },
+        },
+      ],
     };
 
-    // TODO: 실제 Google Ads API 호출
-    // POST /v16/customers/{customer_id}/googleAds:mutate
-    console.log(`[ad-publish] [GOOGLE] 게재 요청 (stub):`, JSON.stringify(payload, null, 2));
-    console.log(`[ad-publish] [GOOGLE] runDate=${runDate}`);
+    try {
+      const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:mutate`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${googleToken.accessToken}`,
+          'developer-token': developerToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mutatePayload),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Google Ads API 오류 (${res.status}): ${body.slice(0, 300)}`);
+      }
+
+      const json = await res.json();
+      console.log(`[ad-publish] [GOOGLE] 게재 완료: campaign=${campaign.id}, runDate=${runDate}`);
+
+      // campaign resource name 저장
+      const campaignResults = (json.mutateOperationResponses ?? []) as Array<{ resourceName?: string }>;
+      const campaignResourceName = campaignResults[0]?.resourceName;
+      if (campaignResourceName) {
+        await supabaseAdmin
+          .from('ad_campaigns')
+          .update({ google_resource_name: campaignResourceName, updated_at: new Date().toISOString() })
+          .eq('id', campaign.id);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[ad-publish] [GOOGLE] 게재 실패: ${msg}`);
+      throw err; // 상위 catch에서 처리
+    }
   }
 
   // ── 장애 기록 ────────────────────────────────────────────────────────────

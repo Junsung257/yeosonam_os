@@ -63,4 +63,6 @@ export const ADMIN_CACHE = {
   list: cacheControl('list'),
   detail: cacheControl('detail'),
   config: cacheControl('config'),
+  /** 캐시 없음 — 세션 등 민감 정보 */
+  noCache: { 'Cache-Control': 'private, no-cache, no-store, must-revalidate' },
 };

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { fmtMonthDay } from '@/lib/admin-utils';
+import ContentSubNav from '../content-hub/ContentSubNav';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',
@@ -117,6 +118,7 @@ export default function ContentAnalyticsPage() {
 
   return (
     <div className="space-y-4">
+      <ContentSubNav />
       {/* 헤더 */}
       <div>
         <h1 className="text-admin-lg font-semibold text-admin-text-2">콘텐츠 성과</h1>

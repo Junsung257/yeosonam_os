@@ -35,7 +35,7 @@ export async function runDeepSeekAgentLoop(
   }
 
   const client = new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
-  const model = process.env.JARVIS_AGENT_MODEL || 'deepseek-v4-pro';
+  const model = process.env.JARVIS_AGENT_MODEL || 'deepseek-v4-flash';
 
   const toolsUsed: string[] = [];
   let pendingAction: PendingActionInfo | null = null;

@@ -9,6 +9,7 @@ import KPIBasisToggle from '@/components/admin/KPIBasisToggle';
 import { getBasisMeta, type KPIBasis } from '@/lib/kpi-basis';
 import MetricsCard from '@/components/admin/MetricsCard';
 import PerformanceTrend, { type TrendPoint } from '@/components/admin/PerformanceTrend';
+import JarvisQuickAsk from '@/components/admin/JarvisQuickAsk';
 
 const LineChart = dynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
 const Line = dynamic(() => import('recharts').then(m => ({ default: m.Line })), { ssr: false });
@@ -249,7 +250,8 @@ export default function MarketingDashboardPage() {
       {mainTab === 'performance' && (
         <div className="space-y-4">
           {/* KPI 카드 3종 */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="flex items-start gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
             <MetricsCard
               label="광고 ROAS"
               value={perfData?.metrics.ad.roas_pct ?? 0}
@@ -273,7 +275,13 @@ export default function MarketingDashboardPage() {
             />
           </div>
 
-          {/* 7일 추이 차트 */}
+          {/* 자비스 AI 퀵 */}
+          <div className="w-72 shrink-0">
+            <JarvisQuickAsk contentType="marketing" />
+          </div>
+        </div>
+
+        {/* 7일 추이 차트 */}
           <PerformanceTrend data={perfData?.trend ?? []} loading={perfLoading} />
 
           {/* 최근 에이전트 실행 로그 */}

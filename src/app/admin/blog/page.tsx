@@ -38,39 +38,6 @@ export default async function BlogAdminPage(
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="블로그 관리"
-        subtitle="SEO 최적화 블로그 글 작성 · 편집 · 발행"
-        actions={
-          <>
-            <Link href="/admin/blog/system">
-              <Button variant="secondary" size="sm">
-                <Settings size={14} />
-                시스템·크론
-              </Button>
-            </Link>
-            <Link href="/admin/blog/queue">
-              <Button variant="secondary" size="sm">
-                <Calendar size={14} />
-                자동 발행 큐
-              </Button>
-            </Link>
-            <Link href="/admin/blog/categories">
-              <Button variant="secondary" size="sm">
-                <Tags size={14} />
-                카테고리 관리
-              </Button>
-            </Link>
-            <Link href="/admin/blog/write">
-              <Button variant="primary" size="sm">
-                <Plus size={14} />
-                새 글 쓰기
-              </Button>
-            </Link>
-          </>
-        }
-      />
-
       {/* 필터 탭 — 클라이언트 (URL 변경만 담당) */}
       <BlogFilterTabs currentStatus={status} />
 
