@@ -2,6 +2,11 @@
  * ══════════════════════════════════════════════════════════
  * Keyword Brain — 여행 특화 키워드 추출 + 빅데이터 학습 엔진
  * ══════════════════════════════════════════════════════════
+ *
+ * Phase 1 (2026):
+ *   - localStorage → Supabase 전환
+ *   - 캐시/폴백으로 localStorage 유지 (Fallback)
+ *   - 핵심 데이터: keyword_performance_daily + keyword_search_terms
  */
 
 import { getMinPriceFromDates } from './price-dates';
@@ -86,6 +91,142 @@ const NEGATIVE_KEYWORDS = [
 ];
 
 // ── 키워드 추출 엔진 ─────────────────────────────────────
+
+/**
+ * 세세세부 키워드 생성 — 아주 낮은 단위가격으로 입찰 시작
+ *
+ * 전략:
+ *   1. 출발지+목적지+기간+호텔등급+상품유형 조합으로 초세부 키워드 생성
+ *   2. suggestedBid = 100~200원 (기존 대비 1/3 수준)
+ *   3. matchType = exact (정확히 일치하는 검색어만)
+ *   4. 데이터 수집 후 CTR/ROAS 기반 자동 입찰 조정
+ */
+export function generateMicroKeywords(pkg: {
+  destination?: string;
+  duration?: number;
+  departure_airport?: string;
+  product_type?: string;
+  display_name?: string;
+  title?: string;
+  inclusion_hotel_rating?: string;
+  inclusions?: string[];
+}): ExtractedKeyword[] {
+  const microKeywords: ExtractedKeyword[] = [];
+  const dest = pkg.destination || '';
+  const duration = pkg.duration;
+  const durationStr = duration ? `${duration - 1}박${duration}일` : '';
+  const departureCity = DEPARTURE_CITIES.find(c =>
+    pkg.departure_airport?.includes(c) ||
+    pkg.display_name?.includes(c) ||
+    pkg.title?.includes(c)
+  ) || '';
+  const destInfo = Object.values(DESTINATIONS).find(d =>
+    dest.includes(d.kr) || pkg.display_name?.includes(d.kr)
+  );
+  const destName = destInfo?.kr || dest;
+  const productType = pkg.product_type || '';
+
+  // 조합별 초세세부 키워드 (입찰가 100~200원)
+  if (departureCity && destName && durationStr) {
+    microKeywords.push({
+      keyword: `${departureCity}출발 ${destName} ${durationStr}`,
+      matchType: 'exact',
+      tier: 'longtail',
+      suggestedBid: 150,
+      category: '초세세부-출발기간',
+    });
+    microKeywords.push({
+      keyword: `${departureCity} ${destName} ${durationStr}`,
+      matchType: 'exact',
+      tier: 'longtail',
+      suggestedBid: 130,
+      category: '초세세부-출발기간',
+    });
+  }
+
+  if (destName && durationStr) {
+    const hotelTier = pkg.inclusion_hotel_rating || '';
+    if (hotelTier) {
+      microKeywords.push({
+        keyword: `${destName} ${durationStr} ${hotelTier}`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 120,
+        category: '초세세부-호텔기간',
+      });
+    }
+
+    // 상품 유형 + 기간
+    const types = PRODUCT_TYPES.filter(t =>
+      productType.includes(t) || pkg.display_name?.includes(t) || pkg.title?.includes(t)
+    );
+    for (const t of types) {
+      microKeywords.push({
+        keyword: `${destName} ${t} ${durationStr}`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 160,
+        category: '초세세부-유형기간',
+      });
+    }
+
+    // 특가 + 목적지 + 기간
+    const specialModifiers = TRAVEL_MODIFIERS.filter(m =>
+      pkg.display_name?.includes(m) || pkg.title?.includes(m)
+    );
+    for (const mod of specialModifiers) {
+      microKeywords.push({
+        keyword: `${destName} ${mod} ${durationStr}`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 180,
+        category: '초세세부-수식어기간',
+      });
+    }
+  }
+
+  // 포함사항 기반 초세세부
+  if (destName && pkg.inclusions) {
+    if (pkg.inclusions.some(i => i.includes('전일')) || pkg.inclusions.some(i => i.includes('자유'))) {
+      microKeywords.push({
+        keyword: `${destName} 자유일정`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 200,
+        category: '초세세부-일정',
+      });
+    }
+    if (pkg.inclusions.some(i => i.includes('가이드'))) {
+      microKeywords.push({
+        keyword: `${destName} 가이드동행`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 180,
+        category: '초세세부-서비스',
+      });
+    }
+    if (pkg.inclusions.some(i => i.includes('공항')) && pkg.inclusions.some(i => i.includes('픽업'))) {
+      microKeywords.push({
+        keyword: `${destName} 공항픽업포함`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 150,
+        category: '초세세부-서비스',
+      });
+    }
+    if (pkg.inclusions.some(i => i.includes('식사'))) {
+      microKeywords.push({
+        keyword: `${destName} 식사포함`,
+        matchType: 'exact',
+        tier: 'longtail',
+        suggestedBid: 140,
+        category: '초세세부-서비스',
+      });
+    }
+  }
+
+  return microKeywords;
+}
 
 export function extractKeywords(pkg: {
   title?: string;
@@ -310,6 +451,109 @@ export interface BidRecommendation {
   confidence: 'high' | 'medium' | 'low';
 }
 
+/**
+ * 저가 입찰 특화 최적화 — '초세세부' 키워드에 대해 매우 보수적인 입찰 전략
+ *
+ * 원칙:
+ *   1. 최소 입찰가 100원부터 시작 (기존 300~400원 대비)
+ *   2. CTR >= 2%면 50원 인상 (천천히 올림)
+ *   3. CTR >= 5%면 100원 인상 (안정적 성과 확인 후)
+ *   4. 노출 < 100이고 3일 이상 지나면 100원 인상 (데이터 확보 우선)
+ *   5. CTR < 1%이고 spend > 5000원이면 즉시 200원 인하 또는 일시정지
+ *   6. 최대 입찰가 상한 = 1,000원 (절대 초과 금지)
+ */
+export function optimizeLowBidKeywords(keywords: SearchAdKeyword[]): BidRecommendation[] {
+  const now = Date.now();
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+  return keywords
+    .filter(k => k.status === 'active' && k.tier === 'longtail' && k.bid <= 1000)
+    .map(k => {
+      const daysSinceCreated = (now - new Date(k.createdAt).getTime()) / (24 * 60 * 60 * 1000);
+
+      // 성과 좋음: CTR >= 5% → 100원 인상 (최대 1,000원)
+      if (k.ctr >= 5) {
+        const newBid = Math.min(k.bid + 100, 1000);
+        return {
+          keywordId: k.id,
+          keyword: k.keyword,
+          currentBid: k.bid,
+          recommendedBid: newBid,
+          action: newBid > k.bid ? 'increase' as const : 'maintain' as const,
+          reason: `CTR ${k.ctr}% 우수 — ${k.bid}원 → ${newBid}원 (+100원)`,
+          confidence: 'high' as const,
+        };
+      }
+
+      // 성과 보통: CTR >= 2% → 50원 인상 (천천히)
+      if (k.ctr >= 2) {
+        const newBid = Math.min(k.bid + 50, 1000);
+        return {
+          keywordId: k.id,
+          keyword: k.keyword,
+          currentBid: k.bid,
+          recommendedBid: newBid,
+          action: newBid > k.bid ? 'increase' as const : 'maintain' as const,
+          reason: `CTR ${k.ctr}% 안정 — ${k.bid}원 → ${newBid}원 (+50원)`,
+          confidence: 'medium' as const,
+        };
+      }
+
+      // 노출 부족: 노출 < 100, 생성 후 3일 이상 → 100원 인상 (데이터 확보)
+      if (k.impressions < 100 && daysSinceCreated >= 3) {
+        const newBid = Math.min(k.bid + 100, 1000);
+        return {
+          keywordId: k.id,
+          keyword: k.keyword,
+          currentBid: k.bid,
+          recommendedBid: newBid,
+          action: 'boost' as const,
+          reason: `노출 ${k.impressions}회 부족 — ${k.bid}원 → ${newBid}원 (+100원, 데이터 확보 목적)`,
+          confidence: 'low' as const,
+        };
+      }
+
+      // 성과 나쁨: CTR < 1%, 지출 5000원 이상 → 인하
+      if (k.ctr < 1 && k.spend > 5000) {
+        if (k.bid <= 150) {
+          // 최저 입찰가 도달 → 일시정지
+          return {
+            keywordId: k.id,
+            keyword: k.keyword,
+            currentBid: k.bid,
+            recommendedBid: 0,
+            action: 'pause' as const,
+            reason: `CTR ${k.ctr}% 저조, 최저입찰 도달 — 일시정지`,
+            confidence: 'medium' as const,
+          };
+        }
+        const newBid = Math.max(k.bid - 200, 100);
+        return {
+          keywordId: k.id,
+          keyword: k.keyword,
+          currentBid: k.bid,
+          recommendedBid: newBid,
+          action: 'decrease' as const,
+          reason: `CTR ${k.ctr}% 저조 — ${k.bid}원 → ${newBid}원 (-200원)`,
+          confidence: 'medium' as const,
+        };
+      }
+
+      // 데이터 없음: 유지
+      return {
+        keywordId: k.id,
+        keyword: k.keyword,
+        currentBid: k.bid,
+        recommendedBid: k.bid,
+        action: 'maintain' as const,
+        reason: daysSinceCreated < 3
+          ? `생성 ${Math.round(daysSinceCreated)}일차 — 데이터 수집 중`
+          : `CTR ${k.ctr}%, 노출 ${k.impressions}회 — 현재 유지`,
+        confidence: 'low' as const,
+      };
+    });
+}
+
 export function optimizeBids(keywords: SearchAdKeyword[]): BidRecommendation[] {
   return keywords
     .filter(k => k.status === 'active' && k.tier !== 'negative')
@@ -376,6 +620,241 @@ export function optimizeBids(keywords: SearchAdKeyword[]): BidRecommendation[] {
       const order = { increase: 0, decrease: 1, boost: 2, pause: 3, maintain: 4 };
       return order[a.action] - order[b.action];
     });
+}
+
+// ── Supabase 저장소 (Phase 1: localStorage와 병행) ──────
+//
+// Supabase 클라이언트는 서버/API 라우트에서만 사용.
+// 클라이언트에서는 localStorage를 계속 사용 (fallback)
+
+interface SupabaseKeywordRow {
+  keyword_text: string;
+  platform: string;
+  date: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cost_krw: number;
+  avg_cpc: number;
+  conversions: number;
+  conversion_value: number;
+  roas: number;
+  avg_position: number | null;
+  impression_share: number | null;
+  campaign_id: string | null;
+  ad_group_id: string | null;
+  keyword_id: string | null;
+  match_type: string | null;
+}
+
+/**
+ * 서버 환경에서 Supabase에 키워드 성과 저장
+ * 클라이언트(브라우저)에서는 localStorage에 저장
+ */
+export async function savePerformanceToDB(
+  destination: string,
+  keyword: string,
+  platform: 'google' | 'naver',
+  metrics: {
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    cpc: number;
+    conversions: number;
+    spend: number;
+    roas: number;
+  },
+): Promise<void> {
+  // 브라우저 환경: localStorage에 저장 (기존 방식 유지)
+  archivePerformance(destination, keyword, metrics);
+
+  // 서버 환경: Supabase에도 저장
+  if (typeof window === 'undefined') {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !supabaseKey) return;
+
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const today = new Date().toISOString().slice(0, 10);
+
+      const data: SupabaseKeywordRow = {
+        keyword_text: keyword,
+        platform,
+        date: today,
+        impressions: metrics.impressions,
+        clicks: metrics.clicks,
+        ctr: metrics.ctr,
+        cost_krw: metrics.spend,
+        avg_cpc: metrics.cpc,
+        conversions: metrics.conversions,
+        conversion_value: metrics.conversions * 500000, // 추정 전환가치
+        roas: metrics.roas,
+        avg_position: null,
+        impression_share: null,
+        campaign_id: null,
+        ad_group_id: null,
+        keyword_id: null,
+        match_type: null,
+      };
+
+      await supabase
+        .from('keyword_performance_daily')
+        .upsert(data, { onConflict: 'keyword_text,platform,date' });
+    } catch {
+      // Supabase 저장 실패는 무시 (localStorage에 이미 저장됨)
+    }
+  }
+}
+
+/**
+ * DB에서 키워드 성과 조회
+ * 서버 환경에서만 작동, 브라우저에서는 localStorage 사용
+ */
+export async function loadPerformanceFromDB(
+  keyword: string,
+  platform: 'google' | 'naver',
+  days = 30,
+): Promise<SupabaseKeywordRow[]> {
+  if (typeof window !== 'undefined') return [];
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return [];
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const { data } = await supabase
+      .from('keyword_performance_daily')
+      .select('*')
+      .eq('keyword_text', keyword)
+      .eq('platform', platform)
+      .gte('date', since.toISOString().slice(0, 10))
+      .order('date', { ascending: false });
+
+    return (data ?? []) as SupabaseKeywordRow[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search Terms 저장 (서버 환경)
+ */
+export async function saveSearchTerm(params: {
+  searchTerm: string;
+  keywordText: string;
+  matchType: string;
+  impressions: number;
+  clicks: number;
+  costKrw: number;
+  conversions: number;
+  platform: 'google' | 'naver';
+}): Promise<void> {
+  if (typeof window !== 'undefined') return;
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return;
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 기존 레코드 확인
+    const { data: existing } = await supabase
+      .from('keyword_search_terms')
+      .select('id, impressions, clicks, cost_krw, conversions, last_seen')
+      .eq('search_term', params.searchTerm)
+      .eq('keyword_text', params.keywordText)
+      .eq('platform', params.platform)
+      .single();
+
+    if (existing) {
+      // 누적 업데이트
+      await supabase
+        .from('keyword_search_terms')
+        .update({
+          impressions: (existing.impressions ?? 0) + params.impressions,
+          clicks: (existing.clicks ?? 0) + params.clicks,
+          cost_krw: (existing.cost_krw ?? 0) + params.costKrw,
+          conversions: (existing.conversions ?? 0) + params.conversions,
+          ctr: existing.clicks + params.clicks > 0
+            ? ((existing.clicks + params.clicks) / (existing.impressions + params.impressions)) * 100
+            : 0,
+          last_seen: today,
+        })
+        .eq('id', existing.id);
+    } else {
+      // 새 레코드
+      await supabase
+        .from('keyword_search_terms')
+        .insert({
+          search_term: params.searchTerm,
+          keyword_text: params.keywordText,
+          match_type: params.matchType,
+          impressions: params.impressions,
+          clicks: params.clicks,
+          ctr: params.clicks > 0 ? (params.clicks / params.impressions) * 100 : 0,
+          cost_krw: params.costKrw,
+          conversions: params.conversions,
+          first_seen: today,
+          last_seen: today,
+          platform: params.platform,
+        });
+    }
+  } catch {
+    // 저장 실패는 무시
+  }
+}
+
+/**
+ * 최적화 액션 로그 저장
+ */
+export async function logOptimization(params: {
+  action: string;
+  platform: 'google' | 'naver';
+  keywordText?: string;
+  campaignId?: string;
+  keywordId?: string;
+  oldValue?: string;
+  newValue?: string;
+  reason: string;
+  triggeredBy: 'rule' | 'ai' | 'manual';
+  success?: boolean;
+  errorMessage?: string;
+}): Promise<void> {
+  if (typeof window !== 'undefined') return;
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return;
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    await supabase.from('optimization_log').insert({
+      action: params.action,
+      platform: params.platform,
+      keyword_text: params.keywordText,
+      campaign_id: params.campaignId,
+      keyword_id: params.keywordId,
+      old_value: params.oldValue,
+      new_value: params.newValue,
+      reason: params.reason,
+      triggered_by: params.triggeredBy,
+      success: params.success ?? true,
+      error_message: params.errorMessage,
+    });
+  } catch {
+    // 로그 저장 실패는 무시
+  }
 }
 
 // ── 유틸 ─────────────────────────────────────────────────
