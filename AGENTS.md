@@ -24,6 +24,7 @@
 - **구현 레시피·안티패턴·명령 체크리스트:** `.claude/CLAUDE.md`.
 - **대화 톤·컨텍스트 읽기 시점:** `.cursor/rules/` (`yeosonam-context.mdc`, `yeosonam-communication-ko.mdc`).
 - **★ 과거 오류 반복 금지 규칙 (필독):** `.cursor/rules/yeosonam-lessons-learned.mdc`
+- **★ AI 운영·세션 전략·판단 기준 (필독):** `.cursor/rules/yeosonam-operating-model.mdc`
 
 채팅 **메모리**에만 두는 도메인 지식은 오래된 오답이 될 수 있으므로, 반복되는 결정은 **이 레포의 Markdown으로 옮기고 PR로 갱신**하는 것을 우선한다.
 
