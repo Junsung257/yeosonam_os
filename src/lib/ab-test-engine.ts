@@ -287,10 +287,9 @@ export async function assignVariant(
   }
 
   // 5) impressions 증가 (원자적 업데이트)
-  const { error: incError } = await supabaseAdmin.rpc('increment_counter', {
-    table_name: 'ab_variants',
-    column_name: 'impressions',
-    row_id: chosen.id,
+  const { error: incError } = await supabaseAdmin.rpc('increment_ab_metric', {
+    p_variant_id: chosen.id,
+    p_field: 'impressions',
   });
 
   if (incError) {
@@ -359,25 +358,53 @@ export async function recordConversion(
     return;
   }
 
-  // 3) variant 통계 업데이트
+  // 3) variant 통계 업데이트 (conversions는 원자적 RPC 사용)
   const variantId = a.variant_id;
-  const { data: variant } = await supabaseAdmin
-    .from('ab_variants')
-    .select('clicks, conversions, revenue')
-    .eq('id', variantId)
-    .single();
+  const rev = revenue ?? 0;
 
-  if (variant) {
-    const v = variant as { clicks: number; conversions: number; revenue: number };
-    const rev = revenue ?? 0;
-    await supabaseAdmin
+  // conversions 원자적 증가
+  const { error: incConvError } = await supabaseAdmin.rpc('increment_ab_metric', {
+    p_variant_id: Number(variantId),
+    p_field: 'conversions',
+  });
+
+  if (incConvError) {
+    // RPC 실패 시 fallback: 기존 방식으로 읽어서 +1
+    const { data: variant } = await supabaseAdmin
       .from('ab_variants')
-      .update({
-        clicks: (v.clicks ?? 0) + 1,
-        conversions: (v.conversions ?? 0) + 1,
-        revenue: (v.revenue ?? 0) + rev,
-      })
-      .eq('id', variantId);
+      .select('clicks, conversions, revenue')
+      .eq('id', variantId)
+      .single();
+
+    if (variant) {
+      const v = variant as { clicks: number; conversions: number; revenue: number };
+      await supabaseAdmin
+        .from('ab_variants')
+        .update({
+          clicks: (v.clicks ?? 0) + 1,
+          conversions: (v.conversions ?? 0) + 1,
+          revenue: (v.revenue ?? 0) + rev,
+        })
+        .eq('id', variantId);
+    }
+  } else {
+    // RPC 성공 시 clicks와 revenue만 별도 업데이트
+    const { data: variant } = await supabaseAdmin
+      .from('ab_variants')
+      .select('clicks, revenue')
+      .eq('id', variantId)
+      .single();
+
+    if (variant) {
+      const v = variant as { clicks: number; revenue: number };
+      await supabaseAdmin
+        .from('ab_variants')
+        .update({
+          clicks: (v.clicks ?? 0) + 1,
+          revenue: (v.revenue ?? 0) + rev,
+        })
+        .eq('id', variantId);
+    }
   }
 }
 

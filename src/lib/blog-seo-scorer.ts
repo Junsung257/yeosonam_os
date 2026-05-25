@@ -73,7 +73,7 @@ export interface ScorerInput {
   };
 }
 
-const MAX_SCORE = 110;
+const MAX_SCORE = 125;
 
 function extractPlainText(html: string): string {
   return html
@@ -313,6 +313,59 @@ function scoreEeat(html: string): SeoScoreDetail {
   };
 }
 
+/** 얇은 콘텐츠(Thin Content) 감지 — HCS(Helpful Content System) 대응 */
+function scoreThinContent(plainText: string): SeoScoreDetail {
+  let score = 0;
+  const msgs: string[] = [];
+  const totalChars = plainText.length;
+
+  // 1,500자 미만: 강력 감점
+  if (totalChars < 800) {
+    score = 0;
+    msgs.push(`매우 얇은 콘텐츠 (${totalChars}자, 1,500자 권장)`);
+  } else if (totalChars < 1500) {
+    score = 5;
+    msgs.push(`다소 얇은 콘텐츠 (${totalChars}자, 1,500자 권장)`);
+  } else if (totalChars < 2500) {
+    score = 12;
+    msgs.push(`적정 길이 (${totalChars}자)`);
+  } else {
+    score = 15;
+    msgs.push(`충분한 길이 (${totalChars}자)`);
+  }
+
+  // 정보 밀도 체크: 고유 정보(숫자, 날짜, 인용) 비율
+  const infoSignals = (plainText.match(/\d+/g) || []).length +
+    (plainText.match(/\d{4}년/g) || []).length * 2 +
+    (plainText.match(/"[^"]+"/g) || []).length;
+  const infoDensity = infoSignals / Math.max(totalChars, 1);
+  if (infoDensity >= 0.02) {
+    score += 3;
+    msgs.push('정보 밀도 양호');
+  } else {
+    score -= 5;
+    msgs.push('정보 밀도 낮음 (숫자/인용 부족)');
+  }
+
+  // 단락 다양성 체크
+  const uniqueStarts = new Set(plainText.split(/[.!?]\s+/).map(s => s.trim().substring(0, 3)).filter(Boolean));
+  if (uniqueStarts.size >= 5) {
+    score += 2;
+    msgs.push('문장 다양성 양호');
+  } else {
+    score -= 3;
+    msgs.push('문장 다양성 낮음 (반복 패턴 의심)');
+  }
+
+  return {
+    name: '콘텐츠 깊이 (HCS)',
+    score: Math.max(0, Math.min(score, 15)),
+    maxScore: 15,
+    status: score >= 10 ? 'pass' : score >= 5 ? 'warn' : 'fail',
+    message: msgs.join(', '),
+  };
+}
+
 function scoreMobile(html: string, plainText: string): SeoScoreDetail {
   let score = 0;
   const msgs: string[] = [];
@@ -365,6 +418,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scoreReadability(input.blogHtml, plainText),
     scoreJsonLd(input),
     scoreEeat(input.blogHtml),
+    scoreThinContent(plainText),
     scoreMobile(input.blogHtml, plainText),
     scoreSlug(input, keyword),
   ];

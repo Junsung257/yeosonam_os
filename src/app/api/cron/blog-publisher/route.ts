@@ -59,6 +59,7 @@ export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = 10; // 10건×20초=200s → Vercel 300s, 매 30분 10건씩 소진
 const MAX_ATTEMPTS = 2;
+const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
 let blogStyleGuideCache: { content: string; version: string } | null = null;
@@ -89,18 +90,12 @@ async function runBlogPublisher(request: NextRequest) {
 
   const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
   const errors: string[] = [];
+  const startTime = Date.now();
 
   try {
     blogStyleGuideCache = null;
-    const nowIso = new Date().toISOString();
-    const { data: queue } = await supabaseAdmin
-      .from('blog_topic_queue')
-      .select('*')
-      .eq('status', 'queued')
-      .lte('target_publish_at', nowIso)
-      .not('target_publish_at', 'is', null)
-      .order('priority', { ascending: false })
-      .limit(MAX_BATCH);
+    // 원자적 큐 클레임 — FOR UPDATE SKIP LOCKED 로 중복 발행 방지
+    const { data: queue } = await supabaseAdmin.rpc('claim_queue_items', { limit_rows: MAX_BATCH });
 
     if (!queue || queue.length === 0) {
       return { processed: 0, message: '발행할 토픽 없음', errors };
@@ -111,6 +106,13 @@ async function runBlogPublisher(request: NextRequest) {
       cardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(cardNewsIds) : new Map<string, number>();
 
     for (const item of queue) {
+      // 남은 시간 체크 — 30초 미만이면 중단
+      const elapsed = Date.now() - startTime;
+      const remaining = MAX_EXEC_MS - elapsed;
+      if (remaining < 30000) {
+        console.log(`[blog-publisher] 남은 시간 ${Math.round(remaining / 1000)}초 미만 — 중단`);
+        break;
+      }
       try {
         const r = await processQueueItem(item, eligibleByCardNewsId);
         results.push(r);
@@ -913,12 +915,37 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 
   // SERP 분석 (HEAD/MID tier만 — longtail은 SERP 가치 낮음 + API 쿼터 절약)
   let serpBlock = '';
+  let serpGapBlock = '';
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
   if ((tier === 'head' || tier === 'mid') && primaryKw) {
     try {
       await new Promise(r => setTimeout(r, 500));
       serpData = await analyzeSerp(primaryKw, 'naver_blog');
       serpBlock = buildSerpPromptBlock(serpData);
+
+      // SERP 갭 분석: 경쟁사 상위 글 대비 누락 주제 발견
+      if (serpData && serpData.recommended_entities_to_include?.length > 0) {
+        try {
+          const { analyzeSerpGap } = await import('@/lib/serp-gap-analyzer');
+          const gapResult = analyzeSerpGap(
+            primaryKw,
+            item.topic,
+            [primaryKw, ...serpData.recommended_entities_to_include.slice(0, 5)],
+          );
+          if (gapResult.missingTopics.length > 0) {
+            serpGapBlock = `
+## 경쟁사 대비 부족한 주제 (반드시 H2로 추가)
+
+아래는 경쟁사 상위 글이 공통으로 다루지만 이 글에는 없는 주제입니다.
+각각을 **추가 H2 섹션**으로 본문에 포함하세요. (기존 H2 순서는 유지하며 적절한 위치에 삽입)
+
+${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggestions[i] || '관련 내용으로 H2 섹션 추가'}`).join('\n')}
+
+커버리지 점수: ${gapResult.coverageScore}/100 (낮을수록 보강 필요)
+`;
+          }
+        } catch { /* SERP 갭 분석 실패 시 미주입 — 발행은 계속 */ }
+      }
     } catch { /* SERP 실패 시 미주입 — 발행은 계속 */ }
   }
 
@@ -938,6 +965,7 @@ ${reviewPromptBlock}
 ${tierGuidance[tier]}
 ${trendBlock}
 ${serpBlock}
+${serpGapBlock}
 
 ## 공통 출력 규칙
 - 마크다운 형식만 (코드블록 감싸지 말 것)

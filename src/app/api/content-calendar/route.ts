@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // 1. card_news 조회
-    let cardNewsQuery = supabaseAdmin
+    const cardNewsQuery = supabaseAdmin
       .from('card_news')
       .select(
         'id, title, status, created_at, ig_scheduled_for, threads_scheduled_for, ig_publish_status, threads_publish_status, template_family, branding_level, created_by_affiliate_id, engagement_score',
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     if (cardErr) throw cardErr;
 
     // 2. content_distributions 조회 (해당 월 scheduled/published 건)
-    let distQuery = supabaseAdmin
+    const distQuery = supabaseAdmin
       .from('content_distributions')
       .select('id, product_id, card_news_id, blog_post_id, platform, status, scheduled_for, published_at, created_at, affiliate_id, error_message')
       .or(

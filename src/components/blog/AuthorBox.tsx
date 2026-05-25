@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 interface Props {
   publishedAt: string;
   updatedAt?: string | null;
@@ -40,6 +42,12 @@ export default function AuthorBox({ publishedAt, updatedAt, destination }: Props
             여행 일정·가격·포함 항목을 기준으로 작성되었습니다. 현지 사정에 따라 변경될 수
             있으며, 예약 시점 조건이 최종 기준입니다.
           </p>
+          <Link
+            href="/about"
+            className="mt-2 inline-block text-xs font-medium text-brand hover:text-brand-dark transition"
+          >
+            여소남 소개 바로가기 →
+          </Link>
           <p className="mt-2 text-xs text-slate-400">
             <span>발행 {fmt(pub)}</span>
             {hasUpdate && upd && (

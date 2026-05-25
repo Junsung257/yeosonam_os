@@ -19,7 +19,22 @@ import { supabaseAdmin } from './supabase';
 import { detectDestination } from './keyword-research';
 import { getSecret } from './secret-registry';
 
-const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 기본 7일 — 저경쟁 키워드
+
+/** 키워드 경쟁도에 따라 캐시 TTL 동적 계산 */
+function getDynamicCacheTtl(keyword: string): number {
+  // 고경쟁 시그널: 짧은 키워드(1-2단어), '추천','비교','가격' 등 포함
+  const wordCount = keyword.split(/\s+/).filter(Boolean).length;
+  const highCompetition = wordCount <= 2 ||
+    /\b(추천|비교|가격|베스트|TOP|순위|랭킹)\b/.test(keyword);
+  // 저경쟁 시그널: 긴 키워드(4+단어), 특정 질문 패턴
+  const lowCompetition = wordCount >= 4 ||
+    /\b(여행|방문|가볼만한)\b/.test(keyword) === false;
+
+  if (highCompetition) return 6 * 3600 * 1000;  // 고경쟁: 6시간
+  if (lowCompetition) return 48 * 3600 * 1000;  // 저경쟁: 48시간
+  return CACHE_TTL_MS; // 중간: 7일
+}
 
 // 한국 SEO에서 검증된 power word (Naver 블로그 상위 노출 빈출)
 const POWER_WORDS = [
@@ -197,7 +212,8 @@ export async function analyzeSerp(
     if (cached?.[0]) {
       const row = cached[0];
       const age = Date.now() - new Date(row.fetched_at).getTime();
-      if (age < CACHE_TTL_MS) {
+      const ttl = getDynamicCacheTtl(keyword);
+      if (age < ttl) {
         return {
           keyword,
           source,
