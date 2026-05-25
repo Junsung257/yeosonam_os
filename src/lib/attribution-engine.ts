@@ -192,7 +192,7 @@ export async function closeAttributionChain(opts: {
   const conversionTime = new Date(conversionAt).getTime();
 
   // 2. touchpoints JSONB 빌드
-  const touchpoints: Touchpoint[] = events.map((evt, idx) => ({
+  const touchpoints: Touchpoint[] = events.map((evt: any, idx: any) => ({
     touch_index: idx,
     channel: evt.channel,
     source: evt.source,
@@ -231,7 +231,7 @@ export async function closeAttributionChain(opts: {
   }
 
   // 5. touch_events converted 마킹
-  const eventIds = events.map((e) => e.id);
+  const eventIds = events.map((e: any) => e.id);
   const { error: updateError } = await supabaseAdmin
     .from('attribution_touch_events')
     .update({ converted: true, booking_id: opts.bookingId })
@@ -374,7 +374,7 @@ export async function refreshAttributionSummary(): Promise<{ updated: number }> 
   }
 
   // 2. booking별 매출 조회
-  const bookingIds = [...new Set(chains.map((c) => c.booking_id).filter(Boolean))];
+  const bookingIds = [...new Set(chains.map((c: any) => c.booking_id).filter(Boolean))];
   const { data: bookings, error: bookingError } = await supabaseAdmin
     .from('bookings')
     .select('id, total_price, total_profit')

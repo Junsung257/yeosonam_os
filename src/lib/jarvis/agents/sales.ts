@@ -241,7 +241,8 @@ async function executeTool(toolName: string, args: any): Promise<any> {
     case 'update_influencer_tier': {
       if (!['Bronze', 'Silver', 'Gold', 'Diamond'].includes(args.new_tier)) throw new Error(`유효하지 않은 등급: ${args.new_tier}`)
       const { data: before } = await supabaseAdmin.from('affiliates').select('tier, commission_rate').eq('id', args.affiliate_id).single()
-      const baseRate = { Bronze: 0.03, Silver: 0.04, Gold: 0.06, Diamond: 0.08 }[args.new_tier]
+      const tierRates: Record<string, number> = { Bronze: 0.03, Silver: 0.04, Gold: 0.06, Diamond: 0.08 }
+      const baseRate = tierRates[args.new_tier]
       const summary = `[인플루언서 등급 변경] ID:${args.affiliate_id} ${(before as any)?.tier} → ${args.new_tier} (커미션 ${((before as any)?.commission_rate ?? 0) * 100}% → ${(baseRate ?? 0) * 100}%) | 사유: ${args.reason}`
       const { data: action, error } = await supabaseAdmin.from('agent_actions').insert({ agent_type: 'sales', action_type: 'update_influencer_tier', summary, payload: { affiliate_id: args.affiliate_id, before_tier: (before as any)?.tier, after_tier: args.new_tier, reason: args.reason }, requested_by: 'jarvis', priority: 'high' }).select()
       if (error) throw error

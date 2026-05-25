@@ -129,7 +129,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     finalPayout: settlement.final_payout || 0,
   });
 
-  const stream = await renderToStream(pdfDoc);
+  const stream = await renderToStream(pdfDoc as any);
 
   const fileName = encodeURIComponent(`여소남_정산내역서_${aff.name}_${year}년${+month}월.pdf`);
 

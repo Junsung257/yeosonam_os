@@ -21,9 +21,9 @@ interface Props {
   primaryCity: string;
   country: string | null;
   monthlyNormals: MonthlyNormal[];
-  fitnessScores: FitnessScore[];
+  fitnessScores?: FitnessScore[] | null;
   /** 한국인 인기도 시그널 (Naver DataLab + Wikipedia). null = 시즌 데이터 없음 */
-  seasonalSignals: SeasonalSignal[] | null;
+  seasonalSignals?: SeasonalSignal[] | null;
   /** 이 패키지의 대표 출발월 (1-12). 없으면 현재 월 */
   representativeMonth: number;
   /** 출발월 분포 (월→횟수) — 여러 달이면 보조 월도 표시 */
@@ -162,6 +162,7 @@ export default function TravelFitnessCard({
   seasonalSignals, representativeMonth, departureDistribution,
 }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(representativeMonth);
+  if (!fitnessScores?.length) return null;
 
   const sel = fitnessScores.find(f => f.month === selectedMonth) || fitnessScores[0];
   const norm = monthlyNormals.find(m => m.month === selectedMonth) || monthlyNormals[0];
@@ -170,7 +171,7 @@ export default function TravelFitnessCard({
 
   const isRepMonth = selectedMonth === representativeMonth;
   const displayCity = primaryCity || destination;
-  const summary = chartSummary(fitnessScores, seasonalSignals, representativeMonth);
+  const summary = chartSummary(fitnessScores!, seasonalSignals ?? null, representativeMonth);
 
   return (
     <section className="px-4 mt-4">

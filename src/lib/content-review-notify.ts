@@ -229,10 +229,10 @@ export async function notifyPendingReviews(): Promise<number> {
 
     // 우선순위별 분류
     const highPriority = (pendingItems || []).filter(
-      (item) => (item.priority as number) >= 80
+      (item: any) => (item.priority as number) >= 80
     );
     const normalPriority = (pendingItems || []).filter(
-      (item) => (item.priority as number) < 80 && (item.priority as number) >= 40
+      (item: any) => (item.priority as number) < 80 && (item.priority as number) >= 40
     );
 
     // 크리에이티브 ID 목록 텍스트
@@ -240,7 +240,7 @@ export async function notifyPendingReviews(): Promise<number> {
       (pendingItems || [])
         .slice(0, 10)
         .map(
-          (item) =>
+          (item: any) =>
             `• \`${item.creative_id}\` (우선순위: ${item.priority}, 사유: ${item.reason})`
         )
         .join("\n") +

@@ -786,7 +786,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       try {
         const { postAlert } = await import('@/lib/admin-alerts')
         await postAlert({
-          category: 'general', severity: 'warn',
+          category: 'general', severity: 'warning' as const,
           title: `자비스가 상품 삭제: ${pkg[0].title}`,
           message: `삭제 사유: ${args.reason ?? '사유 미지정'}`,
           ref_type: 'package',

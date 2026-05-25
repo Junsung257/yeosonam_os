@@ -285,7 +285,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       ? data.metadata.hero_image_url.trim()
       : null;
   const fromAttr =
-    data.attractions
+    (data.attractions ?? [])
       .map(a => pickAttractionPhotoUrl(a.photos as { src_medium?: string; src_large?: string }[] | null))
       .find(Boolean) ?? null;
   const heroImage = fromMeta || fromAttr;
