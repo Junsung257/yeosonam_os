@@ -34,11 +34,10 @@ const nextConfig = {
     'pdf-parse',
   ],
   experimental: {
-    // lucide-react: import 1개당 전체 아이콘 번들이 통째로 들어가는 패턴이라 barrel 최적화 효과 큼.
-    // 주의: 실제 설치된 패키지만 등록할 것 — 미설치 패키지 등록 시 webpack factory undefined 에러 발생.
-    optimizePackageImports: [
-      'lucide-react',
-    ],
+    // PPR(Partial Prerendering): Vercel 배포에서만 작동, 로컬에서는 SSR fallback.
+    // 정적 셸을 CDN에서 즉시 제공하고, 동적 부분은 Suspense 경계로 streaming.
+    // 프로덕션에서 TTFB 4-10배 개선 예상.
+    ppr: 'incremental',
     // Windows 환경에서 prod 빌드 중 manifest 누락(ENOENT) 재현이 있어 당분간 비활성화.
     // 안정화 후 CI/Linux에서만 조건부 재활성화 검토.
     webpackBuildWorker: false,
@@ -77,13 +76,52 @@ const nextConfig = {
   // (Vercel 기본 도메인 alias 는 307 임시 리다이렉트라 PageRank 가 통합되지 않음)
   async headers() {
     return [
+      // ─── 보안 헤더 (모든 경로) ───────────────────────────────
       {
-        // 정적 자산 — 1년 불변 캐시 (Next.js 빌드 해시로 bust)
+        source: '/:path*',
+        headers: [
+          // CSP: XSS 방어, 인라인 스크립트 허용 (Next.js 필요), 'unsafe-eval' (dev SWC)
+          // Sentry DSN, GA4(GTM), Meta Pixel, Naver, Kakao 등 third-party 도메인 명시 허용
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://t1.kakaocdn.net",
+              "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net",
+              "font-src 'self' https://cdn.jsdelivr.net",
+              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://o*.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com",
+              "frame-src 'self' https://www.facebook.com https://www.instagram.com https://www.youtube.com",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join('; '),
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+          },
+        ],
+      },
+      // ─── 정적 자산 캐시 ──────────────────────────────────────
+      {
         source: '/_next/static/:path*',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
+      // ─── 공개 API 캐시 ────────────────────────────────────────
       {
-        // 공개 읽기 전용 API — Vercel Edge CDN 5분 캐시, stale-while-revalidate 10분
         source: '/api/destinations/:path*',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=600' }],
       },
@@ -91,17 +129,20 @@ const nextConfig = {
         source: '/api/exchange-rate',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=600, stale-while-revalidate=3600' }],
       },
+      // ─── 패키지 검색 목록 ──────────────────────────────────────
       {
-        // 패키지 검색 목록 — Vercel Edge CDN 1분 캐시, stale-while-revalidate 5분
-        // searchParams 별 cache key 분리 (인기 검색 쿼리는 누적 HIT). PR #156 패턴.
-        // 같은 destination/q/hub 조합으로 1분 안에 재방문 시 0.15s HIT 가능.
         source: '/packages',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
       },
+      // ─── 블로그 목록 ───────────────────────────────────────────
       {
-        // 블로그 목록 — 발행 주기가 길어 5분 캐시, stale-while-revalidate 30분
         source: '/blog',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=1800' }],
+      },
+      // ─── 블로그 개별 페이지 ─── ISR + CDN 캐시 ──────────────────
+      {
+        source: '/blog/:slug',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
       },
     ];
   },

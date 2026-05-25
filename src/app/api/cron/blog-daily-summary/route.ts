@@ -181,7 +181,7 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
   if (fresh.length === 0) return { count: 0 };
 
   const rows = fresh.map((c: any) => ({
-    topic: `${c.seo_title} — 재작성 v2`,
+    topic: c.seo_title || '(제목 없음)',
     source: 'user_seed',
     priority: 85,
     destination: c.destination,
@@ -191,6 +191,7 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
       regenerated_from: c.id,
       regenerated_reason: '7일 GSC 클릭 0',
       original_slug: c.slug,
+      original_title: c.seo_title,
     },
   }));
 

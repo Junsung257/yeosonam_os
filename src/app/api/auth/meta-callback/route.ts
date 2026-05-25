@@ -2,16 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
+import { supabaseAdmin } from '@/lib/supabase';
 
 /**
  * Meta OAuth 콜백
  * GET /api/auth/meta-callback?code=&state=
  *
  * Short-lived 코드 → Short-lived token → Long-lived token (fb_exchange_token)
+ *
+ * state.payload 에 platform 이 있으면 Threads 전용 OAuth 로 처리.
  */
 export const dynamic = 'force-dynamic';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+interface StatePayload {
+  tenant_id: string;
+  ts: number;
+  platform?: 'meta' | 'threads';
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -31,22 +40,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'code 또는 state 누락' }, { status: 400 });
   }
 
-  let tenantId: string;
+  let payload: StatePayload;
   try {
     const dotIdx = stateRaw.lastIndexOf('.');
     if (dotIdx < 0) throw new Error('state 형식 오류');
-    const payload = stateRaw.slice(0, dotIdx);
+    const enc = stateRaw.slice(0, dotIdx);
     const sig = stateRaw.slice(dotIdx + 1);
-    const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(payload).digest('hex').slice(0, 16);
+    const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(enc).digest('hex').slice(0, 16);
     const sigBuf = Buffer.from(sig);
     const expBuf = Buffer.from(expected);
     if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) throw new Error('state 서명 불일치');
-    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-      tenant_id: string;
-      ts: number;
-    };
+    const decoded = JSON.parse(Buffer.from(enc, 'base64url').toString('utf8')) as StatePayload;
     if (Date.now() - decoded.ts > STATE_TTL_MS) throw new Error('state 만료');
-    tenantId = decoded.tenant_id;
+    payload = decoded;
   } catch {
     return NextResponse.json({ error: 'state 검증 실패' }, { status: 400 });
   }
@@ -71,7 +77,7 @@ export async function GET(request: NextRequest) {
     console.error('[meta-callback] short-lived 토큰 교환 실패:', detail);
     return NextResponse.json({ error: '토큰 교환 실패' }, { status: 502 });
   }
-  const shortJson = await shortRes.json() as { access_token?: string; token_type?: string };
+  const shortJson = (await shortRes.json()) as { access_token?: string; token_type?: string; user_id?: string };
   if (!shortJson.access_token) {
     return NextResponse.json({ error: '토큰 교환 실패: access_token 없음' }, { status: 502 });
   }
@@ -88,13 +94,34 @@ export async function GET(request: NextRequest) {
     console.warn('[meta-callback] long-lived 토큰 교환 실패 (HTTP', longRes.status, ') — short-lived 토큰으로 대체');
   }
   const longJson = longRes.ok
-    ? await longRes.json() as { access_token: string; expires_in?: number }
+    ? ((await longRes.json()) as { access_token: string; user_id?: string; expires_in?: number })
     : null;
 
   const finalToken = longJson?.access_token ?? shortJson.access_token;
+  const metaUserId = longJson?.user_id ?? shortJson?.user_id;
   const expiresIn = longJson?.expires_in;
 
-  await saveOAuthToken(tenantId, 'meta', {
+  if (payload.platform === 'threads') {
+    // Threads 전용: 토큰을 DB system_secrets 에 저장
+    const upsertData: Record<string, unknown> = {
+      key: 'THREADS_ACCESS_TOKEN',
+      value: finalToken,
+      updated_at: new Date().toISOString(),
+    };
+    await supabaseAdmin.from('system_secrets').upsert(upsertData, { onConflict: 'key' });
+
+    // threads_user_id 도 있으면 저장
+    if (metaUserId) {
+      await supabaseAdmin.from('system_secrets').upsert(
+        { key: 'THREADS_USER_ID', value: metaUserId, updated_at: new Date().toISOString() },
+        { onConflict: 'key' },
+      );
+    }
+
+    return NextResponse.redirect(new URL('/admin?oauth=threads_success', request.url));
+  }
+
+  await saveOAuthToken(payload.tenant_id, 'meta', {
     accessToken: finalToken,
     expiresIn,
     scopes: ['ads_management', 'ads_read', 'read_insights'],

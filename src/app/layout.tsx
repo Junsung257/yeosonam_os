@@ -11,6 +11,7 @@ import TrackerBootstrap from '@/components/TrackerBootstrap';
 import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 import LayoutClientWidgets from '@/components/LayoutClientWidgets';
+import WebVitalsReporter from '@/components/WebVitalsReporter';
 // Next 15: ChatWidget·BottomTabBar 는 ssr:false 가 필요해 client wrapper 로 분리 (LayoutClientWidgets).
 // ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
 // PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
@@ -176,6 +177,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <LayoutClientWidgets />
         <JarvisFloatingWidget />
+        <WebVitalsReporter />
         <SpeedInsights />
       </body>
     </html>

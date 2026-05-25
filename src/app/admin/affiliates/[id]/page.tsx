@@ -615,6 +615,15 @@ export default function AffiliateDetailPage() {
         </table>
       </div>
 
+      {/* 파트너 포털 설정 */}
+      <PortalSettingsSection affiliateId={params.id} affiliateName={affiliate.name} />
+
+      {/* 카드뉴스 콘텐츠 현황 */}
+      <ContentSection affiliateId={params.id} affiliateName={affiliate.name} />
+
+      {/* AI 콘텐츠 인사이트 */}
+      <ContentInsightSection affiliateId={params.id} affiliateName={affiliate.name} />
+
       {/* 프로모코드 성과 */}
       <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="px-6 py-4 border-b border-admin-border">
@@ -645,6 +654,348 @@ export default function AffiliateDetailPage() {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/** 어필리에이터 카드뉴스 콘텐츠 현황 섹션 */
+function ContentSection({ affiliateId, affiliateName }: { affiliateId: string; affiliateName: string }) {
+  const [cardNews, setCardNews] = useState<Array<{
+    id: string; title: string; status: string;
+    created_at: string; slide_image_urls?: string[] | null; branding_level?: string;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/affiliate/card-news?affiliate_id=${encodeURIComponent(affiliateId)}`);
+        const json = await res.json();
+        if (!cancelled) setCardNews(json.card_news || []);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [affiliateId]);
+
+  const STATUS_LABELS: Record<string, string> = {
+    DRAFT: '초안', RENDERING: '렌더 중', CONFIRMED: '확인 완료',
+    PUBLISHED: '발행됨', ARCHIVED: '보관됨',
+  };
+  const STATUS_COLORS: Record<string, string> = {
+    DRAFT: 'bg-gray-100 text-gray-600', RENDERING: 'bg-blue-100 text-blue-600',
+    CONFIRMED: 'bg-green-100 text-green-600', PUBLISHED: 'bg-purple-100 text-purple-700',
+    ARCHIVED: 'bg-yellow-100 text-yellow-700',
+  };
+
+  return (
+    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
+        <h2 className="font-semibold text-admin-text-2">카드뉴스 콘텐츠</h2>
+        <span className="text-xs text-admin-muted">{loading ? '로딩 중...' : `${cardNews.length}개`}</span>
+      </div>
+      {loading ? (
+        <div className="p-6 text-center text-sm text-admin-muted-2">로딩 중...</div>
+      ) : cardNews.length === 0 ? (
+        <div className="p-6 text-center text-sm text-admin-muted-2">아직 생성된 카드뉴스가 없습니다</div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {cardNews.map((cn) => (
+            <div key={cn.id} className="px-6 py-3 flex items-center gap-4 hover:bg-admin-bg">
+              {cn.slide_image_urls?.[0] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={cn.slide_image_urls[0]}
+                  alt=""
+                  className="w-12 h-12 rounded object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded bg-admin-surface-2 shrink-0 flex items-center justify-center text-xs text-admin-muted-2">
+                  NO
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-admin-text truncate">{cn.title}</p>
+                <p className="text-xs text-admin-muted-2">
+                  {new Date(cn.created_at).toLocaleDateString('ko-KR')}
+                  {cn.branding_level === 'white_label' ? ' · 화이트라벨' : cn.branding_level === 'powered_by' ? ' · 여소남 제공' : ''}
+                </p>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_COLORS[cn.status] || 'bg-gray-100 text-gray-600'}`}>
+                {STATUS_LABELS[cn.status] || cn.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** AI 콘텐츠 인사이트 섹션 */
+function ContentInsightSection({
+  affiliateId,
+  affiliateName,
+}: {
+  affiliateId: string;
+  affiliateName: string;
+}) {
+  const [insights, setInsights] = useState<
+    Array<{
+      id: string;
+      insight_type: string;
+      title: string;
+      content: string;
+      is_read: boolean;
+      created_at: string;
+    }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  const loadInsights = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/affiliate/insights?affiliate_id=${encodeURIComponent(affiliateId)}&limit=10`,
+      );
+      const json = await res.json();
+      setInsights(json.insights || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [affiliateId]);
+
+  useEffect(() => {
+    loadInsights();
+  }, [loadInsights]);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/affiliate/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          affiliate_id: affiliateId,
+          affiliate_name: affiliateName,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await loadInsights();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleMarkRead = async (insightId: string) => {
+    try {
+      await fetch(`/api/affiliate/insights/${insightId}/read`, {
+        method: 'PATCH',
+      });
+      setInsights((prev) =>
+        prev.map((i) => (i.id === insightId ? { ...i, is_read: true } : i)),
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const INSIGHT_ICONS: Record<string, string> = {
+    performance_tip: '💡',
+    template_recommendation: '🎨',
+    topic_suggestion: '📌',
+    timing_optimization: '⏰',
+    summary_report: '📊',
+  };
+
+  const INSIGHT_COLORS: Record<string, string> = {
+    performance_tip: 'border-l-amber-400',
+    template_recommendation: 'border-l-purple-400',
+    topic_suggestion: 'border-l-blue-400',
+    timing_optimization: 'border-l-green-400',
+    summary_report: 'border-l-indigo-400',
+  };
+
+  return (
+    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-admin-text-2">AI 콘텐츠 인사이트</h2>
+          <p className="text-xs text-admin-muted mt-0.5">
+            카드뉴스 성과 데이터 기반 AI 분석
+          </p>
+        </div>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+        >
+          {generating ? '분석 중...' : '인사이트 생성'}
+        </button>
+      </div>
+      {loading ? (
+        <div className="p-6 text-center text-sm text-admin-muted-2">
+          로딩 중...
+        </div>
+      ) : insights.length === 0 ? (
+        <div className="p-6 text-center text-sm text-admin-muted-2">
+          아직 분석된 인사이트가 없습니다. &quot;인사이트 생성&quot; 버튼을 눌러 성과 데이터를 분석해보세요.
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {insights.map((ins) => (
+            <div
+              key={ins.id}
+              className={`px-6 py-4 border-l-4 hover:bg-admin-bg transition-colors ${
+                INSIGHT_COLORS[ins.insight_type] || 'border-l-gray-300'
+              } ${ins.is_read ? 'opacity-60' : ''}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">
+                      {INSIGHT_ICONS[ins.insight_type] || '📋'}
+                    </span>
+                    <p className="text-sm font-medium text-admin-text truncate">
+                      {ins.title}
+                    </p>
+                    {!ins.is_read && (
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-admin-muted mt-1 leading-relaxed whitespace-pre-line">
+                    {ins.content}
+                  </p>
+                  <p className="text-[10px] text-admin-muted-2 mt-1.5">
+                    {new Date(ins.created_at).toLocaleDateString('ko-KR', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+                {!ins.is_read && (
+                  <button
+                    onClick={() => handleMarkRead(ins.id)}
+                    className="text-xs text-indigo-600 hover:underline shrink-0 mt-0.5"
+                  >
+                    확인
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 파트너 포털 설정 섹션 */
+function PortalSettingsSection({
+  affiliateId,
+  affiliateName,
+}: {
+  affiliateId: string;
+  affiliateName: string;
+}) {
+  const [pin, setPin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleSavePin = async () => {
+    if (!pin.trim() || pin.length < 4) {
+      setMessage({ type: 'error', text: 'PIN은 4자리 이상 입력해주세요.' });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/admin/affiliates/set-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ affiliate_id: affiliateId, pin }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'PIN이 설정되었습니다.' });
+        setPin('');
+      } else {
+        setMessage({ type: 'error', text: json.error || 'PIN 설정 실패' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: '네트워크 오류' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="px-6 py-4 border-b border-admin-border">
+        <h2 className="font-semibold text-admin-text-2">파트너 포털 설정</h2>
+        <p className="text-xs text-admin-muted mt-0.5">
+          {affiliateName}님이 전용 포털에 로그인할 때 사용합니다.
+        </p>
+      </div>
+      <div className="p-6 space-y-4">
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-700 mb-1">PIN 번호 설정</label>
+            <input
+              type="text"
+              value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="4-6자리 숫자 PIN"
+              maxLength={6}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <button
+            onClick={handleSavePin}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
+          >
+            {saving ? '저장 중...' : 'PIN 저장'}
+          </button>
+        </div>
+
+        {message && (
+          <div className={`text-xs rounded-lg p-3 ${
+            message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {message.text}
+          </div>
+        )}
+
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-amber-800">
+            <strong>포털 주소:</strong>{' '}
+            <a
+              href="/affiliate/login"
+              target="_blank"
+              className="underline hover:text-amber-900"
+            >
+              /affiliate/login
+            </a>
+          </p>
+          <p className="text-[10px] text-amber-700 mt-1">
+            파트너 코드(referral_code)와 위에서 설정한 PIN으로 로그인합니다.
+          </p>
+        </div>
       </div>
     </div>
   );

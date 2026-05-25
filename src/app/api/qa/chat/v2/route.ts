@@ -93,6 +93,12 @@ export async function POST(req: NextRequest) {
 
   // ── Jarvis 인증 (게스트 모드 지원) ──
   const auth = await resolveJarvisAuth(req, body)
+  if (auth.type === 'unauthenticated') {
+    return new Response(
+      JSON.stringify({ error: '인증되지 않은 요청입니다.' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
   const ctx = auth.ctx
 
   // ── SSE 스트림 ──
@@ -114,13 +120,13 @@ export async function POST(req: NextRequest) {
         // ── 1. Supervisor 결정 ──
         const preDecision = supervisorLite({
           message,
-          sessionId: sessionId ?? null,
-          tenantId: ctx.tenantId ?? null,
-          affiliateId: bodyAffiliateId ?? null,
+          sessionId: sessionId ?? undefined,
+          tenantId: ctx.tenantId ?? undefined,
+          affiliateId: bodyAffiliateId ?? undefined,
           agentType: 'products', // 실제론 concierge 로 라우팅되지만 supervisor 식별용
           ctx: { ...ctx, surface: 'customer' },
           correlationId,
-          source: 'qa_chat_v2',
+          source: 'qa_chat',
         })
 
         agentTaskId = await createAgentTask(preDecision.envelope).then(t => t.id)
@@ -327,7 +333,7 @@ export async function POST(req: NextRequest) {
 
         // critique 결과 영속화
         void recordCritiqueResult({
-          source: 'qa_chat_v2',
+          source: 'qa_chat',
           sessionId: sessionId ?? null,
           conversationId: sessionId ?? null,
           traceId,
@@ -368,7 +374,7 @@ export async function POST(req: NextRequest) {
 
         // ── 11. Platform learning ──
         recordPlatformLearningEvent({
-          source: 'qa_chat_v2',
+          source: 'qa_chat',
           sessionId: sessionId ?? null,
           affiliateId: affiliateScopeId ?? null,
           tenantId: ctx.tenantId ?? null,

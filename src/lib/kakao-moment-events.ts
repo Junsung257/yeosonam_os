@@ -42,3 +42,31 @@ export function trackKakaoViewContent(params: { id: string; name: string; value:
     /* noop */
   }
 }
+
+/**
+ * 카카오 모먼트 Purchase 이벤트 (결제·예약 완료)
+ * 체크아웃 완료 시 서버에서 호출하거나 프론트에서 직접 호출.
+ * 마케팅 동의 없으면 noop.
+ */
+export function trackKakaoPurchase(params: { id: string; name: string; value: number; quantity?: number }): void {
+  if (!hasMarketingConsent()) return;
+  if (typeof window === 'undefined') return;
+  const PID = process.env.NEXT_PUBLIC_KAKAO_PIXEL_ID;
+  if (!PID) return;
+
+  try {
+    const kp = (window as unknown as { kakaoPixel?: (id: string) => Record<string, (p: unknown) => void> }).kakaoPixel;
+    if (typeof kp !== 'function') return;
+    const px = kp(PID);
+    if (typeof px.purchase === 'function') {
+      px.purchase({
+        id: params.id,
+        tag: params.name.slice(0, 500),
+        value: String(Math.round(params.value)),
+        quantity: params.quantity ?? 1,
+      });
+    }
+  } catch {
+    /* noop */
+  }
+}

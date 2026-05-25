@@ -1,8 +1,5 @@
 'use client';
 
-import * as Sentry from '@sentry/nextjs';
-import { useEffect } from 'react';
-
 export default function GlobalError({
   error,
   reset,
@@ -10,18 +7,16 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    Sentry.captureException(error);
-  }, [error]);
+  console.error('[GlobalError]', error.message, error.stack?.split('\n').slice(0, 15).join('\n'));
 
   return (
     <html>
       <body>
         <div style={{ padding: '2rem', fontFamily: 'sans-serif', textAlign: 'center' }}>
           <h2>문제가 발생했습니다</h2>
-          <p style={{ color: '#666', marginBottom: '1rem' }}>
-            오류가 자동 보고되었습니다. 잠시 후 다시 시도해주세요.
-          </p>
+          <pre style={{ color: '#c00', background: '#fee', padding: '1rem', borderRadius: '8px', textAlign: 'left', fontSize: '13px', maxWidth: '800px', margin: '1rem auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+{error.message}
+{error.stack}</pre>
           <button
             onClick={reset}
             style={{

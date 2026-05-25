@@ -296,6 +296,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           .catch(e => console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e));
       }
 
+      // Naver SearchAd 전환 포스트백
+      // 네이버 전환추적 픽셀(서버사이드) — n_keyword가 있으면 네이버 검색광고 전환 신호
+      const naverAnalyticsId = getSecret('NEXT_PUBLIC_NAVER_ANALYTICS_ID');
+      if (attributed_source === 'naver' && naverAnalyticsId) {
+        const naverPostbackUrl = `https://wcs.naver.net/wcsc.con?wo=${naverAnalyticsId}&co=${final_sales_price}&rc=100&gr=booking`;
+        fetch(naverPostbackUrl, { signal: AbortSignal.timeout(5000) })
+          .then(() => console.log('[Postback] Naver 전환 완료'))
+          .catch(e => console.warn('[Postback] Naver 실패:', e instanceof Error ? e.message : e));
+      }
+
       // 콘텐츠 → 예약 어트리뷰션 기록
       if (content_creative_id) {
         void supabaseAdmin.from('content_attribution_events').insert({

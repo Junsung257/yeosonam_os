@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { invalidateMetaTokenCache } from '@/lib/meta-token-resolver';
+import { refreshExpiringTokens } from '@/lib/social-oauth-refresh';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
@@ -55,11 +56,20 @@ async function runMetaTokenRefresh(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
 
-  const summary = {
+  const summary: {
+    checked: number;
+    refreshed: number;
+    skipped_still_valid: number;
+    skipped_no_config: number;
+    social_refreshed: number;
+    errors: string[];
+    new_expires_at: string | null;
+  } = {
     checked: 0,
     refreshed: 0,
     skipped_still_valid: 0,
     skipped_no_config: 0,
+    social_refreshed: 0,
     errors: [] as string[],
     new_expires_at: null as string | null,
   };
@@ -155,6 +165,24 @@ async function runMetaTokenRefresh(request: NextRequest) {
     const errMsg = err instanceof Error ? err.message : String(err);
     summary.errors.push(`unexpected: ${errMsg}`);
     await sendSlackAlert('🚨 Meta 토큰 refresh 크론 예외', { error: errMsg });
+  }
+
+  // ── 추가: social_platform_configs OAuth 토큰 갱신 ──
+  // Threads, Instagram 등 Meta 계열 토큰을 7일 이내 만료 예정이면 갱신한다.
+  if (isSupabaseConfigured) {
+    try {
+      const socialResults = await refreshExpiringTokens();
+      summary['social_refreshed'] = socialResults.filter(r => r.success).length;
+      const socialErrors = socialResults.filter(r => !r.success);
+      if (socialErrors.length > 0) {
+        for (const e of socialErrors) {
+          summary.errors.push(`social-${e.platform}: ${e.error}`);
+        }
+      }
+    } catch (socialErr) {
+      const msg = socialErr instanceof Error ? socialErr.message : String(socialErr);
+      summary.errors.push(`social-refresh-exception: ${msg}`);
+    }
   }
 
   return summary;

@@ -240,6 +240,7 @@ export async function POST(request: NextRequest) {
           seo_title: seoTitle,
           seo_description: seoDesc,
           og_image_url: ogImage,
+          slide_image_urls: cardNewsImages.length > 0 ? cardNewsImages : undefined,
           angle_type: angleType,
           category: cardMode === 'product' ? 'product_intro' : 'info',
           category_id: categoryId,

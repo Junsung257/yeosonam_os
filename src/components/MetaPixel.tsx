@@ -107,3 +107,31 @@ export function trackLead(params: {
     (window as any).fbq('track', 'Lead', payload);
   }
 }
+
+/**
+ * Purchase 이벤트 (결제·예약 완료)
+ * 서버사이드 CAPI 포스트백과 별도로 브라우저 픽셀에서도 전송.
+ * 동의 없으면 noop.
+ */
+export function trackPurchase(params: {
+  value: number;
+  content_ids?: string[];
+  content_type?: string;
+  num_items?: number;
+}) {
+  if (!hasAnalyticsConsent()) return;
+  if (typeof window !== 'undefined' && (window as any).fbq) {
+    const payload: Record<string, unknown> = {
+      value: params.value,
+      currency: 'KRW',
+    };
+    if (params.content_ids?.length) {
+      payload.content_ids = params.content_ids;
+      payload.content_type = params.content_type ?? 'product';
+    }
+    if (params.num_items !== undefined) {
+      payload.num_items = params.num_items;
+    }
+    (window as any).fbq('track', 'Purchase', payload);
+  }
+}

@@ -1448,7 +1448,7 @@ JSON 배열로 응답:
         let pkgStatus = regWrite.travelPackageStatus;
         if (uploadGate === 'BLOCKED') {
           productStatus = 'REVIEW_NEEDED';
-          pkgStatus = 'pending';  // ★ 변경: pending_review → pending (어드민 목록에 보이도록)
+          pkgStatus = 'pending' as any;  // ★ 변경: pending_review → pending (어드민 목록에 보이도록)
         }
         if (l1Gate.reasons.length > 0) {
           console.warn('[Upload API] L1 Gate BLOCK:', l1Gate.codes.join(','), '—', l1Gate.reasons.join('; '));
@@ -1476,7 +1476,7 @@ JSON 배열로 응답:
 
         if (uploadGate === 'REVIEW_NEEDED' && productStatus === 'approved') {
           productStatus = 'draft';
-          pkgStatus = 'pending';  // ★ 변경: pending_review → pending
+          pkgStatus = 'pending' as any;  // ★ 변경: pending_review → pending
         }
 
         console.log(`[Upload API] 상태 결정: products=${productStatus}, travel_packages=${pkgStatus} (confidence=${(confidenceV3 * 100).toFixed(0)}%)`);
@@ -1560,8 +1560,9 @@ JSON 배열로 응답:
         // ── G8. travel_packages 테이블 INSERT (고객 노출용 + FK 연결) ─────────
         //   draftRow · pkgStatus · confidenceV3 는 G3.5 registration write pipeline 에서 확정.
 
+        let pkgResult: { id: string } | null = null
         if (isSupabaseConfigured) {
-          const { data: pkgResult, error: pkgError } = await supabaseAdmin
+          const { data: pkgRes, error: pkgError } = await supabaseAdmin
             .from('travel_packages')
             .insert({
               title,
@@ -1620,6 +1621,8 @@ JSON 배열로 응답:
             })
             .select()
             .single();
+
+          pkgResult = pkgRes as { id: string } | null
 
           if (pkgError) {
             throw new Error(`travel_packages 저장 실패: ${pkgError.message}`);
@@ -1690,7 +1693,7 @@ JSON 배열로 응답:
 
             // P1 — upload → normalized_intakes 역변환 SSOT + IR canary shadow (샘플만 forward LLM)
             if (isSupabaseConfigured) {
-              const intakePkgRow = pkgResult;
+              const intakePkgRow = pkgResult as any;
               nextAfter(async () => {
                 try {
                   const snap = await persistIntakeSnapshot(supabaseAdmin, {
@@ -1930,7 +1933,7 @@ JSON 배열로 응답:
             const { inferCategory } = await import('@/lib/parser/attraction-category');
 
             let autoInserted = 0;
-            let reconcileFailed: string[] = [];
+            const reconcileFailed: string[] = [];
 
             for (const kw of uniqueNew) {
               const reconciled = await reconcilePlaceName(kw, {

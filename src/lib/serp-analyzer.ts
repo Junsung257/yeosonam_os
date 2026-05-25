@@ -270,27 +270,48 @@ export async function analyzeSerp(
 /**
  * blog-publisher가 호출 — SERP 분석 결과를 prompt 블록으로 변환
  */
-export function buildSerpPromptBlock(analysis: SerpAnalysis | null): string {
-  if (!analysis) return '';
+export function buildSerpPromptBlock(
+  analysis: SerpAnalysis | null,
+  serpGapAnalysis?: { missingTopics: string[]; coverageScore: number; suggestions: string[] },
+): string {
+  if (!analysis && !serpGapAnalysis) return '';
 
   const lines: string[] = [];
-  lines.push('## 🎯 경쟁 SERP 분석 (Naver 상위 10개)');
-  lines.push(`- 평균 제목 길이: ${analysis.avg_title_len}자 (당신의 SEO 제목도 ${analysis.avg_title_len > 50 ? '40~55자' : '30~45자'} 권장)`);
-  if (analysis.power_words.length > 0) {
-    const top3 = analysis.power_words.slice(0, 3).map(p => `${p.word}(${p.count}/10)`).join(', ');
-    lines.push(`- 상위 Power Word: ${top3} → 제목에 1개 이상 포함 강력 권장`);
+
+  if (analysis) {
+    lines.push('## 🎯 경쟁 SERP 분석 (Naver 상위 10개)');
+    lines.push(`- 평균 제목 길이: ${analysis.avg_title_len}자 (당신의 SEO 제목도 ${analysis.avg_title_len > 50 ? '40~55자' : '30~45자'} 권장)`);
+    if (analysis.power_words.length > 0) {
+      const top3 = analysis.power_words.slice(0, 3).map(p => `${p.word}(${p.count}/10)`).join(', ');
+      lines.push(`- 상위 Power Word: ${top3} → 제목에 1개 이상 포함 강력 권장`);
+    }
+    if (analysis.year_inclusion_rate > 0.4) {
+      lines.push(`- 상위 ${(analysis.year_inclusion_rate * 100).toFixed(0)}%가 "${new Date().getFullYear() + 1}" 또는 "${new Date().getFullYear()}" 포함 — 제목에 년도 포함`);
+    }
+    if (analysis.bracket_rate > 0.3) {
+      lines.push(`- 상위 ${(analysis.bracket_rate * 100).toFixed(0)}%가 [..] 또는 (..) 형식 사용 — 시각적 차별화`);
+    }
+    if (analysis.recommended_entities_to_include.length > 0) {
+      lines.push(`- 상위 글에 자주 언급되는 엔티티 (본문에 자연스럽게 포함 권장): ${analysis.recommended_entities_to_include.join(', ')}`);
+    }
+    lines.push('');
+    lines.push('이 패턴을 참고하되 표절 금지. 토픽 본질 + 여소남 톤 유지.');
   }
-  if (analysis.year_inclusion_rate > 0.4) {
-    lines.push(`- 상위 ${(analysis.year_inclusion_rate * 100).toFixed(0)}%가 "${new Date().getFullYear() + 1}" 또는 "${new Date().getFullYear()}" 포함 — 제목에 년도 포함`);
+
+  // 갭 분석 결과 주입
+  if (serpGapAnalysis && serpGapAnalysis.missingTopics.length > 0) {
+    lines.push('');
+    lines.push('## ⚠️ 부족한 주제 (경쟁사 대비)');
+    lines.push(`현재 글의 주제 커버리지 점수: ${serpGapAnalysis.coverageScore}/100`);
+    lines.push(`경쟁사 상위 글에서 다루지만 이 글에 없는 주제:`);
+    for (const topic of serpGapAnalysis.missingTopics) {
+      lines.push(`- "${topic}" — 본문에 이 주제를 포함하세요`);
+    }
+    lines.push('');
+    lines.push('중요: 위 부족한 주제들은 반드시 본문에 자연스럽게 녹여 포함하세요.');
+    lines.push('H2 섹션으로 추가하거나 기존 문단에 통합할 수 있습니다.');
   }
-  if (analysis.bracket_rate > 0.3) {
-    lines.push(`- 상위 ${(analysis.bracket_rate * 100).toFixed(0)}%가 [..] 또는 (..) 형식 사용 — 시각적 차별화`);
-  }
-  if (analysis.recommended_entities_to_include.length > 0) {
-    lines.push(`- 상위 글에 자주 언급되는 엔티티 (본문에 자연스럽게 포함 권장): ${analysis.recommended_entities_to_include.join(', ')}`);
-  }
-  lines.push('');
-  lines.push('이 패턴을 참고하되 표절 금지. 토픽 본질 + 여소남 톤 유지.');
+
   return lines.join('\n');
 }
 

@@ -6,11 +6,13 @@
  */
 import { InstagramProvider } from './instagram-provider';
 import { ThreadsProvider } from './threads-provider';
+import { XProvider } from './x-provider';
 import type { SocialProvider, SocialPlatform } from './types';
 
 const providers: Record<string, SocialProvider> = {
   instagram: new InstagramProvider(),
   threads: new ThreadsProvider(),
+  x: new XProvider(),
   // 추후: tiktok: new TikTokProvider(), youtube_shorts: new YouTubeShortsProvider(), ...
 };
 
@@ -34,6 +36,7 @@ export function listConfiguredProviders(): SocialProvider[] {
 export function resolveProviderFromPlatformKey(platformKey: string): SocialProvider | null {
   if (platformKey.startsWith('instagram')) return getProvider('instagram');
   if (platformKey === 'threads_post') return getProvider('threads');
+  if (platformKey === 'x_post' || platformKey === 'twitter_post') return getProvider('x');
   return null;
 }
 

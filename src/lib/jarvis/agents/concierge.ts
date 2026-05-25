@@ -144,7 +144,7 @@ function buildExecutor(ctx: JarvisContext) {
         const sourceTypes = args.source_types ?? scope.source_types
         const hits = await retrieve({
           query: args.query,
-          tenantId: scope.include_shared ? ctx.tenantId : null,
+          tenantId: scope.include_shared ? ctx.tenantId ?? undefined : undefined,
           sourceTypes: sourceTypes,
           limit: Math.min(args.limit ?? 5, 10),
           rerank: true,

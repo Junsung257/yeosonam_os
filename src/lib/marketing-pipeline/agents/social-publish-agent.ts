@@ -29,7 +29,7 @@ export class SocialPublishAgent extends BaseMarketingAgent {
   // 일일 발행 한도 (각 플랫폼별, DB config보다 낮은 값이 우선)
   private readonly dailyPostLimit: number;
 
-  constructor(options?: { dailyPostLimit?: number }) {
+  constructor(options?: { dailyPostLimit?: number; dryRun?: boolean }) {
     super();
     this.dailyPostLimit = options?.dailyPostLimit ?? 10;
   }
@@ -141,7 +141,7 @@ export class SocialPublishAgent extends BaseMarketingAgent {
       instagram: 'instagram_caption',
       facebook: null, // 페이스북은 content_distribution platform에 없음
       threads: 'threads_post',
-      twitter: null,
+      twitter: 'twitter_post',
       naver_cafe: 'naver_blog',
     };
     return map[platform] ?? null;
@@ -156,8 +156,8 @@ export class SocialPublishAgent extends BaseMarketingAgent {
 
     if (!configs?.length) return [];
 
-    const enabled = configs.map(r => r.platform as SocialPlatform);
-    return enabled.filter(p => SOCIAL_PLATFORMS.includes(p));
+    const enabled = configs.map((r: any) => r.platform as SocialPlatform);
+    return enabled.filter((p: any) => SOCIAL_PLATFORMS.includes(p));
   }
 
   /** 일일 발행 한도 초과 여부 */

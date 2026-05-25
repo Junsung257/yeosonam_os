@@ -2,19 +2,18 @@
  * 블로그 3-Gate 자동 품질 검증
  *
  * 풀-자동 발행 전에 통과해야 하는 최소 기준.
- * 실패 시 content_creatives.status='failed' 로 강등하고 quality_gate JSONB 에 사유 기록.
+ * 임계값은 blog-bayesian-optimizer 에서 데이터 기반 자동 조정 가능.
  *
  * Gate 1 — 길이: 본문 800자 이상 (thin content 방어)
  * Gate 2 — 클리셰 감지: style-guide 금지어 3개 이상 등장하면 실패
  * Gate 3 — 중복 방어: 최근 14일 내 동일 slug / (destination+angle_type) 존재하면 실패
- *
- * 통과 시 → 발행 허용. 실패 시 → draft 강등 + 재시도 1회.
  */
 
 import { supabaseAdmin } from './supabase';
 import { checkReadability } from './blog-readability';
 import { stripMarkup } from './blog-text-utils';
 import { slugifyTopic } from './slug-utils';
+import { getActiveThresholds, type AdaptiveThresholds } from './blog-bayesian-optimizer';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -420,6 +419,14 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
   const gates: GateResult[] = [];
 
+  // 동적 임계값 로드 (blog-bayesian-optimizer 에서 주간/월간 자동 조정)
+  let adaptive: AdaptiveThresholds | null = null;
+  try {
+    adaptive = await getActiveThresholds();
+  } catch {
+    // fallback: 기본 THRESHOLDS 상수 사용
+  }
+
   gates.push(checkLength(input.blog_html, blogType));
   gates.push(checkCliche(input.blog_html, blogType));
   gates.push(await checkDuplicate(input));
@@ -427,8 +434,11 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(checkHook(input.blog_html));
   gates.push(checkCta(input.blog_html));
   gates.push(checkLinks(input.blog_html, baseUrl));
-  // 가독성 게이트 (info=70점, product=60점 — 상품 블로그는 마케팅 톤 허용)
-  gates.push(checkReadability(input.blog_html, blogType === 'info' ? 70 : 60));
+  // 가독성 게이트 — 동적 임계값 적용
+  const readThreshold = blogType === 'info'
+    ? (adaptive?.infoMinReadability ?? 70)
+    : (adaptive?.productMinReadability ?? 60);
+  gates.push(checkReadability(input.blog_html, readThreshold));
   // AI 인용 최적화 (Cue/AIO/SGE) — 9번째 게이트
   gates.push(checkAiReadability(input.blog_html, blogType));
 

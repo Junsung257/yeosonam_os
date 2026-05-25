@@ -9,7 +9,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { decrypt, encrypt } from '@/lib/encryption';
 import { getSecret } from '@/lib/secret-registry';
 
-export type OAuthProvider = 'google_ads' | 'meta' | 'naver' | 'google_analytics';
+export type OAuthProvider = 'google_ads' | 'meta' | 'naver' | 'google_analytics' | 'twitter';
 
 export interface OAuthTokens {
   accessToken: string;

@@ -10,6 +10,8 @@ export type PublisherBridgeResponse = {
   seo_title: string;
   seo_description: string;
   og_image_url?: string | null;
+  /** 카드뉴스 슬라이드 PNG URL 배열 */
+  slide_image_urls?: string[];
 };
 
 export function parsePublisherBridgeResponse(raw: unknown): PublisherBridgeResponse | null {
@@ -26,6 +28,11 @@ export function parsePublisherBridgeResponse(raw: unknown): PublisherBridgeRespo
   if (typeof o.og_image_url === 'string') og_image_url = o.og_image_url;
   else if (o.og_image_url === null) og_image_url = null;
 
+  let slide_image_urls: string[] | undefined;
+  if (Array.isArray(o.slide_image_urls)) {
+    slide_image_urls = o.slide_image_urls.filter(u => typeof u === 'string' && u.length > 0);
+  }
+
   return {
     publisher_bridge: true,
     blog_html,
@@ -33,5 +40,6 @@ export function parsePublisherBridgeResponse(raw: unknown): PublisherBridgeRespo
     seo_title,
     seo_description,
     og_image_url,
+    slide_image_urls,
   };
 }

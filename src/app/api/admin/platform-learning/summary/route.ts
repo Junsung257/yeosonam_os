@@ -22,9 +22,9 @@ export async function GET() {
     supabaseAdmin.from('critique_results').select('id', { count: 'exact', head: true }).gte('created_at', weekIso),
     supabaseAdmin.from('critique_results').select('severity, cnt:severity', { count: 'exact', head: false })
       .gte('created_at', weekIso)
-      .then(r => {
+      .then((r: any) => {
         // Simple group by via raw query
-        return supabaseAdmin.rpc('get_critique_counts_since', { since_iso: weekIso }).then(g => ({ data: g.data, error: g.error }));
+        return supabaseAdmin.rpc('get_critique_counts_since', { since_iso: weekIso }).then((g: any) => ({ data: g.data, error: g.error }));
       }),
   ] as const);
 
