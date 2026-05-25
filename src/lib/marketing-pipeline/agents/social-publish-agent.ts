@@ -141,7 +141,7 @@ export class SocialPublishAgent extends BaseMarketingAgent {
       instagram: 'instagram_caption',
       facebook: null, // 페이스북은 content_distribution platform에 없음
       threads: 'threads_post',
-      twitter: null,
+      twitter: 'twitter_post',
       naver_cafe: 'naver_blog',
     };
     return map[platform] ?? null;

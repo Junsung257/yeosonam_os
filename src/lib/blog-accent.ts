@@ -67,6 +67,31 @@ export function applyMarkdownAccents(md: string): string {
   //    개행 포함 X, 빈 내용 X
   out = out.replace(/==([^=\n]{1,120}?)==/g, '<mark>$1</mark>');
 
+  // 1-b) 가격 패턴: 숫자+만원/원/달러 → <strong class="num">…</strong>
+  //     예: "12,000원", "3만원", "$30", "50만원"
+  out = out.replace(
+    /(\d[\d,]*)\s*(만원|원|달러)\b/g,
+    '<strong class="num">$1$2</strong>',
+  );
+
+  // 1-c) 비교 패턴: X보다 Y, A vs B → <mark> 형광펜
+  //     예: "호텔보다 게스트하우스", "에어비앤비 vs 호텔"
+  out = out.replace(
+    /([가-힣]+)\s*(보다|vs\.?)\s*([가-힣]+)/gi,
+    (_m, a, cmp, b) => `<mark>${a} ${cmp} ${b}</mark>`,
+  );
+
+  // 1-d) 날짜/기간 패턴: N박M일, 2026년 → <strong class="num">…</strong>
+  //     예: "3박4일", "2박 3일", "2026년"
+  out = out.replace(
+    /(\d+)\s*(박)\s*(\d+)\s*(일)\b/g,
+    '<strong class="num">$1박$3일</strong>',
+  );
+  out = out.replace(
+    /(\d{4})\s*(년)\b/g,
+    '<strong class="num">$1$2</strong>',
+  );
+
   // 3) :::tip / :::  블록 (한 줄짜리도 지원)
   //    여러 줄 여러 블록 가능
   out = out.replace(/:::tip\s*\n([\s\S]*?)\n:::/g, (_m, body) => {

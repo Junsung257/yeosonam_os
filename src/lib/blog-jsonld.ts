@@ -311,7 +311,7 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
     // (https://developers.google.com/search/docs/appearance/structured-data/speakable)
     speakable: {
       '@type': 'SpeakableSpecification',
-      cssSelector: ['article h1', '.prose-blog > p:first-of-type', '[data-tldr]'],
+      cssSelector: ['article h1', '.prose-blog > p:first-of-type', '[data-tldr]', '[data-ai-overview]'],
     },
     ...(pkg && {
       about: {

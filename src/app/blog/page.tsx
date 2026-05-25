@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import BlogData from './BlogData';
 import Loading from './loading';
 
+export const experimental_ppr = true;
 export const revalidate = 86400;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';

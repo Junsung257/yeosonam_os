@@ -29,6 +29,7 @@ export default function SearchAdsPage() {
   return (
     <div className="max-w-7xl mx-auto px-2 py-4 space-y-4">
       <SubNav basePath="/admin/search-ads" tabs={[
+        { href: '/admin/marketing', label: '통합 대시보드' },
         { href: '/admin/search-ads', label: '캠페인/키워드' },
         { href: '/admin/keyword-stats', label: '키워드 성과' },
         { href: '/admin/keyword-optimization', label: '최적화 로그' },

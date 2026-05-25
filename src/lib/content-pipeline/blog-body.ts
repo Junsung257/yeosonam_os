@@ -5,6 +5,10 @@ import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 import { FEW_SHOT_EXAMPLES } from '@/prompts/blog/few-shot-examples';
 import { pickBlogVariations } from '@/prompts/blog/variations';
 import { getPrompt } from '@/lib/prompt-loader';
+import { SerpAnalysis, buildSerpPromptBlock } from '@/lib/serp-analyzer';
+import { analyzeSerpGap } from '@/lib/serp-gap-analyzer';
+import { generateSectionImage } from '@/lib/blog-image-gen';
+import { selectTemplate, applyTemplateToBrief } from '@/lib/content-pipeline/templates';
 
 /**
  * Call 3: 여소남 블로그 에디터 (큐레이터 페르소나)
@@ -44,13 +48,34 @@ export interface BlogBodyInput {
   baseUrl?: string;
   /** 승인된 실제 후기 — 본문에 > 인용으로 삽입하도록 프롬프트 주입 */
   reviewQuotesMarkdown?: string | null;
+  /** SERP 분석 결과 (Naver 상위 10개 패턴) — 프롬프트에 주입 */
+  serpAnalysis?: SerpAnalysis | null;
+  /** AI 이미지 생성 활성화 (기본 true) */
+  generateImages?: boolean;
 }
 
 export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
-  const { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl, reviewQuotesMarkdown } = input;
+  let { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl, reviewQuotesMarkdown, serpAnalysis, generateImages = true } = input;
 
   if (!hasBlogApiKey()) {
     return buildFallbackBlog(input);
+  }
+
+  // ── 글 구조 템플릿 선택 (검색 의도 기반 H2 다양화) ──
+  try {
+    const keyword = brief.h1;
+    const template = selectTemplate(keyword);
+    if (template.id !== 'pillar') {
+      const originalSections = brief.sections;
+      brief = applyTemplateToBrief(brief, template, keyword);
+      console.log(`[blog-body] 템플릿 "${template.name}"(${template.id}) 적용 — "${keyword}"`);
+      // 이미지 맵이 sections 위치 기준으로 구성되어 있으므로, 템플릿 적용 후 재조정
+      slideImageMap = {};
+      pexelsImageMap = {};
+    }
+  } catch (tplErr) {
+    console.warn('[blog-body] 템플릿 선택/적용 실패 (기존 brief 유지):',
+      tplErr instanceof Error ? tplErr.message : tplErr);
   }
 
   const productUrl = productContext?.product_id && baseUrl
@@ -68,7 +93,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     price: priceStr,
   });
 
-  // 섹션별 이미지 사전 매핑 (중복/누락 방지)
+  // H1 이미지 + CTA 이미지 추출 (sectionImageMap 에서 사용)
   const h1Image = slideImageMap[1] || null;
   const slideKeys = Object.keys(slideImageMap).map(Number).sort((a, b) => a - b);
   const lastKey = slideKeys.length > 0 ? slideKeys[slideKeys.length - 1] : 0;
@@ -77,7 +102,8 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     ? slideImageMap[lastKey]
     : null;
 
-  const sectionImageMap: { position: number; h2: string; image_url: string | null }[] = brief.sections.map((s, index) => {
+  // 섹션별 이미지 — 카드뉴스/pexels 우선, 부족하면 AI 생성
+  let sectionImageMap: { position: number; h2: string; image_url: string | null }[] = brief.sections.map((s, index) => {
     // 1번은 표지, 마지막은 CTA이므로, 본문 H2는 2번부터 (index + 2) 순차 할당
     const imgPos = index + 2;
     // imgPos가 lastKey(CTA)와 겹치거나 초과하면 카드뉴스 이미지가 소진된 것으로 간주
@@ -93,6 +119,21 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     };
   });
 
+  // AI 이미지 생성: generateImages=true 이고 섹션에 이미지가 없으면 생성
+  if (generateImages) {
+    sectionImageMap = await Promise.all(
+      sectionImageMap.map(async (sec) => {
+        if (sec.image_url) return sec; // 이미 있음
+        const url = await generateSectionImage(
+          sec.h2,
+          productContext?.destination || brief.h1,
+          productContext?.destination || '',
+        );
+        return { ...sec, image_url: url };
+      }),
+    );
+  }
+
   // Few-shot 예시: 상품 모드면 product_* 예시 우선
   const relevantExamples = productContext
     ? FEW_SHOT_EXAMPLES.filter(e => e.product_type.startsWith('product_'))
@@ -102,6 +143,19 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
   ).join('\n\n---\n\n');
 
   const styleGuide = await getPrompt('blog-style-guide', BLOG_STYLE_GUIDE);
+  // SERP 갭 분석: 경쟁사 제목 추출 & 내 글에 부족한 주제 발견
+  const serpGapResult = serpAnalysis && serpAnalysis.recommended_entities_to_include?.length > 0
+    ? analyzeSerpGap(
+        brief.h1,
+        brief.sections.map(s => s.h2).join(' '),
+        [brief.h1, ...serpAnalysis.recommended_entities_to_include.slice(0, 5)],
+      )
+    : null;
+
+  const serpPromptBlock = serpAnalysis
+    ? buildSerpPromptBlock(serpAnalysis, serpGapResult ?? undefined)
+    : '';
+
   const prompt = `${styleGuide}
 
 ---
@@ -148,6 +202,7 @@ ${reviewQuotesMarkdown?.trim() ? `
 ${reviewQuotesMarkdown.trim()}
 ` : ''}
 
+${serpPromptBlock}
 ## 이미지 배치 (URL 한 글자도 변경 금지, 지정된 위치에 한 번만 삽입)
 
 ### H1 바로 아래:
@@ -178,6 +233,36 @@ ${ctaImage ? `![${productContext?.destination || '여소남'}](${ctaImage})` : '
 - 입력에 없는 운영 시간, 시설(수영장·라이브쇼·인증제도), 수치(만족도 N%, 재구매율 N%, 거리·소요 시간 등)를 **임의로 만들지 마라.**
 - 모르거나 입력에 없으면 일반적인 톤으로 우회한다 ("자세한 일정은 본문에서 확인하세요" 등). 추측한 사실 적지 말 것.
 - 위반 시 전체 재작성.
+
+### 0-B. AI Overviews / SGE 최적화 (필수) — Google AIO와 네이버 C-Rank가 직접 인용
+
+1. **H1 바로 아래, TL;DR 직전에 AI-Overview 블록을 정확히 이 포맷으로 넣을 것:**
+   블록은 3개의 콜론(:::)과 ai-overview로 시작하고,
+   각 라인은 - 대시로 시작하는 bullet 3~5개 (15~30자, 숫자/가격/기간/목적지 포함),
+   3개의 콜론(:::)으로 닫음.
+   예시 구조: :::ai-overview 새줄 - 다낭 3박5일 새줄 :::
+2. 이 블록은 화면에 표시되지 않지만(Speakable schema + AIO 발췌 대상), Google이 추천 스니펫으로 채택할 확률을 높인다.
+3. 모든 수치는 검증된 상품 팩트에서만 기재. 추측 금지.
+4. 각 bullet은 마침표로 끝나는 완전한 문장.
+
+### 0-C. LSI 키워드 자연 분포 (필수) — Semantic SEO 및 TF-IDF 최적화
+
+Google은 단일 키워드 반복보다 **주제 연관성(LSI / TF-IDF)** 을 평가한다.
+본문 전체에 아래 LSI 카테고리 중 글의 성격에 맞는 것을 **자연스럽게** 분포시킬 것:
+
+| 글 성격 | 반드시 포함할 LSI 주제 |
+|----------|----------------------|
+| 패키지 상품 | 교통(비행기/픽업), 숙소(호텔/리조트), 식사(맛집/포함식), 비용(가격/특가), 일정(박수/이동) |
+| 여행 준비물 | 날씨(기온/계절), 통신(와이파이/유심), 환전(환율/현지화폐), 교통(이동/렌터카), 문서(비자/여권) |
+| 날씨/계절 | 옷차림(준비물/패션), 관광(명소/실내액티비티), 교통(우기/건기), 숙소(비수기/성수기) |
+| 환전/팁 | 화폐(달러/엔화/동), 비용(예산/경비/팁문화), 카드(트래블월렛/ATM), 쇼핑(면세/가격) |
+| 목적지 가이드 | 관광(명소/랜드마크), 교통(대중교통/택시), 숙소(지역별 호텔), 식사(현지음식/맛집), 문화(팁/에티켓) |
+
+**규칙:**
+- 본문 전체에 **3개 이상 LSI 카테고리**의 단어가 자연스럽게 등장해야 함 (1개 카테고리당 2회 이상).
+- 억지로 끼워넣지 말고, **해당 주제의 H2 섹션 안에서** 자연스럽게 언급.
+- LSI 주제어를 나열하지 말 것 — 문장의 흐름 안에서 녹아들게.
+- 변환 후 체크: "이 글에 관련 주제어(교통·숙소·비용 등)가 골고루 나오는가?"
 
 ### 0. 톤 (제일 중요 — 어기면 전체 재작성)
 
@@ -333,6 +418,21 @@ ${ctaImage ? `![${productContext?.destination || '여소남'}](${ctaImage})` : '
     // Quality Rater Guidelines 2025 (Experience 시그널 = first-hand 검증).
     // 거짓 경험은 만들지 않고, "여소남 운영팀 OP가 검수했다"는 사실만 적시한다.
     text = injectEeatBox(text, productContext);
+
+    // `:::ai-overview` 블록을 `<div data-ai-overview>` HTML 마크업으로 변환
+    // (AI Overviews / SGE / GPT가 직접 발췌할 수 있는 기계 가독 섹션)
+    text = text.replace(
+      /:::ai-overview\s*\n([\s\S]*?):::/g,
+      (_m, inner: string) => {
+        const bullets = inner
+          .split('\n')
+          .map(l => l.replace(/^-\s*/, '').trim())
+          .filter(Boolean)
+          .map(b => `<li>${b}</li>`)
+          .join('\n        ');
+        return `<div data-ai-overview aria-label="핵심 요약">\n  <ul>\n        ${bullets}\n  </ul>\n</div>`;
+      },
+    );
 
     if (text.length >= MIN_BODY_CHARS) return text;
     console.warn(`[blog-body] 최종 ${text.length}자 < ${MIN_BODY_CHARS}자 → fallback 사용`);

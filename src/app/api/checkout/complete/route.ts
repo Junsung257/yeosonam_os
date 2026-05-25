@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 import { earnMileage } from '@/lib/mileage-service';
 import { signGuidebookToken } from '@/lib/guidebook-token';
 import { sendGuidebookReadyAlimtalk } from '@/lib/kakao';
@@ -157,12 +158,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
+  // ── STEP 4. Naver 전환추적 포스트백 (fire-and-forget) ──────
+  if (attributedSource === 'naver') {
+    const naverAnalyticsId = getSecret('NEXT_PUBLIC_NAVER_ANALYTICS_ID');
+    if (naverAnalyticsId) {
+      const naverConvUrl = `https://wcs.naver.net/wcsc.con?wo=${naverAnalyticsId}&co=${final_sales_price}&rc=100&gr=booking`;
+      fetch(naverConvUrl, { signal: AbortSignal.timeout(5000) })
+        .then(() => console.log('[checkout/complete] Naver 전환추적 완료'))
+        .catch(e => console.warn('[checkout/complete] Naver 전환추적 실패:', e instanceof Error ? e.message : e));
+    }
+  }
+
+  // ── 브라우저 픽셀 Purchase 이벤트 신호용 응답 ───────────────
+  // 클라이언트는 이 응답을 받으면 Meta Pixel/Kakao Pixel Purchase 이벤트를 발화
+
   // ── 응답 — 원가(base_cost) 절대 미포함 ───────────────────────
 
   return NextResponse.json({
     ok: true,
     booking_id,
     attributed_source: attributedSource,
+    purchase_event: {
+      value: final_sales_price,
+      booking_id,
+      // 클라이언트가 픽셀 Purchase 이벤트를 발화할 수 있도록 신호 제공
+    },
     mileage: mileageResult
       ? { earned: mileageResult.earned, transaction_id: mileageResult.transaction_id }
       : null,

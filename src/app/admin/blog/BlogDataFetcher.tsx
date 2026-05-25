@@ -152,9 +152,22 @@ export default async function BlogDataFetcher({
                   {timeAgo(post.published_at || post.created_at)}
                 </td>
                 <td>
-                  <Link href={`/admin/blog/${post.id}`} className="text-admin-xs text-brand hover:text-brand-dark font-medium hover:underline">
-                    편집
-                  </Link>
+                  <div className="flex gap-1.5 items-center">
+                    <Link href={`/admin/blog/${post.id}`} className="text-admin-xs text-brand hover:text-brand-dark font-medium hover:underline">
+                      편집
+                    </Link>
+                    {post.slug && (
+                      <a
+                        href={`/blog/${post.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-admin-xs text-emerald-600 hover:text-emerald-700 font-medium hover:underline whitespace-nowrap"
+                        title="실제 블로그 글 보기"
+                      >
+                        보기 →
+                      </a>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -1603,7 +1603,8 @@ export default function AdminPage({
             { title: 'AI/마케팅', links: [
               { href: '/admin/marketing', label: '마케팅 대시' },
               { href: '/admin/marketing/card-news', label: '카드뉴스' },
-              { href: '/admin/content-hub', label: '콘텐츠' },
+              { href: '/admin/content-hub', label: '콘텐츠 허브' },
+              { href: '/admin/content-calendar', label: '콘텐츠 캘린더' },
               { href: '/admin/search-ads', label: '검색광고' },
               { href: '/admin/jarvis', label: '자비스 AI' },
             ]},

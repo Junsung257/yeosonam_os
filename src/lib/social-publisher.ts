@@ -97,6 +97,7 @@ export async function processPublishQueue(opts?: {
     instagram_caption: 'instagram',
     instagram_story: 'instagram',
     threads_post: 'threads',
+    twitter_post: 'twitter',
     naver_blog: 'naver_cafe',
   };
 
@@ -112,7 +113,23 @@ export async function processPublishQueue(opts?: {
     }
 
     const payload = row.payload as { caption?: string; imageUrls?: string[] } | undefined;
-    const caption = payload?.caption ?? '';
+    let caption = payload?.caption ?? '';
+
+    // ── 2.5 블로그 링크 자동 삽입 ──────────────────────────────────────
+    // Instagram/Threads 캡션 끝에 블로그 URL을 추가 (card_news_id → blog slug 조회)
+    if ((platform === 'instagram' || platform === 'threads') && row.product_id) {
+      try {
+        const blogUrl = await findBlogUrlForCardNews(row.product_id);
+        if (blogUrl) {
+          // 캡션에 이미 같은 URL이 있으면 중복 방지
+          if (!caption.includes(blogUrl)) {
+            caption = `${caption}\n\n🔗 자세한 여행 정보: ${blogUrl}`;
+          }
+        }
+      } catch {
+        // blog_url 조회 실패해도 발행은 계속
+      }
+    }
 
     const result = await publishToSocial({
       contentDistributionId: row.id,
@@ -597,6 +614,46 @@ async function checkNaverTokenHealth(
   }
 
   return { ok: true, message: 'Naver OAuth 연결됨' };
+}
+
+/**
+ * 카드뉴스의 product_id로 발행된 블로그 slug를 찾아 URL 반환.
+ * Instagram/Threads 캡션 끝에 자동 추가하여 블로그 트래픽 유입.
+ */
+async function findBlogUrlForCardNews(productId: string): Promise<string | null> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+
+  // 1) content_creatives에서 product_id로 slug 조회
+  const { data: cc } = await supabaseAdmin
+    .from('content_creatives')
+    .select('slug')
+    .eq('product_id', productId)
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(1);
+
+  if (cc && cc.length > 0 && cc[0].slug) {
+    return `${baseUrl}/blog/${cc[0].slug}`;
+  }
+
+  // 2) 카드뉴스의 product_id로 blog_topic_queue의 meta에서 slug hint 확인
+  const { data: queue } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('meta')
+    .eq('product_id', productId)
+    .in('status', ['published', 'queued'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (queue && queue.length > 0) {
+    const meta = queue[0].meta as Record<string, unknown> | null;
+    if (meta?.slug_hint) {
+      return `${baseUrl}/blog/${meta.slug_hint}`;
+    }
+  }
+
+  return null;
 }
 
 async function checkTwitterTokenHealth(

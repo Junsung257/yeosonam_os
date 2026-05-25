@@ -15,9 +15,12 @@ export interface PinnedItem {
 
 // ── 외부 스토어 (localStorage 변경 감지) ──────────────────
 
+// 외부 스토어 싱글톤 (매번 같은 참조 유지)
+let cached: PinnedItem[] | undefined;
+const EMPTY: PinnedItem[] = [];
+
 function subscribe(callback: () => void) {
   window.addEventListener('storage', callback);
-  // 동일 탭 내 변경도 감지하기 위한 커스텀 이벤트
   window.addEventListener('admin:pinned-changed', callback);
   return () => {
     window.removeEventListener('storage', callback);
@@ -26,19 +29,25 @@ function subscribe(callback: () => void) {
 }
 
 function getSnapshot(): PinnedItem[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return EMPTY;
   try {
     const raw = window.localStorage.getItem(PINNED_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (raw === null) return EMPTY;
+    const parsed: PinnedItem[] = JSON.parse(raw);
+    // 직렬화 비교로 캐시 무효화 (깊은 === 유지)
+    const rawCached = cached ? JSON.stringify(cached) : null;
+    const rawParsed = JSON.stringify(parsed);
+    if (rawCached !== rawParsed) cached = parsed;
+    return cached ?? EMPTY;
   } catch {
-    return [];
+    return EMPTY;
   }
 }
 
-// ── 훅 ─────────────────────────────────────────
+const SERVER_SNAPSHOT: PinnedItem[] = [];
 
 export function usePinnedItems() {
-  const pinned = useSyncExternalStore(subscribe, getSnapshot, () => []);
+  const pinned = useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
 
   const add = useCallback((item: Omit<PinnedItem, 'id' | 'createdAt'>) => {
     const current = getSnapshot();

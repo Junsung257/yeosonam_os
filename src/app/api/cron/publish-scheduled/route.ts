@@ -229,7 +229,31 @@ async function publishOne(row: ScheduledRow): Promise<{
     }
   }
 
-  if (row.platform === 'threads_post' || row.platform === 'kakao_channel' || row.platform === 'google_ads_rsa') {
+  if (row.platform === 'threads_post') {
+    // card_news 연결된 경우 Threads 발행
+    if (!row.card_news_id) {
+      return { status: 'skipped', reason: 'card_news_id 없음 (Threads 발행 불가)' };
+    }
+    try {
+      const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+      const res = await fetch(`${base}/api/card-news/${row.card_news_id}/publish-threads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption_override: (payload.caption as string) ?? undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { status: 'failed', error: data.error ?? 'Threads 발행 실패' };
+      return {
+        status: 'published',
+        external_id: data.threads_post_id ?? undefined,
+        external_url: data.permalink ?? undefined,
+      };
+    } catch (err) {
+      return { status: 'failed', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  if (row.platform === 'kakao_channel' || row.platform === 'google_ads_rsa') {
     return { status: 'skipped', reason: `${row.platform} 자동 발행 미지원 (API 인증 필요)` };
   }
 

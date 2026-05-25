@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { getSecret } from "@/lib/secret-registry";
 
 export interface OAuthRefreshResult {
   platform: string;
@@ -7,28 +8,87 @@ export interface OAuthRefreshResult {
 }
 
 /**
- * 소셜 플랫폼 OAuth 토큰 갱신 (stub)
+ * Meta 계열 (threads, instagram, facebook) OAuth 토큰 갱신.
  *
- * 실제 구현에서는 각 플랫폼의 refresh_token 엔드포인트를 호출해야 한다.
- * 현재는 로그만 남기고 30일 연장된 토큰을 시뮬레이션한다.
+ * Meta long-lived token(60일)은 fb_exchange_token 엔드포인트로 갱신한다.
+ * 갱신 시 60일짜리 새 토큰이 발급된다.
+ * 발급 조건: 만료까지 24시간 이상 남아있어야 함 (Meta 정책).
+ * 실패 시 기존 토큰을 유지한다.
+ */
+async function refreshMetaToken(
+  platform: string,
+  accessToken: string
+): Promise<{ accessToken: string; expiresAt: Date } | null> {
+  const appId = getSecret("META_APP_ID");
+  const appSecret = getSecret("META_APP_SECRET");
+  if (!appId || !appSecret) {
+    console.warn(
+      `[social-oauth-refresh] ${platform}: META_APP_ID 또는 META_APP_SECRET 미설정`
+    );
+    return null;
+  }
+
+  const url = new URL("https://graph.facebook.com/v21.0/oauth/access_token");
+  url.searchParams.set("grant_type", "fb_exchange_token");
+  url.searchParams.set("client_id", appId);
+  url.searchParams.set("client_secret", appSecret);
+  url.searchParams.set("fb_exchange_token", accessToken);
+
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.warn(
+      `[social-oauth-refresh] ${platform} fb_exchange_token 실패 (HTTP ${res.status}): ${body.slice(0, 200)}`
+    );
+    return null;
+  }
+
+  const json = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+  };
+  if (!json.access_token) {
+    console.warn(`[social-oauth-refresh] ${platform} 응답에 access_token 없음`);
+    return null;
+  }
+
+  // expires_in이 없으면 기본 60일
+  const expiresIn = json.expires_in ?? 60 * 24 * 60 * 60;
+  const expiresAt = new Date(Date.now() + expiresIn * 1000);
+
+  return { accessToken: json.access_token, expiresAt };
+}
+
+/**
+ * 플랫폼별 OAuth 토큰 갱신.
  */
 async function refreshTokenForPlatform(
   platform: string,
-  _accessToken: string
+  accessToken: string
 ): Promise<{ accessToken: string; expiresAt: Date }> {
-  // 실제 구현: platform별 OAuth refresh endpoint 호출
-  // 예: Instagram Graph API → POST /oauth/access_token
   console.log(`[social-oauth-refresh] ${platform} 토큰 갱신 처리 중...`);
 
-  // stub: 항상 성공, 30일 연장
+  // Meta 계열: threads, instagram, facebook
+  const META_PLATFORMS = new Set(["threads", "instagram", "facebook"]);
+  if (META_PLATFORMS.has(platform)) {
+    const result = await refreshMetaToken(platform, accessToken);
+    if (result) {
+      console.log(
+        `[social-oauth-refresh] ${platform} 토큰 갱신 완료 (만료: ${result.expiresAt.toISOString()})`
+      );
+      return result;
+    }
+    // 실패 시 기존 토큰 유지 (만료 시각 연장 없음)
+    console.warn(
+      `[social-oauth-refresh] ${platform} 갱신 실패 — 기존 토큰 유지`
+    );
+    return { accessToken, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) };
+  }
+
+  // 기타 플랫폼 (twitter, naver 등) — 추후 구현
+  console.log(`[social-oauth-refresh] ${platform} — 아직 refresh 구현 안 됨, 30일 시뮬레이션`);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  const simulatedToken = `refreshed_${platform}_${Date.now()}`;
-
-  console.log(
-    `[social-oauth-refresh] ${platform} 토큰 갱신 완료 (만료: ${expiresAt.toISOString()})`
-  );
-
-  return { accessToken: simulatedToken, expiresAt };
+  return { accessToken, expiresAt };
 }
 
 /**

@@ -14,11 +14,13 @@
 
 import { supabaseAdmin } from './supabase';
 import { getSecret } from './secret-registry';
+import { fetchRelatedQueries } from './related-queries';
 
 // ── 타입 ──────────────────────────────────────────────────
 
 export type KeywordTier = 'head' | 'mid' | 'longtail';
 export type CompetitionLevel = 'low' | 'medium' | 'high';
+export type SearchIntent = 'informational' | 'commercial' | 'transactional' | 'navigational';
 
 export interface TrendKeyword {
   keyword: string;
@@ -38,6 +40,31 @@ export interface KeywordResearchResult {
   related_queries: string[];
   source: string;
   cached: boolean;
+  intent?: SearchIntent;       // Task 2.2: 검색 의도 분류
+}
+
+// ── 검색 의도 분류 휴리스틱 ─────────────────────────────────
+
+const INTENT_PATTERNS: Array<{ pattern: RegExp; intent: SearchIntent }> = [
+  // commercial — 가격·비용·추천·할인·특가·가성비
+  { pattern: /가격|비용|추천|할인|특가|가성비|최저가|싼\s*곳|저렴/i, intent: 'commercial' },
+  // transactional — 예약·구매·등록·신청·결제
+  { pattern: /예약|구매|등록|신청|결제|티켓|투어\s*예약|호텔\s*예약/i, intent: 'transactional' },
+  // navigational — 특정 브랜드/사이트/서비스명
+  { pattern: /^[^\s]+\s*(?:후기|리뷰|여소남|사이트|공식|본사)$|다이렉트/i, intent: 'navigational' },
+  // informational — 위 패턴에 걸리지 않는 기본값 (여행 정보·방법·체크리스트)
+];
+
+/**
+ * 간단한 휴리스틱으로 검색 의도 분류
+ * - 키워드 내 특정 패턴을 매칭하여 intent 반환
+ * - 매칭 없으면 기본값 'informational'
+ */
+export function classifyIntent(keyword: string): SearchIntent {
+  for (const { pattern, intent } of INTENT_PATTERNS) {
+    if (pattern.test(keyword)) return intent;
+  }
+  return 'informational';
 }
 
 // ── 우리 카탈로그 (destination 매칭용) ─────────────────────
@@ -324,6 +351,7 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
       const row = cached[0];
       const age = Date.now() - new Date(row.fetched_at).getTime();
       if (age < CACHE_TTL_MS) {
+        const intent = classifyIntent(keyword);
         return {
           keyword,
           monthly_search_volume: row.monthly_search_volume,
@@ -332,6 +360,7 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
           related_queries: row.related_queries || [],
           source: row.source,
           cached: true,
+          intent,
         };
       }
     }
@@ -347,8 +376,18 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
   // 경쟁도 추정: head=high / mid=medium / longtail=low
   const tier = classifyKeywordTier(keyword, monthly);
   const competition: CompetitionLevel = tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low';
+  const intent = classifyIntent(keyword);
 
-  // 3) 캐시 저장
+  // 3) 연관 검색어 수집 (실패 시 빈 배열)
+  let relatedQueries: string[] = [];
+  try {
+    relatedQueries = await fetchRelatedQueries(keyword);
+  } catch (rqErr) {
+    console.warn('[keyword-research] 연관 검색어 실패 (빈 배열 fallback):',
+      rqErr instanceof Error ? rqErr.message : rqErr);
+  }
+
+  // 4) 캐시 저장
   try {
     await supabaseAdmin
       .from('keyword_research_cache')
@@ -357,8 +396,8 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
         source: t ? 'naver_datalab' : 'fallback',
         monthly_search_volume: monthly,
         competition_level: competition,
-        related_queries: [],
-        raw: { trend_score: score },
+        related_queries: relatedQueries,
+        raw: { trend_score: score, intent },
         fetched_at: new Date().toISOString(),
       }, { onConflict: 'keyword' });
   } catch { /* 캐시 저장 실패해도 발행은 진행 */ }
@@ -368,9 +407,10 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
     monthly_search_volume: monthly,
     competition_level: competition,
     tier,
-    related_queries: [],
+    related_queries: relatedQueries,
     source: t ? 'naver_datalab' : 'fallback',
     cached: false,
+    intent,
   };
 }
 
@@ -406,6 +446,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
       related_queries: row.related_queries || [],
       source: row.source,
       cached: true,
+      intent: classifyIntent(kw),
     });
   }
 
@@ -417,6 +458,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
     const tier = classifyKeywordTier(kw, monthly);
     const competition: CompetitionLevel = tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low';
 
+    const intent = classifyIntent(kw);
     result.set(kw, {
       keyword: kw,
       monthly_search_volume: monthly,
@@ -425,6 +467,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
       related_queries: [],
       source: t ? 'naver_datalab' : 'fallback',
       cached: false,
+      intent,
     });
 
     upserts.push({
@@ -433,7 +476,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
       monthly_search_volume: monthly,
       competition_level: competition,
       related_queries: [],
-      raw: { trend_score: t?.score ?? null },
+      raw: { trend_score: t?.score ?? null, intent },
       fetched_at: new Date().toISOString(),
     });
   }
@@ -478,4 +521,133 @@ export async function collectAllTrends(): Promise<TrendKeyword[]> {
   }
 
   return Array.from(dedup.values());
+}
+
+// ── Google Search Console API ──────────────────────────────
+
+/**
+ * GSC Search Analytics API를 통해 우리 사이트의 실제 검색 성능 데이터를 조회.
+ *
+ * - 블로그의 실제 노출·클릭·CTR·평균 순위를 일별로 수집
+ * - keyword_research_cache 테이블에 저장 (24h TTL)
+ * - env: GSC_SERVICE_ACCOUNT (서비스 계정 JSON) + GSC_SITE_URL
+ *
+ * Google Search Console API (v1):
+ *   POST https://searchconsole.googleapis.com/v1/urlInspection/index:inspect
+ *   POST https://searchconsole.googleapis.com/v1/sites/{siteUrl}/searchAnalytics/query
+ *
+ * 서비스 계정 인증: google-auth-library 필요 (npm i googleapis@latest)
+ */
+
+import { google, searchconsole_v1 } from 'googleapis';
+
+/** GSC Search Analytics 행 */
+export interface GscSearchAnalyticsRow {
+  keys: string[];           // [keyword, page?]
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+/**
+ * GSC Search Analytics 쿼리 — 최근 28일 데이터에서 쿼리별 성능 조회
+ * returns: 키워드별 { impressions, clicks, ctr, avgPosition }
+ */
+export async function fetchGscSearchAnalytics(
+  dimension: 'query' | 'page' | 'date' = 'query',
+  rowLimit: number = 100,
+): Promise<Map<string, GscSearchAnalyticsRow>> {
+  const result = new Map<string, GscSearchAnalyticsRow>();
+  const serviceAccountJson = getSecret('GSC_SERVICE_ACCOUNT');
+  const siteUrl = getSecret('GSC_SITE_URL') || 'sc-domain:yeosonam.com';
+
+  if (!serviceAccountJson) {
+    console.log('[keyword-research] GSC 서비스 계정 없음 — Google Search Analytics 스킵');
+    return result;
+  }
+
+  try {
+    const credentials = JSON.parse(serviceAccountJson);
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+    });
+
+    // date 범위: 최근 28일
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 28);
+
+    const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const webmasters = google.webmasters({ version: 'v3', auth });
+
+    const response = await webmasters.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate: fmtDate(startDate),
+        endDate: fmtDate(endDate),
+        dimensions: [dimension],
+        rowLimit,
+        aggregationType: 'auto',
+      },
+    });
+
+    const rows = response.data.rows || [];
+    for (const row of rows) {
+      const keys = row.keys || [];
+      const key = keys[0] || '';
+      if (!key) continue;
+      result.set(key, {
+        keys,
+        clicks: row.clicks ?? 0,
+        impressions: row.impressions ?? 0,
+        ctr: row.ctr ?? 0,
+        position: row.position ?? 0,
+      });
+    }
+
+    console.log(`[keyword-research] GSC ${result.size}개 키워드 조회 완료`);
+  } catch (err) {
+    console.warn('[keyword-research] GSC Search Analytics 실패:', err instanceof Error ? err.message : err);
+  }
+
+  return result;
+}
+
+/**
+ * keyword-research에 GSC 데이터 병합
+ * - 기존 researchKeyword 결과를 GSC 데이터로 보강
+ * - GSC 데이터가 있으면 search_volume을 impression 수치로 업데이트
+ * - competition_level을 GSC position 기반으로 보정
+ */
+export async function enrichWithGscData(
+  keyword: string,
+  baseResult: KeywordResearchResult,
+): Promise<KeywordResearchResult> {
+  const gscMap = await fetchGscSearchAnalytics('query', 500);
+  const gscRow = gscMap.get(keyword);
+
+  if (!gscRow) return baseResult;
+
+  // GSC 데이터로 보강
+  const enrichedVolume = Math.max(
+    baseResult.monthly_search_volume ?? 0,
+    gscRow.impressions,
+  );
+
+  // position 보정 competition: position 1-5 = low, 6-15 = medium, 16+ = high
+  let enrichedCompetition = baseResult.competition_level;
+  if (gscRow.position <= 5) enrichedCompetition = 'low';
+  else if (gscRow.position <= 15) enrichedCompetition = 'medium';
+  else enrichedCompetition = 'high';
+
+  return {
+    ...baseResult,
+    monthly_search_volume: enrichedVolume > 0 ? enrichedVolume : baseResult.monthly_search_volume,
+    competition_level: enrichedCompetition,
+    source: 'gsc',
+    cached: false,
+  };
 }

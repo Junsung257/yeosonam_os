@@ -28,6 +28,9 @@ export function buildStandardBlogCtaMarkdown(opts: {
     '> **여소남 여행 준비**',
     '>',
     `> - [관련 패키지 보기](${base}${pkgPath})`,
+    ...(dest
+      ? [`> - [목적지 블로그 더 보기](${base}/blog/destination/${encodeURIComponent(dest)}?${utm('destination_blog')})`]
+      : []),
     `> - [카카오톡 무료 상담](https://pf.kakao.com/_xfxnFj/chat)`,
     `> - [여소남 홈에서 상담 이어가기](${base}/?${utm('site_consult')})`,
   ];

@@ -392,7 +392,7 @@ export async function getPendingReviews(
   const limit = opts?.limit ?? 50;
   const priorityMin = opts?.priorityMin ?? 1;
 
-  let query = supabaseAdmin
+  const query = supabaseAdmin
     .from('content_review_queue')
     .select(
       `

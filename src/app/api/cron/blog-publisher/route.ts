@@ -9,8 +9,11 @@ import { generateBlogPost, generateBlogSeo, AngleType } from '@/lib/content-gene
 import { notifyIndexing } from '@/lib/indexing';
 import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
+import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
+import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildStandardBlogCtaMarkdown } from '@/lib/blog-cta';
@@ -54,7 +57,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-const MAX_BATCH = 3; // 10건×20초=200s → Vercel 300s 한계 근접, 3건으로 안전마진 확보
+const MAX_BATCH = 10; // 10건×20초=200s → Vercel 300s, 매 30분 10건씩 소진
 const MAX_ATTEMPTS = 2;
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
@@ -358,8 +361,62 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'gate_failed', reason: qa.summary };
     }
 
+    // 🆕 GSC 키워드 연구 데이터 보강 (환경이 설정된 경우 Google Search Console 사용)
+    if (primaryKeyword) {
+      try {
+        const kwResearch = await researchKeyword(primaryKeyword);
+        // GSC 데이터가 있으면 보강 (googleapis 의존성)
+        try {
+          const enriched = await enrichWithGscData(primaryKeyword, kwResearch);
+          if (enriched.source === 'gsc') {
+            console.log(`[blog-publisher] GSC 키워드 보강: ${primaryKeyword} → ${enriched.monthly_search_volume} impressions, competition=${enriched.competition_level}`);
+          }
+        } catch { /* GSC 보강 실패 — 계속 진행 */ }
+      } catch { /* 키워드 리서치 실패 — 계속 진행 */ }
+    }
+
+    // 🆕 이미지 SEO 최적화 — alt 텍스트 자동 생성/보강
+    if (generated.blog_html.includes('![](') || generated.blog_html.includes('![')) {
+      const optimizedHtml = optimizeImageSeoInHtml(
+        generated.blog_html,
+        item.destination,
+        primaryKeyword,
+      );
+      if (optimizedHtml !== generated.blog_html) {
+        generated.blog_html = optimizedHtml;
+        console.log('[blog-publisher] 이미지 SEO 최적화 완료');
+      }
+    }
+
+    // 🆕 SEO 점수 측정 — 기준 미만이면 발행 보류 (qualify_gate 후 추가 게이트)
+    const imgCount = (generated.blog_html.match(/!\[/g) || []).length;
+    const imgWithAlt = (generated.blog_html.match(/!\[[^\]]+\]\(/g) || []).length;
+    const seoScore = computeSeoScore({
+      blogHtml: generated.blog_html,
+      slug: generated.slug,
+      seoTitle: generated.seo_title,
+      seoDescription: generated.seo_description,
+      primaryKeyword,
+      destination: item.destination,
+      blogType,
+      imageCount: imgCount,
+      imagesWithAlt: imgWithAlt,
+      hasJsonLd: {
+        blogPosting: true,
+        faqPage: generated.blog_html.includes('**Q.') || generated.blog_html.includes('Q. '),
+        howTo: generated.blog_html.includes('Day ') || generated.blog_html.includes('일차'),
+        breadcrumbList: true,
+      },
+    });
+
+    if (!seoScore.passed) {
+      console.log(`[blog-publisher] SEO 점수 ${seoScore.score}/${seoScore.maxScore} — 발행 보류 (기준: ${blogType === 'info' ? 45 : 35}점)`);
+      await handleFailure(item, `SEO 점수 ${seoScore.score}점 (${seoScore.maxScore}점) — ${seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ')}`, null);
+      return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
+    }
+
     const now = new Date().toISOString();
-    const rowPayload = {
+    const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
       slug: generated.slug,
@@ -373,6 +430,7 @@ async function processQueueItem(
       status: 'published' as const,
       published_at: now,
       quality_gate: qa,
+      seo_score: seoScore,
       topic_source: item.source,
       destination: item.destination ?? null,
       content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
@@ -385,6 +443,11 @@ async function processQueueItem(
         ? { queue_item_id: item.id, promoted_from_draft: true, ...(item.meta || {}) }
         : { queue_item_id: item.id, ...(item.meta || {}) },
     };
+
+    // 카드뉴스 이미지 URL 배열 저장 (본문 마크다운에 삽입된 이미지도 원본 참조용으로 보관)
+    if (generated.slide_image_urls?.length) {
+      rowPayload.slide_image_urls = generated.slide_image_urls;
+    }
 
     let creativeId: string;
 
@@ -472,6 +535,20 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
     })
     .eq('id', item.id);
 
+  // ── 자동 변형 생성: duplicate 실패 시 slug에 suffix를 붙여 새 큐 항목 등록 ──
+  // "동일 slug", "유사 slug", "이미 발행됨" 계열이면 spin 시도
+  if (
+    finalStatus === 'failed' &&
+    /동일 slug|유사 slug|이미 발행됨/i.test(reason) &&
+    item.source !== 'manual' // 수동 등록은 변형하지 않음
+  ) {
+    try {
+      await spawnVariationTopic(item, reason, qa);
+    } catch (spinErr) {
+      console.warn('[blog-publisher] spinVariation 실패:', spinErr instanceof Error ? spinErr.message : spinErr);
+    }
+  }
+
   // 자기학습: 실패 원인을 error_patterns 에 누적 (있는 경우만)
   try {
     await supabaseAdmin.rpc('upsert_error_pattern', {
@@ -485,6 +562,67 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
   } catch { /* RPC 없어도 크리티컬 아님 */ }
 }
 
+/**
+ * 중복(duplicate) 실패 시 이 토픽의 변형(variation)을 새 slug로 큐에 등록.
+ * slug suffix 패턴:
+ *   - guide         → guide-v2
+ *   - guide-v2      → guide-v3
+ *   - preparation   → preparation-v2
+ *   ...등
+ *
+ * Publisher가 2회 재시도에도 duplicate 실패하면 이 함수가 자동 대체 slug를 큐잉한다.
+ */
+async function spawnVariationTopic(item: any, reason: string, _qa: any) {
+  // 원본 큐의 topic에서 slug를 추론해 suffix 증가
+  const topicSlug = item.slug_hint || slugifyTopic(item.topic);
+  const spinMatch = topicSlug.match(/-v(\d+)$/);
+  const nextVer = spinMatch ? Number(spinMatch[1]) + 1 : 2;
+  const baseSlug = spinMatch ? topicSlug.replace(/-v\d+$/, '') : topicSlug;
+  const newSlug = `${baseSlug}-v${nextVer}`;
+  const spinLabel = ` (대체 v${nextVer})`;
+
+  // 이미 같은 slug가 큐에 있는지 확인
+  const { data: existing } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id')
+    .in('status', ['queued', 'generating'])
+    .filter('meta->spin_of', 'eq', item.id)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    console.log(`[blog-publisher] spinVariation skip: 이미 변형 큐 있음 (item=${item.id})`);
+    return;
+  }
+
+  const newTopic = `${item.topic}${spinLabel}`;
+  const slotOffset = 2; // 2시간 뒤 슬롯
+  const targetPublishAt = new Date(Date.now() + slotOffset * 3600_000).toISOString();
+
+  await supabaseAdmin.from('blog_topic_queue').insert({
+    topic: newTopic,
+    source: item.source,
+    priority: Math.max(40, (item.priority || 50) - 10), // 약간 낮은 우선순위
+    destination: item.destination ?? null,
+    angle_type: item.angle_type ?? null,
+    category: item.category ?? null,
+    card_news_id: item.card_news_id ?? null,
+    product_id: item.product_id ?? null,
+    target_publish_at: targetPublishAt,
+    search_intent: item.search_intent ?? null,
+    tenant_id: item.tenant_id ?? null,
+    meta: {
+      spin_of: item.id,
+      original_topic: item.topic,
+      original_slug: topicSlug,
+      spun_slug: newSlug,
+      spin_reason: reason,
+      spin_generated_at: new Date().toISOString(),
+    },
+  });
+
+  console.log(`[blog-publisher] spinVariation 등록: "${newTopic}" → slug=${newSlug}, 원본=${item.id}`);
+}
+
 // ── 생성기 ────────────────────────────────────────────────
 
 interface GeneratedBlog {
@@ -493,6 +631,8 @@ interface GeneratedBlog {
   seo_title: string;
   seo_description: string;
   og_image_url?: string | null;
+  /** 카드뉴스 슬라이드 PNG URL 배열 (섹션별 이미지 배치용) */
+  slide_image_urls?: string[];
 }
 
 /**
@@ -554,6 +694,7 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
     seo_title: bridge.seo_title || item.topic,
     seo_description: bridge.seo_description || '',
     og_image_url: bridge.og_image_url ?? slideUrls[0] ?? null,
+    slide_image_urls: slideUrls as string[],
   };
 }
 
@@ -819,7 +960,9 @@ ${serpBlock}
 
   // slug 자동 — expected_slug 있으면 우선
   const expected = item.meta?.expected_slug;
-  const slug = expected || slugifyTopic(item.topic);
+  // — 재작성 v2(v3...) 접미사가 topic에 포함된 경우 slug에서 제거 (SEO 치명적)
+  const cleanTopic = (item.topic || '').replace(/[\s—–-]*재작성\s*v\d+/gi, '').trim();
+  const slug = expected || slugifyTopic(cleanTopic);
 
   // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
   const seo_title = serpData

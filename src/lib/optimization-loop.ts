@@ -172,7 +172,7 @@ export async function runDailyOptimization(
         const kw = keywords.find((k) => k.id === rec.keywordId);
         if (!kw) continue;
 
-        let newBid = Math.max(
+        const newBid = Math.max(
           KEYWORD_MIN_BID,
           Math.min(rec.recommendedBid, KEYWORD_MAX_BID),
         );

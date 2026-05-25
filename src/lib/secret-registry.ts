@@ -50,6 +50,8 @@ export type SecretKey =
   | 'RESEND_API_KEY'
   | 'VA_EMAILS'
   | 'SERPAPI_KEY'
+  | 'GSC_SERVICE_ACCOUNT'
+  | 'GSC_SITE_URL'
   | 'TOSS_SECRET_KEY'
   | 'LTR_TRAINING_SECRET'
   | 'SLACK_SIGNING_SECRET'
@@ -86,6 +88,7 @@ export type SecretKey =
   | 'ENCRYPTION_SECRET_KEY'
   | 'NEXT_PUBLIC_APP_URL'
   | 'NEXT_PUBLIC_BASE_URL'
+  | 'NEXT_PUBLIC_NAVER_ANALYTICS_ID'
   | 'NEXT_PUBLIC_NAVER_ADS_API_KEY'
   | 'NEXT_PUBLIC_NAVER_ADS_SECRET_KEY'
   | 'NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'
@@ -112,7 +115,8 @@ export type SecretKey =
   | 'VA_EMAIL_FROM'
   | 'VAPID_SUBJECT'
   | 'UPSTASH_REDIS_REST_URL'
-  | 'UPSTASH_REDIS_REST_TOKEN';
+  | 'UPSTASH_REDIS_REST_TOKEN'
+  | 'AI_IMAGE_GEN_ENABLED';
 
 export function getSecret(key: SecretKey): string | null {
   const value = process.env[key];

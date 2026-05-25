@@ -487,7 +487,7 @@ async function executeTool(toolName: string, args: any, ctx?: JarvisContext): Pr
 
       // 그룹화
       const groupBy = args.group_by || 'day'
-      let grouped: Record<string, any> = {}
+      const grouped: Record<string, any> = {}
       for (const row of data || []) {
         const key = groupBy === 'platform' ? row.platform
           : groupBy === 'campaign' ? row.campaign_name || '기타'

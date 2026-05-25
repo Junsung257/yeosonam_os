@@ -19,6 +19,7 @@ import { BaseMarketingAgent, type MarketingContext, type AgentResult } from '../
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveOAuthToken } from '../token-resolver';
 import { getSecret } from '@/lib/secret-registry';
+import { buildUtm, applyUtmToUrl, normalizeUtmValue } from '@/lib/utm-builder';
 import {
   createMetaCampaign,
   createAdSet,
@@ -259,7 +260,19 @@ export class AdPublishAgent extends BaseMarketingAgent {
     // 3. 광고 소재 생성 (첫 번째 creative 사용)
     const firstCreative = creatives[0];
     const primaryText = (firstCreative?.ad_copies as { primary_texts?: string[] })?.primary_texts?.[0] ?? campaign.name;
-    const landingUrl = getSecret('NEXT_PUBLIC_SITE_URL') ?? 'https://yeosonam.com';
+    const baseUrl = getSecret('NEXT_PUBLIC_SITE_URL') ?? 'https://yeosonam.com';
+
+    // UTM 파라미터를 랜딩 URL에 자동 부착
+    const utm = buildUtm({
+      base_url: baseUrl,
+      platform: 'meta',
+      campaign_slug: normalizeUtmValue(campaign.name) ?? 'default',
+      keyword: undefined,
+      medium: 'social',
+      creative_variant: firstCreative?.id,
+    });
+    const landingUrl = applyUtmToUrl(baseUrl, utm);
+
     const creative = await uploadCreativeToMeta({
       name: `${campaign.name} - Creative`,
       message: primaryText,
@@ -308,6 +321,20 @@ export class AdPublishAgent extends BaseMarketingAgent {
     const headlines = (adCopies?.headlines ?? [campaign.name]).slice(0, 15).map(h => ({ text: h }));
     const descriptions = (adCopies?.primary_texts ?? [campaign.name]).slice(0, 4).map(t => ({ text: t }));
 
+    // Google Ads RSA 광고에 finalUrl에 UTM 파라미터 부착
+    const googleUtm = buildUtm({
+      base_url: getSecret('NEXT_PUBLIC_SITE_URL') ?? 'https://yeosonam.com',
+      platform: 'google',
+      campaign_slug: normalizeUtmValue(campaign.name) ?? 'default',
+      keyword: undefined,
+      medium: 'cpc',
+      creative_variant: firstCreative?.id,
+    });
+    const googleFinalUrl = applyUtmToUrl(
+      getSecret('NEXT_PUBLIC_SITE_URL') ?? 'https://yeosonam.com',
+      googleUtm,
+    );
+
     // Google Ads REST API v16 — Campaign + AdGroup + Ad 생성
     // 참고: https://developers.google.com/google-ads/api/reference/rpc/v16
 
@@ -347,6 +374,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
             responsiveSearchAd: {
               headlines,
               descriptions,
+              finalUrls: [googleFinalUrl],
             },
           },
         },

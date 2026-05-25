@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Suspense } from 'react';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
+export const experimental_ppr = true;
 export const revalidate = 300;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -72,7 +74,6 @@ export async function generateMetadata({ params }: { params: Promise<{ dest: str
 export default async function DestinationBlogPage({ params }: { params: Promise<{ dest: string }> }) {
   const { dest } = await params;
   const destination = decodeURIComponent(dest);
-  const { posts, packages } = await getPostsByDestination(dest);
 
   return (
     <>
@@ -89,13 +90,8 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
             url: `${BASE_URL}/blog/destination/${dest}`,
             mainEntity: {
               '@type': 'ItemList',
-              numberOfItems: posts.length,
-              itemListElement: posts.slice(0, 10).map((p, i) => ({
-                '@type': 'ListItem',
-                position: i + 1,
-                url: `${BASE_URL}/blog/${p.slug}`,
-                name: p.seo_title || destination,
-              })),
+              numberOfItems: 0,
+              itemListElement: [],
             },
           }),
         }}
@@ -113,15 +109,30 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
               <span className="text-white">{destination}</span>
             </div>
             <h1 className="text-[40px] md:text-[60px] font-black tracking-tight leading-[1.05]">{destination} 여행 가이드</h1>
-            <p className="mt-4 text-base md:text-lg text-blue-100 leading-relaxed">{destination} 여행의 모든 것 · {posts.length}편의 가이드</p>
+            <p className="mt-4 text-base md:text-lg text-blue-100 leading-relaxed">{destination} 여행의 모든 것</p>
           </div>
         </header>
 
         <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16 space-y-12 md:space-y-16">
-          {/* 관련 상품 CTA */}
-          {packages.length > 0 && (
-            <section>
-              <SectionHeader title={`${destination} 추천 패키지`} />
+          <Suspense fallback={<div className="animate-pulse h-64 bg-gray-100 rounded" />}>
+            <DestinationContent dest={dest} destination={destination} />
+          </Suspense>
+        </div>
+      </main>
+    </>
+  );
+}
+
+/** 목적지 블로그 콘텐츠 (PPR: Suspense로 streaming) */
+async function DestinationContent({ dest, destination }: { dest: string; destination: string }) {
+  const { posts, packages } = await getPostsByDestination(dest);
+
+  return (
+    <>
+      {/* 관련 상품 CTA */}
+      {packages.length > 0 && (
+        <section>
+          <SectionHeader title={`${destination} 추천 패키지`} />
               <div className="grid gap-4 md:gap-6 sm:grid-cols-3">
                 {packages.map(pkg => (
                   <Link key={pkg.id} href={`/packages/${pkg.id}`}
@@ -173,8 +184,6 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
               </div>
             )}
           </section>
-        </div>
-      </main>
     </>
   );
 }

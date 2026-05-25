@@ -860,6 +860,10 @@ export interface BlogSeo {
   slug: string;
   seoTitle: string;
   seoDescription: string;
+  /** SEO 최적화를 위한 주요 키워드 */
+  primaryKeyword?: string;
+  /** 보조 키워드 배열 */
+  secondaryKeywords?: string[];
 }
 
 /**
@@ -928,7 +932,12 @@ export function generateBlogSeo(
   ].filter(Boolean);
   const seoDescription = descParts.join('. ').substring(0, 160);
 
-  return { slug, seoTitle, seoDescription };
+  // primary/secondary keyword 추출
+  const angleKeywords = ANGLE_SUB_KEYWORDS[angle] ?? [];
+  const primaryKeyword = [dest, dur, angleLabel, '패키지'].filter(Boolean).join(' ');
+  const secondaryKeywords = angleKeywords.map(k => k.keyword).slice(0, 8);
+
+  return { slug, seoTitle, seoDescription, primaryKeyword, secondaryKeywords };
 }
 
 // ── 검색광고 카피 생성 ───────────────────────────────────

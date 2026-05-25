@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
@@ -27,8 +28,28 @@ import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
+import { assignVariant } from '@/lib/ab-test-engine';
+import AbTestTracker from '@/components/blog/AbTestTracker';
 
-export const revalidate = 86400;
+/**
+ * A/B 테스트용 headline variant 생성 (Power word + 연도 조정)
+ * variant 0 = 원본, variant 1 = power word 추가, variant 2 = 연도 앞당김
+ */
+function buildHeadlineVariants(original: string): string[] {
+  const powerWords = ['완벽', '최고', '강력 추천', '필수'];
+  const pw = powerWords[Math.floor(Math.random() * powerWords.length)];
+  const yearVariant = original.replace(/\b20\d{2}\b/g, (m) => String(Number(m) + 1));
+  // 이미 power word가 포함된 variant가 있는지 확인
+  const hasPowerWord = powerWords.some(w => original.includes(w));
+  return [
+    original,
+    hasPowerWord ? original : `${pw} ${original}`.trim(),
+    yearVariant !== original ? yearVariant : original,
+  ];
+}
+
+export const experimental_ppr = true;
+export const revalidate = 3600;
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
 // 이 한 줄이 "발행 직후 첫 요청 race로 404가 캐시되는" 패턴을 구조적으로 차단한다.
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
@@ -380,6 +401,8 @@ export async function generateMetadata({
   const dest = post.travel_packages?.destination || post.destination || null;
   const tagSet = [dest, angleLabel, '여행', '패키지여행', '단체여행'].filter(Boolean) as string[];
 
+  // A/B 테스트: generateMetadata는 서버 정적이므로 원본 seo_title 유지
+  // (실제 변형은 페이지 컴포넌트에서 처리)
   return {
     // absolute를 쓰면 layout의 template이 적용되지 않음
     title: { absolute: `${cleanedTitle} | 여소남` },
@@ -438,24 +461,64 @@ export default async function BlogDetailPage({
   const isInfoBlog = !post.product_id;
   const isLanding = !!post.landing_enabled && !!post.product_id;
 
-  // post 의존 5개 쿼리 병렬화 — 직렬 누적 RT → 1 RT (TTFB 200~400ms 단축 기대)
-  const [dki, curationProducts, relatedPosts, relatedProducts, prevNext] = await Promise.all([
+  // ── A/B 테스트: headline 실험 ────────────────────────────
+  // visitorId = post.id (고유 식별자, 결정론적 할당용)
+  // generateMetadata와의 중복 방지를 위해 페이지 컴포넌트에서만 실행
+  let abTestTitle = title;
+  let abTestExperimentId: string | null = null;
+  let abTestVariantId: string | null = null;
+  let abTestVisitorId: string | null = null;
+  try {
+    abTestVisitorId = `blog_${post.id}`;
+    const variants = buildHeadlineVariants(title);
+    const experimentName = `headline_${post.slug.slice(0, 40)}`;
+
+    // 실험 찾기 또는 생성 (없으면 무시 — 실험은 어드민에서 생성됨)
+    // assignVariant는 experimentId를 받으므로, 실험이 존재해야 함.
+    // 여기서는 기존 실험 ID를 조회하거나, 없으면 조용히 넘어감.
+    const { data: existingExps } = await supabaseAdmin
+      .from('ab_experiments')
+      .select('id')
+      .eq('creative_id', post.id)
+      .eq('variant_type', 'headline')
+      .in('status', ['running', 'paused'])
+      .limit(1);
+
+    if (existingExps && existingExps.length > 0) {
+      const expId = (existingExps[0] as { id: string }).id;
+      const result = await assignVariant(expId, abTestVisitorId);
+
+      if (result) {
+        abTestExperimentId = expId;
+        abTestVariantId = result.variantId;
+        // variantValue가 있으면 그걸로 타이틀 사용, 없으면 variantLabel로 판단
+        if (result.variantValue && result.variantValue !== title) {
+          // SEO title clean 적용
+          abTestTitle = result.variantValue
+            .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+            .trim();
+        }
+      }
+    }
+  } catch (abErr) {
+    console.warn('[A/B] headline 실험 할당 실패 (기본 타이틀 사용):', abErr instanceof Error ? abErr.message : abErr);
+  }
+
+  // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
+  // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
+  const [dki, relatedPosts, relatedProducts] = await Promise.all([
     isLanding
       ? resolveDki(
           { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
           {
-            seo_title: title,
+            seo_title: abTestTitle,
             landing_headline: post.landing_headline,
             landing_subtitle: post.landing_subtitle,
           },
         )
       : Promise.resolve(null),
-    isInfoBlog && post.destination
-      ? getCurationProductsForInfo(post.destination)
-      : Promise.resolve([] as Awaited<ReturnType<typeof getCurationProductsForInfo>>),
     getRelatedPosts(slug, pkg?.destination, post.angle_type),
     getRelatedProducts(pkg?.id, pkg?.destination),
-    getPrevNextPosts(slug, post.published_at),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -555,6 +618,16 @@ export default async function BlogDetailPage({
       )}
 
       <BlogTracker contentCreativeId={post.id} />
+
+      {/* A/B 테스트 전환 추적 (스크롤 50% + CTA 클릭) */}
+      {abTestExperimentId && abTestVariantId && (
+        <AbTestTracker
+          experimentId={abTestExperimentId}
+          visitorId={abTestVisitorId!}
+          variantId={abTestVariantId}
+        />
+      )}
+
       <GlobalNav />
 
       <main className="min-h-screen bg-white">
@@ -583,7 +656,7 @@ export default async function BlogDetailPage({
               </>
             )}
             <span aria-hidden="true">/</span>
-            <span className="truncate text-slate-900">{title}</span>
+            <span className="truncate text-slate-900">{abTestTitle}</span>
           </div>
         </nav>
 
@@ -626,7 +699,7 @@ export default async function BlogDetailPage({
           </div>
 
           <h1 className="text-[32px] font-black leading-[1.15] tracking-tight text-slate-900 md:text-[48px] md:leading-[1.1]">
-            {title}
+            {abTestTitle}
           </h1>
 
           {post.seo_description && (
@@ -796,215 +869,37 @@ export default async function BlogDetailPage({
             />
 
             {/* 공유 버튼 */}
-            <ShareButtons url={pageUrl} title={title} utmCampaign={slug} />
+            <ShareButtons url={pageUrl} title={abTestTitle} utmCampaign={slug} />
 
-            {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (가격대 분산) */}
-            {isInfoBlog && post.destination && curationProducts.length > 0 && (
-              <DestinationCuration
-                destination={post.destination}
-                products={curationProducts.map((p: any) => ({
-                  id: p.id,
-                  title: p.title,
-                  destination: p.destination,
-                  duration: p.duration,
-                  nights: p.nights,
-                  price: p.price,
-                  category: p.category,
-                  hero_image_url: p.hero_image_url,
-                  airline: p.airline,
-                  departure_airport: p.departure_airport,
-                }))}
-              />
-            )}
+            {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (PPR Suspense) */}
+            <Suspense fallback={<div className="animate-pulse h-32 bg-gray-100 rounded my-8" />}>
+              <CurationSection destination={post.destination} isInfoBlog={isInfoBlog} />
+            </Suspense>
 
             {/* 참고 · 출처 */}
             <BlogCitations destination={pkg?.destination} airline={pkg?.airline ?? undefined} />
           </article>
 
           {/* 데스크톱 사이드바 — Jiwonnote 패턴: TOC + 추천 포스팅 */}
-          {(showToc || relatedPosts.length > 0) && (
-            <aside className="hidden w-64 shrink-0 lg:block">
-              <div className="sticky top-24 space-y-10">
-                {showToc && <TableOfContents items={toc} variant="desktop" />}
-                {relatedPosts.length > 0 && (
-                  <div>
-                    <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
-                    <ul className="space-y-3">
-                      {relatedPosts.slice(0, 4).map((rp) => {
-                        const rpTitle = (rp.seo_title || '여행 가이드')
-                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-                          .trim();
-                        return (
-                          <li key={rp.id}>
-                            <Link
-                              href={`/blog/${rp.slug}`}
-                              className="block text-[13px] font-semibold text-slate-700 leading-snug hover:text-slate-900 transition line-clamp-3"
-                            >
-                              {rpTitle}
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </aside>
-          )}
+          <aside className="hidden w-64 shrink-0 lg:block">
+            <div className="sticky top-24 space-y-10">
+              {showToc && <TableOfContents items={toc} variant="desktop" />}
+              <Suspense fallback={<div className="animate-pulse h-24 bg-gray-100 rounded" />}>
+                <SidebarRelatedPosts currentSlug={slug} destination={pkg?.destination} angleType={post.angle_type} />
+              </Suspense>
+            </div>
+          </aside>
         </div>
 
-        {/* 관련 글 섹션 — Jiwonnote 스타일: 흰배경 + 검정 hr 헤더 */}
-        {relatedPosts.length > 0 && (
-          <ScrollReveal>
-          <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
-            <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
-              <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
-                <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-                  함께 보면 좋은 여행 가이드
-                </h2>
-                <Link
-                  href="/blog"
-                  className="text-[13px] md:text-sm text-slate-700 hover:text-slate-900 font-semibold whitespace-nowrap"
-                >
-                  전체 보기 →
-                </Link>
-              </div>
-              <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {relatedPosts.slice(0, 6).map((rp) => {
-                  const rpTitle = (rp.seo_title || '여행 가이드')
-                    .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-                    .trim();
-                  const rpDur = formatDuration(rp.travel_packages?.duration, rp.travel_packages?.nights);
-                  return (
-                    <Link
-                      key={rp.id}
-                      href={`/blog/${rp.slug}`}
-                      className="group overflow-hidden rounded-md border border-slate-200 bg-white transition hover:shadow-md"
-                    >
-                      {rp.og_image_url ? (
-                        <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
-                          <Image
-                            src={rp.og_image_url}
-                            alt={rpTitle}
-                            fill
-                            className="object-cover transition duration-300 group-hover:scale-105"
-                            sizes="(max-width: 640px) 100vw, 33vw"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex aspect-[16/9] items-center justify-center bg-slate-50">
-                          <span className="text-3xl" aria-hidden="true">
-                            ✈️
-                          </span>
-                        </div>
-                      )}
-                      <div className="p-5">
-                        <div className="mb-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-                          {rp.travel_packages?.destination && (
-                            <span>{rp.travel_packages.destination}</span>
-                          )}
-                          {rp.travel_packages?.destination && <span>·</span>}
-                          <span>{ANGLE_LABELS[rp.angle_type] || rp.angle_type}</span>
-                          {rpDur && <><span>·</span><span>{rpDur}</span></>}
-                        </div>
-                        <h3 className="line-clamp-2 text-base md:text-[17px] font-bold leading-snug text-slate-900 group-hover:text-slate-700 tracking-tight">
-                          {rpTitle}
-                        </h3>
-                        {rp.travel_packages?.price && (
-                          <p className="mt-3 text-base font-black text-slate-900 tabular-nums">
-                            {rp.travel_packages.price.toLocaleString()}원~
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-          </ScrollReveal>
-        )}
+        {/* 관련 글 섹션 — PPR: 동적 데이터는 Suspense로 분리 */}
+        <Suspense fallback={<div className="animate-pulse h-48 bg-gray-100 rounded mx-auto max-w-6xl my-8" />}>
+          <RelatedPostsSection currentSlug={slug} destination={pkg?.destination} angleType={post.angle_type} />
+        </Suspense>
 
-        {/* 하단 네비 — 이전/다음 글 */}
-        <div className="border-t bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-8">
-            <div className="mb-5 text-sm">
-              <Link href="/blog" className="font-medium text-brand hover:text-[#1B64DA]">
-                ← 블로그 목록으로
-              </Link>
-            </div>
-            {(prevNext.prev || prevNext.next) && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {prevNext.prev ? (
-                  <Link
-                    href={`/blog/${prevNext.prev.slug}`}
-                    className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
-                  >
-                    {prevNext.prev.og_image_url && (
-                      <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
-                        <Image
-                          src={prevNext.prev.og_image_url}
-                          alt=""
-                          fill
-                          className="object-cover transition duration-300 group-hover:scale-105"
-                          sizes="96px"
-                        />
-                      </div>
-                    )}
-                    <div className="flex flex-col justify-center gap-1 p-4 min-w-0">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        ← 이전 글
-                      </span>
-                      {prevNext.prev.destination && (
-                        <span className="text-xs text-slate-500">{prevNext.prev.destination}</span>
-                      )}
-                      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
-                        {(prevNext.prev.seo_title || '여행 가이드')
-                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-                          .trim()}
-                      </span>
-                    </div>
-                  </Link>
-                ) : (
-                  <div />
-                )}
-                {prevNext.next ? (
-                  <Link
-                    href={`/blog/${prevNext.next.slug}`}
-                    className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
-                  >
-                    <div className="flex flex-col justify-center gap-1 p-4 min-w-0 text-right flex-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        다음 글 →
-                      </span>
-                      {prevNext.next.destination && (
-                        <span className="text-xs text-slate-500">{prevNext.next.destination}</span>
-                      )}
-                      <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
-                        {(prevNext.next.seo_title || '여행 가이드')
-                          .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-                          .trim()}
-                      </span>
-                    </div>
-                    {prevNext.next.og_image_url && (
-                      <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
-                        <Image
-                          src={prevNext.next.og_image_url}
-                          alt=""
-                          fill
-                          className="object-cover transition duration-300 group-hover:scale-105"
-                          sizes="96px"
-                        />
-                      </div>
-                    )}
-                  </Link>
-                ) : (
-                  <div />
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* 하단 네비 — 이전/다음 글 — PPR: Suspense로 분리 */}
+        <Suspense fallback={<div className="animate-pulse h-24 bg-gray-100 rounded mx-auto max-w-6xl my-8" />}>
+          <PrevNextSection slug={slug} publishedAt={post.published_at} />
+        </Suspense>
       </main>
 
       {/* 상품 블로그 랜딩: 모바일 하단 고정 CTA (+15~25% 전환) */}
@@ -1015,5 +910,250 @@ export default async function BlogDetailPage({
         />
       )}
     </>
+  );
+}
+
+// ── PPR Suspense 컴포넌트 ────────────────────────────────────
+
+/** 관련 글 섹션 (함께 보면 좋은 여행 가이드) */
+async function RelatedPostsSection({
+  currentSlug,
+  destination,
+  angleType,
+}: {
+  currentSlug: string;
+  destination: string | undefined;
+  angleType: string | undefined;
+}) {
+  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType);
+  if (relatedPosts.length === 0) return null;
+
+  return (
+    <ScrollReveal>
+    <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
+      <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
+        <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+            함께 보면 좋은 여행 가이드
+          </h2>
+          <Link
+            href="/blog"
+            className="text-[13px] md:text-sm text-slate-700 hover:text-slate-900 font-semibold whitespace-nowrap"
+          >
+            전체 보기 →
+          </Link>
+        </div>
+        <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {relatedPosts.slice(0, 6).map((rp) => {
+            const rpTitle = (rp.seo_title || '여행 가이드')
+              .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+              .trim();
+            const rpDur = formatDuration(rp.travel_packages?.duration, rp.travel_packages?.nights);
+            return (
+              <Link
+                key={rp.id}
+                href={`/blog/${rp.slug}`}
+                className="group overflow-hidden rounded-md border border-slate-200 bg-white transition hover:shadow-md"
+              >
+                {rp.og_image_url ? (
+                  <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+                    <Image
+                      src={rp.og_image_url}
+                      alt={rpTitle}
+                      fill
+                      className="object-cover transition duration-300 group-hover:scale-105"
+                      sizes="(max-width: 640px) 100vw, 33vw"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex aspect-[16/9] items-center justify-center bg-slate-50">
+                    <span className="text-3xl" aria-hidden="true">✈️</span>
+                  </div>
+                )}
+                <div className="p-5">
+                  <div className="mb-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                    {rp.travel_packages?.destination && (
+                      <span>{rp.travel_packages.destination}</span>
+                    )}
+                    {rp.travel_packages?.destination && <span>·</span>}
+                    <span>{ANGLE_LABELS[rp.angle_type] || rp.angle_type}</span>
+                    {rpDur && <><span>·</span><span>{rpDur}</span></>}
+                  </div>
+                  <h3 className="line-clamp-2 text-base md:text-[17px] font-bold leading-snug text-slate-900 group-hover:text-slate-700 tracking-tight">
+                    {rpTitle}
+                  </h3>
+                  {rp.travel_packages?.price && (
+                    <p className="mt-3 text-base font-black text-slate-900 tabular-nums">
+                      {rp.travel_packages.price.toLocaleString()}원~
+                    </p>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+    </ScrollReveal>
+  );
+}
+
+/** 사이드바 추천 포스팅 */
+async function SidebarRelatedPosts({
+  currentSlug,
+  destination,
+  angleType,
+}: {
+  currentSlug: string;
+  destination: string | undefined;
+  angleType: string | undefined;
+}) {
+  const posts = await getRelatedPosts(currentSlug, destination, angleType);
+  if (posts.length === 0) return null;
+
+  return (
+    <div>
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
+      <ul className="space-y-3">
+        {posts.slice(0, 4).map((rp) => {
+          const rpTitle = (rp.seo_title || '여행 가이드')
+            .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+            .trim();
+          return (
+            <li key={rp.id}>
+              <Link
+                href={`/blog/${rp.slug}`}
+                className="block text-[13px] font-semibold text-slate-700 leading-snug hover:text-slate-900 transition line-clamp-3"
+              >
+                {rpTitle}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** 정보성 블로그 하단 큐레이션 상품 */
+async function CurationSection({
+  destination,
+  isInfoBlog,
+}: {
+  destination: string | null;
+  isInfoBlog: boolean;
+}) {
+  if (!isInfoBlog || !destination) return null;
+  const curationProducts = await getCurationProductsForInfo(destination);
+  if (curationProducts.length === 0) return null;
+
+  return (
+    <DestinationCuration
+      destination={destination}
+      products={curationProducts.map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        destination: p.destination,
+        duration: p.duration,
+        nights: p.nights,
+        price: p.price,
+        category: p.category,
+        hero_image_url: p.hero_image_url,
+        airline: p.airline,
+        departure_airport: p.departure_airport,
+      }))}
+    />
+  );
+}
+
+/** 이전/다음 글 네비게이션 */
+async function PrevNextSection({
+  slug,
+  publishedAt,
+}: {
+  slug: string;
+  publishedAt: string;
+}) {
+  const prevNext = await getPrevNextPosts(slug, publishedAt);
+  if (!prevNext.prev && !prevNext.next) return null;
+
+  return (
+    <div className="border-t bg-white">
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="mb-5 text-sm">
+          <Link href="/blog" className="font-medium text-brand hover:text-[#1B64DA]">
+            ← 블로그 목록으로
+          </Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {prevNext.prev ? (
+            <Link
+              href={`/blog/${prevNext.prev.slug}`}
+              className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
+            >
+              {prevNext.prev.og_image_url && (
+                <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
+                  <Image
+                    src={prevNext.prev.og_image_url}
+                    alt=""
+                    fill
+                    className="object-cover transition duration-300 group-hover:scale-105"
+                    sizes="96px"
+                  />
+                </div>
+              )}
+              <div className="flex flex-col justify-center gap-1 p-4 min-w-0">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  ← 이전 글
+                </span>
+                {prevNext.prev.destination && (
+                  <span className="text-xs text-slate-500">{prevNext.prev.destination}</span>
+                )}
+                <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                  {(prevNext.prev.seo_title || '여행 가이드')
+                    .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                    .trim()}
+                </span>
+              </div>
+            </Link>
+          ) : (
+            <div />
+          )}
+          {prevNext.next ? (
+            <Link
+              href={`/blog/${prevNext.next.slug}`}
+              className="group flex overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand/30 hover:shadow-md"
+            >
+              <div className="flex flex-col justify-center gap-1 p-4 min-w-0 text-right flex-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  다음 글 →
+                </span>
+                {prevNext.next.destination && (
+                  <span className="text-xs text-slate-500">{prevNext.next.destination}</span>
+                )}
+                <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 transition group-hover:text-brand">
+                  {(prevNext.next.seo_title || '여행 가이드')
+                    .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
+                    .trim()}
+                </span>
+              </div>
+              {prevNext.next.og_image_url && (
+                <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
+                  <Image
+                    src={prevNext.next.og_image_url}
+                    alt=""
+                    fill
+                    className="object-cover transition duration-300 group-hover:scale-105"
+                    sizes="96px"
+                  />
+                </div>
+              )}
+            </Link>
+          ) : (
+            <div />
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
