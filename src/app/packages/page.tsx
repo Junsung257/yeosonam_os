@@ -19,6 +19,8 @@ export const metadata: Metadata = {
   alternates: { canonical: '/packages' },
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function PackagesPage() {
   // useSearchParams 사용 client component 는 Suspense boundary 필수
   // (Next.js 공식: https://nextjs.org/docs/app/api-reference/functions/use-search-params#prerendering)

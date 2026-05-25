@@ -209,6 +209,8 @@ const PUBLIC_PREFIXES = [
   // S1 매직링크 통합 — POST-confirm 착지 + 확인 라우트 (게스트)
   '/m/link/',
   '/api/m/',
+  '/about',
+  '/api/about/',
   // 자비스 게스트 챗 진입 (magic-session 쿠키로 인증, middleware 통과만 허용)
   '/m/chat/',
   '/m/booking/',
