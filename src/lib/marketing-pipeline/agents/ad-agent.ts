@@ -44,59 +44,65 @@ export class AdAgent extends BaseMarketingAgent {
       .eq('is_active', true)
       .eq('is_approved', true)
       .order('created_at', { ascending: false })
-      .limit(1);
+      .limit(5); // 한 번에 최대 5개 상품 처리
 
-    const pkg = packages?.[0] as PackageRow | undefined;
-    if (!pkg) return this.skip('활성 패키지 없음');
+    if (!packages?.length) return this.skip('활성 패키지 없음');
 
-    const results: Record<string, unknown> = {};
+    const results: { packages_processed: number; items: unknown[] } = { packages_processed: 0, items: [] };
 
-    // ── Meta 광고 카피 생성 + DRAFT 저장 ─────────────────────────────────
-    if (metaToken) {
-      try {
-        const metaAds = await generateAdCopy(pkg, 'meta');
-        const { data: campaign, error: campErr } = await supabaseAdmin.from('ad_campaigns').insert({
-          package_id: pkg.id,
-          channel: 'meta',
-          status: 'DRAFT',
-          name: `[Auto] ${pkg.title} - ${ctx.runDate}`,
-        }).select('id').maybeSingle();
-        if (campErr) throw campErr;
-        if (campaign?.id) {
+    for (const pkg of packages as PackageRow[]) {
+      const item: Record<string, unknown> = { package_id: pkg.id, title: pkg.title };
+
+      // ── Meta 광고 카피 생성 + DRAFT 저장 ─────────────────────────────────
+      if (metaToken) {
+        try {
+          const metaAds = await generateAdCopy(pkg, 'meta');
+          const { data: campaign, error: campErr } = await supabaseAdmin.from('ad_campaigns').insert({
+            package_id: pkg.id,
+            channel: 'meta',
+            status: 'DRAFT',
+            name: `[Auto] ${pkg.title} - ${ctx.runDate}`,
+          }).select('id').maybeSingle();
+          if (campErr) throw campErr;
+          if (campaign?.id) {
+            await supabaseAdmin.from('ad_creatives').insert({
+              product_id: pkg.id,
+              campaign_id: campaign.id,
+              channel: 'meta',
+              creative_type: 'single_image',
+              status: 'draft',
+              ad_copies: metaAds,
+            }).throwOnError();
+          }
+          item.meta = { ok: true, campaign_id: campaign?.id };
+        } catch (err) {
+          item.meta = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      } else {
+        item.meta = { ok: true, skipped: true, reason: 'Meta 토큰 미연동' };
+      }
+
+      // ── Google Ads RSA DRAFT 저장 ─────────────────────────────────────────
+      if (googleToken) {
+        try {
+          const googleAds = await generateAdCopy(pkg, 'google');
           await supabaseAdmin.from('ad_creatives').insert({
             product_id: pkg.id,
-            campaign_id: campaign.id,
-            channel: 'meta',
-            creative_type: 'single_image',
+            channel: 'google',
+            creative_type: 'text_ad',
             status: 'draft',
-            ad_copies: metaAds,
+            ad_copies: googleAds,
           }).throwOnError();
+          item.google = { ok: true, saved: true };
+        } catch (err) {
+          item.google = { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
-        results.meta = { ok: true, campaign_id: campaign?.id };
-      } catch (err) {
-        results.meta = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      } else {
+        item.google = { ok: true, skipped: true, reason: 'Google OAuth 미연동' };
       }
-    } else {
-      results.meta = { ok: true, skipped: true, reason: 'Meta 토큰 미연동' };
-    }
 
-    // ── Google Ads RSA DRAFT 저장 ─────────────────────────────────────────
-    if (googleToken) {
-      try {
-        const googleAds = await generateAdCopy(pkg, 'google');
-        await supabaseAdmin.from('ad_creatives').insert({
-          product_id: pkg.id,
-          channel: 'google',
-          creative_type: 'text_ad',
-          status: 'draft',
-          ad_copies: googleAds,
-        }).throwOnError();
-        results.google = { ok: true, saved: true };
-      } catch (err) {
-        results.google = { ok: false, error: err instanceof Error ? err.message : String(err) };
-      }
-    } else {
-      results.google = { ok: true, skipped: true, reason: 'Google OAuth 미연동' };
+      results.items.push(item);
+      results.packages_processed += 1;
     }
 
     return { ok: true, data: results };

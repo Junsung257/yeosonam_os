@@ -323,8 +323,9 @@ async function publishToFacebook(request: PublishRequest): Promise<PublishResult
 
     // 이미지가 있으면 첨부
     if (request.imageUrls?.length) {
+      // Facebook Feed 이미지 첨부는 media_fbid가 아닌 url 배열 사용
       feedBody.append('attached_media', JSON.stringify(
-        request.imageUrls.map(url => ({ media_fbid: url, hash: url }))
+        request.imageUrls.map(url => ({ media_fbid: url }))
       ));
     }
 
