@@ -1,135 +1,27 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-26T01:55:20+09:00
-- actionable_changed_files: 123
+- generated_at_kst: 2026-05-26T06:57:35+09:00
+- actionable_changed_files: 15
 - todo_markers: 0
-- areas: ETC 37, LIB 30, API 28, APP 18, DB 5, UI 5
+- areas: ETC 4, LIB 4, API 2, DB 2, APP 2, UI 1
 
 ## 1) Actionable Changed Files
 
 - ` M` `next.config.js`
 - ` M` `package-lock.json`
 - ` M` `package.json`
-- ` M` `src/app/admin/AdminPageClient.tsx`
-- ` M` `src/app/admin/affiliates/[id]/page.tsx`
-- ` M` `src/app/admin/blog/BlogDataFetcher.tsx`
-- ` M` `src/app/admin/blog/policy/page.tsx`
-- ` M` `src/app/admin/layout.tsx`
-- ` M` `src/app/admin/marketing/brand-kits/page.tsx`
-- ` M` `src/app/admin/marketing/page.tsx`
-- ` M` `src/app/admin/search-ads/page.tsx`
-- ` M` `src/app/api/admin/platform-learning/summary/route.ts`
-- ` M` `src/app/api/auth/meta-callback/route.ts`
-- ` M` `src/app/api/blog/from-card-news/route.ts`
-- ` M` `src/app/api/brand-kits/[id]/route.ts`
-- ` M` `src/app/api/brand-kits/route.ts`
-- ` M` `src/app/api/checkout/complete/route.ts`
-- ` M` `src/app/api/cron/blog-daily-summary/route.ts`
-- ` M` `src/app/api/cron/blog-learn/route.ts`
+- `D ` `pr-body.md`
+- ` M` `src/app/api/content-calendar/route.ts`
 - ` M` `src/app/api/cron/blog-publisher/route.ts`
-- ` M` `src/app/api/cron/meta-token-refresh/route.ts`
-- ` M` `src/app/api/cron/publish-scheduled/route.ts`
-- ` M` `src/app/api/tracking/route.ts`
-- ` M` `src/app/global-error.tsx`
-- ` M` `src/app/layout.tsx`
-- ` M` `src/components/AdminLayout.tsx`
-- ` M` `src/components/MetaPixel.tsx`
-- ` M` `src/hooks/usePinnedItems.ts`
-- ` M` `src/lib/blog-card-news-bridge.ts`
-- ` M` `src/lib/blog-cta.ts`
+- ` M` `src/app/blog/[slug]/page.tsx`
+- ` M` `src/components/blog/AuthorBox.tsx`
+- ` M` `src/lib/ab-test-engine.ts`
+- ` M` `src/lib/blog-bayesian-optimizer.ts`
 - ` M` `src/lib/blog-jsonld.ts`
-- ` M` `src/lib/blog-quality-gate.ts`
-- ` M` `src/lib/content-generator.ts`
 - ` M` `src/lib/content-pipeline/blog-body.ts`
-- ` M` `src/lib/content-review-workflow.ts`
-- ` M` `src/lib/jarvis/agents/marketing.ts`
-- ` M` `src/lib/kakao-moment-events.ts`
-- ` M` `src/lib/keyword-research.ts`
-- ` M` `src/lib/marketing-pipeline/agents/ad-publish-agent.ts`
-- ` M` `src/lib/marketing-pipeline/agents/social-publish-agent.ts`
-- ` M` `src/lib/optimization-loop.ts`
-- ` M` `src/lib/secret-registry.ts`
-- ` M` `src/lib/social-oauth-refresh.ts`
-- ` M` `src/lib/social-providers/registry.ts`
-- ` M` `src/lib/social-publisher.ts`
-- ` M` `vercel.json`
-- `??` `__test_login.mjs`
-- `??` `__test_marketing.mjs`
-- `??` `admin-after-login.png`
-- `??` `admin-dashboard.png`
-- `??` `admin-marketing.png`
-- `??` `admin-screenshots/`
-- `??` `affiliate-card-news.png`
-- `??` `affiliate-detail.png`
-- `??` `affiliate-full.png`
-- `??` `affiliate-login.html`
-- `??` `affiliates-list.png`
-- `??` `debug-api.mjs`
-- `??` `debug-full.mjs`
-- `??` `login-annotated.png`
-- `??` `login-before.png`
-- `??` `login-debug.mjs`
-- `??` `login-page.png`
-- `??` `marketing-dashboard.png`
-- `??` `screenshots/`
-- `??` `scripts/browser-tests.mjs`
-- `??` `scripts/login-debug.mjs`
-- `??` `src/app/admin/content-calendar/`
-- `??` `src/app/admin/marketing/social-configs/`
-- `??` `src/app/admin/seo-monitor/`
-- `??` `src/app/admin/web-vitals/`
-- `??` `src/app/affiliate/`
-- `??` `src/app/api/admin/affiliates/`
-- `??` `src/app/api/admin/check-threads/`
-- `??` `src/app/api/admin/marketing/`
-- `??` `src/app/api/admin/social-configs/`
-- `??` `src/app/api/affiliate/auth/`
-- `??` `src/app/api/affiliate/card-news/`
-- `??` `src/app/api/affiliate/dashboard/`
-- `??` `src/app/api/affiliate/insights/`
-- `??` `src/app/api/affiliate/public/`
-- `??` `src/app/api/auth/meta-deauthorize/`
-- `??` `src/app/api/auth/meta-deletion/`
-- `??` `src/app/api/auth/threads-oauth-start/`
-- `??` `src/app/api/content-calendar/`
-- `??` `src/app/api/cron/blog-orchestrator/`
-- `??` `src/app/api/cron/seo-monitor/`
-- `??` `src/app/api/web-vitals/`
-- `??` `src/app/link/`
-- `??` `src/app/llms.txt/`
-- `??` `src/app/share/card-news/`
-- `??` `src/components/NaverAnalyticsPixel.tsx`
-- `??` `src/components/WebVitalsReporter.tsx`
-- `??` `src/components/admin/marketing/`
-- `??` `src/hooks/useMarketingGap.ts`
-- `??` `src/lib/blog-bayesian-optimizer.ts`
-- `??` `src/lib/blog-content-orchestrator.ts`
-- `??` `src/lib/blog-image-seo.ts`
-- `??` `src/lib/blog-metrics-store.ts`
-- `??` `src/lib/blog-seo-scorer.ts`
-- `??` `src/lib/card-news/affiliate-feedback.ts`
-- `??` `src/lib/card-news/affiliate-quota.ts`
-- `??` `src/lib/card-news/brand-kit.ts`
-- `??` `src/lib/card-news/puppeteer-renderer.ts`
-- `??` `src/lib/jarvis/index.ts`
-- `??` `src/lib/seo-monitor.ts`
-- `??` `src/lib/social-providers/x-provider.ts`
-- `??` `src/lib/web-vitals-collector.ts`
-- `??` `src/types/supabase-generated.ts`
-- `??` `supabase/migrations/20260525100000_affiliate_card_news_and_brand_kit.sql`
-- `??` `supabase/migrations/20260525200000_affiliate_link_in_bio.sql`
-- `??` `supabase/migrations/20260525210000_cleanup_jaejaksung_v2_slugs.sql`
-- `??` `supabase/migrations/20260526120000_web_vitals.sql`
-- `??` `supabase/migrations/20260526121000_seo_monitor.sql`
-- `??` `test-admin.mjs`
-- `??` `test-affiliate.mjs`
-- `??` `test-card-news.json`
-- `??` `test-screenshots/`
-- `??` `tmp-admin-page.png`
-- `??` `tmp-affiliates-page.png`
-- `??` `tmp-cardnews-section.png`
-- `??` `tmp-partner-detail.png`
-- `??` `tmp_screenshots/`
+- `??` `src/app/about/`
+- `??` `supabase/migrations/20260526140000_queue_lock.sql`
+- `??` `supabase/migrations/20260526141000_ab_atomic_counters.sql`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -137,35 +29,9 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` M` `src/app/api/auth/meta-callback/route.ts`
-- [ ] P0 `??` `src/app/api/auth/meta-deauthorize/`
-- [ ] P0 `??` `src/app/api/auth/meta-deletion/`
-- [ ] P0 `??` `src/app/api/auth/threads-oauth-start/`
-- [ ] P1 ` M` `src/app/admin/affiliates/[id]/page.tsx`
-- [ ] P1 ` M` `src/app/api/cron/blog-daily-summary/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/blog-learn/route.ts`
 - [ ] P1 ` M` `src/app/api/cron/blog-publisher/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/meta-token-refresh/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/publish-scheduled/route.ts`
-- [ ] P1 ` M` `src/app/api/tracking/route.ts`
-- [ ] P1 ` M` `src/lib/kakao-moment-events.ts`
-- [ ] P1 `??` `src/app/affiliate/`
-- [ ] P1 `??` `src/app/api/admin/affiliates/`
-- [ ] P1 `??` `src/app/api/affiliate/auth/`
-- [ ] P1 `??` `src/app/api/affiliate/card-news/`
-- [ ] P1 `??` `src/app/api/affiliate/dashboard/`
-- [ ] P1 `??` `src/app/api/affiliate/insights/`
-- [ ] P1 `??` `src/app/api/affiliate/public/`
-- [ ] P1 `??` `src/app/api/cron/blog-orchestrator/`
-- [ ] P1 `??` `src/app/api/cron/seo-monitor/`
-- [ ] P1 `??` `src/lib/card-news/affiliate-feedback.ts`
-- [ ] P1 `??` `src/lib/card-news/affiliate-quota.ts`
-- [ ] P1 `??` `src/types/supabase-generated.ts`
-- [ ] P1 `??` `supabase/migrations/20260525100000_affiliate_card_news_and_brand_kit.sql`
-- [ ] P1 `??` `supabase/migrations/20260525200000_affiliate_link_in_bio.sql`
-- [ ] P1 `??` `supabase/migrations/20260525210000_cleanup_jaejaksung_v2_slugs.sql`
-- [ ] P1 `??` `supabase/migrations/20260526120000_web_vitals.sql`
-- [ ] P1 `??` `supabase/migrations/20260526121000_seo_monitor.sql`
+- [ ] P1 `??` `supabase/migrations/20260526140000_queue_lock.sql`
+- [ ] P1 `??` `supabase/migrations/20260526141000_ab_atomic_counters.sql`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

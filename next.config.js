@@ -34,10 +34,8 @@ const nextConfig = {
     'pdf-parse',
   ],
   experimental: {
-    // PPR(Partial Prerendering): Vercel 배포에서만 작동, 로컬에서는 SSR fallback.
-    // 정적 셸을 CDN에서 즉시 제공하고, 동적 부분은 Suspense 경계로 streaming.
-    // 프로덕션에서 TTFB 4-10배 개선 예상.
-    ppr: 'incremental',
+    // PPR(Partial Prerendering): Next 15 canary+ 필요, 현재 14.2.20에서는 build 오류 발생.
+    // Next.js 업그레이드 후 재활성화 예정.
     // Windows 환경에서 prod 빌드 중 manifest 누락(ENOENT) 재현이 있어 당분간 비활성화.
     // 안정화 후 CI/Linux에서만 조건부 재활성화 검토.
     webpackBuildWorker: false,
@@ -86,11 +84,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://t1.kakaocdn.net",
-              "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net",
+              "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com",
               "font-src 'self' https://cdn.jsdelivr.net",
-              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://o*.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com",
+              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://o*.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
               "frame-src 'self' https://www.facebook.com https://www.instagram.com https://www.youtube.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",

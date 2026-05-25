@@ -134,7 +134,7 @@ export async function computeAdaptiveThresholds(
 
   // 길이 임계값 조정: 고CTR 글들이 더 길면 임계값 상향, 더 짧으면 하향
   let newInfoMinLen = current.infoMinLen;
-  let newProductMinLen = current.productMinLen;
+  const newProductMinLen = current.productMinLen;
 
   if (avgTopLen > 0 && avgBottomLen > 0) {
     if (avgTopLen > avgBottomLen * 1.2) {

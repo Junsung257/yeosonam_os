@@ -6,7 +6,7 @@ import { FEW_SHOT_EXAMPLES } from '@/prompts/blog/few-shot-examples';
 import { pickBlogVariations } from '@/prompts/blog/variations';
 import { getPrompt } from '@/lib/prompt-loader';
 import { SerpAnalysis, buildSerpPromptBlock } from '@/lib/serp-analyzer';
-import { analyzeSerpGap } from '@/lib/serp-gap-analyzer';
+import { analyzeSerpGap, type SerpGapResult } from '@/lib/serp-gap-analyzer';
 import { generateSectionImage } from '@/lib/blog-image-gen';
 import { selectTemplate, applyTemplateToBrief } from '@/lib/content-pipeline/templates';
 
@@ -50,12 +50,17 @@ export interface BlogBodyInput {
   reviewQuotesMarkdown?: string | null;
   /** SERP 분석 결과 (Naver 상위 10개 패턴) — 프롬프트에 주입 */
   serpAnalysis?: SerpAnalysis | null;
+  /** SERP 갭 분석 결과 — 경쟁사 대비 누락 주제를 본문에 반영 */
+  serpGapAnalysis?: SerpGapResult | null;
   /** AI 이미지 생성 활성화 (기본 true) */
   generateImages?: boolean;
 }
 
 export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
-  let { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl, reviewQuotesMarkdown, serpAnalysis, generateImages = true } = input;
+  const { brief: briefInput, productContext, baseUrl, reviewQuotesMarkdown, serpAnalysis, serpGapAnalysis, generateImages = true } = input;
+  let brief = briefInput;
+  let slideImageMapLocal = input.slideImageMap ?? {};
+  let pexelsImageMapLocal = input.pexelsImageMap ?? {};
 
   if (!hasBlogApiKey()) {
     return buildFallbackBlog(input);
@@ -70,8 +75,8 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
       brief = applyTemplateToBrief(brief, template, keyword);
       console.log(`[blog-body] 템플릿 "${template.name}"(${template.id}) 적용 — "${keyword}"`);
       // 이미지 맵이 sections 위치 기준으로 구성되어 있으므로, 템플릿 적용 후 재조정
-      slideImageMap = {};
-      pexelsImageMap = {};
+      slideImageMapLocal = {};
+      pexelsImageMapLocal = {};
     }
   } catch (tplErr) {
     console.warn('[blog-body] 템플릿 선택/적용 실패 (기존 brief 유지):',
@@ -94,12 +99,12 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
   });
 
   // H1 이미지 + CTA 이미지 추출 (sectionImageMap 에서 사용)
-  const h1Image = slideImageMap[1] || null;
-  const slideKeys = Object.keys(slideImageMap).map(Number).sort((a, b) => a - b);
+  const h1Image = slideImageMapLocal[1] || null;
+  const slideKeys = Object.keys(slideImageMapLocal).map(Number).sort((a, b) => a - b);
   const lastKey = slideKeys.length > 0 ? slideKeys[slideKeys.length - 1] : 0;
 
-  const ctaImage = (lastKey > 1 && slideImageMap[lastKey] && slideImageMap[lastKey] !== h1Image)
-    ? slideImageMap[lastKey]
+  const ctaImage = (lastKey > 1 && slideImageMapLocal[lastKey] && slideImageMapLocal[lastKey] !== h1Image)
+    ? slideImageMapLocal[lastKey]
     : null;
 
   // 섹션별 이미지 — 카드뉴스/pexels 우선, 부족하면 AI 생성
@@ -107,7 +112,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     // 1번은 표지, 마지막은 CTA이므로, 본문 H2는 2번부터 (index + 2) 순차 할당
     const imgPos = index + 2;
     // imgPos가 lastKey(CTA)와 겹치거나 초과하면 카드뉴스 이미지가 소진된 것으로 간주
-    const cardImgUrl = (imgPos < lastKey && slideImageMap[imgPos]) ? slideImageMap[imgPos] : null;
+    const cardImgUrl = (imgPos < lastKey && slideImageMapLocal[imgPos]) ? slideImageMapLocal[imgPos] : null;
 
     return {
       position: s.position,
@@ -115,7 +120,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
       // 카드뉴스 PNG 우선, 없으면 Pexels. 동일 이미지 H1에 사용됐으면 스킵 (방어 코드)
       image_url: (cardImgUrl && cardImgUrl !== h1Image)
         ? cardImgUrl
-        : (pexelsImageMap[s.position] || null),
+        : (pexelsImageMapLocal[s.position] || null),
     };
   });
 
@@ -150,7 +155,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
         brief.sections.map(s => s.h2).join(' '),
         [brief.h1, ...serpAnalysis.recommended_entities_to_include.slice(0, 5)],
       )
-    : null;
+    : serpGapAnalysis ?? null;
 
   const serpPromptBlock = serpAnalysis
     ? buildSerpPromptBlock(serpAnalysis, serpGapResult ?? undefined)
@@ -203,6 +208,15 @@ ${reviewQuotesMarkdown.trim()}
 ` : ''}
 
 ${serpPromptBlock}
+${serpGapResult && serpGapResult.missingTopics.length > 0 ? `## 경쟁사 대비 부족한 주제 (반드시 포함)
+
+아래는 경쟁사 상위 글들이 공통으로 다루지만 **이번 글에는 없는 주제**들입니다.
+각 주제를 **추가 H2 섹션**으로 만들어 본문에 포함하세요. (기존 H2 순서는 유지한 채, 적절한 위치에 삽입)
+
+${serpGapResult.missingTopics.map((t, i) => `${i + 1}. **${t}** — ${serpGapResult.suggestions[i] || '관련 내용을 H2 섹션으로 추가'}`).join('\n')}
+
+커버리지 점수: ${serpGapResult.coverageScore}/100 (낮을수록 보강 필요)
+` : ''}
 ## 이미지 배치 (URL 한 글자도 변경 금지, 지정된 위치에 한 번만 삽입)
 
 ### H1 바로 아래:
@@ -630,7 +644,9 @@ ${text}`;
  * AI 실패 시 결정론적 Fallback 블로그 (변형 풀 + 이미지 사전 매핑 적용)
  */
 function buildFallbackBlog(input: BlogBodyInput): string {
-  const { brief, slideImageMap = {}, pexelsImageMap = {}, productContext, baseUrl } = input;
+  const { brief, productContext, baseUrl } = input;
+  const slideImageMap = input.slideImageMap ?? {};
+  const pexelsImageMap = input.pexelsImageMap ?? {};
   const productUrl = productContext?.product_id && baseUrl
     ? `${baseUrl}/packages/${productContext.product_id}`
     : baseUrl || 'https://yeosonam.com';

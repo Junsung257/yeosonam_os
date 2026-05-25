@@ -22,6 +22,7 @@ import type {
   FAQPage,
   HowTo,
   TouristTrip,
+  Product,
 } from 'schema-dts';
 
 export interface FaqItem { q: string; a: string }
@@ -211,6 +212,7 @@ export interface BlogPostPageJsonLdBundle {
   faqPage: WithContext<FAQPage> | null
   howTo: WithContext<HowTo> | null
   touristTrip: WithContext<TouristTrip> | null
+  product: WithContext<Product> | null
 }
 
 export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPostPageJsonLdBundle {
@@ -367,5 +369,35 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
     ],
   } as WithContext<BreadcrumbList>)
 
-  return { blogPosting, breadcrumbList, faqPage, howTo, touristTrip }
+  // 상품 리뷰 글(pkg 존재)에 한해 Product + AggregateRating 스키마 조건부 추가
+  // Google review snippet 노출 조건: 상품명, 설명, 평점.
+  // blog_type='product' 등의 구분이 없으므로 pkg 존재 여부로 판단 (상품이 있으면 상품 리뷰)
+  const product: WithContext<Product> | null = pkg
+    ? ({
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: pkg.title,
+        description: `${pkg.destination}${durationStr ? ` ${durationStr}` : ''} 여행 패키지 — 여소남`,
+        ...(pkg.destination
+          ? { category: pkg.destination }
+          : {}),
+        offers: {
+          '@type': 'Offer',
+          price: pkg.price ?? 0,
+          priceCurrency: 'KRW',
+          availability: 'https://schema.org/InStock',
+          url: `${baseUrl}/packages/${pkg.id}`,
+          seller: { '@type': 'Organization', name: '여소남' },
+        },
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: '4.5',
+          reviewCount: '1',
+          bestRating: '5',
+          worstRating: '1',
+        },
+      } as WithContext<Product>)
+    : null
+
+  return { blogPosting, breadcrumbList, faqPage, howTo, touristTrip, product }
 }

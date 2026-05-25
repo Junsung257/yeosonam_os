@@ -616,6 +616,13 @@ export default async function BlogDetailPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.touristTrip) }}
         />
       )}
+      {jsonLd.product && (
+        <script
+          suppressHydrationWarning
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.product) }}
+        />
+      )}
 
       <BlogTracker contentCreativeId={post.id} />
 
