@@ -135,19 +135,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     if (action.type === 'PAUSE' && kw.status !== 'PAUSED') {
       if (applyDbChanges) await updateKeywordStatus(kw.id, 'PAUSED');
-      push(`PAUSED: "${action.keyword}" — ${action.reason}`);
-
-      // TODO: 실제 네이버 광고 API — 키워드 일시 중지
-      // await fetch(`https://api.naver.com/ncc/adgroups/keywords/${kw.id}`, {
-      //   method: 'PUT',
-      //   headers: { 'X-API-KEY': '<NAVER_AD_API_KEY>' },
-      //   body: JSON.stringify({ userLock: true }),
-      // });
-
-      // TODO: 실제 구글 Ads API — 키워드 PAUSED
-      // await googleAdsClient.mutateAdGroupCriteria({
-      //   operations: [{ update: { resource_name: kw.id, status: 'PAUSED' } }]
-      // });
+      push(`PAUSED: "${action.keyword}" — ${action.reason} (DB만 반영, API 미연동 — NAVER_AD_API_KEY / GOOGLE_ADS 필요)`);
 
     } else if (action.type === 'FLAG_UP' && kw.status !== 'FLAGGED_UP') {
       if (applyDbChanges) {
@@ -157,11 +145,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           await updateKeywordBid(kw.id, upBid);
         }
       }
-      push(`FLAGGED_UP: "${action.keyword}" — ${action.reason}`);
-
-      // TODO: 실제 입찰가 상향 반영
-      // const newBid = Math.min(kw.current_bid * 1.2, MAX_BID_LIMIT);
-      // await updateKeywordBid(kw.id, newBid);
+      push(`FLAGGED_UP: "${action.keyword}" — ${action.reason} (DB만 반영, API 미연동)`);
     }
   }
 
@@ -180,6 +164,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
       push(`롱테일 발굴 ${longtails.length}개 후보 — ${longtails.map((l) => l.keyword).join(', ')}`);
 
+      // 롱테일 키워드 DB 저장 (실제 Naver API 미연동 — SERPAPI_KEY 설정 후 활성화)
       // TODO: keyword_performances 테이블에 is_longtail=true로 INSERT
       // for (const lt of longtails) {
       //   await upsertKeywordPerformance({ platform: 'naver', keyword: lt.keyword, is_longtail: true, current_bid: lt.estimated_cpc, ... });
