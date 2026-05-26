@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       gscStats.skipped = 'GOOGLE_SERVICE_ACCOUNT_JSON 미설정'
       push('GSC 수집 스킵 — 환경변수 미설정')
     } else {
-      const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:yeosonam.com'
+      const siteUrl = process.env.GSC_SITE_URL || 'https://yeosonam.com/'
       // GSC는 최소 2일 지연 데이터 제공 → 3일 전 데이터 수집
       const targetDate = new Date()
       targetDate.setDate(targetDate.getDate() - 3)

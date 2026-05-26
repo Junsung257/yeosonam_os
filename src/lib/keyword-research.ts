@@ -560,7 +560,7 @@ export async function fetchGscSearchAnalytics(
 ): Promise<Map<string, GscSearchAnalyticsRow>> {
   const result = new Map<string, GscSearchAnalyticsRow>();
   const serviceAccountJson = getSecret('GSC_SERVICE_ACCOUNT');
-  const siteUrl = getSecret('GSC_SITE_URL') || 'sc-domain:yeosonam.com';
+  const siteUrl = getSecret('GSC_SITE_URL') || 'https://yeosonam.com/';
 
   if (!serviceAccountJson) {
     console.log('[keyword-research] GSC 서비스 계정 없음 — Google Search Analytics 스킵');
