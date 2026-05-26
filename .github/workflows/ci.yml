@@ -27,6 +27,9 @@ jobs:
 
       - run: npm ci
 
+      - name: npm audit (high severity)
+        run: npm audit --audit-level=high 2>&1 | head -50
+
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
 
