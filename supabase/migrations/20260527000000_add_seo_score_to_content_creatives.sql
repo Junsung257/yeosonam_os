@@ -1,0 +1,2 @@
+ALTER TABLE content_creatives
+ADD COLUMN IF NOT EXISTS seo_score JSONB DEFAULT NULL;
