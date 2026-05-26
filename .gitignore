@@ -139,6 +139,8 @@ db/test_*.ts
 db/test_*.js
 db/verify_*.ts
 db/verify_*.js
+db/create_*.mjs
+db/create_*.sql
 db/force_*.ts
 db/force_*.js
 db/rerun_*.ts
