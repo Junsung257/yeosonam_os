@@ -7,6 +7,7 @@ import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { checkSelfReferral } from '@/lib/affiliate/self-referral';
 import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
+import { rateLimitMutation } from '@/lib/rate-limiter';
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -161,6 +162,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rl = await rateLimitMutation(request);
+  if (rl) return rl;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
@@ -557,6 +560,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const rl = await rateLimitMutation(request);
+  if (rl) return rl;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
