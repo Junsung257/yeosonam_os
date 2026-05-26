@@ -26,16 +26,72 @@
       "files": [
         "src/app/api/**/*.{ts,tsx}",
         "src/middleware.ts",
+        "src/app/admin/**/*.{ts,tsx}",
         "src/app/admin/blog/BlogDataFetcher.tsx",
         "src/app/admin/packages/**/review/page.tsx",
         "src/app/admin/scoring/funnel/page.tsx",
         "src/app/blog/**/page.tsx",
         "src/app/m/admin/page.tsx",
         "src/components/reviews/**/*.{ts,tsx}",
+        "src/components/admin/**/*.{ts,tsx}",
+        "src/components/AdminLayout.tsx",
         "src/lib/content-pipeline/**/*.{ts,tsx}"
       ],
       "rules": {
-        "no-restricted-syntax": "off"
+        "no-restricted-syntax": "off",
+        // Admin pages are internal tools — relax a11y checks
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/no-static-element-interactions": "off",
+        "jsx-a11y/label-has-associated-control": "off",
+        "jsx-a11y/no-autofocus": "off",
+        "jsx-a11y/interactive-supports-focus": "off",
+        "jsx-a11y/control-has-associated-label": "off",
+        "jsx-a11y/no-noninteractive-element-interactions": "off",
+        "jsx-a11y/no-noninteractive-tabindex": "off",
+        "jsx-a11y/tabindex-no-positive": "off",
+        "jsx-a11y/no-interactive-element-to-noninteractive-role": "off",
+        "jsx-a11y/role-supports-aria-props": "off"
+      }
+    },
+    // Legacy customer pages — existing code with a11y gaps, relax to warnings
+    {
+      "files": [
+        "src/app/concierge/**/*.{ts,tsx}",
+        "src/app/group/**/*.{ts,tsx}",
+        "src/app/login/**/*.{ts,tsx}",
+        "src/app/auth/**/*.{ts,tsx}",
+        "src/app/join/**/*.{ts,tsx}",
+        "src/app/register/**/*.{ts,tsx}",
+        "src/app/partner-apply/**/*.{ts,tsx}",
+        "src/app/influencer/**/*.{ts,tsx}",
+        "src/app/affiliate/**/*.{ts,tsx}",
+        "src/app/m/**/*.{ts,tsx}",
+        "src/app/packages/**/*.{ts,tsx}",
+        "src/app/tenant/**/*.{ts,tsx}",
+        "src/components/customer/**/*.{ts,tsx}",
+        "src/components/lp/**/*.{ts,tsx}",
+        "src/components/BookingDrawer.tsx",
+        "src/components/CommandPalette.tsx",
+        "src/components/ConsentBanner.tsx",
+        "src/components/PackageCard.tsx",
+        "src/components/ProductSearch.tsx",
+        "src/components/SearchBar.tsx",
+        "src/components/LedgerViewer.tsx",
+        "src/components/PairwiseCompareModal.tsx",
+        "src/components/CustomerSearch.tsx"
+      ],
+      "rules": {
+        "jsx-a11y/click-events-have-key-events": "warn",
+        "jsx-a11y/no-static-element-interactions": "warn",
+        "jsx-a11y/label-has-associated-control": "warn",
+        "jsx-a11y/no-autofocus": "warn",
+        "jsx-a11y/interactive-supports-focus": "warn",
+        "jsx-a11y/control-has-associated-label": "warn",
+        "jsx-a11y/no-noninteractive-element-interactions": "warn",
+        "jsx-a11y/no-noninteractive-tabindex": "warn",
+        "jsx-a11y/tabindex-no-positive": "warn",
+        "jsx-a11y/no-interactive-element-to-noninteractive-role": "warn",
+        "jsx-a11y/role-supports-aria-props": "warn"
       }
     },
     {

@@ -18,7 +18,7 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html>
+    <html lang="ko">
       <body>
         <div style={{ padding: '2rem', fontFamily: 'sans-serif', textAlign: 'center' }}>
           <h2>문제가 발생했습니다</h2>
