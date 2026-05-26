@@ -318,7 +318,9 @@ export async function PATCH(request: NextRequest) {
         await resweepUnmatchedActivities([created.id]);
         const { reEnrichAffectedPackages } = await import('@/lib/package-reenrich-on-attraction-change');
         void reEnrichAffectedPackages([created.id], { maxPackages: 50 }).catch(() => {});
-      } catch {}
+      } catch (e) {
+        console.warn('[unmatched] resweep 실패 (무시):', e instanceof Error ? e.message : String(e));
+      }
 
       // 2026-05-17 박제 (ERR-shizuoka-photos-empty 갭 G2):
       //   부트스트랩으로 INSERT 된 attraction 은 photos=[] 빈 상태로 박혀 모바일 카드가
@@ -519,7 +521,9 @@ export async function PATCH(request: NextRequest) {
         try {
           await resweepUnmatchedActivities([(existing as any).id]);
           void reEnrichAffectedPackages([(existing as any).id], { maxPackages: 50 }).catch(() => {});
-        } catch {}
+        } catch (e) {
+          console.warn('[unmatched] resweep 실패 (기존 alias):', e instanceof Error ? e.message : String(e));
+        }
 
         return NextResponse.json({ success: true, message: `기존 "${top.label_ko || top.label_en || top.qid}" 에 alias 연결 완료` });
       }
@@ -572,14 +576,18 @@ export async function PATCH(request: NextRequest) {
             keywords: [top.label_ko || '', top.label_en || '', unmatched.activity, ...top.aliases].filter(Boolean),
             qid: top.qid, maxPhotos: 5,
           });
-        } catch {}
+        } catch (e) {
+          console.warn('[unmatched] photo/desc 생성 실패 (무시):', e instanceof Error ? e.message : String(e));
+        }
       })();
 
       // resweep + re-enrich
       try {
         await resweepUnmatchedActivities([(created as any).id]);
         void reEnrichAffectedPackages([(created as any).id], { maxPackages: 50 }).catch(() => {});
-      } catch {}
+      } catch (e) {
+        console.warn('[unmatched] resweep 실패 (신규 등록):', e instanceof Error ? e.message : String(e));
+      }
 
       return NextResponse.json({ success: true, message: `신규 등록: "${(created as any).name}" (${top.qid})`, attraction_id: (created as any).id });
     }

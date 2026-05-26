@@ -32,12 +32,40 @@ async function learnAliasForMatch(bookingId: string, counterpartyName: string | 
       .select('lead_customer_id')
       .eq('id', bookingId)
       .maybeSingle();
-    const customerId = (bk as any)?.lead_customer_id;
+    const bkRow = bk as { lead_customer_id: string | null } | null;
+    const customerId = bkRow?.lead_customer_id;
     if (!customerId) return;
     await learnAlias({ customerId, alias: counterpartyName, source: 'manual_match' });
   } catch (e) {
-    console.warn('[bank-transactions] alias 학습 실패 (무시):', (e as any)?.message);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[bank-transactions] alias 학습 실패 (무시):', msg);
   }
+}
+
+// ─── 타입 정의 ────────────────────────────────────────────────────────────────
+
+interface BankTxRow {
+  id: string;
+  amount: number;
+  transaction_type: '입금' | '출금';
+  is_refund: boolean;
+  counterparty_name: string | null;
+  match_status: string | null;
+  booking_id: string | null;
+}
+
+interface BookingWithCustomer {
+  id: string;
+  booking_no: string;
+  package_title: string;
+  total_price: number;
+  total_cost: number;
+  paid_amount: number;
+  total_paid_out: number;
+  departure_date: string;
+  status: string;
+  payment_status: string;
+  customer_name?: string;
 }
 
 // ─── 공통 유틸 ────────────────────────────────────────────────────────────────
@@ -52,6 +80,20 @@ function nameSim(a: string, b: string): number {
   return 0;
 }
 
+interface BookingRow {
+  id: string;
+  booking_no: string;
+  package_title: string;
+  total_price: number;
+  total_cost: number;
+  paid_amount: number;
+  total_paid_out: number;
+  departure_date: string;
+  status: string;
+  payment_status: string;
+  customers?: { name: string } | null;
+}
+
 async function loadActiveBookings(): Promise<BookingCandidate[]> {
   const { data } = await supabaseAdmin
     .from('bookings')
@@ -63,7 +105,7 @@ async function loadActiveBookings(): Promise<BookingCandidate[]> {
     `)
     .in('status', ['pending', 'confirmed']);
 
-  return (data || []).map((b: any) => ({
+  return (data || []).map((b: BookingRow) => ({
     ...b,
     customer_name: b.customers?.name,
   }));
@@ -289,7 +331,7 @@ export async function PUT(request: NextRequest) {
     let matched = 0;
     let skipped = 0;
 
-    for (const tx of unmatched as any[]) {
+    for (const tx of unmatched as BankTxRow[]) {
       if (tx.transaction_type !== '입금') { skipped++; continue; }
 
       const candidates = matchPaymentToBookings({
@@ -314,7 +356,7 @@ export async function PUT(request: NextRequest) {
         .eq('id', tx.id);
 
       await applyToBooking(best.booking.id, tx.transaction_type, tx.amount, tx.is_refund, 1, {
-        counterpartyName: tx.counterparty_name,
+        counterpartyName: tx.counterparty_name ?? undefined,
         bankTxId: tx.id,
         createdBy: 'auto',
       });
@@ -430,7 +472,7 @@ export async function PATCH(request: NextRequest) {
       const quickCleanup: { bookings: number; customers: number } = { bookings: 0, customers: 0 };
 
       if (tx) {
-        const t = tx as any;
+        const t = tx as BankTxRow;
         if (t.booking_id) {
           await applyToBooking(t.booking_id, t.transaction_type, t.amount, t.is_refund, -1, {
             bankTxId: transactionId,
@@ -531,7 +573,7 @@ export async function PATCH(request: NextRequest) {
         .from('bookings')
         .select('id')
         .in('id', [...bookingIdSet]);
-      const existingIds = new Set((existingBks || []).map((b: any) => b.id));
+      const existingIds = new Set((existingBks || []).map((b: { id: string }) => b.id));
       const missing = splits.filter(s => !existingIds.has(s.bookingId)).map(s => s.bookingId);
       if (missing.length > 0) {
         return NextResponse.json({ error: `존재하지 않는 예약 ID: ${missing.join(', ')}` }, { status: 400 });
@@ -542,11 +584,13 @@ export async function PATCH(request: NextRequest) {
         .select('amount, transaction_type, is_refund, counterparty_name')
         .eq('id', transactionId)
         .single();
+      const txRow = txData as BankTxRow | null;
+      if (!txRow) return NextResponse.json({ error: '거래를 찾을 수 없습니다' }, { status: 404 });
 
-      const txAmount       = (txData as any)?.amount || 0;
-      const txType         = (txData as any)?.transaction_type as '입금' | '출금';
-      const isRefund       = (txData as any)?.is_refund || false;
-      const counterpartyName = (txData as any)?.counterparty_name ?? undefined;
+      const txAmount       = txRow.amount;
+      const txType         = txRow.transaction_type;
+      const isRefund       = txRow.is_refund;
+      const counterpartyName = txRow.counterparty_name ?? undefined;
 
       const splitTotal = splits.reduce((s: number, r: Record<string, unknown>) => s + Number(r.amount), 0);
       const diff = splitTotal - txAmount;
@@ -625,11 +669,13 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (txErr) throw txErr;
+    const txRow = txData as BankTxRow | null;
+    if (!txRow) throw new Error('매칭 후 거래 데이터를 찾을 수 없습니다');
 
-    const txAmount         = (txData as any)?.amount || 0;
-    const txType           = (txData as any)?.transaction_type as '입금' | '출금';
-    const isRefund         = (txData as any)?.is_refund || false;
-    const counterpartyName = (txData as any)?.counterparty_name ?? undefined;
+    const txAmount         = txRow.amount;
+    const txType           = txRow.transaction_type;
+    const isRefund         = txRow.is_refund;
+    const counterpartyName = txRow.counterparty_name ?? undefined;
 
     await applyToBooking(bookingId, txType, txAmount, isRefund, 1, {
       counterpartyName,
@@ -658,24 +704,27 @@ export async function PATCH(request: NextRequest) {
         .single();
 
       if (bk) {
+        const bkRow = bk as { total_price: number; lead_customer_id: string | null };
         const { data: bkAfter } = await supabaseAdmin
           .from('bookings')
           .select('paid_amount')
           .eq('id', bookingId)
           .single();
 
-        const overflow = Math.max(0, ((bkAfter as any)?.paid_amount || 0) - ((bk as any)?.total_price || 0));
-        if (overflow > 0 && (bk as any)?.lead_customer_id) {
+        const paidAmount = bkAfter ? (bkAfter as { paid_amount: number }).paid_amount : 0;
+        const overflow = Math.max(0, paidAmount - bkRow.total_price);
+        if (overflow > 0 && bkRow.lead_customer_id) {
           const { data: cust } = await supabaseAdmin
             .from('customers')
             .select('mileage')
-            .eq('id', (bk as any).lead_customer_id)
+            .eq('id', bkRow.lead_customer_id)
             .single();
 
+          const mileage = cust ? (cust as { mileage: number }).mileage : 0;
           await supabaseAdmin
             .from('customers')
-            .update({ mileage: ((cust as any)?.mileage || 0) + overflow })
-            .eq('id', (bk as any).lead_customer_id);
+            .update({ mileage: mileage + overflow })
+            .eq('id', bkRow.lead_customer_id);
         }
       }
     }
@@ -731,7 +780,7 @@ export async function POST(request: NextRequest) {
       `)
       .in('status', ['pending', 'confirmed', 'completed']);
 
-    const bookings = (bookingsRaw || []).map((b: any) => ({ ...b, customer_name: b.customers?.name }));
+    const bookings = (bookingsRaw || []).map((b: BookingRow) => ({ ...b, customer_name: b.customers?.name }));
 
     const results: Array<Record<string, unknown>> = [];
 
