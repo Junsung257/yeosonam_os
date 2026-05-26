@@ -4,10 +4,15 @@ import {
   getGroupRfq,
   updateGroupRfq,
 } from '@/lib/supabase';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 const TIER_DELAY_MS = parseInt(process.env.RFQ_TIER_DELAY_MINUTES ?? '10') * 60 * 1000;
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  // Admin 전용
+  if (!(await isAdminRequest(_request))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const params = await props.params;
   const { id } = params;
 
@@ -34,6 +39,10 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
 }
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  // Admin 전용
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const params = await props.params;
   const { id } = params;
 
@@ -74,6 +83,60 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       if (!rfq) {
         return NextResponse.json({ error: 'RFQ 상태 변경에 실패했습니다.' }, { status: 500 });
       }
+
+      // 여행 완료(completed) 시 travel history 자동 기록
+      if (status === 'completed') {
+        try {
+          const sb = (await import('@/lib/supabase')).getSupabaseAdmin();
+          if (sb) {
+            const selectedProposalId = (rfq as any).selected_proposal_id;
+            let proposal: Record<string, unknown> | null = null;
+            let tenantName: string | null = null;
+
+            if (selectedProposalId) {
+              const { data: prop } = await sb
+                .from('rfq_proposals')
+                .select('title, price, tenant_id')
+                .eq('id', selectedProposalId)
+                .single();
+              proposal = prop as Record<string, unknown> | null;
+
+              // tenant_id로 tenants 테이블 조회
+              if (proposal?.tenant_id) {
+                const { data: tenant } = await sb
+                  .from('tenants')
+                  .select('name')
+                  .eq('id', proposal.tenant_id)
+                  .single();
+                tenantName = (tenant as any)?.name ?? null;
+              }
+            }
+
+            const { error: insertError } = await sb
+              .from('user_travel_histories')
+              .upsert({
+                customer_id: (rfq as any).customer_id,
+                rfq_id: id,
+                destination: (rfq as any).destination ?? '미등록',
+                destination_country: null,
+                departure_date: (rfq as any).departure_date_from ?? null,
+                duration_nights: (rfq as any).duration_nights ?? null,
+                trip_type: (rfq as any).custom_requirements?.group_type ?? null,
+                tenant_name: tenantName,
+                proposal_title: proposal?.title ?? null,
+                total_price: proposal?.price ?? null,
+                total_pax: ((rfq as any).adult_count ?? 0) + ((rfq as any).child_count ?? 0),
+                review_submitted: false,
+              } as never, { onConflict: 'customer_id,rfq_id', ignoreDuplicates: 'true' } as never);
+            if (insertError) {
+              console.error('Travel history upsert 오류:', insertError);
+            }
+          }
+        } catch (e) {
+          console.error('Travel history 기록 실패 (무시):', e);
+        }
+      }
+
       return NextResponse.json({ rfq });
     }
 

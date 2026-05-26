@@ -11,6 +11,7 @@ const CATEGORIES = [
   { icon: '🏛️', label: '유럽', href: '/destinations/region/europe' },
   { icon: '💍', label: '허니문', href: '/packages?category=honeymoon' },
   { icon: '⛳', label: '해외골프', href: '/packages?category=golf' },
+  { icon: '👨‍👩‍👧', label: '단독맞춤', href: '/private-tour' },
   { icon: '👥', label: '단체·맞춤', href: '/group-inquiry' },
 ];
 

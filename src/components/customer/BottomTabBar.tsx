@@ -17,6 +17,7 @@ interface Tab {
 const TABS: Tab[] = [
   { icon: '🏠', label: '홈', href: '/' },
   { icon: '🔍', label: '검색', href: '/packages' },
+  { icon: '✈️', label: '단독맞춤', href: '/private-tour' },
   { icon: '💬', label: '상담', href: KAKAO_URL, external: true, highlight: true },
   { icon: '👤', label: '내 예약', href: '/mypage' },
 ];

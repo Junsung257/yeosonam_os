@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { TravelPassport } from '@/components/customer/TravelPassport';
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -279,6 +280,9 @@ export default function MyPage() {
             여행 찾기
           </Link>
         </div>
+
+        {/* 여행 Passport */}
+        <TravelPassport />
 
         {/* 예약 내역 */}
         <div>

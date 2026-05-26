@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function AffiliateCardNewsListPage() {
@@ -51,9 +52,9 @@ export default function AffiliateCardNewsListPage() {
             대시보드
           </a>
           <div className="flex items-center gap-3">
-            <a href="/affiliate/card-news/new" className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">
+          <Link href="/affiliate/card-news/new" className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">
               + 새 카드뉴스
-            </a>
+            </Link>
             <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
           </div>
         </div>
@@ -67,9 +68,9 @@ export default function AffiliateCardNewsListPage() {
         ) : cardNews.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-xl border">
             <p className="text-gray-400 text-sm">아직 생성한 카드뉴스가 없습니다.</p>
-            <a href="/affiliate/card-news/new" className="inline-block mt-3 text-sm text-amber-600 hover:text-amber-700 underline">
+            <Link href="/affiliate/card-news/new" className="inline-block mt-3 text-sm text-amber-600 hover:text-amber-700 underline">
               첫 카드뉴스 만들기
-            </a>
+            </Link>
           </div>
         ) : (
           <div className="space-y-3">

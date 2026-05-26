@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { onLCP, onCLS, onINP, onFCP, onTTFB } from 'web-vitals';
 
 function getPageType(path: string): string {
   if (path.startsWith('/blog/')) return 'blog';
@@ -24,17 +23,16 @@ export default function WebVitalsReporter() {
   const sentRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    let cancelled = false;
     const pageType = getPageType(pathname);
     const slug = getSlug(pathname);
 
     const send = (name: string, value: number) => {
-      // 페이지당 각 메트릭 1회만 전송
       const key = `${pathname}::${name}`;
       if (sentRef.current.has(key)) return;
       sentRef.current.add(key);
 
       const body = JSON.stringify({ name, value, path: pathname, pageType, slug });
-      // sendBeacon이 가장 안전 (페이지 떠나도 전송), fallback: fetch
       if (navigator.sendBeacon) {
         navigator.sendBeacon('/api/web-vitals', body);
       } else {
@@ -47,13 +45,20 @@ export default function WebVitalsReporter() {
       }
     };
 
-    // 각 메트릭 등록
-    onLCP((m) => send('LCP', m.value));
-    onCLS((m) => send('CLS', m.value));
-    onINP((m) => send('INP', m.value));
-    onFCP((m) => send('FCP', m.value));
-    onTTFB((m) => send('TTFB', m.value));
+    // 동적 import로 web-vitals 로드 (Next.js 15 webpack 번들링 이슈 회피)
+    import('web-vitals').then(({ onLCP, onCLS, onINP, onFCP, onTTFB }) => {
+      if (cancelled) return;
+      onLCP((m) => send('LCP', m.value));
+      onCLS((m) => send('CLS', m.value));
+      onINP((m) => send('INP', m.value));
+      onFCP((m) => send('FCP', m.value));
+      onTTFB((m) => send('TTFB', m.value));
+    }).catch(() => {
+      // web-vitals 로드 실패 시 조용히 무시
+    });
+
+    return () => { cancelled = true; };
   }, [pathname]);
 
-  return null; // UI 없음 — 측정만
+  return null;
 }

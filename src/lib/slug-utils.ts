@@ -49,6 +49,27 @@ const ROMAN_MAP: Record<string, string> = {
   '부산': 'busan', '서울': 'seoul', '제주': 'jeju', '인천': 'incheon',
 };
 
+/**
+ * topic 문자열에서 가장 가능성 높은 destination 토큰 추출.
+ * slug-utils SSOT — generate/route.ts 와 blog-publisher 공유.
+ */
+const KNOWN_DESTINATIONS = [
+  '나트랑','다낭','호치민','하노이','푸꾸옥','달랏','하롱베이','사파',
+  '오사카','도쿄','교토','후쿠오카','큐슈','북해도','삿포로','오키나와','시즈오카',
+  '장가계','서안','상해','북경','청도','칭다오','연길','구채구',
+  '방콕','치앙마이','푸켓','파타야','발리','코타키나발루','쿠알라룸푸르','싱가포르',
+  '세부','보홀','마닐라','마카오','홍콩','타이베이','울란바토르','테를지',
+  '제주','부산','경주','파리','로마','이스탄불','프라하',
+  '호화호특','후허하오터','석가장','보라카이','팔라완','나하',
+  '벳부','유후인','시모노세키',
+];
+export function extractDestination(topic: string): string {
+  for (const dest of KNOWN_DESTINATIONS) {
+    if (topic.includes(dest)) return dest;
+  }
+  return topic.split(/\s+/)[0] || topic;
+}
+
 /** 목적지명을 영문 slug로 변환 (다낭→danang, 다낭/호이안→danang-hoian) */
 export function romanize(dest: string): string {
   const parts = dest.split(/[\/\s,]+/).filter(Boolean);

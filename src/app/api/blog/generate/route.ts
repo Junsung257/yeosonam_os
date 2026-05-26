@@ -3,33 +3,12 @@ import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 import { getPrompt } from '@/lib/prompt-loader';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { slugifyTopic, extractDestination } from '@/lib/slug-utils';
 import {
   getRandomPexelsPhoto,
   destToEnKeyword,
   isPexelsConfigured,
 } from '@/lib/pexels';
-
-/**
- * topic 문자열에서 가장 가능성 높은 destination 토큰 추출.
- * `pexels.ts` 의 `KOREAN_TO_EN_DEST` 키와 직접 매칭. 발견 못 하면 첫 토큰 반환.
- */
-function extractDestinationFromTopic(topic: string): string {
-  // pexels.ts 의 destToEnKeyword 는 어떤 문자열이든 받지만, topic 전체보다
-  // destination 단어 하나를 던지는 게 검색 품질이 좋다.
-  const known = [
-    '나트랑','다낭','호치민','하노이','푸꾸옥','달랏','하롱베이','사파',
-    '오사카','도쿄','교토','후쿠오카','큐슈','북해도','삿포로','오키나와','시즈오카',
-    '장가계','서안','상해','북경','청도','칭다오','연길','구채구',
-    '방콕','치앙마이','푸켓','파타야','발리','코타키나발루','쿠알라룸푸르','싱가포르',
-    '세부','보홀','마닐라','마카오','홍콩','타이베이','울란바토르','테를지',
-    '제주','부산','경주','파리','로마','이스탄불','프라하',
-  ];
-  for (const dest of known) {
-    if (topic.includes(dest)) return dest;
-  }
-  // 없으면 첫 한글 명사처럼 보이는 토큰 또는 topic 전체
-  return topic.split(/\s+/)[0] || topic;
-}
 
 /**
  * Pexels 자동 hook — 정보성 블로그용 cover image.
@@ -39,7 +18,7 @@ function extractDestinationFromTopic(topic: string): string {
 async function fetchAutoCoverImage(topic: string): Promise<string | null> {
   if (!isPexelsConfigured()) return null;
   try {
-    const dest = extractDestinationFromTopic(topic);
+    const dest = extractDestination(topic);
     const keyword = destToEnKeyword(dest);
     const photo = await getRandomPexelsPhoto(keyword);
     return photo?.src.large2x || photo?.src.large || null;
@@ -69,7 +48,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         blog_html: `# ${topic}\n\n안녕하세요, 여소남입니다.\n\n${topic}에 대해 알려드립니다.\n\n## 본문\n\n여기에 내용을 작성하세요.\n\n## 마무리\n\n여소남에서 안심하고 여행을 준비하세요.\n[yeosonam.com](https://yeosonam.com)`,
         seo: {
-          slug: topic.toLowerCase().replace(/[^a-z0-9가-힣\s]/g, '').trim().replace(/\s+/g, '-').substring(0, 80),
+          slug: slugifyTopic(topic) || topic.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').substring(0, 80),
           seoTitle: `${topic} | 여소남 여행 가이드`.substring(0, 60),
           seoDescription: `${topic}에 대한 완벽 가이드. 여소남에서 확인하세요.`.substring(0, 160),
         },
@@ -120,9 +99,9 @@ ${catName}
     }))
       .replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
-    // slug 자동 생성
-    const slugBase = topic.toLowerCase()
-      .replace(/[^a-z0-9가-힣\s]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
+    // slug 자동 생성 — 영문/로마자 기반 (SEO 친화적)
+    const slugBase = slugifyTopic(topic) || topic.toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
 
     const year = new Date().getFullYear();
 

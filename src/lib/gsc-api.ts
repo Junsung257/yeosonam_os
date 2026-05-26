@@ -171,6 +171,10 @@ export async function inspectUrlIndexState(
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
+      const is403 = res.status === 403;
+      if (is403) {
+        console.warn('[gsc-api] URL Inspection API 403 — GSC Service Account에 Owner 권한 필요. siteUrl:', siteUrl);
+      }
       return makeInspectionError(inspectionUrl, `HTTP ${res.status}: ${errBody.slice(0, 200)}`);
     }
 

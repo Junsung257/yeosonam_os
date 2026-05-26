@@ -236,6 +236,18 @@ export default function GlobalNav() {
               매거진
             </Link>
 
+            {/* 단독맞춤 */}
+            <Link
+              href="/private-tour"
+              className={`px-4 py-2 rounded-[10px] text-[15px] font-semibold transition
+                ${pathname?.startsWith('/private-tour')
+                  ? 'text-brand bg-brand-light'
+                  : 'text-text-primary hover:bg-bg-section hover:text-brand'
+                }`}
+            >
+              단독맞춤
+            </Link>
+
             {/* 단체 문의 */}
             <Link
               href="/group-inquiry"
@@ -308,6 +320,7 @@ export default function GlobalNav() {
                 <Link href="/packages" className="block py-2.5 text-base font-semibold text-slate-900">전체 상품</Link>
                 <Link href="/destinations" className="block py-2.5 text-base font-semibold text-slate-900">여행지 가이드</Link>
                 <Link href="/blog" className="block py-2.5 text-base font-semibold text-slate-900">매거진</Link>
+                <Link href="/private-tour" className="block py-2.5 text-base font-semibold text-slate-900">단독맞춤여행</Link>
                 <Link href="/group-inquiry" className="block py-2.5 text-base font-semibold text-slate-900">단체 문의</Link>
               </div>
 

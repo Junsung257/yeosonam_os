@@ -18,6 +18,10 @@ interface RequestBody {
   card_news_id?: string;
   brief?: ContentBrief;
   style?: 'personal_story' | 'info_list' | 'question' | 'behind_the_scene';
+  /** 트렌드 키워드 (TrendStyle 엔진으로 문체 자동 조정) */
+  trendKeywords?: string[];
+  /** AngleType (budget/luxury/sentimental/adventure) */
+  angleType?: 'budget' | 'luxury' | 'sentimental' | 'adventure';
 }
 
 export async function POST(request: NextRequest) {
@@ -58,6 +62,8 @@ export async function POST(request: NextRequest) {
       brief,
       product,
       style: body.style,
+      trendKeywords: body.trendKeywords,
+      angleType: body.angleType,
     });
 
     const now = new Date().toISOString();
@@ -75,7 +81,7 @@ export async function POST(request: NextRequest) {
       payload: post,
       status: 'draft',
       generation_agent: 'threads-post-v1',
-      generation_config: { brief, style: body.style ?? null },
+      generation_config: { brief, style: body.style ?? null, trendKeywords: body.trendKeywords, angleType: body.angleType },
       updated_at: now,
     };
 

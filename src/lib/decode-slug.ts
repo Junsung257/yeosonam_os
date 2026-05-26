@@ -12,11 +12,22 @@
  *
  * 모든 한글/유니코드 slug를 받는 dynamic route는 이 함수를 거쳐야 한다.
  */
+
+// 치환 문자(\uFFFD)가 slug에 포함되어 있으면 로그 출력 (GSC noindex 진단용)
+function logIfCorrupted(slug: string, context: string): void {
+  if (slug.includes('\uFFFD')) {
+    console.warn(`[decode-slug] 치환문자 감지 (context=${context}): slug="${slug}"`);
+  }
+}
+
 export function safeDecodeSlug(slug: string): string {
   if (typeof slug !== 'string' || !slug) return slug;
+  logIfCorrupted(slug, 'input');
   if (!slug.includes('%')) return slug;
   try {
-    return decodeURIComponent(slug);
+    const decoded = decodeURIComponent(slug);
+    logIfCorrupted(decoded, 'decoded');
+    return decoded;
   } catch {
     return slug;
   }

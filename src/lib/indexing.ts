@@ -71,9 +71,16 @@ export async function notifyIndexing(
   }
 
   // 1. Google Indexing API (개별 URL 알림)
+  // 주의: GSC Service Account에 Owner 권한이 없으면 403 Permission Denied.
+  // 실패해도 IndexNow+WebSub 경로가 보조하므로 fire-and-forget 유지.
   const googleResult: IndexingResult = await requestGoogleIndexing(url, type);
   report.google = googleResult.ok ? 'success' : 'failed';
-  if (!googleResult.ok) report.google_error = googleResult.error;
+  if (!googleResult.ok) {
+    report.google_error = googleResult.error;
+    if (googleResult.error?.includes('403')) {
+      console.warn('[indexing] Google Indexing API 403 (Service Account 권한 없음) — IndexNow/WebSub 경로로 대체');
+    }
+  }
 
   // 2. IndexNow (Bing/Yandex/Seznam/Naver 통합)
   const indexNowKey = getIndexNowKey();

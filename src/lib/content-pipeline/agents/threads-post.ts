@@ -38,6 +38,8 @@ export interface ThreadsPostInput {
     product_highlights?: string[];
   };
   style?: 'personal_story' | 'info_list' | 'question' | 'behind_the_scene';
+  trendKeywords?: string[];
+  angleType?: 'budget' | 'luxury' | 'sentimental' | 'adventure';
 }
 
 export async function generateThreadsPost(input: ThreadsPostInput): Promise<ThreadsPost> {
