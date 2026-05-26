@@ -136,8 +136,32 @@ export interface UrlInspectionResult {
  * URL Inspection API — 단일 URL 색인 상태 조회.
  * 일일 호출 한도가 있으니 cron 측에서 N개 제한 + 캐싱.
  *
+ * GSC 속성 호스트(www 유무)에 맞춰 검사 URL을 보정한다.
+ *
  * scopes: webmasters (search console 읽기) 면 충분.
  */
+const GSC_SITE_HOST = (() => {
+  try {
+    const raw = process.env.GSC_SITE_URL || '';
+    return new URL(raw).hostname;
+  } catch {
+    return 'yeosonam.com';
+  }
+})();
+
+function normalizeInspectionUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.startsWith('www.') && !GSC_SITE_HOST.startsWith('www.')) {
+      parsed.hostname = parsed.hostname.replace(/^www\./, '');
+      return parsed.toString();
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
 export async function inspectUrlIndexState(
   siteUrl: string,
   inspectionUrl: string,
@@ -147,6 +171,9 @@ export async function inspectUrlIndexState(
   if (!auth) {
     return makeInspectionError(inspectionUrl, 'GSC_SERVICE_ACCOUNT_JSON 미설정');
   }
+
+  // GSC 속성과 inspectionUrl의 도메인을 일치시킨다 (www 유무 차이 해결)
+  const normalizedUrl = normalizeInspectionUrl(inspectionUrl);
 
   try {
     const client = await auth.getClient();
@@ -164,7 +191,7 @@ export async function inspectUrlIndexState(
       },
       body: JSON.stringify({
         siteUrl,
-        inspectionUrl,
+        inspectionUrl: normalizedUrl,
         languageCode,
       }),
     });

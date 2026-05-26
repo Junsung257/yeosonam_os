@@ -129,6 +129,39 @@ export interface IndexingResult {
  * @param url 색인 요청할 전체 URL
  * @param type 'URL_UPDATED' (신규/업데이트) | 'URL_DELETED' (삭제 알림)
  */
+/**
+ * GSC 속성과 실제 사이트 URL의 도메인 차이(www 유무)를 보정한다.
+ * GSC에 등록된 속성이 `https://yeosonam.com/`(www 없음)인데
+ * NEXT_PUBLIC_BASE_URL이 `https://www.yeosonam.com`(www 있음)이면
+ * Indexing API가 "URL 소유권 확인 실패"를 반환한다.
+ * → Indexing API에는 GSC 속성과 일치하는 URL을 보낸다.
+ */
+const GSC_SITE_HOST = (() => {
+  try {
+    const raw = process.env.GSC_SITE_URL || '';
+    return new URL(raw).hostname; // 'yeosonam.com'
+  } catch {
+    return 'yeosonam.com';
+  }
+})();
+
+/**
+ * URL의 www를 GSC 속성 호스트에 맞춰 보정한다.
+ * 예: https://www.yeosonam.com/blog/post → https://yeosonam.com/blog/post
+ */
+function normalizeUrlForGSC(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.startsWith('www.') && !GSC_SITE_HOST.startsWith('www.')) {
+      parsed.hostname = parsed.hostname.replace(/^www\./, '');
+      return parsed.toString();
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
 export async function requestGoogleIndexing(
   url: string,
   type: 'URL_UPDATED' | 'URL_DELETED' = 'URL_UPDATED',
@@ -137,6 +170,9 @@ export async function requestGoogleIndexing(
   if (!serviceAccountJson) {
     return { url, ok: false, error: 'GOOGLE_SERVICE_ACCOUNT_JSON 미설정' };
   }
+
+  // GSC 속성에 맞게 URL 보정 (www 유무 차이 해결)
+  const gscUrl = normalizeUrlForGSC(url);
 
   try {
     const credentials = JSON.parse(serviceAccountJson);
@@ -156,7 +192,7 @@ export async function requestGoogleIndexing(
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ url, type }),
+      body: JSON.stringify({ url: gscUrl, type }),
     });
 
     if (!res.ok) {
@@ -166,13 +202,13 @@ export async function requestGoogleIndexing(
 
     const data = await res.json();
     return {
-      url,
+      url: gscUrl,
       ok: true,
       notify_time: data?.urlNotificationMetadata?.latestUpdate?.notifyTime,
     };
   } catch (err) {
     return {
-      url,
+      url: gscUrl,
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     };
