@@ -1230,7 +1230,7 @@ export {
   createVoucher, getVoucher, getVoucherByBooking, updateVoucher,
   getVouchersForReviewNotification,
 } from './db/voucher';
-export type { SecureChat, Voucher } from './db/voucher';
+export type { SecureChat, Voucher, VoucherWithCustomerPhone } from './db/voucher';
 
 // ═══════════════════════════════════════════════════════════════
 // AdAccount / KeywordPerformance — 본문은 ./db/ads.ts 로 분리
