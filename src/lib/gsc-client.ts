@@ -13,14 +13,15 @@ import { google } from 'googleapis';
  *      → Service Account 이메일 추가 (권한: 제한적 또는 전체)
  */
 
-/**
- * Service Account JSON 문자열을 안전하게 파싱.
- * Vercel env에서 `\n`이 이스케이프된 형태로 저장되는 경우를 처리.
- */
+/** 꼬인 \n 이스케이프를 가진 Service Account JSON을 안전하게 파싱 */
 function parseServiceAccountJson(raw: string) {
-  // Vercel 등 env var에서 private_key의 \n이 실제 개행이 아닌 문자열 \\n으로 저장된 경우 처리
-  const fixed = raw.replace(/\\n/g, '\n');
-  return JSON.parse(fixed);
+  // 1) JSON.parse 먼저 (표준 JSON \n → 개행 처리)
+  const parsed = JSON.parse(raw);
+  // 2) private_key에 literal \n (두 글자)이 있으면 실제 개행으로 변환
+  if (parsed.private_key && typeof parsed.private_key === 'string') {
+    parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+  }
+  return parsed;
 }
 
 function getGSCClient() {

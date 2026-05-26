@@ -20,6 +20,7 @@ const ROMAN_MAP: Record<string, string> = {
   '북해도': 'hokkaido', '나가사키': 'nagasaki', '오키나와': 'okinawa',
   '교토': 'kyoto', '고베': 'kobe', '나고야': 'nagoya',
   '나하': 'naha', '가고시마': 'kagoshima', '유후인': 'yufuin', '벳부': 'beppu',
+  '시즈오카': 'shizuoka', '아소': 'aso', '쿠로가와': 'kurokawa', '시모노세키': 'shimonoseki',
   // 중국
   '베이징': 'beijing', '상하이': 'shanghai', '칭다오': 'qingdao', '청도': 'qingdao',
   '하얼빈': 'harbin', '서안': 'xian', '장가계': 'zhangjiajie', '황산': 'huangshan',
@@ -58,12 +59,13 @@ const ROMAN_MAP: Record<string, string> = {
 const KNOWN_DESTINATIONS = [
   '나트랑','다낭','호치민','하노이','푸꾸옥','달랏','하롱베이','사파',
   '오사카','도쿄','교토','후쿠오카','큐슈','북해도','삿포로','오키나와','시즈오카',
+  '아소','쿠로가와','시모노세키',
   '장가계','서안','상해','북경','청도','칭다오','연길','구채구',
   '방콕','치앙마이','푸켓','파타야','발리','코타키나발루','쿠알라룸푸르','싱가포르',
   '세부','보홀','마닐라','마카오','홍콩','타이베이','울란바토르','테를지',
   '제주','부산','경주','파리','로마','이스탄불','프라하',
   '호화호특','후허하오터','석가장','보라카이','팔라완','나하',
-  '벳부','유후인','시모노세키','계림','양삭',
+  '벳부','유후인','계림','양삭',
 ];
 export function extractDestination(topic: string): string {
   for (const dest of KNOWN_DESTINATIONS) {
@@ -101,7 +103,17 @@ export function slugifyTopic(topic: string): string {
     .replace(/-+$/, '');
   if (slug.length >= 3) return slug;
 
-  // 3) 어떤 목적지도 매칭되지 않은 경우 — 한글 완전 제거
+  // 3) 그래도 짧은 slug면(예: 숫자만 남은 "6") topic 앞부분 내용을 fallback 해시로 보강
+  const fallbackHash = topic
+    .replace(/[^a-zA-Z가-힣0-9]/g, '')
+    .substring(0, 10)
+    .toLowerCase()
+    .replace(/[가-힣]/g, '')
+    .trim();
+  const suffix = fallbackHash.length >= 2 ? fallbackHash : `post-${Date.now().toString(36).slice(-4)}`;
+  return `${slug}-${suffix}`.replace(/^-|-$/g, '').substring(0, 80);
+
+  // 4) 어떤 목적지도 매칭되지 않은 경우 — 한글 완전 제거 (거의 도달하지 않음)
   return topic
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')

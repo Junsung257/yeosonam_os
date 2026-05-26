@@ -31,8 +31,11 @@ function buildAuth(scopes: string[]) {
   const raw = readServiceAccountCredentialsRaw();
   if (!raw) return null;
   try {
-    const credentials = JSON.parse(raw.replace(/\\n/g, '\n'));
-    return new google.auth.GoogleAuth({ credentials, scopes });
+    const parsed = JSON.parse(raw);
+    if (parsed.private_key && typeof parsed.private_key === 'string') {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+    }
+    return new google.auth.GoogleAuth({ credentials: parsed, scopes });
   } catch (err) {
     console.error('[gsc-api] Service Account JSON 파싱 실패:', err);
     return null;
