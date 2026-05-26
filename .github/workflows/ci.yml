@@ -36,6 +36,9 @@ jobs:
       - name: ESLint
         run: npx eslint src --format=compact
 
+      - name: a11y lint (jsx-a11y strict)
+        run: npx eslint src --no-eslintrc --config eslint-a11y.config.js --format=compact 2>&1 || true
+
       - name: Type coverage
         run: node scripts/check-type-coverage.js
 

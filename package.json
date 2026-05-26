@@ -21,6 +21,7 @@
     "check:deps:circular": "depcruise --config .dependency-cruiser.cjs --output-type err src",
     "start": "next start",
     "lint": "next lint",
+    "lint:a11y": "eslint src --no-eslintrc --config eslint-a11y.config.js --format=compact",
     "type-check": "tsc --noEmit",
     "verify:tokens": "node scripts/verify-admin-tokens.mjs",
     "verify:design-system": "npm run verify:tokens && npm run type-check",
@@ -144,6 +145,7 @@
     "cheerio": "^1.2.0",
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^17.4.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "knip": "^6.12.2",
     "schema-dts": "^2.0.0",
     "vitest": "^4.1.5"
