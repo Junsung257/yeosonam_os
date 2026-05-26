@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased] — Threads 2026 Algorithm V3 (2026-05-26)
+
+Threads 자동화 전면 개선 — 2026 알고리즘 대응 + 멀티 에이전트 파이프라인.
+
+### Added
+
+- **P0: 해시태그 → 토픽 태그 마이그레이션** — Threads 2026 알고리즘 대응, `topic_tags` 필드 도입 (`threads-post.ts`)
+- **P1: 이미지 우선 발행 정책** — 텍스트 포스트에 Pexels 이미지 자동 첨부 (도달률 3x), `media_url` 스키마 추가
+- **P1: 자체 댓글 90초 내 추가** — `replyToThread()` 함수 구현, engagement velocity 향상 (`threads-publisher.ts`)
+- **P1: 최적 발행 시간 적용** — Buffer 2.5M 포스트 분석 기반 KST 최적 시간대 스케줄링
+- **P1: Critic 에이전트 루프** — LangGraph 패턴의 사전 발행 품질 게이트 (ER 예측 + 정책 위반 검사)
+- **P1: 발행 빈도 최적화** — 하루 3-5회, KST 기준 자연스러운 간격 유지
+- **P2: 주간 리포트 자동 전송** — 매주 월요일 09:00 KST, Slack으로 7일간 발행 실적 리포트
+- **TrendStyle 엔진** — 동적 스타일 핑거프린트 + 트렌드 키워드 기반 콘텐츠 최적화 (`trend-style-engine.ts`)
+- **Trend Learner** — 트렌드 키워드 학습 및 순위 추적 (`threads-trend-learner.ts`)
+- **Threads Content Planner 크론** — 매일 07:00 KST, Priority Score 기반 콘텐츠 계획 수립
+- **Threads Content Generator 크론** — Planner 계획 → AI 생성
+- **Threads Auto Publisher 크론** — Critic Gate 통과 후 자동 발행 (15~30분 간격)
+- **Threads Trend Miner 개선** — Threads 검색 API 연동 강화
+- **Threads Search 확장** — 검색 결과 파싱 및 토픽 추출 고도화
+- **Threads 자동화 마이그레이션** (`20260526150000`) — `content_plans` 테이블 + `content_distributions` `ready` 상태 추가
+
 ## [Unreleased] — Jarvis V2 (2026-04-22)
 
 자비스 전면 개편. 설계 문서 `db/JARVIS_V2_DESIGN.md` 참조.

@@ -38,6 +38,88 @@ import {
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
 
 /**
+ * Exponential Backoff + Jitter — 429/5xx 대응 (OpenAI/Meta 공식 패턴)
+ *
+ * - base = 1초, max = 30초
+ * - jitter: ±25% (burst 동기화 방지)
+ * - 429 Retry-After 헤더 존중
+ * - 최대 5회 재시도 후 실패 반환
+ */
+const RETRY_CONFIG: {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  jitterFactor: number;
+  retryableStatuses: number[];
+} = {
+  maxAttempts: 5,
+  baseDelayMs: 1000,
+  maxDelayMs: 30000,
+  jitterFactor: 0.25,
+  retryableStatuses: [429, 500, 502, 503, 504],
+};
+
+interface FetchWithRetryOptions {
+  url: string;
+  init?: RequestInit;
+  label?: string;
+}
+
+async function fetchWithRetry({ url, init, label }: FetchWithRetryOptions): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, init);
+
+      // 성공 (2xx) 또는 재시도 불가 (4xx except 429)
+      if (res.ok) return res;
+      if (!RETRY_CONFIG.retryableStatuses.includes(res.status)) return res;
+
+      // ← 429: Retry-After 헤더 확인
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After');
+        if (retryAfter) {
+          const seconds = parseInt(retryAfter, 10);
+          if (!isNaN(seconds) && seconds > 0 && seconds <= 60) {
+            await sleep(seconds * 1000 + jitterMs(RETRY_CONFIG.jitterFactor));
+            continue;
+          }
+        }
+      }
+
+      // ← 5xx: exponential backoff + jitter
+      if (attempt < RETRY_CONFIG.maxAttempts) {
+        const delay = Math.min(
+          RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1),
+          RETRY_CONFIG.maxDelayMs,
+        );
+        await sleep(delay + jitterMs(RETRY_CONFIG.jitterFactor));
+        continue;
+      }
+
+      return res; // 마지막 시도: 응답 그대로 반환
+    } catch (err) {
+      // network error (DNS, timeout, connection refused)
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < RETRY_CONFIG.maxAttempts) {
+        const delay = Math.min(
+          RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1),
+          RETRY_CONFIG.maxDelayMs,
+        );
+        await sleep(delay + jitterMs(RETRY_CONFIG.jitterFactor));
+      }
+    }
+  }
+
+  throw lastError ?? new Error(`[${label ?? url}] fetch 실패 (${RETRY_CONFIG.maxAttempts}회 시도)`);
+}
+
+function jitterMs(factor: number): number {
+  return Math.round((Math.random() * 2 - 1) * factor * 1000);
+}
+
+/**
  * Threads 본문 사전 검증 (PR-1 가드).
  *   - engagement-bait 패턴 거부 (Meta 2024-10 페널티)
  *   - hook 단어 수 6~20 권장 sweet spot (Berman 10K hook analysis)
@@ -118,7 +200,7 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
         text,
         access_token: accessToken,
       });
-      const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+      const res = await fetchWithRetry({ url: `${GRAPH_API_BASE}/${threadsUserId}/threads`, init: { method: 'POST', body: form }, label: 'text_container' });
       const data = await res.json();
       if (!res.ok || !data.id) {
         return { ok: false, step: 'text_container', error: data?.error?.message || JSON.stringify(data) };
@@ -134,11 +216,8 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
         text,
         access_token: accessToken,
       });
-      const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+      const res = await fetchWithRetry({ url: `${GRAPH_API_BASE}/${threadsUserId}/threads`, init: { method: 'POST', body: form }, label: 'image_container' });
       const data = await res.json();
-      if (!res.ok || !data.id) {
-        return { ok: false, step: 'image_container', error: data?.error?.message || JSON.stringify(data) };
-      }
       const poll = await pollContainerStatus(data.id, accessToken);
       if (!poll.ok) return { ok: false, step: 'image_poll', error: poll.error };
       return publishFromContainer(threadsUserId, accessToken, data.id as string);
@@ -153,7 +232,7 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
         is_carousel_item: 'true',
         access_token: accessToken,
       });
-      const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+      const res = await fetchWithRetry({ url: `${GRAPH_API_BASE}/${threadsUserId}/threads`, init: { method: 'POST', body: form }, label: `child_container_${i + 1}` });
       const data = await res.json();
       if (!res.ok || !data.id) {
         return { ok: false, step: `child_container_${i + 1}`, error: data?.error?.message || JSON.stringify(data) };
@@ -174,7 +253,7 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
       text,
       access_token: accessToken,
     });
-    const parentRes = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: parentForm });
+    const parentRes = await fetchWithRetry({ url: `${GRAPH_API_BASE}/${threadsUserId}/threads`, init: { method: 'POST', body: parentForm }, label: 'carousel_container' });
     const parentData = await parentRes.json();
     if (!parentRes.ok || !parentData.id) {
       return { ok: false, step: 'carousel_container', error: parentData?.error?.message || JSON.stringify(parentData) };
@@ -196,7 +275,7 @@ async function publishFromContainer(
     creation_id: containerId,
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads_publish`, { method: 'POST', body: form });
+  const res = await fetchWithRetry({ url: `${GRAPH_API_BASE}/${threadsUserId}/threads_publish`, init: { method: 'POST', body: form }, label: 'threads_publish' });
   const data = await res.json();
   if (!res.ok || !data.id) {
     return { ok: false, step: 'threads_publish', error: data?.error?.message || JSON.stringify(data) };
@@ -213,9 +292,10 @@ async function pollContainerStatus(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await sleep(intervalMs);
     try {
-      const res = await fetch(
-        `${GRAPH_API_BASE}/${containerId}?fields=status&access_token=${encodeURIComponent(accessToken)}`,
-      );
+      const res = await fetchWithRetry({
+        url: `${GRAPH_API_BASE}/${containerId}?fields=status&access_token=${encodeURIComponent(accessToken)}`,
+        label: `poll_${containerId.slice(0, 8)}`,
+      });
       const data = await res.json();
       const status = (data.status as string | undefined)?.toUpperCase();
       if (status === 'FINISHED') return { ok: true };
@@ -243,9 +323,10 @@ export async function checkThreadsPublishingLimit(
   accessToken: string,
 ): Promise<{ quotaUsed: number; quotaLimit: number } | null> {
   try {
-    const res = await fetch(
-      `${GRAPH_API_BASE}/${threadsUserId}/threads_publishing_limit?fields=quota_usage,config&access_token=${encodeURIComponent(accessToken)}`,
-    );
+    const res = await fetchWithRetry({
+      url: `${GRAPH_API_BASE}/${threadsUserId}/threads_publishing_limit?fields=quota_usage,config&access_token=${encodeURIComponent(accessToken)}`,
+      label: 'quota_check',
+    });
     const data = await res.json();
     const entry = Array.isArray(data?.data) ? data.data[0] : null;
     if (!entry) return null;
@@ -255,5 +336,42 @@ export async function checkThreadsPublishingLimit(
     };
   } catch {
     return null;
+  }
+}
+
+export interface ReplyToThreadInput {
+  threadsUserId: string;
+  accessToken: string;
+  postId: string;
+  text: string;
+}
+
+/**
+ * 발행된 Threads 포스트에 댓글 추가 (engagement velocity 향상).
+ * Threads API: POST /{threadsUserId}/threads/{postId}/replies
+ * 90초 rule: 첫 댓글을 90초 이내에 달면 알고리즘이 engagement velocity를 높게 평가
+ */
+export async function replyToThread(input: ReplyToThreadInput): Promise<{ ok: boolean; replyId?: string; error?: string }> {
+  const { threadsUserId, accessToken, postId, text } = input;
+  if (!text || text.trim().length === 0) return { ok: false, error: '댓글 본문 없음' };
+  if (text.length > 500) return { ok: false, error: `댓글 500자 초과 (${text.length}자)` };
+
+  try {
+    const form = new URLSearchParams({
+      text: text.slice(0, 500),
+      access_token: accessToken,
+    });
+    const res = await fetchWithRetry({
+      url: `${GRAPH_API_BASE}/${threadsUserId}/threads/${postId}/replies`,
+      init: { method: 'POST', body: form },
+      label: 'reply_to_thread',
+    });
+    const data = await res.json();
+    if (!res.ok || !data.id) {
+      return { ok: false, error: data?.error?.message || JSON.stringify(data) };
+    }
+    return { ok: true, replyId: data.id as string };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

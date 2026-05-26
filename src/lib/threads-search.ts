@@ -21,6 +21,29 @@ import { getSecret } from './secret-registry';
 
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
 
+// ── 재시도 설정 (fetchWithRetry와 동일한 패턴) ────────────────
+const SEARCH_RETRY_CONFIG: {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  jitterFactor: number;
+  retryableStatuses: number[];
+} = {
+  maxAttempts: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 15000,
+  jitterFactor: 0.25,
+  retryableStatuses: [429, 500, 502, 503, 504],
+};
+
+function jitterMs(factor: number): number {
+  return Math.round((Math.random() * 2 - 1) * factor * SEARCH_RETRY_CONFIG.baseDelayMs);
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 export interface ThreadsSearchPost {
   id: string;
   text: string;
@@ -94,17 +117,36 @@ export async function searchThreadsByKeyword(
   url.searchParams.set('access_token', token);
 
   try {
-    const res = await fetch(url.toString());
-    const data = await res.json();
-    if (!res.ok) {
-      return {
-        ok: false,
-        posts: [],
-        error: data?.error?.message || `HTTP ${res.status}`,
-      };
+    let lastError: string | undefined;
+    let lastData: unknown;
+
+    for (let attempt = 1; attempt <= SEARCH_RETRY_CONFIG.maxAttempts; attempt++) {
+      if (attempt > 1) {
+        const delay = Math.min(
+          SEARCH_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1) + jitterMs(SEARCH_RETRY_CONFIG.jitterFactor),
+          SEARCH_RETRY_CONFIG.maxDelayMs,
+        );
+        await sleep(delay);
+      }
+
+      const res = await fetch(url.toString());
+      const data = await res.json();
+      lastData = data;
+
+      if (res.ok) {
+        const posts: ThreadsSearchPost[] = Array.isArray(data?.data) ? data.data : [];
+        return { ok: true, posts };
+      }
+
+      lastError = data?.error?.message || `HTTP ${res.status}`;
+
+      // 재시도 불가능한 에러면 즉시 반환
+      if (!SEARCH_RETRY_CONFIG.retryableStatuses.includes(res.status)) {
+        return { ok: false, posts: [], error: lastError };
+      }
     }
-    const posts: ThreadsSearchPost[] = Array.isArray(data?.data) ? data.data : [];
-    return { ok: true, posts };
+
+    return { ok: false, posts: [], error: lastError ?? '최대 재시도 횟수 초과' };
   } catch (err) {
     return {
       ok: false,

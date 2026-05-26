@@ -5,6 +5,7 @@ import { extractTrendFeatures, scrubPII } from '@/lib/trend-feature-extractor';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { detectDestination } from '@/lib/keyword-research';
+import { learnThreadsTrends } from '@/lib/threads-trend-learner';
 
 /**
  * Threads Trend Miner — 매일 06:30 KST (21:30 UTC)
@@ -153,12 +154,30 @@ async function runThreadsTrendMiner(request: NextRequest) {
     .lt('expires_at', new Date().toISOString());
   if (delErr) errors.push(`expire 정리 실패: ${delErr.message}`);
 
+  // 6) Trend Learner — 스타일 분석 + voice_samples 학습
+  let trendLearning = { ok: false, signals: 0, dominantKeywords: [] as string[], styleSummary: '' };
+  try {
+    const result = await learnThreadsTrends(keywords);
+    trendLearning = {
+      ok: result.ok,
+      signals: result.signals.length,
+      dominantKeywords: result.dominantKeywords,
+      styleSummary: result.styleSummary,
+    };
+    if (result.errors.length > 0) {
+      errors.push(...result.errors.map(e => `[trend-learner] ${e}`));
+    }
+  } catch (err) {
+    errors.push(`[trend-learner] 예외: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   return {
     keywords: keywords.length,
     error_keywords: errorKeywords,
     posts_fetched: totalPosts,
     upserted: inserted,
     expired_deleted: delCount ?? 0,
+    trend_learning: trendLearning,
     errors,
     ranAt: new Date().toISOString(),
   };
