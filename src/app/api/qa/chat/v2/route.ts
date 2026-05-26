@@ -478,7 +478,9 @@ export async function POST(req: NextRequest) {
         try {
           emitSSE('error', { message: error instanceof Error ? error.message : 'AI 처리 실패' })
           emitSSE('done', {})
-        } catch {}
+        } catch (sseErr) {
+          console.warn('[chat-v2] SSE emit 실패 (무시):', sseErr instanceof Error ? sseErr.message : String(sseErr));
+        }
       } finally {
         controller.close()
       }

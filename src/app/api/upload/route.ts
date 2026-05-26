@@ -621,7 +621,7 @@ const postHandler = async (request: NextRequest) => {
       let rawText = '';
       try {
         rawText = buffer.toString('utf-8').slice(0, 50000);
-      } catch { /* 이진 파일은 빈 문자열 */ }
+      } catch { console.warn('[upload] 이진 파일 감지 — rawText 생략'); }
 
       // 정규식으로 날짜 추출 (AI 없이)
       const dateMatch = rawText.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
@@ -2233,7 +2233,9 @@ JSON 배열로 응답:
           lp_url:       baseUrl ? `${baseUrl}/lp/${p.id}` : `/lp/${p.id}`,
           a4_url:       baseUrl ? `${baseUrl}/admin/packages/${p.id}/poster` : `/admin/packages/${p.id}/poster`,
         }));
-      } catch { /* fail-soft */ }
+      } catch (e) {
+        console.warn('[upload] register report 생성 실패 (무시):', e instanceof Error ? e.message : String(e));
+      }
     }
 
     return NextResponse.json({
