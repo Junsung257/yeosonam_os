@@ -53,15 +53,16 @@ export interface SearchAdPerformance {
 const NAVER_API_BASE = 'https://api.searchad.naver.com';
 
 /** Naver SearchAd API 인증 헤더 생성 (HMAC-SHA256) */
-async function buildNaverAuthHeaders(): Promise<Record<string, string>> {
+async function buildNaverAuthHeaders(
+  method: string = 'GET',
+  path: string = '/keywordstool',
+): Promise<Record<string, string>> {
   const apiKey = getSecret('NEXT_PUBLIC_NAVER_ADS_API_KEY')!;
   const secretKey = getSecret('NEXT_PUBLIC_NAVER_ADS_SECRET_KEY') ?? '';
   const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
 
-  // HMAC-SHA256 서명 생성
+  // HMAC-SHA256 서명 생성 — path는 실제 요청 path와 일치해야 함
   const timestamp = Date.now().toString();
-  const method = 'GET';
-  const path = '/keywordstool';
 
   const crypto = await import('crypto');
   const signature = crypto
@@ -102,6 +103,54 @@ export interface HistoricalMetric {
   lowTopOfPageBid: number;
   highTopOfPageBid: number;
   platform: Platform;
+}
+
+/** 네이버 키워드 검색 도구 (KeywordTool) API 응답 항목 */
+export interface NaverKeywordToolItem {
+  relKeyword: string;
+  monthlyPcQcCnt: number;
+  monthlyMobileQcCnt: number;
+  monthlyAvePcClkCnt: number;
+  monthlyAveMobileClkCnt: number;
+  monthlyAvePcCtr: number;
+  monthlyAveMobileCtr: number;
+  plAvgDepth: number;
+  compIdx: number;
+  lowPrice: number;
+  highPrice: number;
+}
+
+/** 네이버 키워드 검색 도구 (KeywordTool) API 호출 */
+export async function fetchNaverKeywordTool(
+  hintKeywords: string[],
+): Promise<NaverKeywordToolItem[]> {
+  if (!isNaverAdsConfigured()) return [];
+
+  try {
+    const path = '/keywordstool';
+    const headers = await buildNaverAuthHeaders('GET', path);
+    const params = new URLSearchParams({
+      hintKeywords: hintKeywords.join(','),
+      showDetail: '1',
+    });
+
+    const res = await fetch(`${NAVER_API_BASE}${path}?${params.toString()}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.warn(`[search-ads] Naver KeywordTool 오류 (${res.status}): ${errorText.slice(0, 200)}`);
+      return [];
+    }
+
+    const json = await res.json() as { keywordList?: NaverKeywordToolItem[] };
+    return json.keywordList ?? [];
+  } catch (err) {
+    console.error('[search-ads] Naver KeywordTool 실패:', err);
+    return [];
+  }
 }
 
 // ── Mock 데이터 생성 ─────────────────────────────────────
@@ -151,12 +200,13 @@ export async function fetchNaverPerformance(keywords: SearchAdKeyword[]): Promis
   }
 
   try {
-    const headers = await buildNaverAuthHeaders();
     const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
+    const statsPath = `/ncc/customers/${customerId}/stats`;
+    const headers = await buildNaverAuthHeaders('GET', statsPath);
 
     // API 호출: 일괄 성과 조회
     const keywordIds = naverKeywords.map(k => k.id).join(',');
-    const url = `${NAVER_API_BASE}/ncc/customers/${customerId}/stats`;
+    const url = `${NAVER_API_BASE}${statsPath}`;
     const params = new URLSearchParams({
       ids: keywordIds,
       datePreset: 'LAST_7_DAYS',
@@ -226,10 +276,11 @@ export async function updateNaverBid(keywordId: string, newBid: number): Promise
   }
 
   try {
-    const headers = await buildNaverAuthHeaders();
     const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
+    const bidPath = `/ncc/customers/${customerId}/keywords/${keywordId}`;
+    const headers = await buildNaverAuthHeaders('PUT', bidPath);
 
-    const res = await fetch(`${NAVER_API_BASE}/ncc/customers/${customerId}/keywords/${keywordId}`, {
+    const res = await fetch(`${NAVER_API_BASE}${bidPath}`, {
       method: 'PUT',
       headers: { ...headers, 'Content-Type': 'application/json;charset=UTF-8' },
       body: JSON.stringify({ bidAmt: newBid }),
@@ -263,10 +314,11 @@ export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
   }
 
   try {
-    const headers = await buildNaverAuthHeaders();
     const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
+    const pausePath = `/ncc/customers/${customerId}/keywords/${keywordId}`;
+    const headers = await buildNaverAuthHeaders('PUT', pausePath);
 
-    const res = await fetch(`${NAVER_API_BASE}/ncc/customers/${customerId}/keywords/${keywordId}`, {
+    const res = await fetch(`${NAVER_API_BASE}${pausePath}`, {
       method: 'PUT',
       headers: { ...headers, 'Content-Type': 'application/json;charset=UTF-8' },
       body: JSON.stringify({ userLock: false, status: 'PAUSED' }),
