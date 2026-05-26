@@ -7,6 +7,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
 export const metadata: Metadata = {
   title: '단독맞춤여행 | 2명부터 가능한 우리끼리 여행 - 여소남',
+  alternates: { canonical: `${BASE_URL}/private-tour` },
   description:
     '가족여행·계모임·동창회·기업 워크샵, 김해공항 출발 단독 프라이빗 투어. 2명부터 전담 가이드·전용 차량 배정, 24시간 내 무료 견적 회신.',
   openGraph: {

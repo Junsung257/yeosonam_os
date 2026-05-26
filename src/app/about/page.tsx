@@ -5,6 +5,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
 export const metadata: Metadata = {
   title: '여소남 소개 — 여행을 잇는 플랫폼 | 여소남',
+  alternates: { canonical: `${BASE_URL}/about` },
   description:
     '여소남은 랜드사와 여행사를 연결하고, 고객에게 검증된 패키지여행을 제공하는 B2B2C 여행 플랫폼입니다. 여행업 등록 정보, 연혁, 비전을 소개합니다.',
   openGraph: {
