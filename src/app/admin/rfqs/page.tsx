@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, KpiCard as PatternKpiCard } from '@/components/admin/patterns';
-import { FileQuestion, Gavel, Sparkles, CheckCircle2 } from 'lucide-react';
+import { FileQuestion, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -43,6 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_TABS = [
   { value: '', label: '전체' },
+  { value: 'draft', label: '접수됨' },
   { value: 'published', label: '공고등록' },
   { value: 'bidding', label: '입찰중' },
   { value: 'analyzing', label: 'AI분석중' },
@@ -61,15 +62,14 @@ export default function AdminRfqsPage() {
 
   useEffect(() => {
     fetchRfqs();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [statusFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only intentional
+  }, []);
 
   async function fetchRfqs() {
     setLoading(true);
     setError('');
     try {
-      const url = statusFilter ? `/api/rfq?status=${statusFilter}` : '/api/rfq';
-      const res = await fetch(url);
+      const res = await fetch('/api/rfq');
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
       const data = await res.json();
       setRfqs(Array.isArray(data) ? data : (data.rfqs ?? []));
@@ -80,10 +80,16 @@ export default function AdminRfqsPage() {
     }
   }
 
+  // 클라이언트 필터링
+  const filteredRfqs = statusFilter ? rfqs.filter((r) => r.status === statusFilter) : rfqs;
+
   // KPI 집계
   const total = rfqs.length;
+  const publishedCount = rfqs.filter((r) => r.status === 'published').length;
   const biddingCount = rfqs.filter((r) => r.status === 'bidding').length;
+  const awaitingCount = rfqs.filter((r) => r.status === 'awaiting_selection').length;
   const analyzingCount = rfqs.filter((r) => r.status === 'analyzing').length;
+  const pendingCount = publishedCount + biddingCount + awaitingCount;
   const contractedCount = rfqs.filter((r) => r.status === 'contracted').length;
 
   return (
@@ -96,7 +102,12 @@ export default function AdminRfqsPage() {
       {/* KPI 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <PatternKpiCard label="전체 RFQ" value={total.toLocaleString()} icon={FileQuestion} />
-        <PatternKpiCard label="입찰중" value={biddingCount.toLocaleString()} icon={Gavel} tone={biddingCount > 0 ? 'positive' : 'neutral'} />
+        <PatternKpiCard
+          label="미처리"
+          value={pendingCount.toLocaleString()}
+          icon={AlertCircle}
+          tone={pendingCount > 0 ? 'neutral' : 'positive'}
+        />
         <PatternKpiCard label="AI 분석중" value={analyzingCount.toLocaleString()} icon={Sparkles} />
         <PatternKpiCard label="계약 완료" value={contractedCount.toLocaleString()} icon={CheckCircle2} tone="positive" />
       </div>
@@ -133,7 +144,7 @@ export default function AdminRfqsPage() {
           </div>
         ) : error ? (
           <div className="text-center text-danger py-12 text-admin-base">{error}</div>
-        ) : rfqs.length === 0 ? (
+        ) : filteredRfqs.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-admin-muted text-admin-base">해당하는 RFQ가 없습니다.</p>
           </div>
@@ -149,7 +160,7 @@ export default function AdminRfqsPage() {
               </tr>
             </thead>
             <tbody>
-              {rfqs.map((rfq) => (
+              {filteredRfqs.map((rfq) => (
                 <tr
                   key={rfq.id}
                   onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}

@@ -681,6 +681,7 @@ export default async function HomePage() {
         <div className="mt-3 flex justify-center gap-4">
           <Link href="/packages" className="text-[13px] text-text-body hover:text-brand transition-colors">전체 상품</Link>
           <Link href="/blog" className="text-[13px] text-text-body hover:text-brand transition-colors">매거진</Link>
+          <Link href="/private-tour" className="text-[13px] text-text-body hover:text-brand transition-colors">단독맞춤여행</Link>
           <Link href="/group-inquiry" className="text-[13px] text-text-body hover:text-brand transition-colors">단체 문의</Link>
         </div>
       </footer>

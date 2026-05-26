@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 
 interface Slide {
@@ -90,7 +91,7 @@ export default function AffiliateCardNewsDetailPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-500 text-sm mb-3">{error || '카드뉴스를 찾을 수 없습니다.'}</p>
-          <a href="/affiliate/card-news" className="text-amber-600 text-sm underline">목록으로</a>
+          <Link href="/affiliate/card-news" className="text-amber-600 text-sm underline">목록으로</Link>
         </div>
       </div>
     );
@@ -104,12 +105,12 @@ export default function AffiliateCardNewsDetailPage() {
       {/* 상단바 */}
       <header className="bg-white border-b shadow-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <a href="/affiliate/card-news" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
+          <Link href="/affiliate/card-news" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             목록
-          </a>
+          </Link>
           <h1 className="text-sm font-semibold text-gray-900 truncate max-w-[200px]">{cardNews.title}</h1>
           <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
         </div>

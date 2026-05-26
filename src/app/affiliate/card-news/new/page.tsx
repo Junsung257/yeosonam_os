@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function AffiliateCardNewsNewPage() {
@@ -146,12 +147,12 @@ export default function AffiliateCardNewsNewPage() {
             </div>
 
             <div className="flex gap-3">
-              <a
+              <Link
                 href="/affiliate/card-news"
                 className="flex-1 text-center py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 내 카드뉴스 보기
-              </a>
+              </Link>
               <button
                 onClick={() => { setResult(null); setTopic(''); }}
                 className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition-colors"

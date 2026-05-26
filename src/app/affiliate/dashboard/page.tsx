@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 /* ── 타입 정의 ── */
@@ -128,12 +129,12 @@ export default function AffiliateDashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <a
+            <Link
               href="/affiliate/card-news/new"
               className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors"
             >
               + 카드뉴스 생성
-            </a>
+            </Link>
             <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">
               로그아웃
             </button>
@@ -215,9 +216,9 @@ function OverviewTab({ stats, profile, info }: { stats: DashboardStats | null; p
         <div className="bg-white rounded-xl border p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900 text-sm">최근 콘텐츠</h2>
-            <a href="/affiliate/card-news" className="text-xs text-amber-600 hover:text-amber-700">
+            <Link href="/affiliate/card-news" className="text-xs text-amber-600 hover:text-amber-700">
               전체보기 →
-            </a>
+            </Link>
           </div>
 
           {/* 할당량 게이지 */}
@@ -259,12 +260,12 @@ function OverviewTab({ stats, profile, info }: { stats: DashboardStats | null; p
           ) : (
             <div className="text-center py-8 text-gray-400">
               <p className="text-sm">아직 생성한 콘텐츠가 없습니다.</p>
-              <a
+              <Link
                 href="/affiliate/card-news/new"
                 className="inline-block mt-2 text-xs text-amber-600 hover:text-amber-700 underline"
               >
                 첫 카드뉴스 만들기 →
-              </a>
+              </Link>
             </div>
           )}
         </div>

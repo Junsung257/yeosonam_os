@@ -27,8 +27,9 @@ import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from
 import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 import { getSecret } from '@/lib/secret-registry';
-import { slugifyTopic, romanize } from '@/lib/slug-utils';
+import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
+import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -775,16 +776,29 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
     .replace(/```\s*$/i, '')
     .trim();
 
-  const slug = `${romanize(item.destination)}-complete-guide`;
-  const seoTitle = `${item.destination} 여행 완벽 가이드 | 관광지·일정·비용`.substring(0, 60);
-  const seoDescription = `${item.destination} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지 정리한 완벽 가이드.`.substring(0, 160);
+  const destEn = romanize(item.destination) || slugifyTopic(item.destination) || item.destination?.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-') || 'destination';
+  const slug = `${destEn}-complete-guide`;
+  const destDisplay = item.destination || '이 여행지';
+  const seoTitle = `${destDisplay} 여행 완벽 가이드 | 관광지·일정·비용`.substring(0, 60);
+  const seoDescription = `${destDisplay} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지 정리한 완벽 가이드.`.substring(0, 160);
+
+  // OG 이미지: Pexels에서 destination 기반 이미지 할당
+  let og_image_url: string | null = null;
+  try {
+    const destForOg = item.destination || extractDestination(item.topic);
+    if (destForOg && isPexelsConfigured()) {
+      const kw = destToEnKeyword(destForOg);
+      const photo = await getRandomPexelsPhoto(kw);
+      if (photo?.src?.medium) og_image_url = photo.src.medium;
+    }
+  } catch { /* OG 이미지 실패는 발행을 막지 않음 */ }
 
   return {
     blog_html,
     slug,
     seo_title: seoTitle,
     seo_description: seoDescription,
-    og_image_url: null,
+    og_image_url,
   };
 }
 
@@ -996,13 +1010,39 @@ ${serpGapBlock}
   const seo_title = serpData
     ? buildOptimalTitle(item.topic, serpData, tier)
     : item.topic.substring(0, 55);
-  const seo_description = `${item.topic} · 여소남이 정리한 실전 가이드. 준비물·비용·일정까지 꼼꼼하게.`.substring(0, 160);
+  // SEO 설명: 주제 기반 맞춤형 (카테고리별 템플릿 다양화)
+  const cat = (item.category || '').toLowerCase();
+  let descTemplate: string;
+  if (cat.includes('visa') || cat.includes('입국')) {
+    descTemplate = `${item.topic} | ${new Date().getFullYear()}년 최신 입국 정보·필요 서류·면세 한도·비자 필수 사항을 여소남이 정리했습니다.`;
+  } else if (cat.includes('itinerary') || cat.includes('일정')) {
+    descTemplate = `${item.topic} | 추천 일정·예상 경비·필수 방문지·맛집 정보를 여소남의 현지 경험으로 엄선했습니다.`;
+  } else if (cat.includes('preparation') || cat.includes('준비')) {
+    descTemplate = `${item.topic} | 여행 준비물·체크리스트·예약 꿀팁·주의사항까지 여소남이 꼼꼼하게 정리한 가이드.`;
+  } else if (cat.includes('local') || cat.includes('현지')) {
+    descTemplate = `${item.topic} | 현지인 추천 맛집·교통 꿀팁·쇼핑 명소·숨은 여행지 정보를 여소남이 전해드립니다.`;
+  } else {
+    descTemplate = `${item.topic} | 실용적인 여행 정보와 팁을 여소남이 정리한 완벽 가이드. 준비부터 현지까지 한 번에 해결.`;
+  }
+  const seo_description = descTemplate.substring(0, 160);
+
+  // og_image_url 자동 할당 — Pexels에서 destination 관련 이미지 검색
+  let og_image_url: string | null = null;
+  const destForImage = item.destination || extractDestination(item.topic);
+  if (destForImage && isPexelsConfigured()) {
+    try {
+      const keyword = destToEnKeyword(destForImage);
+      const photo = await getRandomPexelsPhoto(keyword);
+      if (photo?.src?.large2x) og_image_url = photo.src.large2x;
+      else if (photo?.src?.large) og_image_url = photo.src.large;
+    } catch { /* silent — og_image_url은 null로 유지 */ }
+  }
 
   return {
     blog_html: blog_html + `\n\n<!-- prompt_version: ${promptVersion} -->`,
     slug,
     seo_title,
     seo_description,
-    og_image_url: null,
+    og_image_url,
   };
 }

@@ -145,7 +145,7 @@ export async function getGroupRfq(id: string): Promise<GroupRfq | null> {
   return data as GroupRfq | null;
 }
 
-export async function listGroupRfqs(status?: string, limit = 50): Promise<GroupRfq[]> {
+export async function listGroupRfqs(status?: string, limit = 200): Promise<GroupRfq[]> {
   const sb = getSupabase();
   if (!sb) return [];
   let q = sb.from('group_rfqs').select('*').order('created_at', { ascending: false }).limit(limit);

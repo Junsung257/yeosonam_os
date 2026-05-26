@@ -50,6 +50,9 @@ function buildHeadlineVariants(original: string): string[] {
 
 export const experimental_ppr = true;
 export const revalidate = 3600;
+// dynamicParams=true(기본값): generateStaticParams에 없는 새 slug도 ISR로 동적 생성.
+// PPR fallback에서 notFound()가 404를 반환하게 Next.js에 의존. (PPR 환경에서는
+// fallback이 200+noindex로 캐시될 가능성이 있으므로 generateMetadata의 noindex로 방어.)
 // 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
 // 이 한 줄이 "발행 직후 첫 요청 race로 404가 캐시되는" 패턴을 구조적으로 차단한다.
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
