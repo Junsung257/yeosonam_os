@@ -537,8 +537,35 @@ export default async function PackageDetailPage({
       }));
   }
 
+  // JSON-LD Product + BreadcrumbList
+  const pkgJsonLd = normalizedPkg ? {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: normalizedPkg.title,
+    description: normalizedPkg.product_summary || `${normalizedPkg.destination} 여행 패키지`,
+    category: normalizedPkg.destination,
+    offers: {
+      '@type': 'AggregateOffer',
+      priceCurrency: 'KRW',
+      lowPrice: normalizedPkg.price_min ?? undefined,
+      highPrice: normalizedPkg.price_max ?? undefined,
+      offerCount: normalizedPkg.price_dates?.length ?? undefined,
+      availability: 'https://schema.org/InStock',
+      url: `${BASE_URL}/packages/${id}`,
+      seller: { '@type': 'Organization', name: '여소남' },
+    },
+    ...(normalizedPkg.product_highlights?.length ? { award: normalizedPkg.product_highlights.slice(0, 3).map((h: string) => ({ '@type': 'Award', name: h })) } : {}),
+  } : null;
+
   return (
     <>
+      {pkgJsonLd && (
+        <script
+          type="application/ld+json"
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(pkgJsonLd) }}
+        />
+      )}
       <DetailClient
         initialPackage={normalizedPkg}
         initialAttractions={attractionsForClient}

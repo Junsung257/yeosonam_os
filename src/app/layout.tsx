@@ -145,14 +145,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
         <link rel="dns-prefetch" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
-        {/* 사이트 전역 JSON-LD: TravelAgency */}
+        {/* 사이트 전역 JSON-LD: Organization + WebSite (Google Sitelinks Search Box) */}
         <script
           suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               '@context': 'https://schema.org',
-              '@type': 'TravelAgency',
+              '@type': 'Organization',
               name: '여소남',
               url: BASE_URL,
               logo: `${BASE_URL}/logo.png`,
@@ -162,6 +162,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 'https://blog.naver.com/yesonam',
                 'https://www.instagram.com/yesonam',
               ],
+            }),
+          }}
+        />
+        <script
+          suppressHydrationWarning
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: '여소남',
+              url: BASE_URL,
+              potentialAction: {
+                '@type': 'SearchAction',
+                target: {
+                  '@type': 'EntryPoint',
+                  urlTemplate: `${BASE_URL}/search?q={search_term_string}`,
+                },
+                'query-input': 'required name=search_term_string',
+              },
             }),
           }}
         />
