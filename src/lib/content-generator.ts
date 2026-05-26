@@ -7,6 +7,7 @@
 import { searchPexelsPhotos, isPexelsConfigured } from './pexels';
 import { getMinPriceFromDates } from './price-dates';
 import { matchAttraction as matchAttr } from './attraction-matcher';
+import { romanize } from './slug-utils';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -830,27 +831,6 @@ export function generateBlogPost(
 
 // ── 블로그 SEO 메타 자동 생성 ─────────────────────────────
 
-// 주요 목적지 한글 → 영문 로마자 매핑 (SEO 친화적 slug용)
-const DEST_ROMAN: Record<string, string> = {
-  '다낭': 'danang', '호이안': 'hoian', '나트랑': 'nhatrang', '달랏': 'dalat',
-  '판랑': 'phanrang', '하노이': 'hanoi', '호치민': 'hcmc', '푸꾸옥': 'phuquoc',
-  '방콕': 'bangkok', '푸켓': 'phuket', '치앙마이': 'chiangmai', '파타야': 'pattaya',
-  '발리': 'bali', '자카르타': 'jakarta',
-  '마닐라': 'manila', '세부': 'cebu', '보라카이': 'boracay',
-  '비엔티엔': 'vientiane', '루앙프라방': 'luangprabang', '방비엥': 'vangvieng',
-  '장가계': 'zhangjiajie', '상해': 'shanghai', '북경': 'beijing', '서안': 'xian', '청도': 'qingdao', '석가장': 'shijiazhuang',
-  '울란바토르': 'ulaanbaatar', '테를지': 'terelj', '엘승타사르하이': 'elsentasarhai',
-  '시모노세키': 'shimonoseki', '후쿠오카': 'fukuoka', '벳부': 'beppu', '유후인': 'yufuin',
-};
-
-function romanizeDestination(dest: string): string {
-  const parts = dest.split(/[\/\s]+/).filter(Boolean);
-  const romanParts = parts.map(p => DEST_ROMAN[p] || null).filter(Boolean);
-  if (romanParts.length > 0) return romanParts.join('-');
-  // 매핑 실패 시 알파벳/숫자만 유지 (한글 제거)
-  return dest.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-}
-
 const ANGLE_SLUG: Record<AngleType, string> = {
   value: 'value', emotional: 'healing', filial: 'filial',
   luxury: 'luxury', urgency: 'deal', activity: 'activity', food: 'food',
@@ -883,7 +863,7 @@ export function generateBlogSeo(
   const year = new Date().getFullYear();
 
   // slug: destination(영문)-박수일수-angle (SEO 친화적: URL 공유 안전)
-  const destRoman = romanizeDestination(dest);
+  const destRoman = romanize(dest);
   const durPart = product.duration ? `${nights}n${product.duration}d` : '';
   const slugParts = [destRoman, durPart, ANGLE_SLUG[angle]];
   const slug = slugParts.filter(Boolean).join('-');

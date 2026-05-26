@@ -776,9 +776,10 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
     .replace(/```\s*$/i, '')
     .trim();
 
-  const destEn = romanize(item.destination) || slugifyTopic(item.destination) || item.destination?.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-') || 'destination';
+  const dest = item.destination || extractDestination(item.topic) || 'destination';
+  const destEn = romanize(dest) || slugifyTopic(dest);
   const slug = `${destEn}-complete-guide`;
-  const destDisplay = item.destination || '이 여행지';
+  const destDisplay = item.destination || dest;
   const seoTitle = `${destDisplay} 여행 완벽 가이드 | 관광지·일정·비용`.substring(0, 60);
   const seoDescription = `${destDisplay} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지 정리한 완벽 가이드.`.substring(0, 160);
 

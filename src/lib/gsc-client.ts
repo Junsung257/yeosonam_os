@@ -13,12 +13,22 @@ import { google } from 'googleapis';
  *      → Service Account 이메일 추가 (권한: 제한적 또는 전체)
  */
 
+/**
+ * Service Account JSON 문자열을 안전하게 파싱.
+ * Vercel env에서 `\n`이 이스케이프된 형태로 저장되는 경우를 처리.
+ */
+function parseServiceAccountJson(raw: string) {
+  // Vercel 등 env var에서 private_key의 \n이 실제 개행이 아닌 문자열 \\n으로 저장된 경우 처리
+  const fixed = raw.replace(/\\n/g, '\n');
+  return JSON.parse(fixed);
+}
+
 function getGSCClient() {
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!serviceAccountJson) return null;
 
   try {
-    const credentials = JSON.parse(serviceAccountJson);
+    const credentials = parseServiceAccountJson(serviceAccountJson);
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
@@ -175,7 +185,7 @@ export async function requestGoogleIndexing(
   const gscUrl = normalizeUrlForGSC(url);
 
   try {
-    const credentials = JSON.parse(serviceAccountJson);
+    const credentials = parseServiceAccountJson(serviceAccountJson);
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ['https://www.googleapis.com/auth/indexing'],

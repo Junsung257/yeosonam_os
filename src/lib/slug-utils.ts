@@ -24,6 +24,7 @@ const ROMAN_MAP: Record<string, string> = {
   '베이징': 'beijing', '상하이': 'shanghai', '칭다오': 'qingdao', '청도': 'qingdao',
   '하얼빈': 'harbin', '서안': 'xian', '장가계': 'zhangjiajie', '황산': 'huangshan',
   '호화호특': 'hohhot', '후허하오터': 'hohhot', '석가장': 'shijiazhuang',
+  '계림': 'guilin', '양삭': 'yangshuo', '북경': 'beijing', '상해': 'shanghai',
   // 대만
   '타이베이': 'taipei', '타이중': 'taichung', '가오슝': 'kaohsiung',
   '타이난': 'tainan', '화롄': 'hualien',
@@ -39,6 +40,7 @@ const ROMAN_MAP: Record<string, string> = {
   '홍콩': 'hongkong', '마카오': 'macau',
   // 몽골
   '몽골': 'mongolia', '울란바토르': 'ulaanbaatar',
+  '비엔티엔': 'vientiane', '루앙프라방': 'luangprabang', '방비엥': 'vangvieng',
   // 미국/괌
   '괌': 'guam', '사이판': 'saipan', '하와이': 'hawaii',
   '캐나다': 'canada',
@@ -61,7 +63,7 @@ const KNOWN_DESTINATIONS = [
   '세부','보홀','마닐라','마카오','홍콩','타이베이','울란바토르','테를지',
   '제주','부산','경주','파리','로마','이스탄불','프라하',
   '호화호특','후허하오터','석가장','보라카이','팔라완','나하',
-  '벳부','유후인','시모노세키',
+  '벳부','유후인','시모노세키','계림','양삭',
 ];
 export function extractDestination(topic: string): string {
   for (const dest of KNOWN_DESTINATIONS) {
