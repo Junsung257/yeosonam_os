@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
-import { withCronGuard } from '@/lib/cron-auth';
+import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { logError, logWarning } from '@/lib/sentry-logger';
 import { collectWeeklyMetrics } from '@/lib/blog-metrics-store';
 import { computeAdaptiveThresholds, persistAdaptiveThresholds } from '@/lib/blog-bayesian-optimizer';
@@ -15,20 +16,24 @@ export const dynamic = 'force-dynamic';
  * 블로그 자기학습 크론 — 매주 일요일 23시 실행 (KST 월요일 스케줄러 직전)
  *
  * 6가지 작업:
- *   A) Featured 자동 재선정 — 30일 내 조회수 상위 Top 3
- *   B) Prompt optimizer 호출 — 성과 분석 → agent_actions 제안 등록
+ *   A) Featured 자동 재선정
+ *   B) Prompt optimizer
  *   C) (옵션) AUTO_APPROVE_LEARNING → prompt_versions 자동 활성화
- *   D) 주간 메트릭 수집 — GSC 데이터 기반 성과 스냅샷
- *   E) 베이지안 임계값 최적화 (월 1일만) — 품질 게이트 자동 조정
- *   F) 시스템 건강 보고서 — 크론 상태 모니터링
+ *   D) 주간 메트릭 수집
+ *   E) 베이지안 임계값 최적화 (월 1일만)
+ *   F) 시스템 건강 보고서
  */
-const getHandler = async () => {
+const handleBlogLearn = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
+  }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const result: Record<string, unknown> = { ranAt: new Date().toISOString() };
+  const errors: string[] = [];
 
   // ── A) Featured 자동 재선정 ────────────────────────────────
   try {
@@ -74,7 +79,9 @@ const getHandler = async () => {
     }
   } catch (err) {
     logWarning('[cron/blog-learn] featured reselection failed', err);
-    result.featured_error = err instanceof Error ? err.message : 'unknown';
+    const msg = err instanceof Error ? err.message : 'unknown';
+    result.featured_error = msg;
+    errors.push(`featured: ${msg}`);
   }
 
   // ── A') A/B 테스트 자동 종료 ──────────────────────────────
@@ -83,10 +90,12 @@ const getHandler = async () => {
     result.ab_experiments_finalized = abResult;
   } catch (abErr) {
     logWarning('[cron/blog-learn] A/B autoFinalize 실패', abErr);
-    result.ab_experiments_error = abErr instanceof Error ? abErr.message : 'unknown';
+    const msg = abErr instanceof Error ? abErr.message : 'unknown';
+    result.ab_experiments_error = msg;
+    errors.push(`ab_experiments: ${msg}`);
   }
 
-  // ── B) Prompt optimizer (조기 종료 없이 result만 채움) ─────
+  // ── B) Prompt optimizer ─────────────────────────────────────
   try {
     const optRes = await fetch(`${baseUrl}/api/agent/prompt-optimizer`, { method: 'POST' });
     const ct = optRes.headers.get('content-type') || '';
@@ -138,7 +147,9 @@ const getHandler = async () => {
     }
   } catch (err) {
     logError('[cron/blog-learn] learning failed', err);
-    result.prompt_learning = { error: err instanceof Error ? err.message : '학습 실패' };
+    const msg = err instanceof Error ? err.message : '학습 실패';
+    result.prompt_learning = { error: msg };
+    errors.push(`prompt_learning: ${msg}`);
   }
 
   // ── D) 주간 메트릭 수집 ──────────────────────────────────
@@ -149,27 +160,26 @@ const getHandler = async () => {
       updated: metricsResult.updated,
       errors: metricsResult.errors.length > 0 ? metricsResult.errors.slice(0, 3) : [],
     };
+    for (const me of metricsResult.errors.slice(0, 3)) errors.push(`metrics: ${me}`);
   } catch (err) {
     logWarning('[cron/blog-learn] metrics collection failed', err);
-    result.metrics_collected = { error: err instanceof Error ? err.message : 'unknown' };
+    const msg = err instanceof Error ? err.message : 'unknown';
+    result.metrics_collected = { error: msg };
+    errors.push(`metrics: ${msg}`);
   }
 
-  // ── E) 베이지안 임계값 최적화 (월 1회 — 1일이면 실행) ────
+  // ── E) 베이지안 임계값 최적화 (월 1회) ────────────────────
   const today = new Date().getDate();
   if (today <= 2) {
     try {
       const newThresholds = await computeAdaptiveThresholds();
       await persistAdaptiveThresholds(newThresholds);
-      result.adaptive_thresholds = {
-        applied: true,
-        infoMinLen: newThresholds.infoMinLen,
-        productMinLen: newThresholds.productMinLen,
-        infoMinReadability: newThresholds.infoMinReadability,
-        rationale: newThresholds.rationale,
-      };
+      result.adaptive_thresholds = { applied: true, ...newThresholds };
     } catch (err) {
       logWarning('[cron/blog-learn] bayesian optimizer failed', err);
-      result.adaptive_thresholds = { applied: false, error: err instanceof Error ? err.message : 'unknown' };
+      const msg = err instanceof Error ? err.message : 'unknown';
+      result.adaptive_thresholds = { applied: false, error: msg };
+      errors.push(`bayesian: ${msg}`);
     }
   } else {
     result.adaptive_thresholds = { applied: false, reason: `월 1일만 실행 (오늘=${today}일)` };
@@ -178,22 +188,15 @@ const getHandler = async () => {
   // ── F) 시스템 건강 보고서 ─────────────────────────────────
   try {
     const health = await collectSystemHealth();
-    result.system_health = {
-      healthy: health.healthy,
-      cronStatuses: health.cronStatuses.map(cs => ({
-        name: cs.name,
-        status: cs.status,
-        consecutiveFailures: cs.consecutiveFailures,
-      })),
-      queueFailed: health.queueHealth.failed,
-      advice: health.strategicAdvice.slice(0, 3),
-    };
+    result.system_health = { healthy: health.healthy, cronStatuses: health.cronStatuses.map(cs => ({ name: cs.name, status: cs.status, consecutiveFailures: cs.consecutiveFailures })), queueFailed: health.queueHealth.failed, advice: health.strategicAdvice.slice(0, 3) };
   } catch (err) {
     logWarning('[cron/blog-learn] health check failed', err);
-    result.system_health = { error: err instanceof Error ? err.message : 'unknown' };
+    const msg = err instanceof Error ? err.message : 'unknown';
+    result.system_health = { error: msg };
+    errors.push(`health: ${msg}`);
   }
 
-  return NextResponse.json(result);
+  return { ...result, errors };
 };
 
-export const GET = withCronGuard(getHandler);
+export const GET = withCronLogging('blog-learn', handleBlogLearn);

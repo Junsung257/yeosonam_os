@@ -5,13 +5,14 @@
  * vercel.json 스케줄: "0 * * * *" (1시간마다)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchBandRSS } from '@/lib/band-rss-fetcher';
 import { analyzeFromText, BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer';
 import { triggerContentGeneration } from '@/lib/auto-content-trigger';
 import { getSecret } from '@/lib/secret-registry';
+import { withCronLogging } from '@/lib/cron-observability';
 
 export const maxDuration = 300;
 
@@ -32,22 +33,21 @@ async function getNextCode(depCode: string, destCode: string, days: number): Pro
   return prefix + String(seq + 1).padStart(4, '0');
 }
 
-export async function GET(request: NextRequest) {
+const handleBandRss = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return { error: 'DB 미설정', errors: ['DB 미설정'] };
 
   const rssUrl = getSecret('BAND_RSS_URL');
   if (!rssUrl) {
-    return NextResponse.json({ skipped: true, reason: 'BAND_RSS_URL 미설정' });
+    return { skipped: true, reason: 'BAND_RSS_URL 미설정', errors: [] as string[] };
   }
 
   const results = { imported: 0, skipped: 0, failed: 0, errors: [] as string[] };
 
   try {
     const posts = await fetchBandRSS(rssUrl);
-    if (posts.length === 0) return NextResponse.json({ ok: true, ...results });
+    if (posts.length === 0) return { ok: true, ...results };
 
-    // 중복 URL 벌크 조회 (N+1 → 1 쿼리)
     const allUrls = posts.map(p => p.url);
     const { data: existingLogs } = await supabaseAdmin
       .from('band_import_log')
@@ -60,15 +60,12 @@ export async function GET(request: NextRequest) {
 
     const newPosts = posts.filter(p => !existingUrls.has(p.url));
     results.skipped += posts.length - newPosts.length;
+    if (newPosts.length === 0) return { ok: true, ...results };
 
-    if (newPosts.length === 0) return NextResponse.json({ ok: true, ...results });
-
-    // AI 분석 병렬 실행
     const analysisResults = await Promise.allSettled(
       newPosts.map(post => analyzeFromText(`${post.title}\n\n${post.content}`))
     );
 
-    // products INSERT 순차 실행 (internal_code 중복 방지)
     for (let i = 0; i < newPosts.length; i++) {
       const post = newPosts[i];
       const analysis = analysisResults[i];
@@ -108,47 +105,37 @@ export async function GET(request: NextRequest) {
           .single();
 
         if (error) {
-          if (error.code === '23505') {
-            results.skipped++;
-            continue;
-          }
+          if (error.code === '23505') { results.skipped++; continue; }
           throw error;
         }
 
         const productId = (product as { id: string }).id;
-
         await supabaseAdmin.from('band_import_log').insert({
-          post_url:   post.url,
-          post_title: post.title,
-          raw_text:   post.content.slice(0, 2000),
-          product_id: productId,
-          status:     'imported',
+          post_url: post.url, post_title: post.title,
+          raw_text: post.content.slice(0, 2000),
+          product_id: productId, status: 'imported',
         });
 
         void triggerContentGeneration({
-          productId,
-          displayName:     ai.display_name || post.title,
-          destination:     ai.destination,
-          destinationCode: ai.destination_code,
+          productId, displayName: ai.display_name || post.title,
+          destination: ai.destination, destinationCode: ai.destination_code,
         });
         results.imported++;
       } catch (err) {
         await supabaseAdmin.from('band_import_log').insert({
-          post_url:  post.url,
-          post_title: post.title,
-          status:    'failed',
-          error_msg: err instanceof Error ? err.message : '알 수 없는 오류',
+          post_url: post.url, post_title: post.title,
+          status: 'failed', error_msg: err instanceof Error ? err.message : '알 수 없는 오류',
         });
         results.failed++;
         results.errors.push(post.title);
       }
     }
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'RSS 수신 실패', ...results },
-      { status: 500 },
-    );
+    const msg = err instanceof Error ? err.message : 'RSS 수신 실패';
+    return { error: msg, ...results, errors: [...results.errors, msg] };
   }
 
-  return NextResponse.json({ ok: true, ...results });
-}
+  return { ok: true, ...results };
+};
+
+export const GET = withCronLogging('band-rss', handleBandRss);

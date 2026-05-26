@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { refillWeeklyQueue, assignPublishSlots, DEFAULT_POSTS_PER_DAY } from '@/lib/blog-scheduler';
 import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
-import { withCronGuard } from '@/lib/cron-auth';
+import { withCronLogging } from '@/lib/cron-observability';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { logError } from '@/lib/sentry-logger';
 
 /**
@@ -14,32 +15,32 @@ import { logError } from '@/lib/sentry-logger';
  *   3) 각 항목에 target_publish_at 슬롯 할당 (하루 6개, 2시간 간격)
  */
 export const dynamic = 'force-dynamic';
-const getHandler = async () => {
+
+const handleSchedule = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
+  }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
   try {
-    // Pillar Page 자동 체크 (활성 destination 중 pillar 없는 곳 큐잉)
     const pillarResult = await ensureAllDestinationsHavePillar();
-
     const result = await refillWeeklyQueue({ postsPerDay: DEFAULT_POSTS_PER_DAY });
     const slotAssignment = await assignPublishSlots(DEFAULT_POSTS_PER_DAY);
 
-    return NextResponse.json({
+    return {
       ok: true,
       pillars: pillarResult,
       refill: result,
       slot_assignment: slotAssignment,
       ranAt: new Date().toISOString(),
-    });
+    };
   } catch (err) {
     logError('[cron/blog-scheduler] scheduler failed', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '스케줄러 실패' },
-      { status: 500 },
-    );
+    const msg = err instanceof Error ? err.message : '스케줄러 실패';
+    return { ok: false, error: msg, errors: [msg] };
   }
-}
+};
 
-export const GET = withCronGuard(getHandler);
+export const GET = withCronLogging('blog-scheduler', handleSchedule);

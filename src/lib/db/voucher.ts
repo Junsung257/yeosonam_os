@@ -140,8 +140,13 @@ export async function updateVoucher(
   return data as Voucher;
 }
 
-/** 여행 종료일 +1일이 지났고 만족도 조사를 아직 보내지 않은 확정서 목록 */
-export async function getVouchersForReviewNotification(): Promise<Voucher[]> {
+/** 만족도 알림 대상 voucher + 고객 전화번호 */
+export interface VoucherWithCustomerPhone extends Voucher {
+  customer_phone?: string | null;
+}
+
+/** 여행 종료일 +1일이 지났고 만족도 조사를 아직 보내지 않은 확정서 목록 (고객 전화번호 포함) */
+export async function getVouchersForReviewNotification(): Promise<VoucherWithCustomerPhone[]> {
   const sb = getSupabase();
   if (!sb) return [];
   const yesterday = new Date();
@@ -152,5 +157,31 @@ export async function getVouchersForReviewNotification(): Promise<Voucher[]> {
     .eq('status', 'sent')
     .eq('review_notified', false)
     .lte('end_date', yesterday.toISOString().slice(0, 10));
-  return (data ?? []) as Voucher[];
+  const vouchers = (data ?? []) as Voucher[];
+
+  // booking_id → customer_id → phone 순차 조회
+  const bookingIds = vouchers.map(v => v.booking_id).filter(Boolean) as string[];
+  const enriched: VoucherWithCustomerPhone[] = [];
+
+  if (bookingIds.length > 0) {
+    const { data: bookings } = await sb
+      .from('bookings')
+      .select('id, customer_id')
+      .in('id', bookingIds);
+    const customerIds = [...new Set((bookings ?? []).map(b => (b as { customer_id: string }).customer_id).filter(Boolean))];
+    const { data: customers } = customerIds.length > 0
+      ? await sb.from('customers').select('id, phone').in('id', customerIds)
+      : { data: [] };
+    const phoneMap = new Map((customers ?? []).map(c => [(c as { id: string }).id, (c as { phone: string | null }).phone]));
+    const bookingCustomerMap = new Map((bookings ?? []).map(b => [(b as { id: string }).id, (b as { customer_id: string }).customer_id]));
+
+    for (const v of vouchers) {
+      const cid = v.booking_id ? bookingCustomerMap.get(v.booking_id) : undefined;
+      enriched.push({ ...v, customer_phone: cid ? phoneMap.get(cid) ?? null : null });
+    }
+  } else {
+    enriched.push(...vouchers.map(v => ({ ...v, customer_phone: null })));
+  }
+
+  return enriched;
 }
