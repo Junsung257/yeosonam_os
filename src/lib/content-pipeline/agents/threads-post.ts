@@ -16,6 +16,7 @@ import type { ContentBrief } from '@/lib/validators/content-brief';
 import { callWithZodValidation } from '@/lib/llm-validate-retry';
 import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { getBrandVoiceBlock } from '../brand-voice';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const ThreadsPostSchema = z.object({
   main: z.string().min(30).max(500),                  // 첫 포스트
@@ -48,8 +49,10 @@ export async function generateThreadsPost(input: ThreadsPostInput): Promise<Thre
     return fallbackThreadsPost(input);
   }
 
+  // 트렌드 훅 패턴 조회 (trending_hooks_7d 뷰) — 프롬프트에 주입
+  const trendBlock = await buildTrendBlock(input.brief.target_audience);
   const voiceBlock = await getBrandVoiceBlock('yeosonam', 'threads_post');
-  const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + buildThreadsPrompt(input);
+  const prompt = (voiceBlock ? voiceBlock + '\n\n' : '') + (trendBlock ? trendBlock + '\n\n' : '') + buildThreadsPrompt(input);
 
   const result = await callWithZodValidation({
     label: 'threads-post',
@@ -61,6 +64,41 @@ export async function generateThreadsPost(input: ThreadsPostInput): Promise<Thre
   if (result.success) return result.value;
   console.warn('[threads-post] callWithZodValidation 실패 → fallback');
   return fallbackThreadsPost(input);
+}
+
+/**
+ * trending_hooks_7d 뷰에서 최근 7일간 Threads 트렌드 데이터를 조회해
+ * 프롬프트에 주입할 블록을 생성.
+ * target_audience 와 매칭되는 destination 의 훅 패턴을 우선 제공.
+ */
+async function buildTrendBlock(targetAudience: string): Promise<string | null> {
+  try {
+    // target_audience 에서 가능한 목적지 키워드 추출 (단순화: 전체 글로벌 + 관련 destination)
+    const { data } = await supabaseAdmin
+      .from('trending_hooks_7d')
+      .select('platform, destination, hook_type, sample_count, avg_score, avg_er, avg_hook_words, sample_first_lines, latest_captured_at')
+      .eq('platform', 'threads')
+      .order('avg_score', { ascending: false })
+      .limit(10);
+
+    if (!data || data.length === 0) return null;
+
+    const lines = data.map((row) => {
+      const t = row as Record<string, unknown>;
+      const samples = (t.sample_first_lines as string[] ?? []).slice(0, 3).map((s: string) => `  - 예: "${s}"`).join('\n');
+      return `[${t.destination}] hook_type=${t.hook_type} (score=${t.avg_score}, ER=${t.avg_er}, samples=${t.sample_count})
+${samples}`;
+    });
+
+    return `## 최근 Threads 트렌드 Hook 패턴 (7일)
+다음은 최근 7일간 Threads 에서 높은 성과를 보인 hook 패턴들입니다.
+참고용으로만 사용하고, 무조건 따라하지는 마세요.
+
+${lines.join('\n\n')}`;
+  } catch (err) {
+    console.warn('[threads-post] trend hook 조회 실패:', err);
+    return null;
+  }
 }
 
 function buildThreadsPrompt(input: ThreadsPostInput): string {

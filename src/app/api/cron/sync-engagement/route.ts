@@ -364,13 +364,33 @@ async function runSyncEngagement(request: NextRequest) {
       // external_id 없으면 스킵 (매핑 불가)
       if (!ev.external_id) { skippedIds.push(ev.id); continue; }
 
-      // 외부 ID로 card_news 역조회 (ig_post_id 또는 threads_post_id)
-      const { data: cn } = await supabaseAdmin
-        .from('card_news')
-        .select('id')
-        .or(`ig_post_id.eq.${ev.external_id},threads_post_id.eq.${ev.external_id}`)
+      // 외부 ID로 content_distributions 역조회 (external_id 매칭)
+      // threads_post_id는 card_news에서 제거되었으므로 content_distributions이 우선
+      let linkedId: string | null = null;
+
+      // 1차: content_distributions에서 external_id 조회
+      const { data: dist } = await supabaseAdmin
+        .from('content_distributions')
+        .select('card_news_id')
+        .eq('external_id', ev.external_id)
         .maybeSingle();
-      if (!cn) { skippedIds.push(ev.id); continue; }
+      if (dist && (dist as Record<string, string | null>).card_news_id) {
+        linkedId = (dist as Record<string, string>).card_news_id;
+      }
+
+      // 2차 fallback: card_news에서 ig_post_id로 조회 (IG 레거시)
+      if (!linkedId) {
+        const { data: cn } = await supabaseAdmin
+          .from('card_news')
+          .select('id')
+          .eq('ig_post_id', ev.external_id)
+          .maybeSingle();
+        if (cn) {
+          linkedId = (cn as Record<string, string>).id;
+        }
+      }
+
+      if (!linkedId) { skippedIds.push(ev.id); continue; }
 
       // 증분 snapshot — platform 정규화 + raw 보존. 실제 수치는 Graph API 폴링이 메인,
       // webhook 은 event_type='comments'|'replies' 일 때 해당 카운터만 +1 로 힌트.
@@ -385,13 +405,13 @@ async function runSyncEngagement(request: NextRequest) {
         const { data: last } = await supabaseAdmin
           .from('post_engagement_snapshots')
           .select('views,reach,likes,comments,shares,saves,clicks,replies,reposts,quotes,impressions_legacy,performance_score')
-          .eq('card_news_id', (cn as Record<string, string>).id)
+          .eq('card_news_id', linkedId)
           .order('captured_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         const prev = (last ?? {}) as Record<string, number | null>;
         const insertRow: Record<string, unknown> = {
-          card_news_id: (cn as Record<string, string>).id,
+          card_news_id: linkedId,
           platform: ev.platform,
           external_id: ev.external_id,
           views: prev.views ?? null,

@@ -10,6 +10,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
+import { publishToThreads as publishToThreadsCore } from '@/lib/threads-publisher';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -358,13 +359,12 @@ async function publishToFacebook(request: PublishRequest): Promise<PublishResult
 }
 
 /**
- * Threads API 발행
+ * Threads API 발행 — threads-publisher.ts 의 publishToThreads 로 위임
  *
- * Flow (Instagram과 동일한 Graph API):
- *   1. POST /{threads-user-id}/threads (text) → creation_id
- *   2. POST /{threads-user-id}/threads/publish (creation_id) → media_id
- *
- * 참고: https://developers.facebook.com/docs/threads-api
+ * Flow:
+ *   1. Threads OAuth 토큰 조회
+ *   2. threads-publisher.ts 의 publishToThreads (container 생성 + 폴링 + publish)
+ *   3. 결과를 PublishResult 로 변환
  */
 async function publishToThreads(request: PublishRequest): Promise<PublishResult> {
   const now = new Date().toISOString();
@@ -382,45 +382,29 @@ async function publishToThreads(request: PublishRequest): Promise<PublishResult>
 
     const accessToken = token.accessToken;
 
-    // Step 1: Threads 컨테이너 생성
-    const containerBody = new URLSearchParams({
+    // threads-publisher.ts 의 저수준 함수로 위임 (이미지+캐러셀+폴링 포함)
+    const result = await publishToThreadsCore({
+      threadsUserId,
+      accessToken,
       text: request.caption,
-      access_token: accessToken,
+      imageUrls: request.imageUrls && request.imageUrls.length > 0 ? request.imageUrls : undefined,
     });
 
-    const containerRes = await fetch(`${META_GRAPH_BASE}/${threadsUserId}/threads`, {
-      method: 'POST',
-      body: containerBody,
-    });
-    const containerJson = await containerRes.json() as { id?: string; error?: { code: number; message: string } };
-
-    if (containerJson.error) {
-      throw new Error(`Threads 컨테이너 생성 실패 (${containerJson.error.code}): ${containerJson.error.message}`);
-    }
-    const creationId = containerJson.id!;
-
-    // Step 2: Threads 발행
-    const publishBody = new URLSearchParams({
-      creation_id: creationId,
-      access_token: accessToken,
-    });
-
-    const publishRes = await fetch(`${META_GRAPH_BASE}/${threadsUserId}/threads_publish`, {
-      method: 'POST',
-      body: publishBody,
-    });
-    const publishJson = await publishRes.json() as { id?: string; error?: { code: number; message: string } };
-
-    if (publishJson.error) {
-      throw new Error(`Threads 발행 실패 (${publishJson.error.code}): ${publishJson.error.message}`);
+    if (!result.ok) {
+      return {
+        platform: 'threads',
+        success: false,
+        publishedAt: now,
+        error: result.error ?? `Threads 발행 실패 (step: ${result.step})`,
+      };
     }
 
-    console.log(`[social-publisher] [THREADS] 발행 완료: threadId=${publishJson.id}, text=${request.caption.slice(0, 50)}...`);
+    console.log(`[social-publisher] [THREADS] 발행 완료: threadId=${result.postId}, text=${request.caption.slice(0, 50)}...`);
 
     return {
       platform: 'threads',
       success: true,
-      externalPostId: publishJson.id!,
+      externalPostId: result.postId!,
       publishedAt: now,
     };
   } catch (err) {

@@ -1,5 +1,4 @@
-fix: toEnglishSlug를 romanize()로 대체하여 잘못된 slug 생성 방지
+Improve blog quality: stricter cliche threshold, expanded cliche list, info-style guide
 
-- blog-coverage-analyzer.ts의 toEnglishSlug가 별도 맵을 유지하지 않고 slug-utils.ts의 SSOT romanize()를 사용하도록 변경
-- 빈 목적지명으로 인해 "-preparation", "-weather"같은 잘못된 slug가 생성되던 문제 해결
-- Vercel Production에 GOOGLE_SERVICE_ACCOUNT_JSON 재설정
+- style-guide.ts: Add 10+ cliche expressions to banned list, add info-article-specific structure rules (definition paragraph, Q-section H2, practical tips ordering)
+- blog-quality-gate.ts: Sync BANNED_CLICHES with style-guide, reduce info maxCliche 15->8, raise info minLen 1800->2500 for SEO depth

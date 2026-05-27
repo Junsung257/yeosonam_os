@@ -68,11 +68,13 @@ export interface PublishThreadsInput {
   accessToken: string;
   text: string;              // 메인 본문 (≤ 500자)
   imageUrls?: string[];      // 있으면 첨부. 1장: IMAGE, 2~20장: CAROUSEL
+  replyThreads?: string[];   // 답글 체인 (0~4개, 각 ≤ 500자) — 메인 포스트 발행 후 순차 게시
 }
 
 export interface ThreadsPublishResult {
   ok: boolean;
   postId?: string;           // threads_post_id (shortcode)
+  replyPostIds?: string[];   // 답글 ID 배열 (replyThreads 순서와 동일)
   error?: string;
   step?: string;
 }
@@ -100,7 +102,7 @@ export async function getThreadsConfig(): Promise<{ threadsUserId: string; acces
 }
 
 export async function publishToThreads(input: PublishThreadsInput): Promise<ThreadsPublishResult> {
-  const { threadsUserId, accessToken, text, imageUrls } = input;
+  const { threadsUserId, accessToken, text, imageUrls, replyThreads } = input;
 
   const bodyError = validateThreadsBody(text);
   if (bodyError) {
@@ -109,9 +111,14 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
   if (imageUrls && imageUrls.length > 20) {
     return { ok: false, step: 'validate', error: `이미지 20장 초과 (${imageUrls.length}장)` };
   }
+  if (replyThreads && replyThreads.length > 4) {
+    return { ok: false, step: 'validate', error: `답글 4개 초과 (${replyThreads.length}개)` };
+  }
 
   try {
-    // ── 단일 텍스트 포스트 ──────────────────────────────────
+    // ── 메인 포스트 발행 ──────────────────────────────────
+    let mainResult: ThreadsPublishResult;
+
     if (!imageUrls || imageUrls.length === 0) {
       const form = new URLSearchParams({
         media_type: 'TEXT',
@@ -123,11 +130,8 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
       if (!res.ok || !data.id) {
         return { ok: false, step: 'text_container', error: data?.error?.message || JSON.stringify(data) };
       }
-      return publishFromContainer(threadsUserId, accessToken, data.id as string);
-    }
-
-    // ── 단일 이미지 포스트 ──────────────────────────────────
-    if (imageUrls.length === 1) {
+      mainResult = await publishFromContainer(threadsUserId, accessToken, data.id as string);
+    } else if (imageUrls.length === 1) {
       const form = new URLSearchParams({
         media_type: 'IMAGE',
         image_url: imageUrls[0],
@@ -141,47 +145,90 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
       }
       const poll = await pollContainerStatus(data.id, accessToken);
       if (!poll.ok) return { ok: false, step: 'image_poll', error: poll.error };
-      return publishFromContainer(threadsUserId, accessToken, data.id as string);
-    }
-
-    // ── 캐러셀 (2~20장) ─────────────────────────────────────
-    const childIds: string[] = [];
-    for (let i = 0; i < imageUrls.length; i++) {
-      const form = new URLSearchParams({
-        media_type: 'IMAGE',
-        image_url: imageUrls[i],
-        is_carousel_item: 'true',
+      mainResult = await publishFromContainer(threadsUserId, accessToken, data.id as string);
+    } else {
+      // 캐러셀 (2~20장)
+      const childIds: string[] = [];
+      for (let i = 0; i < imageUrls.length; i++) {
+        const form = new URLSearchParams({
+          media_type: 'IMAGE',
+          image_url: imageUrls[i],
+          is_carousel_item: 'true',
+          access_token: accessToken,
+        });
+        const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+        const data = await res.json();
+        if (!res.ok || !data.id) {
+          return { ok: false, step: `child_container_${i + 1}`, error: data?.error?.message || JSON.stringify(data) };
+        }
+        childIds.push(data.id);
+        await sleep(300);
+      }
+      const pollResults = await Promise.all(
+        childIds.map((childId) => pollContainerStatus(childId, accessToken)),
+      );
+      for (let i = 0; i < pollResults.length; i++) {
+        if (!pollResults[i].ok) return { ok: false, step: `child_poll_${i + 1}`, error: pollResults[i].error };
+      }
+      const parentForm = new URLSearchParams({
+        media_type: 'CAROUSEL',
+        children: childIds.join(','),
+        text,
         access_token: accessToken,
       });
-      const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
-      const data = await res.json();
-      if (!res.ok || !data.id) {
-        return { ok: false, step: `child_container_${i + 1}`, error: data?.error?.message || JSON.stringify(data) };
+      const parentRes = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: parentForm });
+      const parentData = await parentRes.json();
+      if (!parentRes.ok || !parentData.id) {
+        return { ok: false, step: 'carousel_container', error: parentData?.error?.message || JSON.stringify(parentData) };
       }
-      childIds.push(data.id);
-      await sleep(300);
+      const parentPoll = await pollContainerStatus(parentData.id, accessToken);
+      if (!parentPoll.ok) return { ok: false, step: 'carousel_poll', error: parentPoll.error };
+      mainResult = await publishFromContainer(threadsUserId, accessToken, parentData.id as string);
     }
-    // PERF-01: parallel polling (sequential → 병렬). 20장일 때 N×90s → 90s max.
-    const pollResults = await Promise.all(
-      childIds.map((childId) => pollContainerStatus(childId, accessToken)),
-    );
-    for (let i = 0; i < pollResults.length; i++) {
-      if (!pollResults[i].ok) return { ok: false, step: `child_poll_${i + 1}`, error: pollResults[i].error };
+
+    if (!mainResult.ok || !mainResult.postId) return mainResult;
+
+    // ── 답글 체인 발행 (replyThreads) ────────────────────
+    if (!replyThreads || replyThreads.length === 0) {
+      return mainResult;
     }
-    const parentForm = new URLSearchParams({
-      media_type: 'CAROUSEL',
-      children: childIds.join(','),
-      text,
-      access_token: accessToken,
-    });
-    const parentRes = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: parentForm });
-    const parentData = await parentRes.json();
-    if (!parentRes.ok || !parentData.id) {
-      return { ok: false, step: 'carousel_container', error: parentData?.error?.message || JSON.stringify(parentData) };
+
+    const replyPostIds: string[] = [];
+    let parentId: string = mainResult.postId;
+
+    for (let i = 0; i < replyThreads.length; i++) {
+      const replyText = replyThreads[i].trim();
+      if (!replyText) continue;
+
+      try {
+        const replyForm = new URLSearchParams({
+          media_type: 'TEXT',
+          text: replyText,
+          reply_to: parentId,
+          access_token: accessToken,
+        });
+        const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: replyForm });
+        const data = await res.json();
+        if (!res.ok || !data.id) {
+          // 답글 실패는 치명적이지 않음 — main 은 이미 발행됨
+          console.warn(`[threads-publisher] reply #${i + 1} 컨테이너 실패:`, data?.error?.message);
+          break;
+        }
+        const replyResult = await publishFromContainer(threadsUserId, accessToken, data.id as string);
+        if (!replyResult.ok || !replyResult.postId) {
+          console.warn(`[threads-publisher] reply #${i + 1} 발행 실패:`, replyResult.error);
+          break;
+        }
+        replyPostIds.push(replyResult.postId);
+        parentId = replyResult.postId; // 다음 답글은 이 답글에 붙임
+        await sleep(1000); // rate limit 회피
+      } catch (err) {
+        console.warn(`[threads-publisher] reply #${i + 1} 예외:`, err);
+        break;
+      }
     }
-    const parentPoll = await pollContainerStatus(parentData.id, accessToken);
-    if (!parentPoll.ok) return { ok: false, step: 'carousel_poll', error: parentPoll.error };
-    return publishFromContainer(threadsUserId, accessToken, parentData.id as string);
+
+    return { ok: true, postId: mainResult.postId, replyPostIds };
   } catch (err) {
     return { ok: false, step: 'unexpected', error: err instanceof Error ? err.message : String(err) };
   }

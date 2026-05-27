@@ -33,7 +33,6 @@ import {
 import {
   publishToThreads,
   getThreadsConfig,
-  checkThreadsPublishingLimit,
 } from '@/lib/threads-publisher';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
@@ -71,14 +70,6 @@ async function runPublishScheduled(request: NextRequest) {
     errors: [] as string[],
     details: [] as Array<{ id: string; platform: string; status: string; error?: string }>,
     ig_card_news: {
-      picked: 0,
-      published: 0,
-      failed: 0,
-      skipped: 0,
-      quota_used: null as number | null,
-      quota_limit: null as number | null,
-    },
-    threads_card_news: {
       picked: 0,
       published: 0,
       failed: 0,
@@ -152,13 +143,6 @@ async function runPublishScheduled(request: NextRequest) {
     summary.errors.push(`ig_card_news fatal: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // [C] card_news Threads 직접 큐
-  try {
-    await processQueuedCardNewsThreads(summary);
-  } catch (err) {
-    summary.errors.push(`threads_card_news fatal: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
   const elapsedMs = Date.now() - startedAt;
   console.log('[publish-scheduled]', JSON.stringify({ ...summary, elapsed_ms: elapsedMs }));
   return { ...summary, elapsed_ms: elapsedMs };
@@ -230,23 +214,30 @@ async function publishOne(row: ScheduledRow): Promise<{
   }
 
   if (row.platform === 'threads_post') {
-    // card_news 연결된 경우 Threads 발행
-    if (!row.card_news_id) {
-      return { status: 'skipped', reason: 'card_news_id 없음 (Threads 발행 불가)' };
+    const threadsPayload = payload as Record<string, unknown>;
+    const text = (threadsPayload.main as string) || (threadsPayload.text as string) || '';
+    const imageUrls = (threadsPayload.image_urls as string[] | undefined) ||
+                      (threadsPayload.media_urls as string[] | undefined);
+    if (!text.trim()) {
+      return { status: 'failed', error: 'Threads 본문 비어있음' };
     }
     try {
-      const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
-      const res = await fetch(`${base}/api/card-news/${row.card_news_id}/publish-threads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption_override: (payload.caption as string) ?? undefined }),
+      const cfg = await getThreadsConfig();
+      if (!cfg) {
+        return { status: 'failed', error: 'Threads 설정 없음' };
+      }
+      const result = await publishToThreads({
+        threadsUserId: cfg.threadsUserId,
+        accessToken: cfg.accessToken,
+        text,
+        imageUrls: Array.isArray(imageUrls) && imageUrls.length > 0 ? imageUrls : undefined,
       });
-      const data = await res.json();
-      if (!res.ok) return { status: 'failed', error: data.error ?? 'Threads 발행 실패' };
+      if (!result.ok) {
+        return { status: 'failed', error: result.error ?? 'Threads 발행 실패' };
+      }
       return {
         status: 'published',
-        external_id: data.threads_post_id ?? undefined,
-        external_url: data.permalink ?? undefined,
+        external_id: result.postId,
       };
     } catch (err) {
       return { status: 'failed', error: err instanceof Error ? err.message : String(err) };
@@ -487,161 +478,3 @@ async function markFailed(
   }
 }
 
-// ──────────────────────────────────────────────────────
-// [C] card_news Threads 직접 큐 처리
-// ──────────────────────────────────────────────────────
-interface QueuedCardNewsThreadsRow {
-  id: string;
-  threads_text: string | null;
-  threads_media_urls: string[] | null;
-  threads_scheduled_for: string;
-  threads_error: string | null;
-}
-
-async function processQueuedCardNewsThreads(summary: {
-  threads_card_news: {
-    picked: number;
-    published: number;
-    failed: number;
-    skipped: number;
-    quota_used: number | null;
-    quota_limit: number | null;
-  };
-  errors: string[];
-}): Promise<void> {
-  const cfg = await getThreadsConfig();
-  if (!cfg) {
-    console.log('[publish-scheduled] Threads 토큰 조회 실패 (env+DB), card_news 큐 스킵');
-    return;
-  }
-
-  const nowIso = new Date().toISOString();
-  const PER_CRON_LIMIT = 5; // Threads 는 건당 10~30초 (텍스트) ~ 60초 (캐러셀). IG 보다 여유.
-  const { data, error } = await supabaseAdmin
-    .from('card_news')
-    .select('id, threads_text, threads_media_urls, threads_scheduled_for, threads_error')
-    .eq('threads_publish_status', 'queued')
-    .lte('threads_scheduled_for', nowIso)
-    .order('threads_scheduled_for', { ascending: true })
-    .limit(PER_CRON_LIMIT);
-  if (error) {
-    summary.errors.push(`threads query: ${error.message}`);
-    return;
-  }
-  const rows = (data ?? []) as QueuedCardNewsThreadsRow[];
-  summary.threads_card_news.picked = rows.length;
-  if (rows.length === 0) return;
-
-  const quota = await checkThreadsPublishingLimit(cfg.threadsUserId, cfg.accessToken);
-  if (quota) {
-    summary.threads_card_news.quota_used = quota.quotaUsed;
-    summary.threads_card_news.quota_limit = quota.quotaLimit;
-  }
-  const remaining = quota ? Math.max(0, quota.quotaLimit - quota.quotaUsed) : rows.length;
-  const processable = rows.slice(0, remaining);
-  const deferred = rows.length - processable.length;
-  if (deferred > 0) {
-    summary.threads_card_news.skipped += deferred;
-    console.log(`[publish-scheduled] Threads 쿼터 소진 (${quota?.quotaUsed}/${quota?.quotaLimit}) — ${deferred}건 이월`);
-  }
-
-  for (const row of processable) {
-    const text = (row.threads_text ?? '').trim();
-    const urls = Array.isArray(row.threads_media_urls) ? row.threads_media_urls.filter(u => typeof u === 'string' && u.length > 0) : [];
-
-    if (!text) {
-      await markThreadsFailed(row.id, 'threads_text 비어있음', 2);
-      summary.threads_card_news.failed += 1;
-      continue;
-    }
-    if (text.length > 500) {
-      await markThreadsFailed(row.id, `본문 500자 초과 (${text.length}자)`, 2);
-      summary.threads_card_news.failed += 1;
-      continue;
-    }
-    if (urls.length > 20) {
-      await markThreadsFailed(row.id, `이미지 20장 초과 (${urls.length}장)`, 2);
-      summary.threads_card_news.failed += 1;
-      continue;
-    }
-    const nonPublic = urls.find(u => !u.startsWith('http://') && !u.startsWith('https://'));
-    if (nonPublic) {
-      await markThreadsFailed(row.id, '이미지가 공개 https URL 아님', 2);
-      summary.threads_card_news.failed += 1;
-      continue;
-    }
-
-    await supabaseAdmin
-      .from('card_news')
-      .update({ threads_publish_status: 'publishing', threads_error: null })
-      .eq('id', row.id);
-
-    try {
-      const result = await publishToThreads({
-        threadsUserId: cfg.threadsUserId,
-        accessToken: cfg.accessToken,
-        text,
-        imageUrls: urls.length > 0 ? urls : undefined,
-      });
-
-      if (result.ok) {
-        await supabaseAdmin
-          .from('card_news')
-          .update({
-            threads_publish_status: 'published',
-            threads_post_id: result.postId,
-            threads_published_at: new Date().toISOString(),
-            threads_error: null,
-          })
-          .eq('id', row.id);
-        summary.threads_card_news.published += 1;
-      } else {
-        const prevAttempt = parseAttemptCount(row.threads_error);
-        const nextAttempt = prevAttempt + 1;
-        const failed = nextAttempt >= 2;
-        await markThreadsFailed(
-          row.id,
-          `[${result.step}] ${result.error}`,
-          nextAttempt,
-          failed ? undefined : new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        );
-        if (failed) summary.threads_card_news.failed += 1;
-        else summary.threads_card_news.skipped += 1;
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const prevAttempt = parseAttemptCount(row.threads_error);
-      const nextAttempt = prevAttempt + 1;
-      const failed = nextAttempt >= 2;
-      await markThreadsFailed(
-        row.id,
-        `unexpected: ${msg}`,
-        nextAttempt,
-        failed ? undefined : new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      );
-      if (failed) summary.threads_card_news.failed += 1;
-      else summary.threads_card_news.skipped += 1;
-    }
-  }
-}
-
-async function markThreadsFailed(
-  cardNewsId: string,
-  errorMessage: string,
-  attempt: number,
-  retryAt?: string,
-): Promise<void> {
-  const errorWithAttempt = `[attempt:${attempt}] ${errorMessage}`;
-  const patch: Record<string, unknown> = { threads_error: errorWithAttempt };
-  if (retryAt) {
-    patch.threads_publish_status = 'queued';
-    patch.threads_scheduled_for = retryAt;
-  } else {
-    patch.threads_publish_status = 'failed';
-  }
-  try {
-    await supabaseAdmin.from('card_news').update(patch).eq('id', cardNewsId);
-  } catch (e) {
-    console.error('[publish-scheduled] markThreadsFailed DB 실패:', cardNewsId, e);
-  }
-}

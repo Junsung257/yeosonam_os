@@ -50,9 +50,6 @@ interface CardNewsRow {
   ig_post_id: string | null;
   ig_published_at: string | null;
   ig_publish_status: string | null;
-  threads_post_id: string | null;
-  threads_published_at: string | null;
-  threads_publish_status: string | null;
 }
 
 async function runCardNewsRefine(request: NextRequest) {
@@ -78,14 +75,14 @@ async function runCardNewsRefine(request: NextRequest) {
     const afterPublishedFrom = new Date(now - MAX_DAYS_AFTER_PUBLISH * 24 * 60 * 60 * 1000).toISOString();
     const afterPublishedTo = new Date(now - MIN_DAYS_AFTER_PUBLISH * 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. 대상 후보 카드뉴스 — IG 또는 Threads 로 발행된 것
-    // 두 플랫폼 중 하나라도 published 이면 engagement 데이터가 있음
+    // 1. 대상 후보 카드뉴스 — IG 로 발행된 것 (card_news 직접 큐)
+    //    또는 content_distributions 으로 Threads 발행된 것
     const { data, error } = await supabaseAdmin
       .from('card_news')
-      .select('id, title, slides, package_id, generation_config, template_family, template_version, category_id, ig_post_id, ig_published_at, ig_publish_status, threads_post_id, threads_published_at, threads_publish_status')
+      .select('id, title, slides, package_id, generation_config, template_family, template_version, category_id, ig_post_id, ig_published_at, ig_publish_status')
       .or(
         `and(ig_publish_status.eq.published,ig_published_at.gte.${afterPublishedFrom},ig_published_at.lte.${afterPublishedTo}),` +
-        `and(threads_publish_status.eq.published,threads_published_at.gte.${afterPublishedFrom},threads_published_at.lte.${afterPublishedTo})`,
+        `id.in.(select card_news_id from content_distributions where platform='threads_post' and status='published' and published_at.gte.${afterPublishedFrom} and published_at.lte.${afterPublishedTo})`,
       )
       .limit(100);
     if (error) throw error;

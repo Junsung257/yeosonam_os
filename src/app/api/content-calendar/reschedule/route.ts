@@ -56,10 +56,18 @@ export async function POST(request: NextRequest) {
         updateData.ig_publish_status = 'queued';
         updateData.ig_error = null;
       }
-      if (platform === 'threads' || !platform) {
-        updateData.threads_scheduled_for = scheduledIso;
-        updateData.threads_publish_status = 'queued';
-        updateData.threads_error = null;
+      // Threads는 content_distributions에서 reschedule 처리
+      if (platform === 'threads') {
+        // content_distributions에서 해당 card_news_id + platform='threads_post' 레코드 업데이트
+        await supabaseAdmin
+          .from('content_distributions')
+          .update({
+            scheduled_for: scheduledIso,
+            status: 'scheduled',
+            error_message: null,
+          })
+          .eq('card_news_id', id)
+          .eq('platform', 'threads_post');
       }
 
       const { error } = await supabaseAdmin

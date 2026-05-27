@@ -1,212 +1,38 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-27T22:31:54+09:00
-- actionable_changed_files: 361
+- generated_at_kst: 2026-05-28T06:13:36+09:00
+- actionable_changed_files: 26
 - todo_markers: 0
-- areas: ETC 262, API 48, APP 24, LIB 13, UI 8, DB 3, DOCS 3
+- areas: LIB 11, API 8, ETC 4, APP 2, DB 1
 
 ## 1) Actionable Changed Files
 
-- `M ` `.eslintrc.json`
+- `M ` `.git_commit_msg.txt`
 - ` M` `.gitignore`
-- ` D` `.pr_body.txt`
-- ` D` `db/__RUN_ALL.sql`
-- ` D` `db/_audit_bohol.js`
-- ` D` `db/_bohol_day1_raw.txt`
-- ` D` `db/_dump_day1_schedule.ts`
-- ` D` `db/_extract_day1_raw.ts`
-- ` D` `db/_parse_full_raw.ts`
-- ` D` `db/_revalidate.js`
-- ` D` `db/_verify_dad_postprocess.ts`
-- ` D` `db/ad_marketing_mileage_v1.sql`
-- ` D` `db/ad_tracking_v1.sql`
-- ` D` `db/affiliate_erp_v1.sql`
-- ` D` `db/affiliate_v2.sql`
-- ` D` `db/ai_audit_helper.js`
-- ` D` `db/apply_baseline_migration.js`
-- ` D` `db/archive_docs_v1.sql`
-- ` D` `db/archive_docs_v2.sql`
-- ` D` `db/archive_docs_v3.sql`
-- ` D` `db/attractions_final_batch.json`
-- ` D` `db/attractions_japan_batch.json`
-- ` D` `db/attractions_modetour_batch.json`
-- ` D` `db/attractions_need_desc.csv`
-- ` D` `db/attractions_null_desc.json`
-- ` D` `db/attractions_processed_1.csv`
-- ` D` `db/attractions_processed_1_fixed.csv`
-- ` D` `db/attractions_remaining_batch.json`
-- ` D` `db/attractions_thailand_batch.json`
-- ` D` `db/attractions_v1.sql`
-- ` D` `db/attractions_v2.sql`
-- ` D` `db/attractions_v3.sql`
-- ` D` `db/attractions_v4.sql`
-- ` D` `db/attractions_v5.sql`
-- ` D` `db/attractions_v6.sql`
-- ` D` `db/attractions_with_desc.csv`
-- ` D` `db/attractions_xian_batch.json`
-- ` D` `db/audit_admin_perf.js`
-- ` D` `db/audit_legacy_pkg_to_ir.js`
-- ` D` `db/audit_mobile_landing_full.ts`
-- ` D` `db/auto-fixer.js`
-- ` D` `db/backfill_blog_cover_cebu_june.js`
-- ` D` `db/backfill_display_titles.js`
-- ` D` `db/backfill_hero.js`
-- ` D` `db/backfill_itinerary_llm.ts`
-- ` D` `db/backfill_unmatched_20260421.js`
-- ` D` `db/bank_transactions.sql`
-- ` D` `db/bank_transactions_trash_migration.sql`
-- ` D` `db/batch_resolve_unmatched.js`
-- ` D` `db/block_master_seed_qingdao.js`
-- ` D` `db/block_master_seed_v1.js`
-- ` D` `db/block_master_seed_xian.js`
-- ` D` `db/block_master_v1.sql`
-- ` D` `db/booking_public_v1.sql`
-- ` D` `db/bookings_pipeline_v1.sql`
-- ` D` `db/bookings_status_korean.sql`
-- ` D` `db/build_climate.js`
-- ` D` `db/build_seasonal.js`
-- ` D` `db/card_design_v1.sql`
-- ` D` `db/card_news_v1.sql`
-- ` D` `db/check-dep-days.js`
-- ` D` `db/check-fuk-deep.js`
-- ` D` `db/check-fuk-deep2.js`
-- ` D` `db/check-fuk-inserted.js`
-- ` D` `db/check-fuk-products.js`
-- ` D` `db/check-kul-mobile.js`
-- ` D` `db/check-kul-state.js`
-- ` D` `db/check-landbusan.js`
-- ` D` `db/check-status-values.js`
-- ` D` `db/check-tier.js`
-- ` D` `db/check_nagasaki_detailed.js`
-- ` D` `db/check_nhatrang.js`
-- ` D` `db/check_recent.js`
-- ` D` `db/concierge_v1.sql`
-- ` D` `db/content_hub_v1.sql`
-- ` D` `db/create_claim_rpc.sql`
-- ` D` `db/create_jarvis_v2_prs.sh`
-- ` D` `db/creative_engine_v1.sql`
-- ` D` `db/crm.sql`
-- ` D` `db/crm_migration_v2.sql`
-- ` D` `db/crm_v2.sql`
-- ` D` `db/customer_journey_v1.sql`
-- ` D` `db/debug-photos.js`
-- ` D` `db/departing_locations_v1.sql`
-- ` D` `db/desc_batch_1.json`
-- ` D` `db/desc_batch_2.json`
-- ` D` `db/desc_batch_3.json`
-- ` D` `db/desc_batch_4.json`
-- ` D` `db/destination_metadata_v1.sql`
-- ` D` `db/display_title.sql`
-- ` D` `db/enhance_nagasaki_notices_20260419.js`
-- ` D` `db/erp_migration.sql`
-- ` D` `db/erp_v3_patch.sql`
-- ` D` `db/expand_period_dates.js`
-- ` D` `db/external-poi.js`
-- ` D` `db/extract_structured_features.js`
-- ` D` `db/filter_past_dates_20260419.js`
-- ` D` `db/fit_package_v1.sql`
-- ` D` `db/fix-admin-guard-exports.js`
-- ` D` `db/fix_bohol_iditour_ssot.js`
-- ` D` `db/fix_bohol_iditour_verbatim.js`
-- ` D` `db/fix_bohol_iditour_verbatim_final.js`
-- ` D` `db/fix_fuk_customer_leaks.js`
-- ` D` `db/fix_fuk_deadline.js`
-- ` D` `db/fix_fuk_golf_warnings.js`
-- ` D` `db/fix_hotel_names.js`
-- ` D` `db/fix_kul_3d5_labels.js`
-- ` D` `db/fix_kul_contamination.js`
-- ` D` `db/fix_nagasaki_20260419.js`
-- ` D` `db/fix_nhatrang.js`
-- ` D` `db/fix_nhatrang_prices.js`
-- ` D` `db/fix_optional_tours_region.js`
-- ` D` `db/fix_payment_status_korean.sql`
-- ` D` `db/fix_tourbi_fuk_camellia_verbatim.js`
-- ` D` `db/fix_tourlounge_sjw_raw_text_fidelity.js`
-- ` D` `db/generate_descriptions.js`
-- ` D` `db/group_rfq_v1.sql`
-- ` D` `db/influencer_portal_v1.sql`
-- ` D` `db/init.sql`
-- ` D` `db/insert_DAD_\355\210\254\354\226\264\353\271\204_\354\213\240\353\235\274\353\251\224\353\246\254\354\226\264\355\212\270_2026.js`
-- ` D` `db/insert_auto_pkg_danang.js`
-- ` D` `db/insert_baekdusan_tourphone_packages.js`
-- ` D` `db/insert_batch_8products_202604.js`
-- ` D` `db/insert_batch_products.js`
-- ` D` `db/insert_beijing_lijiang.js`
-- ` D` `db/insert_bestasia_huangshan_20260421_packages.js`
-- ` D` `db/insert_bohol_iditour_spot_packages.js`
-- ` D` `db/insert_bohol_solea_packages.js`
-- ` D` `db/insert_bohol_tourbi_packages.js`
-- ` D` `db/insert_dad_bx7315_3products.js`
-- ` D` `db/insert_hanoi_packages.js`
-- ` D` `db/insert_kul_20260418_packages.js`
-- ` D` `db/insert_landbusan_dad_20260420_packages.js`
-- ` D` `db/insert_landbusan_fuk_20260401_golf.js`
-- ` D` `db/insert_landbusan_tao_20260424_castlex_golf.js`
-- ` D` `db/insert_landbusan_xian_packages.js`
-- ` D` `db/insert_laos_packages.js`
-- ` D` `db/insert_laos_tourphone_birubang_packages.js`
-- ` D` `db/insert_mongolia_tourphone_ulaanbaatar_packages.js`
-- ` D` `db/insert_nha_wt_selectum_3n5d.js`
-- ` D` `db/insert_nhatrang_auto.js`
-- ` D` `db/insert_nhatrang_landbusan_2026summer.js`
-- ` D` `db/insert_nhatrang_packages.js`
-- ` D` `db/insert_shizuoka_golf.js`
-- ` D` `db/insert_tao_20260417_packages.js`
-- ` D` `db/insert_thetour_hohhot_20260421_packages.js`
-- ` D` `db/insert_tourbi_fuk_camellia_20260428.js`
-- ` D` `db/insert_tourbi_fuk_camellia_jeongtong_20260428.js`
-- ` D` `db/insert_tourbi_fuk_camellia_onsen_20260428.js`
-- ` D` `db/insert_tourbi_fuk_camellia_sodoshi_20260428.js`
-- ` D` `db/insert_tourbi_han_20260427_vn_packages.js`
-- ` D` `db/insert_tourlounge_shijiazhuang_packages.js`
-- ` D` `db/insert_tourlounge_sjw_taehang_20260427.js`
-- ` D` `db/insert_tourphone_cebu_slimpack_packages.js`
-- ` D` `db/insert_tourphone_hokkaido_20260421.js`
-- ` D` `db/insert_tourphone_okinawa_20260427.js`
-- ` D` `db/insert_tourphone_xian_packages.js`
-- ` D` `db/insert_tpe_20260418_packages.js`
-- ` D` `db/insert_zhangjiajie_tourphone_2026summer.js`
-- ` D` `db/inspect-photos.js`
-- ` D` `db/itinerary_migration.sql`
-- ` D` `db/jarvis_migration.sql`
-- ` D` `db/land_operator_id_packages_v1.sql`
-- ` D` `db/land_operators_v1.sql`
-- ` D` `db/manual_cost_override_v1.sql`
-- ` D` `db/marketing_copies_migration.sql`
-- ` D` `db/marketing_system_v1.sql`
-- ` D` `db/meta_ads_v1.sql`
-- ` D` `db/migrate_blog_autopublish_20260422.js`
-- ` D` `db/migrate_blog_seo_titles_20260421.js`
-- ` D` `db/migrate_phase1_crc_20260421.js`
-- ` D` `db/migrate_photos_schema.js`
-- ` D` `db/migrate_special_notes.js`
-- ` D` `db/migrate_surcharges.js`
-- ` D` `db/migrate_tiers_to_dates.js`
-- ` D` `db/mrt_detail_worker.js`
-- ` D` `db/mrt_enqueue_missing.js`
-- ` D` `db/mrt_pipeline.js`
-- ` D` `db/normalize_airlines.js`
-- ` D` `db/normalize_date_ranges.js`
-- ` D` `db/normalize_departure_days.js`
-- ` D` `db/normalize_itinerary_format.js`
-- ` D` `db/notices_parsed_v1.sql`
-- ` D` `db/os_policies_v1.sql`
-- ` D` `db/packages_v2.sql`
-- ` D` `db/patch_attractions_emoji_pollution_20260421.js`
-- ` D` `db/patch_hohhot_render_fix_20260421.js`
-- ` D` `db/patch_huangshan_render_fix_20260421.js`
-- ` D` `db/payments.sql`
-- ` D` `db/pin_attempts.sql`
-- ` D` `db/preview_archive_candidates.js`
-- ` D` `db/price_list_migration.sql`
-- ` D` `db/process_mrt_descriptions.js`
-- ` D` `db/products_ai_expansion_v1.sql`
-- ` D` `db/products_erp_v1.sql`
-- ` D` `db/products_v1.sql`
-- ` D` `db/raw_toyama_510.txt`
-- ` D` `db/register-package-cli.js`
-- ` D` `db/rematch_pexels_photos.js`
-- ` D` `db/reparse_with_ai.js`
+- ` M` `src/app/api/admin/published-feed/route.ts`
+- ` D` `src/app/api/card-news/[id]/publish-threads/route.ts`
+- ` M` `src/app/api/content-calendar/reschedule/route.ts`
+- ` M` `src/app/api/content-calendar/route.ts`
+- ` M` `src/app/api/cron/card-news-refine/route.ts`
+- ` M` `src/app/api/cron/publish-scheduled/route.ts`
+- ` M` `src/app/api/cron/sync-engagement/route.ts`
+- ` M` `src/app/api/upload/route.ts`
+- ` M` `src/app/lp/[id]/LpDeferSections.tsx`
+- ` M` `src/app/lp/[id]/page.tsx`
+- ` M` `src/lib/content-pipeline/agents/threads-post.ts`
+- ` M` `src/lib/content-pipeline/blog-body.ts`
+- ` M` `src/lib/lp-hero-resolver.ts`
+- ` M` `src/lib/map-travel-package-to-lp.ts`
+- ` M` `src/lib/marketing-osmu.ts`
+- ` D` `src/lib/package-register.ts`
+- ` M` `src/lib/parser.ts`
+- ` M` `src/lib/publish-orchestration.ts`
+- ` M` `src/lib/render-contract.ts`
+- ` M` `src/lib/social-publisher.ts`
+- ` M` `src/lib/threads-publisher.ts`
+- `??` `db/fix-content-creative-slugs.sql`
+- `??` `db/fix-content-creative-slugs.ts`
+- `??` `supabase/migrations/20260528120000_remove_card_news_threads_columns.sql`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -214,25 +40,10 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` M` `src/components/affiliate/CoBrandFooter.tsx`
-- [ ] P0 ` D` `db/booking_public_v1.sql`
-- [ ] P0 ` D` `db/bookings_pipeline_v1.sql`
-- [ ] P0 ` D` `db/bookings_status_korean.sql`
-- [ ] P0 ` D` `db/payments.sql`
-- [ ] P0 ` M` `src/app/admin/payments/PaymentsPageClient.tsx`
-- [ ] P0 ` M` `src/app/m/admin/bookings/page.tsx`
-- [ ] P0 ` M` `src/app/m/admin/payments/page.tsx`
-- [ ] P0 `??` `src/app/m/admin/bookings/_client-wrapper.tsx`
-- [ ] P0 `??` `src/app/m/admin/payments/_client-wrapper.tsx`
-- [ ] P1 ` D` `db/affiliate_erp_v1.sql`
-- [ ] P1 ` D` `db/affiliate_v2.sql`
-- [ ] P1 ` M` `src/app/api/affiliates/route.ts`
-- [ ] P1 ` M` `src/lib/affiliate/settlement-calc.test.ts`
-- [ ] P1 ` M` `src/lib/affiliate/settlement-calc.ts`
-- [ ] P1 ` M` `src/middleware.ts`
-- [ ] P1 `??` `supabase/migrations/20260527080000_admin_perf_indexes_phase4.sql`
-- [ ] P1 `??` `supabase/migrations/20260527090000_perf_paging_indexes_phase5.sql`
-- [ ] P1 `??` `supabase/migrations/20260527093000_perf_phase6_composite_indexes.sql`
+- [ ] P1 ` M` `src/app/api/cron/card-news-refine/route.ts`
+- [ ] P1 ` M` `src/app/api/cron/publish-scheduled/route.ts`
+- [ ] P1 ` M` `src/app/api/cron/sync-engagement/route.ts`
+- [ ] P1 `??` `supabase/migrations/20260528120000_remove_card_news_threads_columns.sql`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const cardNewsQuery = supabaseAdmin
       .from('card_news')
       .select(
-        'id, title, status, created_at, ig_scheduled_for, threads_scheduled_for, ig_publish_status, threads_publish_status, template_family, branding_level, created_by_affiliate_id, engagement_score',
+        'id, title, status, created_at, ig_scheduled_for, ig_publish_status, template_family, branding_level, created_by_affiliate_id, engagement_score',
       )
       .gte('created_at', startDate)
       .lte('created_at', endDate)
@@ -137,13 +137,7 @@ export async function GET(request: NextRequest) {
           entry.scheduled++;
         }
       }
-      if (cn.threads_publish_status) {
-        platformStatuses.threads = cn.threads_publish_status;
-        if (cn.threads_scheduled_for && (!mainScheduledFor || cn.threads_scheduled_for < mainScheduledFor)) {
-          mainScheduledFor = cn.threads_scheduled_for;
-          mainScheduledPlatform = 'threads';
-        }
-      }
+      // Threads는 content_distributions에서 별도 항목으로 표시됨
 
       const item: CalendarItem = {
         id: cn.id,

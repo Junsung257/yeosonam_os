@@ -61,11 +61,11 @@ const getHandler = async (request: NextRequest) => {
     if (statusFilter) distQuery = distQuery.eq('status', statusFilter);
     if (tenantFilter) distQuery = distQuery.eq('tenant_id', tenantFilter);
 
-    // 2) card_news 직접 큐 (IG / Threads)
+    // 2) card_news 직접 큐 (IG only — Threads는 content_distributions으로 통합됨)
     const cardQuery = supabaseAdmin
       .from('card_news')
-      .select('id, title, package_id, ig_publish_status, ig_post_id, ig_published_at, ig_scheduled_for, threads_publish_status, threads_post_id, threads_published_at, threads_scheduled_for, created_at')
-      .or('ig_publish_status.in.(queued,publishing,published,failed),threads_publish_status.in.(queued,publishing,published,failed)')
+      .select('id, title, package_id, ig_publish_status, ig_post_id, ig_published_at, ig_scheduled_for, created_at')
+      .in('ig_publish_status', ['queued', 'publishing', 'published', 'failed'])
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -140,28 +140,7 @@ const getHandler = async (request: NextRequest) => {
           }
         }
       }
-      // Threads row
-      if (c.threads_publish_status && ['queued', 'publishing', 'published', 'failed'].includes(c.threads_publish_status)) {
-        if (!platformFilter || platformFilter === 'threads_carousel') {
-          if (!statusFilter || c.threads_publish_status === statusFilter) {
-            items.push({
-              source: 'card_news',
-              id: `${c.id}::threads`,
-              platform: 'threads_carousel',
-              status: c.threads_publish_status,
-              title: c.title,
-              product_id: c.package_id,
-              product_title: c.package_id ? productTitleMap.get(c.package_id) ?? null : null,
-              scheduled_for: c.threads_scheduled_for,
-              published_at: c.threads_published_at,
-              external_url: c.threads_post_id ? `https://www.threads.net/post/${c.threads_post_id}` : null,
-              external_id: c.threads_post_id,
-              created_at: c.created_at,
-              tenant_id: null,
-            });
-          }
-        }
-      }
+      // Threads는 content_distributions으로 통합됨 (위 dists 에서 처리)
     }
 
     for (const b of blogs ?? []) {
