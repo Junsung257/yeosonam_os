@@ -430,7 +430,7 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
 }
 
 export async function runQualityGates(input: CheckInput): Promise<QualityGateReport> {
-  const blogType = input.blog_type ?? 'product';
+  const blogType = input.blog_type ?? 'info';
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
   const gates: GateResult[] = [];
 

@@ -40,9 +40,9 @@ export interface AdaptiveThresholds {
 }
 
 const DEFAULT_THRESHOLDS: AdaptiveThresholds = {
-  infoMinLen: 1800,
+  infoMinLen: 2500,
   productMinLen: 1200,
-  infoMaxCliche: 15,
+  infoMaxCliche: 8,
   productMaxCliche: 2,
   infoMaxKeywordDensity: 1.8,
   productMaxKeywordDensity: 2.5,

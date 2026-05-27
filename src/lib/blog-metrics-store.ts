@@ -70,7 +70,7 @@ export async function collectWeeklyMetrics(): Promise<{
   // 1) 발행된 모든 글 조회
   const { data: posts, error: fetchErr } = await supabaseAdmin
     .from('content_creatives')
-    .select('id, slug, seo_title, destination, angle_type, blog_type, published_at, readability_score, featured, product_id, quality_gate')
+    .select('id, slug, seo_title, destination, angle_type, blog_type, published_at, readability_score, featured, product_id, quality_gate, blog_html')
     .eq('channel', 'naver_blog')
     .eq('status', 'published');
 
@@ -91,6 +91,7 @@ export async function collectWeeklyMetrics(): Promise<{
     featured: boolean | null;
     product_id: string | null;
     quality_gate: unknown;
+    blog_html: string | null;
   }>;
 
   if (allPosts.length === 0) {
@@ -160,7 +161,7 @@ export async function collectWeeklyMetrics(): Promise<{
       clicks_7d: clicks,
       ctr_7d: impressions > 0 ? Math.round((clicks / impressions) * 10000) / 10000 : 0,
       avg_position_7d: avgPos,
-      body_length: null as number | null, // 필요시 별도 수집
+      body_length: post.blog_html ? post.blog_html.replace(/<[^>]+>/g, '').length : null,
       readability_score: post.readability_score,
       quality_gate_passed: qualityGate?.passed ?? false,
       featured: post.featured ?? false,
