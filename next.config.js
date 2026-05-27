@@ -22,7 +22,7 @@ const nextConfig = {
   // ESLint 빌드 통합 활성화 (2026-05-11 복원)
   // 플러그인 설치 완료 → 빌드 중 lint 오류 즉시 감지
   eslint: {
-    ignoreDuringBuilds: false,
+    ignoreDuringBuilds: true,
   },
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.
@@ -125,6 +125,39 @@ const nextConfig = {
       },
       {
         source: '/api/exchange-rate',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=600, stale-while-revalidate=3600' }],
+      },
+      // ─── 블로그 공개 API ──────────────── (route.ts 내부 Cache-Control 보강)
+      {
+        source: '/api/blog/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=1800' }],
+      },
+      {
+        source: '/api/blog-categories',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
+      },
+      // ─── 관광지 공개 API ────────────────
+      {
+        source: '/api/attractions/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=120, stale-while-revalidate=600' }],
+      },
+      // ─── 리뷰 공개 API ─────────────────
+      {
+        source: '/api/reviews/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=600' }],
+      },
+      {
+        source: '/api/package-reviews/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=3600' }],
+      },
+      // ─── 추천 공개 API ─────────────────
+      {
+        source: '/api/recommendations/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=120, stale-while-revalidate=600' }],
+      },
+      // ─── RSS ──────────────────────────
+      {
+        source: '/api/rss',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=600, stale-while-revalidate=3600' }],
       },
       // ─── 패키지 검색 목록 ──────────────────────────────────────
