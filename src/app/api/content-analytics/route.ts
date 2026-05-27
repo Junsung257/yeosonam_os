@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
           total_profit: totalProfit,
           avg_conversion_rate: totalTraffic > 0 ? ((totalFirstConv / totalTraffic) * 100).toFixed(2) : '0.00',
         },
-      });
+      }, { headers: cacheHeader(60) });
     }
 
     // 뷰 실패 시 fallback: 기본 콘텐츠 목록만 반환
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
         total_profit: 0,
         avg_conversion_rate: '0.00',
       },
-    });
+    }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '조회 실패' },

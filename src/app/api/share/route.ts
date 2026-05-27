@@ -4,6 +4,7 @@ import {
   createSharedItinerary,
   getSharedItinerary,
 } from '@/lib/supabase';
+import { cacheHeader } from '@/lib/api-response';
 
 // POST /api/share — 공유 링크 생성
 export async function POST(request: NextRequest) {
@@ -77,5 +78,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '존재하지 않거나 만료된 링크입니다.' }, { status: 404 });
   }
 
-  return NextResponse.json({ shared });
+  return NextResponse.json({ shared }, { headers: cacheHeader(600) });
 }

@@ -1,0 +1,390 @@
+﻿   ??Next.js 15.5.18
+   - Environments: .env.local
+   - Experiments (use with caution):
+     殊?webpackBuildWorker
+
+   Creating an optimized production build ...
+ ??(serwist) Bundling the service worker script with the URL '/sw.js' and the scope '/'...
+node.exe :  ??Compiled with warnings in 90s
+위치 줄:1 문자:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( ??Compiled with warnings in 90s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentat
+ion.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentat
+ion.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+./node_modules/@prisma/instrumentation/dist/index.js
+./node_modules/@sentry/node/build/cjs/integrations/tracing/prisma.js
+./node_modules/@sentry/node/build/cjs/index.js
+./node_modules/@sentry/nextjs/build/cjs/index.server.js
+./src/app/global-error.tsx
+
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentat
+ion.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentat
+ion.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+./node_modules/@prisma/instrumentation/dist/index.js
+./node_modules/@sentry/node/build/cjs/integrations/tracing/prisma.js
+./node_modules/@sentry/node/build/cjs/index.js
+./node_modules/@sentry/nextjs/build/cjs/index.server.js
+./sentry.server.config.ts
+
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentat
+ion.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentat
+ion.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+./node_modules/@prisma/instrumentation/dist/index.js
+./node_modules/@sentry/node/build/cjs/integrations/tracing/prisma.js
+./node_modules/@sentry/node/build/cjs/index.js
+./node_modules/@sentry/nextjs/build/cjs/index.server.js
+./src/lib/sentry-logger.ts
+./src/app/api/admin/affiliate-analytics/route.ts
+
+   Linting and checking validity of types ...
+
+Failed to compile.
+
+./src/app/affiliate/card-news/new/page.tsx
+83:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+96:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/affiliate/card-news/page.tsx
+85:24  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻⅤ
+寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-sy
+ntax
+86:53  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻⅤ
+寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-sy
+ntax
+
+./src/app/affiliate/card-news/[id]/page.tsx
+144:17  Warning: A control must be associated with a text label.  jsx-a11y/control-has-associated-label
+210:25  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/app/affiliate/dashboard/page.tsx
+253:24  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+291:24  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+327:67  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+393:41  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+444:26  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+514:45  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/app/affiliate/login/page.tsx
+68:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+79:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/auth/reset-password/page.tsx
+60:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+72:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/blog/BlogData.tsx
+311:20  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/app/concierge/page.tsx
+503:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+514:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+524:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/group/GroupLandingClient.tsx
+213:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+228:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+243:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+258:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+278:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+293:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+307:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+327:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+352:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+373:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+394:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/influencer/[code]/page.tsx
+213:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+217:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+226:17  Warning: The autoFocus prop should not be used, as it can reduce usability and accessibility for users.  jsx-a1
+1y/no-autofocus
+
+./src/app/join/[token]/page.tsx
+154:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+169:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+185:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+200:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+214:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+229:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/login/LoginForm.tsx
+67:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+78:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/m/admin/login/page.tsx
+82:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+97:13  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/m/admin/payments/[id]/_actions.tsx
+141:11  Warning: A control must be associated with a text label.  jsx-a11y/control-has-associated-label
+
+./src/app/m/passport/[token]/page.tsx
+200:40  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/app/m/review/[token]/page.tsx
+92:11  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+163:29  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/app/packages/PackagesClient.tsx
+126:9  Warning: The 'recommendedIds' logical expression could make the dependencies of useMemo Hook (at line 130) chang
+e on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'recommendedIds' in i
+ts own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/app/packages/[id]/DetailClient.tsx
+1903:9  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+1903:9  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+1904:11  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-
+a11y/click-events-have-key-events
+1904:11  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role 
+and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-eleme
+nt-interactions
+1937:9  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+1937:9  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+1938:11  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-
+a11y/click-events-have-key-events
+1938:11  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role 
+and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-eleme
+nt-interactions
+
+./src/app/partner-apply/page.tsx
+94:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+101:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+108:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+118:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+125:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+132:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+139:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+158:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/passport-assist/page.tsx
+159:11  Error: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a11
+y/click-events-have-key-events
+159:11  Error: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and
+ support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element-
+interactions
+
+./src/app/private-tour/PrivateTourLandingClient.tsx
+389:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+403:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+420:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+455:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+477:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+495:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+510:17  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+519:17  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+569:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+588:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+613:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+632:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+652:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+671:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+690:19  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+709:17  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+727:17  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+745:17  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+797:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+819:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+839:15  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/review/[booking_id]/ReviewForm.tsx
+95:9  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+130:11  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+142:11  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+156:11  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+170:9  Error: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/tenant/[tenantId]/inventory/page.tsx
+222:15  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+222:15  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+279:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+292:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+304:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/tenant/[tenantId]/products/page.tsx
+190:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+200:19  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+209:19  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+221:19  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+229:19  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+250:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+258:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/app/tenant/[tenantId]/rfqs/[rfqId]/page.tsx
+479:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+493:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+508:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+524:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+585:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+598:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+615:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+631:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+647:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+663:17  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/components/BookingDrawer.tsx
+611:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+635:15  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+1173:7  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+1173:7  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+
+./src/components/CommandPalette.tsx
+82:7  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a11
+y/click-events-have-key-events
+82:7  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and
+ support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element-
+interactions
+
+./src/components/ConsentBanner.tsx
+75:9  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a11
+y/click-events-have-key-events
+75:9  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and
+ support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element-
+interactions
+83:9  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a11
+y/click-events-have-key-events
+83:9  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and
+ support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element-
+interactions
+185:7  Warning: A control must be associated with a text label.  jsx-a11y/control-has-associated-label
+
+./src/components/customer/GlobalNav.tsx
+128:17  Warning: Elements with the 'menu' interactive role must be focusable.  jsx-a11y/interactive-supports-focus
+203:17  Warning: Elements with the 'menu' interactive role must be focusable.  jsx-a11y/interactive-supports-focus
+300:11  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+300:11  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+
+./src/components/customer/PackageCard.tsx
+312:13  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+312:13  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+
+./src/components/customer/PairwiseCompareModal.tsx
+129:5  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a1
+1y/click-events-have-key-events
+129:5  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role an
+d support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element
+-interactions
+130:7  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a1
+1y/click-events-have-key-events
+130:7  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role an
+d support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element
+-interactions
+
+./src/components/customer/SearchBar.tsx
+137:5  Warning: A form label must have accessible text.  jsx-a11y/label-has-associated-control
+
+./src/components/LedgerViewer.tsx
+104:5  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a1
+1y/click-events-have-key-events
+104:5  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role an
+d support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element
+-interactions
+108:7  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a1
+1y/click-events-have-key-events
+108:7  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role an
+d support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-element
+-interactions
+
+./src/components/lp/LeadBottomSheet.tsx
+210:21  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+220:21  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+230:21  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+230:21  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+245:21  Warning: Visible, non-interactive elements with click handlers must have at least one keyboard listener.  jsx-a
+11y/click-events-have-key-events
+245:21  Warning: Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role a
+nd support for tabbing, mouse, keyboard, and touch inputs to an interactive content element.  jsx-a11y/no-static-elemen
+t-interactions
+
+./src/components/ProductSearch.tsx
+20:11  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+32:11  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+48:11  Warning: A form label must be associated with a control.  jsx-a11y/label-has-associated-control
+
+./src/hooks/useMarketingGap.ts
+153:6  Warning: React Hook useCallback has an unnecessary dependency: 'dataEnabled'. Either exclude it or remove the de
+pendency array.  react-hooks/exhaustive-deps
+
+./src/lib/affiliate/settlement-pdf.tsx
+253:43  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/lib/seo-monitor.ts
+171:20  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻ
+Ⅴ寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-s
+yntax
+
+./src/lib/web-vitals-collector.ts
+90:18  Warning: Hydration mismatch ?꾪뿕 (ERR-blog-queue-locale-hydration@2026-05-10). ?쒕쾭(en-US)? ?대씪?댁뼵??ko-KR) 媛 ?ㅻⅤ
+寃??뚮뜑留곷맖. @/lib/admin-utils ??fmtDate / fmtDateISO / fmtDateTime / fmtMonthDay / fmtMonthDayTime ?ъ슜.  no-restricted-sy
+ntax
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#dis
+abling-rules

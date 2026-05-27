@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 interface TravelHistory {
   id: string;
@@ -124,7 +125,7 @@ export function TravelPassport() {
                 style={{ transform: `rotate(${stampRotation}deg)` }}
               >
                 {h.stamp_image_url ? (
-                  <img src={h.stamp_image_url} alt={`${h.destination} 여행 스탬프`} className="w-10 h-10 rounded-full object-cover" />
+                  <Image src={h.stamp_image_url} alt={`${h.destination} 여행 스탬프`} width={40} height={40} className="w-10 h-10 rounded-full object-cover" />
                 ) : (
                   <span role="img" aria-label={`${h.destination} 여행`}>{tripIcon}</span>
                 )}

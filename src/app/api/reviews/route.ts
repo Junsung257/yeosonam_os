@@ -107,7 +107,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await q;
     if (error) throw error;
-    return NextResponse.json({ reviews: data || [] });
+    return NextResponse.json({ reviews: data || [] }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }

@@ -71,19 +71,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const rfqs = status ? MOCK_RFQS.filter(r => r.status === status) : MOCK_RFQS;
-    return NextResponse.json({ rfqs, count: rfqs.length, mock: true });
+    return NextResponse.json({ rfqs, count: rfqs.length, mock: true }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') ?? undefined;
     const rfqs = await listGroupRfqs(status);
-    return NextResponse.json({ rfqs, count: rfqs.length });
+    return NextResponse.json({ rfqs, count: rfqs.length }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('RFQ 목록 조회 오류:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'RFQ 목록 조회에 실패했습니다.' },
-      { status: 500 }
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'RFQ 목록 조회에 실패했습니다.' },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     );
   }
 }

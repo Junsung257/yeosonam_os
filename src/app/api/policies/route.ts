@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { invalidatePolicyCache } from '@/lib/policy-engine';
 import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
     if (error) throw error;
-    return NextResponse.json({ policies: data ?? [] });
+    return NextResponse.json({ policies: data ?? [] }, { headers: cacheHeader(60) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : '조회 실패' }, { status: 500 });
   }

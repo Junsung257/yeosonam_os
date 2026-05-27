@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { invalidateTermsCache } from '@/lib/standard-terms';
+import { cacheHeader } from '@/lib/api-response';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+  if (!isSupabaseConfigured) return NextResponse.json({ data: [] }, { headers: cacheHeader(3600) });
 
   try {
     const { searchParams } = request.nextUrl;
@@ -24,11 +25,11 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
     if (error) throw error;
-    return NextResponse.json({ data });
+    return NextResponse.json({ data }, { headers: cacheHeader(3600) });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '조회 실패' },
-      { status: 500 },
+      { status: 500, headers: cacheHeader(3600) },
     );
   }
 }

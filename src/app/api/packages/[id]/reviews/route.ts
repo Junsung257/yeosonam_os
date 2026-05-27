@@ -21,7 +21,9 @@ export async function GET(
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data: data ?? [] });
+  return NextResponse.json({ data: data ?? [] }, {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
+  });
 }
 
 export async function POST(

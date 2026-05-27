@@ -1,5 +1,3 @@
-'use client';
-
 import AdminLayout from '@/components/AdminLayout';
 import { ToastProvider } from '@/components/ui/Toast';
 

@@ -1,23 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { getSecret } from '@/lib/secret-registry';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 const DEFAULT_LOCATIONS = ['부산', '인천', '청주', '대구', '무안', '기타']
   .map((name, i) => ({ id: `default-${i}`, name, is_active: true }));
 
-function getSupabase() {
-  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
-  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY') ?? getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
-
 // GET /api/departing-locations
 export async function GET() {
-  const sb = getSupabase();
-  if (!sb) return NextResponse.json({ locations: DEFAULT_LOCATIONS });
+  if (!isSupabaseConfigured) return NextResponse.json({ locations: DEFAULT_LOCATIONS });
 
-  const { data, error } = await sb
+  const { data, error } = await supabaseAdmin
     .from('departing_locations')
     .select('id, name, is_active')
     .order('name');
@@ -36,13 +27,12 @@ export async function GET() {
 
 // POST /api/departing-locations — 신규 추가
 export async function POST(req: NextRequest) {
-  const sb = getSupabase();
   const { name } = await req.json() as { name: string };
   if (!name?.trim()) return NextResponse.json({ error: '이름이 필요합니다.' }, { status: 400 });
-  if (!sb) {
+  if (!isSupabaseConfigured) {
     return NextResponse.json({ location: { id: `temp-${Date.now()}`, name: name.trim(), is_active: true } });
   }
-  const { data, error } = await sb
+  const { data, error } = await supabaseAdmin
     .from('departing_locations')
     .upsert({ name: name.trim(), is_active: true }, { onConflict: 'name' })
     .select('id, name, is_active')
@@ -56,8 +46,7 @@ export async function POST(req: NextRequest) {
 // PATCH /api/departing-locations — 이름 수정 또는 is_active 토글
 // Body: { id, name } | { id, is_active }
 export async function PATCH(req: NextRequest) {
-  const sb = getSupabase();
-  if (!sb) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
   const { id, is_active, name } = await req.json() as {
     id: string; is_active?: boolean; name?: string;
@@ -66,7 +55,7 @@ export async function PATCH(req: NextRequest) {
 
   if (name !== undefined) {
     if (!name.trim()) return NextResponse.json({ error: '이름이 비어있습니다.' }, { status: 400 });
-    const { data, error } = await sb
+    const { data, error } = await supabaseAdmin
       .from('departing_locations')
       .update({ name: name.trim() })
       .eq('id', id)
@@ -79,7 +68,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof is_active !== 'boolean') {
     return NextResponse.json({ error: 'is_active(boolean) 또는 name이 필요합니다.' }, { status: 400 });
   }
-  const { data, error } = await sb
+  const { data, error } = await supabaseAdmin
     .from('departing_locations')
     .update({ is_active })
     .eq('id', id)

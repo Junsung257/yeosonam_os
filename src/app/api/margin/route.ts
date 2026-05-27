@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
-    return NextResponse.json({ margin: data || null });
+    return NextResponse.json({ margin: data || null }, { headers: cacheHeader(60) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '조회 실패' },

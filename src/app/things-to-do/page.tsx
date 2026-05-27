@@ -58,7 +58,7 @@ async function getRegions(): Promise<RegionEntry[]> {
 }
 
 export const metadata: Metadata = {
-  title: '여행지별 가볼만한 곳 — 운영팀 검증 명소 | 여소남',
+  title: '여행지별 가볼만한 곳 — 운영팀 검증 명소',
   description: '아시아·유럽·미주 인기 여행지의 가볼만한 곳을 카테고리별로 정리. 여소남 운영팀이 직접 답사하고 검증한 명소만 모아 보여드립니다.',
   alternates: { canonical: `${BASE_URL}/things-to-do` },
 };

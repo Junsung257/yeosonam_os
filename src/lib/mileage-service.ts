@@ -248,7 +248,7 @@ export async function clawbackMileage(params: {
     return null;
   }
 
-  const originalEarned = earnedTxs.reduce((sum, tx) => sum + tx.amount, 0);
+  const originalEarned = earnedTxs.reduce((sum: number, tx: MileageTransaction) => sum + tx.amount, 0);
   const earnedTxId = earnedTxs[0].id; // 첫 번째 EARNED 트랜잭션 참조
 
   // ── 현재 잔액 확인 (이미 USED된 경우 가용분만 회수) ────────

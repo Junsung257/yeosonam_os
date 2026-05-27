@@ -67,6 +67,8 @@ export async function GET(request: NextRequest) {
       algorithm: usedAlgorithm,
       count: recommendations.length,
       recommendations,
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600' },
     });
   } catch (error) {
     console.error('[Recommendations] 오류:', error);

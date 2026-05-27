@@ -11,14 +11,10 @@ Allow: /influencer/
 Allow: /concierge
 Allow: /group-inquiry
 
-# API 전체 차단 — 함수 호출 낭비 방지
+# SEO 관련 차단
 Disallow: /api/
-
-# 어드민 차단
 Disallow: /admin/
 Disallow: /m/admin/
-
-# 내부 경로 차단
 Disallow: /embed/
 Disallow: /share/
 Disallow: /r/
@@ -27,5 +23,12 @@ Disallow: /rfq/
 Disallow: /free-travel/
 Disallow: /partner-apply/
 Disallow: /review/
+Disallow: /register
+Disallow: /login
+Disallow: /legal/
+Disallow: /tenant/
+Disallow: /_next/
+
+Crawl-Delay: 10
 
 Sitemap: https://www.yeosonam.com/sitemap.xml

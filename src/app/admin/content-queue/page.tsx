@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { useToast } from '@/components/ui/Toast';
-import { marked } from 'marked';
 import Link from 'next/link';
 import { fmtDateISO } from '@/lib/admin-utils';
 import ContentSubNav from '../content-hub/ContentSubNav';
@@ -62,6 +61,12 @@ export default function ContentQueuePage() {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const { toast: _t } = useToast();
   const showToast = (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|발행/.test(msg) ? 'success' : /필수|선택/.test(msg) ? 'warning' : 'info');
+
+  // marked 동적 임포트 (초기 번들 경량화)
+  const markedRef = useRef<any>(null);
+  useEffect(() => {
+    import('marked').then(m => { markedRef.current = m; });
+  }, []);
 
   // 인라인 편집 상태
   const [editSlug, setEditSlug] = useState('');
@@ -317,7 +322,7 @@ export default function ContentQueuePage() {
                     __html: DOMPurify.sanitize(
                       /<[a-z][\s\S]*>/i.test(selectedItem.blog_html)
                         ? selectedItem.blog_html
-                        : marked.parse(selectedItem.blog_html) as string,
+                        : (markedRef.current?.marked.parse(selectedItem.blog_html) as string ?? selectedItem.blog_html),
                     ),
                   }} />
               ) : (

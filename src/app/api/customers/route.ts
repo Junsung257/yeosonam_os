@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/customer-name';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
       .or(`phone.eq.${safePhone || normalized},phone.eq.${normalized}`)
       .is('deleted_at', null)
       .limit(1);
-    return NextResponse.json({ customers: data || [] });
+    return NextResponse.json({ customers: data || [] }, { headers: cacheHeader(60) });
   }
 
   // 상세 조회 + 목록 조회 — admin only
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   if (id) {
     const customer = await getCustomerById(id);
-    return NextResponse.json({ customer });
+    return NextResponse.json({ customer }, { headers: cacheHeader(60) });
   }
 
   const page        = parseInt(searchParams.get('page') || '1');
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
   const status      = searchParams.get('status') || undefined;
 
   const result = await getCustomers({ search, page, limit, sortBy, sortDir, trashed, minSales, maxSales, minBookings, maxBookings, grade, status });
-  return NextResponse.json({ customers: result.data, count: result.count, totalPages: result.totalPages, page });
+  return NextResponse.json({ customers: result.data, count: result.count, totalPages: result.totalPages, page }, { headers: cacheHeader(60) });
 }
 
 export async function POST(request: NextRequest) {

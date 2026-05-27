@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { extractPrimaryName } from '@/lib/customer-name';
 import { fmt만, fmtDate, fmtMonthDay, fmtMonthDayTime, getBalance, nameSim } from '@/lib/admin-utils';
-import PaymentCommandBar, { type PaymentCommandBarHandle } from './_components/PaymentCommandBar';
+import type { PaymentCommandBarHandle } from './_components/PaymentCommandBar';
+
+const PaymentCommandBar = dynamic(() => import('./_components/PaymentCommandBar'), { ssr: false });
 import SettlementBundleModal from './_components/SettlementBundleModal';
 import AutoSuggestChip from './_components/AutoSuggestChip';
 import LedgerStatusChip from './_components/LedgerStatusChip';

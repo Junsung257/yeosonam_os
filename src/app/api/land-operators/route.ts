@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { getSecret } from '@/lib/secret-registry';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // 기본 랜드사 목록 (land_operators 테이블이 없을 때 폴백)
 const DEFAULT_OPERATORS = [
@@ -9,19 +8,11 @@ const DEFAULT_OPERATORS = [
   '직접 진행', '기타',
 ].map((name, i) => ({ id: `default-${i}`, name, contact: null, regions: [] as string[], is_active: true }));
 
-function getSupabase() {
-  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
-  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY') ?? getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
-
 // GET /api/land-operators — 전체 목록 반환 (is_active 포함)
 export async function GET() {
-  const sb = getSupabase();
-  if (!sb) return NextResponse.json({ operators: DEFAULT_OPERATORS });
+  if (!isSupabaseConfigured) return NextResponse.json({ operators: DEFAULT_OPERATORS });
 
-  const { data, error } = await sb
+  const { data, error } = await supabaseAdmin
     .from('land_operators')
     .select('id, name, contact, regions, is_active, aliases')
     .order('name');
@@ -47,7 +38,6 @@ export async function GET() {
 // POST /api/land-operators — 신규 랜드사 DB Insert + ID 반환
 // 트랜잭션: 이미 존재하면 Upsert (중복 방지)
 export async function POST(req: NextRequest) {
-  const sb = getSupabase();
   const body = await req.json();
   const { name, contact, regions } = body as { name: string; contact?: string; regions?: string[] };
 
@@ -56,14 +46,14 @@ export async function POST(req: NextRequest) {
   }
 
   // DB 없으면 임시 ID로 응답 (프론트 로직 중단 방지)
-  if (!sb) {
+  if (!isSupabaseConfigured) {
     return NextResponse.json({
       operator: { id: `temp-${Date.now()}`, name: name.trim(), contact: contact ?? null, regions: regions ?? [], is_active: true },
     });
   }
 
   // Upsert: 동일 name이 있으면 기존 레코드 반환, 없으면 신규 Insert
-  const { data, error } = await sb
+  const { data, error } = await supabaseAdmin
     .from('land_operators')
     .upsert({ name: name.trim(), contact: contact ?? null, regions: regions ?? [], is_active: true }, { onConflict: 'name' })
     .select('id, name, contact, regions, is_active')
@@ -83,8 +73,7 @@ export async function POST(req: NextRequest) {
 // PATCH /api/land-operators — Soft Delete / 복구 / 이름·연락처 수정
 // Body: { id, is_active } | { id, name, contact }
 export async function PATCH(req: NextRequest) {
-  const sb = getSupabase();
-  if (!sb) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
   const body = await req.json();
   const { id, is_active, name, contact } = body as {
@@ -96,7 +85,7 @@ export async function PATCH(req: NextRequest) {
   // 이름/연락처 수정
   if (name !== undefined) {
     if (!name.trim()) return NextResponse.json({ error: '이름이 비어있습니다.' }, { status: 400 });
-    const { data, error } = await sb
+    const { data, error } = await supabaseAdmin
       .from('land_operators')
       .update({ name: name.trim(), contact: contact ?? null })
       .eq('id', id)
@@ -111,7 +100,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'is_active(boolean) 또는 name이 필요합니다.' }, { status: 400 });
   }
 
-  const { data, error } = await sb
+  const { data, error } = await supabaseAdmin
     .from('land_operators')
     .update({ is_active })
     .eq('id', id)

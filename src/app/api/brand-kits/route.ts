@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { cacheHeader } from '@/lib/api-response';
 
 // ── GET /api/brand-kits ──────────────────────────────────────────────────────
 // 브랜드킷 목록 조회 (관리자용: 모든 status 포함 / 공개용: 활성만)
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ brand_kits: [] });
+    return NextResponse.json({ brand_kits: [] }, { headers: cacheHeader(3600) });
   }
 
   try {
@@ -30,10 +31,10 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
 
-    return NextResponse.json({ brand_kits: data ?? [] });
+    return NextResponse.json({ brand_kits: data ?? [] }, { headers: cacheHeader(3600) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : '조회 실패';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500, headers: cacheHeader(3600) });
   }
 }
 

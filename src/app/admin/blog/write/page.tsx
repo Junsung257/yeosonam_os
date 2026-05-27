@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { calculateSeoScore, getSeoGrade } from '@/lib/seo-scorer';
 import { ANGLE_PRESETS, ANGLE_SUB_KEYWORDS, type AngleType } from '@/lib/content-generator';
@@ -65,12 +64,20 @@ export default function BlogWritePage() {
       .catch(() => {});
   }, []);
 
+  // marked 동적 임포트 (초기 번들 경량화)
+  const markedRef = useRef<any>(null);
+  useEffect(() => {
+    import('marked').then(m => { markedRef.current = m; });
+  }, []);
+
   // 미리보기 HTML
   const previewHtml = useMemo(() => {
     if (!blogHtml) return '';
     try {
       const cleaned = blogHtml.replace(/\*\*([^*\n\[]+?)\*\*/g, (_m, inner) => inner);
-      const html = /<[a-z][\s\S]*>/i.test(cleaned) ? cleaned : marked.parse(cleaned) as string;
+      const m = markedRef.current;
+      if (!m) return cleaned;
+      const html = /<[a-z][\s\S]*>/i.test(cleaned) ? cleaned : m.marked.parse(cleaned) as string;
       return DOMPurify.sanitize(html);
     } catch { return ''; }
   }, [blogHtml]);

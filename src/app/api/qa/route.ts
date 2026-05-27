@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { saveInquiry, saveAIResponse, getInquiries, isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { analyzeRecommendation, analyzeComparison, getConsultationAdvice } from '@/lib/ai-analyst';
 import { AIModel } from '@/lib/ai';
+import { cacheHeader } from '@/lib/api-response';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.' },
-      { status: 500 }
+      { status: 500, headers: cacheHeader(120) }
     );
   }
 
@@ -24,12 +25,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       inquiries,
       count: inquiries.length,
-    });
+    }, { headers: cacheHeader(120) });
   } catch (error) {
     console.error('Q&A 조회 오류:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '조회에 실패했습니다.' },
-      { status: 500 }
+      { status: 500, headers: cacheHeader(120) }
     );
   }
 }

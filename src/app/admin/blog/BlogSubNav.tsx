@@ -1,5 +1,3 @@
-'use client';
-
 import SubNav from '@/components/admin/SubNav';
 
 const BLOG_TABS = [

@@ -13,6 +13,8 @@ import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
 //   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
@@ -86,11 +88,11 @@ export async function generateMetadata({
     .single();
 
   // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
-  if (!data) return { title: '상품 상세 | 여소남' };
+  if (!data) return { title: '상품 상세' };
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
   if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
-    return { title: '상품 상세 | 여소남', robots: { index: false, follow: false } };
+    return { title: '상품 상세', robots: { index: false, follow: false } };
   }
 
   return {

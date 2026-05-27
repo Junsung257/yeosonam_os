@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import Papa from 'papaparse';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
@@ -30,6 +29,12 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
   const [importResult, setImportResult] = useState('');
   const [sortBy, setSortBy] = useState<'ctr' | 'conversions' | 'spend'>('ctr');
 
+  // papaparse 동적 임포트 (초기 번들 경량화)
+  const papaRef = useRef<any>(null);
+  useEffect(() => {
+    import('papaparse').then(m => { papaRef.current = m.default ?? m; });
+  }, []);
+
   // 초기 로드 (localStorage)
   useEffect(() => {
     setRows(getPerformanceData());
@@ -46,10 +51,17 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
     setImporting(true);
     setImportResult('');
 
+    const Papa = papaRef.current;
+    if (!Papa) {
+      setImportResult('CSV 파서 로딩 중...');
+      setImporting(false);
+      return;
+    }
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: (results: { data: Record<string, string>[] }) => {
         const parsed: AdPerformanceRow[] = [];
         let skipped = 0;
 

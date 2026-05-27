@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { cacheHeader } from '@/lib/api-response';
 
 export async function GET(req: NextRequest) {
   const sb = getSupabase();
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
           review_submitted: false,
         },
       ],
-    });
+    }, { headers: cacheHeader(120) });
   }
 
   // 실제 구현: auth.uid()로 customers.id를 먼저 조회한 후 travel history 조회
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) {
-      return NextResponse.json({ histories: [] });
+      return NextResponse.json({ histories: [] }, { headers: cacheHeader(120) });
     }
 
     // auth user의 phone 기준으로 customers 테이블 조회
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!customerId) {
-      return NextResponse.json({ histories: [] });
+      return NextResponse.json({ histories: [] }, { headers: cacheHeader(120) });
     }
 
     const { data } = await sb
@@ -84,8 +85,8 @@ export async function GET(req: NextRequest) {
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false });
 
-    return NextResponse.json({ histories: data ?? [] });
+    return NextResponse.json({ histories: data ?? [] }, { headers: cacheHeader(120) });
   } catch {
-    return NextResponse.json({ histories: [] });
+    return NextResponse.json({ histories: [] }, { headers: cacheHeader(120) });
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
         withoutContent: gaps.length - withContent,
         highPriority: gaps.filter(g => g.content_count === 0 && g.bookings > 0).length,
       },
-    });
+    }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }

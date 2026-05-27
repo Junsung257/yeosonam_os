@@ -7,10 +7,14 @@ import dynamic from 'next/dynamic';
 
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false });
 const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'), { ssr: false });
+const LayoutTrackers = dynamic(() => import('@/components/LayoutTrackers'), { ssr: false });
+const JarvisFloatingWidget = dynamic(() => import('@/components/JarvisFloatingWidget'), { ssr: false });
 
 export default function LayoutClientWidgets() {
   return (
     <>
+      <LayoutTrackers />
+      <JarvisFloatingWidget />
       <ChatWidget />
       <BottomTabBar />
     </>

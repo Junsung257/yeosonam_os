@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 async function requireAdminUser(request: NextRequest): Promise<string | null> {
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
       .order('key');
 
     if (error) throw error;
-    return NextResponse.json({ data });
+    return NextResponse.json({ data }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '조회 실패' },

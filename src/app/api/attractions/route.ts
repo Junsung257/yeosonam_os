@@ -65,14 +65,23 @@ export async function GET(request: NextRequest) {
       if (error) throw error;
       allData = data || [];
     } else {
-      // 페이지네이션 루프 — 1000건 단위로 전체 조회
+      // 페이지네이션 루프 → head count + 단일 range 쿼리로 최적화
       const PAGE = 1000;
-      for (let from = 0; from < 100000; from += PAGE) {
-        const { data, error } = await baseQuery().range(from, from + PAGE - 1);
+      // 먼저 head count로 전체 건수 조회 (baseQuery와 동일한 필터 적용)
+      let countQuery = supabaseAdmin.from('attractions').select('id', { count: 'exact', head: true });
+      if (!includeInactive) countQuery = countQuery.eq('is_active', true);
+      if (search) countQuery = countQuery.ilike('name', `%${search}%`);
+      if (country) countQuery = countQuery.eq('country', country);
+      if (region) countQuery = countQuery.eq('region', region);
+      if (badge_type) countQuery = countQuery.eq('badge_type', badge_type);
+      const { count: totalCount, error: countErr } = await countQuery;
+      if (countErr) throw countErr;
+      const total = totalCount ?? 0;
+      if (total > 0) {
+        // 단일 range 쿼리로 전체 조회 (최대 5000건 안전 제한)
+        const { data, error } = await baseQuery().range(0, Math.min(total, 5000) - 1);
         if (error) throw error;
-        if (!data || data.length === 0) break;
-        allData.push(...data);
-        if (data.length < PAGE) break; // 마지막 페이지
+        allData = data || [];
       }
     }
 

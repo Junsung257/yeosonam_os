@@ -15,6 +15,7 @@
  * 데이터 소스: render-contract.ts 의 CanonicalView.affiliateView 그대로 소비.
  */
 
+import Image from 'next/image';
 import type { AffiliateCoBrand } from '@/lib/render-contract';
 
 interface Props {
@@ -45,11 +46,13 @@ export function CoBrandFooter({ affiliate, variant = 'full', className = '' }: P
 
       <div className="flex items-center gap-3">
         {affiliate.affiliate_logo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={affiliate.affiliate_logo_url}
             alt={affiliate.affiliate_name}
+            width={40}
+            height={40}
             className="w-10 h-10 rounded-full object-cover bg-slate-100"
+            unoptimized
           />
         ) : (
           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">

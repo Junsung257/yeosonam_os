@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     'customer' | 'land_agency' | 'admin';
 
   if (!bookingId && !rfqId) {
-    return NextResponse.json({ error: 'bookingId 또는 rfqId 가 필요합니다' }, { status: 400 });
+    return NextResponse.json({ error: 'bookingId 또는 rfqId 가 필요합니다' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (!isSupabaseConfigured) {
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ? c.raw_message
         : resolveMessage(c.raw_message, c.masked_message, 'DRAFT'),
     }));
-    return NextResponse.json({ chats: visible, mock: true });
+    return NextResponse.json({ chats: visible, mock: true }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   const chats = await getSecureChats({ bookingId, rfqId, receiverType: viewAs });
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         : c.masked_message,
   }));
 
-  return NextResponse.json({ chats: result, count: result.length });
+  return NextResponse.json({ chats: result, count: result.length }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 // ── POST /api/secure-chat ─────────────────────────────────────

@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     if (slug) {
       const { data, error } = await supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)')
+        .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)')
         .eq('slug', slug)
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -73,7 +73,9 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: '글을 찾을 수 없습니다' }, { status: 404 });
       }
 
-      return NextResponse.json({ post: data[0] });
+      return NextResponse.json({ post: data[0] }, {
+        headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' },
+      });
     }
 
     // 목록 조회

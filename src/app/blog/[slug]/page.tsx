@@ -3,8 +3,6 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import DOMPurify from 'isomorphic-dompurify';
-import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import BlogTracker from '@/components/BlogTracker';
 import TableOfContents from '@/components/blog/TableOfContents';
@@ -539,11 +537,13 @@ export default async function BlogDetailPage({
     const mdAccented = applyMarkdownAccents(
       post.blog_html.replace(/\*\*([^*\n[]+?)\*\*/g, (_m, inner) => inner),
     );
+    const { marked } = await import('marked');
     const rawHtml = /<[a-z][\s\S]*>/i.test(post.blog_html)
       ? applyMarkdownAccents(post.blog_html)
       : (marked.parse(mdAccented) as string);
     // 숫자+단위 자동 오렌지 볼드
     const accented = applyHtmlAccents(rawHtml);
+    const { default: DOMPurify } = await import('isomorphic-dompurify');
     const sanitized = DOMPurify.sanitize(accented, {
       ADD_TAGS: ['mark', 'aside'],
       ADD_ATTR: ['class'],

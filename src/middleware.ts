@@ -347,7 +347,24 @@ export async function middleware(request: NextRequest) {
     return response || NextResponse.next();
   }
 
-  // ── 3-1. 개발 전용: 어드민 페이지 + API 우회 쿠키 허용 (프로덕션 완전 차단) ──
+  // ── 3-1. /api/admin/* — x-admin-token 헤더 검증 (서버-to-서버 호출용) ──────
+  // 크론 작업 등이 Supabase 세션 없이 ADMIN_API_TOKEN으로 인증할 수 있게 함.
+  // 토큰이 있으면 검증 후 통과/거부. 토큰이 없으면 아래 Supabase JWT 인증으로 fall through.
+  if (pathname.startsWith('/api/admin/')) {
+    const adminTokenHeader = request.headers.get('x-admin-token');
+    if (adminTokenHeader) {
+      const { isValidAdminApiToken } = await import('@/lib/api-auth');
+      if (isValidAdminApiToken(request)) {
+        return response || NextResponse.next();
+      }
+      return NextResponse.json(
+        { code: 'FORBIDDEN', error: '유효하지 않은 관리자 토큰입니다.' },
+        { status: 403 },
+      );
+    }
+  }
+
+  // ── 3-2. 개발 전용: 어드민 페이지 + API 우회 쿠키 허용 (프로덕션 완전 차단) ──
   // Dev에서 ys-dev-admin 쿠키가 있으면 어드민 페이지뿐 아니라 그 페이지가 호출하는 API도 통과시킴
   // (admin 페이지 클라이언트 fetch가 /api/* 로 가기 때문)
   if (isDev && request.cookies.get('ys-dev-admin')?.value === '1') {
@@ -408,6 +425,6 @@ export const config = {
   matcher: [
     // 세션 쿠키 + 인증이 필요한 모든 페이지 (정적 파일 + SEO 파일 + Next.js 데이터 fetch 제외)
     // _next/data: 클라이언트 사이드 페이지 이동 시 Next.js가 자동 fetch — 미들웨어 통과 시 Edge Request 2배
-    '/((?!_next/static|_next/data|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|eot|map|txt)).*)',
+    '/((?!_next/static|_next/data|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|mjs|woff2?|ttf|eot|map|txt|json)).*)',
   ],
 };

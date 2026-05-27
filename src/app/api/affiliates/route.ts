@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { encrypt, decrypt, maskBankInfo } from '@/lib/encryption';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
           bank_info: bankInfo,
           grade_label: GRADE_LABELS[data.grade] || '브론즈',
         },
-      });
+      }, { headers: cacheHeader(60) });
     }
 
     // 목록 조회
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
           typeof g === 'number' && g >= 1 && g <= 5 ? GRADE_LABELS[g] : undefined;
         return { ...a, grade_label: gradeLabel || '브론즈' };
       }),
-    });
+    }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }

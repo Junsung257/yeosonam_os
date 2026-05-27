@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   description: '여소남이 운영팀 검증으로 엄선한 여행지별 완벽 가이드 — 관광지·일정·준비물·계절·비자까지 한 곳에서.',
   alternates: { canonical: `${BASE_URL}/destinations` },
   openGraph: {
-    title: '여행지 완벽 가이드 | 여소남',
+    title: '여행지 완벽 가이드',
     description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
     url: `${BASE_URL}/destinations`,
     type: 'website',

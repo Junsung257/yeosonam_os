@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { revalidatePath } from 'next/cache';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -42,7 +43,7 @@ const getHandler = async (request: NextRequest) => {
       queue: data || [],
       total: count ?? 0,
       pending_count: pendingCount ?? 0,
-    });
+    }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }

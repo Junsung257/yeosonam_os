@@ -12,10 +12,10 @@ import { type Provider } from '@/lib/tenant-token-store';
 const ALLOWED_PROVIDERS = ['google_ads', 'meta', 'naver', 'google_analytics', 'kakao_biz'] as const;
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ tokens: [] });
+  if (!isSupabaseConfigured) return NextResponse.json({ tokens: [] }, { headers: { 'Cache-Control': 'no-store' } });
 
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
-  if (!tenantId) return NextResponse.json({ error: 'tenant_id 필요' }, { status: 400 });
+  if (!tenantId) return NextResponse.json({ error: 'tenant_id 필요' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
 
   const { data, error } = await supabaseAdmin
     .from('tenant_api_tokens')
@@ -23,10 +23,10 @@ export async function GET(request: NextRequest) {
     .eq('tenant_id', tenantId)
     .order('provider');
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
 
   // 복호화 없이 메타데이터만 반환 — access_token 노출 금지
-  return NextResponse.json({ tokens: data ?? [] });
+  return NextResponse.json({ tokens: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(request: NextRequest) {

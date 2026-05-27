@@ -30,6 +30,9 @@ yarn-error.log*
 # Local env files
 .env*.local
 
+# Vercel env pull 결과 (로컬 개발용, git에 커밋 금지)
+.env.vercel
+
 # Google Service Account 키 / 기타 cloud credentials — 절대 git에 들어가면 안 됨
 *-service-account*.json
 service-account*.json
@@ -162,3 +165,5 @@ scripts/gsc-owner-delegate.html
 
 dev-server.log
 .gstack/
+
+.vercel

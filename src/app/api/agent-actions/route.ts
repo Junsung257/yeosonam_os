@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cacheHeader } from '@/lib/api-response'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { isValidTransition } from '@/lib/agent-action-machine'
 import { executeAction } from '@/lib/agent-action-executor'
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
       total: count ?? 0,
       page,
       limit,
-    })
+    }, { headers: cacheHeader(60) })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '조회 실패' },

@@ -3,6 +3,19 @@ import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
 
 const { SETTLEMENT_MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
+/** 계산 함수용 입력 타입 */
+export interface BookingForSettlement {
+  id: string;
+  influencer_commission: number | null;
+  return_date: string | null;
+  self_referral_flag: boolean | null;
+}
+
+export interface PendingAdjustment {
+  id: string;
+  amount: number | string | null;
+}
+
 export interface SettlementDraft {
   affiliate_id: string;
   affiliate_name: string;
@@ -40,6 +53,66 @@ export function resolvePreviousPeriod(today = new Date()): {
   const periodEnd = new Date(Date.UTC(prevYear, prevMonth, 0)).toISOString().split('T')[0];
   const todayIso = today.toISOString().split('T')[0];
   return { period, periodStart, periodEnd, todayIso };
+}
+
+/**
+ * 순수 계산 함수 — DB 호출 없이 입력값만으로 정산 기안을 계산.
+ *
+ * @param bookings      확정 예약 목록 (수수료·귀국일·셀레퍼럴 포함)
+ * @param prevCarryover 이전 달 이월 잔액
+ * @param pendingAdjustments  미처리 조정액 목록
+ * @param affiliate     제휴사 정보
+ * @param period        정산 대상 월 (YYYY-MM)
+ * @param todayIso      기준일 (YYYY-MM-DD)
+ */
+export function computeSettlementDraft(
+  bookings: BookingForSettlement[],
+  prevCarryover: number,
+  pendingAdjustments: PendingAdjustment[],
+  affiliate: { id: string; name: string; payout_type: string },
+  period: string,
+  todayIso: string,
+): SettlementDraft {
+  const qualifiedBookings = bookings.filter(
+    (b) => b.return_date && b.return_date <= todayIso && !b.self_referral_flag,
+  );
+  const count = qualifiedBookings.length;
+  const totalAmount = qualifiedBookings.reduce(
+    (s, b) => s + (b.influencer_commission ?? 0),
+    0,
+  );
+  const adjustmentSum = pendingAdjustments.reduce(
+    (s, a) => s + (Number(a.amount) || 0),
+    0,
+  );
+  const adjustmentIds = pendingAdjustments.map((a) => a.id);
+
+  const isQualified = count >= SETTLEMENT_MIN_BOOKINGS && totalAmount >= SETTLEMENT_MIN_AMOUNT;
+  const finalTotal = totalAmount + prevCarryover + adjustmentSum;
+  const taxDeduction =
+    isQualified && affiliate.payout_type === 'PERSONAL'
+      ? Math.round(finalTotal * PERSONAL_TAX_RATE)
+      : 0;
+  const finalPayout = isQualified ? finalTotal - taxDeduction : 0;
+
+  return {
+    affiliate_id: affiliate.id,
+    affiliate_name: affiliate.name,
+    period,
+    qualified_booking_count: count,
+    total_amount: totalAmount,
+    carryover_balance: isQualified
+      ? prevCarryover + adjustmentSum
+      : prevCarryover + totalAmount + adjustmentSum,
+    final_total: isQualified ? finalTotal : 0,
+    tax_deduction: taxDeduction,
+    final_payout: finalPayout,
+    booking_ids: qualifiedBookings.map((b) => b.id),
+    payout_type: affiliate.payout_type,
+    qualified: isQualified,
+    adjustment_amount: adjustmentSum,
+    adjustment_ids: adjustmentIds,
+  };
 }
 
 export async function calculateDraftForAffiliate(
@@ -89,53 +162,16 @@ export async function calculateDraftForAffiliate(
   if (prevSettlementRes.error) throw new Error(`settlement prev-carryover query failed: ${prevSettlementRes.error.message}`);
   if (pendingAdjustmentsRes.error) throw new Error(`settlement adjustments query failed: ${pendingAdjustmentsRes.error.message}`);
 
-  const bookings = bookingsRes.data;
-  const prevSettlement = prevSettlementRes.data;
-  const pendingAdjustments = pendingAdjustmentsRes.data;
+  const prevCarryover = (prevSettlementRes.data as any)?.carryover_balance ?? 0;
 
-  const qualifiedBookings = (bookings || []).filter((b: any) =>
-    b.return_date && b.return_date <= todayIso && !b.self_referral_flag,
-  );
-  const count = qualifiedBookings.length;
-  const totalAmount = qualifiedBookings.reduce(
-    (s: number, b: any) => s + (b.influencer_commission || 0),
-    0,
-  );
-
-  const prevCarryover = (prevSettlement as any)?.carryover_balance ?? 0;
-  const adjustmentSum = (pendingAdjustments || []).reduce(
-    (s: number, a: any) => s + (Number(a.amount) || 0),
-    0,
-  );
-  const adjustmentIds = (pendingAdjustments || []).map((a: any) => a.id);
-
-  const isQualified = count >= SETTLEMENT_MIN_BOOKINGS && totalAmount >= SETTLEMENT_MIN_AMOUNT;
-  // 조정액(음수=clawback)을 finalTotal에 반영. carryover는 이미 prev 잔액 + 이번달 미달분 처리.
-  const finalTotal = totalAmount + prevCarryover + adjustmentSum;
-  const taxDeduction =
-    isQualified && affiliate.payout_type === 'PERSONAL'
-      ? Math.round(finalTotal * PERSONAL_TAX_RATE)
-      : 0;
-  const finalPayout = isQualified ? finalTotal - taxDeduction : 0;
-
-  return {
-    affiliate_id: affiliate.id,
-    affiliate_name: affiliate.name,
+  return computeSettlementDraft(
+    (bookingsRes.data ?? []) as BookingForSettlement[],
+    prevCarryover,
+    (pendingAdjustmentsRes.data ?? []) as PendingAdjustment[],
+    affiliate,
     period,
-    qualified_booking_count: count,
-    total_amount: totalAmount,
-    carryover_balance: isQualified
-      ? prevCarryover + adjustmentSum
-      : prevCarryover + totalAmount + adjustmentSum,
-    final_total: isQualified ? finalTotal : 0,
-    tax_deduction: taxDeduction,
-    final_payout: finalPayout,
-    booking_ids: qualifiedBookings.map((b: any) => b.id),
-    payout_type: affiliate.payout_type,
-    qualified: isQualified,
-    adjustment_amount: adjustmentSum,
-    adjustment_ids: adjustmentIds,
-  };
+    todayIso,
+  );
 }
 
 export async function applySettlementApproval(draft: SettlementDraft): Promise<void> {

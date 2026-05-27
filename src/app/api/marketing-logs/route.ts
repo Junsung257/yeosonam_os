@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // ─── URL 검증 ─────────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ logs: data });
+  return NextResponse.json({ logs: data }, { headers: cacheHeader(60) });
 }
 
 // ─── POST ─────────────────────────────────────────────────────────────────────

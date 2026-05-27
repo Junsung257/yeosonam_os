@@ -12,8 +12,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-export const dynamic = 'force-dynamic';
-
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
@@ -82,7 +80,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ reviews: data ?? [] });
+    return NextResponse.json({ reviews: data ?? [] }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '조회 실패' },

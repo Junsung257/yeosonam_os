@@ -18,13 +18,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const pkg = await getPackage(id);
-  if (!pkg) return { title: '상품을 찾을 수 없습니다 | 여소남' };
+  if (!pkg) return { title: '상품을 찾을 수 없습니다' };
 
   // 제목: 랜드사명 제거, 여소남 브랜딩
   const rawTitle = (pkg.title ?? '여행 상품') as string;
   const title = rawTitle
     .replace(/투어폰|랜드부산|더투어|투어비|현지투어/g, '')
-    .trim() + ' | 여소남';
+    .trim();
 
   // 설명: 핵심 정보 조합
   const parts: string[] = [];

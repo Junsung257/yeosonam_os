@@ -8,7 +8,7 @@ const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, P
 // GET: 정산 목록 조회
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   }
   const { searchParams } = new URL(request.url);
   const affiliateId = searchParams.get('affiliateId');
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // UUID 형식 사전 검증 — 잘못된 affiliateId 는 빈 결과 반환 (500 회피)
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (affiliateId && !UUID_RE.test(affiliateId)) {
-      return NextResponse.json({ settlements: [] });
+      return NextResponse.json({ settlements: [] }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     let query = supabase
@@ -34,9 +34,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ settlements: data || [] });
+    return NextResponse.json({ settlements: data || [] }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
   }
 }
 

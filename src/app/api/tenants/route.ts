@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { listTenants, createTenant, isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ tenants: [] });
   const tenants = await listTenants();
-  return NextResponse.json({ tenants });
+  return NextResponse.json({ tenants }, { headers: cacheHeader(60) });
 }
 
 export async function POST(request: NextRequest) {

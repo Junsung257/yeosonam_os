@@ -7,6 +7,7 @@
  * - 드래그 리스케줄 지원을 위한 scheduled_for 필드
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -267,7 +268,7 @@ export async function GET(request: NextRequest) {
         .map(([_, v]) => v)
         .sort((a, b) => a.date.localeCompare(b.date)),
       scheduled: scheduledItems.sort((a, b) => a.scheduled_for.localeCompare(b.scheduled_for)),
-    });
+    }, { headers: cacheHeader(60) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });

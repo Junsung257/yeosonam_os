@@ -14,7 +14,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ city: st
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+  return NextResponse.json({ data }, {
+    headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },
+  });
 }
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ city: string }> }) {

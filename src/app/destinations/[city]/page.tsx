@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import DOMPurify from 'isomorphic-dompurify';
-import { marked } from 'marked';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { applyMarkdownAccents, applyHtmlAccents } from '@/lib/blog-accent';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -31,7 +29,7 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
       .not('destination', 'is', null)
       .limit(2000);
     const unique: string[] = [...new Set(((data ?? []) as Array<{ destination: string | null }>).map((r) => r.destination ?? '').filter((d): d is string => d.length > 0))];
-    return unique.slice(0, 30).map((city) => ({ city }));
+    return unique.slice(0, 50).map((city) => ({ city }));
   } catch {
     return [];
   }
@@ -264,10 +262,12 @@ export async function generateMetadata({ params }: { params: Promise<{ city: str
   };
 }
 
-function renderPillarBody(md: string): string {
+async function renderPillarBody(md: string): Promise<string> {
   const accented = applyMarkdownAccents(md);
+  const { marked } = await import('marked');
   const html = marked.parse(accented) as string;
   const colored = applyHtmlAccents(html);
+  const { default: DOMPurify } = await import('isomorphic-dompurify');
   return DOMPurify.sanitize(colored, { ADD_TAGS: ['mark', 'aside'], ADD_ATTR: ['class'] });
 }
 
@@ -290,7 +290,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       .find(Boolean) ?? null;
   const heroImage = fromMeta || fromAttr;
 
-  const pillarHtml = data.pillarPost?.blog_html ? renderPillarBody(data.pillarPost.blog_html) : null;
+  const pillarHtml = data.pillarPost?.blog_html ? await renderPillarBody(data.pillarPost.blog_html) : null;
   const region = getRegionForCity(decoded);
 
   // 히어로 타이틀/설명 (destination_metadata 우선)
@@ -570,6 +570,8 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                             alt={`${decoded} ${a.name}`}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                             loading="lazy"
+                            width={400}
+                            height={300}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                         </div>
@@ -626,6 +628,8 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                           alt={p.seo_title || ''}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           loading="lazy"
+                          width={400}
+                          height={225}
                         />
                       </div>
                     ) : (

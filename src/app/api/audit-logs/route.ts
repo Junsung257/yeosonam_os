@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { logAndSanitize } from '@/lib/error-sanitizer';
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ logs: data || [] });
+    return NextResponse.json({ logs: data || [] }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json({ error: logAndSanitize('audit-logs-get', err, '조회 실패') }, { status: 500 });
   }

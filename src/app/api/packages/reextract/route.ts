@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { extractItineraryData } from '@/lib/parser';
+import { extractItineraryData } from '@/lib/parser/extract-itinerary';
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {

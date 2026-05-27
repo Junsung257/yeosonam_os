@@ -14,12 +14,10 @@ import Loading from './loading';
 //   장기 (Next.js 16 PPR stable): server searchParams + 정적 shell 양립 가능.
 
 export const metadata: Metadata = {
-  title: '패키지 상품 | 여소남',
+  title: '패키지 상품',
   description: '여소남 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지 — 확정일·요금 비교.',
   alternates: { canonical: '/packages' },
 };
-
-export const dynamic = 'force-dynamic';
 
 export default function PackagesPage() {
   // useSearchParams 사용 client component 는 Suspense boundary 필수

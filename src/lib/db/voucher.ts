@@ -4,9 +4,9 @@
  * supabase.ts god 모듈에서 분리 (2026-04-27).
  * 호출자는 기존 그대로 `@/lib/supabase` 에서 import 가능 (re-export 유지).
  */
-
 import type { VoucherData } from '../voucher-generator';
 import { getSupabase } from '../supabase';
+import { insertRow, updateRow, updateRowsWhere } from './helpers';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -51,13 +51,7 @@ export async function createSecureChat(
 ): Promise<SecureChat | null> {
   const sb = getSupabase();
   if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('secure_chats')
-    .insert(data as never)
-    .select()
-    .single();
-  if (error) { console.error('createSecureChat', error); return null; }
-  return row as SecureChat;
+  return insertRow<SecureChat>(sb, 'secure_chats', data);
 }
 
 export async function getSecureChats(params: {
@@ -81,11 +75,13 @@ export async function getSecureChats(params: {
 export async function unmaskChatsForBooking(bookingId: string): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
-  await sb
-    .from('secure_chats')
-    .update({ is_unmasked: true, unmasked_at: new Date().toISOString() } as never)
-    .eq('booking_id', bookingId)
-    .eq('is_unmasked', false);
+  await updateRowsWhere(sb, 'secure_chats', {
+    booking_id: bookingId,
+    is_unmasked: false,
+  }, {
+    is_unmasked: true,
+    unmasked_at: new Date().toISOString(),
+  });
 }
 
 // ── Voucher CRUD ────────────────────────────────────────────────
@@ -95,13 +91,7 @@ export async function createVoucher(
 ): Promise<Voucher | null> {
   const sb = getSupabase();
   if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('vouchers')
-    .insert({ ...data, updated_at: new Date().toISOString() } as never)
-    .select()
-    .single();
-  if (error) { console.error('createVoucher', error); return null; }
-  return row as Voucher;
+  return insertRow<Voucher>(sb, 'vouchers', { ...data, updated_at: new Date().toISOString() });
 }
 
 export async function getVoucher(id: string): Promise<Voucher | null> {
@@ -130,14 +120,7 @@ export async function updateVoucher(
 ): Promise<Voucher | null> {
   const sb = getSupabase();
   if (!sb) return null;
-  const { data, error } = await sb
-    .from('vouchers')
-    .update({ ...patch, updated_at: new Date().toISOString() } as never)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) { console.error('updateVoucher', error); return null; }
-  return data as Voucher;
+  return updateRow<Voucher>(sb, 'vouchers', id, patch);
 }
 
 /** 만족도 알림 대상 voucher + 고객 전화번호 */

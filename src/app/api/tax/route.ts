@@ -16,7 +16,7 @@ function monthRange(month: string): { from: string; to: string } {
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ bookings: [], kpis: {}, todos: {} });
+    return NextResponse.json({ bookings: [], kpis: {}, todos: {} }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   const month = request.nextUrl.searchParams.get('month') ??
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[세무] 조회 실패:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { headers: { 'Cache-Control': 'no-store' }, status: 500 });
   }
 
   const bookings = data ?? [];
@@ -63,5 +63,5 @@ export async function GET(request: NextRequest) {
     bookings,
     kpis: { total_price, total_cost, net_sales, vat_estimate },
     todos: { pending_transfers, not_issued_receipts },
-  });
+  }, { headers: { 'Cache-Control': 'no-store' } });
 }

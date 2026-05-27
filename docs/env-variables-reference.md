@@ -2,6 +2,14 @@
 
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
+## ⚠️ 시크릿 관리 정책 (중요)
+
+1. **실제 시크릿 값은 Vercel Environment Variables에서만 관리합니다.**
+2. `.env.prod`와 `.env.local`은 placeholder (`xxx`)만 포함합니다. git에 안전하게 커밋 가능합니다.
+3. 로컬 개발이 필요하면 `vercel env pull` (`.env.vercel` 생성) 또는 수동으로 실제 값을 채우세요.
+4. `.env.vercel`은 `.gitignore` 처리되어 git에 커밋되지 않습니다.
+5. `NEXT_PUBLIC_*` 변수는 클라이언트에 노출되는 값이므로 민감한 정보를 담지 마세요.
+
 ## 🔑 필수 (Required) — 설정 안 하면 앱 작동 불가
 
 | 키 | 용도 | 예시 |

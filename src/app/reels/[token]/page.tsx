@@ -25,10 +25,10 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps) {
   const { token } = await params;
   return {
-    title: '여행 추억 릴스 | 여소남',
+    title: '여행 추억 릴스',
     description: `여소남과 함께한 여행 추억을 공유하세요`,
     openGraph: {
-      title: '여행 추억 릴스 | 여소남',
+      title: '여행 추억 릴스',
       description: '여소남과 함께한 특별한 여행 순간들',
       url: `https://yeosonam.com/reels/${token}`,
     },

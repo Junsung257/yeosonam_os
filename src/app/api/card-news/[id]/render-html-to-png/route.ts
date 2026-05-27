@@ -82,7 +82,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       deviceScaleFactor: scale,
     });
 
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
     await page.evaluate(() => document.fonts.ready);
     await new Promise((r) => setTimeout(r, 1500));
 

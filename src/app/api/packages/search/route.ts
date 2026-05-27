@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
       products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
     }));
 
-    // 관광지 사진 — 목적지 힌트 기반 축소 조회
+    // 관광지 사진 — 지역/국가별 Map으로 O(1) 조회 (기존 O(N²) 루프 제거)
     const attractionLimit = destination || q ? 180 : 240;
     let attractionQuery = sb
       .from('attractions')
@@ -137,19 +137,44 @@ export async function GET(request: NextRequest) {
 
     const { data: attractions } = await attractionQuery;
 
+    // attractions를 region/country별 Map으로 인덱싱 (O(1) 조회)
+    const countryIndex = new Map<string, any[]>();
+    const regionIndex = new Map<string, any[]>();
+    for (const a of (attractions ?? [])) {
+      const c = (a.country || '').toLowerCase();
+      const r = (a.region || '').toLowerCase();
+      if (a.photos?.length > 0) {
+        if (c) {
+          if (!countryIndex.has(c)) countryIndex.set(c, []);
+          countryIndex.get(c)!.push(a);
+        }
+        if (r && r !== c) {
+          if (!regionIndex.has(r)) regionIndex.set(r, []);
+          regionIndex.get(r)!.push(a);
+        }
+      }
+    }
+    // 각 버킷 mention_count 내림차순 정렬 (1회)
+    for (const idx of [countryIndex, regionIndex]) {
+      for (const [, list] of idx) {
+        list.sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
+      }
+    }
+
     const _usedPhotoUrls = new Set<string>();
     const imageByPkgId: Record<string, string | null> = {};
     for (const pkg of packages) {
       let chosen: string | null = null;
       const destParts = (pkg.destination || '').split(/[\/,\s]/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-      const destAttrs = (attractions ?? [])
-        .filter((a: any) => a.photos?.length > 0 && destParts.some((p: string) =>
-          (a.region || '').includes(p) || (a.country || '').includes(p)
-        ))
-        .sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
-      for (const attr of destAttrs) {
-        const url = pickUnusedAttractionPhotoUrl(attr.photos, _usedPhotoUrls);
-        if (url) { chosen = url; break; }
+      // Map 조회로 O(1): 패키지 destination → country/region 키로 바로 찾기
+      for (const part of destParts) {
+        const partLc = part.toLowerCase();
+        const candidates = countryIndex.get(partLc) ?? regionIndex.get(partLc) ?? [];
+        for (const attr of candidates) {
+          const url = pickUnusedAttractionPhotoUrl(attr.photos, _usedPhotoUrls);
+          if (url) { chosen = url; break; }
+        }
+        if (chosen) break;
       }
       if (!chosen) {
         const thumb = (pkg as any).thumbnail_urls?.find((u: string) => u?.startsWith('http'));

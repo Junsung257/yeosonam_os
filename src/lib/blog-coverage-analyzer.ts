@@ -9,6 +9,7 @@
  * 목표: 6개월 내 모든 목적지 × 표준 정보성 N종 풀커버리지.
  */
 
+import { romanize } from './slug-utils';
 import { supabaseAdmin } from './supabase';
 
 // 목적지별 "필수 정보성 블로그" 표준 체크리스트
@@ -35,18 +36,8 @@ export interface CoverageGap {
 }
 
 function toEnglishSlug(destKr: string): string {
-  const map: Record<string, string> = {
-    '다낭': 'danang', '나트랑': 'nhatrang', '방콕': 'bangkok', '타이베이': 'taipei',
-    '도쿄': 'tokyo', '오사카': 'osaka', '후쿠오카': 'fukuoka', '삿포로': 'sapporo',
-    '홍콩': 'hongkong', '마카오': 'macau', '싱가포르': 'singapore',
-    '세부': 'cebu', '보라카이': 'boracay', '하노이': 'hanoi', '호찌민': 'hochiminh',
-    '푸켓': 'phuket', '발리': 'bali', '코타키나발루': 'kotakinabalu',
-    '장가계': 'zhangjiajie', '황산': 'huangshan', '서안': 'xian', '칭다오': 'qingdao',
-    '하얼빈': 'harbin', '상하이': 'shanghai', '베이징': 'beijing', '광저우': 'guangzhou',
-    '시안': 'xian', '후허하오터': 'hohhot',
-  };
-  const lower = destKr.toLowerCase();
-  return map[destKr] || lower.replace(/[^a-z0-9]/g, '');
+  // slug-utils.ts 의 SSOT romanize() 사용 — 별도 맵 유지 불필요
+  return romanize(destKr);
 }
 
 /**

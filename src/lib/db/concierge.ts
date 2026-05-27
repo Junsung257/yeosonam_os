@@ -9,8 +9,8 @@
  *   - src/app/api/concierge/checkout/route.ts
  *   - src/app/api/concierge/transactions/[id]/route.ts
  */
-
 import { getSupabase } from '../supabase';
+import { insertRow, updateRow, updateRowsWhere } from './helpers';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -118,20 +118,9 @@ export async function upsertCart(sessionId: string, items: CartItem[]): Promise<
   if (!sb) return null;
   const existing = await getCart(sessionId);
   if (existing) {
-    const { data } = await sb
-      .from('carts')
-      .update({ items, updated_at: new Date().toISOString() } as never)
-      .eq('id', existing.id)
-      .select()
-      .single();
-    return data as Cart | null;
+    return updateRow<Cart>(sb, 'carts', existing.id, { items: items as never });
   } else {
-    const { data } = await sb
-      .from('carts')
-      .insert({ session_id: sessionId, items } as never)
-      .select()
-      .single();
-    return data as Cart | null;
+    return insertRow<Cart>(sb, 'carts', { session_id: sessionId, items: items as never });
   }
 }
 
@@ -148,16 +137,8 @@ export async function createTransaction(data: {
 }): Promise<Transaction | null> {
   const sb = getSupabase();
   if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('transactions')
-    .insert({ ...data, status: 'PENDING', saga_log: [] } as never)
-    .select()
-    .single();
-  if (error) {
-    console.error('트랜잭션 생성 실패:', error);
-    return null;
-  }
-  return row as Transaction;
+  const sagaLog: SagaEvent[] = [];
+  return insertRow<Transaction>(sb, 'transactions', { ...data, status: 'PENDING', saga_log: sagaLog });
 }
 
 export async function updateTransaction(
@@ -166,10 +147,7 @@ export async function updateTransaction(
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
-  await sb
-    .from('transactions')
-    .update({ ...updates, updated_at: new Date().toISOString() } as never)
-    .eq('id', id);
+  await updateRow(sb, 'transactions', id, updates);
 }
 
 export async function getTransaction(
@@ -225,16 +203,7 @@ export async function createApiOrder(data: {
 }): Promise<ApiOrder | null> {
   const sb = getSupabase();
   if (!sb) return null;
-  const { data: row, error } = await sb
-    .from('api_orders')
-    .insert({ ...data, status: 'PENDING' } as never)
-    .select()
-    .single();
-  if (error) {
-    console.error('api_order 생성 실패:', error);
-    return null;
-  }
-  return row as ApiOrder;
+  return insertRow<ApiOrder>(sb, 'api_orders', { ...data, status: 'PENDING' as const });
 }
 
 export async function updateApiOrder(
@@ -243,7 +212,7 @@ export async function updateApiOrder(
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
-  await sb.from('api_orders').update(updates as never).eq('id', id);
+  await updateRow(sb, 'api_orders', id, updates);
 }
 
 export async function getApiOrdersByTransaction(transactionId: string): Promise<ApiOrder[]> {
@@ -275,8 +244,5 @@ export async function updateMockConfig(
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
-  await sb
-    .from('mock_api_configs')
-    .update({ ...updates, updated_at: new Date().toISOString() } as never)
-    .eq('api_name', apiName);
+  await updateRowsWhere(sb, 'mock_api_configs', { api_name: apiName }, updates);
 }

@@ -3,26 +3,12 @@ import localFont from 'next/font/local';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import PartytownInit from '@/components/PartytownInit';
-import MetaPixel from '@/components/MetaPixel';
-import KakaoMomentPixel from '@/components/KakaoMomentPixel';
-import MsClarity from '@/components/MsClarity';
-import GA4Tracker from '@/components/GA4Tracker';
-import TrackerBootstrap from '@/components/TrackerBootstrap';
-import JarvisFloatingWidget from '@/components/JarvisFloatingWidget';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 import LayoutClientWidgets from '@/components/LayoutClientWidgets';
-import WebVitalsReporter from '@/components/WebVitalsReporter';
-// Next 15: ChatWidget·BottomTabBar 는 ssr:false 가 필요해 client wrapper 로 분리 (LayoutClientWidgets).
-// ConsentBanner: 사장님 결정으로 미마운트 (2026-04-26). aff_ref 등 추적 쿠키는 암묵 동의로 30일 발급.
-// PIPA 2026-09 시행 후 재검토 시 src/components/ConsentBanner.tsx 를 mount 하면 됨.
 
+// Pretendard — 사용 빈도 높은 4개 weight만 우선 로드 (Light·ExtraBold는 필요 시 fallback)
 const pretendard = localFont({
   src: [
-    {
-      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Light.woff2',
-      weight: '300',
-      style: 'normal',
-    },
     {
       path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2',
       weight: '400',
@@ -43,14 +29,10 @@ const pretendard = localFont({
       weight: '700',
       style: 'normal',
     },
-    {
-      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-ExtraBold.woff2',
-      weight: '800',
-      style: 'normal',
-    },
   ],
   display: 'swap',
   variable: '--font-pretendard',
+  fallback: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
 });
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -114,8 +96,6 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: '여소남 관리',
   },
-  // 표준 PWA 메타 — Chrome/Edge가 권장. apple-mobile-web-app-capable는 deprecated 경고가
-  // 뜨지만 Safari 호환 위해 appleWebApp으로 유지하고, 표준 mobile-web-app-capable를 추가 emit.
   other: {
     'mobile-web-app-capable': 'yes',
   },
@@ -145,7 +125,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
         <link rel="dns-prefetch" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
-        {/* 사이트 전역 JSON-LD: Organization + WebSite (Google Sitelinks Search Box) */}
         <script
           suppressHydrationWarning
           type="application/ld+json"
@@ -188,16 +167,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${pretendard.className} bg-gray-50 antialiased`}>
         <PartytownInit />
-        <TrackerBootstrap />
-        <GA4Tracker />
-        <MetaPixel />
-        <KakaoMomentPixel />
-        <MsClarity />
         <AffiliateAttributionBanner />
         {children}
         <LayoutClientWidgets />
-        <JarvisFloatingWidget />
-        <WebVitalsReporter />
         <SpeedInsights />
       </body>
     </html>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import {
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
         searchParams.get('priority_min') ?? '1',
       );
       const items = await getPendingReviews({ limit, priorityMin });
-      return NextResponse.json({ queue: items });
+      return NextResponse.json({ queue: items }, { headers: cacheHeader(60) });
     }
 
     // 특정 creative 의 검토 이력
@@ -130,12 +131,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         creative: creativeResult.data,
         history,
-      });
+      }, { headers: cacheHeader(60) });
     }
 
     // 전체 큐 조회 (기본)
     const items = await getPendingReviews();
-    return NextResponse.json({ queue: items });
+    return NextResponse.json({ queue: items }, { headers: cacheHeader(60) });
   } catch (error) {
     console.error('[api/content-review] GET failed:', error);
     return NextResponse.json(

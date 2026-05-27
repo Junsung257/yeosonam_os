@@ -221,7 +221,7 @@ async function applyToBooking(
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
 
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get('status') ?? 'active';   // active | excluded | all
@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
       .map(([month, { income, expense }]) => ({ month, income, expense, net: income - expense }))
       .sort((a, b) => a.month.localeCompare(b.month));
 
-    return NextResponse.json({ chartData });
+    return NextResponse.json({ chartData }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   // ── 미매칭 전체 기간 조회 (limit 없음) ────────────────────────────────────
@@ -274,8 +274,8 @@ export async function GET(request: NextRequest) {
       .neq('status', 'excluded')
       .order('received_at', { ascending: false });
 
-    if (unmatchedError) return NextResponse.json({ error: unmatchedError.message }, { status: 500 });
-    return NextResponse.json({ transactions: unmatchedData || [] });
+    if (unmatchedError) return NextResponse.json({ error: unmatchedError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ transactions: unmatchedData || [] }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   // ── 일반 트랜잭션 목록 ─────────────────────────────────────────────────────
@@ -304,8 +304,8 @@ export async function GET(request: NextRequest) {
   if (bookingId) query = query.eq('booking_id', bookingId) as typeof query;
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ transactions: data || [] });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ transactions: data || [] }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 // ─── PUT: 원클릭 일괄 자동 매칭 ──────────────────────────────────────────────

@@ -1,5 +1,3 @@
-'use client';
-
 import SubNav from '@/components/admin/SubNav';
 
 const CARD_NEWS_TABS = [

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { isSupabaseConfigured, getCardNewsList, upsertCardNews } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { updateFactoryJobStep } from '@/lib/content-factory-step';
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const list = await getCardNewsList({ status, packageId, limit });
-    return NextResponse.json({ card_news: list });
+    return NextResponse.json({ card_news: list }, { headers: cacheHeader(60) });
   } catch (error) {
     return NextResponse.json({ error: '조회 실패' }, { status: 500 });
   }

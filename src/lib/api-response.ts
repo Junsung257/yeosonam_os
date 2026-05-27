@@ -35,14 +35,23 @@ export interface ApiListResponse<T> {
 }
 
 // ─── Response Builders ───────────────────────────────────────────────────
-export function successResponse<T>(data: T, status: number = 200) {
+export function cacheHeader(seconds: number): Record<string, string> {
+  return {
+    'Cache-Control': `public, s-maxage=${seconds}, stale-while-revalidate=${Math.floor(seconds / 2)}`,
+  };
+}
+
+export function successResponse<T>(data: T, status: number = 200, cacheSeconds?: number) {
   return NextResponse.json<ApiSuccessResponse<T>>(
     {
       ok: true,
       data,
       timestamp: new Date().toISOString(),
     },
-    { status }
+    {
+      status,
+      headers: cacheSeconds ? cacheHeader(cacheSeconds) : undefined,
+    }
   );
 }
 
@@ -52,6 +61,7 @@ export function listResponse<T>(
     total?: number;
     page?: number;
     limit?: number;
+    cacheSeconds?: number;
   },
   status: number = 200
 ) {
@@ -70,7 +80,10 @@ export function listResponse<T>(
     };
   }
 
-  return NextResponse.json<ApiListResponse<T>>(response, { status });
+  return NextResponse.json<ApiListResponse<T>>(response, {
+    status,
+    headers: options?.cacheSeconds ? cacheHeader(options.cacheSeconds) : undefined,
+  });
 }
 
 export function errorResponse(

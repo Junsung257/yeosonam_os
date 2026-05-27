@@ -6,9 +6,9 @@
  *
  * CartItem 의존: ./concierge.ts 에서 type-only import.
  */
-
 import type { CartItem } from './concierge';
 import { getSupabase } from '../supabase';
+import { insertRow, updateRowsWhere } from './helpers';
 
 export interface SharedItinerary {
   id:            string;
@@ -40,13 +40,7 @@ export async function createSharedItinerary(
   if (!sb) return null;
   const share_code = generateShareCode();
   const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: row, error } = await sb
-    .from('shared_itineraries')
-    .insert([{ ...data, share_code, expires_at }] as never)
-    .select()
-    .single();
-  if (error) { console.error('공유 일정 생성 실패:', error); return null; }
-  return row as SharedItinerary;
+  return insertRow<SharedItinerary>(sb, 'shared_itineraries', { ...data, share_code, expires_at });
 }
 
 export async function getSharedItinerary(code: string): Promise<SharedItinerary | null> {
@@ -60,9 +54,7 @@ export async function getSharedItinerary(code: string): Promise<SharedItinerary 
     .single();
   if (!row) return null;
   // view_count 증가 (fire-and-forget)
-  sb.from('shared_itineraries')
-    .update({ view_count: (row as SharedItinerary).view_count + 1 } as never)
-    .eq('share_code', code)
-    .then(() => {});
-  return row as SharedItinerary;
+  const existing = row as SharedItinerary;
+  updateRowsWhere(sb, 'shared_itineraries', { share_code: code }, { view_count: existing.view_count + 1 });
+  return existing;
 }

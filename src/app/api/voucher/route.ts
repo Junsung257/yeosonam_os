@@ -116,7 +116,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const guideToken = searchParams.get('guideToken');
 
   if (!id && !bookingId) {
-    return NextResponse.json({ error: 'id 또는 bookingId가 필요합니다' }, { status: 400 });
+    return NextResponse.json({ error: 'id 또는 bookingId가 필요합니다' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
   }
 
   const tokenPayload = guideToken ? verifyGuidebookToken(guideToken) : null;
@@ -124,12 +124,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!hasGuideScope) {
     const guard = await requireAuthenticatedRoute(request);
     if (guard instanceof NextResponse) {
-      return NextResponse.json({ error: '인증 또는 유효한 가이드 토큰이 필요합니다' }, { status: 401 });
+      return NextResponse.json({ error: '인증 또는 유효한 가이드 토큰이 필요합니다' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
     }
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정 (개발 환경)' }, { status: 503 });
+    return NextResponse.json({ error: 'Supabase 미설정 (개발 환경)' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   }
 
   const voucher = id
@@ -137,16 +137,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     : await getVoucherByBooking(bookingId!);
 
   if (!voucher) {
-    return NextResponse.json({ error: '확정서를 찾을 수 없습니다' }, { status: 404 });
+    return NextResponse.json({ error: '확정서를 찾을 수 없습니다' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
   }
 
   // ?html=true 요청 시 렌더링된 HTML 포함
   if (withHtml) {
     const html = renderVoucherHtml(voucher.parsed_data);
-    return NextResponse.json({ voucher, html });
+    return NextResponse.json({ voucher, html }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
-  return NextResponse.json({ voucher });
+  return NextResponse.json({ voucher }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 // ── PATCH /api/voucher — 상태 변경 (issued → sent) ────────────

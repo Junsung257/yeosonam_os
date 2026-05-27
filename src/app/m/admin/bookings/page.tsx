@@ -1,12 +1,12 @@
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import BookingsClient from './_client';
 import {
   parseSort,
   SORT_LABELS,
   type MobileBookingRow,
   type SortMode,
 } from './_types';
+import BookingsClient from './_client-wrapper';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

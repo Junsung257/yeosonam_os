@@ -30,7 +30,6 @@ const nextConfig = {
     'isomorphic-dompurify',
     '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
     'satori',          // yoga-wasm 번들 포함 — external 권장
-    'kordoc',          // ESM 전용 패키지 — 동적 import() 로 로드, webpack 번들 제외
     'pdf-parse',
   ],
   experimental: {
@@ -66,6 +65,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'dry7pvlp22cox.cloudfront.net', // MRT CDN (attractions.mrt_image_url)
       },
+      {
+        protocol: 'https',
+        hostname: '*.wikimedia.org', // Wikimedia Commons (attraction photos)
+      },
     ],
   },
   // 상품 상세 라우트 통일 — /packages/[id] 를 단일 진실 소스로
@@ -86,7 +89,7 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://t1.kakaocdn.net",
-              "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com",
+              "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://*.wikimedia.org https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com",
               "font-src 'self' https://cdn.jsdelivr.net",
               "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://o*.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
               "frame-src 'self' https://www.facebook.com https://www.instagram.com https://www.youtube.com",

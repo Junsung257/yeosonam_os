@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuthenticatedRoute } from '@/lib/session-guard';
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 404 });
     const role = await getUserRole(request.headers.get('authorization'));
     const product = role === 'va' ? omitB2BFields(data as Record<string, unknown>) : data;
-    return NextResponse.json({ product });
+    return NextResponse.json({ product }, { headers: cacheHeader(60) });
   }
 
   // 역할 조회 (목록에서도 B2B 필드 필터링)
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
   const products = role === 'va'
     ? (data ?? []).map((p: Record<string, unknown>) => omitB2BFields(p))
     : data;
-  return NextResponse.json({ products, count, page, limit });
+  return NextResponse.json({ products, count, page, limit }, { headers: cacheHeader(60) });
 }
 
 // ─── POST ─────────────────────────────────────────────────────

@@ -236,7 +236,7 @@ export async function renderSlidesToPng(
         deviceScaleFactor: 2,
       });
 
-      await page.setContent(html, { waitUntil: 'networkidle0' });
+      await page.setContent(html, { waitUntil: 'load' });
 
       // 모든 이미지 로딩 완료 대기
       await page.evaluate(() =>

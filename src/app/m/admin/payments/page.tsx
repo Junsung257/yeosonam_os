@@ -1,6 +1,6 @@
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import PaymentsClient from './_client';
+import PaymentsClient from './_client-wrapper';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

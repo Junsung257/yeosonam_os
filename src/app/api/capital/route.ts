@@ -18,10 +18,10 @@ export async function GET() {
     .select('*')
     .order('entry_date', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
 
   const total = (data || []).reduce((s: number, e: any) => s + (e.amount ?? 0), 0);
-  return NextResponse.json({ entries: data || [], total });
+  return NextResponse.json({ entries: data || [], total }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   const { amount, note, entry_date } = body;
 
   if (!amount || amount <= 0)
-    return NextResponse.json({ error: 'amount는 양수여야 합니다.' }, { status: 400 });
+    return NextResponse.json({ error: 'amount는 양수여야 합니다.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
 
   const { data, error } = await supabaseAdmin
     .from('capital_entries')

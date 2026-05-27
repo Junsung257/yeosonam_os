@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
       ? dateParam
       : new Date().toISOString().split('T')[0];
 
+  const today = new Date().toISOString().split('T')[0];
+
   // 1. DB 스냅샷 조회
   if (isSupabaseConfigured) {
     try {
@@ -44,10 +46,13 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (data?.[0]) {
+        const age = targetDate === today ? 300 : 86400;
         return NextResponse.json({
           date: data[0].snapshot_date,
           usd_to_krw: data[0].usd_to_krw,
           source: data[0].source,
+        }, {
+          headers: { 'Cache-Control': `public, s-maxage=${age}, stale-while-revalidate=${age * 12}` },
         });
       }
     } catch {
@@ -56,7 +61,6 @@ export async function GET(request: NextRequest) {
   }
 
   // 2. 오늘 날짜 요청인 경우에만 실시간 조회 (과거 날짜는 API가 최신 환율만 반환)
-  const today = new Date().toISOString().split('T')[0];
   if (targetDate === today) {
     const liveRate = await fetchLiveRate();
     if (liveRate) {
@@ -71,14 +75,21 @@ export async function GET(request: NextRequest) {
           .then(() => {})
           .catch(() => {});
       }
-      return NextResponse.json({ date: today, usd_to_krw: liveRate, source: 'live' });
+      return NextResponse.json({ date: today, usd_to_krw: liveRate, source: 'live' }, {
+        headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },
+      });
     }
   }
+
+  // 1.5 DB 응답에만 CDN 캐시 적용
+  const cacheHeaders = targetDate === today
+    ? { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' }
+    : { 'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=604800' };
 
   // 3. 폴백
   return NextResponse.json({
     date: targetDate,
     usd_to_krw: FALLBACK_RATE,
     source: 'fallback',
-  });
+  }, { headers: cacheHeaders });
 }

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   description: '여소남 운영팀이 직접 검증한 여행지 가이드와 엄선 패키지 — 목적지별 · 스타일별 큐레이션',
   alternates: { canonical: `${BASE_URL}/blog` },
   openGraph: {
-    title: '여행 매거진 | 여소남',
+    title: '여행 매거진',
     description: '여소남 운영팀이 직접 검증한 여행지 가이드와 엄선 패키지.',
     url: `${BASE_URL}/blog`,
     type: 'website',
