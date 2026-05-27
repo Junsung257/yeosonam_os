@@ -3,23 +3,23 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import PrivateTourLandingClient from './PrivateTourLandingClient';
 
+export const dynamic = 'force-static';
+export const revalidate = 86400;
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
 export const metadata: Metadata = {
-  title: '단독맞춤여행 | 2명부터 가능한 우리끼리 여행 - 여소남',
+  title: '단독맞춤여행 | 2명부터 가능한 우리끼리 여행',
   alternates: { canonical: `${BASE_URL}/private-tour` },
   description:
     '가족여행·계모임·동창회·기업 워크샵, 김해공항 출발 단독 프라이빗 투어. 2명부터 전담 가이드·전용 차량 배정, 24시간 내 무료 견적 회신.',
   openGraph: {
-    title: '우리끼리, 더 자유롭게 | 단독맞춤여행 여소남',
+    title: '우리끼리, 더 자유롭게 | 단독맞춤여행',
     description:
       '타인과 섞이지 않는 완전한 프라이빗 여행. 가족·친구·회사·동호회 어떤 모임이든 단독 설계.',
     url: `${BASE_URL}/private-tour`,
     type: 'website',
     images: [{ url: `${BASE_URL}/og/private-tour.png`, width: 1200, height: 630 }],
-  },
-  alternates: {
-    canonical: `${BASE_URL}/private-tour`,
   },
 };
 

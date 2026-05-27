@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import GroupLandingClient from './GroupLandingClient';
 
+export const revalidate = 86400;
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
 export const metadata: Metadata = {
@@ -10,14 +12,11 @@ export const metadata: Metadata = {
   description:
     '기업 워크샵·협회 연수·치목 골프, 김해공항 출발 단체여행 견적을 실시간으로 확인하세요. 여소남은 부산·경남 단체 고객 전용 AI 중개 플랫폼입니다.',
   openGraph: {
-    title: '부산·경남 단체여행 전문 | 여소남',
+    title: '부산·경남 단체여행 전문',
     description:
       '기업 워크샵·협회 연수·치목 골프·패밀리여행, 김해공항 출발 단체여행 견적을 실시간으로.',
     url: `${BASE_URL}/group`,
     type: 'website',
-  },
-  alternates: {
-    canonical: `${BASE_URL}/group`,
   },
 };
 
