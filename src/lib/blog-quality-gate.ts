@@ -23,12 +23,17 @@ export const BANNED_CLICHES = [
   '인생샷', '설레는', '힘찬', '낭만적인',
   '제대로', '알찬', '만끽', '힐링',
   '한 번쯤은 경험해 볼 만한', '추억에 남는',
+  '독특한', '다양한', '편안한', '인기 있는', '유명한',
+  '숨겨진', '잘 알려지지 않은', '이국적인',
+  '만족스러운', '무난한', '훌륭한', '뛰어난',
+  '여행의 묘미', '색다른 경험', '잊을 수 없는 추억',
+  '완전히 새로운', '놀라운', '생각지도 못한',
 ];
 
 // Blog 유형별 임계값 (product = 랜딩페이지 / info = 장문 SEO)
 const THRESHOLDS = {
   product: { minLen: 1200, maxCliche: 2, maxKeywordDensity: 2.5 },
-  info:    { minLen: 1800, maxCliche: 15, maxKeywordDensity: 1.8 },
+  info:    { minLen: 2500, maxCliche: 8, maxKeywordDensity: 1.8 },
 } as const;
 
 const DEDUP_WINDOW_DAYS = 14;
@@ -213,10 +218,14 @@ export function checkCta(blog_html: string): GateResult {
 }
 
 /**
- * Links 게이트 — 내부링크 ≥1 + 외부 권위 링크 권장.
+ * Links 게이트 — 내부링크 ≥1 + 외부 권위 링크 ≥2.
  * 내부링크: yeosonam.com/* 또는 / 시작
  * 외부 권위: 0404.go.kr, gov.kr, mofa.go.kr 등 정부·공기관
+ *
+ * 외부 링크 2개 이상 기준은 style-guide.ts "외부 권위 링크 규칙"과 동기화.
  */
+const MIN_EXTERNAL_LINKS = 2;
+
 export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
   const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
   const links: string[] = [];
@@ -236,12 +245,18 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
   ).length;
   const external = links.filter(u => /^https?:\/\//.test(u) && !(baseHost && u.includes(baseHost))).length;
 
-  const passed = internal >= 1; // 외부는 권장만, 내부는 최소 1
+  const internalOk = internal >= 1;
+  const externalOk = external >= MIN_EXTERNAL_LINKS;
+  const passed = internalOk && externalOk;
+  const reasons: string[] = [];
+  if (!internalOk) reasons.push(`내부링크 ${internal}개 — 최소 1개 필요`);
+  if (!externalOk) reasons.push(`외부 권위 링크 ${external}개 — 최소 ${MIN_EXTERNAL_LINKS}개 필요 (정부·관광청·공식 사이트)`);
+
   return {
     gate: 'links',
     passed,
-    reason: passed ? undefined : '내부링크 0개 — 같은 목적지 비교/관련 글 링크 1개 이상 필요',
-    evidence: { internal, external, total: links.length },
+    reason: passed ? undefined : reasons.join(' · '),
+    evidence: { internal, external, min_external: MIN_EXTERNAL_LINKS, total: links.length },
   };
 }
 
