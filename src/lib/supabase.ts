@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { CartItem } from './db/concierge';
 import { getSecret } from '@/lib/secret-registry';
 
@@ -81,31 +81,25 @@ export function getSupabaseAdmin() {
   return supabaseAdminClient;
 }
 
-export const supabaseAdmin = {
-  from: (table: string) => {
+/**
+ * Supabase Admin 클라이언트 프록시.
+ *
+ * 기존에는 `as any`로 선언되어 모든 체인 호출이 any 타입이었으나,
+ * 실제 SupabaseClient 타입을 보존하도록 개선.
+ * `.from()` / `.rpc()` / `.storage` / `.auth` 모두 정식 타입 유지.
+ *
+ * 사용 예:
+ *   const { data } = await supabaseAdmin.from('customers').select('id').single();
+ *   // data는 이제 unknown → 사용처에서 as T로 캐스팅 필요
+ */
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
     const client = getSupabaseAdmin();
     if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
-    return client.from(table);
+    const value = (client as any)[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
   },
-  rpc: (fn: string, args?: Record<string, unknown>) => {
-    const client = getSupabaseAdmin();
-    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
-    return (client as any).rpc(fn, args);
-  },
-  // Storage 프록시 — 매번 client 조회 후 storage 속성 반환
-  // (V1 render / V2 render-v2 / 기타 모든 업로드 경로가 이걸 쓴다)
-  get storage() {
-    const client = getSupabaseAdmin();
-    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
-    return (client as any).storage;
-  },
-  // Auth 프록시 (관리자 API: 사용자 생성/초대 등)
-  get auth() {
-    const client = getSupabaseAdmin();
-    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
-    return (client as any).auth;
-  },
-} as any;
+});
 
 // Auth 전용 - 실제 클라이언트 인스턴스 반환 (login 페이지에서 사용)
 export function getSupabaseClient() {
@@ -114,16 +108,15 @@ export function getSupabaseClient() {
   return client;
 }
 
-// 이전 호환성을 위한 getter
-export const supabase = {
-  from: (table: string) => {
+// 이전 호환성을 위한 getter — anon 클라이언트 (public)
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
     const client = getSupabase();
-    if (!client) {
-      throw new Error('Supabase가 구성되지 않았습니다. 환경 변수를 확인하세요.');
-    }
-    return client.from(table);
+    if (!client) throw new Error('Supabase가 구성되지 않았습니다. 환경 변수를 확인하세요.');
+    const value = (client as any)[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
   },
-} as any;
+});
 
 // 여행 상품 저장 (v2 - 신규 컬럼 포함)
 export async function saveTravelPackage(data: {

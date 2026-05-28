@@ -10,10 +10,10 @@ import type { UIComponent } from '../ui-types';
 
 // ─── search_packages (Self-Healing 내장) ─────────────────────────────────────
 export async function handleSearchPackages(args: Record<string, unknown>) {
-  const packages = await getApprovedPackages(
+  const packages = (await getApprovedPackages(
     args.destination as string | undefined,
     args.keyword as string | undefined
-  );
+  )) as any[];
 
   type PkgRow = (typeof packages)[0];
   let filtered: PkgRow[] = packages;

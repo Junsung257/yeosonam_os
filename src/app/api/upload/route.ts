@@ -1311,8 +1311,11 @@ JSON 배열로 응답:
               is_active: true,
               applied_count: 0,
             }));
-            supabaseAdmin.from('extractions_corrections').insert(correctionRows)
-              .then(() => {}).catch((e: Error) => console.warn('[Upload API] corrections 기록 실패(무시):', e.message));
+          try {
+            supabaseAdmin.from('extractions_corrections').insert(correctionRows);
+          } catch {
+            // fire-and-forget: corrections 기록 실패는 무시
+          }
           }
           scheduleUploadReviewInsert({
             severity: 'critical',
@@ -1344,8 +1347,11 @@ JSON 배열로 응답:
             is_active: true,
             applied_count: 0,
           }));
-          supabaseAdmin.from('extractions_corrections').insert(warnRows)
-            .then(() => {}).catch(() => {});
+          try {
+            supabaseAdmin.from('extractions_corrections').insert(warnRows);
+          } catch {
+            // fire-and-forget: warnRows 기록 실패는 무시
+          }
         }
 
         // ── G3.5. 등록 write pipeline (일정 보강 + postProcess + sanitize + L1) ──

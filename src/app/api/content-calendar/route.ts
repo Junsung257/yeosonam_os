@@ -61,8 +61,9 @@ export async function GET(request: NextRequest) {
       .lte('created_at', endDate)
       .order('created_at', { ascending: false });
 
-    const { data: cardNews, error: cardErr } = await cardNewsQuery;
+    const { data: cardNewsRaw, error: cardErr } = await cardNewsQuery;
     if (cardErr) throw cardErr;
+    const cardNews = cardNewsRaw as Array<Record<string, any>> | null;
 
     // 2. content_distributions 조회 (해당 월 scheduled/published 건)
     const distQuery = supabaseAdmin
@@ -73,7 +74,9 @@ export async function GET(request: NextRequest) {
       )
       .order('created_at', { ascending: false });
 
-    const { data: distributions, error: distErr } = await distQuery;
+    const { data: distributionsRaw, error: distErr } = await distQuery;
+    if (distErr) throw distErr;
+    const distributions = distributionsRaw as Array<Record<string, any>> | null;
     if (distErr) throw distErr;
 
     // 3. content_distributions 에 연결된 card_news 제목 조회 (Lookup Map)

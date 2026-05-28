@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   try {
     // ── 세션 확인 ────────────────────────────────────────────
     const { supabase } = await import('@/lib/supabase');
-    const sb = await supabase();
+    const sb = supabase;
     const { data: { user } } = await sb.auth.getUser();
 
     if (!user) {
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { supabase } = await import('@/lib/supabase');
-    const sb = await supabase();
+    const sb = supabase;
     const { data: { user } } = await sb.auth.getUser();
 
     if (!user) {

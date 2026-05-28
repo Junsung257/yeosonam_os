@@ -160,21 +160,23 @@ async function runRankTracking(request: NextRequest) {
               ? (row.generation_meta as Record<string, unknown>)
               : {};
           patchTasks.push(
-            supabaseAdmin
-              .from('content_creatives')
-              .update({
-                generation_meta: {
-                  ...prevMeta,
-                  rank_decay_signal: {
-                    at: new Date().toISOString(),
-                    query: worst.query,
-                    prev_position: worst.prev_position,
-                    curr_position: worst.curr_position,
-                    delta: worst.delta,
+            Promise.resolve(
+              supabaseAdmin
+                .from('content_creatives')
+                .update({
+                  generation_meta: {
+                    ...prevMeta,
+                    rank_decay_signal: {
+                      at: new Date().toISOString(),
+                      query: worst.query,
+                      prev_position: worst.prev_position,
+                      curr_position: worst.curr_position,
+                      delta: worst.delta,
+                    },
                   },
-                },
-              })
-              .eq('id', row.id),
+                })
+                .eq('id', row.id),
+            ),
           );
         }
         const settled = await Promise.allSettled(patchTasks);

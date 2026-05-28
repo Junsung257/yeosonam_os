@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
     if (error) {
       // P0001 = 검증 실패(400), P0002 = 리소스 없음(404)
       const status =
-        (error as any).code === 'P0001'
+        (error as { code?: string }).code === 'P0001'
           ? 400
-          : (error as any).code === 'P0002'
+          : (error as { code?: string }).code === 'P0002'
             ? 404
             : 500;
       return NextResponse.json({ error: error.message }, { status });

@@ -9,6 +9,11 @@ import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 
+/** fire-and-forget: 에러는 무시해도 되는 사이드 이펙트 */
+function ff<T>(p: PromiseLike<T>): void {
+  Promise.resolve(p).then(() => {}).catch(() => {});
+}
+
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
  * 새 예약이 등록될 때 기존 unmatched 입금 내역을 자동으로 연결
@@ -25,8 +30,9 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
 
   if (!booking) return;
 
-  const customerName    = (booking as any).customers?.name;
-  const actualPayerName = (booking as any).actual_payer_name;
+  const bk = booking as Record<string, unknown>;
+  const customerName    = (bk.customers as Record<string, unknown> | undefined)?.name as string | undefined;
+  const actualPayerName = bk.actual_payer_name as string | undefined;
 
   // unmatched 입금 내역 조회 (최근 90일)
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -42,10 +48,10 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   const bookingCandidate = [{
     id:                booking.id,
     booking_no:        booking.booking_no,
-    total_price:       (booking as any).total_price,
-    total_cost:        (booking as any).total_cost,
-    paid_amount:       (booking as any).paid_amount || 0,
-    total_paid_out:    (booking as any).total_paid_out || 0,
+    total_price:       bk.total_price as number | undefined,
+    total_cost:        bk.total_cost as number | undefined,
+    paid_amount:       (bk.paid_amount as number) || 0,
+    total_paid_out:    (bk.total_paid_out as number) || 0,
     status:            'pending',
     customer_name:     customerName,
     actual_payer_name: actualPayerName,
@@ -110,12 +116,12 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   if (totalMatchedAmount > 0) {
     // 자동 status 갱신은 update_booking_ledger RPC 안에서 처리됨 (payment_status/booking.status 모두).
     // 여기는 로깅만.
-    const paidAmount = ((booking as any).paid_amount || 0) + totalMatchedAmount;
+    const paidAmount = (bk.paid_amount as number || 0) + totalMatchedAmount;
     const newStatus  = calcPaymentStatus({
-      total_price:    (booking as any).total_price,
-      total_cost:     (booking as any).total_cost,
+      total_price:    bk.total_price as number | undefined,
+      total_cost:     bk.total_cost as number | undefined,
       paid_amount:    paidAmount,
-      total_paid_out: (booking as any).total_paid_out || 0,
+      total_paid_out: (bk.total_paid_out as number) || 0,
     });
     console.log(`[소급매칭] ${booking.booking_no?.slice(0, 4)}**** — ${Math.round(totalMatchedAmount / 10000)}만원대 자동 연결, 상태: ${newStatus}`);
   }
@@ -238,9 +244,14 @@ export async function POST(request: NextRequest) {
       : null;
 
     // 두 쿼리가 있으면 동시에 실행
+    const safeExecute = async (q: any): Promise<{ data: unknown }> => {
+      if (!q) return { data: null };
+      try { const r = await q; return { data: r.data ?? null }; }
+      catch { return { data: null }; }
+    };
     const [affResult, pkgResult] = await Promise.all([
-      affQuery ? affQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
-      pkgQuery ? pkgQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      safeExecute(affQuery),
+      safeExecute(pkgQuery),
     ]);
 
     if (affResult.data) {
@@ -390,46 +401,42 @@ export async function POST(request: NextRequest) {
 
     if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
       const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
-      enqueueDepositNoticeGateTask(booking.id as string).catch(() => {});
+      ff(enqueueDepositNoticeGateTask(booking.id as string));
     }
 
     // 셀프 리퍼럴 차단 건은 감사 로그로 남겨 정산 이슈를 사전 방지
     if (booking?.id && affData && selfReferralBlocked) {
-      supabaseAdmin.from('audit_logs').insert({
+      ff(supabaseAdmin.from('audit_logs').insert({
         action: 'AFFILIATE_SELF_REFERRAL_BLOCKED',
         target_type: 'booking',
         target_id: booking.id,
         description: `affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`,
-      }).then(() => {}).catch(() => {});
+      }));
     }
 
     // 어필리에이트 last_conversion_at 업데이트
     if (affData && booking?.id) {
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('affiliates')
         .update({ last_conversion_at: new Date().toISOString() })
-        .eq('id', affData.id)
-        .then(() => {})
-        .catch(() => {});
+        .eq('id', affData.id));
     }
 
     // 어필리에이트 링크 conversion_count 증가
     if (affRef && booking?.id) {
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('influencer_links')
         .select('id, conversion_count')
         .eq('referral_code', affRef)
         .then(({ data: links }: { data: { id: string; conversion_count: number }[] | null }) => {
           if (links?.length) {
             const link = links[0];
-            supabaseAdmin
+            ff(supabaseAdmin
               .from('influencer_links')
               .update({ conversion_count: (link.conversion_count || 0) + 1 })
-              .eq('id', link.id)
-              .then(() => console.log(`[Affiliate] 전환 기록: ${affRef}`));
+              .eq('id', link.id));
           }
-        })
-        .catch(() => {});
+        }));
     }
 
     // 프로모코드 사용량 증가 (예약 생성 성공 후)
@@ -441,12 +448,10 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (promo) {
         const pr = promo as { id: string; uses_count: number };
-        supabaseAdmin
+        ff(supabaseAdmin
           .from('affiliate_promo_codes')
           .update({ uses_count: (pr.uses_count || 0) + 1, updated_at: new Date().toISOString() })
-          .eq('id', pr.id)
-          .then(() => {})
-          .catch(() => {});
+          .eq('id', pr.id));
       }
     }
 
@@ -461,12 +466,12 @@ export async function POST(request: NextRequest) {
         .eq('affiliate_id', body.affiliateId)
         .maybeSingle();
       if (!existsLink) {
-        supabaseAdmin.from('affiliate_lifetime_links').insert({
+        ff(supabaseAdmin.from('affiliate_lifetime_links').insert({
           customer_id: body.leadCustomerId,
           affiliate_id: body.affiliateId,
           origin_booking_id: booking.id,
           experiment_group: group,
-        } as never).then(() => {}).catch(() => {});
+        }));
       }
     }
 
@@ -507,7 +512,7 @@ export async function POST(request: NextRequest) {
       const leadTime = Math.floor(
         (new Date(body.departureDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('bookings')
         .update({
           lead_time: leadTime,
@@ -517,26 +522,22 @@ export async function POST(request: NextRequest) {
             booking_day_of_week: new Date().getDay(),
           },
         })
-        .eq('id', booking.id)
-        .then(() => {})
-        .catch(() => {});
+        .eq('id', booking.id));
     }
 
     // 비동기 세션 병합: conversation → customer_id 연결
     if (booking?.conversation_id && body.leadCustomerId) {
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('conversations')
         .update({ customer_id: body.leadCustomerId, updated_at: new Date().toISOString() })
-        .eq('id', booking.conversation_id)
-        .then(() => console.log(`[Session] 세션 병합: conv=${booking.conversation_id} → customer=${body.leadCustomerId}`))
-        .catch((err: unknown) => console.warn('[Session] 세션 병합 실패:', err));
+        .eq('id', booking.conversation_id));
     }
 
     // Rule 5: 소급 매칭 — 기존 unmatched 입금 내역과 자동 연결 시도
     if (booking?.id) {
-      tryRetroactiveMatch(booking.id, body.leadCustomerId).catch(e =>
+      ff(tryRetroactiveMatch(booking.id, body.leadCustomerId).catch(e =>
         console.warn('[소급 매칭 실패]', e)
-      );
+      ));
     }
 
     // 모바일 관리자에게 새 예약 Web Push (fire-and-forget)
@@ -632,28 +633,29 @@ export async function PATCH(request: NextRequest) {
       }
 
       // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용) — 병렬 fetch
-      const landOpId = (product as any).land_operator_id;
-      const depLocId = (product as any).departing_location_id;
+      const pr = product as Record<string, unknown>;
+      const landOpId = pr.land_operator_id;
+      const depLocId = pr.departing_location_id;
       const [loRes, dlRes] = await Promise.all([
         landOpId
-          ? supabaseAdmin.from('land_operators').select('name').eq('id', landOpId).maybeSingle()
+          ? supabaseAdmin.from('land_operators').select('name').eq('id', landOpId as string).maybeSingle()
           : Promise.resolve({ data: null }),
         depLocId
-          ? supabaseAdmin.from('departing_locations').select('name').eq('id', depLocId).maybeSingle()
+          ? supabaseAdmin.from('departing_locations').select('name').eq('id', depLocId as string).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
-      const landOpName: string | null = (loRes.data as any)?.name ?? null;
-      const depLocName: string | null = (dlRes.data as any)?.name ?? null;
+      const landOpName: string | null = loRes.data ? (loRes.data as unknown as { name: string }).name : null;
+      const depLocName: string | null = dlRes.data ? (dlRes.data as unknown as { name: string }).name : null;
 
       const updateFields: Record<string, unknown> = {
-        product_id:    (product as any).internal_code,
-        package_title: (product as any).display_name,
+        product_id:    pr.internal_code,
+        package_title: pr.display_name,
         updated_at:    new Date().toISOString(),
       };
-      if ((product as any).land_operator_id)      updateFields.land_operator_id = (product as any).land_operator_id;
-      if ((product as any).departing_location_id)  updateFields.departing_location_id = (product as any).departing_location_id;
-      if (landOpName)                              updateFields.land_operator = landOpName;
-      if ((product as any).departure_region)       updateFields.departure_region = (product as any).departure_region;
+      if (pr.land_operator_id)      updateFields.land_operator_id = pr.land_operator_id;
+      if (pr.departing_location_id)  updateFields.departing_location_id = pr.departing_location_id;
+      if (landOpName)                updateFields.land_operator = landOpName;
+      if (pr.departure_region)       updateFields.departure_region = pr.departure_region;
 
       const { data, error } = await supabaseAdmin
         .from('bookings')
@@ -665,7 +667,7 @@ export async function PATCH(request: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({
         booking: data,
-        resolvedProduct: { ...(product as any), landOpName, depLocName },
+        resolvedProduct: { ...pr, landOpName, depLocName },
       });
     }
 

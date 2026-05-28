@@ -99,9 +99,7 @@ export async function dispatchPush(payload: PushPayload): Promise<{
               deep_link: payload.deepLink ?? null,
               kind: payload.kind ?? null,
               payload: payload.extra ?? null,
-            })
-            .then(() => {})
-            .catch(() => {});
+            });
         }
       } catch (err: any) {
         failed += 1;

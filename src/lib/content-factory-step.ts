@@ -24,28 +24,29 @@ export function updateFactoryJobStep(
 ): void {
   if (!isSupabaseConfigured || !cardNewsId) return;
 
-  supabaseAdmin
-    .from('content_factory_jobs')
-    .select('steps, completed_steps, failed_steps')
-    .eq('card_news_id', cardNewsId)
-    .maybeSingle()
-    .then(async ({ data: jobRow }: { data: JobRow | null }) => {
-      if (!jobRow) return;
-      const now = new Date().toISOString();
-      const steps = { ...(jobRow.steps as Record<string, unknown>) };
-      const prev = (steps[step] as Record<string, unknown> | undefined)?.status;
-      steps[step] = { status, updated_at: now, error, ...meta };
-      const updates: Record<string, unknown> = { steps };
-      if (status === 'done' && prev !== 'done') {
-        updates.completed_steps = (jobRow.completed_steps ?? 0) + 1;
-      }
-      if (status === 'failed' && prev !== 'failed') {
-        updates.failed_steps = (jobRow.failed_steps ?? 0) + 1;
-      }
-      await supabaseAdmin
-        .from('content_factory_jobs')
-        .update(updates)
-        .eq('card_news_id', cardNewsId);
-    })
-    .catch(() => {});
+  void Promise.resolve(
+    supabaseAdmin
+      .from('content_factory_jobs')
+      .select('steps, completed_steps, failed_steps')
+      .eq('card_news_id', cardNewsId)
+      .maybeSingle()
+      .then(async ({ data: jobRow }: { data: JobRow | null }) => {
+        if (!jobRow) return;
+        const now = new Date().toISOString();
+        const steps = { ...(jobRow.steps as Record<string, unknown>) };
+        const prev = (steps[step] as Record<string, unknown> | undefined)?.status;
+        steps[step] = { status, updated_at: now, error, ...meta };
+        const updates: Record<string, unknown> = { steps };
+        if (status === 'done' && prev !== 'done') {
+          updates.completed_steps = (jobRow.completed_steps ?? 0) + 1;
+        }
+        if (status === 'failed' && prev !== 'failed') {
+          updates.failed_steps = (jobRow.failed_steps ?? 0) + 1;
+        }
+        await supabaseAdmin
+          .from('content_factory_jobs')
+          .update(updates)
+          .eq('card_news_id', cardNewsId);
+      })
+  ).catch(() => {});
 }

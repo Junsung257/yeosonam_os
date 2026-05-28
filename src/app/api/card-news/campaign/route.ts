@@ -189,11 +189,13 @@ export async function POST(request: NextRequest) {
     }
 
     // content_factory_jobs INSERT
-    await supabaseAdmin.from('content_factory_jobs').insert({
-      card_news_id: cardNewsId,
-      product_id: body.package_id,
-      status: 'pending',
-    }).then().catch(() => {});
+    try {
+      await supabaseAdmin.from('content_factory_jobs').insert({
+        card_news_id: cardNewsId,
+        product_id: body.package_id,
+        status: 'pending',
+      });
+    } catch { /* insert 실패는 job_id 조회 없음으로 이어짐 */ }
 
     // job_id 조회
     const { data: jobRow } = await supabaseAdmin

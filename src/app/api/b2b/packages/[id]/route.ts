@@ -40,14 +40,17 @@ async function authenticateB2bKey(
     .eq('id', data[0].id)
     .limit(1);
 
-  await supabaseAdmin
-    .from('b2b_api_keys')
-    .update({
-      total_calls: ((cur?.[0]?.total_calls as number) ?? 0) + 1,
-      last_used_at: new Date().toISOString(),
-    })
-    .eq('id', data[0].id)
-    .catch(() => {});
+  try {
+    await supabaseAdmin
+      .from('b2b_api_keys')
+      .update({
+        total_calls: ((cur?.[0]?.total_calls as number) ?? 0) + 1,
+        last_used_at: new Date().toISOString(),
+      })
+      .eq('id', data[0].id);
+  } catch {
+    // API 키 호출 카운트 실패는 무시
+  }
 
   return { ok: true, keyId: data[0].id as string };
 }

@@ -550,8 +550,8 @@ export default async function PackageDetailPage({
     offers: {
       '@type': 'AggregateOffer',
       priceCurrency: 'KRW',
-      lowPrice: normalizedPkg.price_min ?? undefined,
-      highPrice: normalizedPkg.price_max ?? undefined,
+      lowPrice: (normalizedPkg as unknown as { price_min?: number }).price_min ?? undefined,
+      highPrice: (normalizedPkg as unknown as { price_max?: number }).price_max ?? undefined,
       offerCount: normalizedPkg.price_dates?.length ?? undefined,
       availability: 'https://schema.org/InStock',
       url: `${BASE_URL}/packages/${id}`,

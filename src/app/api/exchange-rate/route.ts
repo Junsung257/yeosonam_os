@@ -66,14 +66,14 @@ export async function GET(request: NextRequest) {
     if (liveRate) {
       // 조회한 환율을 DB에 저장 (백그라운드, 실패해도 무관)
       if (isSupabaseConfigured) {
-        supabaseAdmin
-          .from('fx_rate_snapshots')
-          .upsert(
-            { snapshot_date: today, usd_to_krw: liveRate, source: 'open-exchange' },
-            { onConflict: 'snapshot_date' },
-          )
-          .then(() => {})
-          .catch(() => {});
+        try {
+          await supabaseAdmin
+            .from('fx_rate_snapshots')
+            .upsert(
+              { snapshot_date: today, usd_to_krw: liveRate, source: 'open-exchange' },
+              { onConflict: 'snapshot_date' },
+            );
+        } catch { /* fire-and-forget */ }
       }
       return NextResponse.json({ date: today, usd_to_krw: liveRate, source: 'live' }, {
         headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },

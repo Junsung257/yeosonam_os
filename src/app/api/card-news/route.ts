@@ -144,11 +144,13 @@ export async function POST(request: NextRequest) {
       // ── content_factory_jobs 생성 (Content Hub 폴링용) ──────
       if (cardNews?.id) {
         const { supabaseAdmin: supa } = await import('@/lib/supabase');
-        supa.from('content_factory_jobs').insert({
-          card_news_id: cardNews.id,
-          product_id: (resolvedMode === 'product' && package_id) ? package_id : null,
-          status: 'pending',
-        }).then().catch(() => {});
+        try {
+          supa.from('content_factory_jobs').insert({
+            card_news_id: cardNews.id,
+            product_id: (resolvedMode === 'product' && package_id) ? package_id : null,
+            status: 'pending',
+          });
+        } catch { /* insert 실패 무시 */ }
       }
 
       // ── 자동 Cover Critic + Apply (환경변수로 끄기 가능) ──

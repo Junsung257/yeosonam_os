@@ -15,7 +15,7 @@ export async function GET() {
   try {
     // ── 세션 확인 ────────────────────────────────────────────
     const { supabase } = await import('@/lib/supabase');
-    const sb = await supabase();
+    const sb = supabase;
     const { data: { user } } = await sb.auth.getUser();
 
     if (!user) {

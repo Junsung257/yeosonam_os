@@ -63,12 +63,14 @@ export async function POST(req: NextRequest) {
 
   // message_logs에 알림 기록 (시스템 알림용)
   if (succeeded.length > 0) {
-    await supabaseAdmin.from('message_logs').insert({
-      channel: 'system',
-      event_type: 'SYSTEM_ALERT',
-      direction: 'outbound',
-      content: `🗺️ 신규 여행지 ${succeeded.length}개 자동 셋업 완료\n검토 후 사진 승인 필요: /admin/destinations\n\n${succeeded.map(r => `• ${r.destination}: "${r.tagline}"`).join('\n')}`,
-    }).catch(() => undefined);
+    try {
+      await supabaseAdmin.from('message_logs').insert({
+        channel: 'system',
+        event_type: 'SYSTEM_ALERT',
+        direction: 'outbound',
+        content: `🗺️ 신규 여행지 ${succeeded.length}개 자동 셋업 완료\n검토 후 사진 승인 필요: /admin/destinations\n\n${succeeded.map(r => `• ${r.destination}: "${r.tagline}"`).join('\n')}`,
+      });
+    } catch { /* fire-and-forget */ }
   }
 
   return NextResponse.json({

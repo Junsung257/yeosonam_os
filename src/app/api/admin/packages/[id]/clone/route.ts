@@ -49,7 +49,7 @@ export const POST = withAdminGuard(async (req: NextRequest, ctx?: { params?: Pro
   if (srcErr || !source) return NextResponse.json({ error: 'source not found' }, { status: 404 });
 
   // 2) clone payload 빌드
-  const src = source as Record<string, unknown>;
+  const src = source as unknown as Record<string, unknown>;
   const newTitle = `${src.title ?? '복제 패키지'} ${body.titleSuffix ?? '(복제)'}`.trim();
   const newDuration = body.modifyDuration ?? src.duration;
 

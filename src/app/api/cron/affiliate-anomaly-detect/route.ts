@@ -185,12 +185,12 @@ export async function GET(request: Request) {
       );
     }
 
-    await supabaseAdmin.from('audit_logs').insert({
+    await void(supabaseAdmin.from('audit_logs').insert({
       action: 'AFFILIATE_ANOMALY_DETECT',
       target_type: 'affiliate',
       description: `전일 이상탐지: ${findings.length}건`,
       after_value: { date: yesterdayIso, findings } as any,
-    }).then(() => {}).catch(() => {});
+    }));
 
     await reportAffiliateCronSuccess('affiliate-anomaly-detect', { date: yesterdayIso, findings: findings.length });
     return NextResponse.json({ date: yesterdayIso, findings: findings.length, details: findings });

@@ -96,7 +96,7 @@ const getHandler = async () => {
         .eq('settlement_period', prevPeriod)
         .maybeSingle();
 
-      const prevCarryover = (prevSettlement as any)?.carryover_balance ?? 0;
+      const prevCarryover = (prevSettlement as { carryover_balance?: number } | null)?.carryover_balance ?? 0;
 
       const isQualified = count >= MIN_COUNT && totalAmount >= MIN_AMOUNT;
 
@@ -151,12 +151,12 @@ const getHandler = async () => {
     }
 
     // audit_log
-    await supabaseAdmin.from('audit_logs').insert([{
+    await void(supabaseAdmin.from('audit_logs').insert([{
       action: 'SETTLEMENT_AUTO_CRON',
       target_type: 'settlement',
       description: `${period} 자동 정산: ${processed}명 처리 (확정 ${qualified}, 이월 ${carried})`,
       after_value: { period, processed, qualified, carried, results },
-    }]).then(() => {}).catch(() => {});
+    }]));
 
     console.log(`[정산 크론] 완료: ${processed}명 (확정 ${qualified}, 이월 ${carried})`);
 

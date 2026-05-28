@@ -235,11 +235,12 @@ export async function PATCH(request: NextRequest) {
 
     // ── VOID 원복 로직 ─────────────────────────────────
     if (status === 'VOID' && ['READY', 'COMPLETED'].includes(current.status)) {
-      const affiliate = current.affiliates as any;
+      const affiliate = current.affiliates as Record<string, unknown> | null;
+      const affBookingCount = (affiliate?.booking_count as number) ?? 0;
 
       // 1. booking_count 차감 (정산 시 증가한 만큼 되돌림)
       if (affiliate && current.qualified_booking_count > 0) {
-        const newCount = Math.max(0, (affiliate.booking_count || 0) - current.qualified_booking_count);
+        const newCount = Math.max(0, affBookingCount - current.qualified_booking_count);
         await supabase
           .from('affiliates')
           .update({ booking_count: newCount })
@@ -283,9 +284,9 @@ export async function PATCH(request: NextRequest) {
       target_type: 'settlement',
       target_id: id,
       description: status === 'VOID'
-        ? `${(current.affiliates as any)?.name} ${current.settlement_period} 정산 원복 — booking_count 차감, 이월 복구`
+        ? `${(current.affiliates as Record<string, unknown> | null)?.name ?? ''} ${current.settlement_period} 정산 원복 — booking_count 차감, 이월 복구`
         : `정산 상태 → ${status}`,
-      before_value: { status: current.status, final_payout: current.final_payout, booking_count: (current.affiliates as any)?.booking_count },
+      before_value: { status: current.status, final_payout: current.final_payout, booking_count: (current.affiliates as Record<string, unknown> | null)?.booking_count },
       after_value: { status, final_payout: data?.final_payout },
     }]);
 

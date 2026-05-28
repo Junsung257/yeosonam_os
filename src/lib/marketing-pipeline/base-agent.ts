@@ -45,14 +45,14 @@ export abstract class BaseMarketingAgent {
       const isTimeout = error.startsWith('TIMEOUT:');
       console.error(`[${this.name}] ${isTimeout ? 'TIMEOUT' : '실패'}:`, err);
       if (isSupabaseConfigured) {
-        void supabaseAdmin.from('agent_incidents').insert({
+        void Promise.resolve(supabaseAdmin.from('agent_incidents').insert({
           tenant_id: ctx.tenantId,
           severity: isTimeout ? 'warn' : 'error',
           category: isTimeout ? 'timeout' : 'unknown',
           message: `[${this.name}] ${error}`,
           details: { agent: this.name, runDate: ctx.runDate },
           detected_by: 'marketing-pipeline',
-        }).catch(() => null);
+        })).catch(() => null);
       }
       return { ok: false, error, elapsed_ms: Date.now() - t0 };
     }

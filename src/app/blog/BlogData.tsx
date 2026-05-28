@@ -119,14 +119,14 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     listQuery,
   ]);
 
-  const posts = (listRes.data as BlogPost[]) || [];
+  const posts = (listRes.data as unknown as BlogPost[]) || [];
   const featuredIds = new Set((featuredRes.data || []).map((f: any) => f.id));
   const filteredPosts = page === 1 && !filter.destination && !filter.angle
     ? posts.filter(p => !featuredIds.has(p.id))
     : posts;
 
   return {
-    featured: page === 1 && !filter.destination && !filter.angle ? (featuredRes.data as BlogPost[]) || [] : [],
+    featured: page === 1 && !filter.destination && !filter.angle ? (featuredRes.data as unknown as BlogPost[]) || [] : [],
     posts: filteredPosts,
     total: listRes.count ?? 0,
     destinations: (destRes.data as DestinationStat[]) || [],

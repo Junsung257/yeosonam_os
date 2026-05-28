@@ -5,15 +5,15 @@
  *   → { badges: CustomerBadge[] }
  */
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, getSupabase } from '@/lib/supabase';
 import { getCustomerBadges } from '@/lib/gamification-service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const { supabase } = await import('@/lib/supabase');
-    const sb = await supabase();
+    const sb = getSupabase();
+    if (!sb) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
     const { data: { user } } = await sb.auth.getUser();
 
     if (!user) {

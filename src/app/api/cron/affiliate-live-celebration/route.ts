@@ -57,12 +57,12 @@ export async function GET(request: NextRequest) {
         commission: Number(b.influencer_commission) || 0,
       }).catch(() => {});
 
-      await supabaseAdmin.from('audit_logs').insert({
+      await void(supabaseAdmin.from('audit_logs').insert({
         action: 'AFFILIATE_LIVE_CELEBRATION_SENT',
         target_type: 'booking',
         target_id: b.id,
         description: `affiliate=${a.id}`,
-      }).then(() => {}).catch(() => {});
+      }));
       notified += 1;
     }
 

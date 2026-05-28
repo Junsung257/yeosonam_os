@@ -188,7 +188,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // 7. 트렌드 데이터 — 일별 집계
     const trendMap = new Map<string, TrendPoint>();
-    const rawDailyConversions = (dailyConversions?.data ?? []) as Array<{
+    const rawDailyConversions = (dailyConversions ?? []) as Array<{
       created_at: string;
       attributed_source: string | null;
       final_sales_price: number;

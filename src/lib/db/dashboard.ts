@@ -256,18 +256,18 @@ export async function getRecognizedRevenueMonthly(months = 6): Promise<Recognize
     for (const m of monthKeysFor(months)) {
       buckets.set(m, { month: m, recognized_bookings: 0, gmv: 0, margin: 0, paid: 0, outstanding: 0, commission: 0 });
     }
-    for (const b of (data ?? []) as any[]) {
-      const month = (b.departure_date ?? '').slice(0, 7);
+    for (const b of (data ?? []) as Array<Record<string, unknown>>) {
+      const month = ((b.departure_date as string) ?? '').slice(0, 7);
       const row = buckets.get(month);
       if (!row) continue;
-      const gmv = b.total_price || 0;
-      const paid = b.paid_amount || 0;
+      const gmv = (b.total_price as number) || 0;
+      const paid = (b.paid_amount as number) || 0;
       row.recognized_bookings += 1;
       row.gmv += gmv;
-      row.margin += b.margin || 0;
+      row.margin += (b.margin as number) || 0;
       row.paid += paid;
       row.outstanding += gmv - paid;
-      row.commission += b.influencer_commission || 0;
+      row.commission += (b.influencer_commission as number) || 0;
     }
     return [...buckets.values()];
   } catch (err) {
@@ -304,12 +304,12 @@ export async function getNewBookingsMonthly(months = 6): Promise<NewBookingsMont
         _leadSum: 0, _leadN: 0,
       });
     }
-    for (const b of (data ?? []) as any[]) {
+    for (const b of (data ?? []) as Array<Record<string, unknown>>) {
       const month = toKstMonth(b.created_at as string | null);
       if (!month) continue;
       const row = buckets.get(month);
       if (!row) continue;
-      const gmv = b.total_price || 0;
+      const gmv = (b.total_price as number) || 0;
       const isCancelled = b.status === 'cancelled';
       row.total_bookings += 1;
       row.gmv_total += gmv;

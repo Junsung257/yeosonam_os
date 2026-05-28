@@ -162,7 +162,7 @@ export async function calculateDraftForAffiliate(
   if (prevSettlementRes.error) throw new Error(`settlement prev-carryover query failed: ${prevSettlementRes.error.message}`);
   if (pendingAdjustmentsRes.error) throw new Error(`settlement adjustments query failed: ${pendingAdjustmentsRes.error.message}`);
 
-  const prevCarryover = (prevSettlementRes.data as any)?.carryover_balance ?? 0;
+  const prevCarryover = (prevSettlementRes.data as { carryover_balance?: number } | null)?.carryover_balance ?? 0;
 
   return computeSettlementDraft(
     (bookingsRes.data ?? []) as BookingForSettlement[],

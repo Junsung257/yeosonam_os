@@ -33,11 +33,7 @@ const nextConfig = {
     'pdf-parse',
   ],
   experimental: {
-    // PPR(Partial Prerendering): Next 15 canary+ 필요, 현재 14.2.20에서는 build 오류 발생.
-    // Next.js 업그레이드 후 재활성화 예정.
-    // Windows 환경에서 prod 빌드 중 manifest 누락(ENOENT) 재현이 있어 당분간 비활성화.
-    // 안정화 후 CI/Linux에서만 조건부 재활성화 검토.
-    webpackBuildWorker: false,
+    webpackBuildWorker: true,
   },
   images: {
     formats: ['image/avif', 'image/webp'],

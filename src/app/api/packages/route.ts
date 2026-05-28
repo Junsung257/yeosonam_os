@@ -250,8 +250,8 @@ export async function GET(request: NextRequest) {
     // 목록 조회 — products JOIN 포함
     // count: 'planned' — pg_stat 기반 추정 (수만 행 테이블에서 'exact' 보다 100배+ 빠름).
     //   페이지 네비게이션 UI 목적에는 추정치로 충분. 정확도 필요 시 ?countMode=exact 명시.
-    const countMode = (searchParams.get('countMode') as 'exact' | 'planned' | 'estimated') || 'planned';
-    let query = supabaseAdmin
+    const countMode = (searchParams.get('countMode') as string) || 'planned';
+    let query = (supabaseAdmin as any)
       .from('travel_packages')
       .select(lite ? PACKAGE_LIST_FIELDS_LITE : PACKAGE_LIST_FIELDS, { count: countMode })
       .range(from, from + limit - 1);
@@ -761,11 +761,11 @@ export async function PATCH(request: NextRequest) {
         .eq('id', packageId)
         .single();
       if (beforeRow) {
-        beforeSnapshot = beforeRow as Record<string, unknown>;
+        beforeSnapshot = beforeRow as unknown as Record<string, unknown>;
         beforePkgMeta = {
-          land_operator_id: (beforeRow as { land_operator_id?: string | null }).land_operator_id ?? null,
-          destination: (beforeRow as { destination?: string | null }).destination ?? null,
-          raw_text: (beforeRow as { raw_text?: string | null }).raw_text ?? null,
+          land_operator_id: (beforeRow as unknown as { land_operator_id?: string | null }).land_operator_id ?? null,
+          destination: (beforeRow as unknown as { destination?: string | null }).destination ?? null,
+          raw_text: (beforeRow as unknown as { raw_text?: string | null }).raw_text ?? null,
         };
       }
     }
