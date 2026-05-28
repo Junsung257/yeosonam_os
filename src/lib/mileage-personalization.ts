@@ -8,6 +8,7 @@
  *   - 첫 예약 보너스
  */
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { calcExpiresAt, getEffectiveValidityMonths } from '@/lib/mileage-expiration';
 
 // ── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,12 @@ const WELCOME_MILEAGE = 3000;       // 신규 가입 웰컴 마일리지
 const FIRST_BOOKING_BONUS = 2000;   // 첫 예약 보너스
 const REACTIVATION_MILEAGE = 5000;  // 리액티베이션 마일리지
 const BIRTHDAY_MULTIPLIER = 2;      // 생일월 적립 배수
+
+// 마일리지 메모 식별자 (중복 지급 방지 및 로그 추적용)
+// NOTE: 이 값들을 변경하면 중복 지급 방지 로직(기존 트랜잭션 조회 조건)이 깨질 수 있음
+const MEMO_WELCOME = '웰컴 마일리지';
+const MEMO_FIRST_BOOKING = '첫 예약 보너스';
+const MEMO_REACTIVATION = '리액티베이션 마일리지';
 
 // ── 생일월 확인 ──────────────────────────────────────────────────────────────
 
@@ -41,24 +48,29 @@ export async function awardWelcomeMileage(customerId: string, customerName?: str
     .from('mileage_transactions')
     .select('id')
     .eq('user_id', customerId)
-    .eq('memo', '웰컴 마일리지')
+    .eq('memo', MEMO_WELCOME)
     .limit(1);
 
   if (existing && existing.length > 0) {
     return { awarded: false, amount: 0 }; // 중복 지급 방지
   }
 
-  const { error } = await supabaseAdmin.from('mileage_transactions').insert({
+  const { data: tx, error } = await supabaseAdmin.from('mileage_transactions').insert({
     user_id: customerId,
     amount: WELCOME_MILEAGE,
     type: 'EARNED',
     margin_impact: 0,
     base_net_profit: 0,
     mileage_rate: 0,
-    memo: '웰컴 마일리지',
-  });
+    memo: MEMO_WELCOME,
+  }).select('id').single();
 
-  if (error) return { awarded: false, amount: 0 };
+  if (error || !tx) return { awarded: false, amount: 0 };
+
+  // 만료일 설정 (mileage-expiration과 동일한 로직)
+  const validityMonths = await getEffectiveValidityMonths();
+  const expiresAt = calcExpiresAt(new Date(), validityMonths);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
 
   await supabaseAdmin.rpc('increment_customer_mileage', {
     p_user_id: customerId,
@@ -86,22 +98,27 @@ export async function awardFirstBookingBonus(customerId: string): Promise<{ awar
     .from('mileage_transactions')
     .select('id')
     .eq('user_id', customerId)
-    .eq('memo', '첫 예약 보너스')
+    .eq('memo', MEMO_FIRST_BOOKING)
     .limit(1);
 
   if (existing && existing.length > 0) return { awarded: false, amount: 0 };
 
-  const { error } = await supabaseAdmin.from('mileage_transactions').insert({
+  const { data: tx, error } = await supabaseAdmin.from('mileage_transactions').insert({
     user_id: customerId,
     amount: FIRST_BOOKING_BONUS,
     type: 'EARNED',
     margin_impact: 0,
     base_net_profit: 0,
     mileage_rate: 0,
-    memo: '첫 예약 보너스',
-  });
+    memo: MEMO_FIRST_BOOKING,
+  }).select('id').single();
 
-  if (error) return { awarded: false, amount: 0 };
+  if (error || !tx) return { awarded: false, amount: 0 };
+
+  // 만료일 설정
+  const validityMonths = await getEffectiveValidityMonths();
+  const expiresAt = calcExpiresAt(new Date(), validityMonths);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
 
   await supabaseAdmin.rpc('increment_customer_mileage', {
     p_user_id: customerId,
@@ -182,23 +199,28 @@ export async function awardReactivationMileage(customerId: string): Promise<{ aw
     .from('mileage_transactions')
     .select('id')
     .eq('user_id', customerId)
-    .eq('memo', '리액티베이션 마일리지')
+    .eq('memo', MEMO_REACTIVATION)
     .gte('created_at', cutoff.toISOString())
     .limit(1);
 
   if (existing && existing.length > 0) return { awarded: false, amount: 0 };
 
-  const { error } = await supabaseAdmin.from('mileage_transactions').insert({
+  const { data: tx, error } = await supabaseAdmin.from('mileage_transactions').insert({
     user_id: customerId,
     amount: REACTIVATION_MILEAGE,
     type: 'EARNED',
     margin_impact: 0,
     base_net_profit: 0,
     mileage_rate: 0,
-    memo: '리액티베이션 마일리지',
-  });
+    memo: MEMO_REACTIVATION,
+  }).select('id').single();
 
-  if (error) return { awarded: false, amount: 0 };
+  if (error || !tx) return { awarded: false, amount: 0 };
+
+  // 만료일 설정
+  const validityMonths = await getEffectiveValidityMonths();
+  const expiresAt = calcExpiresAt(new Date(), validityMonths);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
 
   await supabaseAdmin.rpc('increment_customer_mileage', {
     p_user_id: customerId,

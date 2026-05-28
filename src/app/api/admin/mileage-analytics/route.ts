@@ -122,8 +122,7 @@ export async function GET(request: NextRequest) {
     const { data: trendTransactions } = await supabaseAdmin
       .from('mileage_transactions')
       .select('amount, type, created_at')
-      .eq('type', 'EARNED')
-      .or('type.eq.USED')
+      .or('type.eq.EARNED,type.eq.USED')
       .gte('created_at', sixMonthsAgo.toISOString());
 
     const trendMap = new Map<string, { earned: number; used: number }>();

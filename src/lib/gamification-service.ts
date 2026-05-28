@@ -8,6 +8,7 @@
  *   - 시즌별 챌린지 (Phase 3-4)
  */
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { calcExpiresAt, getEffectiveValidityMonths } from '@/lib/mileage-expiration';
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -107,47 +108,50 @@ export async function checkAndAwardMilestones(userId: string, totalSpent: number
   const earnedBadgeTypes = new Set(earnedBadges.map(b => b.badge_type));
 
   for (const ms of MILESTONES) {
-    if (totalSpent >= ms.threshold) {
-      // 이미 뱃지 획득했으면 스킵 (중복 지급 방지)
-      if (ms.badgeType && earnedBadgeTypes.has(ms.badgeType)) {
-        achieved.push({ threshold: ms.threshold, label: ms.label, bonusMileage: 0, achieved: true });
-        continue;
-      }
+    if (totalSpent < ms.threshold) continue; // 달성하지 못한 마일스톤은 스킵
 
-      // 보너스 마일리지 지급 + 뱃지 부여
-      if (ms.bonusMileage > 0) {
-        const { error: txError } = await supabaseAdmin.from('mileage_transactions').insert({
-          user_id: userId,
-          amount: ms.bonusMileage,
-          type: 'EARNED',
-          margin_impact: 0,
-          base_net_profit: 0,
-          mileage_rate: 0,
-          memo: `🎉 마일스톤 달성: ${ms.label}`,
-        });
-        if (!txError) {
-          // 고객 mileage 업데이트
-          await supabaseAdmin.rpc('increment_customer_mileage', {
-            p_user_id: userId,
-            p_amount: ms.bonusMileage,
-          });
-        }
-      }
-
-      // 뱃지 부여
-      if (ms.badgeType) {
-        await supabaseAdmin.from('customer_badges').upsert({
-          customer_id: userId,
-          badge_type: ms.badgeType,
-          badge_label: ms.badgeLabel ?? null,
-          badge_description: ms.badgeDesc ?? null,
-        }, { onConflict: 'customer_id,badge_type' });
-      }
-
-      achieved.push({ threshold: ms.threshold, label: ms.label, bonusMileage: ms.bonusMileage, achieved: true, achievedAt: new Date().toISOString() });
-    } else {
-      achieved.push({ threshold: ms.threshold, label: ms.label, bonusMileage: ms.bonusMileage, achieved: false });
+    // 이미 뱃지 획득했으면 스킵 (중복 지급 방지)
+    if (ms.badgeType && earnedBadgeTypes.has(ms.badgeType)) {
+      achieved.push({ threshold: ms.threshold, label: ms.label, bonusMileage: 0, achieved: true });
+      continue;
     }
+
+    // 보너스 마일리지 지급 + 뱃지 부여
+    if (ms.bonusMileage > 0) {
+      const { data: tx, error: txError } = await supabaseAdmin.from('mileage_transactions').insert({
+        user_id: userId,
+        amount: ms.bonusMileage,
+        type: 'EARNED',
+        margin_impact: 0,
+        base_net_profit: 0,
+        mileage_rate: 0,
+        memo: `🎉 마일스톤 달성: ${ms.label}`,
+      }).select('id').single();
+      if (!txError && tx) {
+        // 만료일 설정
+        const validityMonths = await getEffectiveValidityMonths();
+        const expiresAt = calcExpiresAt(new Date(), validityMonths);
+        await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', tx.id);
+
+        // 고객 mileage 업데이트
+        await supabaseAdmin.rpc('increment_customer_mileage', {
+          p_user_id: userId,
+          p_amount: ms.bonusMileage,
+        });
+      }
+    }
+
+    // 뱃지 부여
+    if (ms.badgeType) {
+      await supabaseAdmin.from('customer_badges').upsert({
+        customer_id: userId,
+        badge_type: ms.badgeType,
+        badge_label: ms.badgeLabel ?? null,
+        badge_description: ms.badgeDesc ?? null,
+      }, { onConflict: 'customer_id,badge_type' });
+    }
+
+    achieved.push({ threshold: ms.threshold, label: ms.label, bonusMileage: ms.bonusMileage, achieved: true, achievedAt: new Date().toISOString() });
   }
 
   return achieved;
@@ -229,6 +233,9 @@ const CHECKIN_REWARD = 10;    // 일일 출석 보너스 (10P)
 const STREAK_7_BONUS = 50;    // 7일 연속 보너스
 const STREAK_30_BONUS = 200;  // 30일 연속 보너스
 
+// 출석 체크 메모 식별자 (getStreakInfo / doCheckin 간 일치 필요)
+const MEMO_CHECKIN = '출석 체크';
+
 export async function getStreakInfo(userId: string): Promise<StreakInfo> {
   if (!isSupabaseConfigured) {
     return { currentStreak: 0, longestStreak: 0, lastCheckin: null, todayChecked: false };
@@ -240,7 +247,7 @@ export async function getStreakInfo(userId: string): Promise<StreakInfo> {
     .select('created_at')
     .eq('user_id', userId)
     .eq('type', 'EARNED')
-    .eq('memo', '출석 체크')
+    .eq('memo', MEMO_CHECKIN)
     .order('created_at', { ascending: false })
     .limit(100);
 
@@ -319,19 +326,24 @@ export async function doCheckin(userId: string): Promise<{
   }
 
   // 기본 보상 지급
-  const { error: txError } = await supabaseAdmin.from('mileage_transactions').insert({
+  const { data: checkinTx, error: txError } = await supabaseAdmin.from('mileage_transactions').insert({
     user_id: userId,
     amount: CHECKIN_REWARD,
     type: 'EARNED',
     margin_impact: 0,
     base_net_profit: 0,
     mileage_rate: 0,
-    memo: '출석 체크',
-  });
+    memo: MEMO_CHECKIN,
+  }).select('id').single();
 
-  if (txError) {
+  if (txError || !checkinTx) {
     return { reward: 0, streak, bonusAwarded: false, newBadges: [] };
   }
+
+  // 만료일 설정
+  const validityMonths = await getEffectiveValidityMonths();
+  const expiresAt = calcExpiresAt(new Date(), validityMonths);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (checkinTx as any).id);
 
   // 고객 mileage 업데이트
   await supabaseAdmin.rpc('increment_customer_mileage', {
@@ -346,11 +358,16 @@ export async function doCheckin(userId: string): Promise<{
 
   // 7일 연속 보너스
   if (newStreak.currentStreak === 7) {
-    await supabaseAdmin.from('mileage_transactions').insert({
+    const { data: bonusTx } = await supabaseAdmin.from('mileage_transactions').insert({
       user_id: userId, amount: STREAK_7_BONUS, type: 'EARNED',
       margin_impact: 0, base_net_profit: 0, mileage_rate: 0,
       memo: '🔥 7일 연속 출석 보너스',
-    });
+    }).select('id').single();
+    if (bonusTx) {
+      const validityMonths = await getEffectiveValidityMonths();
+      const expiresAt = calcExpiresAt(new Date(), validityMonths);
+      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (bonusTx as any).id);
+    }
     await supabaseAdmin.rpc('increment_customer_mileage', { p_user_id: userId, p_amount: STREAK_7_BONUS });
     await awardBadge(userId, 'streak_7');
     bonusAwarded = true;
@@ -359,11 +376,16 @@ export async function doCheckin(userId: string): Promise<{
 
   // 30일 연속 보너스
   if (newStreak.currentStreak === 30) {
-    await supabaseAdmin.from('mileage_transactions').insert({
+    const { data: bonusTx } = await supabaseAdmin.from('mileage_transactions').insert({
       user_id: userId, amount: STREAK_30_BONUS, type: 'EARNED',
       margin_impact: 0, base_net_profit: 0, mileage_rate: 0,
       memo: '⚡ 30일 연속 출석 보너스',
-    });
+    }).select('id').single();
+    if (bonusTx) {
+      const validityMonths = await getEffectiveValidityMonths();
+      const expiresAt = calcExpiresAt(new Date(), validityMonths);
+      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (bonusTx as any).id);
+    }
     await supabaseAdmin.rpc('increment_customer_mileage', { p_user_id: userId, p_amount: STREAK_30_BONUS });
     await awardBadge(userId, 'streak_30');
     newBadges.push('streak_30');

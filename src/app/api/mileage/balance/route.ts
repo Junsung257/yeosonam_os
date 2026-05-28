@@ -46,7 +46,7 @@ export async function GET() {
       .from('mileage_transactions')
       .select('amount')
       .eq('user_id', user.id)
-      .eq('type', 'USED');
+      .in('type', ['USED', 'EXPIRED']);
 
     const totalEarned = (earnedData ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
     const totalUsed = (usedData ?? []).reduce((sum: number, t: { amount: number }) => sum + Math.abs(t.amount), 0);

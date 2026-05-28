@@ -198,16 +198,19 @@ export async function processExpiringMileageNotifications(): Promise<{
     .lt('expires_at', new Date(targetD30.getTime() + 86400000).toISOString().split('T')[0]);
 
   if (d30Targets) {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, { total: number; earliest: string }>();
     for (const t of d30Targets as Array<{ user_id: string; amount: number; expires_at: string }>) {
-      grouped.set(t.user_id, (grouped.get(t.user_id) || 0) + t.amount);
+      const g = grouped.get(t.user_id) ?? { total: 0, earliest: t.expires_at };
+      g.total += t.amount;
+      if (t.expires_at < g.earliest) g.earliest = t.expires_at;
+      grouped.set(t.user_id, g);
     }
-    for (const [customerId, totalAmount] of grouped) {
+    for (const [customerId, g] of grouped) {
       try {
         await notifyMileageExpiringSoon({
           customerId,
-          expiringAmount: totalAmount,
-          expireDate: targetD30.toISOString().split('T')[0],
+          expiringAmount: g.total,
+          expireDate: g.earliest.split('T')[0],
           daysLeft: 30,
         });
         d30++;
@@ -227,16 +230,19 @@ export async function processExpiringMileageNotifications(): Promise<{
     .lt('expires_at', new Date(targetD7.getTime() + 86400000).toISOString().split('T')[0]);
 
   if (d7Targets) {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, { total: number; earliest: string }>();
     for (const t of d7Targets as Array<{ user_id: string; amount: number; expires_at: string }>) {
-      grouped.set(t.user_id, (grouped.get(t.user_id) || 0) + t.amount);
+      const g = grouped.get(t.user_id) ?? { total: 0, earliest: t.expires_at };
+      g.total += t.amount;
+      if (t.expires_at < g.earliest) g.earliest = t.expires_at;
+      grouped.set(t.user_id, g);
     }
-    for (const [customerId, totalAmount] of grouped) {
+    for (const [customerId, g] of grouped) {
       try {
         await notifyMileageExpiringSoon({
           customerId,
-          expiringAmount: totalAmount,
-          expireDate: targetD7.toISOString().split('T')[0],
+          expiringAmount: g.total,
+          expireDate: g.earliest.split('T')[0],
           daysLeft: 7,
         });
         d7++;

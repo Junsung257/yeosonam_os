@@ -323,23 +323,20 @@ export function calcMaxUsable(balance: number, sellingPrice: number): number {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 4. CRM 연동: 예약 입금 매칭 시 등급 기반 마일리지 자동 적립
+// [CRM 연동] 입금 매칭 시 등급 기반 마일리지 적립
 // ═══════════════════════════════════════════════════════════════
 //
-// ⚠️ 주의: 이 함수는 earnMileage()와 별개의 적립 경로입니다.
-//     mileage_transactions를 거치지 않아 만료일 설정/소멸 처리와 호환되지 않습니다.
-//     향후 earnMileage()로 통합 필요 (creditMileageForBooking → earnMileage 마이그레이션).
-//     현재 어느 파일에서도 호출되지 않음 (데드코드).
+// bank-transactions API의 입금 매칭(PATCH action='match') 완료 시 호출됨.
+// earnMileage()와 별개 경로이므로 향후 통합 고려.
+//
+// TODO: earnMileage()로 통합 (netProfit 대신 txAmount 기반이라 구조 차이 있음)
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { calcMileageEarned } from '@/lib/mileage';
 
 /**
- * 입금 매칭(bank_transactions PATCH action='match') 완료 시 자동 적립
- * 고객 등급별 적립률: 신규/일반=1%, 우수=3%, VVIP=5%
- *
- * @deprecated earnMileage()로 통합 필요. mileage_transactions를 거치지 않아
- *             만료일/소멸 처리와 호환되지 않음. migrateMileageToEarnApi() 참조.
+ * 입금 매칭 완료 시 고객 등급별로 마일리지 자동 적립
+ * mileage_transactions를 통해 적립하되 만료일도 함께 설정
  */
 export async function creditMileageForBooking(
   bookingId: string,
@@ -369,23 +366,33 @@ export async function creditMileageForBooking(
     const currentSpent = (cust as any).total_spent ?? 0;
 
     const earned     = calcMileageEarned(txAmount, grade);
-    const newMileage = currentMile  + earned;
+    const newMileage = currentMile + earned;
     const newSpent   = currentSpent + txAmount;
 
-    // total_spent 갱신 → DB 트리거가 grade 자동 재계산
+    // mileage_transactions에 적립 내역 기록 (만료일 포함)
+    const { data: tx } = await supabaseAdmin.from('mileage_transactions').insert({
+      user_id: customerId,
+      amount: earned,
+      type: 'EARNED',
+      margin_impact: 0,
+      base_net_profit: 0,
+      mileage_rate: 0,
+      memo: `입금 매칭 적립 (${grade} ${((earned / txAmount) * 100).toFixed(0)}%)`,
+    }).select('id').single();
+
+    if (tx) {
+      const validityMonths = await getEffectiveValidityMonths();
+      const expiresAt = calcExpiresAt(new Date(), validityMonths);
+      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
+    }
+
+    // customers 테이블 갱신
     await supabaseAdmin
       .from('customers')
       .update({ mileage: newMileage, total_spent: newSpent, updated_at: new Date().toISOString() })
       .eq('id', customerId);
 
-    await supabaseAdmin.from('mileage_history').insert([{
-      customer_id:    customerId,
-      delta:          earned,
-      reason:         '예약 적립',
-      booking_id:     bookingId,
-      transaction_id: transactionId ?? null,
-      balance_after:  newMileage,
-    }]);
+    await supabaseAdmin.rpc('increment_customer_mileage', { p_user_id: customerId, p_amount: earned });
 
     console.log(`[CRM마일리지] ${grade} +${earned.toLocaleString()}P (잔액 ${newMileage.toLocaleString()}P)`);
   } catch (e) {
