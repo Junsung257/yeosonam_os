@@ -24,6 +24,7 @@ import {
   getEarnedMileageByBooking,
   type MileageTransaction,
 } from '@/lib/supabase';
+import { calcExpiresAt, getEffectiveValidityMonths, setExpiresOnEarnedTransaction, refreshCustomerExpireAt } from '@/lib/mileage-expiration';
 
 // ── 설정 상수 ────────────────────────────────────────────────
 
@@ -114,6 +115,12 @@ export async function earnMileage(params: {
   });
 
   if (!tx) return null;
+
+  // ── EARNED 트랜잭션에 만료일 설정 ─────────────────────────
+  const validityMonths = await getEffectiveValidityMonths();
+  const expiresAt = calcExpiresAt(new Date(), validityMonths);
+  await setExpiresOnEarnedTransaction(tx.id, expiresAt);
+  await refreshCustomerExpireAt(userId);
 
   return {
     earned: earnAmount,

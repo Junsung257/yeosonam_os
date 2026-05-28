@@ -80,6 +80,11 @@ export const SPECIALISTS_BY_AGENT: Record<AgentType, SpecialistDefinition[]> = {
       match: [/카드뉴스|인스타|SNS|카피|광고\s*소재/i],
     },
     {
+      id: 'marketing.mileage',
+      labelKo: '마일리지·포인트',
+      match: [/마일리지|포인트|적립|소멸|등급|뱃지|출석\s*체크/i],
+    },
+    {
       id: 'marketing.default',
       labelKo: '마케팅 일반',
       match: [],

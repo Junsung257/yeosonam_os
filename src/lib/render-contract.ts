@@ -71,6 +71,10 @@ export interface ScheduleItem {
   activity?: string | null;
   transport?: string | null;
   note?: string | null;
+  /** upload route의 enrichItineraryWithAttractionReferences가 박은 관광지 ID 목록 */
+  attraction_ids?: string[];
+  /** upload route의 enrichItineraryWithAttractionReferences가 박은 관광지명 */
+  attraction_names?: string[];
 }
 
 /** Meal — day.meals 와 호환 */

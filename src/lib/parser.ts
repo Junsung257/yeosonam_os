@@ -915,6 +915,32 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
       void storeSemanticCache('parse_travel_doc', cacheKey, result.rawText);
       const extractedData = parseGeminiResponse(result.rawText, text);
       extractedData.rawText = text;
+
+      // P1-5: price_tiers 가 여전히 빈 배열이면 Gemini structured output 으로 1회 재시도
+      const priceTiersEmpty = !extractedData.price_tiers || extractedData.price_tiers.length === 0;
+      if (priceTiersEmpty && !result.advisorUsed) {
+        const apiKey = getSecret('GOOGLE_AI_API_KEY');
+        if (apiKey) {
+          console.warn('[Parser] price_tiers 누락 — Gemini structured output 재시도');
+          try {
+            const geminiRaw = await callGeminiText(apiKey, text, injectToday(EXTRACT_PROMPT), EXTRACTED_DATA_SCHEMA);
+            const geminiData = parseGeminiResponse(geminiRaw, text);
+            if (geminiData.price_tiers && geminiData.price_tiers.length > 0) {
+              console.log('[Parser] Gemini 재시도 성공 — price_tiers:', geminiData.price_tiers.length, '개');
+              geminiData.rawText = text;
+              geminiData._llm_meta = {
+                ...extractedData._llm_meta,
+                provider: 'gemini(structured)',
+                retry_count: (extractedData._llm_meta?.retry_count ?? 0) + 1,
+              };
+              return geminiData;
+            }
+          } catch {
+            console.warn('[Parser] Gemini price_tiers 재시도 실패 — 기존 결과 유지');
+          }
+        }
+      }
+
       // P11-4 박제: LLM 호출 메타 attach (upload route 가 ai_quality_log 에 적재)
       const usage = result._usage;
       extractedData._llm_meta = {

@@ -204,7 +204,7 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
         const replyForm = new URLSearchParams({
           media_type: 'TEXT',
           text: replyText,
-          reply_to: parentId,
+          reply_to_id: parentId,
           access_token: accessToken,
         });
         const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: replyForm });

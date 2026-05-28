@@ -437,3 +437,149 @@ export async function sendConciergeCartRetarget(params: {
     },
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 마일리지 알림톡 템플릿 (Phase 5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 마일리지 적립 안내 (결제 완료 시) */
+export async function sendMileageEarnedAlimtalk(params: {
+  phone: string;
+  name?: string;
+  earnedAmount: number;
+  balance: number;
+  bookingRef?: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EARNED || '';
+  if (!templateId) {
+    console.log('[마일리지 적립] 템플릿 미설정 — 수기 모드', params.phone, params.earnedAmount);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '적립금액': params.earnedAmount.toLocaleString(),
+      '잔액': params.balance.toLocaleString(),
+      '예약번호': params.bookingRef || '',
+    },
+  });
+}
+
+/** 마일리지 사용 확인 (예약 생성 시) */
+export async function sendMileageUsedAlimtalk(params: {
+  phone: string;
+  name?: string;
+  usedAmount: number;
+  balance: number;
+  bookingRef?: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_USED || '';
+  if (!templateId) {
+    console.log('[마일리지 사용] 템플릿 미설정 — 수기 모드', params.phone, params.usedAmount);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '사용금액': params.usedAmount.toLocaleString(),
+      '잔액': params.balance.toLocaleString(),
+      '예약번호': params.bookingRef || '',
+    },
+  });
+}
+
+/** 마일리지 소멸 예정 (D-30 / D-7) */
+export async function sendMileageExpiringSoonAlimtalk(params: {
+  phone: string;
+  name?: string;
+  expiringAmount: number;
+  expireDate: string;
+  daysLeft: number;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EXPIRING || '';
+  if (!templateId) {
+    console.log('[마일리지 소멸예정] 템플릿 미설정 — 수기 모드', params.phone, params.expiringAmount);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '소멸금액': params.expiringAmount.toLocaleString(),
+      '소멸일': params.expireDate,
+      '남은일수': String(params.daysLeft),
+    },
+  });
+}
+
+/** 마일리지 소멸 완료 */
+export async function sendMileageExpiredAlimtalk(params: {
+  phone: string;
+  name?: string;
+  expiredAmount: number;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EXPIRED || '';
+  if (!templateId) {
+    console.log('[마일리지 소멸완료] 템플릿 미설정 — 수기 모드', params.phone, params.expiredAmount);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '소멸금액': params.expiredAmount.toLocaleString(),
+    },
+  });
+}
+
+/** 마일리지 이벤트 안내 */
+export async function sendMileageEventAlimtalk(params: {
+  phone: string;
+  name?: string;
+  eventTitle: string;
+  eventDescription: string;
+  eventUrl?: string;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EVENT || '';
+  if (!templateId) {
+    console.log('[마일리지 이벤트] 템플릿 미설정 — 수기 모드', params.phone, params.eventTitle);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '이벤트명': params.eventTitle,
+      '이벤트내용': params.eventDescription,
+      '이벤트링크': params.eventUrl || '',
+    },
+  });
+}
+
+/** 웰컴 마일리지 안내 */
+export async function sendWelcomeMileageAlimtalk(params: {
+  phone: string;
+  name?: string;
+  mileageAmount: number;
+}) {
+  const templateId = process.env.KAKAO_TEMPLATE_WELCOME_MILEAGE || '';
+  if (!templateId) {
+    console.log('[웰컴 마일리지] 템플릿 미설정 — 수기 모드', params.phone, params.mileageAmount);
+    return { skipped: true, mode: 'manual' };
+  }
+  return sendAlimtalk({
+    to: params.phone,
+    templateId,
+    variables: {
+      '고객명': params.name || '고객',
+      '마일리지금액': params.mileageAmount.toLocaleString(),
+    },
+  });
+}

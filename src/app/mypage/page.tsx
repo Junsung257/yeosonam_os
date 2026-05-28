@@ -104,52 +104,59 @@ function MileageCard({ info }: { info: MileageInfo }) {
     : Math.min(100, Math.round((info.total_earned / grade.nextMin) * 100));
 
   return (
-    <div className={`bg-gradient-to-br ${grade.color} rounded-2xl p-5 text-white shadow-lg`}>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-xs opacity-80 font-medium">나의 여소남 마일리지</p>
-          <p className="text-3xl font-extrabold mt-0.5">₩{fmt(info.balance)}</p>
-        </div>
-        <span className="text-4xl">{grade.icon}</span>
-      </div>
-
-      {/* 등급 뱃지 */}
-      <div className="flex items-center gap-2 mb-4">
-        <span className="bg-white/20 backdrop-blur text-xs font-bold px-3 py-1 rounded-full">
-          {grade.label} 회원
-        </span>
-        <span className="text-xs opacity-80">적립률 5%</span>
-      </div>
-
-      {/* 다음 등급 진행바 */}
-      {grade.nextMin !== Infinity && (
-        <div>
-          <div className="flex justify-between text-xs opacity-80 mb-1.5">
-            <span>다음 등급: {grade.next}</span>
-            <span>{progress}%</span>
+    <Link href="/mypage/mileage" className="block group">
+      <div className={`bg-gradient-to-br ${grade.color} rounded-2xl p-5 text-white shadow-lg group-hover:shadow-xl transition-all group-hover:scale-[1.01]`}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-xs opacity-80 font-medium">나의 여소남 마일리지</p>
+            <p className="text-3xl font-extrabold mt-0.5">₩{fmt(info.balance)}</p>
           </div>
-          <div className="w-full bg-white/20 rounded-full h-2">
-            <div
-              className="bg-white rounded-full h-2 transition-all duration-700"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="text-xs opacity-70 mt-1.5">{grade.condition}</p>
+          <span className="text-4xl">{grade.icon}</span>
         </div>
-      )}
 
-      {/* 적립/사용 요약 */}
-      <div className="flex gap-4 mt-4 pt-4 border-t border-white/20">
-        <div>
-          <p className="text-xs opacity-70">총 적립</p>
-          <p className="font-bold text-sm">+₩{fmt(info.total_earned)}</p>
+        {/* 등급 뱃지 */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="bg-white/20 backdrop-blur text-xs font-bold px-3 py-1 rounded-full">
+            {grade.label} 회원
+          </span>
+          <span className="text-xs opacity-80">적립률 5%</span>
         </div>
-        <div>
-          <p className="text-xs opacity-70">총 사용</p>
-          <p className="font-bold text-sm">-₩{fmt(info.total_used)}</p>
+
+        {/* 다음 등급 진행바 */}
+        {grade.nextMin !== Infinity && (
+          <div>
+            <div className="flex justify-between text-xs opacity-80 mb-1.5">
+              <span>다음 등급: {grade.next}</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="w-full bg-white/20 rounded-full h-2">
+              <div
+                className="bg-white rounded-full h-2 transition-all duration-700"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs opacity-70 mt-1.5">{grade.condition}</p>
+          </div>
+        )}
+
+        {/* 적립/사용 요약 */}
+        <div className="flex gap-4 mt-4 pt-4 border-t border-white/20">
+          <div>
+            <p className="text-xs opacity-70">총 적립</p>
+            <p className="font-bold text-sm">+₩{fmt(info.total_earned)}</p>
+          </div>
+          <div>
+            <p className="text-xs opacity-70">총 사용</p>
+            <p className="font-bold text-sm">-₩{fmt(info.total_used)}</p>
+          </div>
+        </div>
+
+        {/* 상세보기 표시 */}
+        <div className="mt-3 pt-2 border-t border-white/10 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-xs bg-white/20 px-3 py-1 rounded-full">상세 보기 →</span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

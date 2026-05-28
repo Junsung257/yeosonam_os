@@ -117,8 +117,12 @@ export default function CustomersPage() {
 
   // ── 확인 모달 ──────────────────────────────────────────────────────────────
   const [confirmModal, setConfirmModal] = useState<{
-    type: 'mileage-reset' | 'bulk-delete';
+    type: 'mileage-reset' | 'bulk-delete' | 'bulk-grant-mileage';
     count: number;
+    grantAmount?: number;
+    grantReason?: string;
+    grantGradeFilter?: string;
+    grantMinDays?: number;
   } | null>(null);
 
   // ── ⋮ 메뉴 ────────────────────────────────────────────────────────────────
@@ -330,6 +334,40 @@ export default function CustomersPage() {
     setCustomers(prev => prev.filter(c => c.id !== id));
     if (drawer?.id === id) setDrawer(null);
     showToast('삭제 완료');
+  }
+
+  // ─── 조건부 마일리지 일괄 지급 상태 ───────────────────────────────────────
+  const [grantForm, setGrantForm] = useState({ amount: 1000, reason: '프로모션 지급', gradeFilter: '', minDaysSinceLastBooking: 0 });
+
+  // ─── 조건부 마일리지 일괄 지급 ─────────────────────────────────────────────
+
+  async function handleBulkMileageGrant() {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const res = await fetch('/api/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'bulk_grant_mileage',
+        ids,
+        amount: confirmModal?.grantAmount ?? 1000,
+        reason: confirmModal?.grantReason ?? '프로모션 지급',
+        gradeFilter: confirmModal?.grantGradeFilter || undefined,
+        minDaysSinceLastBooking: confirmModal?.grantMinDays || undefined,
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      showToast('마일리지 지급 실패', 'error');
+      return;
+    }
+    const grantedCount = result.processed ?? ids.length;
+    setCustomers(prev =>
+      prev.map(c => selectedIds.has(c.id) ? { ...c, mileage: (c.mileage ?? 0) + (confirmModal?.grantAmount ?? 1000) } : c)
+    );
+    setSelectedIds(new Set());
+    setConfirmModal(null);
+    showToast(`${grantedCount}명 마일리지 ${(confirmModal?.grantAmount ?? 1000).toLocaleString()}P 지급 완료`);
   }
 
   // ─── 일괄 마일리지 초기화 ─────────────────────────────────────────────────
@@ -766,6 +804,12 @@ export default function CustomersPage() {
             마일리지 초기화
           </button>
           <button
+            onClick={() => setConfirmModal({ type: 'bulk-grant-mileage', count: selectedIds.size, grantAmount: 1000, grantReason: '프로모션 지급' })}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
+              text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
+            마일리지 지급
+          </button>
+          <button
             onClick={() => setConfirmModal({ type: 'bulk-delete', count: selectedIds.size })}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
@@ -786,25 +830,90 @@ export default function CustomersPage() {
           <div className="bg-white rounded w-full max-w-sm p-6"
             onClick={e => e.stopPropagation()}>
             <h3 className="text-admin-lg font-bold text-admin-text-2 mb-2">
-              {confirmModal.type === 'mileage-reset' ? '마일리지 일괄 초기화' : '일괄 삭제'}
+              {confirmModal.type === 'mileage-reset' ? '마일리지 일괄 초기화'
+                : confirmModal.type === 'bulk-grant-mileage' ? '마일리지 조건부 지급'
+                : '일괄 삭제'}
             </h3>
-            <p className="text-admin-base text-admin-muted mb-1">
-              선택된 <span className="font-bold text-admin-text-2">{confirmModal.count}명</span>의 고객을
-            </p>
-            <p className="text-admin-base text-admin-muted mb-6">
-              {confirmModal.type === 'mileage-reset'
-                ? '마일리지를 모두 0P로 초기화합니다.'
-                : '삭제합니다. 이 작업은 되돌릴 수 없습니다.'
-              }
-            </p>
+
+            {confirmModal.type === 'bulk-grant-mileage' ? (
+              <>
+                <p className="text-admin-base text-admin-muted mb-4">
+                  선택된 <span className="font-bold text-admin-text-2">{confirmModal.count}명</span>에게
+                  마일리지를 일괄 지급합니다.
+                </p>
+                <div className="space-y-3 mb-6">
+                  <div>
+                    <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">지급 금액 (P)</label>
+                    <input type="number" min={1} max={1000000}
+                      defaultValue={1000}
+                      onChange={e => setConfirmModal(prev => prev ? { ...prev, grantAmount: parseInt(e.target.value) || 0 } : prev)}
+                      className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">사유</label>
+                    <input type="text" defaultValue="프로모션 지급"
+                      onChange={e => setConfirmModal(prev => prev ? { ...prev, grantReason: e.target.value } : prev)}
+                      className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500"
+                      placeholder="예: 3개월 미구매 고객 프로모션"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">등급 필터 (선택)</label>
+                      <select
+                        onChange={e => setConfirmModal(prev => prev ? { ...prev, grantGradeFilter: e.target.value } : prev)}
+                        className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500">
+                        <option value="">전체 등급</option>
+                        <option value="VVIP">VVIP</option>
+                        <option value="우수">우수</option>
+                        <option value="일반">일반</option>
+                        <option value="신규">신규</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">미구매 기준 (선택)</label>
+                      <select
+                        onChange={e => setConfirmModal(prev => prev ? { ...prev, grantMinDays: parseInt(e.target.value) || 0 } : prev)}
+                        className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500">
+                        <option value="0">적용 안 함</option>
+                        <option value="30">30일 이상 미구매</option>
+                        <option value="60">60일 이상 미구매</option>
+                        <option value="90">90일 이상 미구매</option>
+                        <option value="180">180일 이상 미구매</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-admin-base text-admin-muted mb-1">
+                  선택된 <span className="font-bold text-admin-text-2">{confirmModal.count}명</span>의 고객을
+                </p>
+                <p className="text-admin-base text-admin-muted mb-6">
+                  {confirmModal.type === 'mileage-reset'
+                    ? '마일리지를 모두 0P로 초기화합니다.'
+                    : '삭제합니다. 이 작업은 되돌릴 수 없습니다.'
+                  }
+                </p>
+              </>
+            )}
+
             <div className="flex gap-3">
               <button onClick={() => setConfirmModal(null)}
                 className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded text-admin-sm font-medium hover:bg-admin-bg transition bg-white">
                 취소
               </button>
               <button
-                onClick={confirmModal.type === 'mileage-reset' ? handleBulkMileageReset : handleBulkDelete}
-                className="flex-1 bg-red-600 text-white py-2.5 rounded text-admin-sm font-semibold hover:bg-red-700 transition">
+                onClick={confirmModal.type === 'mileage-reset' ? handleBulkMileageReset
+                  : confirmModal.type === 'bulk-grant-mileage' ? handleBulkMileageGrant
+                  : handleBulkDelete}
+                className={`flex-1 py-2.5 rounded text-admin-sm font-semibold transition ${
+                  confirmModal.type === 'bulk-grant-mileage'
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}>
                 실행
               </button>
             </div>

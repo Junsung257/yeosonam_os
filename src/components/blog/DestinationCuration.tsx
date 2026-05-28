@@ -119,9 +119,23 @@ export default function DestinationCuration({ destination, products }: Props) {
         })}
       </div>
 
-      <p className="mt-4 text-center text-[11px] text-slate-400">
-        💬 이 글이 도움되셨다면 <a href="https://pf.kakao.com/_yeosonam" target="_blank" rel="noopener" className="text-brand hover:underline font-semibold">카톡으로 문의</a>도 환영합니다.
-      </p>
+      <div className="mt-5 flex flex-col sm:flex-row gap-2 items-center justify-center">
+        <Link
+          href={`/packages?destination=${encodeURIComponent(destination)}`}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand text-white text-[13px] font-bold px-6 py-3 shadow-md shadow-brand/20 hover:bg-brand-dark hover:shadow-lg transition-all"
+        >
+          {destination} 전체 상품 보기
+          <span aria-hidden>→</span>
+        </Link>
+        <a
+          href="https://pf.kakao.com/_yeosonam"
+          target="_blank"
+          rel="noopener"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#FEE500] text-[#3C1E1E] text-[13px] font-bold px-6 py-3 hover:shadow-md transition-all"
+        >
+          💬 카톡으로 문의
+        </a>
+      </div>
     </section>
   );
 }

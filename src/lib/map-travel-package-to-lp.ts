@@ -19,6 +19,10 @@ export interface DayActivity {
   type: 'sightseeing' | 'meal' | 'hotel' | 'flight' | 'optional' | 'shopping' | 'transport';
   label: string;
   detail?: string;
+  /** upload route의 enrichItineraryWithAttractionReferences가 매칭한 관광지 ID 목록 */
+  attractionIds?: string[];
+  /** upload route의 enrichItineraryWithAttractionReferences가 매칭한 관광지명 */
+  attractionNames?: string[];
 }
 
 export interface ItineraryDay {
@@ -201,6 +205,8 @@ export function mapTravelPackageToLandingData(
                 type: toLpActivityType(s.type),
                 label: s.activity ?? '',
                 detail: s.note ?? undefined,
+                attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
+                attractionNames: Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined,
               })),
               ...(d.hotelCard?.name
                 ? [{
@@ -223,11 +229,13 @@ export function mapTravelPackageToLandingData(
                 lunch: false,
                 dinner: false,
               },
-              activities: ((d.schedule as { activity: string; type?: string; note?: string }[]) || []).map(
+              activities: ((d.schedule as { activity: string; type?: string; note?: string; attraction_ids?: string[]; attraction_names?: string[] }[]) || []).map(
                 s => ({
                   type: toLpActivityType(s.type),
                   label: s.activity,
                   detail: s.note,
+                  attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
+                  attractionNames: Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined,
                 }),
               ),
               hotel: (d.hotel as { name?: string } | null)?.name,

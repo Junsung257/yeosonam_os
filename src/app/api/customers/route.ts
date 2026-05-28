@@ -108,6 +108,59 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, updated: ids.length });
     }
 
+    if (body.action === 'bulk_grant_mileage') {
+      // 조건부 마일리지 일괄 지급 (등급/미구매 필터 지원)
+      const { ids, amount, reason, gradeFilter, minDaysSinceLastBooking } = body as {
+        ids: string[]; amount: number; reason: string;
+        gradeFilter?: string; minDaysSinceLastBooking?: number;
+      };
+      if (!ids?.length) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      if (!amount || amount <= 0) return NextResponse.json({ error: '유효한 금액 필요' }, { status: 400 });
+
+      // 조건에 맞는 고객 필터링
+      let targetIds = ids;
+
+      if (gradeFilter || minDaysSinceLastBooking) {
+        let query = supabaseAdmin.from('customers').select('id').in('id', ids);
+        if (gradeFilter) query = query.eq('grade', gradeFilter);
+        if (minDaysSinceLastBooking) {
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - minDaysSinceLastBooking);
+          query = query.lt('updated_at', cutoff.toISOString());
+        }
+        const { data: filtered } = await query;
+        targetIds = (filtered ?? []).map((c: { id: string }) => c.id);
+      }
+
+      if (targetIds.length === 0) {
+        return NextResponse.json({ processed: 0, message: '조건에 맞는 고객이 없습니다' }, { status: 200 });
+      }
+
+      // 각 고객에 마일리지 지급 (increment_customer_mileage RPC 사용 - atomic)
+      let processed = 0;
+      for (const uid of targetIds) {
+        const { error } = await supabaseAdmin.rpc('increment_customer_mileage', {
+          p_user_id: uid,
+          p_amount: amount,
+        });
+        if (!error) {
+          processed++;
+          // mileage_transactions에 기록
+          await supabaseAdmin.from('mileage_transactions').insert({
+            user_id: uid,
+            amount,
+            type: 'EARNED',
+            margin_impact: 0,
+            base_net_profit: 0,
+            mileage_rate: 0,
+            memo: reason || '관리자 일괄 지급',
+          });
+        }
+      }
+
+      return NextResponse.json({ ok: true, processed, total: targetIds.length });
+    }
+
     if (!body.name?.trim()) {
       return NextResponse.json({ error: '고객 이름이 필요합니다.' }, { status: 400 });
     }

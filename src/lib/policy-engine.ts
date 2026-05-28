@@ -161,16 +161,24 @@ export async function applyPricePolicies(ctx: PriceContext): Promise<{
 }
 
 // ── 마일리지 엔진 ────────────────────────────────────────
-export async function applyMileagePolicies(ctx: MileageContext): Promise<{
+export interface MileagePolicyResult {
   earnedPoints: number;
   maxUsageAmount: number;
   appliedPolicies: string[];
-}> {
+  expirationMonths?: number;       // mileage_expiration_months
+  minEarn?: number;                // mileage_min_earn
+  maxEarn?: number;                // mileage_max_earn
+}
+
+export async function applyMileagePolicies(ctx: MileageContext): Promise<MileagePolicyResult> {
   const policies = await getActivePolicies('mileage');
   let rate = 0;
   let multiplier = 1;
   let grantPoints = 0;
   let maxUsageRate = 1.0;
+  let expirationMonths: number | undefined;
+  let minEarn: number | undefined;
+  let maxEarn: number | undefined;
   const applied: string[] = [];
 
   for (const policy of policies) {
@@ -196,13 +204,25 @@ export async function applyMileagePolicies(ctx: MileageContext): Promise<{
         maxUsageRate = Math.min(maxUsageRate, config.max_usage_rate as number || 1);
         applied.push(policy.name);
         break;
+      case 'mileage_expiration_months':
+        expirationMonths = config.months as number || 24;
+        applied.push(policy.name);
+        break;
+      case 'mileage_min_earn':
+        minEarn = config.amount as number;
+        applied.push(policy.name);
+        break;
+      case 'mileage_max_earn':
+        maxEarn = config.amount as number;
+        applied.push(policy.name);
+        break;
     }
   }
 
   const earnedPoints = Math.round(ctx.payment_amount * rate * multiplier) + grantPoints;
   const maxUsageAmount = Math.round(ctx.payment_amount * maxUsageRate);
 
-  return { earnedPoints, maxUsageAmount, appliedPolicies: applied };
+  return { earnedPoints, maxUsageAmount, appliedPolicies: applied, expirationMonths, minEarn, maxEarn };
 }
 
 // ── 프론트 노출 엔진 ─────────────────────────────────────

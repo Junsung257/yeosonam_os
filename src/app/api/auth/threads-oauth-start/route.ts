@@ -10,7 +10,7 @@
  *   - threads_manage_posts
  *   - threads_read_replies
  *
- * 응답: { url: "https://www.facebook.com/v18.0/dialog/oauth?..." }
+ * 응답: { url: "https://www.facebook.com/v21.0/dialog/oauth?..." }
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac } from 'crypto';
@@ -19,11 +19,15 @@ import { getSecret } from '@/lib/secret-registry';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const appId = getSecret('META_APP_ID');
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  // Threads 전용 앱 ID 사용 (META_APP_ID와 다름)
+  const appId = getSecret('THREADS_APP_ID') || getSecret('META_APP_ID');
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    'https://www.yeosonam.com';
   if (!appId || !siteUrl) {
     return NextResponse.json(
-      { error: 'META_APP_ID 또는 NEXT_PUBLIC_SITE_URL 미설정' },
+      { error: 'THREADS_APP_ID 또는 NEXT_PUBLIC_SITE_URL 미설정' },
       { status: 500 },
     );
   }
@@ -46,6 +50,6 @@ export async function GET(request: NextRequest) {
     response_type: 'code',
   });
 
-  const url = `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`;
+  const url = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
   return NextResponse.json({ url });
 }

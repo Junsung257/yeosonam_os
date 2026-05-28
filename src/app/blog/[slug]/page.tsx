@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -377,6 +377,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug: rawSlug } = await params;
   const slug = safeDecodeSlug(rawSlug);
+  // 숫자 slug(연도 등)는 noindex
+  if (/^\d+$/.test(slug)) {
+    return { title: '글을 찾을 수 없습니다', robots: { index: false, follow: false } };
+  }
   const post = await getPost(slug);
   // 404 캐시가 색인되지 않도록 명시적 noindex.
   if (!post) {
@@ -450,6 +454,44 @@ export default async function BlogDetailPage({
   const utmCampaign = (qp.utm_campaign as string) || null;
   const utmTerm = (qp.utm_term as string) || null;
   const utmSource = (qp.utm_source as string) || null;
+
+  // 렌더링 errors를 notFound로 fallback (E1401/500 방어)
+  try {
+    return await renderBlogDetail({ rawSlug, slug, utmCampaign, utmTerm, utmSource });
+  } catch (err) {
+    console.error('[blog/detail] 렌더링 예외:', slug, err instanceof Error ? err.message : String(err));
+    try {
+      await supabaseAdmin.from('admin_alerts').insert({
+        category: 'general',
+        severity: 'error',
+        title: 'blog detail render fail',
+        message: `slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        ref_type: 'content_creative',
+        ref_id: slug,
+        meta: { digest: (err as any)?.digest ?? null, stack: err instanceof Error ? err.stack?.slice(0, 1000) : null },
+      });
+    } catch { /* noop */ }
+    notFound();
+  }
+}
+
+async function renderBlogDetail({
+  rawSlug,
+  slug,
+  utmCampaign,
+  utmTerm,
+  utmSource,
+}: {
+  rawSlug: string;
+  slug: string;
+  utmCampaign: string | null;
+  utmTerm: string | null;
+  utmSource: string | null;
+}) {
+  // 숫자로만 구성된 slug(e.g. "/blog/2026")는 블로그 목록으로 리다이렉트
+  if (/^\d+$/.test(slug)) {
+    redirect('/blog');
+  }
 
   const post = await getPost(slug);
   if (!post) notFound();

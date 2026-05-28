@@ -42,6 +42,7 @@ const CATEGORIES: { key: PolicyCategory | 'all'; label: string; color: string }[
 const ACTION_LABELS: Record<string, string> = {
   price_discount_fixed: '정액 할인', price_discount_pct: '정률 할인', price_surcharge_pct: '할증',
   mileage_multiply: '마일리지 배수', mileage_fixed: '마일리지 정률', mileage_grant: '마일리지 지급', mileage_limit: '사용 한도',
+  mileage_expiration_months: '마일리지 소멸 기간', mileage_min_earn: '최소 적립', mileage_max_earn: '최대 적립 상한',
   send_alimtalk: '알림톡 발송', send_sms: 'SMS 발송', send_email: '이메일 발송', auto_reply: '자동 응답',
   show_badge: '뱃지 표시', show_banner: '배너 노출', show_popup: '팝업 노출', hide_product: '상품 숨김',
   auto_cancel: '자동 취소', auto_refund: '자동 환불', require_document: '서류 필수', hold_approval: '승인 대기',
@@ -205,6 +206,126 @@ export default function ControlTowerPage() {
     setEditOpen(true);
   }, []);
 
+    // ── 마일리지 이벤트 템플릿 ────────────────────────────
+  const MILEAGE_TEMPLATES: { label: string; desc: string; build: () => Partial<Policy> }[] = [
+    {
+      label: '🎯 마일리지 2배 이벤트',
+      desc: '전체 상품 마일리지 2배 적립 (기간 설정 필요)',
+      build: () => ({
+        category: 'mileage' as PolicyCategory,
+        name: '',
+        description: '마일리지 2배 이벤트',
+        trigger_type: 'always',
+        trigger_config: {},
+        action_type: 'mileage_multiply',
+        action_config: { multiplier: 2 },
+        target_scope: { all: true },
+        starts_at: new Date().toISOString().slice(0, 10),
+        ends_at: null,
+        is_active: true,
+        priority: 100,
+        created_by: null,
+      }),
+    },
+    {
+      label: '📈 VVIP 추가 적립',
+      desc: 'VVIP 고객 대상 마일리지 정률 추가',
+      build: () => ({
+        category: 'mileage' as PolicyCategory,
+        name: '',
+        description: 'VVIP 추가 적립',
+        trigger_type: 'always',
+        trigger_config: {},
+        action_type: 'mileage_fixed',
+        action_config: { rate: 0.02 },
+        target_scope: { customer_grade: 'VVIP' },
+        starts_at: new Date().toISOString().slice(0, 10),
+        ends_at: null,
+        is_active: true,
+        priority: 100,
+        created_by: null,
+      }),
+    },
+    {
+      label: '🎂 생일 축하 마일리지',
+      desc: '생일월 고객 1,000P 지급',
+      build: () => ({
+        category: 'mileage' as PolicyCategory,
+        name: '',
+        description: '생일월 마일리지 지급',
+        trigger_type: 'condition',
+        trigger_config: { field: 'is_birthday_month', operator: '=', value: true },
+        action_type: 'mileage_grant',
+        action_config: { points: 1000 },
+        target_scope: { all: true },
+        starts_at: new Date().toISOString().slice(0, 10),
+        ends_at: null,
+        is_active: true,
+        priority: 100,
+        created_by: null,
+      }),
+    },
+    {
+      label: '🆕 신규 가입 웰컴',
+      desc: '신규 고객 3,000P 지급',
+      build: () => ({
+        category: 'mileage' as PolicyCategory,
+        name: '',
+        description: '신규 가입 웰컴 마일리지',
+        trigger_type: 'condition',
+        trigger_config: { field: 'is_new_member', operator: '=', value: true },
+        action_type: 'mileage_grant',
+        action_config: { points: 3000 },
+        target_scope: { all: true },
+        starts_at: new Date().toISOString().slice(0, 10),
+        ends_at: null,
+        is_active: true,
+        priority: 100,
+        created_by: null,
+      }),
+    },
+    {
+      label: '⛔ 마일리지 사용 한도',
+      desc: '결제금액 대비 마일리지 사용 비율 제한',
+      build: () => ({
+        category: 'mileage' as PolicyCategory,
+        name: '',
+        description: '마일리지 사용 한도 설정',
+        trigger_type: 'always',
+        trigger_config: {},
+        action_type: 'mileage_limit',
+        action_config: { max_usage_rate: 0.3 },
+        target_scope: { all: true },
+        starts_at: new Date().toISOString().slice(0, 10),
+        ends_at: null,
+        is_active: true,
+        priority: 100,
+        created_by: null,
+      }),
+    },
+    {
+      label: '⏰ 소멸 기간 설정',
+      desc: '마일리지 적립 후 소멸까지 기간 지정',
+      build: () => ({
+        category: 'mileage' as PolicyCategory,
+        name: '',
+        description: '마일리지 소멸 기간 설정',
+        trigger_type: 'always',
+        trigger_config: {},
+        action_type: 'mileage_expiration_months',
+        action_config: { months: 24 },
+        target_scope: { all: true },
+        starts_at: new Date().toISOString().slice(0, 10),
+        ends_at: null,
+        is_active: true,
+        priority: 100,
+        created_by: null,
+      }),
+    },
+  ];
+
+  const [templateOpen, setTemplateOpen] = useState(false);
+
   // ── 편집 폼 필드 업데이트 ──────────────────────────────
   const updateField = (field: string, value: unknown) => {
     setEditTarget(prev => prev ? { ...prev, [field]: value } : prev);
@@ -248,6 +369,35 @@ export default function ControlTowerPage() {
             className="px-3 py-1.5 bg-rose-50 text-rose-700 text-admin-sm rounded hover:bg-rose-100 transition font-medium border border-rose-200 disabled:opacity-50">
             {previewing ? '시뮬레이션 중...' : '🔍 커미션 영향 미리보기'}
           </button>
+          <div className="relative">
+            <button onClick={() => setTemplateOpen(!templateOpen)}
+              className="px-3 py-1.5 bg-amber-50 text-amber-700 text-admin-sm rounded hover:bg-amber-100 transition font-medium border border-amber-200">
+              📋 이벤트 템플릿
+            </button>
+            {templateOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded-lg shadow-lg z-50 w-64">
+                <div className="px-3 py-2 text-[10px] font-semibold text-admin-muted-2 uppercase border-b border-admin-border">마일리지 템플릿</div>
+                {MILEAGE_TEMPLATES.map((tmpl, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const p = tmpl.build();
+                      setEditTarget({ ...EMPTY_POLICY, ...p, name: `${tmpl.label.split(' ').slice(1).join(' ')}` });
+                      setTemplateOpen(false);
+                      setEditOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 text-admin-xs hover:bg-amber-50 transition flex items-center gap-2 border-b border-admin-border last:border-0"
+                  >
+                    <span className="text-sm">{tmpl.label.split(' ')[0]}</span>
+                    <div>
+                      <p className="font-medium text-admin-text-2">{tmpl.label.split(' ').slice(1).join(' ')}</p>
+                      <p className="text-[10px] text-admin-muted">{tmpl.desc}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button onClick={() => { setEditTarget({ ...EMPTY_POLICY }); setEditOpen(true); }}
             className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
             + 새 정책
@@ -483,6 +633,30 @@ export default function ControlTowerPage() {
                     <label className="text-[10px] text-admin-muted-2">지급 포인트</label>
                     <input type="number" value={(editTarget.action_config as Record<string, number>)?.points || 0}
                       onChange={e => updateJsonField('action_config', 'points', parseInt(e.target.value) || 0)}
+                      className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
+                  </div>
+                )}
+                {editTarget.action_type === 'mileage_expiration_months' && (
+                  <div>
+                    <label className="text-[10px] text-admin-muted-2">소멸 기간 (개월, 예: 24 = 2년)</label>
+                    <input type="number" min={1} value={(editTarget.action_config as Record<string, number>)?.months || 24}
+                      onChange={e => updateJsonField('action_config', 'months', parseInt(e.target.value) || 24)}
+                      className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
+                  </div>
+                )}
+                {editTarget.action_type === 'mileage_min_earn' && (
+                  <div>
+                    <label className="text-[10px] text-admin-muted-2">최소 적립 금액 (원)</label>
+                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
+                      onChange={e => updateJsonField('action_config', 'amount', parseInt(e.target.value) || 0)}
+                      className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
+                  </div>
+                )}
+                {editTarget.action_type === 'mileage_max_earn' && (
+                  <div>
+                    <label className="text-[10px] text-admin-muted-2">최대 적립 상한 (원)</label>
+                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
+                      onChange={e => updateJsonField('action_config', 'amount', parseInt(e.target.value) || 0)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}

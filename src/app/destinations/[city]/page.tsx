@@ -169,7 +169,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     supabaseAdmin
       .from('content_creatives')
       .select('id, slug, seo_title, og_image_url, content_type, angle_type, published_at')
-      .or(`destination.eq.${city},travel_packages.destination.eq.${city}`)
+      .eq('destination', city)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .not('slug', 'is', null)
@@ -274,7 +274,12 @@ async function renderPillarBody(md: string): Promise<string> {
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
   const decoded = decodeURIComponent(city);
-  const data = await getPillarData(decoded);
+  let data: PillarData | null = null;
+  try {
+    data = await getPillarData(decoded);
+  } catch (err) {
+    console.error('[destinations] getPillarData 예외:', decoded, err instanceof Error ? err.message : String(err));
+  }
   if (!data) notFound();
 
   // 히어로 이미지: 승인된 메타 URL(안전한 경우만) > 관광지 갤러리 medium/large

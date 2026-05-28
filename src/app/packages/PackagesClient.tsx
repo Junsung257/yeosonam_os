@@ -22,6 +22,7 @@ import Loading from './loading';
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
 const INITIAL_VISIBLE_COUNT = 18;
 const VISIBLE_STEP = 18;
+const consultTelHref = getConsultTelHref();
 
 interface Package {
   id: string;
@@ -49,12 +50,8 @@ interface Package {
   products?: { display_name?: string; internal_code?: string };
   seats_held?: number;
   seats_confirmed?: number;
-  // 2026-05-19 박제 (PR #139 P2-A): 같은 카탈로그 N 패키지 그룹 UUID
   catalog_id?: string | null;
 }
-
-// 항공사 매핑 SSOT: getAirlineName() in @/lib/render-contract (CRC). 인라인 dict 제거.
-// 지역 매칭 SSOT: REGIONS in @/lib/regions. 인라인 정규식 제거.
 
 const SORT_OPTIONS = [
   { label: '추천순', value: 'recommended' },
@@ -62,12 +59,11 @@ const SORT_OPTIONS = [
   { label: '가격 높은순', value: 'price_desc' },
 ] as const;
 
-// 필터: 전체 + REGIONS (목적지 권역). 출발 공항은 상단 출발 허브 칩으로 분리.
 const REGION_FILTERS = REGIONS.filter(r => r.featuredCities.length > 0);
 const FILTER_OPTIONS = ['전체', ...REGION_FILTERS.map(r => r.label)] as const;
 
 function matchesFilter(pkg: Package, filter: string): boolean {
-  const resolved = resolveLegacyFilterLabel(filter); // "마카오/홍콩" → "마카오·홍콩"
+  const resolved = resolveLegacyFilterLabel(filter);
   if (resolved === '전체') return true;
   const region = REGION_FILTERS.find(r => r.label === resolved);
   if (region) return matchesRegion(pkg as { country?: string | null; destination?: string | null }, region.slug);
@@ -90,15 +86,11 @@ interface SearchResponse {
   filterForClient: string;
 }
 
-// 옵션 4a — props 제거, useSearchParams 로 query 읽고 SWR 로 fetch.
-// Page 가 searchParams 안 받으므로 정적 prerender (`○` 마킹) 가능.
-// 트레이드오프: 첫 hydration 시 skeleton, hydration 후 SWR fetch.
 export default function PackagesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
 
-  // URL 쿼리에서 직접 추출
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
   const q = searchParams.get('q')?.trim() || '';
@@ -108,12 +100,10 @@ export default function PackagesClient() {
   const urgency = searchParams.get('urgency') || '';
   const category = searchParams.get('category') || '';
 
-  // 서버와 동일한 hub/filter 해석 로직
   let hubFromParam = normalizeDepartureHub(searchParams.get('hub'));
   if (rawFilter === '인천출발' && !searchParams.get('hub')) hubFromParam = 'incheon';
   const filterForClientInitial = rawFilter === '인천출발' ? '' : rawFilter;
 
-  // SWR fetch — query string 별 cache key
   const apiQuery = searchParams.toString();
   const { data, isLoading } = useSWR<SearchResponse>(
     `/api/packages/search?${apiQuery}`,
@@ -129,6 +119,27 @@ export default function PackagesClient() {
   const filter = data?.filterForClient ?? filterForClientInitial;
   const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
 
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const toggleCompare = useCallback((id: string) => {
+    setCompareIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      if (prev.length >= 2) return [prev[1], id];
+      return [...prev, id];
+    });
+  }, []);
+
+  const clearCompare = useCallback(() => {
+    setCompareIds([]);
+    setCompareOpen(false);
+  }, []);
+
+  const comparePackages = useMemo(
+    () => compareIds.map(id => initialPackages.find(p => p.id === id)).filter(Boolean),
+    [compareIds, initialPackages],
+  );
+
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
       const p = new URLSearchParams(searchParams.toString());
@@ -140,7 +151,6 @@ export default function PackagesClient() {
     [router, searchParams],
   );
 
-  /** 마감특가·테마 칩 해제 시 출발 허브·검색어는 유지 */
   const hrefPackagesClearUrgencyCategory = useMemo(() => {
     const p = new URLSearchParams(searchParams.toString());
     p.delete('urgency');
@@ -149,179 +159,80 @@ export default function PackagesClient() {
     return qs ? `/packages?${qs}` : '/packages';
   }, [searchParams]);
 
-  // 클릭 시그널 (LTR 학습 데이터) — silent fail
-  const trackClick = (packageId: string) => {
-    try {
-      fetch('/api/tracking/score-signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          package_id: packageId,
-          signal_type: 'click',
-        }),
-        keepalive: true,
-      }).catch(() => { /* silent */ });
-    } catch { /* silent */ }
-  };
-  const destParam = destination || q;
-  const packages = initialPackages;
-  const [activeFilter, setActiveFilter] = useState(resolveLegacyFilterLabel(filter || '전체'));
+  // ── 정렬 + 필터 ─────────────────────────────────────────────
+  const [activeFilter, setActiveFilter] = useState('전체');
   const [sortBy, setSortBy] = useState('recommended');
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
-  const listTopRef = useRef<HTMLDivElement>(null);
 
-  // SWR 응답 후 filter 값이 바뀌면 activeFilter 동기화 (URL ?filter= 변경 대응)
   useEffect(() => {
-    setActiveFilter(resolveLegacyFilterLabel(filter || '전체'));
+    setActiveFilter(filter || '전체');
   }, [filter]);
 
-  useEffect(() => {
-    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [activeFilter, sortBy]);
-  const priceMinNum = priceMin ? Number(priceMin) : 0;
-  const priceMaxNum = priceMax ? Number(priceMax) : 0;
-  const consultTelHref = getConsultTelHref();
+  const filteredPackages = useMemo(() => {
+    let list = [...initialPackages];
+    if (activeFilter !== '전체') list = list.filter(p => matchesFilter(p, activeFilter));
+    const today = new Date().toISOString().slice(0, 10);
+    if (urgency === '1') list = list.filter(p => {
+      if (p.product_type === 'urgency') return true;
+      const pd = (p.price_dates || []) as Array<{ date?: string }>;
+      return pd.some(d => d?.date && d.date >= today);
+    });
+    if (category) list = list.filter(p => p.product_type?.includes(category) || p.product_tags?.includes(category));
+    const sortFn = sortBy === 'price_asc' ? (a: Package, b: Package) => (a.price ?? Infinity) - (b.price ?? Infinity)
+      : sortBy === 'price_desc' ? (a: Package, b: Package) => (b.price ?? 0) - (a.price ?? 0)
+      : (a: Package, b: Package) => {
+        const aRec = recommendedSet.has(a.id);
+        const bRec = recommendedSet.has(b.id);
+        if (aRec && !bRec) return -1;
+        if (!aRec && bRec) return 1;
+        return 0;
+      };
+    list.sort(sortFn);
+    return list;
+  }, [initialPackages, activeFilter, sortBy, urgency, category, recommendedSet]);
 
-  // 최저가 계산 (순수 함수 — useMemo 의존성 안에서만 호출)
-  function getMinPrice(pkg: Package): number {
-    if (pkg.price_dates?.length) {
-      const min = getMinPriceFromDates(pkg.price_dates as any);
-      if (min > 0) return min;
-    }
-    const tierPrices = (pkg.price_tiers || []).map(t => t.adult_price).filter(Boolean) as number[];
-    const all = [pkg.price, ...tierPrices].filter(Boolean) as number[];
-    return all.length > 0 ? Math.min(...all) : 0;
-  }
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
+  const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
 
   const minPriceByPkgId = useMemo(() => {
     const map = new Map<string, number>();
-    for (const pkg of packages) map.set(pkg.id, getMinPrice(pkg));
+    for (const p of initialPackages) {
+      const dates = (p.price_dates || []) as Array<{ date: string; price: number }>;
+      if (dates.length > 0) {
+        const valid = dates.filter(d => d?.price && d.price > 0);
+        if (valid.length > 0) { map.set(p.id, Math.min(...valid.map(d => d.price))); continue; }
+      }
+      if (p.price && p.price > 0) map.set(p.id, p.price);
+    }
     return map;
-  }, [packages]);
+  }, [initialPackages]);
 
-  // 출발월 매칭: price_dates 또는 price_tiers.departure_dates에 해당 YYYY-MM 시작 날짜가 있는지 (콤마로 여러 월)
-  const matchesSingleMonth = useCallback((pkg: Package, ym: string): boolean => {
-    if (pkg.price_dates?.length) {
-      if (pkg.price_dates.some(d => typeof d.date === 'string' && d.date.startsWith(ym))) return true;
-    }
-    if (pkg.price_tiers?.length) {
-      for (const t of pkg.price_tiers) {
-        if (t.departure_dates?.some(d => typeof d === 'string' && d.startsWith(ym))) return true;
-      }
-    }
-    return false;
-  }, []);
-  const matchesMonth = useCallback((pkg: Package, monthParam: string): boolean => {
-    if (!monthParam) return true;
-    const yms = monthParam.split(',').map(s => s.trim()).filter(Boolean);
-    if (yms.length === 0) return true;
-    return yms.some(ym => matchesSingleMonth(pkg, ym));
-  }, [matchesSingleMonth]);
-
-  // 필터 + 정렬 (클라이언트 사이드) — minPrice는 사전 계산된 맵에서 조회
-  const filteredPackages = useMemo(() => {
-    const mp = (pkg: Package) => minPriceByPkgId.get(pkg.id) ?? 0;
-    let result = packages.filter(pkg => matchesFilter(pkg, activeFilter));
-    if (month) result = result.filter(pkg => matchesMonth(pkg, month));
-    if (priceMinNum > 0 || priceMaxNum > 0) {
-      result = result.filter(pkg => {
-        const v = mp(pkg);
-        if (v <= 0) return false;
-        if (priceMinNum > 0 && v < priceMinNum) return false;
-        if (priceMaxNum > 0 && v > priceMaxNum) return false;
-        return true;
-      });
-    }
-    if (sortBy === 'price_asc') result = [...result].sort((a, b) => mp(a) - mp(b));
-    if (sortBy === 'price_desc') result = [...result].sort((a, b) => mp(b) - mp(a));
-
-    // 2026-05-19 박제 (P2-A Stage 2 / 게슈탈트 proximity 원리):
-    //   같은 catalog_id 패키지를 sortBy 무관 인접 정렬. 그룹 첫 번째 카드의 순위를 기준으로 묶음.
-    //   근거: Nielsen Norman Group "proximity" — 관련 항목은 가까이 배치해야 인지 부담 ↓.
-    //   사장님 카탈로그 분기 (단수이/베이토우/우라이) 가 흩어지면 사용자 인지 불가.
-    const groupFirstIdx = new Map<string, number>();
-    result.forEach((p, idx) => {
-      if (p.catalog_id && !groupFirstIdx.has(p.catalog_id)) {
-        groupFirstIdx.set(p.catalog_id, idx);
-      }
-    });
-    if (groupFirstIdx.size > 0) {
-      result = [...result].sort((a, b) => {
-        const aKey = a.catalog_id ? groupFirstIdx.get(a.catalog_id) ?? 9999 : (result.indexOf(a));
-        const bKey = b.catalog_id ? groupFirstIdx.get(b.catalog_id) ?? 9999 : (result.indexOf(b));
-        return aKey - bKey;
-      });
-    }
-    return result;
-  }, [packages, activeFilter, sortBy, month, priceMinNum, priceMaxNum, minPriceByPkgId, matchesMonth]);
-
-  useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE_COUNT);
-  }, [activeFilter, sortBy, month, priceMinNum, priceMaxNum, destination, q, urgency, category, hub]);
-
-  const visiblePackages = useMemo(
-    () => filteredPackages.slice(0, visibleCount),
-    [filteredPackages, visibleCount],
-  );
-
-  // 2026-05-19 박제 (P2-A / A2): 같은 catalog_id 패키지 그룹 카운트 (전체 필터된 set 기준)
-  //   - 사용자가 카드에서 "📚 +N 다른 옵션" 인지
-  //   - 같은 카탈로그에서 분리된 N 패키지 (예: 단수이/베이토우/우라이) 가시화
   const catalogGroupSizeMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of filteredPackages) {
-      if (p.catalog_id) m.set(p.catalog_id, (m.get(p.catalog_id) ?? 0) + 1);
+    const map = new Map<string, number>();
+    for (const p of initialPackages) {
+      if (!p.catalog_id) continue;
+      map.set(p.catalog_id, (map.get(p.catalog_id) || 0) + 1);
     }
-    return m;
-  }, [filteredPackages]);
+    return map;
+  }, [initialPackages]);
 
-  // 첫 SWR fetch 동안 skeleton (loading.tsx 와 동일 마크업)
-  if (isLoading && !data) {
-    return <Loading />;
-  }
+  const trackClick = useCallback((id: string) => {
+    fetch('/api/tracking/click', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ package_id: id, source: 'list' }),
+    }).catch(() => {});
+  }, []);
+
+  const listTopRef = useRef<HTMLDivElement>(null);
+  if (isLoading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-white w-full overflow-x-hidden max-w-lg md:max-w-none mx-auto pb-24 md:pb-16">
+    <div className="min-h-screen bg-white">
       <GlobalNav />
 
-      {/* 통합 헤더 — 타이틀 + 출발 허브 + 검색 폼을 하나의 파란 존으로 */}
-      <div className="bg-gradient-to-b from-brand-light to-[#F5F9FF] border-b border-blue-200/50">
-        <div className="px-4 pt-5 pb-4 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:pt-8 md:pb-6">
-          {/* 페이지 타이틀 */}
-          <div className="mb-4">
-            <h1 className="text-h1 md:text-3xl lg:text-4xl font-bold text-text-primary tracking-[-0.03em]">
-              {destParam || '전체 상품'}
-            </h1>
-            <p className="text-[13px] text-text-body mt-1">{filteredPackages.length}개 상품</p>
-          </div>
-
-          {/* 출발 허브 — 가로 스크롤 pill 행 */}
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar mb-3 -mx-4 px-4 md:mx-0 md:px-0">
-            {DEPARTURE_HUB_OPTIONS.map(({ id, label }) => {
-              const isSelected =
-                id === 'all'
-                  ? hub === 'all'
-                  : id === DEFAULT_DEPARTURE_HUB
-                    ? hub === DEFAULT_DEPARTURE_HUB
-                    : hub === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => navigateWithHub(id)}
-                  className={`shrink-0 h-[34px] px-4 text-[13px] font-semibold rounded-full border transition-all card-touch ${
-                    isSelected
-                      ? 'bg-brand text-white border-brand shadow-sm'
-                      : 'bg-white text-text-body border-[#D1DCE8] hover:border-brand/60 hover:text-brand'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* 검색 폼 */}
+      <div className="md:border-b md:border-[#F2F4F6]">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 pb-[5px] md:pb-0">
           <SearchBar
             variant="packages"
             initialQ={q}
@@ -336,7 +247,8 @@ export default function PackagesClient() {
         </div>
       </div>
 
-      {/* 마감특가 / 카테고리 활성 배지 */}
+      {isLoading && <Loading />}
+
       {(urgency === '1' || category) && (
         <div className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8">
           <div className="flex items-center gap-2">
@@ -357,7 +269,6 @@ export default function PackagesClient() {
         </div>
       )}
 
-      {/* 정렬 + 목적지 권역 — flat chip row (중첩 카드 제거) */}
       <div className="sticky top-14 md:top-16 z-20 border-b border-[#EEF2F6] bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
         <div className="max-w-7xl mx-auto px-4 py-2.5 md:px-8 w-full max-w-full min-w-0">
           <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar">
@@ -397,7 +308,6 @@ export default function PackagesClient() {
         </div>
       </div>
 
-      {/* 상품 카드 리스트 */}
       <div ref={listTopRef} />
       {filteredPackages.length === 0 ? (
         <div className="text-center py-20 px-6">
@@ -445,19 +355,36 @@ export default function PackagesClient() {
       ) : (
         <div className="px-4 py-4 space-y-3 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
           {visiblePackages.map(pkg => (
-            <PackageCard
-              key={pkg.id}
-              pkg={pkg as any}
-              variant="horizontal"
-              image={imageByPkgIdProp[pkg.id] ?? null}
-              precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
-              isRecommended={recommendedSet.has(pkg.id)}
-              recommendedReasons={recommendedReasonMap[pkg.id] ?? []}
-              isReasonOpen={activeReasonId === pkg.id}
-              onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
-              onClick={trackClick}
-              catalogGroupCount={pkg.catalog_id ? catalogGroupSizeMap.get(pkg.catalog_id) : undefined}
-            />
+            <div key={pkg.id} className="relative">
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); toggleCompare(pkg.id); }}
+                className={`absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full border-2 transition-all ${
+                  compareIds.includes(pkg.id)
+                    ? 'bg-brand border-brand text-white shadow-sm'
+                    : 'bg-white/90 border-gray-300 text-gray-400 hover:border-brand/60 hover:text-brand'
+                }`}
+                aria-label={compareIds.includes(pkg.id) ? `비교 해제: ${pkg.display_title || pkg.title}` : `비교 추가: ${pkg.display_title || pkg.title}`}
+              >
+                {compareIds.includes(pkg.id) ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+                )}
+              </button>
+              <PackageCard
+                pkg={pkg as any}
+                variant="horizontal"
+                image={imageByPkgIdProp[pkg.id] ?? null}
+                precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
+                isRecommended={recommendedSet.has(pkg.id)}
+                recommendedReasons={recommendedReasonMap[pkg.id] ?? []}
+                isReasonOpen={activeReasonId === pkg.id}
+                onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
+                onClick={trackClick}
+                catalogGroupCount={pkg.catalog_id ? catalogGroupSizeMap.get(pkg.catalog_id) : undefined}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -473,7 +400,7 @@ export default function PackagesClient() {
         </div>
       )}
 
-      {/* 플로팅 CTA — 모바일 전용 (전화는 NEXT_PUBLIC_CONSULT_PHONE 있을 때만) */}
+      {/* 플로팅 CTA — 모바일 전용 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
         <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
           {consultTelHref ? (
@@ -488,6 +415,121 @@ export default function PackagesClient() {
             className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
             💬 카카오톡 상담
           </a>
+        </div>
+      </div>
+
+      {/* ── 비교 플로팅 버튼 ── */}
+      {compareIds.length > 0 && (
+        <div className="fixed bottom-20 md:bottom-[88px] left-1/2 -translate-x-1/2 z-40">
+          <div className="bg-white shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-200 rounded-full px-4 py-2 flex items-center gap-3">
+            <span className="text-[13px] font-medium text-text-secondary whitespace-nowrap">
+              {compareIds.length}개 선택됨
+            </span>
+            <button
+              type="button"
+              onClick={clearCompare}
+              className="text-[12px] font-medium text-text-body hover:text-danger transition"
+            >
+              해제
+            </button>
+            <div className="w-px h-4 bg-gray-200" />
+            <button
+              type="button"
+              disabled={compareIds.length < 2}
+              onClick={() => setCompareOpen(true)}
+              className="px-4 py-1.5 bg-brand text-white text-[13px] font-bold rounded-full hover:bg-brand-dark transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              비교하기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pairwise 비교 모달 ── */}
+      {compareOpen && comparePackages.length === 2 && (
+        <SimpleCompareModal
+          a={comparePackages[0] as any}
+          b={comparePackages[1] as any}
+          onClose={() => { setCompareOpen(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 간편 상품 비교 모달 */
+function SimpleCompareModal({
+  a,
+  b,
+  onClose,
+}: {
+  a: Package;
+  b: Package;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const getPrice = (p: Package) => {
+    const dates = (p.price_dates || []) as Array<{ price: number }>;
+    const valid = dates.filter(d => d?.price > 0);
+    if (valid.length > 0) return Math.min(...valid.map(d => d.price));
+    return p.price ?? 0;
+  };
+
+  const rows: { label: string; va: string | number; vb: string | number }[] = [
+    { label: '가격', va: getPrice(a).toLocaleString() + '원~', vb: getPrice(b).toLocaleString() + '원~' },
+    { label: '목적지', va: a.destination || '-', vb: b.destination || '-' },
+    { label: '일정', va: a.nights && a.duration ? `${a.nights}박${a.duration}일` : '-', vb: b.nights && b.duration ? `${b.nights}박${b.duration}일` : '-' },
+    { label: '항공', va: a.airline || '-', vb: b.airline || '-' },
+    { label: '출발공항', va: a.departure_airport || '-', vb: b.departure_airport || '-' },
+    { label: '평점', va: a.avg_rating ? `★ ${Number(a.avg_rating).toFixed(1)}` : '-', vb: b.avg_rating ? `★ ${Number(b.avg_rating).toFixed(1)}` : '-' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end md:items-center md:justify-center">
+      <button type="button" className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="닫기" onClick={onClose} />
+      <div className="relative w-full max-h-[85vh] md:max-w-lg bg-white rounded-t-[24px] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+          <h2 className="text-[16px] font-bold text-text-primary">상품 비교</h2>
+          <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto px-4 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <Link href={`/packages/${a.id}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
+              {a.display_title || a.title}
+            </Link>
+            <Link href={`/packages/${b.id}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
+              {b.display_title || b.title}
+            </Link>
+          </div>
+          {rows.map(row => {
+            const isDiff = row.va !== row.vb;
+            return (
+              <div key={row.label} className="grid grid-cols-2 gap-3 text-body items-center">
+                <div className={`text-center font-semibold ${isDiff ? 'text-brand' : 'text-text-primary'}`}>{row.va}</div>
+                <div className="text-center text-[11px] font-medium text-text-secondary">{row.label}</div>
+                <div className={`text-center font-semibold ${isDiff ? 'text-brand' : 'text-text-primary'}`}>{row.vb}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-2 gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
+          <Link href={`/packages/${a.id}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
+            상세보기
+          </Link>
+          <Link href={`/packages/${b.id}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
+            상세보기
+          </Link>
         </div>
       </div>
     </div>

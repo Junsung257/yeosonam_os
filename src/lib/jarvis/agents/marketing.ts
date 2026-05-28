@@ -551,7 +551,83 @@ async function executeTool(toolName: string, args: any, ctx?: JarvisContext): Pr
       }
     }
 
-    // ── 마케팅 알림 ──
+    // ── 마일리지 (Phase 4) ──
+    case 'get_customer_mileage': {
+      const { data: customer } = await sb.from('customers').select('id, name, grade, mileage, total_spent').eq('id', args.customer_id).single()
+      if (!customer) throw new Error('고객을 찾을 수 없습니다')
+      const { data: earned } = await sb.from('mileage_transactions').select('amount').eq('user_id', args.customer_id).eq('type', 'EARNED')
+      const { data: used } = await sb.from('mileage_transactions').select('amount').eq('user_id', args.customer_id).eq('type', 'USED')
+      const totalEarned = (earned ?? []).reduce((s: number, t: any) => s + (t.amount > 0 ? t.amount : 0), 0)
+      const totalUsed = (used ?? []).reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
+      return { customer, totalEarned, totalUsed, balance: customer.mileage }
+    }
+
+    case 'adjust_mileage': {
+      const { data: customer } = await sb.from('customers').select('id, name, mileage').eq('id', args.customer_id).single()
+      if (!customer) throw new Error('고객을 찾을 수 없습니다')
+      await sb.from('mileage_transactions').insert({
+        user_id: args.customer_id,
+        amount: args.delta,
+        type: args.delta > 0 ? 'EARNED' : 'USED',
+        margin_impact: 0,
+        base_net_profit: 0,
+        mileage_rate: 0,
+        memo: `[자비스] ${args.reason}`,
+      })
+      if (args.delta > 0) {
+        await sb.rpc('increment_customer_mileage', { p_user_id: args.customer_id, p_amount: args.delta })
+      } else {
+        await sb.rpc('increment_customer_mileage', { p_user_id: args.customer_id, p_amount: args.delta })
+      }
+      return { adjusted: true, customer_id: args.customer_id, delta: args.delta, reason: args.reason }
+    }
+
+    case 'create_mileage_event': {
+      if (!args.title) throw new Error('title 필수')
+      const { data, error } = await sb.from('os_policies').insert({
+        category: args.category || 'mileage',
+        action_type: args.action_type,
+        action_config: args.action_config,
+        title: args.title,
+        scope_type: args.scope_type || 'all',
+        starts_at: args.starts_at || new Date().toISOString(),
+        ends_at: args.ends_at || new Date(Date.now() + 30 * 86400000).toISOString(),
+        is_active: true,
+      }).select()
+      if (error) throw error
+      return { created: true, policy: data?.[0], next_step: 'OS 관제탑에서 확인 가능합니다' }
+    }
+
+    case 'get_mileage_stats': {
+      const now = new Date()
+      let since: Date
+      switch (args.period || 'this_month') {
+        case 'last_month': since = new Date(now.getFullYear(), now.getMonth() - 1, 1); break
+        case 'this_year': since = new Date(now.getFullYear(), 0, 1); break
+        case 'all': since = new Date(2020, 0, 1); break
+        default: since = new Date(now.getFullYear(), now.getMonth(), 1)
+      }
+      const sinceStr = since.toISOString()
+      let query = sb.from('mileage_transactions').select('amount, type').gte('created_at', sinceStr)
+      if (args.customer_id) query = query.eq('user_id', args.customer_id)
+      const { data } = await query
+      const totalEarned = (data ?? []).filter((t: any) => t.type === 'EARNED').reduce((s: number, t: any) => s + (t.amount > 0 ? t.amount : 0), 0)
+      const totalUsed = (data ?? []).filter((t: any) => t.type === 'USED').reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
+      const totalExpired = (data ?? []).filter((t: any) => t.type === 'CLAWBACK').reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
+      return { period: args.period || 'this_month', totalEarned, totalUsed, totalExpired, transactionCount: data?.length || 0 }
+    }
+
+    case 'get_mileage_policies': {
+      let query = sb.from('os_policies').select('*').eq('category', 'mileage').order('created_at', { ascending: false }).limit(args.limit || 20)
+      const now = new Date().toISOString()
+      if (args.status === 'active') query = query.lte('starts_at', now).gte('ends_at', now)
+      else if (args.status === 'expired') query = query.lt('ends_at', now)
+      else if (args.status === 'upcoming') query = query.gt('starts_at', now)
+      const { data, error } = await query
+      if (error) throw error
+      return data
+    }
+
     case 'list_admin_alerts_marketing': {
       let query = sb.from('admin_alerts').select('*').order('created_at', { ascending: false }).limit(args.limit || 20)
       if (args.severity) query = query.eq('severity', args.severity)

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { getErrorByCode } from '@/lib/error-codes';
 
@@ -11,6 +12,19 @@ interface Props {
 export default function BlogError({ error, reset }: Props) {
   const errCode = (error as any)?.code;
   const def = errCode ? getErrorByCode(errCode) : getErrorByCode('E1401');
+
+  useEffect(() => {
+    // 브라우저에서 에러 스택을 DB에 기록 (report만, 페이지 흐름 차단 안 함)
+    const digest = error.digest;
+    const stack = error.stack;
+    if (digest && typeof fetch === 'function') {
+      fetch('/api/blog/report-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ digest, stack: stack?.slice(0, 2000), code: def.code }),
+      }).catch(() => { /* noop */ });
+    }
+  }, [error, def.code]);
 
   return (
     <div className="min-h-[50vh] flex items-center justify-center px-4">

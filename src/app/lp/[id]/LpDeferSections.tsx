@@ -120,6 +120,15 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
                   {act.detail && (
                     <p className="text-xs text-gray-400 mt-0.5">{act.detail}</p>
                   )}
+                  {act.attractionNames && act.attractionNames.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {act.attractionNames.map((name, ai) => (
+                        <span key={ai} className="inline-block text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {act.type === 'optional' && (
                     <span className="inline-block mt-1 text-xs px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-full font-medium">선택관광</span>
                   )}

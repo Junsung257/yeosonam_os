@@ -876,7 +876,8 @@ const postHandler = async (request: NextRequest) => {
       const { data: attrRows } = await supabaseAdmin
         .from('attractions')
         .select('id, name, short_desc, long_desc, aliases, country, region, category, emoji')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(500);
       activeAttractions = (attrRows || []) as AttractionData[];
     }
 

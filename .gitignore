@@ -167,3 +167,4 @@ dev-server.log
 .gstack/
 
 .vercel
+.env*.local

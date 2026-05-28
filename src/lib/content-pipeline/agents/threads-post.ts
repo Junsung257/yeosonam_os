@@ -83,10 +83,10 @@ async function buildTrendBlock(targetAudience: string): Promise<string | null> {
 
     if (!data || data.length === 0) return null;
 
-    const lines = data.map((row) => {
-      const t = row as Record<string, unknown>;
-      const samples = (t.sample_first_lines as string[] ?? []).slice(0, 3).map((s: string) => `  - 예: "${s}"`).join('\n');
-      return `[${t.destination}] hook_type=${t.hook_type} (score=${t.avg_score}, ER=${t.avg_er}, samples=${t.sample_count})
+    const rows = data as unknown as Array<Record<string, unknown>>;
+    const lines = rows.map((row) => {
+      const samples = ((row.sample_first_lines as string[]) ?? []).slice(0, 3).map((s: string) => `  - 예: "${s}"`).join('\n');
+      return `[${row.destination}] hook_type=${row.hook_type} (score=${row.avg_score}, ER=${row.avg_er}, samples=${row.sample_count})
 ${samples}`;
     });
 

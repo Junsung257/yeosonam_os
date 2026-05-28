@@ -226,11 +226,13 @@ async function publishOne(row: ScheduledRow): Promise<{
       if (!cfg) {
         return { status: 'failed', error: 'Threads 설정 없음' };
       }
+      const replyThreads = (threadsPayload.thread as string[] | undefined)?.filter(Boolean);
       const result = await publishToThreads({
         threadsUserId: cfg.threadsUserId,
         accessToken: cfg.accessToken,
         text,
         imageUrls: Array.isArray(imageUrls) && imageUrls.length > 0 ? imageUrls : undefined,
+        replyThreads: replyThreads && replyThreads.length > 0 ? replyThreads : undefined,
       });
       if (!result.ok) {
         return { status: 'failed', error: result.error ?? 'Threads 발행 실패' };

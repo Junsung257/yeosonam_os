@@ -20,10 +20,12 @@ export async function generateMetadata(
     return { title: '상품 | 여소남', robots: { index: false, follow: true } };
   }
   const plainTitle = data.customMessage.default.headline.replace(/\s*\n\s*/g, ' ').trim();
-  const title =
+  const rawTitle =
     plainTitle.length > 55 ? `${plainTitle.slice(0, 52)}… | 여소남` : `${plainTitle} | 여소남`;
+  // 루트 layout.tsx의 title.template('%s | 여소남') 재적용 방지
+  const title = { absolute: rawTitle };
   const desc =
-    (data.customMessage.default.subline || `${data.destination} 패키지`).slice(0, 160) || title;
+    (data.customMessage.default.subline || `${data.destination} 패키지`).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
   const ogImages =
     hero && /^https?:\/\//i.test(hero)
@@ -33,14 +35,14 @@ export async function generateMetadata(
     title,
     description: desc,
     openGraph: {
-      title,
+      title: rawTitle,
       description: desc,
       type: 'website',
       ...(ogImages ? { images: ogImages } : {}),
     },
     twitter: {
       card: ogImages ? 'summary_large_image' : 'summary',
-      title,
+      title: rawTitle,
       description: desc,
       ...(ogImages ? { images: [ogImages[0].url] } : {}),
     },
