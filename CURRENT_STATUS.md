@@ -1,4 +1,6 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-03 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
+
+> **최근 작업 (2026-05-28):** as any 전수조사/제거, 타입 안전성 대폭 개선, 마일리지 시스템 전면 구현 (적립/사용/소멸/개인화/알림/분석), 게이미피케이션(출석/도전과제) 추가
 
 > AI·코파일럿 진입 요약: 루트 **`AGENTS.md`** → (심층) `.claude/CLAUDE.md`.
 
@@ -119,15 +121,20 @@
 | 10 | **mileage_history** | `id`, `customer_id`(FK), `booking_id`(FK), `delta`(±), `reason`, `balance_after` | 마일리지 적립/사용 원장 |
 | 11 | **mileage_transactions** | `id`, `user_id`(FK), `booking_id`(FK), `amount`, `type`(EARNED/USED/CLAWBACK), `margin_impact`, `mileage_rate`(5%), `ref_transaction_id`(자기참조) | 수익 기반 마일리지 회계 |
 | 12 | **customer_mileage_balances** | `user_id`, `balance`, `total_earned`, `total_used`, `total_clawback` | (View) 마일리지 잔액 |
+| 13 | **mileage_expiration_policies** | `id`, `validity_months`(24), `notify_before_days`({30,7}), `auto_expire`, `extend_on_activity` | 마일리지 소멸 정책 |
+| 14 | **mileage_challenges** | `id`, `title`, `condition_type`(booking_count/new_destination/review_photo/referral), `reward_mileage`, `starts_at/ends_at` | 게이미피케이션 챌린지 |
+| 15 | **challenge_participants** | `id`, `challenge_id`(FK), `customer_id`(FK), `progress`, `completed_at`, `reward_claimed` | 챌린지 참여 로그 |
+| 16 | **customer_badges** | `id`, `customer_id`(FK), `badge_type`, `badge_data`(JSONB), `earned_at` | 고객 뱃지/칭호 |
+| 17 | **customer_checkins** | `id`, `customer_id`(FK), `streak`, `last_checkin`, `total_checkins` | 출석 체크인 |
 
 ### 제휴 / 인플루언서
 
 | # | 테이블 | 주요 컬럼 | 설명 |
 |---|--------|-----------|------|
-| 13 | **affiliates** | `id`, `name`, `phone`, `email`, `referral_code`(UNIQUE), `grade`(1-5), `bonus_rate`, `commission_rate`, `payout_type`(PERSONAL/BUSINESS), `is_active`, `pin`, `logo_url` | 제휴 파트너 |
-| 14 | **affiliate_applications** | `id`, `name`, `phone`, `channel_type/url`, `follower_count`, `business_type`, `status`(PENDING/APPROVED/REJECTED) | 파트너 신청 |
-| 15 | **influencer_links** | `id`, `affiliate_id`(FK), `referral_code`, `package_id`, `short_url`, `click_count`, `conversion_count` | 추천 링크 성과 |
-| 16 | **settlements** | `id`, `affiliate_id`(FK), `settlement_period`, `total_amount`, `carryover_balance`, `tax_deduction`(3.3%), `final_payout`, `status`(PENDING→COMPLETED), `pdf_url` | 월간 정산 |
+| 18 | **affiliates** | ... | 제휴 파트너 |
+| 19 | **affiliate_applications** | ... | 파트너 신청 |
+| 20 | **influencer_links** | ... | 추천 링크 성과 |
+| 21 | **settlements** | ... | 월간 정산 |
 
 ### 재무 / 결제
 

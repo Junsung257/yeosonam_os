@@ -1,0 +1,77 @@
+---
+description: '타입 안전성 규칙 — as any 최소화, 타입 가드 우선, 단계적 제거 전략'
+alwaysApply: true
+---
+
+# 여소남 OS — 타입 안전성 규칙
+
+> **`as any`는 타입 시스템을 무력화하는 최후의 수단입니다. 반드시 아래 기준을 따르세요.**
+
+---
+
+## 1. `as any` 사용 금지 원칙
+
+| 상황 | 허용 여부 | 대체 방법 |
+|------|-----------|-----------|
+| 서드파티 window 전역 객체 접근 (`window.fbq`, `window.wcs`) | **허용**, 단 `declare global` 우선 시도 | `(window as any)` 대신 `declare global { var fbq: ... }` |
+| 에러 코드 접근 (`(error as any).code`) | **허용**, 단 타입 가드 우선 | `if (error && typeof error === 'object' && 'code' in error)` |
+| Supabase JOIN 결과 타입 | **권장하지 않음** | 명시적 인터페이스 정의 후 `as unknown as T[]` 사용 |
+| 컴포넌트 props 우회 (`pkg={pkg as any}`) | **금지** | 부족한 인터페이스 확장 또는 유니온 타입 사용 |
+| API 응답을 any[]로 단언 | **금지** | 응답 타입을 명시적으로 정의 |
+| DB row 필드 임의 접근 (`(record as any).field`) | **금지** | 인터페이스 정의 후 정적 타입 사용 |
+
+## 2. 단계적 제거 전략
+
+`as any`가 이미 180+건 존재합니다. 아래 우선순위로 단계적 제거:
+
+| 단계 | 우선순위 | 대상 | 예상 효과 |
+|------|----------|------|-----------|
+| **Phase 1** | P0 | 정산/결제/마일리지 관련 `as any` | 런타임 오류 방지 |
+| **Phase 2** | P1 | API route의 응답 타입 단언 | API 안정성 향상 |
+| **Phase 3** | P2 | 페이지 컴포넌트 props 우회 | 컴파일 타임 검증 |
+| **Phase 4** | P3 | 에러 핸들링/서드파티 window 접근 | 리팩토링 편의성 |
+
+## 3. Supabase 타입 처리 규칙
+
+```typescript
+// ❌ 나쁜 예
+const data = await supabase.from('table').select() as any;
+const rows = data as any[];
+
+// ✅ 좋은 예
+interface MyRow { id: string; name: string; }
+const { data } = await supabase.from('table').select<MyRow[]>();
+// 또는
+const { data } = await supabase.from('table').select();
+// data는 자동 추론됨 — 명시적 any 단언 불필요
+```
+
+### JOIN 결과 처리
+
+```typescript
+// ❌ 나쁜 예
+const result = (joinData as any[]).map(r => r.some_field);
+
+// ✅ 좋은 예
+interface JoinedRow {
+  some_field: string;
+  related: { name: string } | null;
+}
+const result = (joinData as unknown as JoinedRow[]).map(r => r.some_field);
+// as unknown as T → 두 단계 캐스팅이 타입 안전
+```
+
+## 4. 새 코드 작성 시 체크리스트
+
+- [ ] `as any`를 쓰기 전에 인터페이스/타입을 정의할 방법이 없는지 확인
+- [ ] 유니온 타입이나 타입 가드로 해결 가능한지 확인
+- [ ] 정말 어쩔 수 없을 때만 `as any`를 쓰고, 주석에 사유를 남김
+- [ ] `as T`가 안 되면 `as unknown as T` (두 단계 캐스팅)
+- [ ] `as any`는 `any` 타입이 이후 체인 전체를 오염시킴을 인지
+
+## 5. 기존 코드 감사 (정기적)
+
+```
+npm run typecheck  # tsc --noEmit 실행
+rg "as any" --include '*.ts' --include '*.tsx' src/ | wc -l  # 추세 추적
+```
