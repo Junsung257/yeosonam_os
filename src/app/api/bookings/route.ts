@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
@@ -135,7 +136,7 @@ export async function GET(request: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
@@ -152,7 +153,7 @@ export async function GET(request: NextRequest) {
 
   if (id) {
     const booking = await getBookingById(id);
-    return NextResponse.json({ booking });
+    return successResponse({ booking });
   }
   const bookings = await getBookings(
     status || undefined,
@@ -166,10 +167,11 @@ export async function GET(request: NextRequest) {
       offset: offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : undefined,
     },
   );
-  return NextResponse.json(
+  return successResponse(
     { bookings, count: bookings.length },
+    200,
     // 어드민 목록 — list 프리셋(30s/60s/5분).
-    { headers: ADMIN_CACHE.list },
+    60,
   );
 }
 
@@ -177,7 +179,7 @@ export async function POST(request: NextRequest) {
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
@@ -192,20 +194,17 @@ export async function POST(request: NextRequest) {
     if (idempotencyKey) {
       // 멱등 키는 로깅/DB 인덱싱 안전을 위해 길이·문자 제한
       if (idempotencyKey.length > 128 || !/^[a-zA-Z0-9:_-]+$/.test(idempotencyKey)) {
-        return NextResponse.json(
-          { error: 'idempotencyKey 형식이 올바르지 않습니다. (영문/숫자/:_- , 128자 이하)' },
-          { status: 400 },
-        );
+        return ApiErrors.badRequest('idempotencyKey 형식이 올바르지 않습니다. (영문/숫자/:_- , 128자 이하)');
       }
       body.idempotencyKey = idempotencyKey;
     }
 
     // 서버사이드 유효성 검사
     if (!body.leadCustomerId) {
-      return NextResponse.json({ error: '대표 예약자(leadCustomerId)가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('대표 예약자(leadCustomerId)가 필요합니다.');
     }
     if (!body.adultCount || body.adultCount < 1) {
-      return NextResponse.json({ error: '성인 인원은 1명 이상이어야 합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('성인 인원은 1명 이상이어야 합니다.');
     }
 
     // 멱등성: idempotency_key 가 있으면 기존 booking 반환 (재시도/이중제출 방어)
@@ -216,7 +215,7 @@ export async function POST(request: NextRequest) {
         .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
       if (existing) {
-        return NextResponse.json({ booking: existing, idempotent_replay: true }, { status: 200 });
+        return successResponse({ booking: existing, idempotent_replay: true });
       }
     }
 
@@ -557,12 +556,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ booking });
+    return successResponse({ booking });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '예약 생성 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '예약 생성 실패');
   }
 }
 
@@ -573,13 +569,13 @@ export async function PATCH(request: NextRequest) {
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
     const { id } = body;
     if (!id) {
-      return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('id가 필요합니다.');
     }
 
     // 계약금 안내 게이트 해제 (assisted → 운영자 승인 후 전이 허용)
@@ -593,12 +589,12 @@ export async function PATCH(request: NextRequest) {
         .eq('id', id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return ApiErrors.internalError(error.message);
       if (body.deposit_notice_blocked === false) {
         const { resolveDepositNoticeGateTasks } = await import('@/lib/booking-workflow-tasks');
         await resolveDepositNoticeGateTasks(id);
       }
-      return NextResponse.json({ booking: data });
+      return successResponse({ booking: data });
     }
 
     // 일행 추가 (booking_passengers에 연결)
@@ -610,8 +606,8 @@ export async function PATCH(request: NextRequest) {
           customer_id: body.addPassengerId,
           passenger_type: body.addPassengerType || 'adult',
         }, { onConflict: 'booking_id,customer_id' });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ ok: true });
+      if (error) return ApiErrors.internalError(error.message);
+      return successResponse({ ok: true });
     }
 
     // 소프트 삭제 / 복구 처리 (supabaseAdmin 사용 — RLS 우회)
@@ -622,8 +618,8 @@ export async function PATCH(request: NextRequest) {
         .eq('id', id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ booking: data });
+      if (error) return ApiErrors.internalError(error.message);
+      return successResponse({ booking: data });
     }
 
     // SKU 코드 → products 조회 → bookings 원자적 업데이트 (상품명 + 랜드사 + 출발지)
@@ -635,10 +631,7 @@ export async function PATCH(request: NextRequest) {
         .maybeSingle();
 
       if (!product) {
-        return NextResponse.json(
-          { error: `존재하지 않는 상품 코드입니다: ${body.sku_code}` },
-          { status: 404 },
-        );
+        return ApiErrors.notFound(`존재하지 않는 상품 코드입니다: ${body.sku_code}`);
       }
 
       // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용) — 병렬 fetch
@@ -673,8 +666,8 @@ export async function PATCH(request: NextRequest) {
         .select()
         .single();
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({
+      if (error) return ApiErrors.internalError(error.message);
+      return successResponse({
         booking: data,
         resolvedProduct: { ...pr, landOpName, depLocName },
       });
@@ -710,7 +703,7 @@ export async function PATCH(request: NextRequest) {
         p_memo: 'PUT /api/bookings paid_amount manual edit',
         p_created_by: 'admin',
       });
-      if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+      if (rpcErr) return ApiErrors.internalError(rpcErr.message);
 
       // payment_status / status 자동 후처리 (RPC 가 손대지 않으므로 여기서)
       await supabaseAdmin.from('bookings').update({
@@ -720,13 +713,13 @@ export async function PATCH(request: NextRequest) {
       }).eq('id', id);
 
       const { data } = await supabase.from('bookings').select().eq('id', id).single();
-      return NextResponse.json({ booking: data });
+      return successResponse({ booking: data });
     }
 
     // 전체 필드 수정 (편집 페이지)
     if (body.fields !== undefined || body.adultCount !== undefined || body.adultCost !== undefined) {
       const booking = await updateBooking(id, body);
-      return NextResponse.json({ booking });
+      return successResponse({ booking });
     }
 
     // 인라인 셀 직접 수정 (예약 그리드)
@@ -779,17 +772,17 @@ export async function PATCH(request: NextRequest) {
               .eq('id', id);
           }
           // 에러 팝업 없이 조용히 성공 처리
-          return NextResponse.json({ booking: { id, ...updateFields } });
+          return successResponse({ booking: { id, ...updateFields } });
         }
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return ApiErrors.internalError(error.message);
       }
-      return NextResponse.json({ booking: data });
+      return successResponse({ booking: data });
     }
 
     // 상태만 변경 (기존 동작)
     const { status } = body;
     if (!status) {
-      return NextResponse.json({ error: 'status가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('status가 필요합니다.');
     }
     const booking = await updateBookingStatus(id, status);
 
@@ -832,11 +825,8 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ booking });
+    return successResponse({ booking });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '상태 변경 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '상태 변경 실패');
   }
 }

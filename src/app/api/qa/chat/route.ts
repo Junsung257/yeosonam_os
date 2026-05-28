@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { saveInquiry, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 import { getPrompt } from '@/lib/prompt-loader';
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages';
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint';
@@ -163,19 +164,13 @@ export async function POST(request: NextRequest) {
   const affiliateId = bodyAffiliateId ?? request.headers.get('x-affiliate-id') ?? undefined;
 
   if (!message?.trim()) {
-    return new Response(JSON.stringify({ error: '메시지가 필요합니다.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return ApiErrors.badRequest('메시지가 필요합니다.');
   }
 
   const ip = getClientIpFromRequest(request);
   const rlKey = `qa_chat:${ip}:${sessionId ?? 'anon'}`;
   if (!allowRateLimit(rlKey, 25, 60_000)) {
-    return new Response(
-      JSON.stringify({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' }),
-      { status: 429, headers: { 'Content-Type': 'application/json' } },
-    );
+    return ApiErrors.rateLimited('요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
   }
 
   const correlationId = crypto.randomUUID();
@@ -192,22 +187,11 @@ export async function POST(request: NextRequest) {
         detectedBy: 'guardrails:prompt-injection',
       });
     }
-    return new Response(
-      JSON.stringify({
-        error: '요청이 보안 정책에 의해 차단되었습니다. 상담원 연결로 진행해 주세요.',
-        escalate: true,
-      }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } },
-    );
+    return ApiErrors.badRequest('요청이 보안 정책에 의해 차단되었습니다. 상담원 연결로 진행해 주세요.');
   }
 
   if (!hasAnyLlmKey()) {
-    return new Response(
-      JSON.stringify({
-        error: 'AI API 키가 설정되지 않았습니다. (DEEPSEEK_API_KEY 권장, 또는 GEMINI_API_KEY / GOOGLE_AI_API_KEY)',
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
-    );
+    return ApiErrors.internalError('AI API 키가 설정되지 않았습니다. (DEEPSEEK_API_KEY 권장, 또는 GEMINI_API_KEY / GOOGLE_AI_API_KEY)');
   }
 
   const isShadowMode = process.env.AI_SHADOW_MODE === 'true';

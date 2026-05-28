@@ -1,9 +1,8 @@
-refactor: API 에러 핸들링 표준화 + as any 제거 + try-catch 보강
+refactor: API 에러 표준화 확산 (packages/bookings/qa/customers/mileage)
 
-- payments/ 디렉토리 8개 파일 errorResponse/successResponse 표준화
-  - isSupabaseConfigured 500 -> ApiErrors.unavailable (503)
-  - catch 블록 NextResponse.json 직접 호출 -> ApiErrors.internalError
-  - 400/404/409 상태 코드 ApiErrors shorthand로 통일
-- try-catch 누락 5개 파일 보강 (customers, mileage-history, hero-photo, leads, departing-locations)
-- unmatched/route.ts as any 14건 전부 제거 (명시적 인터페이스 + Supabase 제네릭)
+- packages/route.ts: 4가지 혼용 포맷 -> successResponse/listResponse/ApiErrors 통일
+- bookings/route.ts: GET/POST/PATCH 전체 에러/성공 표준화
+- qa/route.ts, qa/chat/route.ts: 검증/에러/성공 응답 표준화
+- customers/route.ts: PATCH/DELETE 핸들러 표준화
+- mileage/balance/route.ts: catch 블록 ApiErrors.internalError로 수정
 - tsc --noEmit 0 errors 확인

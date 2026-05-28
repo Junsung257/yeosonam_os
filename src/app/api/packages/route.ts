@@ -1,9 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import {
-  getPackageById,
   saveTravelPackage,
-  updatePackage,
   deletePackage,
   approvePackage,
   isSupabaseConfigured,
@@ -25,6 +23,7 @@ import { invalidateQaChatPackageCache } from '@/lib/qa-chat-packages';
 import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
 import { getSecret } from '@/lib/secret-registry';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -148,7 +147,7 @@ const PACKAGE_LIST_FIELDS_LITE = `
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ packages: [], data: [], count: 0, totalPages: 0 });
+    return listResponse([], { total: 0 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -173,7 +172,7 @@ export async function GET(request: NextRequest) {
       //    nightly cron (KST 09:10) 으로 갱신. 즉시성 필요 시 SELECT public.refresh_mv_destination_aggregates();
       const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('get_destinations_aggregate');
       if (!rpcErr && Array.isArray(rpcData)) {
-        return NextResponse.json({ destinations: rpcData });
+        return successResponse({ destinations: rpcData });
       }
 
       // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
@@ -208,7 +207,7 @@ export async function GET(request: NextRequest) {
         .map(([dest, info]) => ({ destination: dest, ...info, minPrice: info.minPrice === Infinity ? 0 : info.minPrice }))
         .sort((a, b) => b.count - a.count);
 
-      return NextResponse.json({ destinations });
+      return successResponse({ destinations });
     }
 
     // 단건 조회 — UUID 또는 short_code로 조회
@@ -220,7 +219,7 @@ export async function GET(request: NextRequest) {
         .select('*, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)')
         .eq(col, id)
         .single();
-      if (pkgErr || !pkg) return NextResponse.json({ error: '패키지를 찾을 수 없습니다.' }, { status: 404 });
+      if (pkgErr || !pkg) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
 
       let lp_hero_image_url: string | null = null;
       if (supabaseAdmin) {
@@ -232,18 +231,15 @@ export async function GET(request: NextRequest) {
       }
 
       const attraction_ids = collectAttractionIds(pkg.itinerary_data);
-      return NextResponse.json(
+      return successResponse(
         {
           package: pkg,
           lp_hero_image_url,
           attraction_ids,
           attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
         },
-        {
-          headers: {
-            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-          },
-        },
+        200,
+        300,
       );
     }
 
@@ -316,26 +312,29 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil((count ?? 0) / limit);
     // Edge CDN cache 5분 + SWR 10분 (이전: 1분/2분).
     //   상품 목록은 매분 바뀌지 않으므로 적극 캐시. 등록/승인 시 revalidatePath('/packages') 로 무효화.
-    return NextResponse.json({ data: enrichedData, count: count ?? 0, totalPages }, {
-      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+    return listResponse(enrichedData, {
+      total: count ?? 0,
+      page,
+      limit,
+      cacheSeconds: 300,
     });
   } catch (error) {
     logError('[api/packages] GET query failed', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '조회 실패' }, { status: 500 });
+    return ApiErrors.internalError(error instanceof Error ? error.message : '조회 실패');
   }
 }
 
 // POST /api/packages - 새 상품 저장
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
   }
 
   try {
     const body = await request.json();
 
     if (!body.title) {
-      return NextResponse.json({ error: '상품명(title)이 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('상품명(title)이 필요합니다.');
     }
 
     // ── W-final F4: Zod Hard-Block (default ON, 2026-04-21) ──
@@ -349,11 +348,10 @@ export async function POST(request: NextRequest) {
     const STRICT_OFF = process.env.STRICT_VALIDATION === 'false';
     if (!body.raw_text || typeof body.raw_text !== 'string' || body.raw_text.length < 50) {
       if (!STRICT_OFF) {
-        return NextResponse.json({
-          error: '[RuleZero] raw_text 누락 또는 의심스럽게 짧음. 원문 원본(50자 이상) 필수.',
+        return ApiErrors.badRequest('[RuleZero] raw_text 누락 또는 의심스럽게 짧음. 원문 원본(50자 이상) 필수.', {
           field: 'raw_text',
           length: body.raw_text?.length || 0,
-        }, { status: 400 });
+        });
       }
     }
     if (!STRICT_OFF) {
@@ -371,20 +369,18 @@ export async function POST(request: NextRequest) {
             logWarning(`[api/packages] POST draft saved with validation errors`, new Error(`${errMsgs.length} violations`));
           } else {
             // Hard block — 어떤 프론트엔드/외부 API 도 불량 데이터 INSERT 불가
-            return NextResponse.json({
-              error: 'Zod 검증 실패 (W-final F4 hard-block)',
+            return ApiErrors.badRequest('Zod 검증 실패 (W-final F4 hard-block)', {
               issues: errMsgs,
               hint: '프론트엔드에서 오는 데이터라도 동일 검증 적용. 임시 우회는 STRICT_VALIDATION=false (비권장).',
-            }, { status: 400 });
+            });
           }
         }
       } catch (e) {
         // ACL/Zod 모듈 import 자체 실패 — 이건 심각 (스키마 파일 결실)
         logError('[api/packages] POST Zod module load failed', e);
-        return NextResponse.json({
-          error: 'Zod 검증기 로드 실패 — 서버 설정 오류',
+        return ApiErrors.internalError('Zod 검증기 로드 실패 — 서버 설정 오류', {
           detail: e instanceof Error ? e.message : String(e),
-        }, { status: 500 });
+        });
       }
     }
 
@@ -411,11 +407,10 @@ export async function POST(request: NextRequest) {
             exclude_id: null,
           });
           if (!simErr && Array.isArray(similar) && similar.length > 0) {
-            return NextResponse.json({
+            return ApiErrors.conflict(`유사한 상품이 ${similar.length}건 감지됨. 새 상품으로 등록하려면 ?force=true 추가`, {
               warning: 'duplicate_suspected',
-              message: `유사한 상품이 ${similar.length}건 감지됨. 새 상품으로 등록하려면 ?force=true 추가`,
               similar_products: similar,
-            }, { status: 409 });
+            });
           }
         }
       } catch (e) {
@@ -543,24 +538,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
+    return successResponse({
       package: { ...result, short_code: shortCode, internal_code: internalCode, land_operator_id: landOperatorId },
       sanitize: {
         corrections: sanitizeCorrections,
         warnings: sanitizeWarnings,
       },
-    }, { status: 201 });
+    }, 201);
   } catch (error) {
     logError('[api/packages] POST save failed', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '저장 실패' }, { status: 500 });
+    return ApiErrors.internalError(error instanceof Error ? error.message : '저장 실패');
   }
 }
 
 // PATCH /api/packages - 상품 수정 또는 상태 변경
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
   }
 
   try {
@@ -571,7 +565,7 @@ export async function PATCH(request: NextRequest) {
     if (action === 'bulk_approve') {
       const { packageIds } = body;
       if (!Array.isArray(packageIds) || packageIds.length === 0) {
-        return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
+        return ApiErrors.badRequest('packageIds 배열이 필요합니다.');
       }
       const now = new Date().toISOString();
       const { error } = await supabaseAdmin
@@ -596,14 +590,14 @@ export async function PATCH(request: NextRequest) {
         logWarning('[api/packages] PATCH revalidate paths failed (ignored)', e);
       }
       invalidateQaChatPackageCache();
-      return NextResponse.json({ success: true, count: packageIds.length });
+      return successResponse({ count: packageIds.length });
     }
 
     // 일괄 아카이브 (소프트 삭제 — 데이터 보존, 고객 노출 안 됨)
     if (action === 'bulk_archive' || action === 'bulk_delete' || action === 'bulk_inactive') {
       const { packageIds } = body;
       if (!Array.isArray(packageIds) || packageIds.length === 0) {
-        return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
+        return ApiErrors.badRequest('packageIds 배열이 필요합니다.');
       }
       const { error } = await supabaseAdmin
         .from('travel_packages')
@@ -621,14 +615,14 @@ export async function PATCH(request: NextRequest) {
       revalidatePath('/packages');
       revalidateTag('packages');
       revalidateLandingPagesForPackageIds(packageIds);
-      return NextResponse.json({ success: true, count: packageIds.length });
+      return successResponse({ count: packageIds.length });
     }
 
     // 아카이브 복원 → 검토 대기로
     if (action === 'bulk_restore' || action === 'bulk_active') {
       const { packageIds } = body;
       if (!Array.isArray(packageIds) || packageIds.length === 0) {
-        return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
+        return ApiErrors.badRequest('packageIds 배열이 필요합니다.');
       }
       const { error } = await supabaseAdmin
         .from('travel_packages')
@@ -638,14 +632,14 @@ export async function PATCH(request: NextRequest) {
       for (const pid of packageIds) revalidatePath(`/packages/${pid}`);
       revalidatePath('/packages');
       revalidateLandingPagesForPackageIds(packageIds);
-      return NextResponse.json({ success: true, count: packageIds.length });
+      return successResponse({ count: packageIds.length });
     }
 
     // 일괄 필드 업데이트 (랜드사, 커미션 등)
     if (action === 'bulk_update') {
       const { packageIds, fields } = body;
       if (!Array.isArray(packageIds) || packageIds.length === 0) {
-        return NextResponse.json({ error: 'packageIds 배열이 필요합니다.' }, { status: 400 });
+        return ApiErrors.badRequest('packageIds 배열이 필요합니다.');
       }
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (fields.land_operator !== undefined) updateData.land_operator = fields.land_operator;
@@ -667,11 +661,11 @@ export async function PATCH(request: NextRequest) {
       revalidatePath('/packages');
       revalidateTag('packages');
       revalidateLandingPagesForPackageIds(packageIds);
-      return NextResponse.json({ success: true, count: packageIds.length });
+      return successResponse({ count: packageIds.length });
     }
 
     if (!packageId) {
-      return NextResponse.json({ error: 'packageId가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('packageId가 필요합니다.');
     }
 
     // 단건 상태 변경
@@ -681,7 +675,7 @@ export async function PATCH(request: NextRequest) {
       revalidatePath('/packages');
       revalidateLandingPagesForPackage(packageId, result?.short_code ?? null);
       invalidateQaChatPackageCache();
-      return NextResponse.json({ success: true, package: result });
+      return successResponse({ package: result });
     }
 
     if (action === 'reject') {
@@ -703,7 +697,7 @@ export async function PATCH(request: NextRequest) {
         packageId,
         (data?.[0] as { short_code?: string | null } | undefined)?.short_code ?? null,
       );
-      return NextResponse.json({ success: true, package: data?.[0] });
+      return successResponse({ package: data?.[0] });
     }
 
     // 필드 업데이트 — supabaseAdmin으로 RLS 우회
@@ -889,30 +883,30 @@ export async function PATCH(request: NextRequest) {
       packageId,
       (result as { short_code?: string | null })?.short_code ?? null,
     );
-    return NextResponse.json({ success: true, package: result });
+    return successResponse({ package: result });
   } catch (error) {
     logError('[api/packages] PATCH update failed', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '처리 실패' }, { status: 500 });
+    return ApiErrors.internalError(error instanceof Error ? error.message : '처리 실패');
   }
 }
 
 // DELETE /api/packages?id=
 export async function DELETE(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
   }
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
-  if (!id) return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
+  if (!id) return ApiErrors.badRequest('id가 필요합니다.');
 
   try {
     await deletePackage(id);
     revalidateLandingPagesForPackage(id, null);
-    return NextResponse.json({ success: true });
+    return successResponse({ message: '삭제되었습니다.' });
   } catch (error) {
     logError('[api/packages] DELETE failed', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '삭제 실패' }, { status: 500 });
+    return ApiErrors.internalError(error instanceof Error ? error.message : '삭제 실패');
   }
 }

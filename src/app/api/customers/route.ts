@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cacheHeader, successResponse, ApiErrors } from '@/lib/api-response';
+import { NextRequest } from 'next/server';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/customer-name';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
@@ -206,21 +206,21 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
     const { id } = body;
-    if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
+    if (!id) return ApiErrors.badRequest('id 필요');
 
     // 단일 필드 인라인 편집 (기존 호환)
     if (body.field !== undefined) {
       const allowed = ['name', 'phone', 'email', 'passport_no', 'passport_expiry',
                        'tags', 'memo', 'mileage', 'status', 'grade', 'cafe_sync_data'];
       if (!allowed.includes(body.field))
-        return NextResponse.json({ error: '허용되지 않은 필드' }, { status: 400 });
+        return ApiErrors.badRequest('허용되지 않은 필드');
       const customer = await upsertCustomer({ id, [body.field]: body.value });
-      return NextResponse.json({ customer });
+      return successResponse({ customer });
     }
 
     // 다중 필드 업데이트 (사이드 드로어 저장)
@@ -232,38 +232,32 @@ export async function PATCH(request: NextRequest) {
       if (field in body) updates[field] = body[field];
     }
     if (Object.keys(updates).length === 0)
-      return NextResponse.json({ error: '변경할 필드 없음' }, { status: 400 });
+      return ApiErrors.badRequest('변경할 필드 없음');
 
     const customer = await upsertCustomer({ id, ...updates });
-    return NextResponse.json({ customer });
+    return successResponse({ customer });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '수정 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '수정 실패');
   }
 }
 
 export async function DELETE(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (id) {
       await deleteCustomer(id);
-      return NextResponse.json({ ok: true });
+      return successResponse({ ok: true });
     }
     const body = await request.json();
     const ids: string[] = body.ids || [];
-    if (!ids.length) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+    if (!ids.length) return ApiErrors.badRequest('ids 필요');
     for (const cid of ids) await deleteCustomer(cid);
-    return NextResponse.json({ ok: true });
+    return successResponse({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '삭제 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '삭제 실패');
   }
 }
