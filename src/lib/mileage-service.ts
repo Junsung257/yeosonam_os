@@ -325,6 +325,11 @@ export function calcMaxUsable(balance: number, sellingPrice: number): number {
 // ═══════════════════════════════════════════════════════════════
 // 4. CRM 연동: 예약 입금 매칭 시 등급 기반 마일리지 자동 적립
 // ═══════════════════════════════════════════════════════════════
+//
+// ⚠️ 주의: 이 함수는 earnMileage()와 별개의 적립 경로입니다.
+//     mileage_transactions를 거치지 않아 만료일 설정/소멸 처리와 호환되지 않습니다.
+//     향후 earnMileage()로 통합 필요 (creditMileageForBooking → earnMileage 마이그레이션).
+//     현재 어느 파일에서도 호출되지 않음 (데드코드).
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { calcMileageEarned } from '@/lib/mileage';
@@ -332,6 +337,9 @@ import { calcMileageEarned } from '@/lib/mileage';
 /**
  * 입금 매칭(bank_transactions PATCH action='match') 완료 시 자동 적립
  * 고객 등급별 적립률: 신규/일반=1%, 우수=3%, VVIP=5%
+ *
+ * @deprecated earnMileage()로 통합 필요. mileage_transactions를 거치지 않아
+ *             만료일/소멸 처리와 호환되지 않음. migrateMileageToEarnApi() 참조.
  */
 export async function creditMileageForBooking(
   bookingId: string,
