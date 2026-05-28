@@ -335,15 +335,16 @@ export async function doCheckin(userId: string): Promise<{
     mileage_rate: 0,
     memo: MEMO_CHECKIN,
   }).select('id').single();
+  const checkinTxRow = checkinTx as { id: string } | null;
 
-  if (txError || !checkinTx) {
+  if (txError || !checkinTxRow) {
     return { reward: 0, streak, bonusAwarded: false, newBadges: [] };
   }
 
   // 만료일 설정
   const validityMonths = await getEffectiveValidityMonths();
   const expiresAt = calcExpiresAt(new Date(), validityMonths);
-  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (checkinTx as any).id);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', checkinTxRow.id);
 
   // 고객 mileage 업데이트
   await supabaseAdmin.rpc('increment_customer_mileage', {
@@ -363,10 +364,11 @@ export async function doCheckin(userId: string): Promise<{
       margin_impact: 0, base_net_profit: 0, mileage_rate: 0,
       memo: '🔥 7일 연속 출석 보너스',
     }).select('id').single();
-    if (bonusTx) {
+    const bonusTxRow = bonusTx as { id: string } | null;
+    if (bonusTxRow) {
       const validityMonths = await getEffectiveValidityMonths();
       const expiresAt = calcExpiresAt(new Date(), validityMonths);
-      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (bonusTx as any).id);
+      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', bonusTxRow.id);
     }
     await supabaseAdmin.rpc('increment_customer_mileage', { p_user_id: userId, p_amount: STREAK_7_BONUS });
     await awardBadge(userId, 'streak_7');
@@ -381,10 +383,11 @@ export async function doCheckin(userId: string): Promise<{
       margin_impact: 0, base_net_profit: 0, mileage_rate: 0,
       memo: '⚡ 30일 연속 출석 보너스',
     }).select('id').single();
-    if (bonusTx) {
+    const bonusTxRow2 = bonusTx as { id: string } | null;
+    if (bonusTxRow2) {
       const validityMonths = await getEffectiveValidityMonths();
       const expiresAt = calcExpiresAt(new Date(), validityMonths);
-      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (bonusTx as any).id);
+      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', bonusTxRow2.id);
     }
     await supabaseAdmin.rpc('increment_customer_mileage', { p_user_id: userId, p_amount: STREAK_30_BONUS });
     await awardBadge(userId, 'streak_30');

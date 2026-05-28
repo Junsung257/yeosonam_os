@@ -354,75 +354,59 @@ export function calcMaxUsable(balance: number, sellingPrice: number): number {
 // ═══════════════════════════════════════════════════════════════
 //
 // bank-transactions API의 입금 매칭(PATCH action='match') 완료 시 호출됨.
-// earnMileage()와 별개 경로이므로 향후 통합 고려.
+// earnMileage()로 위임 — txAmount의 5%를 netProfit으로 간주하여 적립한다.
 //
-// TODO: earnMileage()로 통합 (netProfit 대신 txAmount 기반이라 구조 차이 있음)
+// TODO: 추후 bank-transactions에서 conversion 파이프라인에 netProfit을
+//       함께 전달하면 earnMileage()를 직접 호출하도록 전환할 것.
 
 import { supabaseAdmin } from '@/lib/supabase';
-import { calcMileageEarned } from '@/lib/mileage';
 
 /**
- * 입금 매칭 완료 시 고객 등급별로 마일리지 자동 적립
- * mileage_transactions를 통해 적립하되 만료일도 함께 설정
+ * 입금 매칭 완료 시 earnMileage()로 위임하여 마일리지 적립
+ * txAmount의 5%를 netProfit으로 간주 (입금액 기반 적립)
  */
 export async function creditMileageForBooking(
   bookingId: string,
   txAmount: number,
   transactionId?: string,
 ) {
-  try {
-    const { data: booking } = await supabaseAdmin
-      .from('bookings')
-      .select('lead_customer_id')
-      .eq('id', bookingId)
-      .single();
+  // booking에서 lead_customer_id 조회
+  const { data: booking } = await supabaseAdmin
+    .from('bookings')
+    .select('lead_customer_id, selling_price')
+    .eq('id', bookingId)
+    .single();
 
-    const customerId = (booking as any)?.lead_customer_id;
-    if (!customerId) return;
+  const bookingRow = booking as { lead_customer_id: string | null; selling_price: number | null } | null;
+  const customerId = bookingRow?.lead_customer_id;
+  if (!customerId) return;
 
-    const { data: cust } = await supabaseAdmin
-      .from('customers')
-      .select('grade, mileage, total_spent')
-      .eq('id', customerId)
-      .single();
+  // txAmount의 5%를 netProfit으로 간주하여 earnMileage로 위임
+  const estimatedNetProfit = Math.round(txAmount * 0.05);
+  const sellingPrice = booking?.selling_price ?? txAmount;
 
-    if (!cust) return;
+  await earnMileage({
+    userId: customerId,
+    bookingId,
+    netProfit: estimatedNetProfit,
+    sellingPrice,
+  });
 
-    const grade        = (cust as any).grade      ?? '신규';
-    const currentMile  = (cust as any).mileage     ?? 0;
-    const currentSpent = (cust as any).total_spent ?? 0;
+  // total_spent 업데이트 (earnMileage는 total_spent를 갱신하지 않음)
+  const { data: cust } = await supabaseAdmin
+    .from('customers')
+    .select('total_spent')
+    .eq('id', customerId)
+    .single();
 
-    const earned     = calcMileageEarned(txAmount, grade);
-    const newMileage = currentMile + earned;
-    const newSpent   = currentSpent + txAmount;
-
-    // mileage_transactions에 적립 내역 기록 (만료일 포함)
-    const { data: tx } = await supabaseAdmin.from('mileage_transactions').insert({
-      user_id: customerId,
-      amount: earned,
-      type: 'EARNED',
-      margin_impact: 0,
-      base_net_profit: 0,
-      mileage_rate: 0,
-      memo: `입금 매칭 적립 (${grade} ${((earned / txAmount) * 100).toFixed(0)}%)`,
-    }).select('id').single();
-
-    if (tx) {
-      const validityMonths = await getEffectiveValidityMonths();
-      const expiresAt = calcExpiresAt(new Date(), validityMonths);
-      await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
-    }
-
-    // customers 테이블 갱신
+  const custRow = cust as { total_spent: number | null } | null;
+  if (custRow) {
+    const newSpent = (custRow.total_spent ?? 0) + txAmount;
     await supabaseAdmin
       .from('customers')
-      .update({ mileage: newMileage, total_spent: newSpent, updated_at: new Date().toISOString() })
+      .update({ total_spent: newSpent, updated_at: new Date().toISOString() })
       .eq('id', customerId);
-
-    await supabaseAdmin.rpc('increment_customer_mileage', { p_user_id: customerId, p_amount: earned });
-
-    console.log(`[CRM마일리지] ${grade} +${earned.toLocaleString()}P (잔액 ${newMileage.toLocaleString()}P)`);
-  } catch (e) {
-    console.warn('[CRM마일리지 적립 실패]', e);
   }
+
+  console.log(`[creditMileageForBooking] booking=${bookingId} earnMileage() 위임 완료`);
 }

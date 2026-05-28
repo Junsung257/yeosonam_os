@@ -64,13 +64,14 @@ export async function awardWelcomeMileage(customerId: string, customerName?: str
     mileage_rate: 0,
     memo: MEMO_WELCOME,
   }).select('id').single();
+  const txRow = tx as { id: string } | null;
 
-  if (error || !tx) return { awarded: false, amount: 0 };
+  if (error || !txRow) return { awarded: false, amount: 0 };
 
   // 만료일 설정 (mileage-expiration과 동일한 로직)
   const validityMonths = await getEffectiveValidityMonths();
   const expiresAt = calcExpiresAt(new Date(), validityMonths);
-  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', txRow.id);
 
   await supabaseAdmin.rpc('increment_customer_mileage', {
     p_user_id: customerId,
@@ -112,13 +113,14 @@ export async function awardFirstBookingBonus(customerId: string): Promise<{ awar
     mileage_rate: 0,
     memo: MEMO_FIRST_BOOKING,
   }).select('id').single();
+  const txRow2 = tx as { id: string } | null;
 
-  if (error || !tx) return { awarded: false, amount: 0 };
+  if (error || !txRow2) return { awarded: false, amount: 0 };
 
   // 만료일 설정
-  const validityMonths = await getEffectiveValidityMonths();
-  const expiresAt = calcExpiresAt(new Date(), validityMonths);
-  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
+  const validityMonths2 = await getEffectiveValidityMonths();
+  const expiresAt2 = calcExpiresAt(new Date(), validityMonths2);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt2.toISOString() }).eq('id', txRow2.id);
 
   await supabaseAdmin.rpc('increment_customer_mileage', {
     p_user_id: customerId,
@@ -159,12 +161,10 @@ export async function findReactivationTargets(minDays: number = 90): Promise<Rea
 
   const targets: ReactivationTarget[] = [];
 
-  for (const c of customers as Array<{
-    id: string; name: string; phone: string | null; mileage: number;
-    bookings: Array<{ created_at: string }>;
-  }>) {
+  for (const c of customers) {
+    const cRow = c as { id: string; name: string; phone: string | null; mileage: number; bookings: Array<{ created_at: string }> };
     // 가장 최근 예약일
-    const sortedBookings = c.bookings.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const sortedBookings = cRow.bookings.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     const lastBooking = sortedBookings[0];
     if (!lastBooking) continue;
 
@@ -214,13 +214,14 @@ export async function awardReactivationMileage(customerId: string): Promise<{ aw
     mileage_rate: 0,
     memo: MEMO_REACTIVATION,
   }).select('id').single();
+  const txRow3 = tx as { id: string } | null;
 
-  if (error || !tx) return { awarded: false, amount: 0 };
+  if (error || !txRow3) return { awarded: false, amount: 0 };
 
   // 만료일 설정
-  const validityMonths = await getEffectiveValidityMonths();
-  const expiresAt = calcExpiresAt(new Date(), validityMonths);
-  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt.toISOString() }).eq('id', (tx as any).id);
+  const validityMonths3 = await getEffectiveValidityMonths();
+  const expiresAt3 = calcExpiresAt(new Date(), validityMonths3);
+  await supabaseAdmin.from('mileage_transactions').update({ expires_at: expiresAt3.toISOString() }).eq('id', txRow3.id);
 
   await supabaseAdmin.rpc('increment_customer_mileage', {
     p_user_id: customerId,

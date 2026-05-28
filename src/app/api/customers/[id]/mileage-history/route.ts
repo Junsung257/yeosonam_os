@@ -37,10 +37,11 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .select('mileage')
     .eq('id', params.id)
     .single();
+  const custRow = cust as { mileage: number | null } | null;
 
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
 
-  const currentMileage = (cust as any)?.mileage ?? 0;
+  const currentMileage = custRow?.mileage ?? 0;
   const newMileage = Math.max(0, currentMileage + delta);
 
   await supabaseAdmin
