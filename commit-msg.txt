@@ -1,8 +1,11 @@
-refactor: API 에러 표준화 확산 (packages/bookings/qa/customers/mileage)
+fix: 메인페이지 인기패키지 이미지 로드 및 as any 전면 제거
 
-- packages/route.ts: 4가지 혼용 포맷 -> successResponse/listResponse/ApiErrors 통일
-- bookings/route.ts: GET/POST/PATCH 전체 에러/성공 표준화
-- qa/route.ts, qa/chat/route.ts: 검증/에러/성공 응답 표준화
-- customers/route.ts: PATCH/DELETE 핸들러 표준화
-- mileage/balance/route.ts: catch 블록 ApiErrors.internalError로 수정
-- tsc --noEmit 0 errors 확인
+- rankingPkgs 쿼리에 hero_image_url, thumbnail_urls select 누락 추가
+- buildRankingItemsUnique 함수 타입 any -> RankingPkg[]/AttractionRow[] 전환
+- computeRankingMinPrice 타입 any -> RankingPkg 전환
+- allPkgs 집계 로직 AggPkgRow 인터페이스 정의 + as any 제거
+- attractions 매핑 any -> AttractionRow[] 전환
+- homeUrgencyTop3/rankingPkgs forEach 타입 안전화
+- pexelsByDest image 할당 (d as any) 제거
+- RankingItem.title null-safe 처리 (?? '')
+- bestPkgByDest null -> undefined 변환
