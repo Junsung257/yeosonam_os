@@ -218,11 +218,19 @@ export async function getPendingPackages() {
 
 export async function approvePackage(packageId: string) {
   try {
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('travel_packages')
-      .update({ status: 'approved', audit_status: 'passed', audit_checked_at: new Date().toISOString() })
-      .eq('id', packageId);
+      .update({
+        status: 'approved',
+        audit_status: 'passed',
+        audit_checked_at: new Date().toISOString(),
+        baseline_requested_at: new Date().toISOString(),
+      })
+      .eq('id', packageId)
+      .select('id, short_code')
+      .single();
     if (error) throw error;
+    return data;
   } catch (error) {
     console.error('패키지 승인 실패:', error);
     throw error;

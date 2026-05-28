@@ -591,7 +591,7 @@ ${message}`;
             question: message,
             inquiryType: critique.severity === 'block' ? 'critic_blocked' : 'escalation',
             relatedPackages: parsed.recommendedPackageIds ?? [],
-          }).catch((err) => console.warn('에스컬레이션 저장 실패:', err));
+          }).catch((err: unknown) => console.warn('에스컬레이션 저장 실패:', err));
         }
 
         if (isSupabaseConfigured && sessionId) {

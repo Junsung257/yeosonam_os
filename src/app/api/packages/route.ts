@@ -677,17 +677,9 @@ export async function PATCH(request: NextRequest) {
     // 단건 상태 변경
     if (action === 'approve') {
       const result = await approvePackage(packageId);
-      // Option B: 승인 시 visual baseline 재생성 큐 등록
-      await supabaseAdmin
-        .from('travel_packages')
-        .update({ baseline_requested_at: new Date().toISOString() })
-        .eq('id', packageId);
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
-      revalidateLandingPagesForPackage(
-        packageId,
-        (result as { short_code?: string | null })?.short_code ?? null,
-      );
+      revalidateLandingPagesForPackage(packageId, result?.short_code ?? null);
       invalidateQaChatPackageCache();
       return NextResponse.json({ success: true, package: result });
     }
