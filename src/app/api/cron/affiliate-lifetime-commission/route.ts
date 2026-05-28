@@ -68,13 +68,20 @@ export async function GET(request: NextRequest) {
         .eq('id', b.id);
       if (upErr) return;
 
-      await void(supabaseAdmin.from('affiliate_reward_events').insert({
+      const eventInsert: {
+        affiliate_id: string;
+        event_type: string;
+        points: number;
+        reward_amount: number;
+        payload: Record<string, unknown>;
+      } = {
         affiliate_id: first.affiliate_id,
         event_type: 'lifetime_commission',
         points: 0,
         reward_amount: amount,
         payload: { booking_id: b.id, rate: 0.005 },
-      } as never));
+      };
+      await void(supabaseAdmin.from('affiliate_reward_events').insert(eventInsert));
       applied += 1;
     }
 

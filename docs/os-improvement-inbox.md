@@ -1,64 +1,68 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-28T21:15:00+09:00
-- actionable_changed_files: 0
+- generated_at_kst: 2026-05-28T23:21:38+09:00
+- actionable_changed_files: 12
 - todo_markers: 0
+- areas: API 8, LIB 2, APP 1, DOCS 1
 
-## 세션 정리 완료 (2026-05-28)
+## 1) Actionable Changed Files
 
-아래 작업은 이번 세션에서 모두 완료되어 Inbox에서 제거함:
+- ` M` `src/app/api/bank-transactions/route.ts`
+- ` M` `src/app/api/bookings/route.ts`
+- ` M` `src/app/api/cron/affiliate-lifetime-commission/route.ts`
+- ` M` `src/app/api/cron/affiliate-live-celebration/route.ts`
+- ` M` `src/app/api/payments/settlement-reverse/route.ts`
+- ` M` `src/app/api/qa/chat/v2/route.ts`
+- ` M` `src/app/api/settlements/[id]/pdf/route.ts`
+- ` M` `src/app/api/settlements/route.ts`
+- ` M` `src/app/blog/[slug]/page.tsx`
+- ` M` `src/lib/booking-workflow-tasks.ts`
+- ` M` `src/lib/supabase.ts`
+- `??` `docs/audits/2026-05-28-runtime-risk-audit.md`
 
-### ✅ 완료: as any 전수조사 및 근본 원인 해결
-- `supabaseAdmin as any` → Proxy 패턴으로 `SupabaseClient` 타입 복원
-- 30+개 파일의 `PromiseLike.catch()` 패턴 → try/catch 또는 Promise.resolve() 래핑
-- `as any` 방지 규칙 생성 (`.cursor/rules/yeosonam-typescript-safety.mdc`)
+## 2) TODO/FIXME/HACK/XXX Markers
 
-### ✅ 완료: 타입 오류 수정
-- `tsc --noEmit` 0 에러 통과 확인
-- `next build` 통과 확인
+- 없음
 
-### ✅ 완료: Git 정리
-- main 브랜치 충돌 해결 (rebase)
-- 머지된 로컬 브랜치 7개 삭제
-- 오래된 stash 3개 정리
-- 세션 임시 파일 git 추적 해제
+## 3) Auto Priority Candidates (P0/P1)
 
-### ✅ 완료: PR 관리
-- PR #164 MERGEABLE 상태 유지
-- PR 설명 최신화
+- [x] P0 ` M` `src/app/api/bookings/route.ts` — ff() 헬퍼 로깅 추가 완료
+- [x] P0 ` M` `src/app/api/payments/settlement-reverse/route.ts` — .catch 로깅 추가 완료
+- [x] P0 ` M` `src/lib/booking-workflow-tasks.ts` — as never → satisfies Record 교체 완료
+- [x] P1 ` M` `src/app/api/cron/affiliate-lifetime-commission/route.ts` — as never 제거 완료
+- [x] P1 ` M` `src/app/api/cron/affiliate-live-celebration/route.ts` — .catch 로깅 추가 완료
+- [x] P1 ` M` `src/lib/supabase.ts` — P0 as never 수정 완료
 
----
+## 4) Completed in This Session
 
-## 남은 작업 (TODO)
+### Runtime Risk Fixes
+- [x] **ff() 헬퍼 로깅 추가** — `src/app/api/bookings/route.ts` — 12개 fire-and-forget 호출에 레이블+console.warn 추가
+- [x] **정산 PDF null 크래시 수정** — `src/app/api/settlements/[id]/pdf/route.ts` — affiliates null 체크 + try/catch 전체 래핑
+- [x] **정산 PATCH null 체크 추가** — `src/app/api/settlements/route.ts` — affiliates 반복 as any 제거, null-safe 타입 처리
+- [x] **settlement-reverse Slack 로깅** — `src/app/api/payments/settlement-reverse/route.ts` — .catch(() => {}) → console.warn
+- [x] **qa/chat/v2 silent fail 수정** — `src/app/api/qa/chat/v2/route.ts` — 4개 .catch(() => {}) → console.warn
+- [x] **affiliate-live-celebration 로깅** — `src/app/api/cron/affiliate-live-celebration/route.ts` — .catch(() => {}) → console.warn
+- [x] **affiliate-lifetime-commission as never 제거** — `src/app/api/cron/affiliate-lifetime-commission/route.ts` — 명시적 타입 정의
+- [x] **supabase.ts P0 as never → satisfies Record** — 4건 voidBooking 관련 update/insert
+- [x] **bank-transactions as never → satisfies Record**
+- [x] **blog/[slug] SSG null-safe** — variantValue.replace 옵셔널 체이닝
+- [x] **booking-workflow-tasks as never → satisfies Record** — 2건 insert/update
 
-### P0: 정산/결제 관련 as any 제거 (Phase 1)
-- `src/app/api/settlements/route.ts`
-- `src/app/api/settlements/[id]/pdf/route.ts`
-- `src/app/api/payments/settlement-bundle/route.ts`
+### Verification
+- [x] `npx tsc --noEmit` 통과
+- [x] `npm run build` 통과 (548 static pages)
 
-### P1: API route as any 제거 (Phase 2)
-- `src/app/api/unmatched/route.ts` (15건)
-- `src/app/api/upload/route.ts` (9건)
-- `src/app/api/card-news/route.ts` (6건)
-- `src/app/api/rfq/[id]/route.ts` (8건)
+## 5) Remaining as never (Non-P0, Future Work)
 
-### P2: 페이지 컴포넌트 as any 제거 (Phase 3)
-- `src/app/admin/marketing/card-news/[id]/page.tsx` (36건) — 카드뉴스 스타일 편집기 타입 정의 필요
-- `src/app/m/admin/bookings/[id]/page.tsx` (20건) — 모바일 예약 상세 타입 정의 필요
-- `src/app/destinations/[city]/page.tsx` (8건)
-- `src/app/blog/[slug]/page.tsx` (5건)
-- `src/app/admin/affiliates/[id]/page.tsx` (3건)
-
-### P3: 서드파티/에러 핸들링 as any 제거 (Phase 4)
-- `src/components/MetaPixel.tsx` (6건) — declare global 우선
-- `src/components/NaverAnalyticsPixel.tsx` (1건)
-- ErrorBoundary 공통 컴포넌트화: `error.tsx` 5개 파일 중복
-
----
-
-## 향후 실행
-
-```bash
-# 캘린더에 등록
-npm run os:inbox -- --priority P0,P1
-```
+아래는 P0 경로가 아니거나 테스트 파일로, 이번 수정에서 제외:
+- `src/lib/db/helpers.ts`, `src/lib/db/rfq.ts`, `src/lib/db/tenant.ts` (lib/db 계열 30+건)
+- `src/lib/db/ads.ts` (광고 성과, 15+건)
+- `src/lib/magic-link.ts`, `src/lib/magic-link-audit.ts` (매직링크, 7건)
+- `src/lib/cron-observability.ts`, `src/lib/task-hooks.ts` (크론 관측, 3건)
+- `src/lib/response-learning.ts`, `src/lib/jarvis/*.ts` (AI 학습/자비스, 10+건)
+- `src/lib/content-pipeline/**`, `src/app/api/content/**` (콘텐츠 파이프라인, 10+건)
+- `src/app/api/cron/*` (비P0 크론, 10+건)
+- `src/app/api/card-news/**` (카드뉴스, 5건)
+- `src/app/api/influencer/**` (인플루언서, 5건)
+- `src/app/api/webhooks/**` (웹훅, 2건)
+- 테스트 파일들: `*.test.ts` (10+건)

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminContext } from '@/lib/admin-context';
 import { notifySlack } from '@/lib/slack-notifier';
+import { successResponse, errorResponse } from '@/lib/api-response';
 
 /**
  * POST /api/payments/settlement-reverse
@@ -15,19 +16,19 @@ import { notifySlack } from '@/lib/slack-notifier';
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: '잘못된 JSON' }, { status: 400 });
+    return errorResponse('INVALID_JSON', '잘못된 JSON', 400);
   }
 
-  const { settlementId, reason } = body as { settlementId: string; reason?: string };
+  const { settlementId, reason } = body as { settlementId?: string; reason?: string };
   if (!settlementId) {
-    return NextResponse.json({ error: 'settlementId 필수' }, { status: 400 });
+    return errorResponse('MISSING_FIELD', 'settlementId 필수', 400);
   }
 
   try {
@@ -38,28 +39,32 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
+      const errCode = error as { code?: string; message?: string };
       const status =
-        (error as any).code === 'P0001'
+        errCode.code === 'P0001'
           ? 400
-          : (error as any).code === 'P0002'
+          : errCode.code === 'P0002'
             ? 404
             : 500;
-      return NextResponse.json({ error: error.message }, { status });
+      return errorResponse('RPC_ERROR', error.message, status);
     }
 
     // best-effort Slack 알림 (회계 사고 신호)
     notifySlack('reverse', `정산 reverse — settlement ${settlementId}`, {
       reason: reason ?? '-',
-      bookings_reverted: (data as any)?.bookings_reverted ?? '?',
-      amount_reverted: (data as any)?.amount_reverted ?? '?',
+      bookings_reverted: (data as Record<string, unknown>)?.bookings_reverted ?? '?',
+      amount_reverted: (data as Record<string, unknown>)?.amount_reverted ?? '?',
       by: getAdminContext(req).actor,
-    }).catch(() => {});
+    }).catch((e: unknown) => {
+      console.warn('[Settlement Reverse] Slack 알림 실패:', e instanceof Error ? e.message : e);
+    });
 
-    return NextResponse.json(data);
+    return successResponse(data);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'reverse 실패' },
-      { status: 500 },
+    return errorResponse(
+      'REVERSE_FAILED',
+      err instanceof Error ? err.message : 'reverse 실패',
+      500,
     );
   }
 }

@@ -3,11 +3,12 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { sendAffiliateBookingCelebration } from '@/lib/kakao';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
+import { successResponse, errorResponse } from '@/lib/api-response';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: 'DB 미설정' });
+  if (!isSupabaseConfigured) return successResponse({ ok: true, skipped: 'DB 미설정' });
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return errorResponse('DB_ERROR', error.message, 500);
 
     let notified = 0;
     for (const b of (bookings || []) as Array<{
@@ -55,7 +56,9 @@ export async function GET(request: NextRequest) {
         packageTitle: b.package_title || '여행 상품',
         totalPrice: Number(b.total_price) || 0,
         commission: Number(b.influencer_commission) || 0,
-      }).catch(() => {});
+      }).catch((e: unknown) => {
+        console.warn('[Live Celebration] 카카오 알림 전송 실패:', e instanceof Error ? e.message : e);
+      });
 
       await void(supabaseAdmin.from('audit_logs').insert({
         action: 'AFFILIATE_LIVE_CELEBRATION_SENT',
@@ -67,12 +70,13 @@ export async function GET(request: NextRequest) {
     }
 
     await reportAffiliateCronSuccess('affiliate-live-celebration', { checked: (bookings || []).length, notified });
-    return NextResponse.json({ ok: true, checked: (bookings || []).length, notified });
+    return successResponse({ ok: true, checked: (bookings || []).length, notified });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-live-celebration', err, { since });
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'affiliate live celebration failed' },
-      { status: 500 },
+    return errorResponse(
+      'CRON_FAILED',
+      err instanceof Error ? err.message : 'affiliate live celebration failed',
+      500,
     );
   }
 }

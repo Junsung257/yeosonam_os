@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   note: { fontSize: 8, color: '#999', marginTop: 4 },
 });
 
-interface SettlementPdfProps {
+export interface SettlementPdfProps {
   affiliateName: string;
   referralCode: string;
   phone: string | null;

@@ -61,20 +61,14 @@ export async function POST(req: NextRequest) {
   const affiliateId = bodyAffiliateId ?? req.headers.get('x-affiliate-id') ?? undefined
 
   if (!message?.trim()) {
-    return new Response(JSON.stringify({ error: '메시지가 필요합니다.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return Response.json({ error: '메시지가 필요합니다.', code: 'MISSING_MESSAGE' }, { status: 400 })
   }
 
   const ip = getClientIpFromRequest(req)
   const rlKey = `qa_chat_v2:${ip}:${sessionId ?? 'anon'}`
   const { allowRateLimit } = await import('@/lib/simple-rate-limit')
   if (!allowRateLimit(rlKey, 25, 60_000)) {
-    return new Response(
-      JSON.stringify({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' }),
-      { status: 429, headers: { 'Content-Type': 'application/json' } },
-    )
+    return Response.json({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', code: 'RATE_LIMITED' }, { status: 429 })
   }
 
   const correlationId = crypto.randomUUID()
@@ -451,7 +445,9 @@ export async function POST(req: NextRequest) {
               tenantId: factTenantId,
               recentMessages: recentForExtraction,
               sourceMessageIdx: updatedMessages.length - 1,
-            }).catch(() => {})
+            }).catch((e: unknown) => {
+              console.warn('[qa-chat-v2] 사실 추출 실패 (무시):', e instanceof Error ? e.message : e);
+            })
           }
         }
 
@@ -459,21 +455,27 @@ export async function POST(req: NextRequest) {
         if (agentTaskId) {
           await transitionAgentTask(agentTaskId, 'running', 'done', {
             completed_at: new Date().toISOString(),
-          }).catch(() => {})
+          }).catch((e: unknown) => {
+            console.warn('[qa-chat-v2] 태스크 완료 실패 (무시):', e instanceof Error ? e.message : e);
+          })
         }
         if (traceSpan) {
           await endTraceSpan({
             id: traceSpan.id,
             startedAt: traceSpan.started_at,
             metadata: { traceId, totalLatencyMs: Date.now() - started },
-          }).catch(() => {})
+          }).catch((e: unknown) => {
+            console.warn('[qa-chat-v2] traceSpan 종료 실패 (무시):', e instanceof Error ? e.message : e);
+          })
         }
       } catch (error) {
         console.error('[qa-chat-v2] 오류:', error)
         if (agentTaskId) {
           await transitionAgentTask(agentTaskId, 'running', 'failed', {
             last_error: error instanceof Error ? error.message : 'unknown',
-          }).catch(() => {})
+          }).catch((e: unknown) => {
+            console.warn('[qa-chat-v2] 태스크 실패 기록 실패 (무시):', e instanceof Error ? e.message : e);
+          })
         }
         try {
           emitSSE('error', { message: error instanceof Error ? error.message : 'AI 처리 실패' })

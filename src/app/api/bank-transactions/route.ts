@@ -210,7 +210,7 @@ async function applyToBooking(
             content:    logContent,
             is_mock:    false,
             created_by: '🤖 시스템',
-          } as never);
+          } satisfies Record<string, unknown>);
       } catch {
         // 테이블 미존재 시 무시
       }

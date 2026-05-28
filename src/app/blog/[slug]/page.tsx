@@ -537,7 +537,7 @@ async function renderBlogDetail({
         // variantValue가 있으면 그걸로 타이틀 사용, 없으면 variantLabel로 판단
         if (result.variantValue && result.variantValue !== title) {
           // SEO title clean 적용
-          abTestTitle = result.variantValue
+          abTestTitle = (result.variantValue ?? '')
             .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
             .trim();
         }

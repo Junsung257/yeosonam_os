@@ -9,9 +9,11 @@ import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 
-/** fire-and-forget: 에러는 무시해도 되는 사이드 이펙트 */
-function ff<T>(p: PromiseLike<T>): void {
-  Promise.resolve(p).then(() => {}).catch(() => {});
+/** fire-and-forget: 에러는 console.warn으로 기록 */
+function ff<T>(p: PromiseLike<T>, label?: string): void {
+  Promise.resolve(p).then(() => {}).catch((e: unknown) => {
+    console.warn(`[ff] ${label ?? 'unknown'} 실패:`, e instanceof Error ? e.message : e);
+  });
 }
 
 /**
@@ -401,7 +403,7 @@ export async function POST(request: NextRequest) {
 
     if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
       const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
-      ff(enqueueDepositNoticeGateTask(booking.id as string));
+      ff(enqueueDepositNoticeGateTask(booking.id as string), 'enqueueDepositNoticeGateTask');
     }
 
     // 셀프 리퍼럴 차단 건은 감사 로그로 남겨 정산 이슈를 사전 방지
@@ -411,7 +413,7 @@ export async function POST(request: NextRequest) {
         target_type: 'booking',
         target_id: booking.id,
         description: `affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`,
-      }));
+      }), 'audit_logs.self_referral_blocked');
     }
 
     // 어필리에이트 last_conversion_at 업데이트
@@ -419,7 +421,7 @@ export async function POST(request: NextRequest) {
       ff(supabaseAdmin
         .from('affiliates')
         .update({ last_conversion_at: new Date().toISOString() })
-        .eq('id', affData.id));
+        .eq('id', affData.id), 'affiliates.last_conversion_at');
     }
 
     // 어필리에이트 링크 conversion_count 증가
@@ -434,9 +436,9 @@ export async function POST(request: NextRequest) {
             ff(supabaseAdmin
               .from('influencer_links')
               .update({ conversion_count: (link.conversion_count || 0) + 1 })
-              .eq('id', link.id));
+              .eq('id', link.id), 'influencer_links.conversion_count_update');
           }
-        }));
+        }), 'influencer_links.conversion_count_select');
     }
 
     // 프로모코드 사용량 증가 (예약 생성 성공 후)
@@ -451,7 +453,7 @@ export async function POST(request: NextRequest) {
         ff(supabaseAdmin
           .from('affiliate_promo_codes')
           .update({ uses_count: (pr.uses_count || 0) + 1, updated_at: new Date().toISOString() })
-          .eq('id', pr.id));
+          .eq('id', pr.id), 'affiliate_promo_codes.uses_count');
       }
     }
 
@@ -471,7 +473,7 @@ export async function POST(request: NextRequest) {
           affiliate_id: body.affiliateId,
           origin_booking_id: booking.id,
           experiment_group: group,
-        }));
+        }), 'affiliate_lifetime_links.insert');
       }
     }
 
@@ -522,7 +524,7 @@ export async function POST(request: NextRequest) {
             booking_day_of_week: new Date().getDay(),
           },
         })
-        .eq('id', booking.id));
+        .eq('id', booking.id), 'bookings.lead_time_update');
     }
 
     // 비동기 세션 병합: conversation → customer_id 연결
@@ -530,7 +532,7 @@ export async function POST(request: NextRequest) {
       ff(supabaseAdmin
         .from('conversations')
         .update({ customer_id: body.leadCustomerId, updated_at: new Date().toISOString() })
-        .eq('id', booking.conversation_id));
+        .eq('id', booking.conversation_id), 'conversations.customer_id_update');
     }
 
     // Rule 5: 소급 매칭 — 기존 unmatched 입금 내역과 자동 연결 시도

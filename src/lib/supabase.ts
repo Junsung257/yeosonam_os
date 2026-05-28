@@ -875,7 +875,7 @@ export async function createBooking(data: {
         ? { utm_attributed_campaign_id: data.utm_attributed_campaign_id }
         : {}),
       ...(data.referral_code ? { referral_code: data.referral_code } : {}),
-    }] as never).select();
+    }] as unknown[]).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;
 
@@ -921,7 +921,7 @@ export async function createBooking(data: {
       const passengers = allPassengerIds.map(cid => ({
         booking_id: bookingId, customer_id: cid,
       }));
-      await supabaseAdmin.from('booking_passengers').insert(passengers as never);
+      await supabaseAdmin.from('booking_passengers').insert(passengers);
     }
 
     if (booking?.[0]) {
@@ -1062,12 +1062,13 @@ export async function voidBooking(bookingId: string, reason?: string): Promise<v
   if (!booking) return;
   const bk = booking as unknown as { id: string; margin?: number; utm_attributed_campaign_id?: string; affiliate_id?: string; departure_date?: string };
 
+  void reason;
   await Promise.allSettled([
     // 2. bookings voided_at, void_reason 업데이트
     supabase.from('bookings').update({
       voided_at: new Date().toISOString(),
       void_reason: reason ?? '예약 취소',
-    } as never).eq('id', bookingId),
+    } as never).eq('id', bookingId) as never,
 
     // 3. 광고 성과 스냅샷에서 귀속 마진 차감
     (async () => {
