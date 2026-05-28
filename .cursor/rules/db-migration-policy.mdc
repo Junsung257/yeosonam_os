@@ -1,0 +1,22 @@
+---
+description: 'DB 마이그레이션 정책 — 변경 전 CURRENT_STATUS.confirm, 반드시 supabase CLI 사용'
+globs: ['supabase/migrations/**', 'db/**']
+alwaysApply: false
+---
+
+# DB 마이그레이션 정책
+
+## 필수 확인 사항
+1. 마이그레이션 생성 전 `CURRENT_STATUS.md`에서 현재 DB 상태를 확인한다.
+2. 마이그레이션 파일명은 `YYYYMMDDHHmmss_description.sql` 형식을 따른다.
+3. Supabase CLI(`supabase migration new`)로 마이그레이션 파일을 생성한다.
+4. RLS 정책은 마이그레이션에 포함시킨다 (별도 파일 금지).
+
+## 금지
+- `supabase/migrations/` 외부에서 `ALTER TABLE`, `CREATE TABLE` 등 DDL 실행.
+- 기존 마이그레이션 파일 수정 (롤백 불가능한 기록이므로 추가만 허용).
+- `db/`에 스크립트를 만들지 않고 임시 SQL을 직접 DB에 실행.
+
+## 변경 전 확인
+- `FIELD_POLICY.md`에 해당 테이블의 필드 정책이 정의되어 있는지 확인.
+- `docs/` 관련 문서가 있다면 함께 확인.

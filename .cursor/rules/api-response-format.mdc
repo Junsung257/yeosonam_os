@@ -1,0 +1,33 @@
+---
+description: 'API Route 응답 포맷 표준화 — api-response.ts 사용 강제'
+globs: ['src/app/api/**/route.ts']
+alwaysApply: false
+---
+
+# API 응답 포맷 표준화
+
+## 필수 규칙
+- 모든 API Route는 `@/lib/api-response`의 `apiResponse` 헬퍼를 사용한다.
+- 에러 응답도 `apiResponse({ error: message }, { status: 4xx })` 형식을 따른다.
+- `Response.json()`을 직접 사용하지 않는다 (단, streaming 응답 등 예외 허용).
+
+## 표준 응답 구조
+```typescript
+import { apiResponse } from '@/lib/api-response';
+
+// 성공
+return apiResponse({ data: result });
+
+// 에러
+return apiResponse({ error: 'Not found' }, { status: 404 });
+
+// 메타데이터 포함 (페이지네이션 등)
+return apiResponse({ 
+  data: items,
+  meta: { total, page, pageSize }
+});
+```
+
+## 인증 패턴
+- 인증이 필요한 API는 `getAuthenticatedUser()` 또는 `getOptionalUser()`를 사용한다.
+- 인증 실패 시 `apiResponse({ error: 'Unauthorized' }, { status: 401 })`.
