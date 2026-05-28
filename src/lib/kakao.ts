@@ -14,11 +14,34 @@ import { hasSecrets } from '@/lib/secret-registry';
  *   SOLAPI_API_SECRET=...
  *   KAKAO_CHANNEL_ID=_xxxxx   (pfId, 카카오 비즈채널 ID)
  *   KAKAO_SENDER_NUMBER=0212345678
- *   KAKAO_TEMPLATE_DEPOSIT=템플릿ID_계약금안내
- *   KAKAO_TEMPLATE_BALANCE=템플릿ID_잔금안내
- *   KAKAO_TEMPLATE_PREPARATION=템플릿ID_준비물안내
- *   KAKAO_TEMPLATE_PASSPORT=템플릿ID_여권만료
  */
+
+// ── 카카오 알림톡 템플릿 ID 중앙 관리 ─────────────────────────────────
+// 모든 템플릿 ID는 이곳에서만 환경변수를 읽습니다.
+// 새 템플릿 추가 시 KAKAO_TEMPLATE_<NAME> 환경변수 + 템플릿 ID 객체에 추가.
+export const KAKAO_TEMPLATES = {
+  DEPOSIT:             process.env.KAKAO_TEMPLATE_DEPOSIT ?? '',
+  BALANCE:             process.env.KAKAO_TEMPLATE_BALANCE ?? '',
+  PREPARATION:         process.env.KAKAO_TEMPLATE_PREPARATION ?? '',
+  PASSPORT:            process.env.KAKAO_TEMPLATE_PASSPORT ?? '',
+  VOUCHER_ISSUED:      process.env.KAKAO_TEMPLATE_VOUCHER_ISSUED ?? '',
+  GUIDEBOOK_READY:     process.env.KAKAO_TEMPLATE_GUIDEBOOK_READY ?? '',
+  REVIEW_REQUEST:      process.env.KAKAO_TEMPLATE_REVIEW_REQUEST ?? '',
+  MAGIC_LINK:          process.env.KAKAO_TEMPLATE_MAGIC_LINK ?? '',
+  AFFILIATE_CELEBRATION: process.env.KAKAO_TEMPLATE_AFFILIATE_CELEBRATION ?? '',
+  FREE_TRAVEL_RETARGET:  process.env.KAKAO_TEMPLATE_FREE_TRAVEL_RETARGET ?? '',
+  CONCIERGE_CART_RETARGET: process.env.KAKAO_TEMPLATE_CONCIERGE_CART_RETARGET ?? '',
+  MILEAGE_EARNED:      process.env.KAKAO_TEMPLATE_MILEAGE_EARNED ?? '',
+  MILEAGE_USED:        process.env.KAKAO_TEMPLATE_MILEAGE_USED ?? '',
+  MILEAGE_EXPIRING:    process.env.KAKAO_TEMPLATE_MILEAGE_EXPIRING ?? '',
+  MILEAGE_EXPIRED:     process.env.KAKAO_TEMPLATE_MILEAGE_EXPIRED ?? '',
+  MILEAGE_EVENT:       process.env.KAKAO_TEMPLATE_MILEAGE_EVENT ?? '',
+  WELCOME_MILEAGE:     process.env.KAKAO_TEMPLATE_WELCOME_MILEAGE ?? '',
+} as const;
+
+function getTemplate(name: keyof typeof KAKAO_TEMPLATES): string {
+  return KAKAO_TEMPLATES[name];
+}
 
 function isSolapiConfigured() {
   return hasSecrets([
@@ -72,7 +95,7 @@ export async function sendAffiliateBookingCelebration(params: {
   totalPrice: number;
   commission: number;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_AFFILIATE_CELEBRATION || '';
+  const templateId = getTemplate('AFFILIATE_CELEBRATION');
   if (!templateId) {
     console.log('[축하 알림] 템플릿 미설정 (수기모드)', params);
     return { skipped: true };
@@ -106,7 +129,7 @@ export async function sendDepositNoticeAlimtalk(params: {
   account: string;
   portalUrl: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_DEPOSIT || '';
+  const templateId = getTemplate('DEPOSIT');
   if (!templateId) {
     console.warn('[알림톡] KAKAO_TEMPLATE_DEPOSIT 환경변수 미설정');
     return { skipped: true };
@@ -144,7 +167,7 @@ export async function sendBalanceNotice(params: {
   /** 템플릿에 변수 없으면 빈 문자열 전달 가능 */
   portalUrl?: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_BALANCE || '';
+  const templateId = getTemplate('BALANCE');
   if (!templateId) {
     console.warn('[알림톡] KAKAO_TEMPLATE_BALANCE 환경변수 미설정');
     return { skipped: true };
@@ -176,7 +199,7 @@ export async function sendPreparationGuide(params: {
   packageTitle: string;
   extras?: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_PREPARATION || '';
+  const templateId = getTemplate('PREPARATION');
   if (!templateId) {
     console.warn('[알림톡] KAKAO_TEMPLATE_PREPARATION 환경변수 미설정');
     return { skipped: true };
@@ -203,7 +226,7 @@ export async function sendPassportExpiryNotice(params: {
   name: string;
   expiryDate: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_PASSPORT || '';
+  const templateId = getTemplate('PASSPORT');
   if (!templateId) {
     console.warn('[알림톡] KAKAO_TEMPLATE_PASSPORT 환경변수 미설정');
     return { skipped: true };
@@ -245,11 +268,11 @@ export async function sendVoucherIssuedAlimtalk(params: {
   voucherId: string;
   guidebookUrl?: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_VOUCHER_ISSUED || '';
+  const templateId = getTemplate('VOUCHER_ISSUED');
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
   if (!templateId) {
-    console.warn('[알림톡] KAKAO_TEMPLATE_VOUCHER_ISSUED 환경변수 미설정 — 수기 발송 필요');
+    console.warn('[알림톡] VOUCHER_ISSUED 템플릿 미설정 — 수기 발송 필요');
     console.log('[확정서 알림톡 수기모드]', {
       to: params.phone,
       name: params.name,
@@ -284,9 +307,9 @@ export async function sendGuidebookReadyAlimtalk(params: {
   departureDate: string;
   guidebookUrl: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_GUIDEBOOK_READY || process.env.KAKAO_TEMPLATE_VOUCHER_ISSUED || '';
+  const templateId = getTemplate('GUIDEBOOK_READY') || getTemplate('VOUCHER_ISSUED');
   if (!templateId) {
-    console.warn('[알림톡] KAKAO_TEMPLATE_GUIDEBOOK_READY 미설정 — 수기 발송 필요');
+    console.warn('[알림톡] GUIDEBOOK_READY/VOUCHER_ISSUED 템플릿 미설정 — 수기 발송 필요');
     console.log('[가이드북 알림톡 수기모드]', params);
     return { skipped: true, mode: 'manual' };
   }
@@ -330,9 +353,9 @@ export async function sendMagicLinkAlimtalk(params: {
   label: string;
   url: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_MAGIC_LINK || '';
+  const templateId = getTemplate('MAGIC_LINK');
   if (!templateId) {
-    console.warn('[알림톡] KAKAO_TEMPLATE_MAGIC_LINK 환경변수 미설정 — 수기 발송 필요');
+    console.warn('[알림톡] MAGIC_LINK 템플릿 미설정 — 수기 발송 필요');
     console.log('[매직링크 알림톡 수기모드]', params);
     return { skipped: true, mode: 'manual' };
   }
@@ -353,11 +376,11 @@ export async function sendReviewRequestAlimtalk(params: {
   productTitle: string;
   bookingId: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_REVIEW_REQUEST || '';
+  const templateId = getTemplate('REVIEW_REQUEST');
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 
   if (!templateId) {
-    console.warn('[알림톡] KAKAO_TEMPLATE_REVIEW_REQUEST 환경변수 미설정 — 수기 발송 필요');
+    console.warn('[알림톡] REVIEW_REQUEST 템플릿 미설정 — 수기 발송 필요');
     console.log('[만족도 조사 알림톡 수기모드]', {
       to: params.phone,
       name: params.name,
@@ -395,9 +418,9 @@ export async function sendFreeTravelRetarget(params: {
   destination: string;
   plannerUrl: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_FREE_TRAVEL_RETARGET || '';
+  const templateId = getTemplate('FREE_TRAVEL_RETARGET');
   if (!templateId) {
-    console.log('[자유여행 리타게팅] KAKAO_TEMPLATE_FREE_TRAVEL_RETARGET 미설정 — 수기 모드', params.phone, params.destination);
+    console.log('[자유여행 리타게팅] FREE_TRAVEL_RETARGET 템플릿 미설정 — 수기 모드', params.phone, params.destination);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -418,10 +441,10 @@ export async function sendConciergeCartRetarget(params: {
   itemCount: number;
   cartUrl: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_CONCIERGE_CART_RETARGET || '';
+  const templateId = getTemplate('CONCIERGE_CART_RETARGET');
   if (!templateId) {
     console.log(
-      '[컨시어지 장바구니 리타게팅] KAKAO_TEMPLATE_CONCIERGE_CART_RETARGET 미설정 — 수기 모드',
+      '[컨시어지 장바구니 리타게팅] CONCIERGE_CART_RETARGET 템플릿 미설정 — 수기 모드',
       params.phone,
       params.itemCount,
     );
@@ -450,7 +473,7 @@ export async function sendMileageEarnedAlimtalk(params: {
   balance: number;
   bookingRef?: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EARNED || '';
+  const templateId = getTemplate('MILEAGE_EARNED');
   if (!templateId) {
     console.log('[마일리지 적립] 템플릿 미설정 — 수기 모드', params.phone, params.earnedAmount);
     return { skipped: true, mode: 'manual' };
@@ -475,7 +498,7 @@ export async function sendMileageUsedAlimtalk(params: {
   balance: number;
   bookingRef?: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_USED || '';
+  const templateId = getTemplate('MILEAGE_USED');
   if (!templateId) {
     console.log('[마일리지 사용] 템플릿 미설정 — 수기 모드', params.phone, params.usedAmount);
     return { skipped: true, mode: 'manual' };
@@ -500,7 +523,7 @@ export async function sendMileageExpiringSoonAlimtalk(params: {
   expireDate: string;
   daysLeft: number;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EXPIRING || '';
+  const templateId = getTemplate('MILEAGE_EXPIRING');
   if (!templateId) {
     console.log('[마일리지 소멸예정] 템플릿 미설정 — 수기 모드', params.phone, params.expiringAmount);
     return { skipped: true, mode: 'manual' };
@@ -523,7 +546,7 @@ export async function sendMileageExpiredAlimtalk(params: {
   name?: string;
   expiredAmount: number;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EXPIRED || '';
+  const templateId = getTemplate('MILEAGE_EXPIRED');
   if (!templateId) {
     console.log('[마일리지 소멸완료] 템플릿 미설정 — 수기 모드', params.phone, params.expiredAmount);
     return { skipped: true, mode: 'manual' };
@@ -546,7 +569,7 @@ export async function sendMileageEventAlimtalk(params: {
   eventDescription: string;
   eventUrl?: string;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_MILEAGE_EVENT || '';
+  const templateId = getTemplate('MILEAGE_EVENT');
   if (!templateId) {
     console.log('[마일리지 이벤트] 템플릿 미설정 — 수기 모드', params.phone, params.eventTitle);
     return { skipped: true, mode: 'manual' };
@@ -569,7 +592,7 @@ export async function sendWelcomeMileageAlimtalk(params: {
   name?: string;
   mileageAmount: number;
 }) {
-  const templateId = process.env.KAKAO_TEMPLATE_WELCOME_MILEAGE || '';
+  const templateId = getTemplate('WELCOME_MILEAGE');
   if (!templateId) {
     console.log('[웰컴 마일리지] 템플릿 미설정 — 수기 모드', params.phone, params.mileageAmount);
     return { skipped: true, mode: 'manual' };

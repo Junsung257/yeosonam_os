@@ -109,7 +109,7 @@ export async function getExpiringMileage(daysBefore: number = 30): Promise<Expir
     .from('customers')
     .select('id, name, phone')
     .in('id', userIds);
-  const customerMap = new Map((customers ?? []).map((c: any) => [c.id, { name: c.name || '', phone: c.phone || null }]));
+  const customerMap = new Map<string, { name: string; phone: string | null }>((customers ?? []).map((c: any) => [c.id, { name: c.name || '', phone: c.phone || null }]));
 
   return Array.from(grouped.entries()).map(([userId, g]) => ({
     user_id: userId,

@@ -31,39 +31,10 @@ VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- 5. 만료 처리 함수 (PostgreSQL RPC)
-CREATE OR REPLACE FUNCTION expire_customer_mileage()
-RETURNS INTEGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_count INTEGER;
-BEGIN
-  -- expires_at이 지났고 아직 expired_at이 없는 EARNED 트랜잭션을 소멸 처리
-  UPDATE mileage_transactions
-  SET expired_at = NOW(),
-      type = 'EXPIRED'
-  WHERE type = 'EARNED'
-    AND expires_at IS NOT NULL
-    AND expires_at < NOW()
-    AND expired_at IS NULL;
-
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-
-  -- customers.mileage 차감 (소멸된 만큼)
-  UPDATE customers c
-  SET mileage = GREATEST(0, c.mileage - sub.total_expired)
-  FROM (
-    SELECT user_id, SUM(amount) AS total_expired
-    FROM mileage_transactions
-    WHERE expired_at = CURRENT_DATE
-    GROUP BY user_id
-  ) sub
-  WHERE c.id = sub.user_id;
-
-  RETURN v_count;
-END;
-$$;
+-- 20260528170000에 정의된 expire_mileage_batch(p_batch_size) 사용.
+-- expire_customer_mileage()는 expire_mileage_batch로 통일되어 제거됨.
+-- expire_mileage_batch는 CLAWBACK 트랜잭션 생성 + FOR UPDATE SKIP LOCKED 방식으로
+-- 동시성 충돌 없이 배치 처리합니다.
 
 -- 6. 적립 시 소멸일 자동 설정하는 트리거 함수
 CREATE OR REPLACE FUNCTION set_mileage_expires_at()
