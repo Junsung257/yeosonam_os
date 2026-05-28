@@ -5,6 +5,26 @@ import { getUnmatchedBootstrapEnvDefaults } from '@/lib/unmatched-bootstrap-conf
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 
+// ── Internal interfaces for type safety (no `as any`) ──
+interface AttractionBase {
+  id: string;
+  name: string;
+}
+interface AttractionWithAliases extends AttractionBase {
+  aliases: string[] | null;
+}
+interface CreatedAttraction {
+  id: string;
+  name: string;
+}
+interface UnmatchedSingle {
+  activity: string;
+  region: string | null;
+  country: string | null;
+  suggested_card: Record<string, unknown> | null;
+  id: string;
+}
+
 /**
  * POST /api/unmatched — 미매칭 관광지 자동 수집
  * 랜딩페이지 로드 시 미매칭 activity 목록 전송 → upsert
@@ -170,8 +190,8 @@ export async function PATCH(request: NextRequest) {
       const { data: dupeCheck } = await supabaseAdmin
         .from('attractions')
         .select('id, name, aliases')
-        .neq('id', attractionId) as any;
-      const dupeAttraction = (dupeCheck || []).find((a: any) =>
+        .neq('id', attractionId);
+      const dupeAttraction = (dupeCheck || []).find((a: AttractionWithAliases) =>
         (a.aliases || []).some((alias: string) => alias === aliasText)
       );
       if (dupeAttraction) {
@@ -186,7 +206,7 @@ export async function PATCH(request: NextRequest) {
         .from('attractions')
         .select('id, name, aliases')
         .eq('id', attractionId)
-        .single() as any;
+        .single<AttractionWithAliases>();
       if (!attraction) return NextResponse.json({ error: '관광지를 찾을 수 없습니다.' }, { status: 404 });
 
       const currentAliases: string[] = attraction.aliases || [];
@@ -243,7 +263,7 @@ export async function PATCH(request: NextRequest) {
         .from('unmatched_activities')
         .select('id, activity, region, country, suggested_card')
         .eq('id', id)
-        .single() as { data: { id: string; activity: string; region: string | null; country: string | null; suggested_card: Record<string, unknown> | null } | null };
+        .single<UnmatchedSingle>();
       if (!unmatched) return NextResponse.json({ error: '미매칭 항목 없음' }, { status: 404 });
       const card = unmatched.suggested_card;
       if (!card || typeof card !== 'object') return NextResponse.json({ error: 'suggested_card 부재 — 부트스트랩 안됨' }, { status: 400 });
@@ -302,7 +322,7 @@ export async function PATCH(request: NextRequest) {
         is_active: true,
         is_manual_override: true,  // 사장님 명시 ☑ = manual
         last_owner_edited_at: new Date().toISOString(),
-      }).select('id, name').single() as { data: { id: string; name: string } | null; error: { message: string } | null };
+      }).select('id, name').single<CreatedAttraction>();
       if (insErr || !created) return NextResponse.json({ error: insErr?.message ?? 'INSERT 실패' }, { status: 500 });
 
       await supabaseAdmin.from('unmatched_activities').update({
@@ -331,7 +351,8 @@ export async function PATCH(request: NextRequest) {
           const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
           if (!isPexelsConfigured()) return;
           // 한글 검색은 false-match 위험. 영어 alias 우선, 없으면 name + region + 'travel'.
-          const eng = Array.isArray(card.aliases) ? (card.aliases as unknown[]).find(a => typeof a === 'string' && /^[\x20-\x7E]+$/.test(a)) as string | undefined : undefined;
+          const aliasList = Array.isArray(card.aliases) ? (card.aliases as string[]) : [];
+          const eng = aliasList.find(a => /^[\x20-\x7E]+$/.test(a));
           const keyword = eng || `${name} ${normRegion ?? ''} travel`.trim();
           const photos = await searchPexelsPhotos(keyword, 3);
           if (photos.length === 0) return;
@@ -435,7 +456,7 @@ export async function PATCH(request: NextRequest) {
           photos,
         })
         .select('id, name')
-        .single() as { data: { id: string; name: string } | null; error: { message: string } | null };
+        .single<CreatedAttraction>();
       if (insErr || !created) return NextResponse.json({ error: insErr?.message ?? 'INSERT 실패' }, { status: 500 });
 
       // 4. 미매칭 처리
@@ -505,22 +526,22 @@ export async function PATCH(request: NextRequest) {
 
       if (existing) {
         // 기존 attraction 에 alias 만 추가
-        const existingAliases: string[] = (existing as any).aliases ?? [];
+        const existingAliases: string[] = existing.aliases ?? [];
         if (!existingAliases.includes(unmatched.activity)) {
           await supabaseAdmin
             .from('attractions')
             .update({ aliases: [...new Set([...existingAliases, unmatched.activity])], updated_at: now })
-            .eq('id', (existing as any).id);
+            .eq('id', existing.id);
         }
         await supabaseAdmin
           .from('unmatched_activities')
-          .update({ status: 'added', note: `auto-matched: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: (existing as any).id, resolved_by: 'admin_api' })
+          .update({ status: 'added', note: `auto-matched: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: existing.id, resolved_by: 'admin_api' })
           .eq('id', id);
 
         // resweep + re-enrich
         try {
-          await resweepUnmatchedActivities([(existing as any).id]);
-          void reEnrichAffectedPackages([(existing as any).id], { maxPackages: 50 }).catch(() => {});
+          await resweepUnmatchedActivities([existing.id]);
+          void reEnrichAffectedPackages([existing.id], { maxPackages: 50 }).catch(() => {});
         } catch (e) {
           console.warn('[unmatched] resweep 실패 (기존 alias):', e instanceof Error ? e.message : String(e));
         }
@@ -554,12 +575,12 @@ export async function PATCH(request: NextRequest) {
           is_active: true,
         })
         .select('id, name')
-        .single();
+        .single<CreatedAttraction>();
       if (insErr || !created) return NextResponse.json({ error: insErr?.message || 'INSERT 실패' }, { status: 500 });
 
       await supabaseAdmin
         .from('unmatched_activities')
-        .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: (created as any).id, resolved_by: 'admin_api' })
+        .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: created.id, resolved_by: 'admin_api' })
         .eq('id', id);
 
       // fire-and-forget: photo + description 백그라운드
@@ -569,10 +590,10 @@ export async function PATCH(request: NextRequest) {
           const desc = await generateAttractionDescription(top.label_ko || top.label_en || unmatched.activity, {
             qid: top.qid, wdDescription: top.description, destination: unmatched.region,
           });
-          await supabaseAdmin.from('attractions').update({ short_desc: desc.short_desc, updated_at: now }).eq('id', (created as any).id);
+          await supabaseAdmin.from('attractions').update({ short_desc: desc.short_desc, updated_at: now }).eq('id', created.id);
 
           const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
-          await runAttractionPhotoMatch((created as any).id, {
+          await runAttractionPhotoMatch(created.id, {
             keywords: [top.label_ko || '', top.label_en || '', unmatched.activity, ...top.aliases].filter(Boolean),
             qid: top.qid, maxPhotos: 5,
           });
@@ -583,13 +604,13 @@ export async function PATCH(request: NextRequest) {
 
       // resweep + re-enrich
       try {
-        await resweepUnmatchedActivities([(created as any).id]);
-        void reEnrichAffectedPackages([(created as any).id], { maxPackages: 50 }).catch(() => {});
+        await resweepUnmatchedActivities([created.id]);
+        void reEnrichAffectedPackages([created.id], { maxPackages: 50 }).catch(() => {});
       } catch (e) {
         console.warn('[unmatched] resweep 실패 (신규 등록):', e instanceof Error ? e.message : String(e));
       }
 
-      return NextResponse.json({ success: true, message: `신규 등록: "${(created as any).name}" (${top.qid})`, attraction_id: (created as any).id });
+      return NextResponse.json({ success: true, message: `신규 등록: "${created.name}" (${top.qid})`, attraction_id: created.id });
     }
 
     // 단순 상태 변경 모드

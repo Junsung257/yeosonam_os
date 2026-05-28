@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 /** GET /api/customers/[id]/mileage-history */
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  if (!isSupabaseConfigured) return NextResponse.json({ history: [] });
+  try {
+    const params = await props.params;
+    if (!isSupabaseConfigured) return successResponse({ history: [] });
 
-  const { data, error } = await supabaseAdmin
-    .from('mileage_history')
-    .select('id, delta, reason, balance_after, created_at')
-    .eq('customer_id', params.id)
-    .order('created_at', { ascending: false })
-    .limit(100);
+    const { data, error } = await supabaseAdmin
+      .from('mileage_history')
+      .select('id, delta, reason, balance_after, created_at')
+      .eq('customer_id', params.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ history: data || [] });
+    if (error) throw error;
+    return successResponse({ history: data || [] });
+  } catch (err) {
+    console.error('[GET /api/customers/[id]/mileage-history] 오류:', err);
+    return ApiErrors.internalError(err instanceof Error ? err.message : '마일리지 이력 조회 실패');
+  }
 }
 
 /**

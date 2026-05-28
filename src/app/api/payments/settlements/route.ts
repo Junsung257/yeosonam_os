@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 
 interface LandSettlementRow {
   id: string;
@@ -47,7 +48,7 @@ interface LandSettlementRow {
  */
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ settlements: [] });
+    return successResponse({ settlements: [] });
   }
 
   const status = req.nextUrl.searchParams.get('status') ?? 'all';
@@ -124,11 +125,8 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ settlements });
+    return successResponse({ settlements });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : '조회 실패');
   }
 }

@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminContext } from '@/lib/admin-context';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 
 /**
  * POST /api/payments/settlement-confirm
@@ -10,17 +11,17 @@ import { getAdminContext } from '@/lib/admin-context';
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: '잘못된 JSON' }, { status: 400 });
+    return ApiErrors.badRequest('잘못된 JSON');
   }
   const { settlementId } = body as { settlementId: string };
   if (!settlementId) {
-    return NextResponse.json({ error: 'settlementId 필수' }, { status: 400 });
+    return ApiErrors.badRequest('settlementId 필수');
   }
 
   const ctx = getAdminContext(req);
@@ -41,16 +42,10 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
     const row = (Array.isArray(data) ? data[0] : data) as { id: string; status: string } | null;
     if (!row) {
-      return NextResponse.json(
-        { error: 'pending 상태가 아니거나 settlement 없음' },
-        { status: 409 },
-      );
+      return ApiErrors.conflict('pending 상태가 아니거나 settlement 없음');
     }
-    return NextResponse.json({ ok: true, settlement: row });
+    return successResponse({ settlement: row });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'confirm 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : 'confirm 실패');
   }
 }

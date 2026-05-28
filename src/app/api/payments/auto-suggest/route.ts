@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
   type BookingCandidate,
 } from '@/lib/payment-matcher';
+import { successResponse, errorResponse, ApiErrors } from '@/lib/api-response';
 import { operatorScore } from '@/lib/payment-command-resolver';
 import { findSubsetSum } from '@/lib/subset-sum';
 
@@ -25,12 +26,12 @@ const TOLERANCE = 5_000;
 
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ candidates: [] });
+    return successResponse({ candidates: [] });
   }
 
   const txId = req.nextUrl.searchParams.get('transactionId');
   if (!txId) {
-    return NextResponse.json({ error: 'transactionId 필수' }, { status: 400 });
+    return ApiErrors.badRequest('transactionId 필수');
   }
 
   try {
@@ -50,10 +51,10 @@ export async function GET(req: NextRequest) {
       match_status: string;
     } | null;
     if (!tx) {
-      return NextResponse.json({ error: '거래를 찾을 수 없습니다' }, { status: 404 });
+      return ApiErrors.notFound('거래를 찾을 수 없습니다');
     }
     if (tx.match_status !== 'unmatched' && tx.match_status !== 'review' && tx.match_status !== 'error') {
-      return NextResponse.json({ candidates: [], note: '이미 매칭된 거래' });
+      return successResponse({ candidates: [], note: '이미 매칭된 거래' });
     }
 
     const amountAbs = Math.abs(tx.amount);
@@ -133,7 +134,7 @@ export async function GET(req: NextRequest) {
           matchType: m.matchType,
         }));
 
-      return NextResponse.json({
+      return successResponse({
         type: tx.is_refund ? 'refund' : 'inflow',
         transaction: {
           id: tx.id,
@@ -236,7 +237,7 @@ export async function GET(req: NextRequest) {
       if (candidates.length >= 1) break; // 첫 번째 매치 1개만 (사장님 1-click)
     }
 
-    return NextResponse.json({
+    return successResponse({
       type: 'outflow',
       transaction: {
         id: tx.id,
@@ -247,9 +248,6 @@ export async function GET(req: NextRequest) {
       candidates,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '제안 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : '제안 실패');
   }
 }

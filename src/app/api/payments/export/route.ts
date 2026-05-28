@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { ApiErrors } from '@/lib/api-response';
 
 /**
  * GET /api/payments/export?type=settlements&from=YYYY-MM-DD&to=YYYY-MM-DD&status=all
@@ -31,12 +32,12 @@ const HEADERS = [
 
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }
 
   const type = req.nextUrl.searchParams.get('type') ?? 'settlements';
   if (type !== 'settlements') {
-    return NextResponse.json({ error: 'type 은 settlements 만 지원' }, { status: 400 });
+    return ApiErrors.badRequest('type 은 settlements 만 지원');
   }
 
   const status = req.nextUrl.searchParams.get('status') ?? 'all';
@@ -164,10 +165,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'export 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : 'export 실패');
   }
 }
 

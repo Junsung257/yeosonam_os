@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { parseCommandInput } from '@/lib/payment-command-parser';
 import { resolvePaymentCommand } from '@/lib/payment-command-resolver';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 
 /**
  * POST /api/payments/match-intent
@@ -19,19 +20,13 @@ export async function POST(req: NextRequest) {
     const input = typeof body?.input === 'string' ? body.input : '';
 
     if (!input.trim()) {
-      return NextResponse.json(
-        { error: '입력이 비어있습니다' },
-        { status: 400 },
-      );
+      return ApiErrors.badRequest('입력이 비어있습니다');
     }
 
     const parsed = parseCommandInput(input);
     const result = await resolvePaymentCommand(parsed);
-    return NextResponse.json(result);
+    return successResponse(result);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : '처리 실패');
   }
 }

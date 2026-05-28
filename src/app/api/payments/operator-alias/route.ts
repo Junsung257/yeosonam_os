@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminContext } from '@/lib/admin-context';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 
 /**
  * POST /api/payments/operator-alias
@@ -15,14 +16,14 @@ import { getAdminContext } from '@/lib/admin-context';
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: '잘못된 JSON' }, { status: 400 });
+    return ApiErrors.badRequest('잘못된 JSON');
   }
 
   const { landOperatorId, newAliases } = body as {
@@ -31,10 +32,7 @@ export async function POST(req: NextRequest) {
   };
 
   if (!landOperatorId || !Array.isArray(newAliases) || newAliases.length === 0) {
-    return NextResponse.json(
-      { error: 'landOperatorId, newAliases(>=1) 필수' },
-      { status: 400 },
-    );
+    return ApiErrors.badRequest('landOperatorId, newAliases(>=1) 필수');
   }
 
   // 정규화: trim + 길이 2~60자만 + case-insensitive 중복 제거
@@ -49,7 +47,7 @@ export async function POST(req: NextRequest) {
     sanitized.push(trimmed);
   }
   if (sanitized.length === 0) {
-    return NextResponse.json({ error: 'alias 는 길이 2~60자 필요' }, { status: 400 });
+    return ApiErrors.badRequest('alias 는 길이 2~60자 필요');
   }
 
   try {
@@ -62,7 +60,7 @@ export async function POST(req: NextRequest) {
     type OpRow = { id: string; name: string; aliases: string[] | null };
     const op = (opRow as OpRow[] | null)?.[0];
     if (!op) {
-      return NextResponse.json({ error: '랜드사를 찾을 수 없습니다' }, { status: 404 });
+      return ApiErrors.notFound('랜드사를 찾을 수 없습니다');
     }
 
     const existing: string[] = Array.isArray(op.aliases) ? op.aliases : [];
@@ -84,15 +82,11 @@ export async function POST(req: NextRequest) {
       created_by: getAdminContext(req).actor,
     });
 
-    return NextResponse.json({
-      ok: true,
+    return successResponse({
       operator: { id: op.id, name: op.name, aliases: merged },
       added: sanitized.filter(a => !existing.includes(a)),
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'alias 등록 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : 'alias 등록 실패');
   }
 }

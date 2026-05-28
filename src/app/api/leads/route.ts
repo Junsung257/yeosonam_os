@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 import { createClient } from '@supabase/supabase-js';
 import { findOrCreateCustomerByPhone } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
     const { productId, channel, form, tracking, submittedAt, chatSessionId } = body;
 
     if (!productId || !form?.name || !form?.phone || !form?.privacyConsent) {
-      return NextResponse.json({ error: '필수 항목 누락' }, { status: 400 });
+      return ApiErrors.badRequest('필수 항목 누락');
     }
 
     // 인플루언서/제휴 추천인 코드 (미들웨어가 ?ref= 파라미터에서 쿠키로 저장)
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('[leads] supabase error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return ApiErrors.internalError(error.message);
     }
 
     // ── P4.5: 고객 식별 + 채팅 세션 역참조 ──
@@ -72,9 +73,9 @@ export async function POST(req: NextRequest) {
       console.warn('[leads] customer backlink 실패 (무시):', e);
     }
 
-    return NextResponse.json({ ok: true });
+    return successResponse({ ok: true });
   } catch (err) {
     console.error('[leads] unexpected error:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return ApiErrors.internalError('Internal server error');
   }
 }
