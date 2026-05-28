@@ -1242,3 +1242,12 @@ export {
   getEarnedMileageByBooking, getMileageHistory,
 } from './db/mileage-tx';
 export type { MileageTransaction } from './db/mileage-tx';
+
+// ═══════════════════════════════════════════════════════════════
+// Packages (어드민 CRUD) — 본문은 ./db/packages.ts 로 분리
+// ═══════════════════════════════════════════════════════════════
+export {
+  getPagedPackages,
+} from './db/packages';
+export type {
+} from './db/packages';

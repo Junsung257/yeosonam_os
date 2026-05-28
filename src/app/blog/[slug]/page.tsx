@@ -108,6 +108,7 @@ interface BlogPost {
     product_highlights: string[] | null;
     inclusions: string[] | null;
     status?: string | null;
+    hero_image_url?: string | null;
   } | null;
 }
 
@@ -317,6 +318,19 @@ async function getCurationProductsForInfo(destination: string) {
   if (!isSupabaseConfigured) return [];
   const today = new Date().toISOString().split('T')[0];
 
+  interface CurationPackage {
+    id: string;
+    title: string | null;
+    destination: string | null;
+    duration: number | null;
+    nights: number | null;
+    price: number | null;
+    category: string | null;
+    airline: string | null;
+    departure_airport: string | null;
+    price_dates: Array<{ date?: string; price?: number }> | null;
+  }
+
   const { data } = await supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
@@ -328,7 +342,7 @@ async function getCurationProductsForInfo(destination: string) {
   if (!data || data.length === 0) return [];
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as any[]).filter((p) => {
+  const alive = (data as unknown as CurationPackage[]).filter((p) => {
     const pd = (p.price_dates || []) as Array<{ date?: string }>;
     if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
     return pd.some((d) => d.date && d.date >= today);
@@ -473,7 +487,7 @@ export default async function BlogDetailPage({
         message: `slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
         ref_type: 'content_creative',
         ref_id: slug,
-        meta: { digest: (err as any)?.digest ?? null, stack: err instanceof Error ? err.stack?.slice(0, 1000) : null },
+        meta: { digest: err && typeof err === 'object' && 'digest' in err ? (err as { digest: string }).digest : null, stack: err instanceof Error ? err.stack?.slice(0, 1000) : null },
       });
     } catch { /* noop */ }
     notFound();
@@ -794,7 +808,7 @@ async function renderBlogDetail({
             <LandingHero
               headline={dki.headline}
               subtitle={dki.subtitle || post.landing_subtitle || (pkg?.product_highlights?.slice(0, 3).join(' · ') ?? undefined)}
-              heroImage={post.og_image_url || (pkg as any)?.hero_image_url || null}
+              heroImage={post.og_image_url || pkg?.hero_image_url || null}
               priceKrw={pkg?.price ?? null}
               productUrl={pkg ? `/packages/${pkg.id}` : null}
               trustBadges={['운영팀 검증', '노팁·노옵션', pkg?.airline || '직항']}

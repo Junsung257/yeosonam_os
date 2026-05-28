@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
         // price_dates 우선, 없으면 price_tiers 폴백
         let min = Infinity;
         if (p.price_dates?.length) {
-          const pdPrices = (p.price_dates as any[]).map((d: any) => d.price).filter(Boolean);
+          const pdPrices = ((p.price_dates ?? []) as { price?: number }[]).map((d) => d.price).filter((v): v is number => v !== undefined);
           if (pdPrices.length > 0) min = Math.min(...pdPrices);
         }
         if (min === Infinity) {
@@ -736,7 +736,7 @@ export async function PATCH(request: NextRequest) {
     }
     // price_tiers 수정 시 price_dates 자동 동기화 (직접 price_dates를 보낸 경우 제외)
     if (sanitized.price_tiers && !sanitized.price_dates) {
-      sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as any[]);
+      sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as unknown as import('@/lib/parser').PriceTier[]);
     }
 
     // ─── Reflexion 자동 추적용: 변경 전 값 보존 ─────────────────────

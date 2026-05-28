@@ -9,6 +9,14 @@ export const dynamic = 'force-dynamic';
 async function getBookingInfo(bookingId: string) {
   if (!isSupabaseConfigured) return null;
 
+  interface BookingWithPackage {
+    id: string;
+    product_id: string | null;
+    lead_customer_id: string | null;
+    status: string | null;
+    travel_packages: { title: string | null; destination: string | null } | null;
+  }
+
   const { data } = await supabaseAdmin
     .from('bookings')
     .select('id, product_id, lead_customer_id, status, travel_packages(title, destination)')
@@ -25,7 +33,7 @@ async function getBookingInfo(bookingId: string) {
     .limit(1);
 
   return {
-    booking: data[0] as any,
+    booking: data[0] as unknown as BookingWithPackage,
     hasReview: (existing?.length ?? 0) > 0,
   };
 }
