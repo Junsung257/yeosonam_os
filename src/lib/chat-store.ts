@@ -23,14 +23,25 @@ export interface ChatMessage {
   toolsUsed?: string[];
 }
 
+export type LeadSource =
+  | 'ai_search_cta'
+  | 'qa_chat_bubble'
+  | 'home_hero'
+  | 'packages_page'
+  | 'package_detail'
+  | 'blog_page'
+  | 'landing_page'
+  | 'unknown';
+
 interface ChatStore {
   isOpen: boolean;
   messages: ChatMessage[];
   sessionId: string;
   isTyping: boolean;
+  leadSource: LeadSource;
 
   toggleChat: () => void;
-  openChat: () => void;
+  openChat: (source?: LeadSource) => void;
   closeChat: () => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
@@ -54,9 +65,10 @@ export const useChatStore = create<ChatStore>((set) => ({
   messages: [],
   sessionId: getOrCreateSessionId(),
   isTyping: false,
+  leadSource: 'unknown',
 
   toggleChat: () => set((state) => ({ isOpen: !state.isOpen })),
-  openChat: () => set({ isOpen: true }),
+  openChat: (source?: LeadSource) => set({ isOpen: true, leadSource: source ?? 'unknown' }),
   closeChat: () => set({ isOpen: false }),
 
   addMessage: (message) => {

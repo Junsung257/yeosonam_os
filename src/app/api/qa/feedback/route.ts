@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
       : 'customer';
     const destination = typeof body?.destination === 'string' ? body.destination : null;
     const promote = body?.promote === true;
+    const leadSource: string =
+      typeof body?.leadSource === 'string' ? body.leadSource : 'unknown';
 
     if (!rating) {
       return NextResponse.json({ error: 'rating 값이 필요합니다. (up/down)' }, { status: 400 });
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
           event: 'feedback',
           rating,
           reason,
+          leadSource,
         },
       });
 
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
         rating: rating === 'up' ? 1 : -1,
         raterType,
         reasonCategory: reason,
-        metadata: { legacy: true },
+        metadata: { legacy: true, leadSource },
       });
 
       if (rating === 'down') {

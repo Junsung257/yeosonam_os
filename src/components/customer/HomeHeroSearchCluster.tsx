@@ -260,8 +260,12 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           <Link href="/group-inquiry" className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}>
             단체·맞춤 견적
           </Link>
-          <button type="button" onClick={() => openChat()} className={`${pillBase} bg-bg-section text-text-body hover:bg-[#E8ECF0]`}>
-            채팅 상담
+          <button
+            type="button"
+            onClick={() => openChat('home_hero')}
+            className={`${pillBase} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] text-white shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30`}
+          >
+            <span aria-hidden>🤖</span>AI 여행 상담
           </button>
         </div>
       </div>
@@ -331,10 +335,10 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         </Link>
         <button
           type="button"
-          onClick={() => openChat()}
-          className={`${pillBase} bg-bg-section text-text-body hover:bg-[#E8ECF0]`}
+          onClick={() => openChat('home_hero')}
+          className={`${pillBase} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] text-white shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30`}
         >
-          채팅 상담
+          <span aria-hidden>🤖</span>AI 여행 상담
         </button>
       </div>
 

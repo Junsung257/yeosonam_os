@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { fmtDateTime, fmtNum } from '@/lib/admin-utils';
-import { RefreshCw, CheckCircle, AlertTriangle, XCircle, Database, TrendingUp, Activity, BarChart3 } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertTriangle, XCircle, Database, TrendingUp, Activity, BarChart3, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 type Row = {
   id: string;
@@ -48,6 +48,23 @@ type Summary = {
   corrections: CorrectionRow[];
 };
 
+interface FeedbackStats {
+  totalUp: number;
+  totalDown: number;
+  totalFeedback: number;
+  positiveRate: number;
+  bySource: Array<{ source: string; up: number; down: number; total: number }>;
+  byDay: Array<{ date: string; up: number; down: number; total: number }>;
+  latest: Array<{
+    id: string;
+    created_at: string;
+    rating: string;
+    source: string;
+    session_id: string | null;
+    payload: Record<string, unknown> | null;
+  }>;
+}
+
 export default function PlatformLearningPage() {
   const [events, setEvents] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
@@ -57,7 +74,9 @@ export default function PlatformLearningPage() {
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [offset, setOffset] = useState(0);
-  const [tab, setTab] = useState<'events' | 'corrections' | 'critique'>('events');
+  const [tab, setTab] = useState<'events' | 'corrections' | 'critique' | 'feedback'>('events');
+  const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const limit = 40;
 
   const loadSummary = useCallback(async () => {
@@ -92,6 +111,19 @@ export default function PlatformLearningPage() {
     }
   }, [offset, source]);
 
+  const loadFeedbackStats = useCallback(async () => {
+    setFeedbackLoading(true);
+    try {
+      const res = await fetch('/api/admin/platform-learning?stats=true');
+      const json = await res.json();
+      if (res.ok) setFeedbackStats(json.stats ?? null);
+    } catch {
+      setFeedbackStats(null);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSummary();
   }, [loadSummary]);
@@ -99,6 +131,12 @@ export default function PlatformLearningPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (tab === 'feedback') {
+      void loadFeedbackStats();
+    }
+  }, [tab, loadFeedbackStats]);
 
   const toggleCorrection = async (id: string, active: boolean) => {
     await fetch(`/api/admin/platform-learning/corrections/${id}`, {
@@ -174,6 +212,7 @@ export default function PlatformLearningPage() {
           { id: 'events', label: '이벤트 로그' },
           { id: 'corrections', label: '교정 패턴' },
           { id: 'critique', label: 'Critique 현황' },
+          { id: 'feedback', label: '고객 피드백' },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -358,6 +397,156 @@ export default function PlatformLearningPage() {
             </div>
           ) : (
             <p className="text-admin-muted text-admin-sm py-8 text-center">데이터를 불러올 수 없습니다.</p>
+          )}
+        </div>
+      )}
+
+      {/* ── 탭: 고객 피드백 ── */}
+      {tab === 'feedback' && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-admin-sm text-admin-muted">ChatWidget 👍/👎 피드백 집계</span>
+            <Button variant="secondary" size="sm" onClick={() => loadFeedbackStats()}>
+              <RefreshCw size={14} />
+            </Button>
+          </div>
+
+          {feedbackLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-admin-md border border-admin-border p-6 h-28 animate-pulse" />
+              ))}
+            </div>
+          ) : feedbackStats && feedbackStats.totalFeedback > 0 ? (
+            <>
+              {/* 긍정률 게이지 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="admin-card p-5 text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-100 text-green-600 mb-2">
+                    <ThumbsUp size={24} />
+                  </div>
+                  <p className="text-admin-2xl font-bold text-green-700">{fmtNum(feedbackStats.totalUp)}</p>
+                  <p className="text-admin-xs text-admin-muted">긍정 (👍)</p>
+                </div>
+                <div className="admin-card p-5 text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 text-red-600 mb-2">
+                    <ThumbsDown size={24} />
+                  </div>
+                  <p className="text-admin-2xl font-bold text-red-700">{fmtNum(feedbackStats.totalDown)}</p>
+                  <p className="text-admin-xs text-admin-muted">부정 (👎)</p>
+                </div>
+                <div className="admin-card p-5 text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-600 mb-2">
+                    <TrendingUp size={24} />
+                  </div>
+                  <p className="text-admin-2xl font-bold text-blue-700">
+                    {(feedbackStats.positiveRate * 100).toFixed(1)}%
+                  </p>
+                  <p className="text-admin-xs text-admin-muted">긍정률 ({fmtNum(feedbackStats.totalFeedback)}건)</p>
+                </div>
+              </div>
+
+              {/* 소스별 분포 */}
+              <div className="admin-card p-4 mb-4">
+                <h3 className="text-admin-sm font-bold text-admin-text mb-3">유입 경로(leadSource)별 분포</h3>
+                <div className="space-y-2">
+                  {feedbackStats.bySource.map((s) => (
+                    <div key={s.source} className="flex items-center gap-3">
+                      <span className="w-28 text-admin-xs text-admin-text-2 font-medium truncate">{s.source}</span>
+                      <div className="flex-1 h-5 bg-admin-surface-2 rounded-full overflow-hidden flex">
+                        {s.total > 0 && (
+                          <>
+                            <div
+                              className="h-full bg-green-400 transition-all"
+                              style={{ width: `${(s.up / s.total) * 100}%` }}
+                              title={`👍 ${s.up}건`}
+                            />
+                            <div
+                              className="h-full bg-red-400 transition-all"
+                              style={{ width: `${(s.down / s.total) * 100}%` }}
+                              title={`👎 ${s.down}건`}
+                            />
+                          </>
+                        )}
+                      </div>
+                      <span className="text-admin-xs text-admin-muted w-16 text-right tabular-nums">
+                        {fmtNum(s.total)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 일별 추이 */}
+              <div className="admin-card p-4 mb-4">
+                <h3 className="text-admin-sm font-bold text-admin-text mb-3">일별 피드백 추이 (최근 30일)</h3>
+                <div className="space-y-1">
+                  {feedbackStats.byDay.slice(-14).map((d) => {
+                    const maxTotal = Math.max(...feedbackStats.byDay.map((x) => x.total), 1);
+                    const barWidth = (d.total / maxTotal) * 100;
+                    return (
+                      <div key={d.date} className="flex items-center gap-2">
+                        <span className="w-20 text-[11px] text-admin-muted tabular-nums">{d.date?.slice(5)}</span>
+                        <div className="flex-1 h-4 bg-admin-surface-2 rounded-full overflow-hidden flex">
+                          {d.total > 0 && (
+                            <>
+                              <div
+                                className="h-full bg-green-400 transition-all"
+                                style={{ width: `${(d.up / d.total) * barWidth}%` }}
+                              />
+                              <div
+                                className="h-full bg-red-400 transition-all"
+                                style={{ width: `${(d.down / d.total) * barWidth}%` }}
+                              />
+                            </>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-admin-muted w-12 text-right tabular-nums">{fmtNum(d.total)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 최근 피드백 목록 */}
+              <div className="admin-card p-4">
+                <h3 className="text-admin-sm font-bold text-admin-text mb-3">최근 피드백</h3>
+                <div className="space-y-2">
+                  {feedbackStats.latest.length === 0 ? (
+                    <p className="text-admin-muted text-admin-xs">피드백 데이터가 없습니다.</p>
+                  ) : (
+                    feedbackStats.latest.map((f) => (
+                      <div key={f.id} className="flex items-start gap-3 p-2 rounded-admin-sm hover:bg-admin-surface-2 transition-colors">
+                        <span className={`mt-0.5 ${f.rating === 'up' ? 'text-green-500' : 'text-red-500'}`}>
+                          {f.rating === 'up' ? '👍' : '👎'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 text-admin-xs">
+                            <span className="font-semibold text-admin-text">{f.rating === 'up' ? '긍정' : '부정'}</span>
+                            <span className="text-admin-muted">{fmtDateTime(f.created_at)}</span>
+                            <span className="text-admin-muted font-mono">
+                              {(f.payload as any)?.leadSource || '-'}
+                            </span>
+                          </div>
+                          {f.session_id && (
+                            <p className="text-[10px] text-admin-muted font-mono truncate mt-0.5">
+                              session: {f.session_id}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="admin-card p-8 text-center">
+              <ThumbsUp size={32} className="mx-auto text-admin-muted mb-2" />
+              <p className="text-admin-sm text-admin-muted">
+                {feedbackStats ? '아직 수집된 피드백이 없습니다. ChatWidget에서 고객이 응답하면 여기에 표시됩니다.' : '데이터를 불러올 수 없습니다.'}
+              </p>
+            </div>
           )}
         </div>
       )}

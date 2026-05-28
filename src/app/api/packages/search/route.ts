@@ -8,6 +8,8 @@ import {
 } from '@/lib/departure-hub';
 import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
 import { logError } from '@/lib/sentry-logger';
+import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
+import { getActivePolicy } from '@/lib/scoring/policy';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -183,10 +185,46 @@ export async function GET(request: NextRequest) {
       imageByPkgId[pkg.id] = chosen ?? null;
     }
 
-    // 그룹 1위 추천
+    // ── 개인화 추천 (x-customer-id 헤더 기반) ──────────────
+    const customerId = request.headers.get('x-customer-id') || '';
     const pkgIds = packages.map((p: { id?: string }) => p.id).filter(Boolean) as string[];
     let recommendedIds: string[] = [];
     let recommendedReasonMap: Record<string, string[]> = {};
+
+    if (customerId && pkgIds.length > 0) {
+      // 개인화: customer_unified_profile 기반 weight override
+      const policy = await getActivePolicy();
+      const personalized = await getPersonalizedOverride(customerId, policy);
+      if (personalized) {
+        // Find packages matching boosted destinations
+        const boostedPkgs = packages.filter((p: any) =>
+          personalized.boostedDestinations.some(
+            (d) => p.destination?.toLowerCase().includes(d.toLowerCase()),
+          ),
+        );
+        recommendedIds = boostedPkgs.map((p: any) => p.id).slice(0, 5);
+        for (const pkg of boostedPkgs.slice(0, 5)) {
+          recommendedReasonMap[pkg.id] = [personalized.reason];
+        }
+        return NextResponse.json(
+          {
+            packages,
+            imageByPkgId,
+            recommendedIds,
+            recommendedReasonMap,
+            hub,
+            filterForClient,
+            personalized: { reason: personalized.reason },
+          },
+          {
+            headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
+          },
+        );
+      }
+      // profile 없으면 fall through → 일반 추천
+    }
+
+    // 그룹 1위 추천 (기존 fallback)
     if (pkgIds.length > 0) {
       const { data: scores } = await sb
         .from('package_scores')

@@ -482,6 +482,15 @@ function addEscalationMessage() {
   });
 }
 
+function sendFeedback(sessionId: string, rating: 'up' | 'down') {
+  const leadSource = useChatStore.getState().leadSource;
+  fetch('/api/qa/feedback', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, rating, source: 'qa_chat', leadSource }),
+  }).catch(() => {});
+}
+
 function MessageBubble({
   message,
   onButtonClick,
@@ -492,6 +501,7 @@ function MessageBubble({
   onEscalationAction: (action: EscalationButtonAction) => void | Promise<void>;
 }) {
   const isUser = message.role === 'user';
+  const [feedbackGiven, setFeedbackGiven] = useState<'up' | 'down' | null>(null);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -603,6 +613,47 @@ function MessageBubble({
         <div className={`text-[10px] mt-1 ${isUser ? 'text-white/60' : 'text-gray-400'}`}>
           {message.timestamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
         </div>
+
+        {/* 피드백 버튼 — assistant 메시지에만 표시 */}
+        {!isUser && !message.isStreaming && message.type !== 'buttons' && message.type !== 'cta_links' && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (feedbackGiven) return;
+                setFeedbackGiven('up');
+                sendFeedback(useChatStore.getState().sessionId, 'up');
+              }}
+              className={`p-1 rounded transition ${
+                feedbackGiven === 'up'
+                  ? 'text-green-600 bg-green-50'
+                  : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+              }`}
+              aria-label="도움이 됨"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={feedbackGiven === 'up' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (feedbackGiven) return;
+                setFeedbackGiven('down');
+                sendFeedback(useChatStore.getState().sessionId, 'down');
+              }}
+              className={`p-1 rounded transition ${
+                feedbackGiven === 'down'
+                  ? 'text-red-600 bg-red-50'
+                  : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+              }`}
+              aria-label="도움이 안 됨"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={feedbackGiven === 'down' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10zM17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
+            </button>
+            {feedbackGiven && (
+              <span className="text-[10px] text-gray-400">감사합니다</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

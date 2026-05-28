@@ -59,6 +59,8 @@ interface Props {
   packageId?: string;
   /** 같은 날 다른 패키지 (pairwise 비교용) */
   rivals?: Rival[];
+  /** 개인화 추천 시 "xxx님을 위한 추천" 라벨 (기본값: "여소남 픽") */
+  customerPicksLabel?: string;
 }
 
 // rivals 1개를 자연어 한 줄로 합성 (pairwise diff)
@@ -146,6 +148,7 @@ function socialProofMessage(sp?: { bookings: number; interest: number }): string
 export default function RecommendationCard({
   rankInGroup, groupSize, effectivePrice, listPrice, departureDate,
   deductions, features, productHighlights, socialProof, packageId, rivals = [],
+  customerPicksLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -191,7 +194,7 @@ export default function RecommendationCard({
           {isWinner && (
             <span className="inline-flex items-center gap-1 text-micro font-extrabold text-emerald-700 bg-white border border-emerald-300 px-2.5 py-1 rounded-full">
               <span className="text-emerald-600">✓</span>
-              <span>여소남 픽</span>
+              <span>{customerPicksLabel || '여소남 픽'}</span>
             </span>
           )}
           <span className="text-[11px] font-semibold text-slate-500">
