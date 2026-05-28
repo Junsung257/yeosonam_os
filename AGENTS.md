@@ -12,6 +12,9 @@
 |-----------|---------------------------|
 | **도메인·DB·RLS·제휴·PII·학습 데이터·자비스** | `CURRENT_STATUS.md`, 아래 **§docs/ 주제별** 표에서 파일 고른 뒤 필요한 구간만 Read, `.claude/CLAUDE.md` 해당 절 |
 | **상품 등록·A4/모바일 렌더·관광지** | `.claude/CLAUDE.md` §도메인별 강제 진입점 + `.claude/commands/*.md` |
+| **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md` (생성 예정), `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
+| **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
+| **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
 | **오타·import 한 줄·사용자가 지정한 단일 파일 기계적 수정** | 생략 가능 (프로젝트 규칙은 `.cursor/rules` 참고) |
 
 사용자가 「CLAUDE 읽고」「상태 확인」이라고 하면 해당 턴에서 위 문서를 **실제로 연 뒤** 진행한다.
@@ -46,6 +49,8 @@
 | **/register 변경 이력 (P0~P1·결정)** | **`docs/register-changelog.md`** |
 | 미설정 트래커 | `docs/pending-settings-tracker.md` |
 | 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
+| 게이미피케이션 운영 런북 | `docs/gamification-runbook.md` |
+| 마일리지 시스템 개요 | `docs/mileage-system-overview.md` |
 | 일회성 페이지 감사 로그 | `docs/audits/` |
 
 *새 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로.*

@@ -422,22 +422,11 @@ CREATE TABLE IF NOT EXISTS rfq_messages (
 | **파일 파싱** | PDF/HWP/JPG 텍스트 추출 |
 | **광고** | Meta Marketing API / Naver / Google Ads 연동 |
 | **배포** | Vercel |
+| **게이미피케이션** | 마일스톤 뱃지 출석체크 스트릭 도전과제 (src/lib/gamification-service.ts) |
+| **Cursor Rules** | .cursor/rules/ 8개 .mdc (alwaysApply 1만 path-scoped 4 agent-requested 1 신규 3) |
 | **결제** | 신한은행 SMS 파싱 + Slack 웹훅 자동매칭 |
 
 ---
 
 ## 5. 핵심 아키텍처 패턴
 
-| 패턴 | 적용 |
-|------|------|
-| **예약 상태 머신** | `pending → waiting_deposit → deposit_paid → waiting_balance → fully_paid` (+ cancelled) |
-| **Saga 패턴** | 컨시어지 트랜잭션: 멀티벤더 주문 보상 트랜잭션 |
-| **PII 마스킹** | secure_chats / rfq_messages — 결제 전까지 개인정보 마스킹 |
-| **멱등성** | bank_transactions(slack_event_id), transactions(idempotency_key) — ON CONFLICT 무시 |
-| **소프트 삭제** | is_active 플래그, UI에서 [비활성] 뱃지 |
-| **정책 엔진** | os_policies — 40+ 비즈니스 룰 (가격/마일리지/알림/디스플레이 등) |
-| **AI Fallback** | API 키 미설정 시 dummy 콘텐츠 반환, 전체 파이프라인 중단 금지 |
-| **알림 이중화** | KakaoNotificationAdapter(알림톡+DB) / MockNotificationAdapter(DB만) |
-| **자비스 오케스트레이션** | `resolveSpecialist` + 레지스트리(`src/lib/jarvis/orchestration/`), V2 `v2-dispatch.ts`, SSE `agent_picked` — 문서 `docs/jarvis-orchestration.md` |
-| **AI 학습 축 분리** | 업무 DB(예약·고객 PII)와 별도로 `platform_learning_events`에 라우팅·여정 신호만 적재 |
-| **에이전트 컨텍스트 규칙** | `.cursor/rules/yeosonam-context.mdc` — 사업·DB 작업 시 `CLAUDE.md`/`CURRENT_STATUS.md` 선행, 단순 수정 생략 |
