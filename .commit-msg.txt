@@ -1,7 +1,0 @@
-fix: 동시성 제어 + as any 제거 + creditMileage 통합 (Phase 5-7)
-
-- Phase 5: earnMileage bookingId 기반 멱등성 (중복 적립 방지)
-- Phase 5: increment_customer_mileage RPC로 원자적 잔액 갱신
-- Phase 6: mileage 도메인 as any 18건 → 명시적 타입 캐스팅 대체
-- Phase 7: creditMileageForBooking → earnMileage 위임 통합
-- 불필요한 직접 적립 로직 제거 (중앙화)
