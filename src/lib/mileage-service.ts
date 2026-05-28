@@ -78,6 +78,20 @@ export async function earnMileage(params: {
 }): Promise<EarnResult | null> {
   const { userId, bookingId, netProfit, sellingPrice } = params;
 
+  // ── 멱등성 보장: 이미 적립된 booking이면 스킵 ─────────────
+  if (isSupabaseConfigured) {
+    const existing = await getEarnedMileageByBooking(bookingId);
+    if (existing.length > 0) {
+      console.log(`[MileageService] 중복 적립 방지 — booking ${bookingId} 이미 ${existing.length}건 적립됨`);
+      return {
+        earned: existing.reduce((sum: number, tx: MileageTransaction) => sum + tx.amount, 0),
+        base_net_profit: netProfit,
+        rate: EARN_RATE_PCT,
+        transaction_id: existing[0].id,
+      };
+    }
+  }
+
   // net_profit이 0 이하면 적립 불가 (손해 구조에서 마일리지 지급 안 함)
   if (netProfit <= 0) {
     console.log(`[MileageService] 적립 스킵 — net_profit=${netProfit} (0 이하)`);
@@ -115,6 +129,13 @@ export async function earnMileage(params: {
   });
 
   if (!tx) return null;
+
+  // ── 원자적 잔액 증가 (race condition 방어) ─────────────────
+  const { supabaseAdmin } = await import('@/lib/supabase');
+  await supabaseAdmin.rpc('increment_customer_mileage', {
+    p_customer_id: userId,
+    p_delta: earnAmount,
+  });
 
   // ── EARNED 트랜잭션에 만료일 설정 ─────────────────────────
   const validityMonths = await getEffectiveValidityMonths();
@@ -203,6 +224,12 @@ export async function useMileage(params: {
   });
 
   if (!tx) return null;
+
+  // ── 원자적 잔액 차감 (race condition 방어) ─────────────────
+  await supabaseAdmin.rpc('increment_customer_mileage', {
+    p_customer_id: userId,
+    p_delta: -requestedUse,
+  });
 
   const newBalance = balance - requestedUse;
 
