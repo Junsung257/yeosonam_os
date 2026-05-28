@@ -146,7 +146,7 @@ export default async function HomePage() {
       .order('created_at', { ascending: false })
       .limit(30),
     sb.from('active_destinations')
-      .select('*')
+      .select('destination, package_count, country')
       .order('package_count', { ascending: false })
       .limit(20),
     sb.from('travel_packages')
@@ -254,7 +254,6 @@ export default async function HomePage() {
 
   const topDestsRaw = ((topDestsRawAll as Array<{
     destination: string; package_count: number;
-    avg_rating: number | null; total_reviews: number | null; min_price: number | null;
   }>) || [])
     .map(d => {
       const alive = destMap[d.destination];
@@ -262,7 +261,7 @@ export default async function HomePage() {
       return {
         ...d,
         package_count: alive.count,
-        min_price: alive.minPrice !== Infinity ? alive.minPrice : (d.min_price ?? null),
+        min_price: alive.minPrice !== Infinity ? alive.minPrice : null,
       };
     })
     .filter((d): d is NonNullable<typeof d> => d !== null)
@@ -560,7 +559,6 @@ export default async function HomePage() {
                         <span>다양한 출발 일정</span>
                       )}
                       {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
-                      {d.avg_rating && <span>· ⭐ {Number(d.avg_rating).toFixed(1)}</span>}
                     </div>
                   </div>
                 </Link>

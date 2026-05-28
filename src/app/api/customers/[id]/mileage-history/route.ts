@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 
   const { data, error } = await supabaseAdmin
     .from('mileage_history')
-    .select('*')
+    .select('id, delta, reason, balance_after, created_at')
     .eq('customer_id', params.id)
     .order('created_at', { ascending: false })
     .limit(100);

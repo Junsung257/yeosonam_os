@@ -40,7 +40,15 @@ export async function GET(req: NextRequest) {
       .eq('id', txId)
       .limit(1);
     if (txErr) throw txErr;
-    const tx = (txData as any[] | null)?.[0];
+    const tx = (Array.isArray(txData) ? txData[0] : txData) as {
+      id: string;
+      transaction_type: string;
+      amount: number;
+      counterparty_name: string | null;
+      received_at: string | null;
+      is_refund: boolean;
+      match_status: string;
+    } | null;
     if (!tx) {
       return NextResponse.json({ error: '거래를 찾을 수 없습니다' }, { status: 404 });
     }
@@ -71,7 +79,22 @@ export async function GET(req: NextRequest) {
         return v.name ?? null;
       };
 
-      const candidates: BookingCandidate[] = ((bookingRows ?? []) as any[]).map(b => ({
+      interface BookingRow {
+        id: string;
+        booking_no: string;
+        total_price: number | null;
+        total_cost: number | null;
+        paid_amount: number | null;
+        total_paid_out: number | null;
+        status: string;
+        payment_status: string | null;
+        actual_payer_name: string | null;
+        lead_customer_id: string | null;
+        departure_date: string | null;
+        customers: Embed | null;
+      }
+
+      const candidates: BookingCandidate[] = ((bookingRows ?? []) as unknown as BookingRow[]).map(b => ({
         id: b.id,
         booking_no: b.booking_no,
         package_title: undefined,

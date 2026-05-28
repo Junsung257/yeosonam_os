@@ -4,6 +4,12 @@ import Script from 'next/script';
 import { useAnalyticsConsent } from '@/lib/consent';
 import { thirdPartyScriptType } from '@/lib/third-party-script-type';
 
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void;
+  }
+}
+
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
 /**
@@ -68,7 +74,7 @@ export function trackViewContent(params: {
   content_type?: string;
 }) {
   if (!hasAnalyticsConsent()) return;
-  if (typeof window !== 'undefined' && (window as any).fbq) {
+  if (typeof window !== 'undefined' && window.fbq) {
     const payload: Record<string, unknown> = {
       content_name: params.content_name,
       content_category: params.content_category,
@@ -79,7 +85,7 @@ export function trackViewContent(params: {
       payload.content_ids = params.content_ids;
       payload.content_type = params.content_type ?? 'product';
     }
-    (window as any).fbq('track', 'ViewContent', payload);
+    window.fbq('track', 'ViewContent', payload);
   }
 }
 
@@ -94,7 +100,7 @@ export function trackLead(params: {
   content_type?: string;
 }) {
   if (!hasAnalyticsConsent()) return;
-  if (typeof window !== 'undefined' && (window as any).fbq) {
+  if (typeof window !== 'undefined' && window.fbq) {
     const payload: Record<string, unknown> = {
       content_name: params.content_name,
       value: params.value,
@@ -104,7 +110,7 @@ export function trackLead(params: {
       payload.content_ids = params.content_ids;
       payload.content_type = params.content_type ?? 'product';
     }
-    (window as any).fbq('track', 'Lead', payload);
+    window.fbq('track', 'Lead', payload);
   }
 }
 
@@ -120,7 +126,7 @@ export function trackPurchase(params: {
   num_items?: number;
 }) {
   if (!hasAnalyticsConsent()) return;
-  if (typeof window !== 'undefined' && (window as any).fbq) {
+  if (typeof window !== 'undefined' && window.fbq) {
     const payload: Record<string, unknown> = {
       value: params.value,
       currency: 'KRW',
@@ -132,6 +138,6 @@ export function trackPurchase(params: {
     if (params.num_items !== undefined) {
       payload.num_items = params.num_items;
     }
-    (window as any).fbq('track', 'Purchase', payload);
+    window.fbq('track', 'Purchase', payload);
   }
 }

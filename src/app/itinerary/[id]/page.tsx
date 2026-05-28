@@ -103,6 +103,11 @@ export default function ItineraryPage() {
         const nextPkg: PackageData | null = d.package ?? null;
         setPkg(nextPkg);
 
+        // SEO: 상품명을 document.title에 반영
+        if (nextPkg?.title) {
+          document.title = `${nextPkg.title} | 여소남 일정`;
+        }
+
         const attractionIds = Array.isArray(d.attraction_ids)
           ? d.attraction_ids.filter((x: unknown): x is string => typeof x === 'string' && x.trim().length > 0)
           : collectAttractionIdsFromItinerary(nextPkg?.itinerary_data ?? null);
@@ -110,13 +115,18 @@ export default function ItineraryPage() {
           ? `/api/attractions?ids=${encodeURIComponent(attractionIds.join(','))}`
           : '/api/attractions?detail=1';
 
-        await fetch(attrUrl)
+        fetch(attrUrl)
           .then(r => r.json())
           .then(a => setAttractions(a.attractions || []))
-          .catch(() => {});
+          .catch((e) => {
+            console.warn('[ItineraryPage] 관광지 로딩 실패:', e);
+          });
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        console.warn('[ItineraryPage] 패키지 로딩 실패:', e);
+        setLoading(false);
+      });
   }, [id]);
 
   const handleGenerateImage = async () => {

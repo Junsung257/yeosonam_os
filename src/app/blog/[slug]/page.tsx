@@ -214,7 +214,12 @@ async function getPost(slug: string): Promise<BlogPost | null> {
         kind: 'blog_get_post_fail',
         severity: 'error',
         message: `blog detail query failed: ${error.message ?? String(error)}`,
-        payload: { slug: dbSlug, rawParam: slug, code: (error as any).code ?? null, hint: (error as any).hint ?? null },
+        payload: {
+          slug: dbSlug,
+          rawParam: slug,
+          code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
+          hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
+        },
       });
     } catch {
       /* alerts insert 실패도 페이지를 막지 않는다 */

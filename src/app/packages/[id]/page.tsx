@@ -123,19 +123,20 @@ export default async function PackageDetailPage({
 
   const pkg = pkgResult.data;
 
-  // 감사 차단 상품은 고객 상세도 404 처리 (감사 게이트 이중 가드)
-  if (pkg && (pkg as { audit_status?: string }).audit_status === 'blocked') {
+  // 존재하지 않는 패키지 → 404
+  if (!pkg) {
     notFound();
   }
 
-  // status 게이트 — REVIEW_NEEDED/draft/expired/archived 등은 고객 노출 차단 (2026-05-14 박제)
-  //   원인: BLOCKED 분기에서 INSERT 강행한 상품(status='REVIEW_NEEDED')이 [/packages/[id]] 모바일에
-  //   그대로 노출되어 ₩∞·잘못된 항공편 헤더 등 미보완 데이터가 고객에게 그대로 표시되던 사고 (부관훼리 케이스).
-  if (pkg) {
-    const pkgStatus = (pkg as { status?: string }).status;
-    if (!isCustomerVisibleStatus(pkgStatus)) {
-      notFound();
-    }
+  // 감사 차단 상품은 고객 상세도 404 처리 (감사 게이트 이중 가드)
+  if ('audit_status' in pkg && pkg.audit_status === 'blocked') {
+    notFound();
+  }
+
+  // status 게이트 — REVIEW_NEEDED/draft/expired/archived 등은 고객 노출 차단
+  const pkgStatus = 'status' in pkg ? pkg.status : undefined;
+  if (!isCustomerVisibleStatus(pkgStatus)) {
+    notFound();
   }
 
   // ── 2-단계 Fetch 전략 (Next.js 2MB 캐시 한계 + 성능 최적화) ─────────────────

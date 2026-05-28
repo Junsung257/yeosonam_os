@@ -164,6 +164,40 @@ const nextConfig = {
         source: '/packages',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
       },
+      // ─── 패키지 상세 페이지 ─────────────────────────────────────
+      {
+        source: '/packages/:id',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      // ─── 패키지 공개 API (목록 + 상세) ──────────────────────────
+      {
+        source: '/api/packages',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      {
+        source: '/api/packages/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      // ─── FAQ 공개 API ──────────────────────────────────────────
+      {
+        source: '/api/faqs/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
+      },
+      // ─── 리뷰 공개 API (추가 경로) ──────────────────────────────
+      {
+        source: '/api/reviews',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=600' }],
+      },
+      // ─── FAQ 페이지 ────────────────────────────────────────────
+      {
+        source: '/faq',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
+      },
+      // ─── 리뷰 페이지 ───────────────────────────────────────────
+      {
+        source: '/reviews',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=1800' }],
+      },
       // ─── 블로그 목록 ───────────────────────────────────────────
       {
         source: '/blog',

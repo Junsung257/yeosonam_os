@@ -101,7 +101,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   const [destRes, featuredRes, listRes] = await Promise.all([
     supabaseAdmin
       .from('active_destinations')
-      .select('*')
+      .select('destination, package_count, country')
       .order('package_count', { ascending: false })
       .limit(16),
     supabaseAdmin
@@ -129,7 +129,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     featured: page === 1 && !filter.destination && !filter.angle ? (featuredRes.data as unknown as BlogPost[]) || [] : [],
     posts: filteredPosts,
     total: listRes.count ?? 0,
-    destinations: (destRes.data as DestinationStat[]) || [],
+    destinations: (destRes.data as unknown as DestinationStat[]) || [],
   };
 }
 

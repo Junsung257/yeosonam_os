@@ -467,7 +467,7 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
       .gte('created_at', since30);
     if (error) {
       // 테이블 미존재(jarvis V2 미설치) 시 조용히 빈값 반환
-      if ((error as any).code === '42P01') return empty;
+      if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === '42P01') return empty;
       throw error;
     }
 

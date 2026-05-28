@@ -1,6 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
+interface LandSettlementRow {
+  id: string;
+  land_operator_id: string | null;
+  bank_transaction_id: string | null;
+  total_amount: number;
+  bundled_total: number;
+  fee_amount: number;
+  is_refund: boolean;
+  status: string;
+  notes: string | null;
+  created_at: string | null;
+  created_by: string | null;
+  confirmed_at: string | null;
+  confirmed_by: string | null;
+  reversed_at: string | null;
+  reversed_by: string | null;
+  reversal_reason: string | null;
+  land_operators: { name?: string | null } | { name?: string | null }[] | null;
+  bank_transactions: {
+    received_at?: string | null;
+    counterparty_name?: string | null;
+    memo?: string | null;
+  } | {
+    received_at?: string | null;
+    counterparty_name?: string | null;
+    memo?: string | null;
+  }[] | null;
+  land_settlement_bookings: Array<{
+    amount: number;
+    bookings: {
+      id: string;
+      booking_no: string;
+      departure_date: string | null;
+      customers: { name?: string | null } | { name?: string | null }[] | null;
+    } | null;
+  }> | null;
+}
+
 /**
  * GET /api/payments/settlements
  *
@@ -50,7 +88,7 @@ export async function GET(req: NextRequest) {
       return v;
     };
 
-    const settlements = ((data ?? []) as any[]).map(row => {
+    const settlements = ((data ?? []) as unknown as LandSettlementRow[]).map(row => {
       const lsb = (row.land_settlement_bookings ?? []) as Array<{
         amount: number;
         bookings: { id: string; booking_no: string; departure_date: string | null; customers: Embed1 } | null;

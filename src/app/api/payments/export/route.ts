@@ -80,10 +80,34 @@ export async function GET(req: NextRequest) {
 
     const rows: string[][] = [HEADERS.slice() as unknown as string[]];
 
-    for (const s of (data ?? []) as any[]) {
+    interface ExportSettlementRow {
+      id: string;
+      created_at: string | null;
+      total_amount: number;
+      bundled_total: number;
+      fee_amount: number;
+      is_refund: boolean;
+      status: string;
+      notes: string | null;
+      confirmed_at: string | null;
+      confirmed_by: string | null;
+      reversal_reason: string | null;
+      land_operators: Embed1;
+      bank_transactions: TxEmbed;
+      land_settlement_bookings: Array<{
+        amount: number;
+        bookings: {
+          booking_no: string | null;
+          departure_date: string | null;
+          customers: Embed1;
+        } | null;
+      }> | null;
+    }
+
+    for (const s of (data ?? []) as unknown as ExportSettlementRow[]) {
       const operatorName = pickName(s.land_operators);
       const counterparty = pickCp(s.bank_transactions);
-      const lsb = (s.land_settlement_bookings ?? []) as any[];
+      const lsb = s.land_settlement_bookings ?? [];
       if (lsb.length === 0) {
         rows.push([
           s.created_at?.slice(0, 10) ?? '',

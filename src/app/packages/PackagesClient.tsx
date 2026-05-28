@@ -373,7 +373,7 @@ export default function PackagesClient() {
                 )}
               </button>
               <PackageCard
-                pkg={pkg as any}
+                pkg={pkg as Package}
                 variant="horizontal"
                 image={imageByPkgIdProp[pkg.id] ?? null}
                 precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
@@ -448,8 +448,8 @@ export default function PackagesClient() {
       {/* ── Pairwise 비교 모달 ── */}
       {compareOpen && comparePackages.length === 2 && (
         <SimpleCompareModal
-          a={comparePackages[0] as any}
-          b={comparePackages[1] as any}
+          a={comparePackages[0]!}
+          b={comparePackages[1]!}
           onClose={() => { setCompareOpen(false); }}
         />
       )}

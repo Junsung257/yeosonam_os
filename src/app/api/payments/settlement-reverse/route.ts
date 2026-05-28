@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminContext } from '@/lib/admin-context';
 import { notifySlack } from '@/lib/slack-notifier';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import { successResponse, errorResponse } from '@/lib/api-response';
 
 /**
@@ -18,6 +19,10 @@ export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) {
     return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
+
+  // P0 보안: admin 인증 필수
+  const guard = await requireAuthenticatedRoute(req);
+  if (guard instanceof NextResponse) return guard;
 
   let body: Record<string, unknown>;
   try {

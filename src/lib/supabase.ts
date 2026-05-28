@@ -96,7 +96,7 @@ export const supabaseAdmin = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getSupabaseAdmin();
     if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
-    const value = (client as any)[prop];
+    const value = client[prop as keyof typeof client];
     return typeof value === 'function' ? value.bind(client) : value;
   },
 });
@@ -113,7 +113,7 @@ export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getSupabase();
     if (!client) throw new Error('Supabase가 구성되지 않았습니다. 환경 변수를 확인하세요.');
-    const value = (client as any)[prop];
+    const value = client[prop as keyof typeof client];
     return typeof value === 'function' ? value.bind(client) : value;
   },
 });
@@ -802,10 +802,10 @@ export async function createBooking(data: {
         supabaseAdmin.from('customers').select('phone, email').eq('id', data.leadCustomerId).maybeSingle(),
       ]);
       const result = checkSelfReferral({
-        bookingPhone: (lead as any)?.phone,
-        bookingEmail: (lead as any)?.email,
-        affiliatePhone: (aff as any)?.phone,
-        affiliateEmail: (aff as any)?.email,
+        bookingPhone: lead && typeof lead === 'object' && 'phone' in lead ? (lead as { phone?: string }).phone : undefined,
+        bookingEmail: lead && typeof lead === 'object' && 'email' in lead ? (lead as { email?: string }).email : undefined,
+        affiliatePhone: aff && typeof aff === 'object' && 'phone' in aff ? (aff as { phone?: string }).phone : undefined,
+        affiliateEmail: aff && typeof aff === 'object' && 'email' in aff ? (aff as { email?: string }).email : undefined,
       });
       selfReferralFlag = result.flagged;
       selfReferralReason = result.reason;
@@ -926,7 +926,7 @@ export async function createBooking(data: {
 
     if (booking?.[0]) {
       void import('./affiliate/celebrate').then(({ notifyAffiliateOnBooking }) =>
-        notifyAffiliateOnBooking(booking[0] as any),
+        notifyAffiliateOnBooking(booking[0] as unknown as Parameters<typeof notifyAffiliateOnBooking>[0]),
       );
     }
     return booking?.[0];
@@ -946,7 +946,7 @@ export async function updateBookingStatus(id: string, status: string) {
     if (error) throw error;
     if (data?.[0]) {
       void import('./affiliate/celebrate').then(({ notifyAffiliateOnBooking }) =>
-        notifyAffiliateOnBooking(data[0] as any),
+        notifyAffiliateOnBooking(data[0] as unknown as Parameters<typeof notifyAffiliateOnBooking>[0]),
       );
     }
     return data?.[0];

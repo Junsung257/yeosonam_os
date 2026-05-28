@@ -513,9 +513,9 @@ function MessageBubble({
         }`}
       >
         {/* agent 이름 표시 (V2 전용) */}
-        {!isUser && (message as any).agent && (
+        {!isUser && 'agent' in message && (message as { agent?: string }).agent && (
           <div className="text-[10px] text-violet-500 font-medium mb-1">
-            {(message as any).agent === 'products' ? '컨시어지' : (message as any).agent}
+            {(message as { agent?: string }).agent === 'products' ? '컨시어지' : (message as { agent?: string }).agent}
           </div>
         )}
 

@@ -9,8 +9,8 @@ interface Props {
 }
 
 export default function RootError({ error, reset }: Props) {
-  // 에러 코드 추론
-  const errCode = (error as any)?.code;
+  // 에러 코드 추론 (커스텀 에러에 code가 있을 수 있음)
+  const errCode = error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : undefined;
   const def = errCode ? getErrorByCode(errCode) : getErrorByCode('E1001');
 
   return (

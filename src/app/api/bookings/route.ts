@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
@@ -130,6 +131,9 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
@@ -208,7 +212,7 @@ export async function POST(request: NextRequest) {
     if (idempotencyKey) {
       const { data: existing } = await supabaseAdmin
         .from('bookings')
-        .select('*')
+        .select('id, status, idempotency_key')
         .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
       if (existing) {
@@ -563,6 +567,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
   if (!isSupabaseConfigured) {

@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function BlogError({ error, reset }: Props) {
-  const errCode = (error as any)?.code;
+  const errCode = error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : undefined;
   const def = errCode ? getErrorByCode(errCode) : getErrorByCode('E1401');
 
   useEffect(() => {

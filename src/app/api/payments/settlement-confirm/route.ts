@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       .limit(1);
 
     if (error) throw error;
-    const row = (data as any[] | null)?.[0];
+    const row = (Array.isArray(data) ? data[0] : data) as { id: string; status: string } | null;
     if (!row) {
       return NextResponse.json(
         { error: 'pending 상태가 아니거나 settlement 없음' },

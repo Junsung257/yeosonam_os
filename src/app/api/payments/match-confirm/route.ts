@@ -68,12 +68,14 @@ export async function POST(req: NextRequest) {
         p_created_by: ctx.actor,
       });
       if (error) {
-        const status =
-          (error as any).code === 'P0001'
-            ? 400
-            : (error as any).code === 'P0002'
-              ? 404
-              : 500;
+      const status =
+          error && typeof error === 'object' && 'code' in error
+            ? ((error as { code: string }).code === 'P0001'
+              ? 400
+              : (error as { code: string }).code === 'P0002'
+                ? 404
+                : 500)
+            : 500;
         return NextResponse.json({ error: error.message }, { status });
       }
       rpcInfo = data;
@@ -102,7 +104,7 @@ export async function POST(req: NextRequest) {
         })
         .select('id')
         .limit(1);
-      logId = (logRow as any[] | null)?.[0]?.id ?? null;
+      logId = (Array.isArray(logRow) ? (logRow as { id: string }[] | null) : null)?.[0]?.id ?? null;
     } catch {
       // audit 실패는 매칭을 무효화하지 않음
     }

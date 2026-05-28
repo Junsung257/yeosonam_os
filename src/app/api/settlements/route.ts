@@ -8,6 +8,9 @@ const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, P
 
 // GET: 정산 목록 조회
 export async function GET(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   if (!isSupabaseConfigured) {
     return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }

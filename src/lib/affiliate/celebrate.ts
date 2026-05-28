@@ -42,13 +42,13 @@ export async function notifyAffiliateOnBooking(booking: {
     });
     await supabaseAdmin.from('message_logs').insert({
       booking_id: booking.id,
-      log_type: 'affiliate_celebration',
-      event_type: 'AFFILIATE_BOOKING_CELEBRATION' as any,
+      log_type: 'affiliate_celebration' as const,
+      event_type: 'AFFILIATE_BOOKING_CELEBRATION' as const,
       title: `어필리에이터 축하 알림 - ${aff.name}`,
       content: `매출 ${(booking.total_price || 0).toLocaleString()}원 / 수수료 ${(booking.influencer_commission || 0).toLocaleString()}원`,
       is_mock: !process.env.KAKAO_TEMPLATE_AFFILIATE_CELEBRATION,
       created_by: 'system',
-    } as any);
+    });
   } catch (err) {
     console.error('[축하 알림 실패]', err);
   }
