@@ -1,0 +1,3 @@
+# 여소남 OS — Python 배치 파이프라인 의존성
+supabase>=2.0,<3.0
+python-dotenv>=1.0,<2.0
