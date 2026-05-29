@@ -123,6 +123,12 @@ export default function MarketingDashboardPage() {
               + 새 링크 만들기
             </button>
           )}
+          <Link href="/admin/marketing/command-center" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+            Command Center
+          </Link>
+          <Link href="/admin/marketing/system-health" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+            System Health
+          </Link>
           <Link href="/admin/marketing/card-news" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
             카드뉴스
           </Link>
