@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
-import { createClient } from '@supabase/supabase-js';
-import { findOrCreateCustomerByPhone } from '@/lib/supabase';
+import { findOrCreateCustomerByPhone, supabaseAdmin as supabase } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { getSecret } from '@/lib/secret-registry';
-
-const supabase = createClient(
-  getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-  getSecret('SUPABASE_SERVICE_ROLE_KEY')!
-);
 
 export async function POST(req: NextRequest) {
   try {
