@@ -1,0 +1,153 @@
+{"type":"text","content":"안"}
+{"type":"text","content":"녕"}
+{"type":"text","content":"하"}
+{"type":"text","content":"세요"}
+{"type":"text","content":"!"}
+{"type":"text","content":" 😊"}
+{"type":"text","content":" 다"}
+{"type":"text","content":"낭"}
+{"type":"text","content":" "}
+{"type":"text","content":"6"}
+{"type":"text","content":"월"}
+{"type":"text","content":" 특"}
+{"type":"text","content":"가"}
+{"type":"text","content":" 상"}
+{"type":"text","content":"품"}
+{"type":"text","content":"을"}
+{"type":"text","content":" 몇"}
+{"type":"text","content":" 가지"}
+{"type":"text","content":" 추"}
+{"type":"text","content":"천"}
+{"type":"text","content":"해"}
+{"type":"text","content":"드"}
+{"type":"text","content":"립"}
+{"type":"text","content":"니다"}
+{"type":"text","content":"."}
+{"type":"text","content":"\n"}
+{"type":"text","content":"\n"}
+{"type":"text","content":"---"}
+{"type":"text","content":"\n"}
+{"type":"text","content":"\n"}
+{"type":"text","content":"###"}
+{"type":"text","content":" "}
+{"type":"text","content":"1"}
+{"type":"text","content":"️⃣"}
+{"type":"text","content":" **"}
+{"type":"text","content":"노"}
+{"type":"text","content":"팁"}
+{"type":"text","content":" 노"}
+{"type":"text","content":"옵"}
+{"type":"text","content":"션"}
+{"type":"text","content":","}
+{"type":"text","content":" 다"}
+{"type":"text","content":"낭"}
+{"type":"text","content":" 호"}
+{"type":"text","content":"이"}
+{"type":"text","content":"안"}
+{"type":"text","content":" B"}
+{"type":"text","content":"X"}
+{"type":"text","content":" /"}
+{"type":"text","content":" 알"}
+{"type":"text","content":"란"}
+{"type":"text","content":"씨"}
+{"type":"text","content":"호"}
+{"type":"text","content":"텔"}
+{"type":"text","content":" "}
+{"type":"text","content":"3"}
+{"type":"text","content":"박"}
+{"type":"text","content":"5"}
+{"type":"text","content":"일"}
+{"type":"text","content":"**"}
+{"type":"text","content":"\n"}
+{"type":"text","content":"-"}
+{"type":"text","content":" **"}
+{"type":"text","content":"판"}
+{"type":"text","content":"매"}
+{"type":"text","content":"가"}
+{"type":"text","content":":**"}
+{"type":"text","content":" "}
+{"type":"text","content":"1"}
+{"type":"text","content":"인"}
+{"type":"text","content":" **"}
+{"type":"text","content":"500"}
+{"type":"text","content":","}
+{"type":"text","content":"310"}
+{"type":"text","content":"원"}
+{"type":"text","content":"**"}
+{"type":"text","content":" ("}
+{"type":"text","content":"기"}
+{"type":"text","content":"본"}
+{"type":"text","content":"가"}
+{"type":"text","content":" "}
+{"type":"text","content":"459"}
+{"type":"text","content":","}
+{"type":"text","content":"000"}
+{"type":"text","content":"원"}
+{"type":"text","content":")"}
+{"type":"text","content":"\n"}
+{"type":"text","content":"-"}
+{"type":"text","content":" **"}
+{"type":"text","content":"포"}
+{"type":"text","content":"함"}
+{"type":"text","content":":**"}
+{"type":"text","content":" 왕"}
+{"type":"text","content":"복"}
+{"type":"text","content":"항"}
+{"type":"text","content":"공"}
+{"type":"text","content":","}
+{"type":"text","content":" 숙"}
+{"type":"text","content":"박"}
+{"type":"text","content":"("}
+{"type":"text","content":"알"}
+{"type":"text","content":"란"}
+{"type":"text","content":"씨"}
+{"type":"text","content":"호"}
+{"type":"text","content":"텔"}
+{"type":"text","content":"),"}
+{"type":"text","content":" 식"}
+{"type":"text","content":"사"}
+{"type":"text","content":","}
+{"type":"text","content":" 관"}
+{"type":"text","content":"광"}
+{"type":"text","content":"지"}
+{"type":"text","content":" 입"}
+{"type":"text","content":"장"}
+{"type":"text","content":"료"}
+{"type":"text","content":","}
+{"type":"text","content":" 전"}
+{"type":"text","content":"용"}
+{"type":"text","content":"차"}
+{"type":"text","content":"량"}
+{"type":"text","content":","}
+{"type":"text","content":" 기"}
+{"type":"text","content":"사"}
+{"type":"text","content":"/"}
+{"type":"text","content":"가"}
+{"type":"text","content":"이"}
+{"type":"text","content":"드"}
+{"type":"text","content":","}
+{"type":"text","content":" 여"}
+{"type":"text","content":"행"}
+{"type":"text","content":"자"}
+{"type":"text","content":"보"}
+{"type":"text","content":"험"}
+{"type":"text","content":"\n"}
+{"type":"text","content":"-"}
+{"type":"text","content":" **"}
+{"type":"text","content":"6"}
+{"type":"text","content":"월"}
+{"type":"text","content":" 출"}
+{"type":"text","content":"발"}
+{"type":"text","content":" 가능"}
+{"type":"text","content":"**"}
+{"type":"text","content":" ("}
+{"type":"text","content":"5"}
+{"type":"text","content":"/"}
+{"type":"text","content":"6"}
+{"type":"text","content":"~"}
+{"type":"text","content":"6"}
+{"type":"text","content":"/"}
+{"type":"text","content":"30"}
+{"type":"text","content":" 구"}
+{"type":"meta","packages":[],"escalate":false,"critiqueSeverity":"ok","journey":{"stage":"discovery","updated_at":"2026-05-29T07:13:07.005Z","checklist_preview":[],"automation_hints":["[다음] 목적지·일정 수집 후 상품 매칭"]},"freeTravelHref":null}
+{"type":"done"}
