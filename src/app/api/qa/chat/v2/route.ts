@@ -86,14 +86,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Jarvis 인증 (게스트 모드 지원) ──
+  // QA Chat 은 공개 API — 인증 실패 시 V1 폴백을 위해 ctx 만 fallback 생성
   const auth = await resolveJarvisAuth(req, body)
-  if (auth.type === 'unauthenticated') {
-    return new Response(
-      JSON.stringify({ error: '인증되지 않은 요청입니다.' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
-  const ctx = auth.ctx
+  const ctx = auth.type === 'unauthenticated'
+    ? { surface: 'customer' as const, tenantId: undefined, userId: undefined, userRole: 'customer' as const }
+    : auth.ctx
 
   // ── SSE 스트림 ──
   const stream = new ReadableStream<Uint8Array>({
@@ -230,20 +227,22 @@ export async function POST(req: NextRequest) {
             confidence: dispatch.routerConfidence,
             fallback: 'v1',
           })
-          // V1 QA Chat 으로 프록시
-          const v1Res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/qa/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+          // V1 QA Chat 직접 호출 (HTTP 폴백 제거 — 내부 함수 직접 사용)
+          const { createV1QaChatStream } = await import('@/lib/qa-chat-engine')
+          const v1Stream = await createV1QaChatStream({
+            message: body.message,
+            history: body.history ?? [],
+            sessionId: body.sessionId ?? null,
+            referrer: body.referrer ?? null,
+            affiliateRef: body.affiliateRef ?? null,
+            affiliateId: (body.affiliateId as string | undefined) ?? null,
           })
-          const v1Reader = v1Res.body?.getReader()
-          if (v1Reader) {
-            const decoder = new TextDecoder()
-            while (true) {
-              const { value, done } = await v1Reader.read()
-              if (done) break
-              controller.enqueue(encoder.encode(decoder.decode(value)))
-            }
+          const v1Reader = v1Stream.getReader()
+          const decoder = new TextDecoder()
+          while (true) {
+            const { value, done } = await v1Reader.read()
+            if (done) break
+            controller.enqueue(encoder.encode(decoder.decode(value)))
           }
           emitSSE('done', {})
           controller.close()
