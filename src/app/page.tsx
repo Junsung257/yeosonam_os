@@ -411,8 +411,29 @@ export default async function HomePage() {
   const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
 
-  // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백
-  if (Object.keys(pexelsByDest).length > 0) {
+  // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백 (기존 pexelsByDest 우선, 없으면 직접 조회)
+  if (process.env.PEXELS_API_KEY?.trim()) {
+    const noImgRankingDests = [...new Set([
+      ...overseas.filter(i => !i.image && i.destination).map(i => i.destination!),
+      ...domestic.filter(i => !i.image && i.destination).map(i => i.destination!),
+    ])].filter(d => !pexelsByDest[d]);
+
+    if (noImgRankingDests.length > 0) {
+      const rankingFilled = await Promise.all(
+        noImgRankingDests.map(async dest => {
+          try {
+            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
+            return { dest, url: photo?.src.large ?? photo?.src.large2x ?? null };
+          } catch {
+            return { dest, url: null };
+          }
+        })
+      );
+      for (const { dest, url } of rankingFilled) {
+        if (url) pexelsByDest[dest] = { large: url, large2x: url };
+      }
+    }
+
     const fillRankingImage = (item: RankingItem): RankingItem => {
       if (item.image || !item.destination) return item;
       const fallback = pexelsByDest[item.destination];
