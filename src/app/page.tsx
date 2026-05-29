@@ -149,6 +149,7 @@ function buildRankingItemsUnique(
       }
     }
 
+
     return {
       id: p.id,
       title: (p.display_title || p.title) ?? '',
@@ -337,6 +338,7 @@ export default async function HomePage() {
   //   3) `getSecret('PEXELS_API_KEY')` (process.env[key] 동적 인덱싱) → `process.env.PEXELS_API_KEY` 정적 참조
   // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
   //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
+  let pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
   if (process.env.PEXELS_API_KEY?.trim()) {
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
@@ -349,7 +351,6 @@ export default async function HomePage() {
         missingDests.map(async dest => {
           try {
             const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
-            // 추천여행지 히어로용 large2x, 나머지는 large
             return { dest, large2x: photo?.src.large2x ?? null, large: photo?.src.large ?? null };
           } catch {
             return { dest, large2x: null, large: null };
@@ -357,7 +358,7 @@ export default async function HomePage() {
         })
       );
 
-      const pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
+      pexelsByDest = {};
       filled.forEach(({ dest, large2x, large }) => {
         if (large2x || large) pexelsByDest[dest] = { large2x, large };
       });
@@ -409,6 +410,20 @@ export default async function HomePage() {
 
   const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
+
+  // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백
+  if (Object.keys(pexelsByDest).length > 0) {
+    const fillRankingImage = (item: RankingItem): RankingItem => {
+      if (item.image || !item.destination) return item;
+      const fallback = pexelsByDest[item.destination];
+      if (fallback) {
+        return { ...item, image: fallback.large ?? fallback.large2x ?? null };
+      }
+      return item;
+    };
+    for (let i = 0; i < overseas.length; i++) overseas[i] = fillRankingImage(overseas[i]);
+    for (let i = 0; i < domestic.length; i++) domestic[i] = fillRankingImage(domestic[i]);
+  }
 
   /** 메인 랭킹 카드 소셜 프루프(초기 트래픽: 임계값 미만이면 미노출) */
   const RANK_BOOKING_MIN = 3;

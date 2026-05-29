@@ -1,11 +1,8 @@
-fix: 메인페이지 인기패키지 이미지 로드 및 as any 전면 제거
+fix: 랭킹 패키지 이미지 누락 + Pexels 폴백 + as any 제거
 
-- rankingPkgs 쿼리에 hero_image_url, thumbnail_urls select 누락 추가
-- buildRankingItemsUnique 함수 타입 any -> RankingPkg[]/AttractionRow[] 전환
-- computeRankingMinPrice 타입 any -> RankingPkg 전환
-- allPkgs 집계 로직 AggPkgRow 인터페이스 정의 + as any 제거
-- attractions 매핑 any -> AttractionRow[] 전환
-- homeUrgencyTop3/rankingPkgs forEach 타입 안전화
-- pexelsByDest image 할당 (d as any) 제거
-- RankingItem.title null-safe 처리 (?? '')
-- bestPkgByDest null -> undefined 변환
+- rankingPkgs 쿼리에 hero_image_url, thumbnail_urls select 추가
+- buildRankingItemsUnique any[] -> RankingPkg[]/AttractionRow[] 전환
+- AggPkgRow 인터페이스 정의로 allPkgs 집계 타입 안전화
+- pexelsByDest를 블록 외부 변수로 분리해 랭킹 폴백에서 재사용
+- 랭킹 이미지 없는 항목 Pexels medium 폴백 적용
+- (d as any).image, (p: any) 등 잔여 as any 8건 제거
