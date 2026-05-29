@@ -135,3 +135,15 @@ export function getAiProviderSecret(provider: 'deepseek' | 'claude' | 'gemini'):
   return getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
 }
 
+/**
+ * 복원력 있는 LLM 설정 확인 — 하나 이상의 LLM 공급자 키가 설정되어 있으면 true.
+ * DeepSeek + Gemini 중 하나라도 있으면 통과.
+ */
+export function hasResilientLlmConfig(): boolean {
+  return Boolean(
+    getSecret('DEEPSEEK_API_KEY') ||
+      getSecret('GEMINI_API_KEY') ||
+      getSecret('GOOGLE_AI_API_KEY'),
+  );
+}
+

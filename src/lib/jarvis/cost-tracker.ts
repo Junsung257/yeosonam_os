@@ -153,6 +153,8 @@ export interface TrackDeepSeekCostParams {
   model: string;
   usage: DeepSeekUsage;
   latencyMs?: number;
+  /** tenant_id 가 null 이면 platform 소속으로 기록 */
+  tenantId?: string | null;
 }
 
 /** DeepSeek API 호출 비용을 jarvis_cost_ledger 에 기록. 실패해도 서비스 차단 안 함 (fail-open). */
@@ -170,7 +172,7 @@ export async function trackDeepSeekCost(p: TrackDeepSeekCostParams): Promise<voi
     ) / 1_000_000
 
     await supabaseAdmin.from('jarvis_cost_ledger').insert({
-      tenant_id: null,
+      tenant_id: p.tenantId ?? null,
       session_id: null,
       agent_type: p.task,
       model: p.model,
