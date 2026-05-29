@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -149,9 +149,10 @@ function buildRankingItemsUnique(
 export default async function HomePage() {
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
+  const emptyResult = { data: [] };
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
-  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = await Promise.all([
+  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
     sb.from('travel_packages')
       .select('destination, price, price_tiers, price_dates, country')
       .in('status', ['active', 'approved']),
@@ -172,7 +173,7 @@ export default async function HomePage() {
       .select('avg_rating, review_count')
       .not('avg_rating', 'is', null)
       .gte('review_count', 1),
-  ]);
+  ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
   const allPkgs = pkgResult.data ?? [];
   const attractions = attrResult.data ?? [];
@@ -435,7 +436,7 @@ export default async function HomePage() {
   const RANK_INTEREST_MIN = 8;
   const rankingIds = [...new Set([...overseas, ...domestic].map((p) => p.id))];
   const socialByPackage: Record<string, { bookings: number; interest: number }> = {};
-  if (rankingIds.length > 0) {
+  if (isSupabaseConfigured && rankingIds.length > 0) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
     const [bkRes, sgRes] = await Promise.all([
       sb
