@@ -75,8 +75,6 @@ interface RankingPkg extends AggPkgRow {
   nights: number | null;
   product_type: string | null;
   ticketing_deadline: string | null;
-  hero_image_url: string | null;
-  thumbnail_urls: string[] | null;
 }
 
 function computeRankingMinPrice(p: RankingPkg, today: string): number {
@@ -107,23 +105,9 @@ function buildRankingItemsUnique(
     .slice(0, 7);
 
   return list.map((p) => {
-    const tryList: string[] = [];
-    if (p.hero_image_url) tryList.push(p.hero_image_url);
-    if (Array.isArray(p.thumbnail_urls)) {
-      for (const u of p.thumbnail_urls) {
-        if (u) tryList.push(u);
-      }
-    }
-
     let image: string | null = null;
-    for (const url of tryList) {
-      if (url && !usedUrls.has(url)) {
-        image = url;
-        usedUrls.add(url);
-        break;
-      }
-    }
 
+    // attractions 매칭으로 이미지 찾기
     if (!image) {
       const destParts = (p.destination || '').split(/[\/,\s]/).map((s) => s.trim()).filter(Boolean);
       const matched = attractions
@@ -176,7 +160,7 @@ export default async function HomePage() {
       .not('photos', 'is', null)
       .limit(300),
     sb.from('travel_packages')
-      .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline, hero_image_url, thumbnail_urls')
+      .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
       .in('status', ['active', 'approved'])
       .order('created_at', { ascending: false })
       .limit(30),

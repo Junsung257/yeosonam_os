@@ -1,8 +1,6 @@
-fix: 랭킹 패키지 이미지 누락 + Pexels 폴백 + as any 제거
+fix: 존재하지 않는 DB 컬럼 SELECT 제거 (랭킹 섹션 복구)
 
-- rankingPkgs 쿼리에 hero_image_url, thumbnail_urls select 추가
-- buildRankingItemsUnique any[] -> RankingPkg[]/AttractionRow[] 전환
-- AggPkgRow 인터페이스 정의로 allPkgs 집계 타입 안전화
-- pexelsByDest를 블록 외부 변수로 분리해 랭킹 폴백에서 재사용
-- 랭킹 이미지 없는 항목 Pexels medium 폴백 적용
-- (d as any).image, (p: any) 등 잔여 as any 8건 제거
+- hero_image_url, thumbnail_urls 컬럼이 DB에 없어 쿼리 실패 -> 랭킹 섹션 전체 미노출
+- SELECT 문에서 해당 컬럼 제거하고 RankingPkg 인터페이스에서도 삭제
+- buildRankingItemsUnique에서 tryList(hero_image_url/thumbnails) 로직 제거
+- 이미지는 attractions 매칭 -> Pexels 폴백 순서로만 처리
