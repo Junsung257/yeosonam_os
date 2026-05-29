@@ -1,131 +1,55 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-29T12:28:10+09:00
-- actionable_changed_files: 119
+- generated_at_kst: 2026-05-29T20:28:38+09:00
+- actionable_changed_files: 43
 - todo_markers: 0
-- areas: API 41, LIB 36, APP 30, ETC 7, UI 5
+- areas: ETC 18, LIB 14, DB 8, API 3
 
 ## 1) Actionable Changed Files
 
-- ` M` `src/app/admin/AdminPageClient.tsx`
-- ` M` `src/app/admin/affiliates/[id]/page.tsx`
-- ` M` `src/app/admin/affiliates/page.tsx`
-- ` M` `src/app/admin/blog/categories/page.tsx`
-- ` M` `src/app/admin/blog/queue/page.tsx`
-- ` M` `src/app/admin/bookings/[id]/BookingDetailClient.tsx`
-- ` M` `src/app/admin/bookings/[id]/edit/page.tsx`
-- ` M` `src/app/admin/bookings/[id]/page.tsx`
-- ` M` `src/app/admin/bookings/new/page.tsx`
-- ` M` `src/app/admin/bookings/page.tsx`
-- ` M` `src/app/admin/free-travel/page.tsx`
-- ` M` `src/app/admin/free-travel/settlements/page.tsx`
-- ` M` `src/app/admin/ledger/page.tsx`
-- ` M` `src/app/admin/marketing/card-news/[id]/page.tsx`
-- ` M` `src/app/admin/marketing/card-news/page.tsx`
-- ` M` `src/app/admin/marketing/page.tsx`
-- ` M` `src/app/admin/mcp/page.tsx`
-- ` M` `src/app/admin/packages/PackagesPageClient.tsx`
-- ` M` `src/app/admin/packages/page.tsx`
-- ` M` `src/app/admin/page.tsx`
-- ` M` `src/app/admin/payments/PaymentsPageClient.tsx`
-- ` M` `src/app/admin/payments/page.tsx`
-- ` M` `src/app/admin/platform-learning/page.tsx`
-- ` M` `src/app/api/admin/affiliate-analytics/route.ts`
-- ` M` `src/app/api/admin/applications/route.ts`
-- ` M` `src/app/api/admin/platform-learning/route.ts`
-- ` M` `src/app/api/admin/rank-dashboard/route.ts`
-- ` M` `src/app/api/admin/topical-state/route.ts`
-- ` M` `src/app/api/blog/from-card-news/route.ts`
-- ` M` `src/app/api/blog/route.ts`
-- ` M` `src/app/api/card-news/[id]/confirm/route.ts`
-- ` M` `src/app/api/card-news/render/route.tsx`
-- ` M` `src/app/api/card-news/route.ts`
-- ` M` `src/app/api/content-factory/[cardNewsId]/route.ts`
-- ` M` `src/app/api/content-hub/generate/route.ts`
-- ` M` `src/app/api/content-hub/publish/route.ts`
-- ` M` `src/app/api/content-queue/route.ts`
-- ` M` `src/app/api/cron/affiliate-anomaly-detect/route.ts`
-- ` M` `src/app/api/cron/affiliate-settlement-draft/route.ts`
-- ` M` `src/app/api/cron/auto-archive/route.ts`
-- ` M` `src/app/api/cron/blog-daily-summary/route.ts`
-- ` M` `src/app/api/cron/blog-learn/route.ts`
-- ` M` `src/app/api/cron/blog-publisher/route.ts`
-- ` M` `src/app/api/cron/demand-forecast/route.ts`
-- ` M` `src/app/api/cron/design-archetype-update/route.ts`
-- ` M` `src/app/api/cron/embed-products/route.ts`
-- ` M` `src/app/api/cron/ig-trend-miner/route.ts`
-- ` M` `src/app/api/cron/payment-heartbeat/route.ts`
-- ` M` `src/app/api/cron/rank-tracking/route.ts`
-- ` M` `src/app/api/cron/refresh-booking-pace/route.ts`
-- ` M` `src/app/api/cron/slack-gap-fill/route.ts`
-- ` M` `src/app/api/cron/unmatched-auto-resolve/route.ts`
-- ` M` `src/app/api/jarvis/stream/route.ts`
-- ` M` `src/app/api/mcp/route.ts`
-- ` M` `src/app/api/meta/campaigns/route.ts`
-- ` M` `src/app/api/packages/route.ts`
-- ` M` `src/app/api/packages/search/route.ts`
-- ` M` `src/app/api/products/review/route.ts`
 - ` M` `src/app/api/qa/chat/route.ts`
 - ` M` `src/app/api/qa/chat/v2/route.ts`
-- ` M` `src/app/api/rfq/[id]/route.ts`
-- ` M` `src/app/api/rfq/route.ts`
-- ` M` `src/app/api/travel-history/route.ts`
-- ` M` `src/app/api/upload/route.ts`
-- ` M` `src/app/destinations/[city]/page.tsx`
-- ` M` `src/app/destinations/region/[region]/page.tsx`
-- ` M` `src/app/free-travel/FreeTravelClient.tsx`
-- ` M` `src/app/m/admin/bookings/[id]/page.tsx`
-- ` M` `src/app/m/admin/payments/[id]/page.tsx`
-- ` M` `src/app/m/admin/timeline/[bookingId]/page.tsx`
-- ` M` `src/app/packages/[id]/DetailClient.tsx`
-- ` M` `src/components/ProductCard.tsx`
-- ` M` `src/components/admin/YeosonamA4Template.tsx`
-- ` M` `src/components/customer/DestinationPackagesSection.tsx`
-- ` M` `src/components/customer/PackageCard.tsx`
-- ` M` `src/components/itinerary/A4PosterLayout.tsx`
-- ` M` `src/hooks/useRealtimeList.ts`
-- ` M` `src/hooks/useRealtimeRefresh.ts`
-- ` M` `src/inngest/functions/daily-marketing.ts`
-- ` M` `src/inngest/functions/monthly-billing.ts`
-- ` M` `src/inngest/functions/tenant-billing.ts`
-- ` M` `src/inngest/functions/tenant-marketing.ts`
-- ` M` `src/lib/agent-action-executor.ts`
-- ` M` `src/lib/agent-tools/package-tool.ts`
-- ` M` `src/lib/attraction-desc-gen.ts`
-- ` M` `src/lib/attraction-photo-match.ts`
-- ` M` `src/lib/blog-pillar-generator.ts`
-- ` M` `src/lib/booking-state-machine.ts`
-- ` M` `src/lib/card-news-html/critic.ts`
-- ` M` `src/lib/card-news-types.ts`
-- ` M` `src/lib/competitor-ad-monitor.ts`
-- ` M` `src/lib/content-generator.ts`
-- ` M` `src/lib/content-pipeline/bandit.ts`
-- ` M` `src/lib/content-pipeline/card-copy.ts`
-- ` M` `src/lib/creative-engine/update-patterns.ts`
-- ` M` `src/lib/creative-engine/winner-auto-publish.ts`
-- ` M` `src/lib/customer-segmentation.ts`
-- ` M` `src/lib/db/rfq-share.ts`
-- ` M` `src/lib/jarvis/agents/concierge.ts`
-- ` M` `src/lib/jarvis/agents/finance.ts`
-- ` M` `src/lib/jarvis/agents/marketing.ts`
-- ` M` `src/lib/jarvis/agents/operations.ts`
-- ` M` `src/lib/jarvis/agents/sales.ts`
-- ` M` `src/lib/jarvis/agents/system.ts`
 - ` M` `src/lib/jarvis/cost-tracker.ts`
-- ` M` `src/lib/jarvis/deepseek-agent-loop-v2.ts`
-- ` M` `src/lib/jarvis/mcp-server.ts`
-- ` M` `src/lib/jarvis/tools/product-tools.ts`
-- ` M` `src/lib/keyword-brain.ts`
-- ` M` `src/lib/normalize-with-llm.ts`
-- ` M` `src/lib/parser.ts`
-- ` M` `src/lib/payment-matcher.ts`
-- ` M` `src/lib/price-dates.ts`
-- ` M` `src/lib/programmatic-seo.ts`
-- ` M` `src/lib/rfm-email-campaign.ts`
-- ` M` `src/lib/roas-calculator.ts`
-- ` M` `src/lib/slack-ingest.ts`
-- ` M` `src/lib/wikidata-reconcile.ts`
-- `??` `tsc-errors.txt`
+- ` M` `src/lib/jarvis/response-critic.ts`
+- ` M` `src/lib/jarvis/scoped-tables.ts`
+- ` M` `src/lib/llm-gateway.ts`
+- ` M` `src/lib/prompt-loader.ts`
+- ` M` `src/lib/secret-registry.ts`
+- `??` `api_test.json`
+- `??` `api_total.txt`
+- `??` `packages_response.txt`
+- `??` `response1.json`
+- `??` `response2.json`
+- `??` `response3.json`
+- `??` `response4.json`
+- `??` `response5.json`
+- `??` `result-01.txt`
+- `??` `result-sc12.txt`
+- `??` `scripts/demand-forecast-pipeline.py`
+- `??` `scripts/qa-chat-scenario-test.mjs`
+- `??` `scripts/requirements.txt`
+- `??` `src/app/api/v1/`
+- `??` `src/lib/anomaly-detection.ts`
+- `??` `src/lib/api-key-middleware.ts`
+- `??` `src/lib/api-key-service.ts`
+- `??` `src/lib/customer-events.ts`
+- `??` `src/lib/multimodal-sdk.ts`
+- `??` `src/lib/qa-chat-engine.ts`
+- `??` `src/lib/recommendation-events.ts`
+- `??` `src/lib/toss-billing.ts`
+- `??` `supabase/migrations/20260529100000_customer_events.sql`
+- `??` `supabase/migrations/20260529110000_prompt_registry.sql`
+- `??` `supabase/migrations/20260529120000_recommendation_events.sql`
+- `??` `supabase/migrations/20260529130000_demand_forecasts.sql`
+- `??` `supabase/migrations/20260529140000_anomaly_detection.sql`
+- `??` `supabase/migrations/20260529150000_api_keys.sql`
+- `??` `supabase/migrations/20260529160000_toss_billing.sql`
+- `??` `supabase/migrations/20260529170000_agent_tasks.sql`
+- `??` `test_quick.mjs`
+- `??` `test_sc_12.mjs`
+- `??` `test_scenario_01.mjs`
+- `??` `test_scenarios.mjs`
+- `??` `test_ux.mjs`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -133,36 +57,14 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` M` `src/app/api/cron/refresh-booking-pace/route.ts`
-- [ ] P0 ` M` `src/app/admin/bookings/[id]/BookingDetailClient.tsx`
-- [ ] P0 ` M` `src/app/admin/bookings/[id]/edit/page.tsx`
-- [ ] P0 ` M` `src/app/admin/bookings/[id]/page.tsx`
-- [ ] P0 ` M` `src/app/admin/bookings/new/page.tsx`
-- [ ] P0 ` M` `src/app/admin/bookings/page.tsx`
-- [ ] P0 ` M` `src/app/admin/ledger/page.tsx`
-- [ ] P0 ` M` `src/app/admin/payments/PaymentsPageClient.tsx`
-- [ ] P0 ` M` `src/app/admin/payments/page.tsx`
-- [ ] P0 ` M` `src/app/m/admin/bookings/[id]/page.tsx`
-- [ ] P0 ` M` `src/app/m/admin/payments/[id]/page.tsx`
-- [ ] P0 ` M` `src/app/m/admin/timeline/[bookingId]/page.tsx`
-- [ ] P0 ` M` `src/lib/booking-state-machine.ts`
-- [ ] P1 ` M` `src/app/admin/affiliates/[id]/page.tsx`
-- [ ] P1 ` M` `src/app/admin/affiliates/page.tsx`
-- [ ] P1 ` M` `src/app/api/admin/affiliate-analytics/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/affiliate-anomaly-detect/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/affiliate-settlement-draft/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/auto-archive/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/blog-daily-summary/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/blog-learn/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/blog-publisher/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/demand-forecast/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/design-archetype-update/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/embed-products/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/ig-trend-miner/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/payment-heartbeat/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/rank-tracking/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/slack-gap-fill/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/unmatched-auto-resolve/route.ts`
+- [ ] P1 `??` `supabase/migrations/20260529100000_customer_events.sql`
+- [ ] P1 `??` `supabase/migrations/20260529110000_prompt_registry.sql`
+- [ ] P1 `??` `supabase/migrations/20260529120000_recommendation_events.sql`
+- [ ] P1 `??` `supabase/migrations/20260529130000_demand_forecasts.sql`
+- [ ] P1 `??` `supabase/migrations/20260529140000_anomaly_detection.sql`
+- [ ] P1 `??` `supabase/migrations/20260529150000_api_keys.sql`
+- [ ] P1 `??` `supabase/migrations/20260529160000_toss_billing.sql`
+- [ ] P1 `??` `supabase/migrations/20260529170000_agent_tasks.sql`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 
