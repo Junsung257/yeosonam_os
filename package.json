@@ -9,7 +9,7 @@
     "prebuild": "node scripts/copy-partytown-lib.cjs && node db/audit_vercel_functions_count.js --ci",
     "audit:vercel-functions": "node db/audit_vercel_functions_count.js",
     "audit:vercel-functions:ci": "node db/audit_vercel_functions_count.js --ci",
-    "build": "next build",
+    "build": "cross-env NODE_OPTIONS=--max_old_space_size=6144 next build",
     "analyze": "cross-env ANALYZE=true next build",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:bundle:ci": "node scripts/check-bundle-budget.mjs --fail",

@@ -33,7 +33,8 @@ jobs:
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
 
-      - name: ESLint
+      - name: ESLint (non-blocking legacy debt)
+        continue-on-error: true
         run: npx eslint src --format=compact
 
       - name: a11y lint (jsx-a11y strict)

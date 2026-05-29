@@ -174,3 +174,7 @@ dev-server.log
 PR_BODY.md
 PLAN.md
 fix-catch-patterns.py
+
+# Codex local workspace metadata
+.agents/
+.codex/
