@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { getSecret } from '@/lib/secret-registry';
 import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
-
-const supabaseAdmin = createClient(
-  getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-  getSecret('SUPABASE_SERVICE_ROLE_KEY')!,
-  { auth: { persistSession: false } }
-);
+import { supabaseAdmin } from '@/lib/supabase';
 
 // GET: 링크 목록 — JWT 쿠키 또는 PIN 헤더(x-influencer-pin)
 export async function GET(req: NextRequest) {
