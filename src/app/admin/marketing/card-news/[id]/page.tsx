@@ -486,11 +486,11 @@ export default function CardNewsEditorPage() {
                   <h2 contentEditable suppressContentEditableWarning
                     onBlur={e => updateActiveSlide({ headline: e.currentTarget.textContent || '' })}
                     style={{
-                      fontFamily: (activeSlide as any).headline_style?.fontFamily || 'Pretendard',
-                      fontSize: ((activeSlide as any).headline_style?.fontSize || 32) + 'px',
-                      color: (activeSlide as any).headline_style?.color || '#ffffff',
-                      fontWeight: (activeSlide as any).headline_style?.fontWeight || 'bold',
-                      textAlign: ((activeSlide as any).headline_style?.textAlign || 'center') as 'left' | 'center' | 'right',
+                      fontFamily: activeSlide.headline_style?.fontFamily || 'Pretendard',
+                      fontSize: (activeSlide.headline_style?.fontSize || 32) + 'px',
+                      color: activeSlide.headline_style?.color || '#ffffff',
+                      fontWeight: activeSlide.headline_style?.fontWeight || 'bold',
+                      textAlign: (activeSlide.headline_style?.textAlign || 'center') as 'left' | 'center' | 'right',
                     }}
                     className="leading-tight outline-none focus:bg-yellow-50/20 rounded mb-2">
                     {activeSlide.headline}
@@ -498,11 +498,11 @@ export default function CardNewsEditorPage() {
                   <p contentEditable suppressContentEditableWarning
                     onBlur={e => updateActiveSlide({ body: e.currentTarget.textContent || '' })}
                     style={{
-                      fontFamily: (activeSlide as any).body_style?.fontFamily || 'Pretendard',
-                      fontSize: ((activeSlide as any).body_style?.fontSize || 18) + 'px',
-                      color: (activeSlide as any).body_style?.color || '#e0e0e0',
-                      fontWeight: (activeSlide as any).body_style?.fontWeight || 'normal',
-                      textAlign: ((activeSlide as any).body_style?.textAlign || 'center') as 'left' | 'center' | 'right',
+                      fontFamily: activeSlide.body_style?.fontFamily || 'Pretendard',
+                      fontSize: (activeSlide.body_style?.fontSize || 18) + 'px',
+                      color: activeSlide.body_style?.color || '#e0e0e0',
+                      fontWeight: activeSlide.body_style?.fontWeight || 'normal',
+                      textAlign: (activeSlide.body_style?.textAlign || 'center') as 'left' | 'center' | 'right',
                     }}
                     className="leading-relaxed outline-none focus:bg-yellow-50/20 rounded whitespace-pre-line">
                     {activeSlide.body}
@@ -528,10 +528,10 @@ export default function CardNewsEditorPage() {
               <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2.5">
                 <label className="text-[10px] font-semibold text-indigo-700 uppercase block mb-1.5">디자인 템플릿</label>
                 <select
-                  value={(activeSlide as any).template_id || ''}
+                  value={activeSlide.template_id || ''}
                   onChange={e => {
                     const tplId = e.target.value || undefined;
-                    updateActiveSlide({ template_id: tplId } as any);
+                    updateActiveSlide({ template_id: tplId });
                   }}
                   className="w-full border border-indigo-200 rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-indigo-400 bg-white"
                 >
@@ -544,10 +544,10 @@ export default function CardNewsEditorPage() {
                 </select>
                 <button
                   onClick={() => {
-                    const tplId = (activeSlide as any).template_id;
+                    const tplId = activeSlide.template_id;
                     if (!tplId) { showToast('템플릿을 먼저 선택하세요'); return; }
                     if (!confirm(`모든 슬라이드(${slides.length}장)에 "${tplId}" 템플릿을 적용하시겠습니까?`)) return;
-                    setSlides(prev => prev.map(s => ({ ...s, template_id: tplId } as any)));
+                    setSlides(prev => prev.map(s => ({ ...s, template_id: tplId })));
                     showToast('전체 슬라이드 적용 완료');
                   }}
                   className="w-full mt-1.5 px-2 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700"
@@ -560,8 +560,8 @@ export default function CardNewsEditorPage() {
               <div>
                 <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block mb-1.5">배지 (옵션)</label>
                 <input
-                  value={(activeSlide as any).badge || ''}
-                  onChange={e => updateActiveSlide({ badge: e.target.value || null } as any)}
+                  value={activeSlide.badge || ''}
+                  onChange={e => updateActiveSlide({ badge: e.target.value || null })}
                   placeholder="예: 핵심 / TIP / 01"
                   maxLength={10}
                   className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90]"
@@ -574,8 +574,8 @@ export default function CardNewsEditorPage() {
                 <select value={activeSlide.overlay_style}
                   onChange={e => updateActiveSlide({ overlay_style: e.target.value as OverlayStyle })}
                   className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90]"
-                  disabled={!!(activeSlide as any).template_id}
-                  title={(activeSlide as any).template_id ? '템플릿 사용 시 무효' : ''}>
+                  disabled={!!activeSlide.template_id}
+                  title={activeSlide.template_id ? '템플릿 사용 시 무효' : ''}>
                   {(Object.keys(OVERLAY_LABELS) as OverlayStyle[]).map(k => (
                     <option key={k} value={k}>{OVERLAY_LABELS[k]}</option>
                   ))}
@@ -597,36 +597,36 @@ export default function CardNewsEditorPage() {
               {/* 제목 스타일링 */}
               <div className="border border-admin-border-mid rounded-lg p-2.5 space-y-2">
                 <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block">제목 스타일</label>
-                <select value={(activeSlide as any).headline_style?.fontFamily || 'Pretendard'}
-                  onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, fontFamily: e.target.value } } as any)}
+                <select value={activeSlide.headline_style?.fontFamily || 'Pretendard'}
+                  onChange={e => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, fontFamily: e.target.value } })}
                   className="w-full border border-admin-border-mid rounded px-2 py-1 text-[11px]">
                   {['Pretendard', 'Noto Sans KR', 'Gothic A1'].map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] text-admin-muted-2 w-6">크기</span>
-                  <input type="range" min={16} max={72} value={(activeSlide as any).headline_style?.fontSize || 32}
-                    onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, fontSize: parseInt(e.target.value) } } as any)}
+                  <input type="range" min={16} max={72} value={activeSlide.headline_style?.fontSize || 32}
+                    onChange={e => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, fontSize: parseInt(e.target.value) } })}
                     className="flex-1 accent-blue-600" />
-                  <span className="text-[10px] text-admin-muted w-8 text-right">{(activeSlide as any).headline_style?.fontSize || 32}px</span>
+                  <span className="text-[10px] text-admin-muted w-8 text-right">{activeSlide.headline_style?.fontSize || 32}px</span>
                 </div>
                 <div className="flex gap-1">
                   {['#ffffff','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => (
-                    <button key={c} onClick={() => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, color: c } } as any)}
-                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).headline_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
+                    <button key={c} onClick={() => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, color: c } })}
+                      className={`w-5 h-5 rounded-full border transition ${activeSlide.headline_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                       style={{ backgroundColor: c }} />
                   ))}
-                  <input type="color" value={(activeSlide as any).headline_style?.color || '#ffffff'}
-                    onChange={e => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, color: e.target.value } } as any)}
+                  <input type="color" value={activeSlide.headline_style?.color || '#ffffff'}
+                    onChange={e => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, color: e.target.value } })}
                     className="w-5 h-5 rounded cursor-pointer" />
                 </div>
                 <div className="flex gap-0.5">
                   {[
-                    { k: 'fontWeight', v: 'bold', label: 'B', active: (activeSlide as any).headline_style?.fontWeight === 'bold' },
-                    { k: 'textAlign', v: 'left', label: '좌', active: (activeSlide as any).headline_style?.textAlign === 'left' },
-                    { k: 'textAlign', v: 'center', label: '중', active: ((activeSlide as any).headline_style?.textAlign || 'center') === 'center' },
-                    { k: 'textAlign', v: 'right', label: '우', active: (activeSlide as any).headline_style?.textAlign === 'right' },
+                    { k: 'fontWeight', v: 'bold', label: 'B', active: activeSlide.headline_style?.fontWeight === 'bold' },
+                    { k: 'textAlign', v: 'left', label: '좌', active: activeSlide.headline_style?.textAlign === 'left' },
+                    { k: 'textAlign', v: 'center', label: '중', active: (activeSlide.headline_style?.textAlign || 'center') === 'center' },
+                    { k: 'textAlign', v: 'right', label: '우', active: activeSlide.headline_style?.textAlign === 'right' },
                   ].map((btn, i) => (
-                    <button key={i} onClick={() => updateActiveSlide({ headline_style: { ...(activeSlide as any).headline_style, [btn.k]: btn.active && btn.k === 'fontWeight' ? 'normal' : btn.v } } as any)}
+                    <button key={i} onClick={() => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, [btn.k]: btn.active && btn.k === 'fontWeight' ? 'normal' : btn.v } })}
                       className={`flex-1 py-1 rounded text-[10px] font-bold transition ${btn.active ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                       {btn.label}
                     </button>
@@ -639,15 +639,15 @@ export default function CardNewsEditorPage() {
                 <label className="text-[10px] font-semibold text-admin-muted-2 uppercase block">본문 스타일</label>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] text-admin-muted-2 w-6">크기</span>
-                  <input type="range" min={10} max={36} value={(activeSlide as any).body_style?.fontSize || 18}
-                    onChange={e => updateActiveSlide({ body_style: { ...(activeSlide as any).body_style, fontSize: parseInt(e.target.value) } } as any)}
+                  <input type="range" min={10} max={36} value={activeSlide.body_style?.fontSize || 18}
+                    onChange={e => updateActiveSlide({ body_style: { ...activeSlide.body_style, fontSize: parseInt(e.target.value) } })}
                     className="flex-1 accent-blue-600" />
-                  <span className="text-[10px] text-admin-muted w-8 text-right">{(activeSlide as any).body_style?.fontSize || 18}px</span>
+                  <span className="text-[10px] text-admin-muted w-8 text-right">{activeSlide.body_style?.fontSize || 18}px</span>
                 </div>
                 <div className="flex gap-1">
                   {['#ffffff','#e0e0e0','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6'].map(c => (
-                    <button key={c} onClick={() => updateActiveSlide({ body_style: { ...(activeSlide as any).body_style, color: c } } as any)}
-                      className={`w-5 h-5 rounded-full border transition ${(activeSlide as any).body_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
+                    <button key={c} onClick={() => updateActiveSlide({ body_style: { ...activeSlide.body_style, color: c } })}
+                      className={`w-5 h-5 rounded-full border transition ${activeSlide.body_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                       style={{ backgroundColor: c }} />
                   ))}
                 </div>
@@ -760,7 +760,7 @@ export default function CardNewsEditorPage() {
 function buildDefaultCaption(cn: CardNews, slides: CardNewsSlide[]): string {
   const headline = slides[0]?.headline ?? cn.title;
   const body = slides[0]?.body ?? '';
-  const dest = (cn as any).package_destination as string | undefined;
+  const dest = (cn as unknown as { package_destination?: string }).package_destination;
   const destTags = dest
     ? dest.split(/[\/,·\s]+/).filter(Boolean).slice(0, 3).map(t => `#${t.replace(/[^가-힣a-zA-Z0-9]/g, '')}`).join(' ')
     : '';

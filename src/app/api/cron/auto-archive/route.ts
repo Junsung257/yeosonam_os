@@ -63,12 +63,12 @@ const getHandler = async () => {
             shouldArchive = true;
           }
         } else if (pkg.price_tiers && Array.isArray(pkg.price_tiers)) {
-          const allDates = (pkg.price_tiers as any[])
+          const allDates = (pkg.price_tiers as unknown as Array<Record<string, unknown>>)
             .flatMap(t => t.departure_dates || [])
             .filter(Boolean);
 
-          const allEndDates = (pkg.price_tiers as any[])
-            .map(t => t.date_range?.end)
+          const allEndDates = (pkg.price_tiers as unknown as Array<Record<string, unknown>>)
+            .map(t => (t.date_range as { end?: string } | undefined)?.end)
             .filter(Boolean);
 
           const allRelevantDates = [...allDates, ...allEndDates];

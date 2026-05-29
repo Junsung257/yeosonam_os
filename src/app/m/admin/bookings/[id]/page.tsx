@@ -84,33 +84,34 @@ export default async function MobileBookingDetail(
 
   const logs = await fetchRecentLogs(params.id);
 
-  const customer = (booking as any).customers as
-    | { name?: string; phone?: string }
-    | null
-    | undefined;
+  const customer = (
+    booking as {
+      customers?: { name?: string; phone?: string } | null;
+    }
+  ).customers;
 
   const balance = getBalance({
-    total_price: (booking as any).total_price ?? 0,
-    paid_amount: (booking as any).paid_amount ?? 0,
+    total_price: booking.total_price ?? 0,
+    paid_amount: booking.paid_amount ?? 0,
   });
   const margin =
-    ((booking as any).total_price ?? 0) - ((booking as any).total_cost ?? 0);
+    (booking.total_price ?? 0) - (booking.total_cost ?? 0);
 
   const transitions =
-    ALLOWED_TRANSITIONS[(booking as any).status as string] ?? [];
+    ALLOWED_TRANSITIONS[booking.status as string] ?? [];
 
   return (
     <>
       <MobileHeader
-        title={(booking as any).booking_no ?? '예약 상세'}
-        subtitle={(booking as any).package_title ?? ''}
+        title={booking.booking_no ?? '예약 상세'}
+        subtitle={booking.package_title ?? ''}
         showBack
         backHref="/m/admin/bookings"
-        rightSlot={<MobileStatusBadge status={(booking as any).status} size="md" />}
+        rightSlot={<MobileStatusBadge status={booking.status} size="md" />}
       />
       <main className="px-4 py-4 space-y-4 pb-24">
         <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-4">
-          <ProgressBar status={(booking as any).status} />
+          <ProgressBar status={booking.status} />
         </section>
 
         <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
@@ -121,8 +122,8 @@ export default async function MobileBookingDetail(
                 {customer?.name ?? '예약자 미지정'}
               </div>
               <div className="text-xs text-admin-muted mt-0.5">
-                성인 {(booking as any).adult_count ?? 0}명 · 아동{' '}
-                {(booking as any).child_count ?? 0}명
+                성인 {booking.adult_count ?? 0}명 · 아동{' '}
+                {booking.child_count ?? 0}명
               </div>
             </div>
             {customer?.phone && (
@@ -142,7 +143,7 @@ export default async function MobileBookingDetail(
           <div className="flex items-center justify-between text-sm">
             <span className="text-admin-muted">출발일</span>
             <span className="font-semibold text-admin-text">
-              {fmtDate((booking as any).departure_date ?? undefined) || '미정'}
+              {fmtDate(booking.departure_date ?? undefined) || '미정'}
             </span>
           </div>
         </section>
@@ -153,19 +154,19 @@ export default async function MobileBookingDetail(
             <div className="flex justify-between py-1.5">
               <dt className="text-admin-muted">판매가</dt>
               <dd className="font-semibold tabular-nums">
-                {fmtK((booking as any).total_price ?? 0)}
+                {fmtK(booking.total_price ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
               <dt className="text-admin-muted">원가</dt>
               <dd className="tabular-nums text-admin-muted">
-                {fmtK((booking as any).total_cost ?? 0)}
+                {fmtK(booking.total_cost ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
               <dt className="text-admin-muted">입금액</dt>
               <dd className="tabular-nums text-emerald-600 font-medium">
-                {fmtK((booking as any).paid_amount ?? 0)}
+                {fmtK(booking.paid_amount ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
@@ -207,14 +208,14 @@ export default async function MobileBookingDetail(
             <div className="text-xs text-admin-muted-2 py-2">기록 없음</div>
           ) : (
             <ul className="space-y-2">
-              {logs.map((log: any) => (
+              {logs.map(log => (
                 <li
-                  key={log.id as string}
+                  key={log.id}
                   className="text-xs border-l-2 border-admin-border-mid pl-3 py-0.5"
                 >
-                  <div className="font-medium text-admin-text-2">{log.title as string}</div>
+                  <div className="font-medium text-admin-text-2">{log.title}</div>
                   <div className="text-admin-muted-2 mt-0.5">
-                    {log.created_at ? fmtMonthDayTime(log.created_at as string) : ''}
+                    {log.created_at ? fmtMonthDayTime(log.created_at) : ''}
                   </div>
                 </li>
               ))}
@@ -222,17 +223,17 @@ export default async function MobileBookingDetail(
           )}
         </section>
 
-        {((booking as any).memo || (booking as any).special_requests) && (
+        {(booking.memo || booking.special_requests) && (
           <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
             <h3 className="text-xs font-semibold text-admin-muted">메모</h3>
-            {(booking as any).memo && (
+            {booking.memo && (
               <p className="text-xs text-admin-text-2 whitespace-pre-wrap">
-                {(booking as any).memo}
+                {booking.memo}
               </p>
             )}
-            {(booking as any).special_requests && (
+            {booking.special_requests && (
               <p className="text-xs text-admin-muted whitespace-pre-wrap">
-                요청: {(booking as any).special_requests}
+                요청: {booking.special_requests}
               </p>
             )}
           </section>
@@ -240,7 +241,7 @@ export default async function MobileBookingDetail(
       </main>
       <BookingActions
         bookingId={params.id}
-        status={(booking as any).status}
+        status={booking.status}
         transitions={transitions}
       />
     </>

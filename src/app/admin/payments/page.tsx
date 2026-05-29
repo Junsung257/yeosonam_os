@@ -1,6 +1,7 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { Suspense } from 'react';
 import PaymentsPageClient from './PaymentsPageClient';
+import type { BankTransaction, BookingFull } from './PaymentsPageClient';
 
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
@@ -48,13 +49,13 @@ export default async function PaymentsPage() {
   ]);
 
   // Merge active + unmatched (unmatched extends beyond 500 limit)
-  const mainTxs = (txResult.data ?? []) as any[];
-  const unmatchedTxs = (unmatchedResult.data ?? []) as any[];
-  const mainIds = new Set(mainTxs.map(t => t.id));
-  const mergedTxs = [...mainTxs, ...unmatchedTxs.filter(u => !mainIds.has(u.id))];
+  const mainTxs = txResult.data ?? [];
+  const unmatchedTxs = unmatchedResult.data ?? [];
+  const mainIds = new Set(mainTxs.map((t: { id: string }) => t.id));
+  const mergedTxs = [...mainTxs, ...unmatchedTxs.filter((u: { id: string }) => !mainIds.has(u.id))];
 
   // Compute ERP stats server-side
-  const erpRows = (erpResult.data ?? []) as any[];
+  const erpRows = erpResult.data ?? [];
   const totalPrice = erpRows.reduce((s, b) => s + (b.total_price || 0), 0);
   const totalCost  = erpRows.reduce((s, b) => s + (b.total_cost  || 0), 0);
   const totalPaid  = erpRows.reduce((s, b) => s + (b.paid_amount || 0), 0);
@@ -68,9 +69,9 @@ export default async function PaymentsPage() {
   return (
     <Suspense>
       <PaymentsPageClient
-        initialTransactions={mergedTxs as any}
-        initialTrashTxs={(excludedResult.data ?? []) as any}
-        initialBookings={(bookingsResult.data ?? []) as any}
+        initialTransactions={mergedTxs as unknown as BankTransaction[]}
+        initialTrashTxs={(excludedResult.data ?? []) as unknown as BankTransaction[]}
+        initialBookings={(bookingsResult.data ?? []) as unknown as BookingFull[]}
         initialErp={initialErp}
       />
     </Suspense>

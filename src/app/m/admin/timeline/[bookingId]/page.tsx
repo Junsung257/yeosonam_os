@@ -50,7 +50,7 @@ export default async function TimelinePage(
   ]);
   if (!meta) notFound();
 
-  const metaAny = meta as any;
+  const metaAny = meta as unknown as { booking_no: string; customers: { name: string } | null };
 
   return (
     <>

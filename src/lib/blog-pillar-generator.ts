@@ -105,12 +105,12 @@ export async function buildPillarContext(destination: string): Promise<{
   const attractions = ((attrs || []) as Array<{ name: string; short_desc?: string }>)
     .map(a => a.short_desc ? `${a.name}(${a.short_desc.slice(0, 30)})` : a.name);
 
-  const prices = ((pkgs || []) as any[]).map(p => p.price).filter((p): p is number => !!p);
+  const prices = ((pkgs || []) as unknown[]).map(p => (p as Record<string, unknown>).price).filter((p): p is number => !!p);
   const minP = prices.length ? Math.min(...prices) : 0;
   const maxP = prices.length ? Math.max(...prices) : 0;
   const priceRange = minP && maxP ? `${Math.round(minP / 10000)}만원 ~ ${Math.round(maxP / 10000)}만원` : '미정';
 
-  const airlines = Array.from(new Set(((pkgs || []) as any[]).map(p => p.airline).filter(Boolean))) as string[];
+  const airlines = Array.from(new Set(((pkgs || []) as unknown[]).map(p => (p as Record<string, unknown>).airline).filter(Boolean))) as string[];
   const packageSummary = `활성 패키지 ${pkgs?.length || 0}개 · ${priceRange}`;
 
   const month = new Date().getMonth() + 1;

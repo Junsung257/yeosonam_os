@@ -190,10 +190,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   ]);
 
   if (!stats || stats.length === 0) return null;
-  const stat = stats[0] as any;
+  const stat = stats[0];
 
-  const alivePkgs = ((packages || []) as any[]).filter(p => {
-    const pd = (p.price_dates || []) as Array<{ date?: string }>;
+  const alivePkgs = (packages || []).filter(p => {
+    const pd = (p.price_dates || []) as unknown as Array<{ date?: string }>;
     if (pd.length === 0) return true;
     return pd.some(d => d.date && d.date >= today);
   });
@@ -220,7 +220,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     metadataResult.error ? null : (metadataResult.data as DestinationMeta | null);
 
   const climateData: ClimateData | null =
-    climateResult.error ? null : (climateResult.data as ClimateData | null);
+    climateResult.error ? null : (climateResult.data as unknown as ClimateData | null);
 
   return {
     destination: city,
@@ -228,10 +228,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     avgRating: stat.avg_rating ? Number(stat.avg_rating) : null,
     reviewCount: stat.total_reviews || 0,
     minPrice: stat.min_price || null,
-    attractions: (attractions as any[]) || [],
+    attractions: (attractions || []) as unknown as PillarData['attractions'],
     packages: alivePkgs,
-    relatedPosts: (posts as any[]) || [],
-    pillarPost: (pillarRow as any[])?.[0] || null,
+    relatedPosts: (posts || []) as unknown as PillarData['relatedPosts'],
+    pillarPost: (pillarRow as unknown as PillarData['pillarPost'][] | null)?.[0] || null,
     siblingCities,
     metadata,
     climateData,
@@ -538,9 +538,9 @@ export default async function DestinationPillarPage({ params }: { params: Promis
               destination={data.climateData.destination}
               primaryCity={data.climateData.primary_city}
               country={data.climateData.country}
-              monthlyNormals={data.climateData.monthly_normals as any}
-              fitnessScores={data.climateData.fitness_scores as any}
-              seasonalSignals={data.climateData.seasonal_signals as any}
+              monthlyNormals={data.climateData.monthly_normals as unknown as import('@/lib/travel-fitness-score').MonthlyNormal[]}
+              fitnessScores={data.climateData.fitness_scores as unknown as import('@/lib/travel-fitness-score').FitnessScore[]}
+              seasonalSignals={data.climateData.seasonal_signals as unknown as import('@/lib/seasonal-signals').SeasonalSignal[]}
               representativeMonth={new Date().getMonth() + 1}
               departureDistribution={Object.keys(departureDist).length > 0 ? departureDist : undefined}
             />
@@ -607,7 +607,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
           {data.packages.length > 0 && (
             <DestinationPackagesSection
               destination={decoded}
-              packages={data.packages as any}
+              packages={data.packages as unknown as Array<{ id: string; title: string; destination: string; duration: number | null; nights: number | null; price: number | null; airline: string | null; departure_airport: string | null; avg_rating: number | null; review_count: number; price_dates: Array<{ date?: string }> | null; [key: string]: unknown }>}
               departureCities={showDepartureTabs ? data.departureCities : []}
             />
           )}

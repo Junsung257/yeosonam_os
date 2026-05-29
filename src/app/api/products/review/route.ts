@@ -266,7 +266,7 @@ async function handleApprove(body: {
         .select('raw_extracted_text')
         .eq('internal_code', product_id)
         .maybeSingle();
-      const rawText = (prod as any)?.raw_extracted_text ?? '';
+      const rawText = prod?.raw_extracted_text ?? '';
       if (rawText) {
         const fingerprint = createHash('sha256').update(rawText.slice(0, 500)).digest('hex');
         flywheelJson.text_fingerprint     = fingerprint;
@@ -420,7 +420,7 @@ async function handleFaq(body: { product_id: string }) {
 
   if (!product) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
 
-  const rawText = ((product as any).raw_extracted_text ?? '') as string;
+  const rawText = product.raw_extracted_text ?? '';
   const snippet = rawText.slice(0, 8000);
 
   const apiKey = getSecret('GOOGLE_GEMINI_API_KEY') || getSecret('GOOGLE_API_KEY') || '';
@@ -441,8 +441,8 @@ async function handleFaq(body: { product_id: string }) {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = (await getPrompt('product-faq-generation', PRODUCT_FAQ_FALLBACK))
-      .replace('{{display_name}}', (product as any).display_name ?? '')
-      .replace('{{destination}}', (product as any).destination ?? '')
+      .replace('{{display_name}}', product.display_name ?? '')
+      .replace('{{destination}}', product.destination ?? '')
       .replace('{{snippet}}', snippet);
 
     const result = await model.generateContent(prompt);
@@ -470,8 +470,8 @@ async function handleImages(body: { product_id: string }) {
 
   if (!product) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
 
-  const destination = (product as any).destination ?? '';
-  const tags: string[] = (product as any).theme_tags ?? [];
+  const destination = product.destination ?? '';
+  const tags: string[] = (product.theme_tags ?? []) as string[];
   const keyword = `${destination} ${tags.slice(0, 2).join(' ')} travel`.trim();
 
   try {
@@ -500,20 +500,18 @@ async function handleMarketing(body: {
 
   if (!product) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
 
-  const p = product as any;
-
   if (type === 'itinerary') {
     // 일정표는 데이터 JSON 반환 (프론트에서 렌더)
     return NextResponse.json({
       type: 'itinerary',
       data: {
         product_id,
-        destination: p.destination,
-        duration_days: p.duration_days,
-        net_price: p.net_price,
-        highlights: p.highlights ?? [],
-        selling_points: p.selling_points ?? null,
-        product_prices: p.product_prices ?? [],
+        destination: product.destination,
+        duration_days: product.duration_days,
+        net_price: product.net_price,
+        highlights: product.highlights ?? [],
+        selling_points: product.selling_points ?? null,
+        product_prices: product.product_prices ?? [],
       },
     });
   }
@@ -523,11 +521,11 @@ async function handleMarketing(body: {
   try {
     const variants = await generateAdVariants(
       {
-        destination: p.destination ?? '해외여행',
-        price: p.net_price ?? 0,
-        duration: p.duration_days ?? 3,
-        product_highlights: p.highlights ?? [],
-        product_summary: (p.raw_extracted_text ?? '').slice(0, 1000),
+        destination: product.destination ?? '해외여행',
+        price: product.net_price ?? 0,
+        duration: product.duration_days ?? 3,
+        product_highlights: product.highlights ?? [],
+        product_summary: (product.raw_extracted_text ?? '').slice(0, 1000),
       },
       platform,
       'gemini',

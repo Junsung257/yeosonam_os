@@ -79,7 +79,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ cardN
       distributions = dists ?? [];
     }
 
-    const metaAds = (distributions as any[]).filter(d =>
+    const metaAds = (distributions as unknown as Array<Record<string, unknown>>).filter(d =>
       (d.platform as string)?.toLowerCase().includes('meta')
     );
 
@@ -205,8 +205,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ card
           const data = await r.json().catch(() => ({}));
           // orchestrator 결과를 steps에 반영
           if (data.distributions?.length) {
-            const hasMeta = (data.distributions as any[]).some(d => d.platform?.includes('meta'));
-            const hasIg = (data.distributions as any[]).some(d => d.platform === 'instagram_caption');
+            const hasMeta = (data.distributions as unknown as Array<Record<string, unknown>>).some(d => (d.platform as string)?.includes('meta'));
+            const hasIg = (data.distributions as unknown as Array<Record<string, unknown>>).some(d => d.platform === 'instagram_caption');
             if (hasMeta) updateFactoryJobStep(cardNewsId, 'meta_ads', 'done');
             if (hasIg) updateFactoryJobStep(cardNewsId, 'ig_publish', 'queued');
           }

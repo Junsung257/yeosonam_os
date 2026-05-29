@@ -48,7 +48,7 @@ async function AffiliatesDataFetcher() {
         .then((r: { data: unknown[] | null }) => r.data ?? [])
     : [];
 
-  return <AffiliatesPageClient initialAffiliates={affiliates as any} />;
+  return <AffiliatesPageClient initialAffiliates={affiliates as unknown as { id: string; name: string; phone?: string; email?: string; referral_code: string; grade: number; grade_label: string; bonus_rate: number; payout_type: 'PERSONAL' | 'BUSINESS'; booking_count: number; total_commission: number; memo?: string; }[]} />;
 }
 
 export default function AffiliatesPage() {

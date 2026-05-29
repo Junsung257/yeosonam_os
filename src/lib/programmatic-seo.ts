@@ -243,14 +243,15 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   if (fresh.length === 0) return { promoted: 0, errors: ['모두 14일 dedup 충돌'] };
 
   // 키워드 리서치
-  const research = await researchKeywordsBatch(fresh.map((c: any) => c.primary_keyword)).catch(() => new Map());
+  const research = await researchKeywordsBatch(fresh.map((c: Record<string, unknown>) => c.primary_keyword as string)).catch(() => new Map());
 
-  const queueRows: any[] = [];
-  for (const c of fresh as any[]) {
-    const r = research.get(c.primary_keyword);
-    const tier = r?.tier ?? c.expected_tier ?? classifyKeywordTier(c.primary_keyword);
+  const queueRows: Record<string, unknown>[] = [];
+  for (const c of fresh as Record<string, unknown>[]) {
+    const kw = c.primary_keyword as string;
+    const r = research.get(kw);
+    const tier = r?.tier ?? c.expected_tier as string ?? classifyKeywordTier(kw);
     const intent = classifySearchIntent(
-      `${c.primary_keyword ?? ''} ${c.topic_template ?? ''}`.trim(),
+      `${kw ?? ''} ${(c.topic_template as string) ?? ''}`.trim(),
     );
     const basePriority =
       typeof c.priority === 'number' && !Number.isNaN(c.priority) ? c.priority : 50;
@@ -291,8 +292,8 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
   // pending → queued 처리
   if (inserted && inserted.length > 0) {
     for (let i = 0; i < inserted.length; i++) {
-      const ins = inserted[i] as any;
-      const src = fresh.find((f: any) => f.primary_keyword === ins.primary_keyword);
+      const ins = inserted[i] as Record<string, unknown>;
+      const src = fresh.find((f: Record<string, unknown>) => f.primary_keyword === ins.primary_keyword);
       if (!src) continue;
       await supabaseAdmin
         .from('programmatic_seo_topics')

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { groupForPoster, getEffectivePriceDates, type PriceDate, type MonthGroup } from '@/lib/price-dates';
-import { parseDaysWithTransport, isTransportSegment } from '@/lib/transportParser';
+import { parseDaysWithTransport, isTransportSegment, type ParsedScheduleItem } from '@/lib/transportParser';
 import { matchAttraction as matchAttractionShared, matchAttractions as matchAttractionsShared, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { resolvePrimaryAttraction, type AttractionRefScheduleItem } from '@/lib/attraction-reference';
@@ -1304,7 +1304,7 @@ function splitPoi(activity: string): { poiName: string; poiDesc: string } {
 function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[]; attractions?: AttractionInfo[]; destination?: string }) {
   // ══ 통합 교통 파서: 전체 days 한 번에 처리 (ship cross-day pair 포함) ══
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parsedDays = parseDaysWithTransport(days as any);
+  const parsedDays = parseDaysWithTransport(days as unknown as Parameters<typeof parseDaysWithTransport>[0]);
 
   // ERR-HET-a4-shortdesc-duplicate@2026-04-22 — A4 포스터에서 같은 관광지에 매칭된 여러 activity 마다
   // `— {attr.short_desc}` 가 반복 노출 (예: 시라무런 초원 5회). 전체 일정에 걸쳐 **첫 매칭 activity 에만**
@@ -1319,16 +1319,16 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
 
         // ── 동선 노드 분리 (항상 최상단 배지로 렌더) ──
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const routeNodes = parsedSchedule.filter(s => !isTransportSegment(s)).filter(isRouteNode as any);
+        const routeNodes = parsedSchedule.filter(s => !isTransportSegment(s)).filter(isRouteNode as unknown as (s: unknown) => s is ParsedScheduleItem);
 
         // ── 통합 타임라인 생성: 교통 바 + 일반 항목을 time 기준 오름차순 통합 ──
         // 동선 노드 / 단순 지역명은 제외
         const unifiedEntries = parsedSchedule.filter(s => {
           if (isTransportSegment(s)) return true;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (isRouteNode(s as any)) return false;
+          if (isRouteNode(s as unknown as { activity: string })) return false;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (isBareRegionNode(s as any)) return false;
+          if (isBareRegionNode(s as unknown as { activity: string })) return false;
           return true;
         });
 
@@ -1357,7 +1357,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                     {routeNodes.map((n, i) => (
                       <span key={i} className="inline-flex items-center gap-1 bg-admin-surface-2 text-admin-text-2 text-admin-sm font-semibold px-2 py-1 rounded">
                         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                        🗺️ {((n as any).activity || '').replace(/^📍\s*/, '')}
+                        🗺️ {((n as unknown as { activity?: string }).activity || '').replace(/^📍\s*/, '')}
                       </span>
                     ))}
                   </div>
@@ -1375,10 +1375,9 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                 const optionalItems: { activity: string }[] = [];
                 for (const entry of unifiedTimeline) {
                   if (isTransportSegment(entry)) { normalItems.push(entry); continue; }
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const item = entry as any;
-                  if (item.type === 'optional') { optionalItems.push(item); continue; }
-                  if (item.type === 'shopping') continue; // Fix 5: 쇼핑은 일정에서 제거
+                  const item2 = entry as unknown as { type?: string; activity: string; time?: string | null; note?: string | null; };
+                  if (item2.type === 'optional') { optionalItems.push(item2); continue; }
+                  if (item2.type === 'shopping') continue; // Fix 5: 쇼핑은 일정에서 제거
                   normalItems.push(entry);
                 }
 
@@ -1394,8 +1393,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                       );
                     }
                     // 일반 ScheduleItem 렌더
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const item = entry as any;
+                    const item = entry as unknown as { type?: string; activity: string; time?: string | null; note?: string | null; attraction_note?: string | null; };
                     // ERR-20260418-25/32 — optional/shopping 포함 매칭 스킵 강화
                     const skipAttrMatch =
                       item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping' ||
@@ -1407,7 +1405,7 @@ function DailyItinerary({ days, attractions, destination }: { days: DaySchedule[
                         (attractions ?? []) as unknown as AttractionData[],
                         destination,
                       ) as unknown as AttractionInfo | null;
-                    const attractionNote = (item as { attraction_note?: string | null }).attraction_note ?? null;
+                    const attractionNote = item.attraction_note ?? null;
                     const isSpecial = isSpecialBenefit(item);
                     const isPrep = isPreparationNode(item);
                     const badge = isSpecial

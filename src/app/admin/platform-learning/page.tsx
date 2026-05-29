@@ -525,7 +525,7 @@ export default function PlatformLearningPage() {
                             <span className="font-semibold text-admin-text">{f.rating === 'up' ? '긍정' : '부정'}</span>
                             <span className="text-admin-muted">{fmtDateTime(f.created_at)}</span>
                             <span className="text-admin-muted font-mono">
-                              {(f.payload as any)?.leadSource || '-'}
+                              {(f.payload as Record<string, unknown>)?.leadSource as string || '-'}
                             </span>
                           </div>
                           {f.session_id && (

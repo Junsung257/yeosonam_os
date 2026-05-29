@@ -113,7 +113,7 @@ async function runIgTrendMiner(request: NextRequest) {
       .from('ig_hashtag_pool')
       .update({
         last_used_at: new Date().toISOString(),
-        use_count: (pool.find((p) => p.hashtag === hashtag) as any)?.use_count + 1 || 1,
+        use_count: ((pool.find((p) => p.hashtag === hashtag) as Record<string, unknown>)?.use_count as number) + 1 || 1,
       })
       .eq('hashtag', hashtag);
 

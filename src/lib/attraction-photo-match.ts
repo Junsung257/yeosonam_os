@@ -75,8 +75,8 @@ async function searchWikimediaForAttraction(
     const entUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=claims&format=json`;
     const entRes = await fetch(entUrl, { headers: { 'User-Agent': UA } });
     if (!entRes.ok) return [];
-    const entJson = await entRes.json() as Record<string, unknown>;
-    const entity = (entJson as any).entities?.[qid];
+    const entJson = await entRes.json() as { entities?: Record<string, { claims?: Record<string, unknown> }> };
+    const entity = entJson.entities?.[qid];
     if (!entity) return [];
 
     const p18Claims = entity.claims?.P18 as Array<{ mainsnak?: { datavalue?: { value?: string } } }> | undefined;

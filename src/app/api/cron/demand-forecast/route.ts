@@ -68,8 +68,8 @@ async function run() {
     .select('destination, seasonal_signals')
     .limit(2000);
   const seasonalByDest = new Map<string, any>();
-  for (const c of (climateRows ?? []) as any[]) {
-    seasonalByDest.set(c.destination, c.seasonal_signals ?? null);
+  for (const c of (climateRows ?? []) as unknown as Array<Record<string, unknown>>) {
+    seasonalByDest.set(c.destination as string, c.seasonal_signals ?? null);
   }
 
   const now = new Date();

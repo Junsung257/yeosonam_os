@@ -63,8 +63,8 @@ export function tiersToDatePrices(
     const dates: string[] = [];
 
     // 1) date_range + departure_day_of_week → 개별 날짜 확장
-    const range = (tier as any).date_range as { start: string; end: string } | undefined;
-    const dow = (tier as any).departure_day_of_week as string | undefined;
+    const range = tier.date_range;
+    const dow = tier.departure_day_of_week;
     if (range?.start && range?.end && dow && DOW_MAP[dow] !== undefined) {
       const targetDow = DOW_MAP[dow];
       const [sy, sm, sd] = range.start.split('-').map(Number);
@@ -88,7 +88,7 @@ export function tiersToDatePrices(
     }
 
     // 3) excluded_dates 필터 (tier 레벨)
-    const excluded = new Set((tier as any).excluded_dates || []);
+    const excluded = new Set(tier.excluded_dates || []);
 
     const isConfirmed = tier.status === 'confirmed'
       || !!(tier.note && /출확|출발확정/.test(tier.note));

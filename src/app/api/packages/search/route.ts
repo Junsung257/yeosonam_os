@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
         if (chosen) break;
       }
       if (!chosen) {
-        const thumb = (pkg as any).thumbnail_urls?.find((u: string) => u?.startsWith('http'));
+        const thumb = ((pkg as Record<string, unknown>).thumbnail_urls as string[] | undefined)?.find((u: string) => u?.startsWith('http'));
         if (thumb) chosen = thumb;
       }
       imageByPkgId[pkg.id] = chosen ?? null;

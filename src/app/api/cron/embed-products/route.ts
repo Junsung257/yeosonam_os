@@ -93,12 +93,12 @@ export async function GET(request: NextRequest) {
     }
     if (!packages || packages.length === 0) break;
 
-    const texts = (packages as any[]).map(buildEmbeddingText);
+    const texts = (packages as unknown as Array<Record<string, unknown>>).map(buildEmbeddingText);
     const embeddings = await embedBatch(texts, apiKey, 'RETRIEVAL_DOCUMENT');
 
     for (let i = 0; i < packages.length; i++) {
       const emb = embeddings[i];
-      const pkg = packages[i] as any;
+      const pkg = packages[i] as Record<string, unknown>;
       if (!emb) {
         totalFailed++;
         continue;

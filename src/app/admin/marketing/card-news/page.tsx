@@ -1,4 +1,5 @@
 import { supabaseAdmin, isSupabaseConfigured, getCardNewsList } from '@/lib/supabase';
+import type { CardNews } from '@/lib/supabase';
 import CardNewsListPageClient from './CardNewsListPageClient';
 
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
@@ -24,9 +25,9 @@ export default async function CardNewsPage() {
 
   return (
     <CardNewsListPageClient
-      initialList={list as any}
-      initialPackages={(packagesResult.data ?? []) as any}
-      initialCategories={(categoriesResult.data ?? []) as any}
+      initialList={list as unknown as CardNews[]}
+      initialPackages={(packagesResult.data ?? []) as unknown as Array<{ id: string; title: string; destination: string; status: string; }>}
+      initialCategories={(categoriesResult.data ?? []) as unknown as Array<{ id: string; key: string; label: string; scope: string; }>}
     />
   );
 }

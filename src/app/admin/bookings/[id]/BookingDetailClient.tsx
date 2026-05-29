@@ -15,7 +15,7 @@ import BookingConciergeAdminPanel from '@/components/booking/BookingConciergeAdm
 import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
-interface BookingDetail {
+export interface BookingDetail {
   id: string;
   booking_no?: string;
   package_title?: string;

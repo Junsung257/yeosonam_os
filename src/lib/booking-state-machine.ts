@@ -22,7 +22,8 @@ export type MessageEventType =
   | 'CONFIRMATION_GUIDE'
   | 'HAPPY_CALL'
   | 'CANCELLATION'
-  | 'MANUAL_MEMO';
+  | 'MANUAL_MEMO'
+  | 'PARTNER_APPROVED';
 
 export interface TransitionDef {
   to: BookingStatus;

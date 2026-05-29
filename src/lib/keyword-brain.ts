@@ -860,7 +860,7 @@ export async function logOptimization(params: {
 // ── 유틸 ─────────────────────────────────────────────────
 function getLowestPrice(pkg: { price?: number; price_tiers?: { adult_price?: number }[]; price_dates?: { date: string; price: number; confirmed: boolean }[] }): number {
   if (pkg.price_dates?.length) {
-    const min = getMinPriceFromDates(pkg.price_dates as any);
+    const min = getMinPriceFromDates(pkg.price_dates);
     if (min > 0) return min;
   }
   const prices: number[] = [];

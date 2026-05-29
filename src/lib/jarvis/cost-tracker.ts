@@ -120,7 +120,7 @@ export async function assertQuota(ctx: JarvisContext): Promise<void> {
       .maybeSingle(),
   ])
 
-  const used = Number((usage as any)?.[0]?.total_tokens ?? 0)
+  const used = Number(((usage as Record<string, unknown>)?.[0] as Record<string, unknown>)?.total_tokens ?? 0)
   const quota = Number(profile?.monthly_token_quota ?? Number.POSITIVE_INFINITY)
 
   if (used >= quota) {
@@ -131,7 +131,7 @@ export async function assertQuota(ctx: JarvisContext): Promise<void> {
 /** 관리자 UI 에서 사용 — 현재 사용량 조회 */
 export async function getMonthlyUsage(tenantId: string) {
   const { data } = await supabaseAdmin.rpc('jarvis_current_month_usage', { p_tenant_id: tenantId })
-  const row = (data as any)?.[0] ?? {}
+  const row = ((data as Record<string, unknown>)?.[0] as Record<string, unknown>) ?? {}
   return {
     totalTokens: Number(row.total_tokens ?? 0),
     totalCostUsd: Number(row.total_cost_usd ?? 0),

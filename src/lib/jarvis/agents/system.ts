@@ -272,7 +272,7 @@ const SYSTEM_TOOLS_RAW = [
   },
 ]
 
-const SYSTEM_TOOLS = SYSTEM_TOOLS_RAW as any
+const SYSTEM_TOOLS = SYSTEM_TOOLS_RAW as unknown[]
 
 // ============================================================
 // 실행 구현
@@ -486,7 +486,7 @@ async function executeTool(toolName: string, args: any, ctx?: JarvisContext): Pr
     case 'get_blog_system_status': {
       const [queueResult, apiResult] = await Promise.all([
         sb.from('blog_queue').select('status', { count: 'exact', head: true }).limit(10),
-        sb.from('platform_integrations').select('provider, is_active').eq('is_active', true).in('provider', ['naver', 'meta'] as any).limit(10),
+        sb.from('platform_integrations').select('provider, is_active').eq('is_active', true).in('provider', ['naver', 'meta']).limit(10),
       ])
       return {
         queue: { pending: queueResult.count ?? 0 },

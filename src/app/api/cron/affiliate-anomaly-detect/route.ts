@@ -178,7 +178,7 @@ export async function GET(request: Request) {
           agent_type: 'finance',
           action_type: 'notify_affiliate_anomaly',
           summary: `[이상탐지] ${finding.affiliate_name} — ${finding.kind}`,
-          payload: finding as any,
+          payload: finding as unknown as Record<string, unknown>,
           requested_by: 'jarvis',
           priority: 'critical',
         })),
@@ -189,7 +189,7 @@ export async function GET(request: Request) {
       action: 'AFFILIATE_ANOMALY_DETECT',
       target_type: 'affiliate',
       description: `전일 이상탐지: ${findings.length}건`,
-      after_value: { date: yesterdayIso, findings } as any,
+      after_value: { date: yesterdayIso, findings } as unknown as Record<string, unknown>,
     }));
 
     await reportAffiliateCronSuccess('affiliate-anomaly-detect', { date: yesterdayIso, findings: findings.length });

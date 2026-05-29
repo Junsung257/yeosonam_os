@@ -1084,7 +1084,7 @@ export default function FreeTravelClient() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as any).error ?? '저장 실패');
+        throw new Error((body as { error?: string }).error ?? '저장 실패');
       }
       setPhoneSent(true);
     } catch (err) {

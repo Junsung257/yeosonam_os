@@ -87,8 +87,8 @@ export async function ingestSlackRawEvent(input: IngestInput): Promise<IngestRes
     return { rawEventId: null, duplicated: false, parsedCount: 0, parseStatus: 'failed', errors: [upsertErr.message] };
   }
 
-  const rawEventId = (upserted as any)?.id ?? null;
-  const existingStatus = (upserted as any)?.parse_status as string | undefined;
+  const rawEventId = upserted?.id ?? null;
+  const existingStatus = upserted?.parse_status as string | undefined;
 
   // 이미 parsed 상태면 중복 — 스킵
   if (existingStatus === 'parsed') {
@@ -173,18 +173,18 @@ export async function parseRawEvent(rawEventId: string, source: Source = 'manual
     `)
     .in('status', ['pending', 'confirmed']);
 
-  const bookings: BookingCandidate[] = (bookingsRaw || []).map((b: any) => ({
-    id: b.id,
-    booking_no: b.booking_no,
-    package_title: b.package_title,
-    total_price: b.total_price,
-    total_cost: b.total_cost,
-    paid_amount: b.paid_amount || 0,
-    total_paid_out: b.total_paid_out || 0,
-    status: b.status,
-    payment_status: b.payment_status,
-    actual_payer_name: b.actual_payer_name,
-    customer_name: b.customers?.name,
+  const bookings: BookingCandidate[] = (bookingsRaw || []).map((b: Record<string, unknown>) => ({
+    id: b.id as string,
+    booking_no: b.booking_no as string | undefined,
+    package_title: b.package_title as string | undefined,
+    total_price: b.total_price as number | undefined,
+    total_cost: b.total_cost as number | undefined,
+    paid_amount: (b.paid_amount as number) || 0,
+    total_paid_out: (b.total_paid_out as number) || 0,
+    status: b.status as string,
+    payment_status: b.payment_status as string | undefined,
+    actual_payer_name: b.actual_payer_name as string | null | undefined,
+    customer_name: ((b.customers as { name: string }[])?.[0]?.name),
   }));
 
   // Alias 학습 맵 로드 (정규화된 alias → customer_id)
@@ -283,7 +283,7 @@ async function insertOneTransaction(args: {
     // Alias 부스트: 매칭 결과 중 alias가 가리키는 고객의 예약이 있으면 신뢰도 가산
     if (aliasHit) {
       for (const c of candidates) {
-        const bk = c.booking as any;
+        const bk = c.booking;
         if (bk.lead_customer_id === aliasHit.customerId) {
           c.confidence = Math.min(1.0, c.confidence + aliasHit.boost);
           c.reasons.push(`Alias 매핑 적용 (+${aliasHit.boost})`);
@@ -460,7 +460,7 @@ export async function applyLedger(params: {
 
   // RPC는 TABLE을 반환하므로 data는 배열
   const row = Array.isArray(data) ? data[0] : data;
-  return (row as any)?.payment_status ?? null;
+  return (row as { payment_status?: string | null } | null)?.payment_status ?? null;
 }
 
 // ─── [5] Alias 학습/조회 ────────────────────────────────────────────────────
@@ -471,7 +471,7 @@ async function loadAliasMap(): Promise<Map<string, { customerId: string; boost: 
     .from('customer_aliases')
     .select('customer_id, normalized_alias, confidence_boost');
 
-  for (const row of (data || []) as any[]) {
+  for (const row of (data || [])) {
     if (row.normalized_alias && row.customer_id) {
       map.set(row.normalized_alias, {
         customerId: row.customer_id,
@@ -503,10 +503,10 @@ export async function learnAlias(params: {
     await supabaseAdmin
       .from('customer_aliases')
       .update({
-        usage_count: ((existing as any).usage_count || 0) + 1,
+        usage_count: (existing.usage_count || 0) + 1,
         last_used_at: new Date().toISOString(),
       })
-      .eq('id', (existing as any).id);
+      .eq('id', existing.id);
   } else {
     await supabaseAdmin
       .from('customer_aliases')

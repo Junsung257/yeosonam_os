@@ -393,7 +393,7 @@ export async function POST(req: NextRequest) {
             .eq('id', sessionId)
             .maybeSingle()
 
-          const prevMessages = (existing?.messages as any[]) || []
+          const prevMessages = (existing?.messages as unknown as Array<{ role: string; content: string; timestamp: string }>) || []
           const updatedMessages: any[] = [
             ...prevMessages,
             { role: 'user', content: message, timestamp: new Date().toISOString() },

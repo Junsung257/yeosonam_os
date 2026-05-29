@@ -127,7 +127,7 @@ const CONCIERGE_TOOLS_RAW = [
   },
 ] as const
 
-const CONCIERGE_TOOLS = CONCIERGE_TOOLS_RAW as any
+const CONCIERGE_TOOLS = [...CONCIERGE_TOOLS_RAW] as unknown[]
 
 /**
  * ctx (tenantId) 를 클로저로 잡아 tool 실행기를 만든다.
@@ -276,12 +276,12 @@ function buildExecutor(ctx: JarvisContext) {
         }
 
         const params     = (acc['params']     ?? {}) as Record<string, unknown>
-        const flights    = (acc['flights']    ?? []) as any[]
-        const hotels     = (acc['hotels']     ?? []) as any[]
-        const activities = (acc['activities'] ?? []) as any[]
-        const comparison = acc['comparison'] as any
-        const summary    = acc['summary']    as any
-        const doneEvt    = acc['done']       as any
+        const flights    = (acc['flights']    ?? []) as unknown[]
+        const hotels     = (acc['hotels']     ?? []) as unknown[]
+        const activities = (acc['activities'] ?? []) as unknown[]
+        const comparison = acc['comparison'] as Record<string, unknown> | undefined
+        const summary    = acc['summary']    as Record<string, unknown> | undefined
+        const doneEvt    = acc['done']       as Record<string, unknown> | undefined
         const sessionId  = doneEvt?.sessionId as string | undefined
         const plannerUrl = sessionId ? `${baseUrl}/free-travel?session=${encodeURIComponent(sessionId)}` : `${baseUrl}/free-travel`
 
@@ -290,8 +290,8 @@ function buildExecutor(ctx: JarvisContext) {
           nights:            params.nights,
           dateFrom:          params.dateFrom,
           dateTo:            params.dateTo,
-          topFlight:         flights[0] ? `${flights[0].airline} ${flights[0].price?.toLocaleString()}원` : null,
-          topHotel:          hotels[0]  ? `${hotels[0].name} 1박 ${hotels[0].pricePerNight?.toLocaleString()}원` : null,
+          topFlight:         flights[0] ? `${(flights[0] as { airline: string; price: number }).airline} ${(flights[0] as { airline: string; price: number }).price?.toLocaleString()}원` : null,
+          topHotel:          hotels[0]  ? `${(hotels[0] as { name: string; pricePerNight: number }).name} 1박 ${(hotels[0] as { name: string; pricePerNight: number }).pricePerNight?.toLocaleString()}원` : null,
           activityCount:     activities.length,
           totalMin:          comparison?.totalMin,
           totalMax:          comparison?.totalMax,

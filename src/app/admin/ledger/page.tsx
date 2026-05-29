@@ -696,7 +696,7 @@ export default function LedgerPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-admin-sm text-admin-muted max-w-[100px] truncate">
-                      {(tx.bookings as any)?.booking_no ?? '—'}
+                      {(tx.bookings as Record<string, unknown>)?.booking_no as string ?? '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {tab === 'trash' ? (

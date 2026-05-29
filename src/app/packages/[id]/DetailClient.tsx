@@ -425,11 +425,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     [pkg],
   );
   const tiers = useMemo(
-    () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers || [] as any, pkg.departure_days) as PriceTier[]) : []),
+    () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers as unknown as import('@/lib/parser').PriceTier[] ?? [], pkg.departure_days) as unknown as import('@/lib/parser').PriceTier[]) : []),
     [pkg],
   );
   const allPriceDates = useMemo(
-    () => (pkg ? getEffectivePriceDates(pkg as any) : []),
+    () => (pkg ? getEffectivePriceDates(pkg as unknown as Parameters<typeof getEffectivePriceDates>[0]) : []),
     [pkg],
   );
   const minPrice = useMemo(() => {
@@ -1623,54 +1623,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         destination={pkg.destination ?? ''}
         productType={pkg.product_type ?? null}
         kakaoChannel={() => openKakaoChannel({
-          internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
+          internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
           productTitle: pkg.products?.display_name || pkg.title,
           departureDate: selectedDate || selectedTier?.departure_dates?.[0],
         })}
       />
-
-      {/* ═══ 유의사항 · 예약 약관 (본문은 미리보기, 전문은 바텀시트) ═══ */}
-      <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-[108px]">
-        {(() => {
-          if (initialNotices.length === 0 && !pkg.customer_notes) return null;
-          const hasSpecialTerms = hasSpecialTermsBanner(initialNotices);
-          return (
-            <div>
-              <h2 className="text-lg font-extrabold text-gray-900 mb-3">유의사항 · 예약 약관</h2>
-              {initialNotices.length > 0 ? (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-gray-900 mb-1.5">📋 예약 전 꼭 확인해 주세요</p>
-                  {hasSpecialTerms ? (
-                    <p className="text-xs text-red-700 leading-relaxed mb-3">
-                      <span className="font-bold">특별약관 적용 상품</span>
-                      {' — '}
-                      예약 확정(발권·파이널) 이후 취소 시, 시점과 무관하게 항공·호텔 실제 위약금이{' '}
-                      <span className="font-bold">최대 100% 청구</span>될 수 있습니다.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-600 leading-relaxed mb-3">
-                      항공·숙박·취소 규정이 포함된 상품입니다. 예약 전 약관 확인이 필요합니다.
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setTermsSheetOpen(true)}
-                    className={`text-sm font-semibold hover:underline ${
-                      hasSpecialTerms ? 'text-red-700' : 'text-brand'
-                    }`}
-                  >
-                    {hasSpecialTerms
-                      ? '🚨 특별약관 및 취소 규정 전체 보기 →'
-                      : '여행 약관 및 취소 규정 전체 보기 →'}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.customer_notes}</p>
-              )}
-            </div>
-          );
-        })()}
-      </div>
 
       {/* ═══ 여행 준비 가이드 (통합 블로그 섹션) ═══
           ① 이 상품을 다룬 글 (relatedBlogPosts) — 큰 가로 카드, 위쪽
@@ -1869,7 +1826,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 }),
               }).catch(() => {});
               const copied = await openKakaoChannel({
-                internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
+                internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
                 productTitle: pkg.products?.display_name || pkg.title,
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
               });

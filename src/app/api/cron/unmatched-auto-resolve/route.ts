@@ -133,22 +133,22 @@ export async function GET(request: NextRequest) {
 
                 if (existing) {
                   // 기존 attraction 에 alias 연결
-                  const existingAliases: string[] = (existing as any).aliases ?? [];
+                  const existingAliases: string[] = (existing.aliases as string[] | null) ?? [];
                   if (!existingAliases.includes(u.activity)) {
                     await supabaseAdmin.from('attractions').update({
                       aliases: [...new Set([...existingAliases, u.activity])],
                       updated_at: now,
-                    }).eq('id', (existing as any).id);
+                    }).eq('id', existing.id);
                   }
                   await supabaseAdmin.from('unmatched_activities').update({
                     status: 'added',
                     note: `auto-matched: ${top.qid} (conf=${top.confidence.toFixed(2)})`,
                     resolved_at: now,
                     resolved_kind: 'auto_cron_wikidata_match',
-                    resolved_attraction_id: (existing as any).id,
+                    resolved_attraction_id: existing.id,
                     resolved_by: 'cron_unmatched_auto_resolve',
-                  } as never).eq('id', u.id);
-                  affectedAttractionIds.add((existing as any).id);
+                  }).eq('id', u.id);
+                  affectedAttractionIds.add(existing.id);
                 } else {
                   // 신규 auto INSERT
                   const aliasSet = new Set<string>([u.activity, top.label_ko || '', top.label_en || ''].filter(Boolean));
@@ -180,10 +180,10 @@ export async function GET(request: NextRequest) {
                       note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})`,
                       resolved_at: now,
                       resolved_kind: 'auto_cron_wikidata_insert',
-                      resolved_attraction_id: (created as any).id,
+                      resolved_attraction_id: created.id,
                       resolved_by: 'cron_unmatched_auto_resolve',
-                    } as never).eq('id', u.id);
-                    affectedAttractionIds.add((created as any).id);
+                    }).eq('id', u.id);
+                    affectedAttractionIds.add(created.id);
                     resolved++;
 
                     // fire-and-forget: photo + description
@@ -193,10 +193,10 @@ export async function GET(request: NextRequest) {
                         const desc = await generateAttractionDescription(top.label_ko || top.label_en || u.activity, {
                           qid: top.qid, wdDescription: top.description, destination: u.region,
                         });
-                        await supabaseAdmin.from('attractions').update({ short_desc: desc.short_desc, updated_at: now }).eq('id', (created as any).id);
+                        await supabaseAdmin.from('attractions').update({ short_desc: desc.short_desc, updated_at: now }).eq('id', created.id);
 
                         const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
-                        await runAttractionPhotoMatch((created as any).id, {
+                        await runAttractionPhotoMatch(created.id, {
                           keywords: [top.label_ko || '', top.label_en || '', u.activity, ...top.aliases].filter(Boolean),
                           qid: top.qid, maxPhotos: 5,
                         });
@@ -214,13 +214,13 @@ export async function GET(request: NextRequest) {
                   image_url: top.image_url,
                   confidence: top.confidence,
                 });
-                const existingNote = (row as any).note || '';
+                const existingNote = (row as { note?: string | null }).note || '';
                 const newNote = existingNote
                   ? `${existingNote}\n[WIKIDATA] ${wdInfo}`
                   : `[WIKIDATA] ${wdInfo}`;
                 await supabaseAdmin.from('unmatched_activities').update({
                   note: newNote,
-                } as never).eq('id', u.id);
+                }).eq('id', u.id);
                 wikidataSuggested++;
               }
             }

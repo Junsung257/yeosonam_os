@@ -51,9 +51,9 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(BOOKING_LIMIT),
     ]);
-    const affiliates = affiliatesRes.data as any;
-    const links = linksRes.data as any;
-    const bookings = bookingsRes.data as any;
+    const affiliates = affiliatesRes.data as unknown as Array<Record<string, unknown>>;
+    const links = linksRes.data as unknown as Array<Record<string, unknown>>;
+    const bookings = bookingsRes.data as unknown as Array<Record<string, unknown>>;
 
     // 파트너별 집계
     const linkMap = new Map<string, { clicks: number; conversions: number }>();
@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
       affected_commission_pool_krw: 0,
     };
     if (modelDaily && modelDaily.length > 0) {
-      for (const r of modelDaily as any[]) {
+      for (const r of modelDaily as unknown as Array<Record<string, unknown>>) {
         modelCompare.sample_size += Number(r.sample_size) || 0;
         modelCompare.first_touch_match_count += Number(r.first_touch_match_count) || 0;
         modelCompare.last_touch_match_count += Number(r.last_touch_match_count) || 0;

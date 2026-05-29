@@ -112,27 +112,33 @@ async function runDesignArchetypeUpdate(request: NextRequest) {
       .select('id, sample_count, top_hook_patterns, top_keywords, sample_external_ids, sample_image_urls')
       .eq('bucket_key', bucketKey)
       .limit(1);
-    const existingRow = existing?.[0] as any;
+    const existingRow = existing?.[0] as Record<string, unknown>;
+
+    const existingHooks = (existingRow?.top_hook_patterns as string[]) ?? [];
+    const existingKeywords = (existingRow?.top_keywords as string[]) ?? [];
+    const existingSampleIds = (existingRow?.sample_external_ids as string[]) ?? [];
+    const existingSampleImages = (existingRow?.sample_image_urls as string[]) ?? [];
+    const existingSampleCount = (existingRow?.sample_count as number) ?? 0;
 
     const mergedHookPatterns = Array.from(new Set([
-      ...(existingRow?.top_hook_patterns ?? []),
+      ...existingHooks,
       ...hookPatterns,
       entry.archetype.hook_pattern,
     ].filter(Boolean))).slice(0, 8);
     const mergedKeywords = Array.from(new Set([
-      ...(existingRow?.top_keywords ?? []),
+      ...existingKeywords,
       ...keywords,
     ])).slice(0, 15);
     const mergedSampleIds = Array.from(new Set([
-      ...(existingRow?.sample_external_ids ?? []),
+      ...existingSampleIds,
       ...sampleIds,
     ])).slice(0, 10);
     const mergedSampleImages = Array.from(new Set([
-      ...(existingRow?.sample_image_urls ?? []),
+      ...existingSampleImages,
       ...sampleImages,
     ])).slice(0, 5);
 
-    const newSampleCount = (existingRow?.sample_count ?? 0) + entry.posts.length;
+    const newSampleCount = existingSampleCount + entry.posts.length;
 
     const { error: upErr } = await supabaseAdmin
       .from('card_news_design_archetypes')

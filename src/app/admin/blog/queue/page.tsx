@@ -27,7 +27,7 @@ export default async function BlogQueuePage() {
 
   return (
     <BlogQueueClient
-      initialItems={(itemsResult.data ?? []) as any}
+      initialItems={(itemsResult.data ?? []) as unknown as Array<{ id: string; topic: string; source: string; priority: number; destination: string | null; angle_type: string | null; category: string | null; target_publish_at: string | null; status: string; attempts: number; last_error: string | null; content_creative_id: string | null; created_at: string; primary_keyword: string | null; keyword_tier: 'head' | 'mid' | 'longtail' | null; monthly_search_volume: number | null; competition_level: 'low' | 'medium' | 'high' | null; trend_score: number | null; meta?: { search_intent?: string } | null; }>}
       initialCounts={counts}
     />
   );

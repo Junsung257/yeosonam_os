@@ -195,13 +195,13 @@ export async function storeCompetitorCreatives(
         .update({
           last_seen: creative.lastSeen.toISOString().split("T")[0],
           raw_data: {
-            ...((existing[0] as any).raw_data ?? {}),
+            ...((existing[0] as Record<string, unknown>).raw_data ?? {}),
             last_description: creative.description,
             last_destination: creative.destination,
             updated_at: new Date().toISOString(),
           },
         })
-        .eq("id", (existing[0] as any).id);
+        .eq("id", (existing[0] as Record<string, unknown>).id);
 
       console.log(
         `[competitor-ad-monitor] 기존 광고 갱신: ${creative.platform} / ${creative.advertiserName} / ${creative.headline}`

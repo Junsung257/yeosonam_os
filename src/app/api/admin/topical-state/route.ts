@@ -30,12 +30,12 @@ const getHandler = async () => {
   const clusters = clustersRes.data || [];
   const byDest = new Map<string, number>();
   for (const c of clusters) {
-    byDest.set((c as any).destination, (byDest.get((c as any).destination) || 0) + 1);
+    byDest.set((c as Record<string, unknown>).destination as string, (byDest.get((c as Record<string, unknown>).destination as string) || 0) + 1);
   }
 
   const matrixStats: Record<string, number> = {};
   for (const r of matrixStatsRes.data || []) {
-    matrixStats[(r as any).status] = (matrixStats[(r as any).status] || 0) + 1;
+    matrixStats[(r as Record<string, unknown>).status as string] = (matrixStats[(r as Record<string, unknown>).status as string] || 0) + 1;
   }
 
   return NextResponse.json({

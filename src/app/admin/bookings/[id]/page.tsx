@@ -1,5 +1,5 @@
 import { supabaseAdmin, isSupabaseConfigured, getMessageLogs } from '@/lib/supabase';
-import BookingDetailClient from './BookingDetailClient';
+import BookingDetailClient, { type BookingDetail } from './BookingDetailClient';
 
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
@@ -21,18 +21,21 @@ export default async function BookingDetailPage(props: { params: Promise<{ id: s
   ]);
 
   const raw = bookingResult.data?.[0] ?? null;
-  let initialBooking = null;
+  let initialBooking: import('./BookingDetailClient').BookingDetail | null = null;
   if (raw) {
-    const passengers = ((raw as any).booking_passengers ?? [])
-      .map((bp: any) => bp.customers ? { ...bp.customers, passenger_type: bp.passenger_type || 'adult' } : null)
-      .filter(Boolean);
-    initialBooking = { ...(raw as any), passengers };
+    interface BookingPassenger { customers?: Record<string, unknown> | null; passenger_type?: string | null; }
+    interface BookingWithPassengers extends Record<string, unknown> { booking_passengers?: BookingPassenger[]; }
+    const rawBooking = raw as BookingWithPassengers;
+    const passengers = (rawBooking.booking_passengers ?? [])
+      .map(bp => bp.customers ? { ...bp.customers, passenger_type: bp.passenger_type || 'adult' } : null)
+      .filter(Boolean) as unknown as import('./BookingDetailClient').BookingDetail['passengers'];
+    initialBooking = { ...rawBooking, passengers } as unknown as import('./BookingDetailClient').BookingDetail;
   }
 
   return (
     <BookingDetailClient
       params={params}
-      initialBooking={initialBooking}
+      initialBooking={initialBooking as unknown as BookingDetail}
       initialLogs={logs}
     />
   );

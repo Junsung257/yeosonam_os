@@ -42,9 +42,9 @@ export default async function EditBookingPage(props: { params: Promise<{ id: str
   return (
     <EditBookingClient
       params={params}
-      initialBooking={booking as any}
-      initialPackages={(packagesResult.data ?? []) as any}
-      initialCustomers={(customersResult.data ?? []) as any}
+      initialBooking={booking as unknown as { id: string; booking_no?: string; package_id?: string; package_title?: string; lead_customer_id: string; adult_count: number; child_count: number; adult_cost: number; adult_price: number; child_cost: number; child_price: number; fuel_surcharge: number; total_cost?: number; total_price?: number; status: string; departure_date?: string; notes?: string; created_at: string; customers?: { id: string; name: string; phone?: string; passport_expiry?: string; passport_no?: string }; booking_passengers?: { customers: { id: string; name: string; phone?: string; passport_expiry?: string; passport_no?: string } }[]; }}
+      initialPackages={(packagesResult.data ?? []) as unknown as Array<{ id: string; title: string; destination?: string; price?: number; }>}
+      initialCustomers={(customersResult.data ?? []) as unknown as Array<{ id: string; name: string; phone?: string; passport_expiry?: string; passport_no?: string; }>}
     />
   );
 }

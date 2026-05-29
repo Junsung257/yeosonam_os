@@ -135,7 +135,7 @@ export default function McpSettingsPage() {
             <label className="block text-xs text-gray-500 mb-1">권한</label>
             <select
               value={newRole}
-              onChange={e => setNewRole(e.target.value as any)}
+              onChange={e => setNewRole(e.target.value as 'tenant_staff' | 'tenant_admin' | 'platform_admin')}
               className="px-3 py-2 border rounded text-sm"
             >
               <option value="tenant_staff">읽기 전용 (Read)</option>

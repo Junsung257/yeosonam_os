@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const lastTs = (maxRow as any)?.message_ts;
+    const lastTs = (maxRow as Record<string, unknown>)?.message_ts;
     const oldest = lastTs ? String(lastTs) : String(lookbackSec);
     summary.oldest_ts = oldest;
 

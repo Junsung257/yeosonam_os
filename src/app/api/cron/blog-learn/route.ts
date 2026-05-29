@@ -139,8 +139,8 @@ const handleBlogLearn = async (request: NextRequest) => {
           result.prompt_learning = {
             step: 'auto_applied',
             action_id: actionId,
-            new_version: (execResult.data as any)?.new_version,
-            from_version: (execResult.data as any)?.from_version,
+            new_version: (execResult.data as Record<string, unknown>)?.new_version,
+            from_version: (execResult.data as Record<string, unknown>)?.from_version,
           };
         }
       }

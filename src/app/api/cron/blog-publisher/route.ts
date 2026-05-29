@@ -429,7 +429,7 @@ async function processQueueItem(
       seo_description: generated.seo_description,
       og_image_url: generated.og_image_url,
       product_id: item.product_id ?? null,
-      category: VALID_CATEGORIES.includes(item.category as any) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
+      category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: item.angle_type || 'value',
       status: 'published' as const,

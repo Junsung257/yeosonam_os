@@ -47,7 +47,7 @@ export function useRealtimeRefresh({
     let channel = supabase.channel(channelName);
     for (const evt of events) {
       channel = channel.on(
-        'postgres_changes' as any,
+        'postgres_changes' as const,
         { event: evt, schema, table, ...(filter ? { filter } : {}) },
         () => trigger(),
       );

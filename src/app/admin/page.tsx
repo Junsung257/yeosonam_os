@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import AdminPageClient from './AdminPageClient';
+import AdminPageClient, { type TravelPackage } from './AdminPageClient';
 
 // Next 15: 정적 평가만 가능. 항상 'auto' (운영 동작 유지).
 export const dynamic = 'auto';
@@ -24,8 +24,8 @@ export default async function AdminPage() {
 
   return (
     <AdminPageClient
-      initialPendingPackages={(pendingResult.data ?? []) as any}
-      initialPackages={(approvedResult.data ?? []) as any}
+      initialPendingPackages={(pendingResult.data ?? []) as unknown as TravelPackage[]}
+      initialPackages={(approvedResult.data ?? []) as unknown as TravelPackage[]}
     />
   );
 }

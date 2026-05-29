@@ -343,7 +343,9 @@ export class JarvisMcpServer {
         return this.listTools(auth)
 
       case 'tools/call': {
-        const { name, arguments: args } = (body.params ?? {}) as any
+        const params = body.params ?? {}
+        const name = params.name as string | undefined
+        const args = params.arguments as Record<string, unknown> | undefined
         if (!name) {
           return {
             content: [{ type: 'text', text: '필수 파라미터 누락: name' }],

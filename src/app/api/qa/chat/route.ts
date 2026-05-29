@@ -587,7 +587,7 @@ ${message}`;
                 .eq('id', sessionId)
                 .maybeSingle();
 
-              const prevMessages = (existing?.messages as any[]) || [];
+              const prevMessages = (existing?.messages as unknown as Array<{ role: string; content: string; timestamp: string }>) || [];
               const CTA_COPY =
                 '항공·호텔을 직접 조합해 보고 싶다면 자유여행 AI 견적 페이지에서 이어가실 수 있어요.';
               const updatedMessages: any[] = [

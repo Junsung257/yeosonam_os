@@ -81,7 +81,7 @@ async function FreeTravelDataFetcher() {
 
   return (
     <FreeTravelPageClient
-      initialSessions={sessions as any}
+      initialSessions={sessions as unknown as Array<{ id: string; destination: string; departure: string; date_from: string; date_to: string; pax_adults: number; pax_children: number; customer_phone: string | null; customer_name: string | null; plan_json: { hotels: { name: string; pricePerNight: number }[]; flights: { airline: string; price: number }[]; activities: { name: string; price: number }[]; aiSummary: string; comparison: { totalMin: number; totalMax: number }; itinerarySource?: 'llm' | 'template'; itineraryLlmError?: string; itineraryScore?: { score: number; label: string }; plannerPreferences?: { companionType?: string | null; hotelBudgetBand?: string | null; travelPace?: string | null; }; }; source: string; status?: string; mrt_booking_ref?: string | null; booked_by?: string | null; booked_at?: string | null; admin_notes?: string | null; created_at: string; }>}
       itineraryMetricsByWindow={{ 7: m7, 30: m30, 90: m90 }}
     />
   );

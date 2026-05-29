@@ -6,7 +6,6 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * 매월 1일 00:00 UTC에 실행
  * 활성 구독 테넌트에 TossPayments 빌링키로 자동결제
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const monthlyBillingFn = inngest.createFunction(
   {
     id: 'monthly-billing',
@@ -14,7 +13,7 @@ export const monthlyBillingFn = inngest.createFunction(
     retries: 3,
     timeouts: { finish: '30m' },
     cron: '0 0 1 * *',
-  } as any,
+  } as unknown as Parameters<typeof inngest.createFunction>[0],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async ({ step }: any) => {
     if (!isSupabaseConfigured) return { skipped: true };

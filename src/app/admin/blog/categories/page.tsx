@@ -232,7 +232,7 @@ function CategoryForm({ initial, onClose, onSaved }: {
         </div>
         <div>
           <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">범위</label>
-          <select value={scope} onChange={e => setScope(e.target.value as any)}
+          <select value={scope} onChange={e => setScope(e.target.value as 'info' | 'product' | 'both')}
             className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
             <option value="info">정보성 전용</option>
             <option value="product">상품 전용</option>

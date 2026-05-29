@@ -356,8 +356,8 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
       .in('id', [primary_id, duplicate_id])
     if (loadErr) wrap('load')(loadErr)
 
-    const primary = (pair ?? []).find((c: any) => c.id === primary_id) as any
-    const duplicate = (pair ?? []).find((c: any) => c.id === duplicate_id) as any
+    const primary = (pair ?? []).find((c: { id: string }) => c.id === primary_id) as Record<string, unknown>
+    const duplicate = (pair ?? []).find((c: { id: string }) => c.id === duplicate_id) as Record<string, unknown>
     if (!primary) throw new Error(`merge_customers[step=load]: primary 고객 미존재 (${primary_id})`)
     if (!duplicate) throw new Error(`merge_customers[step=load]: duplicate 고객 미존재 (${duplicate_id})`)
     if (duplicate.deleted_at) throw new Error('merge_customers[step=load]: duplicate 고객은 이미 삭제됨')
@@ -366,10 +366,10 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
     const mergedFields: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (!primary.phone && duplicate.phone) mergedFields.phone = duplicate.phone
     if (!primary.email && duplicate.email) mergedFields.email = duplicate.email
-    mergedFields.mileage = (primary.mileage || 0) + (duplicate.mileage || 0)
-    mergedFields.total_spent = (primary.total_spent || 0) + (duplicate.total_spent || 0)
+    mergedFields.mileage = ((primary.mileage as number) || 0) + ((duplicate.mileage as number) || 0)
+    mergedFields.total_spent = ((primary.total_spent as number) || 0) + ((duplicate.total_spent as number) || 0)
     if (duplicate.memo) {
-      mergedFields.memo = [primary.memo, `[병합:${duplicate.name}] ${duplicate.memo}`].filter(Boolean).join('\n')
+      mergedFields.memo = [primary.memo as string, `[병합:${duplicate.name as string}] ${duplicate.memo as string}`].filter(Boolean).join('\n')
     }
 
     const { error: mergeErr } = await supabaseAdmin.from('customers').update(mergedFields).eq('id', primary_id)

@@ -51,11 +51,12 @@ const getHandler = async (request: NextRequest) => {
         .gte('date', sinceStr)
         .order('date', { ascending: true });
 
-      const groups = new Map<string, Array<any>>();
-      for (const row of data || []) {
-        const key = `${(row as any).slug}::${(row as any).query}`;
+      const groups = new Map<string, Array<{ date: string; position: number; clicks: number; impressions: number }>>();
+      const historyRows = (data ?? []) as unknown as Array<{ slug: string; query: string; date: string; position: number; clicks: number; impressions: number }>;
+      for (const r of historyRows) {
+        const key = `${r.slug}::${r.query}`;
         if (!groups.has(key)) groups.set(key, []);
-        groups.get(key)!.push(row);
+        groups.get(key)!.push(r);
       }
 
       const movers: Array<{
@@ -99,7 +100,7 @@ const getHandler = async (request: NextRequest) => {
 
     const slugMap = new Map<string, { clicks: number; impressions: number; positions: number[]; queries: Set<string> }>();
     for (const row of history || []) {
-      const r = row as any;
+      const r = row as { slug: string; clicks: number; impressions: number; position: number; query: string };
       const ex = slugMap.get(r.slug) || { clicks: 0, impressions: 0, positions: [], queries: new Set() };
       ex.clicks += r.clicks || 0;
       ex.impressions += r.impressions || 0;

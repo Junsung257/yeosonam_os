@@ -13,9 +13,8 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
   const packages = (await getApprovedPackages(
     args.destination as string | undefined,
     args.keyword as string | undefined
-  )) as any[];
-
-  type PkgRow = (typeof packages)[0];
+  )) as unknown as PkgRow[];
+  type PkgRow = Record<string, unknown>;
   let filtered: PkgRow[] = packages;
 
   // 기본 필터
@@ -23,28 +22,28 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
     filtered = filtered.filter(p => p.category === args.category);
   }
   if (args.maxPrice) {
-    filtered = filtered.filter(p => (p.price ?? Infinity) <= (args.maxPrice as number));
+    filtered = filtered.filter(p => ((p.price as number) ?? Infinity) <= (args.maxPrice as number));
   }
   if (args.keyword) {
     const kw = (args.keyword as string).toLowerCase();
     filtered = filtered.filter(p =>
-      p.title?.toLowerCase().includes(kw) ||
-      p.destination?.toLowerCase().includes(kw) ||
-      p.product_type?.toLowerCase().includes(kw) ||
-      p.trip_style?.toLowerCase().includes(kw) ||
-      p.product_summary?.toLowerCase().includes(kw) ||
-      (p.product_tags || []).some((t: string) => t.toLowerCase().includes(kw))
+      (p.title as string)?.toLowerCase().includes(kw) ||
+      (p.destination as string)?.toLowerCase().includes(kw) ||
+      (p.product_type as string)?.toLowerCase().includes(kw) ||
+      (p.trip_style as string)?.toLowerCase().includes(kw) ||
+      (p.product_summary as string)?.toLowerCase().includes(kw) ||
+      ((p.product_tags as string[]) || []).some((t: string) => t.toLowerCase().includes(kw))
     );
   }
   if (args.productTags) {
     const tags = (args.productTags as string).split(',').map(t => t.trim().toLowerCase());
     filtered = filtered.filter(p => {
-      const pkgTags = (p.product_tags || []).map((t: string) => t.toLowerCase());
-      const summary = (p.product_summary || '').toLowerCase();
+      const pkgTags = ((p.product_tags as string[]) || []).map((t: string) => t.toLowerCase());
+      const summary = ((p.product_summary as string) || '').toLowerCase();
       const inferredTags: string[] = [];
-      if (!p.guide_tip) inferredTags.push('노팁');
-      if ((p.min_participants || 99) <= 8) inferredTags.push('소규모');
-      if (p.product_type?.includes('에어텔')) inferredTags.push('에어텔');
+      if (!(p as unknown as PkgRow).guide_tip) inferredTags.push('노팁');
+      if (((p.min_participants as number) || 99) <= 8) inferredTags.push('소규모');
+      if ((p.product_type as string)?.includes('에어텔')) inferredTags.push('에어텔');
       const allTags = [...pkgTags, ...inferredTags, summary];
       return tags.every(tag => allTags.some(t => t.includes(tag)));
     });
@@ -134,25 +133,26 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
 
   if (filtered.length === 0 && args.dayOfWeek) {
     matchedLevel = 'month_only';
-    filtered = packages;
-    if (args.category) filtered = filtered.filter(p => p.category === args.category);
-    if (args.maxPrice) filtered = filtered.filter(p => (p.price ?? Infinity) <= (args.maxPrice as number));
+    filtered = packages as unknown as PkgRow[];
+    if (args.category) filtered = filtered.filter(p => (p as Record<string, unknown>).category === args.category);
+    if (args.maxPrice) filtered = filtered.filter(p => ((p as Record<string, unknown>).price as number ?? Infinity) <= (args.maxPrice as number));
     if (args.destination) {
       const dest = (args.destination as string).toLowerCase();
       filtered = filtered.filter(p =>
-        p.destination?.toLowerCase().includes(dest) || p.title?.toLowerCase().includes(dest)
+        ((p as Record<string, unknown>).destination as string)?.toLowerCase().includes(dest) || ((p as Record<string, unknown>).title as string)?.toLowerCase().includes(dest)
       );
     }
     if (args.month) {
       const targetMonth = String(args.month as number).padStart(2, '0');
       filtered = filtered.filter(p => {
+        const pp = p as Record<string, unknown>;
         // price_dates 우선
-        const priceDates = (p.price_dates || []) as { date: string }[];
+        const priceDates = (pp.price_dates || []) as { date: string }[];
         if (priceDates.length > 0) {
           return priceDates.some(pd => pd.date.slice(5, 7) === targetMonth);
         }
         // 기존 price_tiers 폴백
-        const tiers = (p.price_tiers || []) as { date_range?: { start: string }; departure_dates?: string[]; status?: string }[];
+        const tiers = (pp.price_tiers || []) as { date_range?: { start: string }; departure_dates?: string[]; status?: string }[];
         if (tiers.length === 0) return true;
         return tiers.some(t => t.status !== 'soldout' && (
           t.date_range?.start?.slice(5, 7) === targetMonth ||
@@ -164,59 +164,61 @@ export async function handleSearchPackages(args: Record<string, unknown>) {
 
   if (filtered.length === 0 && (args.month || args.dayOfWeek)) {
     matchedLevel = 'destination_only';
-    filtered = packages;
-    if (args.category) filtered = filtered.filter(p => p.category === args.category);
+    filtered = packages as unknown as PkgRow[];
+    if (args.category) filtered = filtered.filter(p => (p as Record<string, unknown>).category === args.category);
     if (args.destination) {
       const dest = (args.destination as string).toLowerCase();
       filtered = filtered.filter(p =>
-        p.destination?.toLowerCase().includes(dest) || p.title?.toLowerCase().includes(dest)
+        ((p as Record<string, unknown>).destination as string)?.toLowerCase().includes(dest) || ((p as Record<string, unknown>).title as string)?.toLowerCase().includes(dest)
       );
     }
     if (args.keyword) {
       const kw = (args.keyword as string).toLowerCase();
       filtered = filtered.filter(p =>
-        p.title?.toLowerCase().includes(kw) || p.destination?.toLowerCase().includes(kw)
+        ((p as Record<string, unknown>).title as string)?.toLowerCase().includes(kw) || ((p as Record<string, unknown>).destination as string)?.toLowerCase().includes(kw)
       );
     }
   }
 
   const resultPackages = filtered.slice(0, 6).map(p => {
-    const tiers = (p.price_tiers || []) as { adult_price?: number; status?: string }[];
+    const pp = p as Record<string, unknown>;
+    const tiers = (pp.price_tiers || []) as { adult_price?: number; status?: string }[];
     const prices = tiers.map(t => t.adult_price).filter(Boolean) as number[];
-    const minPrice = prices.length > 0 ? Math.min(...prices) : p.price;
-    const maxPrice = prices.length > 0 ? Math.max(...prices) : p.price;
+    const minPrice = prices.length > 0 ? Math.min(...prices) : (pp.price as number);
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : (pp.price as number);
+    const depDays = (pp.departure_days as string[]) || [];
     return {
-      id: p.id,
-      title: p.title,
-      destination: p.destination,
-      category: p.category || 'package',
-      product_type: p.product_type,
-      trip_style: p.trip_style,
-      departure_days: p.departure_days,
-      duration: p.duration,
+      id: pp.id as string,
+      title: pp.title as string,
+      destination: pp.destination as string,
+      category: (pp.category as string) || 'package',
+      product_type: pp.product_type as string,
+      trip_style: pp.trip_style as string,
+      departure_days: depDays,
+      duration: pp.duration as number,
       min_price: minPrice,
       max_price: maxPrice,
       price_tiers_count: tiers.length,
-      ticketing_deadline: p.ticketing_deadline,
-      guide_tip: p.guide_tip,
-      min_participants: p.min_participants,
-      land_operator: p.land_operator,
-      product_tags: p.product_tags || [],
-      product_highlights: p.product_highlights || [],
-      product_summary: p.product_summary,
+      ticketing_deadline: pp.ticketing_deadline,
+      guide_tip: pp.guide_tip,
+      min_participants: pp.min_participants,
+      land_operator: pp.land_operator,
+      product_tags: (pp.product_tags as string[]) || [],
+      product_highlights: (pp.product_highlights as string[]) || [],
+      product_summary: pp.product_summary,
     };
   });
 
   const uiComponents: UIComponent[] = resultPackages.map(p => ({
     type: 'package_card' as const,
-    packageId: p.id,
-    title: p.title || '',
-    destination: p.destination || '',
+    packageId: p.id as string,
+    title: (p.title as string) || '',
+    destination: (p.destination as string) || '',
     nights: 0,
     days: 0,
-    priceFrom: p.min_price || 0,
-    tags: p.product_tags,
-    landOperator: p.land_operator || undefined,
+    priceFrom: (p.min_price as number) || 0,
+    tags: (p.product_tags as string[]),
+    landOperator: (p.land_operator as string) || undefined,
   }));
 
   return {

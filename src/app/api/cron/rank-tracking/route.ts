@@ -74,7 +74,7 @@ async function runRankTracking(request: NextRequest) {
         source: 'gsc',
       };
     })
-    .filter(Boolean) as any[];
+    .filter(Boolean) as unknown as Array<Record<string, unknown>>;
 
   let inserted = 0;
   if (rows.length > 0) {

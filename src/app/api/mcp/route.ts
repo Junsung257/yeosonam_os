@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       }
 
       case 'tools/call': {
-        const params = body.params as any
+        const params = body.params as Record<string, unknown>
         if (!params?.name) {
           return NextResponse.json(
             {

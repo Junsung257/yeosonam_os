@@ -70,13 +70,11 @@ function generateProductText(pkg: any): string {
   const days = pkg.itinerary_data?.days || [];
   if (days.length) {
     lines.push('[일정 안내]');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const day of days as any[]) {
+    for (const day of days) {
       const regions = (day.regions || []).join(' → ');
       lines.push(`${day.day}일차: ${regions}`);
       const schedule = day.schedule || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const s of schedule as any[]) {
+      for (const s of schedule) {
         if (s.type === 'optional') continue; // 옵션은 별도 섹션
         const time = s.time && s.time !== '전일' ? `${s.time} ` : '';
         lines.push(`  ${time}${s.activity}`);
@@ -172,7 +170,7 @@ interface ProductErp {
   margin_rate: number;     // 마진율 소수점 (0.09 = 9%)
 }
 
-interface Package {
+export interface Package {
   id: string;
   title: string;
   destination?: string;

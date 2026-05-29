@@ -56,7 +56,7 @@ interface Props {
 
 function computeMinPrice(pkg: PackageCardData): number {
   if (pkg.price_dates && pkg.price_dates.length > 0) {
-    const v = getMinPriceFromDates(pkg.price_dates as any);
+    const v = getMinPriceFromDates(pkg.price_dates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
     if (v && v > 0) return v;
   }
   if (pkg.price_tiers && pkg.price_tiers.length > 0) {

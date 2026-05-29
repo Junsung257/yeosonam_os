@@ -293,8 +293,8 @@ async function identifySupplierFromText(
       .maybeSingle();
 
     if (log) {
-      const diff = (log as any).correction_diff as Record<string, { from: string; to: string }> | null;
-      const corrected = (log as any).human_corrected_json as Record<string, string> | null;
+      const diff = (log as { correction_diff?: Record<string, { from: string; to: string }> | null }).correction_diff ?? null;
+      const corrected = (log as { human_corrected_json?: Record<string, string> | null }).human_corrected_json ?? null;
       const toCode     = diff?.supplier_code?.to;
       const supplierName = corrected?.supplier_name ?? null;
       const landOpId     = corrected?.land_operator_id ?? null;
@@ -1452,10 +1452,10 @@ JSON 배열로 응답:
         const draftRow = regWrite.row;
         const l1Gate = regWrite.l1;
         let productStatus = regWrite.productsStatus;
-        let pkgStatus = regWrite.travelPackageStatus;
+        let pkgStatus: string = regWrite.travelPackageStatus;
         if (uploadGate === 'BLOCKED') {
           productStatus = 'REVIEW_NEEDED';
-          pkgStatus = 'pending' as any;  // ★ 변경: pending_review → pending (어드민 목록에 보이도록)
+          pkgStatus = 'pending';
         }
         if (l1Gate.reasons.length > 0) {
           console.warn('[Upload API] L1 Gate BLOCK:', l1Gate.codes.join(','), '—', l1Gate.reasons.join('; '));
@@ -1483,7 +1483,7 @@ JSON 배열로 응답:
 
         if (uploadGate === 'REVIEW_NEEDED' && productStatus === 'approved') {
           productStatus = 'draft';
-          pkgStatus = 'pending' as any;  // ★ 변경: pending_review → pending
+          pkgStatus = 'pending';
         }
 
         console.log(`[Upload API] 상태 결정: products=${productStatus}, travel_packages=${pkgStatus} (confidence=${(confidenceV3 * 100).toFixed(0)}%)`);
@@ -1700,7 +1700,7 @@ JSON 배열로 응답:
 
             // P1 — upload → normalized_intakes 역변환 SSOT + IR canary shadow (샘플만 forward LLM)
             if (isSupabaseConfigured) {
-              const intakePkgRow = pkgResult as any;
+              const intakePkgRow = pkgResult as unknown as Record<string, unknown>;
               nextAfter(async () => {
                 try {
                   const snap = await persistIntakeSnapshot(supabaseAdmin, {
@@ -1960,7 +1960,7 @@ JSON 배열로 응답:
 
                 if (existing) {
                   // 기존 attraction 에 alias 만 추가 (원래 activity 명칭을 alias 로)
-                  const existingAliases: string[] = (existing as any).aliases ?? [];
+                  const existingAliases: string[] = (existing.aliases as string[] | null) ?? [];
                   if (!existingAliases.includes(kw) && kw !== top.label_ko && kw !== top.label_en) {
                     await supabaseAdmin
                       .from('attractions')
@@ -1968,7 +1968,7 @@ JSON 배열로 응답:
                         aliases: [...new Set([...existingAliases, kw])],
                         updated_at: new Date().toISOString(),
                       })
-                      .eq('id', (existing as any).id);
+                      .eq('id', existing.id);
                     console.log(`[Upload P11-3] 기존 ${top.qid} 에 alias 추가: "${kw}"`);
                   }
                   // unmatched 큐 제거 (status='added')
@@ -2016,7 +2016,7 @@ JSON 배열로 응답:
                       .eq('activity', kw);
 
                     // fire-and-forget: 사진 + 설명 백그라운드 생성
-                    const newId = (inserted as any).id;
+                    const newId = inserted.id;
                     nextAfter(async () => {
                       try {
                         // 설명 생성

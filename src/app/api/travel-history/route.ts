@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
         .select('id')
         .eq('phone', dbPhone)
         .limit(1);
-      customerId = ((customer as any)?.[0]?.id as string) ?? null;
+      customerId = ((customer as unknown as Array<Record<string, unknown>>)?.[0]?.id as string) ?? null;
     }
 
     // phone으로 찾을 수 없으면 customers.email로 fallback 조회
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
         .select('id')
         .eq('email', user.email)
         .limit(1);
-      customerId = ((customerByEmail as any)?.[0]?.id as string) ?? null;
+      customerId = ((customerByEmail as unknown as Array<Record<string, unknown>>)?.[0]?.id as string) ?? null;
     }
 
     if (!customerId) {

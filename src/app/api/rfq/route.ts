@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
           const emoji = source === 'private_tour_landing' ? '✈️' : '🎯';
           const title = source === 'private_tour_landing' ? '단독맞춤여행 신규 문의' : '단체여행 신규 문의';
           const customerEmail = cr.customer_email as string | undefined;
-          const shareToken = (rfq as any).share_token as string | undefined;
+          const shareToken = (rfq as unknown as Record<string, unknown>).share_token as string | undefined;
           const shareUrl = shareToken ? `${baseUrl}/share/rfq/${shareToken}` : null;
           const lines = [
             `${emoji} *${title}*`,
@@ -214,14 +214,14 @@ export async function POST(request: NextRequest) {
     }
 
     // share_token이 생성되었으면 share_url 포함
-    const shareUrl = (rfq as any).share_token
-      ? `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com'}/share/rfq/${(rfq as any).share_token}`
+    const shareUrl = (rfq as unknown as Record<string, unknown>).share_token
+      ? `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com'}/share/rfq/${(rfq as unknown as Record<string, unknown>).share_token}`
       : null;
 
     // 🔔 고객 알림: best-effort — Solapi 알림톡 또는 push 알림
     tryNotifyCustomer(customer_phone, customer_name, destination, adult_count, shareUrl).catch(() => {});
 
-    return NextResponse.json({ rfq, share_token: (rfq as any).share_token ?? null, share_url: shareUrl }, { status: 201 });
+    return NextResponse.json({ rfq, share_token: (rfq as unknown as Record<string, unknown>).share_token ?? null, share_url: shareUrl }, { status: 201 });
   } catch (error) {
     console.error('RFQ 생성 오류:', error);
     return NextResponse.json(

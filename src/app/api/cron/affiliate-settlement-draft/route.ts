@@ -103,7 +103,7 @@ interface AffiliateRow {
       action: 'AFFILIATE_SETTLEMENT_DRAFT',
       target_type: 'settlement',
       description: `${period} 정산 기안: ${drafted.length}건 확정, ${carried.length}건 이월, ${skipped.length}건 스킵`,
-      after_value: { period, drafted, carried, skipped } as any,
+      after_value: { period, drafted, carried, skipped } as unknown as Record<string, unknown>,
     }));
 
     await reportAffiliateCronSuccess('affiliate-settlement-draft', {

@@ -92,7 +92,7 @@ interface DataQualityReport {
   total_live: number; issues: DataQualityIssue[]; health_score: number;
 }
 
-interface TravelPackage {
+export interface TravelPackage {
   id: string; title: string; destination?: string; duration?: number;
   price?: number; filename: string; file_type: string;
   confidence: number; status: string; created_at: string;
@@ -1149,7 +1149,7 @@ export default function AdminPage({
       }
       if (unmatchedRes && (unmatchedRes as Response).ok) {
         const txData = await (unmatchedRes as Response).json().catch(() => null);
-        if (txData?.transactions) setUnmatchedCount((txData.transactions as any[]).length);
+        if (txData?.transactions) setUnmatchedCount((txData.transactions as unknown[]).length);
       }
 
       // 차트 (fire-and-forget — 느려도 초기 렌더 블록 안 함)

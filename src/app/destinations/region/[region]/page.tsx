@@ -114,7 +114,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   });
 
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
-  const alivePkgs = ((pkgs as any[] | null) ?? [])
+  const alivePkgs = ((pkgs as unknown as Record<string, unknown>[] | null) ?? [])
     .filter(p => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
@@ -146,9 +146,10 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   return {
     cities,
     packages: alivePkgs,
-    posts: ((blogPosts as any[] | null) ?? []).map(p => ({
-      id: p.id, slug: p.slug, seo_title: p.seo_title, og_image_url: p.og_image_url, content_type: p.content_type,
-    })),
+    posts: ((blogPosts as unknown as Record<string, unknown>[] | null) ?? []).map(p => {
+      const row = p as { id: string; slug: string; seo_title: string | null; og_image_url: string | null; content_type: string | null };
+      return { id: row.id, slug: row.slug, seo_title: row.seo_title, og_image_url: row.og_image_url, content_type: row.content_type };
+    }),
     totalPackages,
     minPrice,
   };

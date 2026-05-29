@@ -247,10 +247,11 @@ export async function GET(request: NextRequest) {
     // count: 'planned' — pg_stat 기반 추정 (수만 행 테이블에서 'exact' 보다 100배+ 빠름).
     //   페이지 네비게이션 UI 목적에는 추정치로 충분. 정확도 필요 시 ?countMode=exact 명시.
     const countMode = searchParams.get('countMode') || 'planned';
-    let query = (supabaseAdmin as any)
-      .from('travel_packages')
-      .select(lite ? PACKAGE_LIST_FIELDS_LITE : PACKAGE_LIST_FIELDS, { count: countMode as 'exact' | 'planned' | 'estimated' })
-      .range(from, from + limit - 1);
+    const queryBase = supabaseAdmin.from('travel_packages');
+    const selected = lite
+      ? queryBase.select(PACKAGE_LIST_FIELDS_LITE, { count: countMode as 'exact' | 'planned' | 'estimated' })
+      : queryBase.select(PACKAGE_LIST_FIELDS, { count: countMode as 'exact' | 'planned' | 'estimated' });
+    let query = selected.range(from, from + limit - 1);
 
     // 서버 정렬 (가격은 구조상 로컬 보조 정렬 유지 가능)
     switch (sort) {

@@ -13,6 +13,9 @@ interface Affiliate {
   landing_intro?: string | null;
   landing_pick_package_ids?: string[] | null;
   landing_video_url?: string | null;
+  commission_rate?: number;
+  is_active?: boolean;
+  business_number?: string;
 }
 
 interface Settlement {
@@ -305,7 +308,7 @@ export default function AffiliateDetailPage() {
                 <label className="w-16 text-xs text-admin-muted">{f.label}</label>
                 <input
                   type={f.type}
-                  value={(form as any)[f.key]}
+                  value={(form as Record<string, string | number | boolean>)[f.key] as string}
                   onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                   className="flex-1 border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm"
                 />
@@ -372,9 +375,9 @@ export default function AffiliateDetailPage() {
             <div><span className="text-admin-muted-2">정산유형 </span>
               {affiliate.payout_type === 'PERSONAL' ? '개인 (원천세 3.3%)' : '사업자'}
             </div>
-            <div><span className="text-admin-muted-2">커미션율 </span>{((affiliate as any).commission_rate * 100 || 9).toFixed(1)}%</div>
+            <div><span className="text-admin-muted-2">커미션율 </span>{((affiliate.commission_rate ?? 0.09) * 100).toFixed(1)}%</div>
             <div><span className="text-admin-muted-2">상태 </span>
-              {(affiliate as any).is_active !== false
+              {affiliate.is_active !== false
                 ? <span className="text-green-600">활성</span>
                 : <span className="text-red-500">비활성</span>}
             </div>

@@ -35,28 +35,38 @@ async function fetchActiveBookings(): Promise<BookingCandidate[]> {
     )
     .in('status', ['pending', 'confirmed']);
 
-  return ((data as any[]) || []).map((b: any) => ({
-    id: b.id,
-    booking_no: b.booking_no,
-    package_title: b.package_title,
-    total_price: b.total_price,
-    total_cost: b.total_cost,
-    paid_amount: b.paid_amount,
-    total_paid_out: b.total_paid_out,
-    status: b.status,
-    payment_status: b.payment_status,
-    actual_payer_name: b.actual_payer_name,
-    customer_name: b.customers?.name,
-  }));
+  return ((data as unknown[]) || []).map((b) => {
+    const row = b as { id: string; booking_no: string; package_title: string; total_price: number; total_cost: number; paid_amount: number; total_paid_out: number; status: string; payment_status: string; actual_payer_name: string | null; customers: { name: string } | null };
+    return {
+    id: row.id,
+    booking_no: row.booking_no,
+    package_title: row.package_title,
+    total_price: row.total_price,
+    total_cost: row.total_cost,
+    paid_amount: row.paid_amount,
+    total_paid_out: row.total_paid_out,
+    status: row.status,
+    payment_status: row.payment_status,
+    actual_payer_name: row.actual_payer_name,
+    customer_name: row.customers?.name,
+  }; });
 }
-
 export default async function MobilePaymentDetail(
   props: {
     params: Promise<{ id: string }>;
   }
 ) {
   const params = await props.params;
-  const tx = (await fetchTransaction(params.id)) as any;
+  const tx = (await fetchTransaction(params.id)) as unknown as {
+    id: string;
+    match_status: string;
+    amount: number;
+    counterparty_name: string | null;
+    transaction_type: string;
+    received_at: string | null;
+    memo: string | null;
+    bookings: { id: string; booking_no: string; customers: { name: string } | null; package_title: string; total_price: number; paid_amount: number } | null;
+  };
   if (!tx) notFound();
 
   // unmatched/review 일 때만 후보 계산

@@ -177,7 +177,7 @@ export async function critiqueHtmlCarousel(input: {
     input_tokens: respUsage?.prompt_tokens || 0,
     output_tokens: respUsage?.completion_tokens || 0,
     cache_creation_input_tokens: 0,
-    cache_read_input_tokens: (respUsage as any)?.prompt_cache_hit_tokens || 0,
+    cache_read_input_tokens: ((respUsage as unknown as Record<string, unknown>)?.prompt_cache_hit_tokens as number) || 0,
   };
 
   return {

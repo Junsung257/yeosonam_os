@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
-import { isSupabaseConfigured, getCardNewsList, upsertCardNews } from '@/lib/supabase';
+import { isSupabaseConfigured, getCardNewsList, upsertCardNews, type CardNews } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { updateFactoryJobStep } from '@/lib/content-factory-step';
 import { searchPexelsPhotos, buildPexelsKeyword, isPexelsConfigured, getBrandPlaceholder } from '@/lib/pexels';
@@ -8,6 +8,7 @@ import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { getSecret } from '@/lib/secret-registry';
 import { logError, logWarning } from '@/lib/sentry-logger';
+import type { ContentBrief } from '@/lib/validators/content-brief';
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -62,8 +63,8 @@ export async function POST(request: NextRequest) {
       const { searchPexelsPhotos, isPexelsConfigured } = await import('@/lib/pexels');
       const { supabaseAdmin } = await import('@/lib/supabase');
 
-      const copySlides = await generateCardCopy(brief as any);
-      const briefAny = brief as any;
+      const copySlides = await generateCardCopy(brief as unknown as ContentBrief);
+      const briefAny = brief as Record<string, unknown>;
 
       // Pexels 이미지 병렬 로드 — 키워드 실패 시 h1/destination 폴백
       const pexelsEnabled = isPexelsConfigured();
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
 
       // V2 slides — copySlides 에 V2 슬롯이 이미 있으므로 직접 활용
       const templateFamily: 'editorial' | 'cinematic' | 'premium' | 'bold' =
-        briefAny.template_family_suggestion ?? 'editorial';
+        (briefAny.template_family_suggestion as 'editorial' | 'cinematic' | 'premium' | 'bold') ?? 'editorial';
 
       const slides = copySlides.map((s, i) => ({
         id: crypto.randomUUID(),
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
       // PR-7: ContentBrief → card_news 영구 메타 추출 (critic gate / bandit 연결)
       // brief 자체의 sections h2 + key_selling_points + h1 만으로 추론 (별도 product 조회 불필요)
       const { extractCardNewsMetadata } = await import('@/lib/content-pipeline/content-brief');
-      const meta = extractCardNewsMetadata(brief as any);
+      const meta = extractCardNewsMetadata(brief as unknown as ContentBrief);
 
       const insertData: Record<string, unknown> = {
         title,
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       if (resolvedMode === 'info' && topic) insertData.topic = topic;
       if (category_id) insertData.category_id = category_id;
 
-      const cardNews = await upsertCardNews(insertData as any);
+      const cardNews = await upsertCardNews(insertData as unknown as Partial<CardNews> & { title: string });
 
       // ── content_factory_jobs 생성 (Content Hub 폴링용) ──────
       if (cardNews?.id) {
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
             critiqueAttempts = 2;
             try {
               const { generateCardCopy } = await import('@/lib/content-pipeline/card-copy');
-              const newCopySlides = await generateCardCopy(briefAny as never);
+              const newCopySlides = await generateCardCopy(briefAny as unknown as ContentBrief);
               const mergedSlides = newCopySlides.map((s, i) => ({
                 ...slides[i],
                 headline: s.headline,
@@ -265,7 +266,7 @@ export async function POST(request: NextRequest) {
         card_news_type: 'info',
         topic,
         category_id: category_id || null,
-      } as any);
+      } as unknown as Partial<CardNews> & { title: string });
 
       return NextResponse.json({ card_news: cardNews }, { status: 201 });
     }
@@ -308,7 +309,7 @@ export async function POST(request: NextRequest) {
       status: 'DRAFT',
       slides,
       card_news_type: 'product',
-    } as any);
+    } as unknown as Partial<CardNews> & { title: string });
 
     return NextResponse.json({ card_news: cardNews }, { status: 201 });
   } catch (error) {

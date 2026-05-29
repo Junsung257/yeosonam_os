@@ -14,12 +14,12 @@ import LedgerStatusChip from './_components/LedgerStatusChip';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
-interface ErpStats {
+export interface ErpStats {
   totalPrice: number; totalCost: number; totalPaid: number;
   remaining: number; margin: number; bookingCount: number;
 }
 
-interface BankTransaction {
+export interface BankTransaction {
   id: string; raw_message: string;
   transaction_type: '입금' | '출금';
   counterparty_name?: string; amount: number; memo?: string;
@@ -36,7 +36,7 @@ interface BankTransaction {
   };
 }
 
-interface BookingFull {
+export interface BookingFull {
   id: string; booking_no?: string; package_title?: string;
   total_price?: number; total_cost?: number;
   paid_amount?: number; total_paid_out?: number;
